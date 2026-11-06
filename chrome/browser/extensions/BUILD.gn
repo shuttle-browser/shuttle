@@ -21,6 +21,7 @@ import("//rlz/buildflags/buildflags.gni")
 import("//services/screen_ai/buildflags/features.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
 import("//third_party/protobuf/proto_library.gni")
+import("//ui/webui/webui_features.gni")
 
 assert(enable_extensions_core)
 assert(!is_fuchsia, "Fuchsia shouldn't use anything in //chrome")
@@ -253,8 +254,6 @@ source_set("extensions") {
     "extension_action_dispatcher.h",
     "extension_action_runner.cc",
     "extension_action_runner.h",
-    "extension_action_storage_manager.cc",
-    "extension_action_storage_manager.h",
     "extension_allowlist_factory.cc",
     "extension_allowlist_factory.h",
     "extension_browser_window_helper.cc",
@@ -601,6 +600,13 @@ source_set("extensions") {
   if (enable_spellcheck) {
     deps += [ "//chrome/browser/spellchecker" ]
   }
+  deps += [ "//ui/webui:buildflags" ]
+  if (enable_webui_ntp) {
+    deps += [
+      "//chrome/browser/resources/new_tab_page_extension:resources",
+      "//components/search",
+    ]
+  }
   if (is_android) {
     sources += [
       "api/chrome_extensions_api_client_android.cc",
@@ -727,6 +733,8 @@ source_set("extensions") {
       "api/image_writer_private/xz_extractor.h",
       "api/image_writer_private/zip_extractor.cc",
       "api/image_writer_private/zip_extractor.h",
+      "api/image_writer_private/zstd_extractor.cc",
+      "api/image_writer_private/zstd_extractor.h",
       "api/language_settings_private/language_settings_private_api.cc",
       "api/language_settings_private/language_settings_private_api.h",
       "api/language_settings_private/language_settings_private_delegate.cc",
@@ -1167,7 +1175,9 @@ source_set("extensions") {
       "//chrome/browser/ash/bruschetta",
       "//chrome/browser/ash/certificate_provider",
       "//chrome/browser/ash/child_accounts",
+      "//chrome/browser/ash/child_accounts/parent_access_code",
       "//chrome/browser/ash/child_accounts/time_limits",
+      "//chrome/browser/ash/cloud_upload",
       "//chrome/browser/ash/crostini",
       "//chrome/browser/ash/crostini:crostini_installer_types_mojom",
       "//chrome/browser/ash/crostini/throttle",
@@ -1198,9 +1208,6 @@ source_set("extensions") {
       "//chrome/browser/ash/settings",
       "//chrome/browser/ash/system_logs",
       "//chrome/browser/ash/system_web_apps/apps",
-      "//chrome/browser/chromeos/app_mode",
-      "//chrome/browser/chromeos/drivefs",
-      "//chrome/browser/chromeos/drivefs:native_message_host_origins",
       "//chrome/browser/chromeos/extensions/desk_api",
       "//chrome/browser/chromeos/extensions/external_loader",
       "//chrome/browser/chromeos/extensions/file_system_provider",
@@ -1214,7 +1221,6 @@ source_set("extensions") {
       "//chrome/browser/chromeos/extensions/wm",
       "//chrome/browser/chromeos/platform_keys",
       "//chrome/browser/chromeos/policy/dlp",
-      "//chrome/browser/chromeos/upload_office_to_cloud",
       "//chrome/browser/devtools",
       "//chrome/browser/nearby_sharing/common",
       "//chrome/browser/policy:system_features_disable_list",
@@ -1353,8 +1359,8 @@ source_set("extensions") {
       "//chrome/browser/ash/policy/handlers",
       "//chrome/browser/ash/system_web_apps/apps",
       "//chrome/browser/ui/ash/shelf/app_service",
+      "//chrome/browser/ui/ash/thumbnail_loader",
       "//chrome/browser/ui/webui/ash/settings/pages/a11y",
-      "//chrome/browser/chromeos/app_mode",
       "//chrome/browser/chromeos/extensions/component_extension_content_settings",
       "//chrome/browser/chromeos/extensions/desk_api",
       "//chrome/browser/chromeos/extensions/login_screen/login/cleanup",

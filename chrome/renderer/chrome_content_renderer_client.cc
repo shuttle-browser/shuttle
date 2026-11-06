@@ -196,6 +196,7 @@
 #include "extensions/common/constants.h"
 #include "extensions/common/context_data.h"
 #include "extensions/common/extension_urls.h"
+#include "extensions/common/manifest_handlers/back_forward_cache_info.h"
 #include "extensions/common/manifest_handlers/csp_info.h"
 #include "extensions/common/manifest_handlers/web_accessible_resources_info.h"
 #include "extensions/common/switches.h"
@@ -1070,16 +1071,12 @@ bool ChromeContentRendererClient::AllowPopup() {
 }
 
 bool ChromeContentRendererClient::IsUnboundedElementAllowed(
-    content::RenderFrame* render_frame) {
+    const blink::WebSecurityOrigin& origin) {
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-  if (render_frame && render_frame->GetWebFrame()) {
-    const blink::WebSecurityOrigin origin =
-        render_frame->GetWebFrame()->GetSecurityOrigin();
-    if (!origin.IsNull() &&
-        origin.Protocol().Equals(extensions::kExtensionScheme) &&
-        origin.Host().Equals(extension_misc::kContextualTasksExtensionId)) {
-      return true;
-    }
+  if (!origin.IsNull() &&
+      origin.Protocol().Equals(extensions::kExtensionScheme) &&
+      origin.Host().Equals(extension_misc::kContextualTasksExtensionId)) {
+    return true;
   }
 #endif
   return false;
@@ -1294,9 +1291,14 @@ void ChromeContentRendererClient::
   if (IsStandaloneContentExtensionProcess()) {
     // These Web API features are exposed in extensions.
     blink::WebRuntimeFeatures::EnableWebUSBOnServiceWorkers(true);
-#if !BUILDFLAG(IS_ANDROID)
-    blink::WebRuntimeFeatures::EnableWebHIDOnServiceWorkers(true);
-#endif  // !BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(ENABLE_DESKTOP_ANDROID_EXTENSIONS)
+    if (base::FeatureList::IsEnabled(blink::features::kWebHID) &&
+        base::FeatureList::IsEnabled(
+            features::kWebHidOnDesktopAndroidServiceWorkers))
+#endif  // BUILDFLAG(ENABLE_DESKTOP_ANDROID_EXTENSIONS)
+    {
+      blink::WebRuntimeFeatures::EnableWebHIDOnServiceWorkers(true);
+    }
     if (base::FeatureList::IsEnabled(
             blink::features::kClipboardOnExtensionServiceWorker)) {
       blink::WebRuntimeFeatures::EnableClipboardOnExtensionServiceWorker(true);
@@ -1439,6 +1441,21 @@ bool ChromeContentRendererClient::IsSafeRedirectTarget(
   }
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   return true;
+}
+
+bool ChromeContentRendererClient::ShouldUsePerBrowsingInstanceWindowAgent(
+    const url::Origin& origin) {
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  if (origin.scheme() == extensions::kExtensionScheme) {
+    scoped_refptr<const extensions::Extension> extension =
+        extensions::RendererExtensionRegistry::Get()
+            ->GetRefCountedExtensionOrAppByURL(origin.GetURL(),
+                                               /*include_guid=*/true);
+    return extension &&
+           extensions::BackForwardCacheInfo::IsSupported(*extension);
+  }
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  return false;
 }
 
 void ChromeContentRendererClient::DidSetUserAgent(

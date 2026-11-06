@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import type {PageHandlerRemote} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
+import type {Device, PageHandlerRemote, TimePeriodOption} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
 import {PageCallbackRouter, PageHandler} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
 
 export type RemoveVisitsRequest = Array<{
@@ -22,6 +22,8 @@ export interface BrowserProxy {
   recordTime(histogram: string, time: number): void;
   recordLongTime(histogram: string, time: number): void;
   navigateToUrl(url: string, target: string, e: MouseEvent): void;
+  getSyncedDevicesForFiltering(): Promise<{devices: Device[]}>;
+  getTimePeriodOptions(): Promise<{options: TimePeriodOption[]}>;
 }
 
 export class BrowserProxyImpl implements BrowserProxy {
@@ -61,6 +63,14 @@ export class BrowserProxyImpl implements BrowserProxy {
     chrome.send(
         'navigateToUrl',
         [url, target, e.button, e.altKey, e.ctrlKey, e.metaKey, e.shiftKey]);
+  }
+
+  getSyncedDevicesForFiltering() {
+    return this.handler.getSyncedDevicesForFiltering();
+  }
+
+  getTimePeriodOptions() {
+    return this.handler.getTimePeriodOptions();
   }
 
   static getInstance(): BrowserProxy {

@@ -12,9 +12,9 @@
             },
             {
                 "domain": "Page",
-                "include": [ "enable", "disable", "setAdBlockingEnabled", "printToPDF", "setRPHRegistrationMode", "close" ],
+                "include": [ "enable", "disable", "setAdBlockingEnabled", "printToPDF", "setRPHRegistrationMode", "close", "getAnnotatedPageContent" ],
                 "include_events": [],
-                "async": [ "printToPDF" ]
+                "async": [ "printToPDF", "getAnnotatedPageContent" ]
             },
             {
                 "domain": "Browser",

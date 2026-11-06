@@ -276,6 +276,11 @@ bool Profile::IsPrimaryOTRProfileWithRegularParent() const {
   return false;
 }
 
+bool Profile::IsTopChromeWebUIProfile() const {
+  return profile_metrics::GetBrowserProfileType(this) ==
+         profile_metrics::BrowserProfileType::kTopChromeWebUIProfile;
+}
+
 bool Profile::CanUseDiskWhenOffTheRecord() {
   return false;
 }
@@ -322,7 +327,7 @@ scoped_refptr<PrefStore> Profile::CreateExtensionPrefStore(
 }
 
 bool ProfileCompare::operator()(Profile* a, Profile* b) const {
-  DCHECK(a && b);
+  CHECK(a && b, base::NotFatalUntil::M162);
   if (a->IsSameOrParent(b))
     return false;
   return a->GetOriginalProfile() < b->GetOriginalProfile();
@@ -340,7 +345,7 @@ void Profile::Wipe() {
 }
 
 void Profile::NotifyProfileInitializationComplete() {
-  DCHECK(!IsOffTheRecord());
+  CHECK(!IsOffTheRecord(), base::NotFatalUntil::M162);
   for (auto& observer : observers_) {
     observer.OnProfileInitializationComplete(this);
   }

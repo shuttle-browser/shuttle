@@ -25,6 +25,7 @@
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
 #include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/animations/common_animation_values.h"
 #include "chrome/browser/ui/views/animations/organizer_panel_animations.h"
 #include "chrome/browser/ui/views/animations/tab_strip_animations.h"
 #include "chrome/browser/ui/views/frame/custom_corners.h"
@@ -172,7 +173,7 @@ BrowserViewTabbedLayoutImpl::CalculateSeparatorInfo() const {
 // and not a tab.
 int BrowserViewTabbedLayoutImpl::GetHorizontalTabStripLeadingMargin(
     const BrowserLayoutParams& params) const {
-  int leading_margin = TabStyle::Get()->GetBottomCornerRadius();
+  int leading_margin = TabStyle::Get()->GetBottomExtensionWidth();
   if (const gfx::Insets* internal_padding =
           views().horizontal_tab_strip_region_view->GetProperty(
               views::kInternalPaddingKey)) {
@@ -559,9 +560,9 @@ void BrowserViewTabbedLayoutImpl::DoPreLayoutComputations(
   layout_data_ = std::make_unique<TransientLayoutData>(params);
   layout_data_->window_state = delegate().GetBrowserWindowState();
   layout_data_->tab_strip_type = delegate().GetTabStripType();
+  layout_data_->organizer_panel_animation = CalculateOrganizerPanelAnimation();
   layout_data_->horizontal_layout =
       CalculateHorizontalLayout(layout_data_->revised_params);
-  layout_data_->organizer_panel_animation = CalculateOrganizerPanelAnimation();
   layout_data_->separator_info = CalculateSeparatorInfo();
 }
 
@@ -603,10 +604,27 @@ void BrowserViewTabbedLayoutImpl::DoPostLayoutVisualAdjustments(
           background->GetWindowCorner(true);
       corners[CornerOrientation::kBottomLeading] =
           background->GetWindowCorner(false);
+      // Try not to overlap the corners, but do not shrink them either.
+      const int radius =
+          std::max(background->default_radius(),
+                   std::min(delegate().GetRestoredWindowCornerRadius(),
+                            views().organizer_tray->width() / 2));
       corners[CornerOrientation::kTopTrailing].type =
           CustomCornersBackground::CornerType::kRounded;
+      corners[CornerOrientation::kTopTrailing].radius = radius;
       corners[CornerOrientation::kBottomTrailing].type =
           CustomCornersBackground::CornerType::kRounded;
+      corners[CornerOrientation::kBottomTrailing].radius = radius;
+      // Update the leading corners if they are rounded; do not update them if
+      // they are not.
+      if (auto& corner = corners[CornerOrientation::kTopLeading];
+          corner.radius > 0) {
+        corner.radius = radius;
+      }
+      if (auto& corner = corners[CornerOrientation::kBottomLeading];
+          corner.radius > 0) {
+        corner.radius = radius;
+      }
       background->SetCorners(corners);
       background->SetUseBackgroundBlur(blur);
     }

@@ -208,6 +208,14 @@ class ClientSideDetectionHostBase : public history::HistoryServiceObserver {
     probability_for_sending_sample_request_ = sample_ping_rate;
   }
 
+  // Returns the PNG-encoded screenshot bytes passed to the most recent
+  // `StartIntelligentScan` call, used in unit tests to verify multimodal
+  // screenshot capture and encoding.
+  const std::optional<std::string>&
+  last_intelligent_scan_tab_screenshot_for_testing() const {
+    return last_intelligent_scan_tab_screenshot_for_testing_;
+  }
+
  protected:
   base::WeakPtr<ClientSideDetectionServiceBase> GetClientSideDetectionService()
       const;
@@ -308,6 +316,29 @@ class ClientSideDetectionHostBase : public history::HistoryServiceObserver {
       std::optional<bool> did_match_high_confidence_allowlist,
       bool is_invalid_ip,
       std::string inner_text);
+
+  // Returns true if the feature configuration and device capabilities allow
+  // capturing a screenshot for multimodal intelligent scan.
+  bool ShouldCaptureScreenshotForIntelligentScan() const;
+
+  // Optionally captures a viewport screenshot for multimodal intelligent scan
+  // before starting the scan via `StartIntelligentScan`. By default, invokes
+  // `StartIntelligentScan` immediately without a screenshot.
+  virtual void MaybeCaptureScreenshotAndStartIntelligentScan(
+      std::unique_ptr<ClientPhishingRequest> verdict,
+      std::optional<bool> did_match_high_confidence_allowlist,
+      bool is_invalid_ip,
+      std::string inner_text);
+
+  // Invokes `IntelligentScanDelegate::StartIntelligentScan` and logs the begin
+  // event, or skips the scan if `inner_text` is empty or too short and
+  // `tab_screenshot` is empty.
+  void StartIntelligentScan(
+      std::unique_ptr<ClientPhishingRequest> verdict,
+      std::optional<bool> did_match_high_confidence_allowlist,
+      bool is_invalid_ip,
+      std::string inner_text,
+      std::optional<std::string> tab_screenshot);
 
   // Callback function when StartIntelligentScan from the intelligent scan
   // delegate is completed.
@@ -545,6 +576,10 @@ class ClientSideDetectionHostBase : public history::HistoryServiceObserver {
 
   // The intelligent scan ID for the current intelligent scan request.
   std::optional<base::UnguessableToken> intelligent_scan_id_;
+
+  // Stores the last `tab_screenshot` passed to `StartIntelligentScan` for
+  // testing.
+  std::optional<std::string> last_intelligent_scan_tab_screenshot_for_testing_;
 
   // The last text that was copied to the clipboard.
   std::u16string last_copied_text_;

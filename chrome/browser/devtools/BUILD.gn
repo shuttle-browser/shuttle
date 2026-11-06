@@ -161,6 +161,8 @@ static_library("devtools") {
     "//chrome/browser/profiles/keep_alive",
     "//chrome/browser/ui/navigator",
     "//components/enterprise/buildflags",
+    "//components/optimization_guide/content/browser",
+    "//components/optimization_guide/proto:optimization_guide_proto",
     "//components/paint_preview/buildflags",
     "//components/variations/service",
     "//components/vector_icons",
@@ -262,6 +264,9 @@ static_library("devtools") {
       "devtools_window_android.cc",
       "protocol/browser_handler_android.cc",
       "protocol/browser_handler_android.h",
+      "protocol/page_handler.cc",
+      "protocol/page_handler.h",
+      "protocol/page_handler_android.cc",
       "protocol/target_handler_android.cc",
       "protocol/target_handler_android.h",
     ]
@@ -270,14 +275,10 @@ static_library("devtools") {
       "//chrome/browser/ui/android/tab_model",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/browser_window:create_browser_window",
+      "//printing/buildflags",
       "//ui/base",
     ]
     if (enable_printing) {
-      sources += [
-        "protocol/page_handler.cc",
-        "protocol/page_handler.h",
-        "protocol/page_handler_android.cc",
-      ]
       deps += [
         "//chrome/browser/printing",
         "//components/printing/browser/headless",

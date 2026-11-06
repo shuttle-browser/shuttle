@@ -46,6 +46,7 @@
 #include "components/tab_groups/tab_group_visual_data.h"
 #include "components/tabs/public/split_tab_data.h"
 #include "components/tabs/public/tab_group.h"
+#include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/session_storage_namespace_handle.h"
 #include "content/public/browser/web_contents.h"
@@ -164,7 +165,8 @@ BrowserLiveTabContext::GetExtraDataForWindow() const {
 
   if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
     if (std::optional<tab_groups::TabGroupId> focused_group =
-            tab_strip_model_->GetFocusedGroup()) {
+            tab_strip_model_->GetFocusedGroup();
+        focused_group.has_value() && !IsEphemeralTabGroup(*focused_group)) {
       data[tabs::TabStripModelSelectionState::kFocusedTabGroupIdKey] =
           focused_group->ToString();
     }
@@ -213,6 +215,11 @@ BrowserLiveTabContext::GetSavedTabGroupIdForGroup(
 const std::optional<tab_groups::TabGroupId>
 BrowserLiveTabContext::GetGroupIdForSavedGroup(const base::Uuid& saved) const {
   return std::nullopt;
+}
+
+bool BrowserLiveTabContext::IsEphemeralTabGroup(
+    const tab_groups::TabGroupId& group) const {
+  return tab_strip_model_->IsEphemeralTabGroup(group);
 }
 
 bool BrowserLiveTabContext::IsTabPinned(int index) const {
@@ -282,6 +289,11 @@ sessions::LiveTab* BrowserLiveTabContext::AddRestoredTab(
   // normal tab instead. See crbug.com/368139715.
   std::optional<tab_groups::TabGroupId> group_id =
       tab_strip_model_->SupportsTabGroups() ? tab.group : std::nullopt;
+  if (tab.is_group_ephemeral && group_id.has_value() &&
+      (!tab_strip_model_->group_model() ||
+       !tab_strip_model_->group_model()->ContainsTabGroup(group_id.value()))) {
+    group_id = std::nullopt;
+  }
   content::WebContents* web_contents = nullptr;
 
   BrowserWindowInterface* const browser = &*browser_;

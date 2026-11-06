@@ -270,10 +270,6 @@
     "contexts": ["privileged_extension"],
     "dependencies": ["permission:downloads"]
   },
-  "echoPrivate": {
-    "dependencies": ["permission:echoPrivate"],
-    "contexts": ["privileged_extension"]
-  },
   "enterprise.hardwarePlatform": {
     "dependencies": ["permission:enterprise.hardwarePlatform"],
     "contexts": ["privileged_extension"]
@@ -400,17 +396,6 @@
     "internal": true,
     "channel": "stable",
     "contexts": []
-  },
-  "fileBrowserHandler": {
-    "dependencies": ["permission:fileBrowserHandler"],
-    "contexts": ["privileged_extension"],
-    "disallow_for_service_workers": true
-  },
-  "fileBrowserHandlerInternal": {
-    "internal": true,
-    "dependencies": ["permission:fileBrowserHandler"],
-    "contexts": ["privileged_extension"],
-    "disallow_for_service_workers": true
   },
   "fontSettings": {
     "dependencies": ["permission:fontSettings"],
@@ -581,16 +566,6 @@
     "dependencies": ["permission:pdfViewerPrivate"],
     "contexts": ["privileged_extension"]
   },
-  "printing": {
-    "dependencies": ["permission:printing"],
-    "contexts": ["privileged_extension"],
-    "required_buildflags": ["use_cups"]
-  },
-  "printingMetrics": {
-    "dependencies": ["permission:printingMetrics"],
-    "contexts": ["privileged_extension"],
-    "required_buildflags": ["use_cups"]
-  },
   "privacy": {
     "dependencies": ["permission:privacy"],
     "contexts": ["privileged_extension"]
@@ -647,14 +622,6 @@
       "chrome://settings/*"
     ]
   }],
-  "smartCardProviderPrivate": {
-    "dependencies": ["permission:smartCardProviderPrivate"],
-    "contexts": ["privileged_extension"]
-  },
-  "systemLog": {
-    "dependencies": ["permission:systemLog"],
-    "contexts": ["privileged_extension"]
-  },
   "systemPrivate": {
     "dependencies": ["permission:systemPrivate"],
     "contexts": ["privileged_extension"]
@@ -775,16 +742,6 @@
     "dependencies": ["permission:virtualKeyboardPrivate"],
     "contexts": ["privileged_extension"]
   },
-  "wallpaper": [{
-    "dependencies": ["permission:wallpaper"],
-    "contexts": ["privileged_extension"]
-  }, {
-    "channel": "stable",
-    "contexts": ["webui"],
-    "matches": [
-      "chrome://file-manager/*"
-    ]
-  }],
   "webAuthenticationProxy": {
     "dependencies": ["permission:webAuthenticationProxy"],
     "contexts": ["privileged_extension"]
@@ -835,9 +792,5 @@
       "chrome-untrusted://boca-app/*"
     ],
     "platforms": ["chromeos"]
-  }],
-  "wmDesksPrivate": {
-    "dependencies": ["permission:wmDesksPrivate"],
-    "contexts": ["privileged_extension"]
-  }
+  }]
 }

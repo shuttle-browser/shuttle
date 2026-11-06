@@ -2,6 +2,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//third_party/tflite/tf_version.gni")
+
 group("installer_policies") {
   public_deps = [
     ":installer_policies_no_content_deps",

@@ -217,6 +217,12 @@ bool IsDownloadSaveAsContextMenuEnabled() {
          base::android::device_info::is_desktop();
 }
 
+bool IsDownloadSystemFileDialogEnabled() {
+  return base::FeatureList::IsEnabled(
+             download::features::kEnableDownloadSaveAsSystemFileDialog) &&
+         base::android::device_info::is_desktop();
+}
+
 base::FilePath GetTargetContentUri(const base::FilePath& suggested_path) {
   if (suggested_path.IsContentUri()) {
     return suggested_path;
@@ -862,12 +868,7 @@ bool ChromeDownloadManagerDelegate::IsDownloadReadyForCompletion(
       return false;
     }
 #if BUILDFLAG(IS_ANDROID)
-  } else if (ShouldShowSafeBrowsingAndroidDownloadWarnings() &&
-             IsApkFile(item) && state->is_complete() && !item->IsDangerous() &&
-             item->GetDangerType() !=
-                 download::DOWNLOAD_DANGER_TYPE_USER_VALIDATED &&
-             !item->IsUserConfirmed() &&
-             download_prefs_->download_restriction() != policy::DownloadRestriction::MALICIOUS_FILES) {
+  } else if (ShouldShowNonDangerousApkSafeBrowsingWarning(item, *state)) {
     // Don't complete the download of a non-dangerous file until the user
     // consents.
     if (DownloadController::GetInstance()->ShowDangerousDownloadDialog(item)) {
@@ -1055,8 +1056,7 @@ void ChromeDownloadManagerDelegate::ChooseSavePath(
   }
 
   if (IsDownloadSaveAsContextMenuEnabled() &&
-      base::FeatureList::IsEnabled(
-          download::features::kEnableDownloadSaveAsSystemFileDialog)) {
+      IsDownloadSystemFileDialogEnabled()) {
     new SavePackageFilePicker(web_contents, GetTargetContentUri(suggested_path),
                               default_extension, can_save_as_complete,
                               download_prefs_.get(), std::move(callback));
@@ -1122,6 +1122,26 @@ void ChromeDownloadManagerDelegate::OpenDownloadUsingPlatformHandler(
                           platform_util::OpenOperationCallback());
 }
 
+#if BUILDFLAG(IS_WIN)
+void ChromeDownloadManagerDelegate::OpenDownloadWithDialog(
+    DownloadItem* download) {
+  CHECK_EQ(DownloadItem::COMPLETE, download->GetState());
+  if (!download->CanShowInFolder()) {
+    return;
+  }
+  if (!IsMostRecentDownloadItemAtFilePath(download)) {
+    return;
+  }
+  MaybeSendDangerousDownloadOpenedReport(download,
+                                         /*show_download_in_folder=*/false);
+
+  base::FilePath platform_path(
+      GetPlatformDownloadPath(download, PLATFORM_CURRENT_PATH));
+  CHECK(!platform_path.empty());
+  platform_util::OpenFileWithDialog(platform_path);
+}
+#endif  // BUILDFLAG(IS_WIN)
+
 void ChromeDownloadManagerDelegate::OpenDownload(DownloadItem* download) {
   CHECK_EQ(DownloadItem::COMPLETE, download->GetState(),
            base::NotFatalUntil::M161);
@@ -1155,7 +1175,7 @@ void ChromeDownloadManagerDelegate::OpenDownload(DownloadItem* download) {
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
           net::FilePathToFileURL(download->GetTargetFilePath()),
-          WindowOpenDisposition::NEW_FOREGROUND_TAB, ui::PAGE_TRANSITION_LINK);
+          WindowOpenDisposition::kNewForegroundTab, ui::PAGE_TRANSITION_LINK);
 
   if (download->GetMimeType() == "application/x-x509-user-cert") {
     chrome::ShowSettingsSubPage(browser, "certificates");
@@ -1329,8 +1349,7 @@ void ChromeDownloadManagerDelegate::RequestConfirmation(
   }
 
   if (reason == DownloadConfirmationReason::SAVE_AS && is_save_as_enabled &&
-      base::FeatureList::IsEnabled(
-          download::features::kEnableDownloadSaveAsSystemFileDialog)) {
+      IsDownloadSystemFileDialogEnabled()) {
     ShowFilePickerWithUserTakeover(
         download, GetTargetContentUri(suggested_path), std::move(callback));
     return;
@@ -1361,6 +1380,13 @@ void ChromeDownloadManagerDelegate::RequestConfirmation(
     OnDownloadCanceled(download, false /* has_no_external_storage */);
     std::move(callback).Run(DownloadConfirmationResult::CANCELED,
                             ui::SelectedFileInfo());
+    return;
+  }
+
+  if (reason == DownloadConfirmationReason::PREFERENCE &&
+      IsDownloadSystemFileDialogEnabled()) {
+    ShowFilePickerWithUserTakeover(
+        download, GetTargetContentUri(suggested_path), std::move(callback));
     return;
   }
 
@@ -1531,6 +1557,16 @@ void ChromeDownloadManagerDelegate::GenerateUniqueFileNameDone(
          download::DownloadItem::TARGET_DISPOSITION_PROMPT) &&
         IsDownloadSaveAsContextMenuEnabled();
     if (download_prefs_->PromptForDownload() || is_save_as_enabled) {
+      if (IsDownloadSystemFileDialogEnabled()) {
+        if (download) {
+          ShowFilePickerWithUserTakeover(
+              download, GetTargetContentUri(target_path), std::move(callback));
+        } else {
+          std::move(callback).Run(DownloadConfirmationResult::CANCELED,
+                                  ui::SelectedFileInfo());
+        }
+        return;
+      }
       content::WebContents* web_contents =
           download ? content::DownloadItemUtils::GetWebContents(download)
                    : nullptr;

@@ -77,7 +77,7 @@ RendererUpdater::RendererUpdater(Profile* profile)
 
 RendererUpdater::~RendererUpdater() {
 #if BUILDFLAG(IS_CHROMEOS)
-  DCHECK(!oauth2_login_manager_);
+  CHECK(!oauth2_login_manager_, base::NotFatalUntil::M162);
 #endif
 }
 
@@ -91,8 +91,10 @@ void RendererUpdater::Shutdown() {
 
 void RendererUpdater::InitializeRenderer(
     content::RenderProcessHost* render_process_host) {
-  DCHECK_EQ(profile_, Profile::FromBrowserContext(
-                          render_process_host->GetBrowserContext()));
+  CHECK_EQ(
+      profile_,
+      Profile::FromBrowserContext(render_process_host->GetBrowserContext()),
+      base::NotFatalUntil::M162);
   auto renderer_configuration = GetRendererConfiguration(render_process_host);
 
   mojo::PendingReceiver<chrome::mojom::ChromeOSListener>

@@ -60,7 +60,7 @@ void FileAnalyzer::Start(const base::FilePath& target_file_name,
                          const base::FilePath& tmp_path,
                          base::optional_ref<const std::string> password,
                          base::OnceCallback<void(Results)> callback) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   target_file_name_ = target_file_name;
   tmp_path_ = tmp_path;
@@ -112,7 +112,7 @@ void FileAnalyzer::Start(const base::FilePath& target_file_name,
 }
 
 void FileAnalyzer::StartExtractFileFeatures() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   base::ThreadPool::PostTaskAndReplyWithResult(
       FROM_HERE,
@@ -133,7 +133,7 @@ void FileAnalyzer::OnFileAnalysisFinished(FileAnalyzer::Results results) {
 
 #if !BUILDFLAG(IS_ANDROID)
 void FileAnalyzer::StartExtractZipFeatures() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   auto callback = base::BindOnce(&FileAnalyzer::OnZipAnalysisFinished,
                                  weakptr_factory_.GetWeakPtr());
@@ -148,7 +148,7 @@ void FileAnalyzer::OnZipAnalysisFinished(
   base::UmaHistogramEnumeration("SBClientDownload.ZipArchiveAnalysisResult",
                                 archive_results.analysis_result);
   LogAnalysisDurationWithAndWithoutSuffix("Zip");
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   // Even if !results.success, some of the zip may have been parsed.
   // Some unzippers will successfully unpack archives that we cannot,
@@ -197,7 +197,7 @@ void FileAnalyzer::OnZipAnalysisFinished(
 }
 
 void FileAnalyzer::StartExtractRarFeatures() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   auto callback = base::BindOnce(&FileAnalyzer::OnRarAnalysisFinished,
                                  weakptr_factory_.GetWeakPtr());
@@ -210,7 +210,7 @@ void FileAnalyzer::StartExtractRarFeatures() {
 
 void FileAnalyzer::OnRarAnalysisFinished(
     const ArchiveAnalyzerResults& archive_results) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   base::UmaHistogramEnumeration("SBClientDownload.RarArchiveAnalysisResult",
                                 archive_results.analysis_result);
   LogAnalysisDurationWithAndWithoutSuffix("Rar");
@@ -259,7 +259,7 @@ void FileAnalyzer::OnRarAnalysisFinished(
 // This is called for .DMGs and other files that can be parsed by
 // SandboxedDMGAnalyzer.
 void FileAnalyzer::StartExtractDmgFeatures() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   // Directly use 'dmg' extension since download file may not have any
   // extension, but has still been deemed a DMG through file type sniffing.
@@ -274,7 +274,7 @@ void FileAnalyzer::StartExtractDmgFeatures() {
 
 void FileAnalyzer::ExtractFileOrDmgFeatures(
     bool download_file_has_koly_signature) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (download_file_has_koly_signature) {
     StartExtractDmgFeatures();
@@ -285,7 +285,7 @@ void FileAnalyzer::ExtractFileOrDmgFeatures(
 
 void FileAnalyzer::OnDmgAnalysisFinished(
     const safe_browsing::ArchiveAnalyzerResults& archive_results) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   base::UmaHistogramEnumeration("SBClientDownload.DmgArchiveAnalysisResult",
                                 archive_results.analysis_result);
   LogAnalysisDurationWithAndWithoutSuffix("Dmg");
@@ -334,7 +334,7 @@ void FileAnalyzer::OnDmgAnalysisFinished(
 
 #if !BUILDFLAG(IS_ANDROID)
 void FileAnalyzer::StartExtractSevenZipFeatures() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   seven_zip_analyzer_ = SandboxedSevenZipAnalyzer::CreateAnalyzer(
       tmp_path_,
@@ -346,7 +346,7 @@ void FileAnalyzer::StartExtractSevenZipFeatures() {
 
 void FileAnalyzer::OnSevenZipAnalysisFinished(
     const ArchiveAnalyzerResults& archive_results) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   base::UmaHistogramEnumeration(
       "SBClientDownload.SevenZipArchiveAnalysisResult",

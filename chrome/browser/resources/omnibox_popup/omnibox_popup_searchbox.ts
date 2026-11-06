@@ -12,7 +12,6 @@ import type {SearchboxInputElement} from '//resources/cr_components/searchbox/se
 import {kDefaultSelection} from '//resources/cr_components/searchbox/searchbox_match.js';
 import type {SearchboxMixinInterface} from '//resources/cr_components/searchbox/searchbox_mixin.js';
 import {ControlKeyState, SearchboxMixin} from '//resources/cr_components/searchbox/searchbox_mixin.js';
-import type {OmniboxPopupSelection, SelectionDirection, SelectionStep} from '//resources/cr_components/searchbox/searchbox_selection_mixin.js';
 import {selectionsEqual} from '//resources/cr_components/searchbox/searchbox_selection_mixin.js';
 import {afterNextPaint, markOnce, sanitizeTextForPaste} from '//resources/cr_components/searchbox/utils.js';
 import {I18nMixinLit} from '//resources/cr_elements/i18n_mixin_lit.js';
@@ -23,7 +22,7 @@ import {isMac} from '//resources/js/platform.js';
 import type {PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 import {SelectionLineState} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
-import type {AutocompleteMatch, AutocompleteResult, PageCallbackRouter as SearchboxPageCallbackRouter, PageHandlerInterface as SearchboxPageHandlerInterface, UrlEmphasis} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
+import type {AutocompleteMatch, AutocompleteResult, OmniboxPopupSelection, PageCallbackRouter as SearchboxPageCallbackRouter, PageHandlerInterface as SearchboxPageHandlerInterface, SelectionDirection, SelectionStep, UrlEmphasis} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 
 import {browserProxyFactory, MatchesUpdate, OmniboxEscapeAction} from './omnibox_popup.mojom-webui.js';
 import type {OmniboxInputState, PageCallbackRouter as PopupPageCallbackRouter, PageHandlerInterface as PopupPageHandlerInterface} from './omnibox_popup.mojom-webui.js';
@@ -576,16 +575,6 @@ export class OmniboxPopupSearchboxElement extends
     });
   }
 
-  isInputEmpty(): boolean {
-    // If this is called before first render, the input element will not exist.
-    // TODO (crbug.com/565444900): Remove `?` from `shadowRoot` in this file.
-    if (!this.shadowRoot?.querySelector('#input') || !this.$.input ||
-        !this.$.input.lastInput()) {
-      return true;
-    }
-    return !this.$.input.lastInput()!.text.trim();
-  }
-
   /**
    * Returns true if `value` should be treated as a cleared input, i.e. the
    * dropdown should close and the backend should be told the draft was
@@ -924,6 +913,7 @@ export class OmniboxPopupSearchboxElement extends
     const newValue = input.value.substring(0, start) + sanitizedText +
         input.value.substring(end);
 
+    this.syncTextfieldModelWithInput_(input.value);
     this.textfieldModel_.selectRange(oldSelection);
     this.textfieldModel_.paste(sanitizedText);
     this.lastInputText_ = newValue;
@@ -971,6 +961,7 @@ export class OmniboxPopupSearchboxElement extends
         this.currentSequenceNum_, isCut, oldValue, {start, end});
 
     if (isCut) {
+      this.syncTextfieldModelWithInput_(oldValue);
       this.textfieldModel_.selectRange({start, end});
       this.textfieldModel_.cut();
       this.lastInputText_ = this.textfieldModel_.text;
@@ -992,6 +983,23 @@ export class OmniboxPopupSearchboxElement extends
         this.clearAutocompleteMatches();
       }
     }
+  }
+
+  /**
+   * Adopts `text`, the text `#input` shows, as the text of `textfieldModel_` if
+   * the model holds different text, so that an edit applied to the model (e.g.
+   * a cut or paste) acts on the text the user sees. `#input` can show text that
+   * was never recorded in the model, e.g. a match previewed via arrow-key
+   * navigation or inline autocompletion. The switch is recorded as an edit of
+   * its own, so undo first reverts the cut or paste, then goes back to the
+   * model's previous text (e.g. what the user typed), then through the earlier
+   * edits.
+   */
+  private syncTextfieldModelWithInput_(text: string) {
+    if (this.textfieldModel_.text === text) {
+      return;
+    }
+    this.textfieldModel_.replaceAllText(text);
   }
 
   protected onInputCopy_(e: ClipboardEvent) {
@@ -1331,6 +1339,12 @@ export class OmniboxPopupSearchboxElement extends
     this.isLogicallyFocused_ = isFocused;
     if (isFocused) {
       if (showFullUrl) {
+        // Focus Location requests exit keyword mode if the input already has
+        // focus.
+        if (this.shadowRoot?.activeElement === this.$.input) {
+          this.keywordModeManager.clearKeyword(
+              this.getInputElement().inputElement.value);
+        }
         this.maybeShowFullUrl_();
       }
       if (document.visibilityState === 'visible') {
@@ -1372,9 +1386,13 @@ export class OmniboxPopupSearchboxElement extends
     if (!this.userInputInProgress_) {
       // Clear permanent URL text and transition to user input mode with empty
       // text.
+      this.fullUrlShown_ = false;
       this.$.input.setInputText('');
       this.userInputInProgress_ = true;
       this.lastInputText_ = '';
+      this.lastInputSelection_ = {start: 0, end: 0};
+      this.textfieldModel_.setInitialText('', {start: 0, end: 0});
+      this.updateEditHistoryState_();
     } else {
       // Preserve existing user draft text and select all of it.
       this.getInputElement().select();
@@ -1411,6 +1429,10 @@ export class OmniboxPopupSearchboxElement extends
     this.clickQueriedZps_ = false;
     this.getInputElement().setSelectionRange(0, 0);
     this.getInputElement().blur();
+    // Show the start of the text, so that the #mirror elides its end. Blink
+    // scrolls an <input> back to its start on blur, but only fires blur (from
+    // `blur()`) while the page has system focus, so don't rely on it.
+    this.getInputElement().inputElement.scrollLeft = 0;
     // Cache the selected match before clearing autocomplete results so the
     // searchbox icon does not fall back to the default icon while blurred.
     if (this.selectedMatch) {
@@ -1470,18 +1492,23 @@ export class OmniboxPopupSearchboxElement extends
         inputEl.scrollLeft = inputEl.scrollWidth;
       } else if (!isFullSelection) {
         this.scrollSelectionStartIntoView_(selStart);
+        // Then scroll only as far past the start as the caret (`end`) needs. A
+        // range handed off from the native omnibox is usually a drag, which
+        // scrolled its text to keep the caret in view (see
+        // OmniboxViewViews::OnMousePressed()), so this shows about the same
+        // part of the text, give or take the two inputs' widths.
+        this.scrollOffsetIntoView_(end, inputEl.scrollLeft);
       }
     }
   }
 
   /**
    * Scrolls the single-line input to the start of the text, or only as far past
-   * it as needed to show the selection start at `selStart`. In Full WebUI mode
-   * the native textfield never takes focus, so it doesn't scroll while the user
-   * drags. It shows the start of the text with the end elided, so a range
-   * handed off from it starts where the user saw it. Blink doesn't scroll a
-   * text field for `setSelectionRange()`, so without this the input keeps its
-   * old scroll offset.
+   * it as needed to show the selection start at `selStart`. The native omnibox
+   * shows the elided URL from its start while unfocused, so a range handed off
+   * from it starts where the user saw it. Blink doesn't scroll a text field for
+   * `setSelectionRange()`, so without this the input keeps its old scroll
+   * offset.
    */
   private scrollSelectionStartIntoView_(selStart: number) {
     this.scrollOffsetIntoView_(selStart, /*fromScrollLeft=*/ 0);
@@ -1953,13 +1980,9 @@ export class OmniboxPopupSearchboxElement extends
       return;
     }
 
-    // Stage 4 (`kBlur`): Blurs Omnibox and closes UI, returning focus to Web
-    // Contents.
-    if (this.fullUrlShown_) {
-      // Revert the native omnibox view in case it was unelided (e.g. via drag)
-      // so closing the popup restores the elided URL.
-      this.popupPageHandler_.revert(this.currentSequenceNum_);
-    }
+    // Stage 4 (`kBlur`): Reverts selection, blurs omnibox and closes UI,
+    // returning focus to Web Contents.
+    this.popupPageHandler_.revert(this.currentSequenceNum_);
     inputEl.blur();
     this.popupPageHandler_.closeUI();
     this.popupPageHandler_.logEscapeAction(OmniboxEscapeAction.kBlur);

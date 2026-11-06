@@ -58,7 +58,6 @@ class OmniboxController;
 enum class OmniboxPart;
 class OmniboxPopupView;
 class OmniboxViewViews;
-class PermissionChipView;
 class PermissionDashboardView;
 class Profile;
 class SelectedKeywordView;
@@ -182,7 +181,6 @@ class LocationBarView
 
   const OmniboxController* GetOmniboxController() const;
 
-  PermissionChipView* chip_view() { return chip_view_; }
   PermissionDashboardView* permission_dashboard_view() {
     return permission_dashboard_view_;
   }
@@ -518,15 +516,6 @@ class LocationBarView
 
   // Our delegate.
   raw_ptr<Delegate> delegate_;
-
-  // A controller for a view that contains a chip button which is used for
-  // permission information and requests.
-  std::unique_ptr<ChipController> chip_controller_ = nullptr;
-
-  // The concrete native view used for the permission chip. Stored separately
-  // from the controller to allow layout calculations to bypass the UI-agnostic
-  // PermissionChipInterface.
-  raw_ptr<PermissionChipView> chip_view_ = nullptr;
 
   std::unique_ptr<PermissionDashboardController>
       permission_dashboard_controller_;

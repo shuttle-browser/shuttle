@@ -485,14 +485,6 @@ export class SettingsSiteSettingsPageElement extends
 
   static get properties() {
     return {
-      /**
-       * Preferences state.
-       */
-      prefs: {
-        type: Object,
-        notify: true,
-      },
-
       lists_: {
         type: Object,
         value: function() {
@@ -565,7 +557,6 @@ export class SettingsSiteSettingsPageElement extends
     };
   }
 
-  declare prefs: Object;
   declare private permissionsExpanded_: boolean;
   declare private contentExpanded_: boolean;
   declare private noRecentSitePermissions_: boolean;

@@ -9,7 +9,6 @@
 #include "chrome/browser/page_load_metrics/page_load_metrics_initialize.h"
 #include "chrome/browser/subresource_filter/chrome_content_subresource_filter_web_contents_helper_factory.h"
 #include "chrome/browser/task_manager/web_contents_tags.h"
-#include "chrome/browser/ui/tab_helpers.h"
 #include "components/content_settings/browser/page_specific_content_settings.h"
 #include "extensions/buildflags/buildflags.h"
 
@@ -26,7 +25,6 @@
 
 void PrerenderWebContentsDelegateImpl::PrerenderWebContentsCreated(
     content::WebContents* prerender_web_contents) {
-  TabHelpers::AttachTabHelpers(prerender_web_contents);
   CreateSubresourceFilterWebContentsHelper(prerender_web_contents);
   content_settings::PageSpecificContentSettings::CreateForWebContents(
       prerender_web_contents,

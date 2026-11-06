@@ -12,6 +12,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "base/check.h"
@@ -350,7 +351,7 @@ enum class GlicWebContentsContextMenuResult {
 };
 // LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicWebContentsContextMenuResult)
 
-std::string GetGlicWebContentsContextToken(
+std::string_view GetGlicWebContentsContextToken(
     const content::ContextMenuParams& params) {
   if (params.selection_text.empty() && params.link_url.is_empty()) {
     return "Page";
@@ -362,6 +363,15 @@ std::string GetGlicWebContentsContextToken(
     return "Link";
   }
   return "TextSelection";
+}
+
+// Records whether the Glic item for `token` was executed or ignored.
+void RecordGlicWebContentsContextMenuResult(std::string_view token,
+                                            bool executed) {
+  base::UmaHistogramEnumeration(
+      base::StrCat({"Glic.WebContentsContextMenu.", token}),
+      executed ? GlicWebContentsContextMenuResult::kExecuted
+               : GlicWebContentsContextMenuResult::kShownAndIgnored);
 }
 
 ui::ImageModel GetLensContextMenuIcon() {
@@ -561,13 +571,14 @@ int UmaEnumForCommand(int key, UmaEnumIdLookupType type) {
        {IDC_CONTENT_CONTEXT_ASK_GOOGLE_ABOUT_THIS_PAGE, 170},
        {IDC_CONTENT_CONTEXT_CONTEXTUAL_TASKS_SUBMENU, 171},
        {IDC_CONTENT_CONTEXT_GLIC_SMART_SUGGESTION, 172},
+       {IDC_CONTENT_CONTEXT_INDIGO, 173},
        // To add new items:
        //   - Add one more line above this comment block, using the UMA value
        //     from the line below this comment block.
        //   - Increment the UMA value in that latter line.
        //   - Add the new item to the RenderViewContextMenuItem enum in
        //     tools/metrics/histograms/metadata/ui/enums.xml.
-       {kUmaMaxValueKey, 173}});
+       {kUmaMaxValueKey, 174}});
   // LINT.ThenChange(//tools/metrics/histograms/metadata/ui/enums.xml:RenderViewContextMenuItem)
 
   // LINT.IfChange(ContextMenuOptionDesktop)
@@ -609,13 +620,14 @@ int UmaEnumForCommand(int key, UmaEnumIdLookupType type) {
        {IDC_SPELLCHECK_REMOVE_FROM_DICTIONARY, 33},
        {IDC_CONTENT_CONTEXT_OPENLINK_ISOLATED, 34},
        {IDC_CONTENT_CONTEXT_ASK_GOOGLE_ABOUT_THIS_PAGE, 35},
+       {IDC_CONTENT_CONTEXT_INDIGO, 36},
        // To add new items:
        //   - Add one more line above this comment block, using the UMA value
        //     from the line below this comment block.
        //   - Increment the UMA value in that latter line.
        //   - Add the new item to the ContextMenuOptionDesktop enum in
        //     tools/metrics/histograms/metadata/ui/enums.xml.
-       {kUmaMaxValueKey, 36}});
+       {kUmaMaxValueKey, 37}});
   // LINT.ThenChange(//tools/metrics/histograms/metadata/ui/enums.xml:ContextMenuOptionDesktop)
 
   switch (type) {
@@ -934,19 +946,17 @@ RenderViewContextMenu::~RenderViewContextMenu() = default;
 void RenderViewContextMenu::MenuClosed(ui::SimpleMenuModel* source) {
   if (source == &menu_model_) {
     if (glic_item_shown_) {
-      std::string token = GetGlicWebContentsContextToken(params_);
-      if (glic_item_executed_) {
-        base::UmaHistogramEnumeration(
-            base::StrCat({"Glic.WebContentsContextMenu.", token}),
-            GlicWebContentsContextMenuResult::kExecuted);
-      } else {
-        base::UmaHistogramEnumeration(
-            base::StrCat({"Glic.WebContentsContextMenu.", token}),
-            GlicWebContentsContextMenuResult::kShownAndIgnored);
-      }
+      RecordGlicWebContentsContextMenuResult(
+          GetGlicWebContentsContextToken(params_), glic_item_executed_);
+    }
+    if (glic_share_image_item_shown_) {
+      RecordGlicWebContentsContextMenuResult("Image",
+                                             glic_share_image_item_executed_);
     }
     glic_item_shown_ = false;
     glic_item_executed_ = false;
+    glic_share_image_item_shown_ = false;
+    glic_share_image_item_executed_ = false;
   }
   RenderViewContextMenuBase::MenuClosed(source);
 }
@@ -1115,6 +1125,10 @@ void RenderViewContextMenu::InitMenu() {
     if (content_type_->SupportsGroup(
             ContextMenuContentType::ITEM_GROUP_GLICSHAREIMAGE)) {
       AppendGlicShareImageItem();
+    }
+
+    if (media_image) {
+      AppendIndigoItem();
     }
   }
 
@@ -2197,6 +2211,11 @@ void RenderViewContextMenu::AppendSaveToMemoryBanksItem() {
   // Memory banks (context hub) have been removed.
 }
 
+bool RenderViewContextMenu::CanSaveImageToMemoryBanks() const {
+  return params_.media_type == ContextMenuDataMediaType::kImage &&
+         params_.has_image_contents && params_.src_url.SchemeIsHTTPOrHTTPS();
+}
+
 void RenderViewContextMenu::AppendGlicItems() {
 }
 
@@ -2791,6 +2810,7 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
     case IDC_CONTENT_CONTEXT_ARCHIVE_GLIC:
     case IDC_CONTENT_CONTEXT_GLIC:
     case IDC_CONTENT_CONTEXT_GLIC_SMART_SUGGESTION:
+    case IDC_CONTENT_CONTEXT_INDIGO:
       return true;
 
     case IDC_CONTENT_CONTEXT_EXIT_FULLSCREEN:
@@ -2938,13 +2958,12 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
   switch (id) {
     case IDC_CONTENT_CONTEXT_OPENLINKNEWTAB: {
       WindowOpenDisposition new_tab_disposition =
-          WindowOpenDisposition::NEW_BACKGROUND_TAB;
+          WindowOpenDisposition::kNewBackgroundTab;
       BrowserWindowInterface* browser = nullptr;
       if (IsInProgressiveWebApp()) {
         browser = FindNormalBrowser(GetProfile());
-        new_tab_disposition = browser
-                                  ? WindowOpenDisposition::NEW_FOREGROUND_TAB
-                                  : WindowOpenDisposition::NEW_WINDOW;
+        new_tab_disposition = browser ? WindowOpenDisposition::kNewForegroundTab
+                                      : WindowOpenDisposition::kNewWindow;
       }
 
       OpenURLParams params = GetOpenURLParamsWithExtraHeaders(
@@ -2970,7 +2989,7 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
       DCHECK(!IsInProgressiveWebApp());
       OpenURLWithExtraHeaders(
           params_.link_url, params_.frame_url, params_.frame_origin,
-          WindowOpenDisposition::NEW_WINDOW, ui::PAGE_TRANSITION_LINK,
+          WindowOpenDisposition::kNewWindow, ui::PAGE_TRANSITION_LINK,
           /*extra_headers=*/std::string(),
           /*started_from_context_menu=*/true,
           page_load_metrics::NavigationInitiatorHolder::AttacherCallback(
@@ -3054,6 +3073,10 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
       ExecGlicShareImage();
       break;
 
+    case IDC_CONTENT_CONTEXT_INDIGO:
+      ExecIndigo();
+      break;
+
     case IDC_CONTENT_CONTEXT_SEARCHLENSFORIMAGE:
       ExecSearchLensForImage(event_flags);
       break;
@@ -3072,7 +3095,7 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
     case IDC_CONTENT_CONTEXT_OPEN_ORIGINAL_IMAGE_NEW_TAB:
       OpenURLWithExtraHeaders(
           params_.src_url, params_.frame_url, params_.frame_origin,
-          WindowOpenDisposition::NEW_BACKGROUND_TAB, ui::PAGE_TRANSITION_LINK,
+          WindowOpenDisposition::kNewBackgroundTab, ui::PAGE_TRANSITION_LINK,
           /*extra_headers=*/std::string(), /*started_from_context_menu=*/false,
           /*navigation_handle_callback=*/{});
       break;
@@ -3084,7 +3107,7 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
     case IDC_CONTENT_CONTEXT_OPENIMAGENEWTAB:
     case IDC_CONTENT_CONTEXT_OPENAVNEWTAB:
       OpenURL(params_.src_url, params_.frame_url, params_.frame_origin,
-              WindowOpenDisposition::NEW_BACKGROUND_TAB,
+              WindowOpenDisposition::kNewBackgroundTab,
               ui::PAGE_TRANSITION_LINK);
       break;
 
@@ -3127,7 +3150,7 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
       break;
 
     case IDC_RELOAD:
-      chrome::Reload(GetBrowser(), WindowOpenDisposition::CURRENT_TAB);
+      chrome::Reload(GetBrowser(), WindowOpenDisposition::kCurrentTab);
       break;
 
     case IDC_LIVE_CAPTION:
@@ -3233,7 +3256,7 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
     case IDC_CONTENT_CONTEXT_SEARCHWEBFOR:
     case IDC_CONTENT_CONTEXT_SEARCHWEBFORNEWTAB: {
       auto disposition = ui::DispositionFromEventFlags(
-          event_flags, WindowOpenDisposition::NEW_FOREGROUND_TAB);
+          event_flags, WindowOpenDisposition::kNewForegroundTab);
 
       GURL navigation_url = selection_navigation_url_;
       if (google_util::IsGoogleSearchUrl(navigation_url)) {
@@ -3254,7 +3277,7 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
     }
     case IDC_CONTENT_CONTEXT_GOTOURL: {
       auto disposition = ui::DispositionFromEventFlags(
-          event_flags, WindowOpenDisposition::NEW_FOREGROUND_TAB);
+          event_flags, WindowOpenDisposition::kNewForegroundTab);
       OpenURL(selection_navigation_url_, GURL(), {}, disposition,
               ui::PAGE_TRANSITION_LINK);
       break;
@@ -3667,7 +3690,7 @@ void RenderViewContextMenu::ExecProtocolHandler(int event_flags,
   base::RecordAction(
       UserMetricsAction("RegisterProtocolHandler.ContextMenu_Open"));
   WindowOpenDisposition disposition = ui::DispositionFromEventFlags(
-      event_flags, WindowOpenDisposition::NEW_FOREGROUND_TAB);
+      event_flags, WindowOpenDisposition::kNewForegroundTab);
   OpenURL(handlers[handler_index].TranslateUrl(params_.link_url),
           params_.frame_url, params_.frame_origin, disposition,
           ui::PAGE_TRANSITION_LINK);
@@ -3809,6 +3832,30 @@ void RenderViewContextMenu::ExecGlic() {
 void RenderViewContextMenu::ExecGlicSmartSuggestion() {}
 
 void RenderViewContextMenu::ExecGlicShareImage() {
+}
+
+void RenderViewContextMenu::ExecIndigo() {
+  // See `ExecGlic()` for why the source document must still be active.
+  content::RenderFrameHost* source_frame =
+      source_document_at_menu_open_.AsRenderFrameHostIfValid();
+  if (!source_frame ||
+      &source_frame->GetPage() != &source_web_contents_->GetPrimaryPage()) {
+    return;
+  }
+
+  // Invokes the page-level Try on You image replacement flow on the detected
+  // product image.
+  if (auto* controller = indigo::IndigoPageActionController::From(
+          tabs::TabInterface::MaybeGetFromContents(source_web_contents_))) {
+    UserEducationService::MaybeNotifyNewBadgeFeatureUsed(
+        GetBrowserContext(), features::kIndigoContextMenu);
+    indigo::RecordContextMenuTargetType(
+        content_type_->SupportsGroup(
+            ContextMenuContentType::ITEM_GROUP_MEDIA_IMAGE)
+            ? indigo::IndigoContextMenuTargetType::kImage
+            : indigo::IndigoContextMenuTargetType::kPage);
+    controller->InvokeAction(indigo::EntryPoint::kContextMenu);
+  }
 }
 
 void RenderViewContextMenu::ExecExitFullscreen() {
@@ -4008,7 +4055,7 @@ void RenderViewContextMenu::ExecLanguageSettings(int event_flags) {
       GetProfile(), chromeos::settings::mojom::kLanguagesSubpagePath);
 #else
   WindowOpenDisposition disposition = ui::DispositionFromEventFlags(
-      event_flags, WindowOpenDisposition::NEW_FOREGROUND_TAB);
+      event_flags, WindowOpenDisposition::kNewForegroundTab);
   GURL url = chrome::GetSettingsUrl(chrome::kLanguageOptionsSubPage);
   OpenURL(url, GURL(), {}, disposition, ui::PAGE_TRANSITION_LINK);
 #endif
@@ -4018,7 +4065,7 @@ void RenderViewContextMenu::ExecProtocolHandlerSettings(int event_flags) {
   base::RecordAction(
       UserMetricsAction("RegisterProtocolHandler.ContextMenu_Settings"));
   WindowOpenDisposition disposition = ui::DispositionFromEventFlags(
-      event_flags, WindowOpenDisposition::NEW_FOREGROUND_TAB);
+      event_flags, WindowOpenDisposition::kNewForegroundTab);
   GURL url = chrome::GetSettingsUrl(chrome::kHandlerSettingsSubPage);
   OpenURL(url, GURL(), {}, disposition, ui::PAGE_TRANSITION_LINK);
 }
@@ -4209,7 +4256,7 @@ void RenderViewContextMenu::OpenLinkInSplitView(
     // Create new background tab.
     OpenURLParams params = GetOpenURLParamsWithExtraHeaders(
         params_.link_url, params_.frame_url, params_.frame_origin,
-        WindowOpenDisposition::NEW_BACKGROUND_TAB, ui::PAGE_TRANSITION_LINK,
+        WindowOpenDisposition::kNewBackgroundTab, ui::PAGE_TRANSITION_LINK,
         /*extra_headers=*/std::string(), /*started_from_context_menu=*/true);
     const WebContents* new_web_contents = source_web_contents_->OpenURL(
         params, page_load_metrics::NavigationInitiatorHolder::AttacherCallback(
@@ -4263,6 +4310,22 @@ return false;
 
 bool RenderViewContextMenu::CanAppendGlicShareImageItem() const {
   return false;
+}
+
+bool RenderViewContextMenu::CanAppendIndigoItem() const {
+  if (!base::FeatureList::IsEnabled(features::kIndigo) ||
+      !base::FeatureList::IsEnabled(features::kIndigoContextMenu)) {
+    return false;
+  }
+
+  if (!IsNormalBrowser() || IsAnyGlicWebContents(this)) {
+    return false;
+  }
+
+  tabs::TabInterface* tab =
+      tabs::TabInterface::MaybeGetFromContents(source_web_contents_);
+  auto* controller = indigo::IndigoPageActionController::From(tab);
+  return controller && controller->IsPageEligible();
 }
 
 void RenderViewContextMenu::AppendLensGeminiSection() {

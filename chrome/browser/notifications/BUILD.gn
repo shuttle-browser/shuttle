@@ -96,13 +96,9 @@ source_set("notifications") {
       "chrome_ash_message_center_client.h",
       "notification_platform_bridge_chromeos.h",
       "notification_platform_bridge_delegate.h",
-      "passphrase_textfield.h",
     ]
 
-    public_deps += [
-      "//components/app_icon_loader",
-      "//ui/views",
-    ]
+    public_deps += [ "//components/app_icon_loader" ]
   }
 
   if (is_win) {
@@ -189,6 +185,7 @@ source_set("impl") {
   public_deps = [ ":notifications" ]
 
   deps = [
+    "//chrome/app:generated_resources",
     "//chrome/browser:browser_features",
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/lifetime",
@@ -205,11 +202,10 @@ source_set("impl") {
     "//components/pref_registry",
     "//components/safe_browsing/core/browser:safe_browsing_metrics_collector",
     "//components/safe_browsing/core/common:features",
+    "//components/search_engines",
     "//components/site_engagement/content",
     "//components/visibility_timer",
     "//ui/message_center",
-    "//chrome/app:generated_resources",
-    "//components/search_engines",
     "//ui/native_theme",
     "//ui/strings:ui_strings_grit",
   ]
@@ -260,7 +256,6 @@ source_set("impl") {
     sources += [
       "chrome_ash_message_center_client.cc",
       "notification_platform_bridge_chromeos.cc",
-      "passphrase_textfield.cc",
     ]
 
     deps += [
@@ -453,12 +448,14 @@ if (is_android) {
       "//base:base_java_test_support",
       "//base:base_java_test_support_uncommon",
       "//base:base_junit_test_support",
+      "//chrome/browser/feature_engagement:java",
       "//chrome/browser/flags:java",
       "//chrome/browser/lifetime/android:java",
       "//chrome/browser/preferences:java",
       "//components/browser_ui/bottomsheet/android:java",
       "//components/browser_ui/notifications/android:java",
       "//components/browser_ui/notifications/android:utils_java",
+      "//components/feature_engagement/public:public_java",
       "//components/url_formatter/android:url_formatter_java",
       "//third_party/android_deps:espresso_java",
       "//third_party/androidx:androidx_annotation_annotation_java",

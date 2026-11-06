@@ -51,6 +51,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/types/expected.h"
 #include "base/types/expected_macros.h"
+#include "base/types/optional_ref.h"
 #include "base/values.h"
 #include "build/android_buildflags.h"
 #include "build/branding_buildflags.h"
@@ -130,7 +131,6 @@
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_manager_factory.h"
 #include "chrome/browser/preloading/prefetch/prefetch_service/chrome_prefetch_service_delegate.h"
 #include "chrome/browser/preloading/prefetch/search_prefetch/field_trial_settings.h"
-#include "chrome/browser/preloading/prefetch/search_prefetch/search_prefetch_keep_alive_request_tracker.h"
 #include "chrome/browser/preloading/prefetch/search_prefetch/search_prefetch_url_loader.h"
 #include "chrome/browser/preloading/prefetch/search_prefetch/search_prefetch_url_loader_interceptor.h"
 #include "chrome/browser/preloading/preloading_features.h"
@@ -167,6 +167,7 @@
 #include "chrome/browser/ssl/https_upgrades_interceptor.h"
 #include "chrome/browser/ssl/sct_reporting_service.h"
 #include "chrome/browser/ssl/ssl_client_certificate_selector.h"
+#include "chrome/browser/storage/file_system_backends.h"
 #include "chrome/browser/subresource_filter/subresource_filter_navigation_download_policy.h"
 #include "chrome/browser/task_manager/task_manager_interface.h"
 #include "chrome/browser/tracing/chrome_tracing_delegate.h"
@@ -236,6 +237,7 @@
 #include "components/error_page/common/error_page_switches.h"
 #include "components/error_page/common/localized_error.h"
 #include "components/google/core/common/google_switches.h"
+#include "components/google/core/common/google_util.h"
 #include "components/guest_view/browser/guest_view_base.h"
 #include "components/guest_view/buildflags/buildflags.h"
 #include "components/heap_profiling/in_process/heap_profiler_controller.h"
@@ -380,6 +382,7 @@
 #include "services/network/public/mojom/url_loader_factory.mojom.h"
 #include "services/network/public/mojom/web_transport.mojom.h"
 #include "services/network/public/mojom/websocket.mojom.h"
+#include "storage/browser/file_system/in_memory_file_system_backend.h"
 #include "third_party/blink/public/common/chrome_debug_urls.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/loader/url_loader_throttle.h"
@@ -418,6 +421,7 @@
 #include "chrome/browser/performance_manager/public/dll_pre_read_policy_win.h"
 #include "chrome/browser/tracing/tracing_features.h"
 #include "chrome/browser/tracing/windows_system_tracing_client_win.h"
+#include "chrome/common/child_module/child_module_helper.h"
 #include "chrome/install_static/install_util.h"
 #include "chrome/installer/util/isolation_support.h"
 #include "chrome/services/util_win/public/mojom/util_win.mojom.h"
@@ -448,20 +452,13 @@
 #include "ash/webui/scanning/url_constants.h"
 #include "ash/webui/shortcut_customization_ui/url_constants.h"
 #include "chrome/app/chrome_crash_reporter_client.h"
-#include "chrome/browser/ash/arc/fileapi/arc_content_file_system_backend_delegate.h"
-#include "chrome/browser/ash/arc/fileapi/arc_documents_provider_backend_delegate.h"
-#include "chrome/browser/ash/drive/fileapi/drivefs_file_system_backend_delegate.h"
-#include "chrome/browser/ash/file_system_provider/fileapi/backend_delegate.h"
 #include "chrome/browser/ash/fileapi/external_file_url_loader_factory.h"
-#include "chrome/browser/ash/fileapi/file_system_backend.h"
-#include "chrome/browser/ash/fileapi/mtp_file_system_backend_delegate.h"
 #include "chrome/browser/ash/login/signin_partition_manager.h"
 #include "chrome/browser/ash/login/signin_partition_manager_factory.h"
 #include "chrome/browser/ash/login/startup_utils.h"
 #include "chrome/browser/ash/net/network_health/network_health_manager.h"
 #include "chrome/browser/ash/net/system_proxy_manager.h"
 #include "chrome/browser/ash/profiles/profile_helper.h"
-#include "chrome/browser/ash/smb_client/fileapi/smbfs_file_system_backend_delegate.h"
 #include "chrome/browser/ash/system/input_device_settings.h"
 #include "chrome/browser/media/chromeos_login_and_lock_media_access_handler.h"
 #include "chrome/browser/media/webrtc/multi_capture/multi_capture_data_service.h"
@@ -479,7 +476,6 @@
 #include "components/user_manager/user.h"
 #include "components/user_manager/user_manager.h"
 #include "services/service_manager/public/mojom/interface_provider_spec.mojom.h"
-#include "storage/browser/file_system/external_mount_points.h"
 #elif BUILDFLAG(IS_ANDROID)
 #include "base/android/android_info.h"
 #include "base/android/apk_info.h"
@@ -525,6 +521,7 @@
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
 #include "chrome/browser/ui/webui/chrome_content_browser_client_webui_part.h"
+#include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_user_profile.h"
 #include "chrome/browser/ui/webui/util/webui_util_desktop.h"
 #include "chrome/browser/webauthn/authenticator_request_scheduler.h"
 #include "chrome/browser/webauthn/chrome_authenticator_request_delegate.h"
@@ -722,6 +719,20 @@ namespace {
 // ShouldEnableStrictSiteIsolation().
 bool g_disable_advanced_protection_caching_for_tests = false;
 
+// Returns the profile whose prefs are used to compute WebPreferences for
+// `web_contents`, which is its user profile, see webui::GetUserProfile(). A
+// WebContents in TopChromeWebUIProfile must have its user profile set before
+// its WebPreferences are first computed, see webui::SetUserProfile().
+Profile* GetProfileForWebPreferences(content::WebContents* web_contents) {
+#if BUILDFLAG(IS_ANDROID)
+  // There is no TopChromeWebUIProfile on Android.
+  return Profile::FromBrowserContext(web_contents->GetBrowserContext());
+#else
+  Profile* profile = webui::GetUserProfile(web_contents);
+  CHECK(profile);
+  return profile;
+#endif  // BUILDFLAG(IS_ANDROID)
+}
 // Cached version of the locale so we can return the locale on the I/O
 // thread.
 std::string& GetIOThreadApplicationLocale() {
@@ -827,8 +838,7 @@ blink::mojom::AutoplayPolicy DetermineWebContentsAutoplayPolicy(
     blink::mojom::AutoplayPolicy current_policy) {
   using PolicyStatus = AutoplayPolicyStatusObserver::PolicyStatus;
 
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
+  Profile* profile = GetProfileForWebPreferences(web_contents);
   PrefService* prefs = profile->GetPrefs();
 
   AutoplayPolicyStatusObserver* observer =
@@ -1180,36 +1190,18 @@ void MaybeAppendSecureOriginsAllowlistSwitch(base::CommandLine* cmdline) {
 
 #if BUILDFLAG(IS_WIN) && !defined(COMPONENT_BUILD) && \
     !defined(ADDRESS_SANITIZER)
-// Returns the full path to `module_name`. If `module_name` is the renderer DLL
-// and `child_module` is present, returns the path to the child module's
-// binary. Otherwise, both dev builds (where `module_name` is in the current
-// executable's directory) and proper installs (where `module_name` is in a
-// versioned sub-directory of the current executable's directory) are
-// supported. The identified file is not guaranteed to exist.
-base::FilePath GetModulePath(
-    std::wstring_view module_name,
-    base::optional_ref<const content::ContentBrowserClient::ChildModule>
-        child_module = std::nullopt) {
-  if (module_name == chrome::kRendererDll && child_module.has_value()) {
-    return child_module->path;
-  }
+// Returns true if the current process was launched from `chrome.exe`.
+bool IsLaunchedFromChromeExe() {
+  base::FilePath exe_path;
+  return base::PathService::Get(base::FILE_EXE, &exe_path) &&
+         exe_path.BaseName().value() == chrome::kBrowserProcessExecutableName;
+}
 
-  base::FilePath exe_dir;
-  const bool has_path = base::PathService::Get(base::DIR_EXE, &exe_dir);
-  DCHECK(has_path);
-
-  // Look for the module in a versioned sub-directory of the current
-  // executable's directory and return the path if it can be read. This is the
-  // expected location of modules for proper installs.
-  const base::FilePath module_path =
-      exe_dir.AppendASCII(chrome::kChromeVersion).Append(module_name);
-  if (base::PathExists(module_path)) {
-    return module_path;
-  }
-
-  // Otherwise, return the path to the module in the current executable's
-  // directory. This is the expected location of modules for dev builds.
-  return exe_dir.Append(module_name);
+// Returns the full path to `module_name` in the current module's directory
+// (which is the versioned sub-directory for proper installs, or the executable
+// directory for dev builds). The identified file is not guaranteed to exist.
+base::FilePath GetModulePath(std::wstring_view module_name) {
+  return base::PathService::CheckedGet(base::DIR_MODULE).Append(module_name);
 }
 #endif  // BUILDFLAG(IS_WIN) && !defined(COMPONENT_BUILD) &&
         // !defined(ADDRESS_SANITIZER)
@@ -1739,6 +1731,12 @@ bool ChromeContentBrowserClient::ShouldUseSpareRenderProcessHost(
     return false;
   }
 
+  // Top Chrome WebUIs run in a dedicated shared WebUI renderer process and
+  // should not consume a spare renderer intended for general web browsing.
+  if (profile->IsTopChromeWebUIProfile()) {
+    refused_reason = SpareProcessRefusedByEmbedderReason::TopFrameChromeWebUI;
+    return false;
+  }
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   if (!ChromeContentBrowserClientExtensionsPart::
           ShouldUseSpareRenderProcessHost(profile, site_url)) {
@@ -2309,11 +2307,15 @@ bool ChromeContentBrowserClient::IsTopChromeWebUIURL(const GURL& url) {
 bool ChromeContentBrowserClient::IsMultiCaptureAllowed(
     content::RenderFrameHost* render_frame_host) {
 #if BUILDFLAG(IS_CHROMEOS)
-  return multi_capture::MultiCaptureDataServiceFactory::GetForBrowserContext(
-             WebContents::FromRenderFrameHost(render_frame_host)
-                 ->GetBrowserContext())
-      ->IsMultiCaptureAllowed(
-          render_frame_host->GetLastCommittedOrigin().GetURL());
+  return CHECK_DEREF(
+             multi_capture::MultiCaptureSessionControllerFactory::
+                 GetForBrowserContext(render_frame_host->GetBrowserContext()))
+             .IsSessionEligibleForMultiCapture() &&
+         CHECK_DEREF(
+             multi_capture::MultiCaptureDataServiceFactory::
+                 GetForBrowserContext(render_frame_host->GetBrowserContext()))
+             .IsMultiCaptureAllowed(
+                 render_frame_host->GetLastCommittedOrigin().GetURL());
 #else
   return false;
 #endif  // BUILDFLAG(IS_CHROMEOS)
@@ -2620,10 +2622,28 @@ void ChromeContentBrowserClient::AppendExtraCommandLineSwitches(
     MaybeCopyDisableWebRtcEncryptionSwitch(command_line, browser_command_line,
                                            chrome::GetChannel());
     if (process) {
-      Profile* profile =
-          Profile::FromBrowserContext(process->GetBrowserContext());
-      AppendExtraCommandLineSwitchesFromPrefs(command_line,
-                                              profile->GetPrefs());
+      {
+        Profile* profile =
+            Profile::FromBrowserContext(process->GetBrowserContext());
+        // Renderers of the Top Chrome WebUI profile host WebUIs for windows of
+        // all profiles, so per-profile state cannot be turned into process-wide
+        // switches. Per-profile settings reach these WebUIs via WebPreferences
+        // instead.
+        if (!profile->IsTopChromeWebUIProfile()) {
+          AppendExtraCommandLineSwitchesFromPrefs(command_line,
+                                                  profile->GetPrefs());
+#if BUILDFLAG(ENABLE_WEBUI_NTP)
+          InstantService* instant_service =
+              InstantServiceFactory::GetForProfile(profile);
+          if (instant_service &&
+              instant_service->IsInstantProcess(process->GetDeprecatedID()) &&
+              !base::FeatureList::IsEnabled(
+                  features::kInstantUsesSpareRenderer)) {
+            command_line->AppendSwitch(switches::kInstantProcess);
+          }
+#endif
+        }
+      }
 
       if (process->GetUserData(search::kIsNTPProcessKey)) {
         command_line->AppendSwitch(switches::kNtpProcess);
@@ -3421,17 +3441,14 @@ bool ChromeContentBrowserClient::ShouldDenyRequestOnCertificateError(
 namespace {
 
 bool ShouldDisableForcedColorsForWebContent(content::WebContents* contents,
+                                            const PrefService& prefs,
                                             bool in_forced_colors) {
   if (!contents || !in_forced_colors) {
     return false;
   }
 
-  PrefService* prefs =
-      Profile::FromBrowserContext(contents->GetBrowserContext())->GetPrefs();
-  CHECK(prefs);
-
   const base::ListValue& forced_colors_blocklist =
-      prefs->GetList(prefs::kPageColorsBlockList);
+      prefs.GetList(prefs::kPageColorsBlockList);
 
   if (forced_colors_blocklist.empty()) {
     return false;
@@ -3457,8 +3474,7 @@ bool ShouldDisableForcedColorsForWebContent(content::WebContents* contents,
   return false;
 }
 
-blink::mojom::PreferredContrast GetPreferredContrast(
-    content::WebContents* web_contents) {
+blink::mojom::PreferredContrast GetPreferredContrast(const PrefService& prefs) {
   using NC = ui::NativeTheme::PreferredContrast;
   using BC = blink::mojom::PreferredContrast;
   static constexpr auto kContrastMap =
@@ -3467,18 +3483,18 @@ blink::mojom::PreferredContrast GetPreferredContrast(
                                       {NC::kLess, BC::kLess},
                                       {NC::kCustom, BC::kCustom}});
   const NC preferred_contrast =
-      PageColorsController::GetEffectivePageColors(web_contents)
-          .preferred_contrast;
+      PageColorsController::GetEffectivePageColors(prefs).preferred_contrast;
   return kContrastMap.at(preferred_contrast);
 }
 
-std::tuple<bool, bool> GetForcedColorsForWebContent(WebContents* web_contents) {
+std::tuple<bool, bool> GetForcedColorsForWebContent(WebContents* web_contents,
+                                                    const PrefService& prefs) {
   const auto forced_colors =
-      PageColorsController::GetEffectivePageColors(web_contents).forced_colors;
+      PageColorsController::GetEffectivePageColors(prefs).forced_colors;
   const bool in_forced_colors =
       forced_colors != ui::ColorProviderKey::ForcedColors::kNone;
-  const bool is_forced_colors_disabled =
-      ShouldDisableForcedColorsForWebContent(web_contents, in_forced_colors);
+  const bool is_forced_colors_disabled = ShouldDisableForcedColorsForWebContent(
+      web_contents, prefs, in_forced_colors);
   return {in_forced_colors && !is_forced_colors_disabled,
           is_forced_colors_disabled};
 }
@@ -3497,7 +3513,8 @@ std::tuple<blink::mojom::PreferredColorScheme,
            blink::mojom::PreferredColorScheme>
 GetPreferredColorScheme(const WebPreferences& web_prefs,
                         const content::SecurityPrincipal& security_principal,
-                        WebContents* web_contents) {
+                        WebContents* web_contents,
+                        const Profile& profile) {
   blink::mojom::PreferredColorScheme preferred_color_scheme;
   blink::mojom::PreferredColorScheme preferred_root_scrollbar_color_scheme;
 #if BUILDFLAG(IS_ANDROID)
@@ -3513,13 +3530,11 @@ GetPreferredColorScheme(const WebPreferences& web_prefs,
     preferred_root_scrollbar_color_scheme = preferred_color_scheme;
   }
 #else  // !BUILDFLAG(IS_ANDROID)
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
-  if (profile->IsEnterpriseIsolatedModeProfile() &&
+  if (profile.IsEnterpriseIsolatedModeProfile() &&
       !security_principal.IsWebUI()) {
     preferred_color_scheme = blink::mojom::PreferredColorScheme::kLight;
   } else {
-    if (profile->IsIncognitoProfile() && !security_principal.IsWebUI()) {
+    if (profile.IsIncognitoProfile() && !security_principal.IsWebUI()) {
       // Incognito contents follow the device color mode by default.
       preferred_color_scheme = ToBlinkPreferredColorScheme(
           ui::NativeTheme::GetInstanceForWeb()->preferred_color_scheme());
@@ -3532,7 +3547,7 @@ GetPreferredColorScheme(const WebPreferences& web_prefs,
                                    : blink::mojom::PreferredColorScheme::kDark;
     }
     const auto effective_page_colors =
-        PageColorsController::GetEffectivePageColors(web_contents);
+        PageColorsController::GetEffectivePageColors(*profile.GetPrefs());
     if (effective_page_colors.forced_colors !=
         ui::ColorProviderKey::ForcedColors::kNone) {
       preferred_color_scheme = ToBlinkPreferredColorScheme(
@@ -3631,7 +3646,7 @@ bool ShouldPromptOnMultipleMatchingCertificates(const Profile* profile) {
 
 base::OnceClosure ChromeContentBrowserClient::SelectClientCertificate(
     content::BrowserContext* browser_context,
-    int process_id,
+    content::ChildProcessId process_id,
     content::WebContents* web_contents,
     net::SSLCertRequestInfo* cert_request_info,
     net::ClientCertIdentityList client_certs,
@@ -3863,6 +3878,24 @@ bool ChromeContentBrowserClient::IsUnboundedElementAllowed(
   return false;
 }
 
+bool ChromeContentBrowserClient::IsUnboundedElementEscapingAllowed(
+    content::RenderFrameHost* subframe,
+    content::RenderFrameHost* outermost_main_frame) {
+  return IsUnboundedElementAllowed(subframe) && outermost_main_frame &&
+         google_util::IsGoogleDomainUrl(
+             outermost_main_frame->GetLastCommittedOrigin().GetURL(),
+             google_util::ALLOW_SUBDOMAIN,
+             google_util::ALLOW_NON_STANDARD_PORTS);
+}
+
+bool ChromeContentBrowserClient::IsUnboundedElementAllowedForSubframesOf(
+    const url::Origin& origin) {
+  // Allowlist of outermost main frames whose subframes may use the Unbounded
+  // Element API.
+  // TODO(crbug.com/571879162): Remove this temporary allowlist.
+  return origin.IsSameOriginWith(GURL(chrome::kChromeUINewTabPageURL));
+}
+
 bool ChromeContentBrowserClient::CanCreateWindow(
     RenderFrameHost* opener,
     const GURL& opener_url,
@@ -3988,17 +4021,34 @@ void ChromeContentBrowserClient::OverrideWebPreferences(
     WebContents* web_contents,
     content::SiteInstance& main_frame_site,
     WebPreferences* web_prefs) {
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
+  Profile* profile = GetProfileForWebPreferences(web_contents);
   PrefService* prefs = profile->GetPrefs();
 
 // Fill font preferences. These are not registered on Android unless we're built
 // with extensions (the chrome.fontSettings API can change these).
 // - http://crbug.com/40337093, http://crbug.com/41304476.
 #if !BUILDFLAG(IS_ANDROID) || BUILDFLAG(ENABLE_DESKTOP_ANDROID_EXTENSIONS)
+  bool is_initial_webui = false;
+#if !BUILDFLAG(IS_ANDROID)
+  is_initial_webui =
+      waap::IsForInitialWebUI(main_frame_site.GetSecurityPrincipal());
+#endif
   // Enabling the FontFamilyCache needs some KeyedService that might not be
   // available for some irregular profiles, like the System Profile.
-  if (!AreKeyedServicesDisabledForProfileByDefault(profile)) {
+  if (is_initial_webui) {
+    // Initial WebUI uses the browser UI font from text_defaults.css and
+    // layout_constants_v0.css rather than user web-content font preferences.
+    // Clearing the default generic font maps avoids populating FontFamilyCache
+    // during startup prewarming and prevents prewarming or loading unused
+    // default web fonts such as "Times New Roman".
+    web_prefs->standard_font_family_map.clear();
+    web_prefs->fixed_font_family_map.clear();
+    web_prefs->serif_font_family_map.clear();
+    web_prefs->sans_serif_font_family_map.clear();
+    web_prefs->cursive_font_family_map.clear();
+    web_prefs->fantasy_font_family_map.clear();
+    web_prefs->math_font_family_map.clear();
+  } else if (!AreKeyedServicesDisabledForProfileByDefault(profile)) {
     FontFamilyCache::FillFontFamilyMap(profile,
                                        prefs::kWebKitStandardFontFamilyMap,
                                        &web_prefs->standard_font_family_map);
@@ -4219,15 +4269,16 @@ void ChromeContentBrowserClient::OverrideWebPreferences(
       IsFileOrDirectoryPickerWithoutGestureAllowed(web_contents);
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-  web_prefs->preferred_contrast = GetPreferredContrast(web_contents);
+  web_prefs->preferred_contrast = GetPreferredContrast(*prefs);
 
   std::tie(web_prefs->in_forced_colors, web_prefs->is_forced_colors_disabled) =
-      GetForcedColorsForWebContent(web_contents);
+      GetForcedColorsForWebContent(web_contents, *prefs);
 
   std::tie(web_prefs->preferred_color_scheme,
            web_prefs->preferred_root_scrollbar_color_scheme) =
-      GetPreferredColorScheme(
-          *web_prefs, main_frame_site.GetSecurityPrincipal(), web_contents);
+      GetPreferredColorScheme(*web_prefs,
+                              main_frame_site.GetSecurityPrincipal(),
+                              web_contents, *profile);
 
   web_prefs->root_scrollbar_theme_color =
       GetRootScrollbarThemeColor(web_contents);
@@ -4284,6 +4335,7 @@ bool ChromeContentBrowserClient::OverrideWebPreferencesAfterNavigation(
     WebContents* web_contents,
     content::SiteInstance& main_frame_site,
     WebPreferences* web_prefs) {
+  Profile* profile = GetProfileForWebPreferences(web_contents);
   bool prefs_changed = false;
 
   const auto autoplay_policy = GetAutoplayPolicyForWebContents(web_contents);
@@ -4324,7 +4376,7 @@ bool ChromeContentBrowserClient::OverrideWebPreferencesAfterNavigation(
   const auto old_is_forced_colors_disabled =
       web_prefs->is_forced_colors_disabled;
   std::tie(web_prefs->in_forced_colors, web_prefs->is_forced_colors_disabled) =
-      GetForcedColorsForWebContent(web_contents);
+      GetForcedColorsForWebContent(web_contents, *profile->GetPrefs());
   prefs_changed |=
       web_prefs->in_forced_colors != old_in_forced_colors ||
       web_prefs->is_forced_colors_disabled != old_is_forced_colors_disabled;
@@ -4334,8 +4386,9 @@ bool ChromeContentBrowserClient::OverrideWebPreferencesAfterNavigation(
       web_prefs->preferred_root_scrollbar_color_scheme;
   std::tie(web_prefs->preferred_color_scheme,
            web_prefs->preferred_root_scrollbar_color_scheme) =
-      GetPreferredColorScheme(
-          *web_prefs, main_frame_site.GetSecurityPrincipal(), web_contents);
+      GetPreferredColorScheme(*web_prefs,
+                              main_frame_site.GetSecurityPrincipal(),
+                              web_contents, *profile);
   prefs_changed |=
       web_prefs->preferred_color_scheme != old_preferred_color_scheme ||
       web_prefs->preferred_root_scrollbar_color_scheme !=
@@ -4371,12 +4424,14 @@ bool ChromeContentBrowserClient::
         WebContents& web_contents,
         const SiteInstance& main_frame_site) const {
   const WebPreferences& prefs = web_contents.GetOrCreateWebPreferences();
-  return GetPreferredContrast(&web_contents) != prefs.preferred_contrast ||
-         GetForcedColorsForWebContent(&web_contents) !=
+  Profile* profile = GetProfileForWebPreferences(&web_contents);
+  const PrefService& pref_service = *profile->GetPrefs();
+  return GetPreferredContrast(pref_service) != prefs.preferred_contrast ||
+         GetForcedColorsForWebContent(&web_contents, pref_service) !=
              std::tie(prefs.in_forced_colors,
                       prefs.is_forced_colors_disabled) ||
          GetPreferredColorScheme(prefs, main_frame_site.GetSecurityPrincipal(),
-                                 &web_contents) !=
+                                 &web_contents, *profile) !=
              std::tie(prefs.preferred_color_scheme,
                       prefs.preferred_root_scrollbar_color_scheme) ||
          GetRootScrollbarThemeColor(&web_contents) !=
@@ -4386,7 +4441,8 @@ bool ChromeContentBrowserClient::
 ui::ColorProviderKey::ForcedColors
 ChromeContentBrowserClient::GetForcedColorsForWebContents(
     WebContents& web_contents) const {
-  return PageColorsController::GetEffectivePageColors(&web_contents)
+  return PageColorsController::GetEffectivePageColors(
+             *GetProfileForWebPreferences(&web_contents)->GetPrefs())
       .forced_colors;
 }
 
@@ -4511,31 +4567,15 @@ void ChromeContentBrowserClient::GetAdditionalFileSystemBackends(
     const base::FilePath& storage_partition_path,
     std::vector<std::unique_ptr<storage::FileSystemBackend>>*
         additional_backends) {
-#if BUILDFLAG(IS_CHROMEOS)
-  storage::ExternalMountPoints* external_mount_points =
-      browser_context->GetMountPoints();
-  DCHECK(external_mount_points);
-  auto backend = std::make_unique<ash::FileSystemBackend>(
-      Profile::FromBrowserContext(browser_context),
-      ash::file_system_provider::BackendDelegate::MakeUnique(),
-      std::make_unique<ash::MTPFileSystemBackendDelegate>(
-          storage_partition_path),
-      std::make_unique<arc::ArcContentFileSystemBackendDelegate>(),
-      std::make_unique<arc::ArcDocumentsProviderBackendDelegate>(),
-      std::make_unique<drive::DriveFsFileSystemBackendDelegate>(
-          Profile::FromBrowserContext(browser_context)),
-      std::make_unique<ash::smb_client::SmbFsFileSystemBackendDelegate>(
-          Profile::FromBrowserContext(browser_context)),
-      external_mount_points, storage::ExternalMountPoints::GetSystemInstance());
-  backend->AddSystemMountPoints();
-  DCHECK(backend->CanHandleType(storage::kFileSystemTypeExternal));
-  additional_backends->push_back(std::move(backend));
-#endif
-
-  for (auto& part : extra_parts_) {
-    part->GetAdditionalFileSystemBackends(
-        browser_context, storage_partition_path, additional_backends);
+  // Serves the files that the actor file upload tool stages in
+  // storage::InMemoryFileRegistry.
+  if (base::FeatureList::IsEnabled(actor::kGlicActorFileUploadTool)) {
+    additional_backends->push_back(
+        std::make_unique<storage::InMemoryFileSystemBackend>());
   }
+
+  ::GetAdditionalFileSystemBackends(browser_context, storage_partition_path,
+                                    additional_backends);
 }
 
 #if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
@@ -4676,8 +4716,7 @@ ChromeContentBrowserClient::GetLPACCapabilityNameForNetworkService() {
 bool ChromeContentBrowserClient::PreSpawnChild(
     sandbox::TargetConfig* config,
     sandbox::mojom::Sandbox sandbox_type,
-    ChildSpawnFlags flags,
-    base::optional_ref<const ChildModule> child_module) {
+    ChildSpawnFlags flags) {
   DCHECK(!config->IsConfigured());
 // Does not work under component build because all the component DLLs would need
 // to be manually added and maintained. Does not work under ASAN build because
@@ -4737,11 +4776,7 @@ bool ChromeContentBrowserClient::PreSpawnChild(
   }
 
   // Only enable signing mitigation if launching from chrome.exe.
-  base::FilePath exe_path;
-  if (!base::PathService::Get(base::FILE_EXE, &exe_path)) {
-    return true;
-  }
-  if (chrome::kBrowserProcessExecutableName != exe_path.BaseName().value()) {
+  if (!IsLaunchedFromChromeExe()) {
     return true;
   }
 
@@ -4756,26 +4791,17 @@ bool ChromeContentBrowserClient::PreSpawnChild(
     return false;
   }
 
-  // Allow loading chrome.dll and chrome_elf.dll for most process types, or
-  // chrome_renderer.dll and chrome_elf.dll for renderers using a separate or
-  // dynamically patched renderer binary.
-  static constexpr auto kChildDlls = {chrome::kBrowserResourcesDll,
-                                      chrome::kElfDll};
-  static constexpr auto kRendererDlls = {chrome::kRendererDll, chrome::kElfDll};
-#if BUILDFLAG(ENABLE_SEPARATE_RENDERER_BINARY)
-  const bool use_renderer_dll =
-      sandbox_type == sandbox::mojom::Sandbox::kRenderer;
-#else
-  const bool use_renderer_dll =
-      sandbox_type == sandbox::mojom::Sandbox::kRenderer &&
-      child_module.has_value();
-#endif
-  const auto& extra_dlls = use_renderer_dll ? kRendererDlls : kChildDlls;
-  for (const auto* dll : extra_dlls) {
-    result = config->AllowExtraDll(GetModulePath(dll, child_module).value());
-    if (result != sandbox::SBOX_ALL_OK) {
-      return false;
-    }
+  // Allow loading chrome_elf.dll for all process types, and chrome.dll for
+  // non-renderer process types (renderer main DLLs are configured via
+  // GetRendererSandboxPolicyExtension()).
+  result = config->AllowExtraDll(GetModulePath(chrome::kElfDll).value());
+  if (result == sandbox::SBOX_ALL_OK &&
+      sandbox_type != sandbox::mojom::Sandbox::kRenderer) {
+    result = config->AllowExtraDll(
+        GetModulePath(chrome::kBrowserResourcesDll).value());
+  }
+  if (result != sandbox::SBOX_ALL_OK) {
+    return false;
   }
 
   // Allow loading the WebNN WebGPU accelerator for renderers when the feature
@@ -4798,18 +4824,45 @@ bool ChromeContentBrowserClient::PreSpawnChild(
   return true;
 }
 
-std::optional<content::ContentBrowserClient::ChildModule>
-ChromeContentBrowserClient::GetChildModule() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  auto* manager = g_browser_process->GetFeatures()->child_module_manager();
-  if (!manager) {
+std::optional<content::ContentBrowserClient::RendererSandboxPolicyExtension>
+ChromeContentBrowserClient::GetRendererSandboxPolicyExtension(
+    content::ChildProcessId render_process_id) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+#if defined(COMPONENT_BUILD) || defined(ADDRESS_SANITIZER)
+  return std::nullopt;
+#else
+  if (!IsLaunchedFromChromeExe()) {
     return std::nullopt;
   }
-  return manager->GetLatestModule().transform(
-      [](child_module::ChildModuleManager::Module&& module) {
-        return ChildModule{.version = std::move(module.version),
-                           .path = std::move(module.renderer_binary_path)};
-      });
+  if (child_module::ChildModuleManager* child_module_manager =
+          g_browser_process->GetFeatures()->child_module_manager()) {
+    if (base::optional_ref<const child_module::ChildModuleManager::Module>
+            module =
+                child_module_manager->GetModuleForProcess(render_process_id)) {
+      // TODO(crbug.com/558598893): The configuration for renderers using each
+      // distinct child module version is cached by the broker for the lifetime
+      // of the browser, and it holds an image section for the patched DLL (see
+      // SignedPolicy::GenerateRules()). This prevents the installer from
+      // deleting a superseded patch until the browser exits, even after all
+      // renderers using it have exited. Consider evicting a patch's
+      // configuration from the broker's cache once a newer patch is in use.
+      return RendererSandboxPolicyExtension{
+          .tag_suffix = module->version.GetString(),
+          .extra_dll = module->renderer_binary_path,
+      };
+    }
+  }
+
+#if BUILDFLAG(ENABLE_SEPARATE_RENDERER_BINARY)
+  return RendererSandboxPolicyExtension{
+      .extra_dll = GetModulePath(chrome::kRendererDll),
+  };
+#else
+  return RendererSandboxPolicyExtension{
+      .extra_dll = GetModulePath(chrome::kBrowserResourcesDll),
+  };
+#endif
+#endif  // defined(COMPONENT_BUILD) || defined(ADDRESS_SANITIZER)
 }
 
 // Note: Only use sparingly to add Chrome specific sandbox functionality here.
@@ -5714,6 +5767,12 @@ void ChromeContentBrowserClient::AddChromeSchemeFactories(
     allowed_webui_hosts.emplace_back(chrome::kChromeUIThemeHost);
     // For testing purposes chrome://webui-test/ is also allowed.
     allowed_webui_hosts.emplace_back(chrome::kChromeUIWebUITestHost);
+    // chrome://image/ is only allowed for component extensions that explicitly
+    // declare it in their manifest's host permissions.
+    if (extension->permissions_data()->HasHostPermission(
+            GURL(chrome::kChromeUIImageURL))) {
+      allowed_webui_hosts.emplace_back(chrome::kChromeUIImageHost);
+    }
   }
   if (extension->is_extension() || extension->is_legacy_packaged_app() ||
       (extension->is_platform_app() &&
@@ -6394,7 +6453,7 @@ bool ChromeContentBrowserClient::HandleExternalProtocol(
             *new_url,
             content::Referrer(web_contents->GetLastCommittedURL(),
                               network::mojom::ReferrerPolicy::kDefault),
-            WindowOpenDisposition::NEW_FOREGROUND_TAB, page_transition,
+            WindowOpenDisposition::kNewForegroundTab, page_transition,
             /*is_renderer_initiated=*/true);
         // Fallback to an opaque origin if the initiating origin is not
         // provided (e.g., for external OS-initiated or browser-initiated
@@ -6909,6 +6968,20 @@ ChromeContentBrowserClient::MaybeOverrideSourceURLForClipboardAccess(
     content::RenderFrameHost* render_frame_host,
     const GURL& original_url) {
   return std::nullopt;
+}
+
+content::BrowserContext* ChromeContentBrowserClient::GetUserBrowserContext(
+    content::RenderFrameHost& render_frame_host) {
+#if !BUILDFLAG(IS_ANDROID)
+  // When the WebContents of a Top Chrome WebUI is in TopChromeWebUIProfile,
+  // which is shared by the windows of all profiles, return its user profile.
+  // Otherwise, this is the profile of the WebContents.
+  if (Profile* user_profile = webui::GetUserProfile(
+          content::WebContents::FromRenderFrameHost(&render_frame_host))) {
+    return user_profile;
+  }
+#endif  // !BUILDFLAG(IS_ANDROID)
+  return render_frame_host.GetBrowserContext();
 }
 
 bool ChromeContentBrowserClient::IsClipboardPasteAllowed(
@@ -7537,12 +7610,6 @@ bool ChromeContentBrowserClient::ShouldDisableOriginAgentClusterDefault(
               ->GetBoolean(prefs::kOriginAgentClusterDefaultEnabled);
 }
 
-bool ChromeContentBrowserClient::WillProvidePublicFirstPartySets() {
-  return !is_minimal_mode_ &&
-         !base::CommandLine::ForCurrentProcess()->HasSwitch(
-             switches::kDisableComponentUpdate);
-}
-
 content::mojom::AlternativeErrorPageOverrideInfoPtr
 ChromeContentBrowserClient::GetAlternativeErrorPageOverrideInfo(
     content::NavigationHandle& navigation_handle,
@@ -7570,24 +7637,6 @@ ChromeContentBrowserClient::GetAlternativeErrorPageOverrideInfo(
 #endif
 
   return nullptr;
-}
-
-void ChromeContentBrowserClient::OnSharedStorageWorkletHostCreated(
-    content::RenderFrameHost* rfh) {
-  if (auto* observer =
-          page_load_metrics::MetricsWebContentsObserver::FromWebContents(
-              WebContents::FromRenderFrameHost(rfh))) {
-    observer->OnSharedStorageWorkletHostCreated(rfh);
-  }
-}
-
-void ChromeContentBrowserClient::OnSharedStorageSelectURLCalled(
-    content::RenderFrameHost* main_rfh) {
-  if (auto* observer =
-          page_load_metrics::MetricsWebContentsObserver::FromWebContents(
-              WebContents::FromRenderFrameHost(main_rfh))) {
-    observer->OnSharedStorageSelectURLCalled(main_rfh);
-  }
 }
 
 bool ChromeContentBrowserClient::ShouldSendOutermostOriginToRenderer(
@@ -7645,7 +7694,9 @@ bool ChromeContentBrowserClient::
 #endif  // !BUILDFLAG(IS_ANDROID)
 }
 
-base::FilePath ChromeContentBrowserClient::GetChildProcessPath(int flags) {
+base::FilePath ChromeContentBrowserClient::GetChildProcessPath(
+    int flags,
+    content::ChildProcessId child_process_id) {
   // Shuttle: no dynamically patched renderer binaries (child_module removed).
 #if BUILDFLAG(ENABLE_SEPARATE_RENDERER_BINARY) && BUILDFLAG(IS_LINUX)
   if (flags & content::ChildProcessHost::CHILD_RENDERER) {
@@ -7973,10 +8024,6 @@ bool ChromeContentBrowserClient::
   return true;
 }
 
-void ChromeContentBrowserClient::SetIsMinimalMode(bool minimal) {
-  is_minimal_mode_ = minimal;
-}
-
 bool ChromeContentBrowserClient::
     UseOutermostMainFrameOrEmbedderForSubCaptureTargets() const {
 #if BUILDFLAG(PLATFORM_CFM)
@@ -8114,7 +8161,7 @@ void ChromeContentBrowserClient::ShowCaptionSettings(
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
           GURL(captions::GetCaptionSettingsUrl()),
-          WindowOpenDisposition::NEW_FOREGROUND_TAB, ui::PAGE_TRANSITION_LINK);
+          WindowOpenDisposition::kNewForegroundTab, ui::PAGE_TRANSITION_LINK);
   web_contents->OpenURL(params, /*navigation_handle_callback=*/{});
 #endif
 }
@@ -8210,24 +8257,9 @@ ChromeContentBrowserClient::MaybeCreateKeepAliveRequestTracker(
     content::BrowserContext* browser_context,
     content::KeepAliveRequestTracker::IsContextDetachedCallback
         is_context_detached_callback) {
-  // Do not need to track non-keepalive requests.
-  if (!request.keepalive || !request.keepalive_token.has_value()) {
-    return {};
-  }
-  std::vector<std::unique_ptr<content::KeepAliveRequestTracker>> trackers;
-  std::unique_ptr<ChromeKeepAliveRequestTracker> chrome_tracker =
-      ChromeKeepAliveRequestTracker::MaybeCreateKeepAliveRequestTracker(
-          request, ukm_source_id, is_context_detached_callback);
-  if (chrome_tracker) {
-    trackers.push_back(std::move(chrome_tracker));
-  }
-  std::unique_ptr<SearchPrefetchKeepAliveRequestTracker> search_tracker =
-      SearchPrefetchKeepAliveRequestTracker::MaybeCreateKeepAliveRequestTracker(
-          request, browser_context);
-  if (search_tracker) {
-    trackers.push_back(std::move(search_tracker));
-  }
-  return trackers;
+  return ChromeKeepAliveRequestTracker::MaybeCreateTrackers(
+      request, ukm_source_id, browser_context,
+      std::move(is_context_detached_callback));
 }
 
 std::optional<std::vector<std::u16string>>
@@ -8345,4 +8377,10 @@ bool ChromeContentBrowserClient::IsExemptFromWindowSizeCheck(const GURL& url) {
 #else
   return false;
 #endif
+}
+
+bool ChromeContentBrowserClient::IsNoStatePrefetch(
+    content::WebContents* web_contents) {
+  return prerender::ChromeNoStatePrefetchContentsDelegate::FromWebContents(
+             web_contents) != nullptr;
 }

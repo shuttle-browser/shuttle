@@ -2815,8 +2815,7 @@ Animation::NativePaintWorkletReasons Animation::GetNativePaintWorkletReasons()
     // TODO(kevers): There is room to optimize here as if in forced color mode
     // and forced colors are active for the element, we can optimize out the
     // animation as having no visual effect.
-    if (RuntimeEnabledFeatures::CompositeBGColorAnimationEnabled() &&
-        GetDocument() && !GetDocument()->InForcedColorsMode() &&
+    if (GetDocument() && !GetDocument()->InForcedColorsMode() &&
         keyframe_effect->Affects(
             PropertyHandle(GetCSSPropertyBackgroundColor()))) {
       reasons |= kBackgroundColorPaintWorklet;
@@ -3367,8 +3366,8 @@ bool Animation::Update(TimingUpdateReason reason) {
 
     // Animations linked to scroll-timelines remain active since a scroll update
     // can effectively roll back time.
-    if (reason == kTimingUpdateForAnimationFrame &&
-        (idle || !timeline_ || timeline_->IsMonotonicallyIncreasing())) {
+    if (idle || (reason == kTimingUpdateForAnimationFrame &&
+                 (!timeline_ || timeline_->IsMonotonicallyIncreasing()))) {
       inactive_ = true;
     }
   }
@@ -3476,7 +3475,6 @@ void Animation::cancel() {
   start_time_ = std::nullopt;
 
   SetCompositorPending(CompositorPendingReason::kPendingCancel);
-  SetOutdated();
 
   // Force dispatch of canceled event.
   if (content_)

@@ -73,8 +73,8 @@ void SafeBrowsingPrivateEventRouter::OnPolicySpecifiedPasswordReuseDetected(
 
   // |event_router_| can be null in tests.
   if (event_router_) {
-    base::ListValue event_value;
-    event_value.Append(params.ToValue());
+    auto event_value = base::MakeRefCounted<EventArgs>();
+    event_value->data.Append(params.ToValue());
 
     auto extension_event = std::make_unique<Event>(
         events::
@@ -90,8 +90,8 @@ void SafeBrowsingPrivateEventRouter::OnPolicySpecifiedPasswordChanged(
     std::string_view user_name) {
   // |event_router_| can be null in tests.
   if (event_router_) {
-    base::ListValue event_value;
-    event_value.Append(user_name);
+    auto event_value = base::MakeRefCounted<EventArgs>();
+    event_value->data.Append(user_name);
     auto extension_event = std::make_unique<Event>(
         events::SAFE_BROWSING_PRIVATE_ON_POLICY_SPECIFIED_PASSWORD_CHANGED,
         api::safe_browsing_private::OnPolicySpecifiedPasswordChanged::
@@ -119,8 +119,8 @@ void SafeBrowsingPrivateEventRouter::OnDangerousDownloadOpened(
 
   // |event_router_| can be null in tests.
   if (event_router_) {
-    base::ListValue event_value;
-    event_value.Append(params.ToValue());
+    auto event_value = base::MakeRefCounted<EventArgs>();
+    event_value->data.Append(params.ToValue());
 
     auto extension_event = std::make_unique<Event>(
         events::SAFE_BROWSING_PRIVATE_ON_DANGEROUS_DOWNLOAD_OPENED,
@@ -145,8 +145,8 @@ void SafeBrowsingPrivateEventRouter::OnSecurityInterstitialShown(
 
   // |event_router_| can be null in tests.
   if (event_router_) {
-    base::ListValue event_value;
-    event_value.Append(params.ToValue());
+    auto event_value = base::MakeRefCounted<EventArgs>();
+    event_value->data.Append(params.ToValue());
 
     auto extension_event = std::make_unique<Event>(
         events::SAFE_BROWSING_PRIVATE_ON_SECURITY_INTERSTITIAL_SHOWN,
@@ -171,8 +171,8 @@ void SafeBrowsingPrivateEventRouter::OnSecurityInterstitialProceeded(
 
   // |event_router_| can be null in tests.
   if (event_router_) {
-    base::ListValue event_value;
-    event_value.Append(params.ToValue());
+    auto event_value = base::MakeRefCounted<EventArgs>();
+    event_value->data.Append(params.ToValue());
 
     auto extension_event = std::make_unique<Event>(
         events::SAFE_BROWSING_PRIVATE_ON_SECURITY_INTERSTITIAL_PROCEEDED,

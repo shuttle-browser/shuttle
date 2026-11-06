@@ -64,6 +64,7 @@ source_set("performance_manager") {
     public += [
       "policies/discard_page_with_crashed_subframe_policy.h",
       "policies/process_rank_policy_android.h",
+      "policies/swap_pressure_discarding_policy_android.h",
     ]
     public_deps += [ "//content/public/browser" ]
   }
@@ -118,9 +119,7 @@ source_set("performance_manager") {
   }
 
   if (enable_extensions_core && !is_android) {
-    public += [
-      "execution_context_priority/extension_service_worker_priority_voter.h",
-    ]
+    public += [ "priority/extension_service_worker_priority_voter.h" ]
   }
 }
 
@@ -194,6 +193,7 @@ source_set("impl") {
     sources += [
       "policies/discard_page_with_crashed_subframe_policy.cc",
       "policies/process_rank_policy_android.cc",
+      "policies/swap_pressure_discarding_policy_android.cc",
     ]
     deps += [
       "//chrome/browser/flags:flags_android",
@@ -278,9 +278,7 @@ source_set("impl") {
   }
 
   if (enable_extensions_core && !is_android) {
-    sources += [
-      "execution_context_priority/extension_service_worker_priority_voter.cc",
-    ]
+    sources += [ "priority/extension_service_worker_priority_voter.cc" ]
   }
 }
 

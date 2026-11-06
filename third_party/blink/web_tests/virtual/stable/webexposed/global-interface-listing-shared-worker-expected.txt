@@ -3328,8 +3328,11 @@ Starting worker: resources/global-interface-listing-worker.js
 [Worker] interface WebTransport
 [Worker]     static getter supportsReliableOnly
 [Worker]     attribute @@toStringTag
+[Worker]     getter anticipatedConcurrentIncomingBidirectionalStreams
+[Worker]     getter anticipatedConcurrentIncomingUnidirectionalStreams
 [Worker]     getter closed
 [Worker]     getter datagrams
+[Worker]     getter draining
 [Worker]     getter incomingBidirectionalStreams
 [Worker]     getter incomingUnidirectionalStreams
 [Worker]     getter protocol
@@ -3340,6 +3343,8 @@ Starting worker: resources/global-interface-listing-worker.js
 [Worker]     method constructor
 [Worker]     method createBidirectionalStream
 [Worker]     method createUnidirectionalStream
+[Worker]     setter anticipatedConcurrentIncomingBidirectionalStreams
+[Worker]     setter anticipatedConcurrentIncomingUnidirectionalStreams
 [Worker] interface WebTransportBidirectionalStream
 [Worker]     attribute @@toStringTag
 [Worker]     getter readable

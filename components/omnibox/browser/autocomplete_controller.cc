@@ -76,6 +76,7 @@
 #include "components/omnibox/browser/shortcuts_provider.h"
 #include "components/omnibox/browser/unscoped_extension_provider.h"
 #include "components/omnibox/browser/url_scoring_signals_annotator.h"
+#include "components/omnibox/browser/verbatim_match.h"
 #include "components/omnibox/browser/voice_suggest_provider.h"
 #include "components/omnibox/browser/zero_suggest_provider.h"
 #include "components/omnibox/browser/zero_suggest_verbatim_match_provider.h"
@@ -732,8 +733,10 @@ void AutocompleteController::OnProviderUpdate(
   }
 
   // Ignore updates from providers that shouldn't run for the current input.
-  // This can happen if a provider was started for a previous input and an async
-  // update arrived after a new input began (e.g. entering keyword mode).
+  // Excluded providers should have been stopped in `Start()`, and
+  // `ShouldRunProvider()` is almost completely constant during the lifecycle of
+  // an autocomplete pass except if `TemplateURLService` is synced in the
+  // background.
   if (provider && !ShouldRunProvider(provider)) {
     return;
   }
@@ -944,6 +947,22 @@ void AutocompleteController::SetMatchDestinationURL(
 #endif
 }
 
+AutocompleteMatch AutocompleteController::ComputeAlternativeNavMatch(
+    const AutocompleteInput& input,
+    const AutocompleteMatch& match) const {
+  return ComputeAlternativeNavMatch(input,
+                                    AutocompleteResult::ComputeAlternateNavUrl(
+                                        input, match, provider_client_.get()));
+}
+
+AutocompleteMatch AutocompleteController::ComputeAlternativeNavMatch(
+    const AutocompleteInput& input,
+    const GURL& alternate_nav_url) const {
+  return VerbatimMatchForInput(history_url_provider_, provider_client_.get(),
+                               input, alternate_nav_url,
+                               /*trim_http=*/false);
+}
+
 void AutocompleteController::GroupSuggestionsBySearchVsURL(size_t begin,
                                                            size_t end) {
   if (begin == end) {
@@ -1008,7 +1027,10 @@ bool AutocompleteController::ShouldRunProvider(
     return provider->type() == AutocompleteProvider::Type::kSearch ||
            provider->type() == AutocompleteProvider::Type::kOpenTab ||
            provider->type() == AutocompleteProvider::Type::kBookmark ||
-           provider->type() == AutocompleteProvider::Type::kHistoryQuick;
+           provider->type() == AutocompleteProvider::Type::kHistoryQuick ||
+           (provider->type() ==
+                AutocompleteProvider::Type::kRecentlyClosedTabs &&
+            omnibox::IsAndroidTabSearch(input_.current_page_classification()));
   }
 #endif
 

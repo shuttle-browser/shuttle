@@ -895,17 +895,6 @@ void ChromeContentBrowserClientExtensionsPart::GetURLRequestAutoMountHandlers(
 #endif
 }
 
-void ChromeContentBrowserClientExtensionsPart::GetAdditionalFileSystemBackends(
-    content::BrowserContext* browser_context,
-    const base::FilePath& storage_partition_path,
-    std::vector<std::unique_ptr<storage::FileSystemBackend>>*
-        additional_backends) {
-#if BUILDFLAG(IS_CHROMEOS)
-  additional_backends->push_back(
-      std::make_unique<MediaFileSystemBackend>(storage_partition_path));
-#endif  // BUILDFLAG(IS_CHROMEOS)
-}
-
 void ChromeContentBrowserClientExtensionsPart::
     AppendExtraRendererCommandLineSwitches(
         base::CommandLine* command_line,

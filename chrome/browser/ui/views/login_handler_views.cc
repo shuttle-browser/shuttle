@@ -111,8 +111,8 @@ void LoginHandlerViews::OnDialogDestroyed() {
 
 bool LoginHandlerViews::BuildViewImpl(const std::u16string& authority,
                                       const std::u16string& explanation) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(!dialog_);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK(!dialog_, base::NotFatalUntil::M162);
 
   // A WebContentsModalDialogManager is necessary to show the Dialog. A manager
   // may not be available during the shutdown process of the WebContents, which

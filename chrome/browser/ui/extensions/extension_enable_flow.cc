@@ -136,7 +136,8 @@ void ExtensionEnableFlow::CheckPermissionAndMaybePromptUser() {
     // This is a no-op if the extension was previously terminated.
     registrar->EnableExtension(extension_id_);
 
-    DCHECK(registrar->IsExtensionEnabled(extension_id_));
+    CHECK(registrar->IsExtensionEnabled(extension_id_),
+          base::NotFatalUntil::M162);
     delegate_->ExtensionEnableFlowFinished();  // |delegate_| may delete us.
     return;
   }
@@ -225,7 +226,8 @@ void ExtensionEnableFlow::EnableExtension() {
   auto* registrar = extensions::ExtensionRegistrar::Get(profile_);
   registrar->GrantPermissionsAndEnableExtension(*extension);
 
-  DCHECK(registrar->IsExtensionEnabled(extension_id_));
+  CHECK(registrar->IsExtensionEnabled(extension_id_),
+        base::NotFatalUntil::M162);
   delegate_->ExtensionEnableFlowFinished();  // |delegate_| may delete us.
 }
 

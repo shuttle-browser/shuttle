@@ -3,13 +3,11 @@
 // found in the LICENSE file.
 
 import 'chrome://resources/cr_elements/cr_view_manager/cr_view_manager.js';
-import '/shared/settings/prefs/prefs.js';
 import '../settings_page/settings_section.js';
 import '../settings_shared.css.js';
 import './privacy_page.js';
 
-import type {SettingsPrefsElement} from '/shared/settings/prefs/prefs.js';
-import {PrefsMixin} from '/shared/settings/prefs/prefs_mixin.js';
+import {PrefServiceObserverMixin} from '/shared/settings/prefs2/pref_service_observer_mixin.js';
 import type {CrViewManagerElement} from 'chrome://resources/cr_elements/cr_view_manager/cr_view_manager.js';
 import {assert} from 'chrome://resources/js/assert.js';
 import {PromiseResolver} from 'chrome://resources/js/promise_resolver.js';
@@ -33,14 +31,13 @@ import {getTopLevelRoute} from '../route.js';
 
 export interface SettingsPrivacyPageIndexElement {
   $: {
-    prefs: SettingsPrefsElement,
     viewManager: CrViewManagerElement,
   };
 }
 
 const SettingsPrivacyPageIndexElementBase =
     SearchableViewContainerMixin(
-        PrefsMixin(RouteObserverMixin(PolymerElement)));
+        PrefServiceObserverMixin(RouteObserverMixin(PolymerElement)));
 
 export class SettingsPrivacyPageIndexElement extends
     SettingsPrivacyPageIndexElementBase implements SettingsPlugin {
@@ -54,7 +51,7 @@ export class SettingsPrivacyPageIndexElement extends
 
   static get properties() {
     return {
-      prefs: Object,
+      privacyGuideViewedPref_: Object,
 
       routes_: {
         type: Object,
@@ -153,7 +150,6 @@ export class SettingsPrivacyPageIndexElement extends
     };
   }
 
-  declare prefs: Record<string, unknown>;
   declare private routes_: SettingsRoutes;
   declare private enableCapturedSurfaceControl_: boolean;
   declare private enableFederatedIdentityApiContentSetting_: boolean;
@@ -173,6 +169,12 @@ export class SettingsPrivacyPageIndexElement extends
   declare private enableWebBluetoothNewPermissionsBackend_: boolean;
 
   private pendingViewSwitching_: PromiseResolver<void> = new PromiseResolver();
+
+  override connectedCallback() {
+    super.connectedCallback();
+
+    this.mirrorPref('privacy_guide.viewed', 'privacyGuideViewedPref_');
+  }
 
   private beforeNextRenderPromise_(): Promise<void> {
     return new Promise(res => {

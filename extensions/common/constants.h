@@ -423,6 +423,10 @@ inline constexpr char kGoogleSheetsAppId[] = "felcaaldnbdncclmgdcncolpebgiejap";
 // The extension id of the Google Slides application.
 inline constexpr char kGoogleSlidesAppId[] = "aapocclcgogkmnckokdopfmhonfmgoek";
 
+// The extension id of the in-app payments support application.
+inline constexpr char kInAppPaymentsSupportAppId[] =
+    "nmmhkkegccagdldgiimedpiccmgmieda";
+
 #if BUILDFLAG(IS_CHROMEOS)
 // The id of the testing extension allowed in the signin profile.
 inline constexpr char kSigninProfileTestExtensionId[] =

@@ -29,7 +29,7 @@ namespace {
 std::u16string CreateHistoryCounterString(
     const browsing_data::HistoryCounter::HistoryResult* history_result) {
   CHECK(history_result->source()->GetPrefName() ==
-            browsing_data::prefs::kDeleteBrowsingHistory);
+        browsing_data::prefs::kDeleteBrowsingHistory);
 
   if (!history_result->Finished()) {
     // The counter is still counting.
@@ -203,9 +203,8 @@ const char* GetTimePeriodPreferenceName() {
   return prefs::kDeleteTimePeriod;
 }
 
-bool GetDeletionPreferenceFromDataType(
-    BrowsingDataType data_type,
-    std::string* out_pref) {
+bool GetDeletionPreferenceFromDataType(BrowsingDataType data_type,
+                                       std::string* out_pref) {
   switch (data_type) {
     case BrowsingDataType::HISTORY:
       *out_pref = prefs::kDeleteBrowsingHistory;

@@ -25,6 +25,7 @@ source_set("impl") {
     "//chrome/app:generated_resources",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/profiles:profile_manager",
+    "//chrome/browser/ui/browser_window",
     "//chrome/common",
     "//components/strings:components_strings",
     "//content/public/browser",
@@ -43,7 +44,5 @@ source_set("impl") {
       "//ash/webui/settings/public/constants:mojom",
     ]
   }
-
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 }
 

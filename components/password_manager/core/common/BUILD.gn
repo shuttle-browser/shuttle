@@ -11,5 +11,4 @@ static_library("common") {
   ]
   deps = [ "//base" ]
   public_deps = [ "//url" ]
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 }

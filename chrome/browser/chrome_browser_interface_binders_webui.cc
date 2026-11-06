@@ -50,6 +50,11 @@
 #endif
 
 
+#if BUILDFLAG(ENABLE_WEBUI_NTP) || \
+    BUILDFLAG(ENABLE_WEBUI_CONTEXTUAL_TASKS_COMPOSEBOX)
+#include "ui/webui/resources/cr_components/search/plural_string_provider.mojom.h"
+#endif
+
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_DESKTOP_ANDROID)
 #include "chrome/browser/ui/webui/discards/discards.mojom.h"

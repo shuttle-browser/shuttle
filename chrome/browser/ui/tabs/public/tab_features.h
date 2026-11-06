@@ -33,6 +33,7 @@
 #include "base/memory/weak_ptr.h"
 #include "chrome/common/buildflags.h"
 #include "components/safe_browsing/buildflags.h"
+#include "components/site_engagement/content/site_engagement_service.h"
 #include "content/public/common/buildflags.h"
 #include "extensions/buildflags/buildflags.h"
 #include "rlz/buildflags/buildflags.h"
@@ -44,6 +45,7 @@ class ConnectionHelpTabHelper;
 class CookieControlsPageActionController;
 class ExternalProtocolObserver;
 class FileSystemAccessPageActionController;
+class FileSystemAccessPermissionRequestManager;
 class FocusTabAfterNavigationHelper;
 class FontPrewarmerTabHelper;
 class FramebustBlockTabHelper;
@@ -75,6 +77,7 @@ class SearchEngineTabHelper;
 class TabDialogs;
 
 namespace blocked_content {
+class PopupBlockerTabHelper;
 class PopupOpenerTabHelper;
 }  // namespace blocked_content
 
@@ -223,16 +226,8 @@ class TabFeatures {
   TabAlertController* SetTabAlertControllerForTesting(
       std::unique_ptr<TabAlertController> tab_alert_controller);
 
-  TabCreationMetricsController* tab_creation_metrics_controller() {
-    return tab_creation_metrics_controller_.get();
-  }
-
-  AskBeforeHttpDialogController* ask_before_http_dialog_controller() {
-    return ask_before_http_dialog_controller_.get();
-  }
-
-  back_to_opener::BackToOpenerController* back_to_opener_controller() {
-    return back_to_opener_controller_.get();
+  site_engagement::SiteEngagementService::Helper* site_engagement_helper() {
+    return site_engagement_helper_.get();
   }
 
   // Called exactly once to initialize features.
@@ -431,6 +426,8 @@ class TabFeatures {
   std::unique_ptr<metrics::MetricsServicesWebContentsObserver>
       metrics_services_web_contents_observer_;
 
+  std::unique_ptr<blocked_content::PopupBlockerTabHelper>
+      popup_blocker_tab_helper_;
   std::unique_ptr<blocked_content::PopupOpenerTabHelper>
       popup_opener_tab_helper_;
 
@@ -444,6 +441,12 @@ class TabFeatures {
 
   std::unique_ptr<predictors::LoadingPredictorTabHelper>
       loading_predictor_tab_helper_;
+
+  std::unique_ptr<site_engagement::SiteEngagementService::Helper>
+      site_engagement_helper_;
+
+  std::unique_ptr<FileSystemAccessPermissionRequestManager>
+      file_system_access_permission_request_manager_;
 
   // Must be the last member.
   base::WeakPtrFactory<TabFeatures> weak_factory_{this};

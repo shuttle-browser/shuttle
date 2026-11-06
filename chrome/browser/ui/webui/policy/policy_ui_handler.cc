@@ -199,7 +199,7 @@ void PolicyUIHandler::RegisterMessages() {
 
   web_ui()->RegisterMessageCallback(
       "listenPoliciesUpdates",
-      base::BindRepeating(&PolicyUIHandler::HandleListenPoliciesUpdates,
+      base::BindRepeating(&PolicyUIHandler::SendInitialState,
                           base::Unretained(this)));
   web_ui()->RegisterMessageCallback(
       "reloadPolicies",
@@ -279,11 +279,10 @@ void PolicyUIHandler::SendSchema() {
   FireWebUIListener("schema-updated", PolicyUI::GetSchema(&profile_.get()));
 }
 
-// TODO(crbug.com/40897784): Delete this function once schema, policies and
-// status are supported in the mojo version.
-void PolicyUIHandler::HandleListenPoliciesUpdates(const base::ListValue& args) {
-  // Send initial policy values and status to UI page.
-  AllowJavascript();
+void PolicyUIHandler::SendInitialState(const base::ListValue&) {
+  if (!IsMojoMigrationEnabled()) {
+    AllowJavascript();
+  }
   SendSchema();
   SendPolicies();
   SendStatus();
@@ -461,7 +460,7 @@ void PolicyUIHandler::HandleUploadReport(const base::ListValue& args) {
   // Shuttle: cloud reporting is removed; nothing to upload. The button is
   // hidden (see PolicyUI), resolve right away for robustness.
   upload_report_count_ += 1;
-  DCHECK_EQ(1u, args.size());
+  CHECK_EQ(1u, args.size(), base::NotFatalUntil::M162);
   OnReportUploaded(args[0].GetString());
 }
 #endif  // !BUILDFLAG(IS_CHROMEOS)

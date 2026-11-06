@@ -2,11 +2,14 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/features.gni")
+
 if (is_win || is_mac || is_linux) {
   source_set("scheduled_restart") {
     public = [
       "scheduled_restart_bubble_controller.h",
       "scheduled_restart_bubble_view.h",
+      "scheduled_restart_hats.h",
     ]
 
     public_deps = [
@@ -22,6 +25,7 @@ if (is_win || is_mac || is_linux) {
     sources = [
       "scheduled_restart_bubble_controller.cc",
       "scheduled_restart_bubble_view.cc",
+      "scheduled_restart_hats.cc",
     ]
 
     public_deps = [ ":scheduled_restart" ]
@@ -31,9 +35,11 @@ if (is_win || is_mac || is_linux) {
       "//chrome/app:generated_resources",
       "//chrome/browser:browser_process",
       "//chrome/browser:global_features",
-      "//chrome/browser/enterprise",
       "//chrome/browser/lifetime",
+      "//chrome/browser/profiles:profile",
       "//chrome/browser/ui/browser_window",
+      "//chrome/browser/ui/hats",
+      "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/toasts",
       "//chrome/browser/ui/toasts/api:toasts",
       "//chrome/browser/ui/views:layout_provider",
@@ -42,9 +48,14 @@ if (is_win || is_mac || is_linux) {
       "//chrome/browser/ui/views/toolbar",
       "//chrome/browser/ui/webui",
       "//chrome/browser/upgrade_detector",
+      "//chrome/common:channel_info",
+      "//chrome/common:chrome_features",
       "//chrome/common:constants",
-      "//components/policy/core/common",
+      "//components/prefs",
+      "//components/tabs:public",
+      "//components/version_info",
       "//content/public/browser",
+      "//services/metrics/public/cpp:metrics_cpp",
       "//ui/base",
     ]
   }

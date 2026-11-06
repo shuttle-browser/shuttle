@@ -8,6 +8,7 @@ source_set("page_action") {
   friend = [
     ":impl",
     ":unit_tests",
+    ":interactive_test_support",
     ":interactive_ui_tests",
     ":test_support",
   ]

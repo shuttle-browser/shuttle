@@ -19,6 +19,14 @@ SpeechRecognitionClientBrowserInterfaceFactory::GetForProfile(
 }
 
 // static
+speech::SpeechRecognitionClientBrowserInterface*
+SpeechRecognitionClientBrowserInterfaceFactory::GetForProfileIfExists(
+    Profile* profile) {
+  return static_cast<speech::SpeechRecognitionClientBrowserInterface*>(
+      GetInstance()->GetServiceForBrowserContext(profile, /*create=*/false));
+}
+
+// static
 SpeechRecognitionClientBrowserInterfaceFactory*
 SpeechRecognitionClientBrowserInterfaceFactory::GetInstance() {
   static base::NoDestructor<SpeechRecognitionClientBrowserInterfaceFactory>

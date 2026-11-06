@@ -35,8 +35,6 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
     superClass: T): T&Constructor<SearchboxMixinInterface> => {
   class SearchboxMixin extends SearchboxSelectionMixin
   (superClass) implements SearchboxMixinInterface {
-    accessor virtualFocusEnabled: boolean = false;
-
     static get properties() {
       return {
         virtualFocusEnabled: {
@@ -72,6 +70,10 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
           type: Object,
         },
 
+        inputIsEmpty_: {
+          type: Boolean,
+        },
+
         /** The aria description to include on the input element. */
         searchboxAriaDescription: {
           type: String,
@@ -88,6 +90,7 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
         },
       };
     }
+    accessor virtualFocusEnabled: boolean = false;
     accessor searchboxAriaDescription: string = '';
     accessor dropdownIsVisible: boolean = false;
     // Tracks the latest query sent for autocompletion. Used to filter out
@@ -96,7 +99,7 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
     // reusing IDs.
     activeQueryId: number = -1;
     private nextQueryId_: number = 0;
-    accessor lastQueriedInput: string|null = null;
+    lastQueriedInput: string|null = null;
     accessor multiLineEnabled: boolean = false;
     accessor singleLineOnInlineAutocomplete: boolean = false;
     accessor result: AutocompleteResult|null = null;
@@ -116,6 +119,7 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       return (this.result?.matches?.[0]?.allowedToBeDefaultMatch) ? 0 : -1;
     }
     accessor inputKeywordModel: InputKeywordModel|null = null;
+    private accessor inputIsEmpty_: boolean = true;
     accessor searchboxIcon: string = '';
     accessor showThumbnail: boolean = false;
 
@@ -196,6 +200,12 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       this.searchboxEventTracker_.add(this, 'input-mousedown', () => {
         this.activeQueryId = -1;
       });
+      this.searchboxEventTracker_.add(
+          this.getInputElement(), 'searchbox-input-empty-changed',
+          (e: Event) => {
+            this.inputIsEmpty_ =
+                (e as CustomEvent<{value: boolean}>).detail.value;
+          });
       // When deleting a match, unfreeze `activeQueryId` so post-deletion
       // results are accepted. The match element sends the deletion request
       // itself, and its line is the event's detail.
@@ -676,6 +686,10 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
     hasMatches(): boolean {
       return !!this.result && !!this.result.matches &&
           this.result.matches.length > 0;
+    }
+
+    isInputEmpty(): boolean {
+      return this.inputIsEmpty_;
     }
 
     /**
@@ -1283,6 +1297,7 @@ export interface SearchboxMixinInterface extends
   hasMatches(): boolean;
   isAutocompleteResultStale(result: AutocompleteResult): boolean;
   isBackgroundTabNavigation(e: KeyboardEvent|MouseEvent): boolean;
+  isInputEmpty(): boolean;
   narrateSelection(selection: OmniboxPopupSelection): void;
   shouldDropdownBeVisible(): boolean;
   updateDropdownVisibility(): void;

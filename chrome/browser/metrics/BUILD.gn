@@ -290,7 +290,6 @@ source_set("impl") {
     "//chrome/browser/ui:recently_audible_helper",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/upgrade_detector",
-    "//components/activity_reporter",
     "//components/crash/core/app",
     "//components/language/core/browser",
     "//components/metrics:component_metrics",
@@ -304,6 +303,7 @@ source_set("impl") {
     "//components/safe_browsing/core/common:features",
     "//components/services/paint_preview_compositor/public/mojom",
     "//components/signin/core/browser",
+    "//components/site_token_provider",
     "//components/startup_metric_utils",
     "//components/ukm",
     "//components/ukm:ukm_recorder",
@@ -312,6 +312,11 @@ source_set("impl") {
 
   if (enable_pdf) {
     deps += [ "//components/pdf/browser" ]
+  }
+
+  # Activity reporting must never be built into ChromeOS.
+  if (!is_chromeos) {
+    deps += [ "//components/activity_reporter" ]
   }
 
   if (is_android) {
@@ -476,6 +481,10 @@ source_set("impl") {
 
   if (is_linux || is_win || is_mac) {
     deps += [ "//chrome/browser/updates:update_metrics" ]
+  }
+
+  if (is_win) {
+    deps += [ "//chrome/browser/default_browser:startup_metrics" ]
   }
 
   if (is_win || is_android || is_linux) {

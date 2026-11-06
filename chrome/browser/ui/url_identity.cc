@@ -59,13 +59,13 @@ UrlIdentity CreateDefaultUrlIdentityFromUrl(const GURL& url,
 UrlIdentity CreateChromeExtensionIdentityFromUrl(Profile* profile,
                                                  const GURL& url,
                                                  const FormatOptions& options) {
-  DCHECK(url.SchemeIs(extensions::kExtensionScheme));
+  CHECK(url.SchemeIs(extensions::kExtensionScheme), base::NotFatalUntil::M162);
 
   DCHECK(profile) << "Profile cannot be null when type is Chrome Extensions.";
 
   extensions::ExtensionRegistry* extension_registry =
       extensions::ExtensionRegistry::Get(profile);
-  DCHECK(extension_registry);
+  CHECK(extension_registry, base::NotFatalUntil::M162);
 
   const extensions::Extension* extension = nullptr;
   extension = extension_registry->enabled_extensions().GetByID(url.GetHost());
@@ -84,7 +84,7 @@ UrlIdentity CreateChromeExtensionIdentityFromUrl(Profile* profile,
 UrlIdentity CreateFileIdentityFromUrl(Profile* profile,
                                       const GURL& url,
                                       const FormatOptions& options) {
-  DCHECK(url.SchemeIsFile());
+  CHECK(url.SchemeIsFile(), base::NotFatalUntil::M162);
 
   return UrlIdentity{
       .type = Type::kFile,
@@ -99,6 +99,8 @@ UrlIdentity UrlIdentity::CreateFromUrl(Profile* profile,
                                        const FormatOptions& options) {
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   if (url.SchemeIs(extensions::kExtensionScheme)) {
+    // TODO(crbug.com/577619404): CHECK-exclusion: Convert to a CHECK once we
+    // are confident it won't be triggered.
     DCHECK(allowed_types.Has(Type::kChromeExtension));
     return CreateChromeExtensionIdentityFromUrl(profile, url, options);
   }
@@ -106,10 +108,10 @@ UrlIdentity UrlIdentity::CreateFromUrl(Profile* profile,
 
 
   if (url.SchemeIsFile()) {
-    DCHECK(allowed_types.Has(Type::kFile));
+    CHECK(allowed_types.Has(Type::kFile), base::NotFatalUntil::M162);
     return CreateFileIdentityFromUrl(profile, url, options);
   }
 
-  DCHECK(allowed_types.Has(Type::kDefault));
+  CHECK(allowed_types.Has(Type::kDefault), base::NotFatalUntil::M162);
   return CreateDefaultUrlIdentityFromUrl(url, options);
 }

@@ -263,6 +263,9 @@ class Profile : public content::BrowserContext {
   // parent profile. Shuttle has no OTR profiles: always false.
   bool IsPrimaryOTRProfileWithRegularParent() const;
 
+  // Returns whether it is a Top Chrome WebUI profile.
+  bool IsTopChromeWebUIProfile() const;
+
   bool CanUseDiskWhenOffTheRecord() override;
 
   // Did the user restore the last session? This is set by SessionRestore.
@@ -286,7 +289,7 @@ class Profile : public content::BrowserContext {
   }
 
   void ResumeAccessibilityEvents() {
-    DCHECK_GT(accessibility_pause_level_, 0);
+    CHECK_GT(accessibility_pause_level_, 0, base::NotFatalUntil::M162);
     accessibility_pause_level_--;
   }
 

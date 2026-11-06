@@ -644,6 +644,7 @@ bool DownloadUIModel::IsCommandEnabled(
     case DownloadCommands::SHOW_IN_FOLDER:
     case DownloadCommands::OPEN_WHEN_COMPLETE:
     case DownloadCommands::PLATFORM_OPEN:
+    case DownloadCommands::OPEN_WITH:
     case DownloadCommands::ALWAYS_OPEN_TYPE:
     case DownloadCommands::OPEN_WITH_MEDIA_APP:
     case DownloadCommands::EDIT_WITH_MEDIA_APP:
@@ -690,6 +691,7 @@ bool DownloadUIModel::IsCommandChecked(
       return IsPaused();
     case DownloadCommands::SHOW_IN_FOLDER:
     case DownloadCommands::PLATFORM_OPEN:
+    case DownloadCommands::OPEN_WITH:
     case DownloadCommands::CANCEL:
     case DownloadCommands::DISCARD:
     case DownloadCommands::KEEP:
@@ -718,6 +720,7 @@ void DownloadUIModel::ExecuteCommand(DownloadCommands* download_commands,
     case DownloadCommands::SHOW_IN_FOLDER:
     case DownloadCommands::OPEN_WHEN_COMPLETE:
     case DownloadCommands::ALWAYS_OPEN_TYPE:
+    case DownloadCommands::OPEN_WITH:
       NOTREACHED();
     case DownloadCommands::PLATFORM_OPEN:
       OpenUsingPlatformHandler();
@@ -735,7 +738,7 @@ void DownloadUIModel::ExecuteCommand(DownloadCommands* download_commands,
       download_commands->GetBrowser()->OpenURL(
           content::OpenURLParams::CreateBrowserInitiated(
               download_commands->GetLearnMoreURLForInterruptedDownload(),
-              WindowOpenDisposition::NEW_FOREGROUND_TAB,
+              WindowOpenDisposition::kNewForegroundTab,
               ui::PAGE_TRANSITION_LINK),
           /*navigation_handle_callback=*/{});
       break;
@@ -743,7 +746,7 @@ void DownloadUIModel::ExecuteCommand(DownloadCommands* download_commands,
       download_commands->GetBrowser()->OpenURL(
           content::OpenURLParams::CreateBrowserInitiated(
               GURL(chrome::kInsecureDownloadBlockingLearnMoreUrl),
-              WindowOpenDisposition::NEW_FOREGROUND_TAB,
+              WindowOpenDisposition::kNewForegroundTab,
               ui::PAGE_TRANSITION_LINK),
           /*navigation_handle_callback=*/{});
       break;
@@ -753,7 +756,7 @@ void DownloadUIModel::ExecuteCommand(DownloadCommands* download_commands,
               google_util::AppendGoogleLocaleParam(
                   GURL(chrome::kDownloadBlockedLearnMoreURL),
                   g_browser_process->GetApplicationLocale()),
-              WindowOpenDisposition::NEW_FOREGROUND_TAB,
+              WindowOpenDisposition::kNewForegroundTab,
               ui::PAGE_TRANSITION_LINK),
           /*navigation_handle_callback=*/{});
       break;

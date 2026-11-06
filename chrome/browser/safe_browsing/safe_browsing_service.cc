@@ -131,7 +131,7 @@ std::unique_ptr<ClientSafeBrowsingReportRequest> CreateDownloadReport(
     ClientSafeBrowsingReportRequest::ReportType report_type,
     bool did_proceed,
     std::optional<bool> show_download_in_folder) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   Profile* profile = Profile::FromBrowserContext(
       content::DownloadItemUtils::GetBrowserContext(download));
   auto report = std::make_unique<ClientSafeBrowsingReportRequest>();
@@ -299,7 +299,7 @@ base::FilePath SafeBrowsingServiceImpl::GetCookieFilePathForTesting() {
 base::FilePath SafeBrowsingServiceImpl::GetBaseFilename() {
   base::FilePath path;
   bool result = base::PathService::Get(chrome::DIR_USER_DATA, &path);
-  DCHECK(result);
+  CHECK(result, base::NotFatalUntil::M162);
   return path.Append(safe_browsing::kSafeBrowsingBaseFilename);
 }
 
@@ -326,7 +326,7 @@ SafeBrowsingServiceImpl::SafeBrowsingServiceImpl()
 SafeBrowsingServiceImpl::~SafeBrowsingServiceImpl() {
   // We should have already been shut down. If we're still enabled, then the
   // database isn't going to be closed properly, which could lead to corruption.
-  DCHECK(!enabled_);
+  CHECK(!enabled_, base::NotFatalUntil::M162);
 }
 
 void SafeBrowsingServiceImpl::Initialize() {
@@ -336,7 +336,7 @@ void SafeBrowsingServiceImpl::Initialize() {
 
   base::FilePath user_data_dir;
   bool result = base::PathService::Get(chrome::DIR_USER_DATA, &user_data_dir);
-  DCHECK(result);
+  CHECK(result, base::NotFatalUntil::M162);
 
   WebUIContentInfoSingleton::GetInstance()->set_safe_browsing_service(this);
 
@@ -350,14 +350,15 @@ void SafeBrowsingServiceImpl::Initialize() {
   // Track profile creation and destruction.
   if (g_browser_process->profile_manager()) {
     g_browser_process->profile_manager()->AddObserver(this);
-    DCHECK_EQ(0U,
-              g_browser_process->profile_manager()->GetLoadedProfiles().size());
+    CHECK_EQ(0U,
+             g_browser_process->profile_manager()->GetLoadedProfiles().size(),
+             base::NotFatalUntil::M162);
   }
 
 }
 
 void SafeBrowsingServiceImpl::ShutDown() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   shutdown_ = true;
 
@@ -382,7 +383,7 @@ void SafeBrowsingServiceImpl::ShutDown() {
 
 network::mojom::NetworkContext* SafeBrowsingServiceImpl::GetNetworkContext(
     content::BrowserContext* browser_context) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   NetworkContextService* service =
       NetworkContextServiceFactory::GetForBrowserContext(browser_context);
   if (!service) {
@@ -395,7 +396,7 @@ network::mojom::NetworkContext* SafeBrowsingServiceImpl::GetNetworkContext(
 scoped_refptr<network::SharedURLLoaderFactory>
 SafeBrowsingServiceImpl::GetURLLoaderFactory(
     content::BrowserContext* browser_context) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (url_loader_factory_for_testing_) {
     return url_loader_factory_for_testing_;
   }
@@ -448,7 +449,7 @@ internal::ReferringAppInfo SafeBrowsingServiceImpl::GetReferringAppInfo(
 #endif
 
 TriggerManager* SafeBrowsingServiceImpl::trigger_manager() const {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   return trigger_manager_.get();
 }
 
@@ -484,7 +485,7 @@ void SafeBrowsingServiceImpl::SetDatabaseManagerForTest(
 }
 
 void SafeBrowsingServiceImpl::Start() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (!enabled_) {
     enabled_ = true;
@@ -511,7 +512,7 @@ void SafeBrowsingServiceImpl::OnProfileAdded(Profile* profile) {
   // Start following the safe browsing preference on |pref_service|.
   PrefService* pref_service = profile->GetPrefs();
   ProfileState& profile_state = profile_states_[profile];
-  DCHECK(!profile_state.prefs_registrar);
+  CHECK(!profile_state.prefs_registrar, base::NotFatalUntil::M162);
   std::unique_ptr<PrefChangeRegistrar> registrar =
       std::make_unique<PrefChangeRegistrar>();
   registrar->Init(pref_service);
@@ -647,7 +648,7 @@ void SafeBrowsingServiceImpl::OnProfileWillBeDestroyed(Profile* profile) {
   services_delegate_->RemoveTelemetryService(profile);
   services_delegate_->OnProfileWillBeDestroyed(profile);
 
-  DCHECK(profile->GetPrefs());
+  CHECK(profile->GetPrefs(), base::NotFatalUntil::M162);
   profile_states_.erase(profile);
 }
 
@@ -658,7 +659,7 @@ void SafeBrowsingServiceImpl::CreateServicesForProfile(Profile* profile) {
 
 base::CallbackListSubscription SafeBrowsingServiceImpl::RegisterStateCallback(
     const base::RepeatingClosure& callback) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   return state_callback_list_.Add(callback);
 }
 
@@ -707,7 +708,7 @@ base::Time SafeBrowsingServiceImpl::GetMinAllowedTimestampForReferrerChains(
 }
 
 void SafeBrowsingServiceImpl::RefreshState() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   // Check if any profile requires the service to be active.
   enabled_by_prefs_ = false;
@@ -745,7 +746,7 @@ void SafeBrowsingServiceImpl::SendDownloadReport(
     ClientSafeBrowsingReportRequest::ReportType report_type,
     bool did_proceed,
     std::optional<bool> show_download_in_folder) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (!ShouldSendDangerousDownloadReport(download, report_type)) {
     return;
   }
@@ -763,7 +764,7 @@ void SafeBrowsingServiceImpl::PersistDownloadReportAndSendOnNextStartup(
     ClientSafeBrowsingReportRequest::ReportType report_type,
     bool did_proceed,
     std::optional<bool> show_download_in_folder) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (!ShouldSendDangerousDownloadReport(download, report_type)) {
     return;
   }
@@ -791,7 +792,7 @@ bool SafeBrowsingServiceImpl::SendPhishyInteractionsReport(
       profile->IsOffTheRecord()) {
     return false;
   }
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   auto report = std::make_unique<ClientSafeBrowsingReportRequest>();
   report->set_type(ClientSafeBrowsingReportRequest::PHISHY_SITE_INTERACTIONS);
   report->set_url(url.spec());
@@ -814,7 +815,7 @@ bool SafeBrowsingServiceImpl::SendPhishyInteractionsReport(
     }
   }
   auto* ping_manager = ChromePingManagerFactory::GetForBrowserContext(profile);
-  DCHECK(ping_manager);
+  CHECK(ping_manager, base::NotFatalUntil::M162);
   return ping_manager->ReportThreatDetails(std::move(report)) ==
          PingManager::ReportThreatDetailsResult::SUCCESS;
 }
@@ -827,7 +828,7 @@ bool SafeBrowsingServiceImpl::MaybeSendNotificationsAcceptedReport(
     const GURL& page_url,
     const GURL& permission_prompt_origin,
     base::TimeDelta permission_prompt_display_duration_sec) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (!profile || !IsExtendedReportingEnabled(*profile->GetPrefs()) ||
       !base::FeatureList::IsEnabled(
           kCreateNotificationsAcceptedClientSafeBrowsingReports) ||
@@ -859,7 +860,7 @@ bool SafeBrowsingServiceImpl::MaybeSendNotificationsAcceptedReport(
 }
 
 void SafeBrowsingServiceImpl::CreateTriggerManager() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   trigger_manager_ = std::make_unique<TriggerManager>(
       ui_manager_.get(), g_browser_process->local_state());
 }

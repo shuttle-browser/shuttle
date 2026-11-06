@@ -32,6 +32,7 @@
 #include "chrome/browser/predictors/loading_predictor_tab_helper.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_manager_factory.h"
 #include "chrome/browser/resource_coordinator/tab_helper.h"
+#include "chrome/browser/sessions/session_tab_helper_factory.h"
 #include "chrome/browser/ssl/https_only_mode_tab_helper.h"
 #include "chrome/browser/subresource_filter/chrome_content_subresource_filter_web_contents_helper_factory.h"
 #include "chrome/browser/ui/find_bar/find_bar_state.h"
@@ -49,10 +50,12 @@
 #include "components/content_settings/browser/page_specific_content_settings.h"
 #include "components/history/content/browser/web_contents_top_sites_observer.h"
 #include "components/history/core/browser/top_sites.h"
+#include "components/infobars/content/content_infobar_manager.h"
 #include "components/javascript_dialogs/tab_modal_dialog_manager.h"
 #include "components/metrics/content/metrics_services_web_contents_observer.h"
 #include "components/metrics_services_manager/metrics_services_manager.h"
 #include "components/performance_manager/embedder/performance_manager_registry.h"
+#include "components/performance_manager/public/performance_manager.h"
 #include "components/permissions/permission_recovery_success_rate_tracker.h"
 #include "components/permissions/permission_request_manager.h"
 #include "components/sessions/content/session_tab_helper.h"
@@ -61,6 +64,7 @@
 #include "components/site_engagement/content/site_engagement_service.h"
 #include "components/ukm/content/source_url_recorder.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
+#include "components/zoom/zoom_controller.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/content_settings/sound_content_setting_observer.h"
 #include "chrome/browser/external_protocol/external_protocol_observer.h"
@@ -234,8 +238,9 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
               page_actions::PageActionPropertiesProvider(),
               pinned_actions_model);
 
-  FileSystemAccessPermissionRequestManager::CreateForWebContents(
-      tab.GetContents());
+  file_system_access_permission_request_manager_ =
+      GetUserDataFactory()
+          .CreateInstance<FileSystemAccessPermissionRequestManager>(tab, tab);
   if (page_action_controller_->ActionExists(kActionShowFileSystemAccess)) {
     file_system_access_page_action_controller_ =
         std::make_unique<FileSystemAccessPageActionController>(tab);
@@ -372,7 +377,8 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
   // behavior for destination tabs with opener relationships.
   if (base::FeatureList::IsEnabled(tabs::kBackToOpener)) {
     back_to_opener_controller_ =
-        std::make_unique<back_to_opener::BackToOpenerController>(tab);
+        GetUserDataFactory()
+            .CreateInstance<back_to_opener::BackToOpenerController>(tab, tab);
   }
 
   uma_browsing_activity_tab_helper_ =
@@ -566,10 +572,11 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
   PrefsTabHelper::CreateForWebContents(tab.GetContents());
 
   if (site_engagement::SiteEngagementService::IsEnabled()) {
-    site_engagement::SiteEngagementService::Helper::CreateForWebContents(
-        tab.GetContents(),
-        prerender::NoStatePrefetchManagerFactory::GetForBrowserContext(
-            profile));
+    site_engagement_helper_ =
+        std::make_unique<site_engagement::SiteEngagementService::Helper>(
+            tab.GetContents(),
+            prerender::NoStatePrefetchManagerFactory::GetForBrowserContext(
+                profile));
   }
 
   SafetyTipWebContentsObserver::CreateForWebContents(tab.GetContents());
@@ -579,17 +586,26 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
   login_detection::LoginDetectionTabHelper::MaybeCreateForWebContents(
       tab.GetContents());
 
-  if (!blocked_content::PopupBlockerTabHelper::FromWebContents(
-          tab.GetContents())) {
-    if (auto* pm_registry =
-            performance_manager::PerformanceManagerRegistry::GetInstance()) {
+  if (auto* pm_registry =
+          performance_manager::PerformanceManagerRegistry::GetInstance()) {
+    // A WebContents reparented into a new TabModel (e.g. via
+    // web_app::ReparentWebContentsIntoBrowserImpl) already has its PageType set
+    // to kTab, and PageNodeImpl::SetType CHECKs that SetPageType is only called
+    // once per WebContents.
+    base::WeakPtr<performance_manager::PageNode> page_node =
+        performance_manager::PerformanceManager::
+            GetPrimaryPageNodeForWebContents(tab.GetContents());
+    if (page_node &&
+        page_node->GetType() != performance_manager::PageType::kTab) {
       pm_registry->SetPageType(tab.GetContents(),
                                performance_manager::PageType::kTab);
     }
   }
 
-  blocked_content::PopupBlockerTabHelper::CreateForWebContents(
-      tab.GetContents());
+  popup_blocker_tab_helper_ =
+      GetUserDataFactory()
+          .CreateInstance<blocked_content::PopupBlockerTabHelper>(
+              tab, tab, tab.GetContents());
 
   resource_coordinator::ResourceCoordinatorTabHelper::CreateForWebContents(
       tab.GetContents());
@@ -606,7 +622,7 @@ TabUIHelper* TabFeatures::SetTabUIHelperForTesting(
 void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
                                       content::WebContents* old_contents,
                                       content::WebContents* new_contents) {
-  DCHECK_EQ(old_contents, tab->GetContents());
+  CHECK_EQ(old_contents, tab->GetContents(), base::NotFatalUntil::M162);
 
   Profile* profile = tab->GetBrowserWindowInterface()->GetProfile();
 
@@ -813,8 +829,6 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
       GetUserDataFactory().CreateInstance<ChainedBackNavigationTracker>(
           *tab, *tab, new_contents);
 
-  FileSystemAccessPermissionRequestManager::CreateForWebContents(new_contents);
-
   file_system_access_tab_helper_ =
       std::make_unique<FileSystemAccessTabHelper>(new_contents);
 
@@ -898,11 +912,13 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
 
   PrefsTabHelper::CreateForWebContents(new_contents);
 
+  site_engagement_helper_.reset();
   if (site_engagement::SiteEngagementService::IsEnabled()) {
-    site_engagement::SiteEngagementService::Helper::CreateForWebContents(
-        new_contents,
-        prerender::NoStatePrefetchManagerFactory::GetForBrowserContext(
-            profile));
+    site_engagement_helper_ =
+        std::make_unique<site_engagement::SiteEngagementService::Helper>(
+            new_contents,
+            prerender::NoStatePrefetchManagerFactory::GetForBrowserContext(
+                profile));
   }
 
   SafetyTipWebContentsObserver::CreateForWebContents(new_contents);
@@ -912,15 +928,23 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
   login_detection::LoginDetectionTabHelper::MaybeCreateForWebContents(
       new_contents);
 
-  if (!blocked_content::PopupBlockerTabHelper::FromWebContents(new_contents)) {
-    if (auto* pm_registry =
-            performance_manager::PerformanceManagerRegistry::GetInstance()) {
+  if (auto* pm_registry =
+          performance_manager::PerformanceManagerRegistry::GetInstance()) {
+    base::WeakPtr<performance_manager::PageNode> page_node =
+        performance_manager::PerformanceManager::
+            GetPrimaryPageNodeForWebContents(new_contents);
+    if (page_node &&
+        page_node->GetType() != performance_manager::PageType::kTab) {
       pm_registry->SetPageType(new_contents,
                                performance_manager::PageType::kTab);
     }
   }
 
-  blocked_content::PopupBlockerTabHelper::CreateForWebContents(new_contents);
+  popup_blocker_tab_helper_.reset();
+  popup_blocker_tab_helper_ =
+      GetUserDataFactory()
+          .CreateInstance<blocked_content::PopupBlockerTabHelper>(*tab, *tab,
+                                                                  new_contents);
 
   resource_coordinator::ResourceCoordinatorTabHelper::CreateForWebContents(
       new_contents);

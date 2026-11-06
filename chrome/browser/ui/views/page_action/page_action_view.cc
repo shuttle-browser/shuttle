@@ -164,6 +164,11 @@ void PageActionView::SetAnchoredMessageDowngradeCallback(
 }
 
 void PageActionView::OnNewActiveController(PageActionController* controller) {
+  // No-op if the active tab hasn't changed (e.g. LocationBarView::Update()).
+  if (controller == current_controller_) {
+    return;
+  }
+  current_controller_ = controller;
   chip_shown_metric_recorded_ = false;
   observation_.Reset();
   action_item_controller_subscription_ = {};
@@ -279,6 +284,7 @@ void PageActionView::HandleSuggestionChipTransition(
 
 void PageActionView::OnPageActionModelWillBeDeleted(
     const PageActionModelInterface& model) {
+  current_controller_ = nullptr;
   anchored_message_ = nullptr;
   anchored_message_widget_ = nullptr;
   observation_.Reset();
@@ -411,8 +417,12 @@ void PageActionView::UpdateIconImage() {
     SetImageModel(ui::ImageModel::FromVectorIcon(
         *icon_image.GetVectorIcon().vector_icon(), icon_color,
         drawing_icon_size));
+    image_container_view()->SetFlipCanvasOnPaintForRTLUI(true);
   } else {
     SetImageModel(icon_image);
+    // Non-vector icons (such as site favicons or PWA/app icons) should not be
+    // mirrored in RTL layouts.
+    image_container_view()->SetFlipCanvasOnPaintForRTLUI(false);
     // For non-vector icons, the border needs to be updated to accommodate the
     // icon, as the icon size may vary. For vector icons, the border gets
     // set on instantiation and does not need to be updated again.
@@ -478,6 +488,7 @@ const gfx::Insets PageActionView::GetInsetsForNonVectorIcon() const {
 }
 
 void PageActionView::SetModel(PageActionModelInterface* model) {
+  current_controller_ = nullptr;
   observation_.Reset();
   observation_.Observe(model);
   UpdateTooltipText();

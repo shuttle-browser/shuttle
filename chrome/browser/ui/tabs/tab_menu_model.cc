@@ -150,6 +150,13 @@ void TabMenuModel::Build(int index) {
   }
 
   int num_tabs = indices.size();
+  const std::vector<tabs::TabInterface*> tabs =
+      tab_strip_->GetTabsAtIndices(indices);
+  std::vector<tabs::TabHandle> tab_handles;
+  tab_handles.reserve(tabs.size());
+  for (tabs::TabInterface* tab : tabs) {
+    tab_handles.push_back(tab->GetHandle());
+  }
 
   AddItemWithStringId(TabStripModel::CommandNewTabToRight,
                       base::i18n::IsRTL() ? IDS_TAB_CXMENU_NEWTABTOLEFT
@@ -229,7 +236,7 @@ void TabMenuModel::Build(int index) {
       std::ranges::none_of(
           indices, [&](int idx) { return tab_strip_->IsTabPinned(idx); })) {
     if (std::optional<tab_groups::TabGroupId> group =
-            tab_strip_->GetCommonGroupForIndices(indices)) {
+            tab_strip_->GetCommonGroupForTabs(tab_handles)) {
       const bool is_focused = tab_strip_->GetFocusedGroup() == group;
       if (tab_strip_->IsEphemeralTabGroup(*group)) {
         const size_t group_tab_count =
@@ -243,14 +250,28 @@ void TabMenuModel::Build(int index) {
         AddItemWithStringId(TabStripModel::CommandToggleFocusGroup,
                             is_focused ? IDS_TAB_CXMENU_UNFOCUS_TAB_GROUP
                                        : IDS_TAB_CXMENU_FOCUS_TAB_GROUP);
+        if (!is_focused) {
+          const user_education::DisplayNewBadge show_badge =
+              UserEducationService::MaybeShowNewBadge(
+                  tab_strip_->profile(), features::kTabGroupsFocusing);
+          SetIsNewFeatureAt(GetItemCount() - 1, show_badge);
+        }
       }
-      SetElementIdentifierAt(GetItemCount() - 1, kFocusSelectionMenuItem);
     } else if (base::FeatureList::IsEnabled(features::kNonGroupFocus) &&
-               tab_strip_->AreAllUngrouped(indices)) {
+               tab_strip_->AreAllUngrouped(tab_handles)) {
       AddItem(TabStripModel::CommandToggleFocusGroup,
               l10n_util::GetPluralStringFUTF16(IDS_TAB_CXMENU_FOCUS_TABS,
                                                num_tabs));
-      SetElementIdentifierAt(GetItemCount() - 1, kFocusSelectionMenuItem);
+    }
+
+    if (std::optional<size_t> focus_index =
+            GetIndexOfCommandId(TabStripModel::CommandToggleFocusGroup)) {
+      SetElementIdentifierAt(*focus_index, kFocusSelectionMenuItem);
+      if (features::IsMenuSimplificationEnabled()) {
+        SetIcon(*focus_index, ui::ImageModel::FromVectorIcon(
+                                  kFilterTiltShiftIcon, ui::kColorMenuIcon,
+                                  ui::SimpleMenuModel::kDefaultIconSize));
+      }
     }
   }
 

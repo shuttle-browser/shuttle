@@ -15,10 +15,13 @@ namespace ntp_features {
 
 BASE_DECLARE_FEATURE(kEnergyEffect);
 BASE_DECLARE_FEATURE(kRealboxCr23Theming);
+BASE_DECLARE_FEATURE(kNtpComponentExtension);
+extern const base::FeatureParam<bool> kNtpComponentExtensionUseComponentUpdater;
 BASE_DECLARE_FEATURE(kNtpDriveModuleSegmentation);
 BASE_DECLARE_FEATURE(kNtpNextFeatures);
 BASE_DECLARE_FEATURE(kNtpShortcutsRedesign);
 BASE_DECLARE_FEATURE(kNtpSimplificationBookmarkBar);
+BASE_DECLARE_FEATURE(kNtpLazyLoadComposebox);
 
 // Parameters of kRealboxCr23Theming.
 extern const base::FeatureParam<bool> kNtpRealboxCr23ExpandedStateBgMatchesOmnibox;

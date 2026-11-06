@@ -30,6 +30,8 @@ if (enable_extensions_core) {
       "extensions_ui.h",
       "extensions_ui_prefs.cc",
       "extensions_ui_prefs.h",
+      "sidebar_promos.cc",
+      "sidebar_promos.h",
     ]
 
     public_deps = [ ":headers" ]

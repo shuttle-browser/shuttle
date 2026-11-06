@@ -13,7 +13,11 @@
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 bool AreKeyedServicesDisabledForProfileByDefault(const Profile* profile) {
-  // The system profile no longer exists: services are never disabled.
+  // Shuttle: the system profile no longer exists. By default disable all
+  // services for the Top Chrome WebUI profile.
+  if (profile && profile->IsTopChromeWebUIProfile()) {
+    return true;
+  }
   return false;
 }
 
@@ -128,6 +132,14 @@ Profile* ProfileSelections::ApplyProfileSelection(Profile* profile) const {
 
 ProfileSelection ProfileSelections::GetProfileSelection(
     Profile* profile) const {
+  // The Top Chrome WebUI Profile only hosts Top Chrome WebUIs, so no profile
+  // selection applies to it. Its KeyedServices are also disabled by default in
+  // BrowserContextDependencyManager. On ChromeOS, it is not a user browser
+  // context either, so this has to be checked before the internal ASH profiles.
+  if (profile->IsTopChromeWebUIProfile()) {
+    return ProfileSelection::kNone;
+  }
+
 #if BUILDFLAG(IS_CHROMEOS)
   // This check has to be performed before the check on
   // `profile->IsRegularProfile()` because profiles that are internal ASH

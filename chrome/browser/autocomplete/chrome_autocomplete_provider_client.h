@@ -29,6 +29,10 @@ class StoragePartition;
 class WebContents;
 }  // namespace content
 
+namespace sessions {
+class TabRestoreService;
+}  // namespace sessions
+
 namespace unified_consent {
 class UrlKeyedDataCollectionConsentHelper;
 }
@@ -85,6 +89,7 @@ class ChromeAutocompleteProviderClient : public AutocompleteProviderClient {
       const override;
   signin::IdentityManager* GetIdentityManager() const override;
   ProviderStateService* GetProviderStateService() const override;
+  sessions::TabRestoreService* GetTabRestoreService() const override;
 
   bool IsOffTheRecord() const override;
   bool IsPrimaryOTRProfileWithRegularParent() const override;

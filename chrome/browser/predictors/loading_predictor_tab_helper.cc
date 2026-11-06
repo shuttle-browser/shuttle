@@ -128,15 +128,6 @@ bool IsHandledNavigation(content::NavigationHandle* navigation_handle) {
          navigation_handle->GetURL().SchemeIsHTTPOrHTTPS();
 }
 
-// These values are persisted to logs. Entries should not be renumbered and
-// numeric values should never be reused.
-enum class LcppHintStatus {
-  kSucceedToSet = 0,
-  kNoLcppData = 1,
-  kInvalidLcppStat = 2,
-  kConversionFailure = 3,
-  kMaxValue = kConversionFailure,
-};
 
 std::optional<blink::mojom::LCPCriticalPathPredictorNavigationTimeHint>
 GetLCPPHint(content::NavigationHandle& navigation_handle,
@@ -144,16 +135,7 @@ GetLCPPHint(content::NavigationHandle& navigation_handle,
   std::optional<LcppStat> lcpp_stat =
       predictor.resource_prefetch_predictor()->GetLcppStat(
           navigation_handle.GetInitiatorOrigin(), navigation_handle.GetURL());
-  if (!lcpp_stat) {
-    base::UmaHistogramEnumeration(
-        "LoadingPredictor.SetLCPPNavigationHint.Status",
-        LcppHintStatus::kNoLcppData);
-    return std::nullopt;
-  }
-  if (!IsValidLcppStat(*lcpp_stat)) {
-    base::UmaHistogramEnumeration(
-        "LoadingPredictor.SetLCPPNavigationHint.Status",
-        LcppHintStatus::kInvalidLcppStat);
+  if (!lcpp_stat || !IsValidLcppStat(*lcpp_stat)) {
     return std::nullopt;
   }
 
@@ -188,15 +170,8 @@ void MaybeSetLCPPNavigationHint(content::NavigationHandle& navigation_handle,
   }
   if (hint) {
     navigation_handle.SetLCPPNavigationHint(hint->Clone());
-    base::UmaHistogramEnumeration(
-        "LoadingPredictor.SetLCPPNavigationHint.Status",
-        LcppHintStatus::kSucceedToSet);
     base::UmaHistogramTimes("LoadingPredictor.SetLCPPNavigationHint.Time",
                             timer.Elapsed());
-  } else {
-    base::UmaHistogramEnumeration(
-        "LoadingPredictor.SetLCPPNavigationHint.Status",
-        LcppHintStatus::kConversionFailure);
   }
 }
 
@@ -265,7 +240,7 @@ void LoadingPredictorTabHelper::PageData::
         content::RenderFrameHost& render_frame_host) {
   auto* navigation_holder =
       NavigationPageDataHolder::GetForNavigationHandle(navigation_handle);
-  DCHECK(navigation_holder);
+  CHECK(navigation_holder, base::NotFatalUntil::M162);
 
   auto* document_holder =
       DocumentPageDataHolder::GetOrCreateForCurrentDocument(&render_frame_host);
@@ -327,7 +302,7 @@ LoadingPredictorTabHelper* LoadingPredictorTabHelper::FromWebContents(
 
 void LoadingPredictorTabHelper::DidStartNavigation(
     content::NavigationHandle* navigation_handle) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   TRACE_EVENT("navigation", "LoadingPredictorTabHelper::DidStartNavigation");
 
   if (!predictor_ || predictor_->WasShutdown()) {
@@ -405,7 +380,7 @@ void LoadingPredictorTabHelper::PrepareForPageLoad(
 
 void LoadingPredictorTabHelper::DidRedirectNavigation(
     content::NavigationHandle* navigation_handle) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (!predictor_)
     return;
 
@@ -417,7 +392,7 @@ void LoadingPredictorTabHelper::DidRedirectNavigation(
 
 void LoadingPredictorTabHelper::DidFinishNavigation(
     content::NavigationHandle* navigation_handle) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (!predictor_)
     return;
 
@@ -448,7 +423,7 @@ void LoadingPredictorTabHelper::ResourceLoadComplete(
     const content::GlobalRequestID& request_id,
     const GURL& original_url,
     const blink::mojom::ResourceLoadInfo& resource_load_info) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (!predictor_)
     return;
 
@@ -469,7 +444,7 @@ void LoadingPredictorTabHelper::DidLoadResourceFromMemoryCache(
     const GURL& url,
     const std::string& mime_type,
     network::mojom::RequestDestination request_destination) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (!predictor_)
     return;
 
@@ -492,7 +467,7 @@ void LoadingPredictorTabHelper::DidLoadResourceFromMemoryCache(
 }
 
 void LoadingPredictorTabHelper::DocumentOnLoadCompletedInPrimaryMainFrame() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (!predictor_)
     return;
 

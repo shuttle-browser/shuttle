@@ -100,6 +100,7 @@ source_set("misc") {
     "//chrome/browser/push_messaging:service_impl_public",
     "//chrome/browser/reduce_accept_language",
     "//chrome/browser/safe_browsing",
+    "//chrome/browser/send_tab_to_self",
     "//chrome/browser/sessions",
     "//chrome/browser/ssl",
     "//chrome/browser/storage",
@@ -161,7 +162,12 @@ source_set("misc") {
       "//content/public/browser",
     ]
   } else {
+    sources += [
+      "top_chrome_webui_profile_impl.cc",
+      "top_chrome_webui_profile_impl.h",
+    ]
     deps += [
+      "//chrome/browser:chrome_content_browser_client",
       "//chrome/browser/accessibility/tree_fixing:prefs",
       "//chrome/browser/ui/dialogs:browser_dialogs",
     ]
@@ -177,8 +183,10 @@ source_set("misc") {
       "profile_activity_metrics_recorder.h",
     ]
     deps += [
+      "//chrome/browser/metrics",
       "//chrome/browser/metrics/desktop_session_duration",
       "//chrome/browser/ui:chrome_pages",
+      "//components/metrics",
     ]
   }
 
@@ -223,6 +231,10 @@ source_set("misc") {
 
   if (enable_extensions_core) {
     deps += [ "//chrome/browser/extensions" ]
+  }
+
+  if (enable_extensions) {
+    deps += [ "//chrome/browser/extensions/api/autofill_private" ]
   }
 
   if (enable_bound_session_credentials) {
@@ -633,7 +645,6 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/engagement",
     "//chrome/browser/favicon",
     "//chrome/browser/file_system_access",
-    "//chrome/browser/first_party_sets",
     "//chrome/browser/heavy_ad_intervention",
     "//chrome/browser/hid",
     "//chrome/browser/history",
@@ -755,7 +766,6 @@ source_set("profiles_extra_parts_impl") {
       "//chrome/browser/chromeos/policy/dlp",
       "//chrome/browser/media_galleries",
       "//chrome/browser/policy:onc",
-      "//chrome/browser/push_notification",
       "//chrome/browser/smart_card",
     ]
   }
@@ -789,6 +799,9 @@ source_set("profiles_extra_parts_impl") {
       "//chrome/browser/extensions/keyed_services:keyed_service_factories",
       "//extensions/browser",
     ]
+    if (enable_webui_ntp) {
+      deps += [ "//chrome/browser/ui/webui/new_tab_page_extension" ]
+    }
   }
 
   if (enable_extensions) {

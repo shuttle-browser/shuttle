@@ -92,7 +92,7 @@
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/resource/scoped_startup_resource_bundle.h"
 #include "ui/base/ui_base_switches.h"
-
+#include "ui/webui/buildflags.h"
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
     BUILDFLAG(IS_MAC)
@@ -838,6 +838,8 @@ bool IsHangWatcherCrashReportingEnabled() {
 #if BUILDFLAG(IS_ANDROID)
 ChromeMainDelegate::ChromeMainDelegate()
     : ChromeMainDelegate(StartupTimestamps{}) {}
+#else
+ChromeMainDelegate::ChromeMainDelegate() = default;
 #endif
 
 ChromeMainDelegate::ChromeMainDelegate(const StartupTimestamps& timestamps) {
@@ -1235,9 +1237,16 @@ std::optional<int> ChromeMainDelegate::BasicStartupComplete() {
 #endif  // !defined(BUILDING_CHROME_RENDERER)
 
 #if !defined(BUILDING_CHROME_RENDERER)
+  const bool is_browser = !command_line.HasSwitch(switches::kProcessType);
+#if BUILDFLAG(IS_WIN)
+  if (is_browser) {
+    CHECK(!command_line.HasSwitch(switches::kChildModuleVersion));
+    CHECK(!command_line.HasSwitch(switches::kChildModuleUserPathComponent));
+  }
+#endif
+
   // The DevTools remote debugging pipe file descriptors need to be checked
   // before any other files are opened, see https://crbug.com/40259890.
-  const bool is_browser = !command_line.HasSwitch(switches::kProcessType);
 #if BUILDFLAG(IS_WIN)
   const bool pipes_are_specified_explicitly =
       command_line.HasSwitch(::switches::kRemoteDebuggingIoPipes);
@@ -1474,9 +1483,10 @@ void ChromeMainDelegate::InitMacCrashReporter(
     const base::CommandLine& command_line,
     const std::string& process_type) {
   // TODO(mark): Right now, InitializeCrashpad() needs to be called after
-  // CommandLine::Init() and chrome::RegisterPathProvider().  Ideally, Crashpad
-  // initialization could occur sooner, preferably even before the framework
-  // dylib is even loaded, to catch potential early crashes.
+  // CommandLine::Init(), chrome::RegisterPathProvider(), and
+  // InitializeUserDataDir().  Ideally, Crashpad initialization could occur
+  // sooner, preferably even before the framework dylib is even loaded, to
+  // catch potential early crashes.
 
   const bool browser_process = process_type.empty();
   const bool install_from_dmg_relauncher_process =
@@ -1550,11 +1560,6 @@ void ChromeMainDelegate::PreSandboxStartup() {
   ChromeCrashReporterClient::Create();
 #endif
 
-#if BUILDFLAG(IS_MAC)
-  InitMacCrashReporter(command_line, process_type);
-  SetUpInstallerPreferences(command_line);
-#endif
-
 #if !defined(BUILDING_CHROME_RENDERER)
   // Initialize the user data dir for any process type that needs it.
   if (chrome::ProcessNeedsProfileDir(process_type)) {
@@ -1569,6 +1574,15 @@ void ChromeMainDelegate::PreSandboxStartup() {
   // Renderers on Windows never require a profile directory.
   CHECK(!chrome::ProcessNeedsProfileDir(process_type));
 #endif  // !defined(BUILDING_CHROME_RENDERER)
+
+#if BUILDFLAG(IS_MAC)
+  // Must run after InitializeUserDataDir() because InitializeCrashpad()
+  // resolves chrome::DIR_USER_DATA via GetCrashMetricsLocation() and
+  // GetCollectStatsConsent(), and SetUpInstallerPreferences() may also update
+  // upload consent in chrome::DIR_USER_DATA.
+  InitMacCrashReporter(command_line, process_type);
+  SetUpInstallerPreferences(command_line);
+#endif
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_WIN)
   // Android does InitLogging when library is loaded. Skip here.
@@ -1671,6 +1685,18 @@ void ChromeMainDelegate::PreSandboxStartup() {
     base::PathService::Get(chrome::FILE_RESOURCES_PACK, &resources_pack_path);
     ui::ResourceBundle::GetSharedInstance().AddDataPackFromPath(
         resources_pack_path, ui::kScaleFactorNone);
+#if BUILDFLAG(IS_MAC) && BUILDFLAG(ENABLE_WEBUI_GENERATE_CODE_CACHE)
+    // Only renderers read the bundled WebUI code cache. The browser maps URLs
+    // to resource IDs and never reads the bytes. See
+    // tools/code_cache_generator/README.md.
+    base::FilePath code_cache_pack_path;
+    if (process_type == switches::kRendererProcess &&
+        base::PathService::Get(chrome::FILE_WEBUI_CODE_CACHE_PACK,
+                               &code_cache_pack_path)) {
+      ui::ResourceBundle::GetSharedInstance().AddOptionalDataPackFromPath(
+          code_cache_pack_path, ui::kScaleFactorNone);
+    }
+#endif  // BUILDFLAG(IS_MAC) && BUILDFLAG(ENABLE_WEBUI_GENERATE_CODE_CACHE)
 #endif  // BUILDFLAG(IS_ANDROID)
     CHECK(!loaded_locale.empty()) << "Locale could not be found for " << locale;
   }

@@ -42,7 +42,8 @@ bool WindowFeatureController::SupportsWindowFeature(
   bool supports =
       SupportsWindowFeatureImpl(feature, /*check_can_support=*/false);
   // Supported features imply CanSupportWindowFeature.
-  DCHECK(!supports || CanSupportWindowFeature(feature));
+  CHECK(!supports || CanSupportWindowFeature(feature),
+        base::NotFatalUntil::M162);
   return supports;
 }
 
@@ -109,7 +110,7 @@ bool WindowFeatureController::AppPopupBrowserSupportsWindowFeature(
 }
 
 
-bool WindowFeatureController::PictureInPictureBrowserSupportsWindowFeature(
+bool WindowFeatureController::FloatingBrowserSupportsWindowFeature(
     WindowFeature feature,
     bool check_can_support) const {
   switch (feature) {
@@ -136,9 +137,8 @@ bool WindowFeatureController::SupportsWindowFeatureImpl(
     case BrowserWindowInterface::Type::TYPE_DEVTOOLS:
     case BrowserWindowInterface::Type::TYPE_APP_POPUP:
       return AppPopupBrowserSupportsWindowFeature(feature, check_can_support);
-    case BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE:
-      return PictureInPictureBrowserSupportsWindowFeature(feature,
-                                                          check_can_support);
+    case BrowserWindowInterface::Type::TYPE_FLOATING:
+      return FloatingBrowserSupportsWindowFeature(feature, check_can_support);
   }
 }
 

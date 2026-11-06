@@ -80,7 +80,11 @@ component("gtk") {
     "gtk_compat.h",
     "gtk_types.h",
     "gtk_ui_factory.h",
+    "gtk_ui_platform_stub.h",
     "gtk_util.h",
+    "native_theme_gtk.h",
+    "os_settings_provider_gtk.h",
+    "select_file_dialog_linux_gtk.h",
   ]
 
   sources = [
@@ -95,7 +99,6 @@ component("gtk") {
     "gtk_ui_factory.cc",
     "gtk_ui_platform.h",
     "gtk_ui_platform_stub.cc",
-    "gtk_ui_platform_stub.h",
     "gtk_util.cc",
     "gtk_util.h",
     "input_method_context_impl_gtk.cc",
@@ -107,7 +110,6 @@ component("gtk") {
     "os_settings_provider_gtk.cc",
     "os_settings_provider_gtk.h",
     "select_file_dialog_linux_gtk.cc",
-    "select_file_dialog_linux_gtk.h",
     "settings_provider.h",
     "settings_provider_gtk.cc",
     "settings_provider_gtk.h",

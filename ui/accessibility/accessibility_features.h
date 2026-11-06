@@ -65,10 +65,6 @@ AX_BASE_EXPORT bool IsAccessibilityTextFormattingEnabled();
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityHandleOccludingViews);
 AX_BASE_EXPORT bool IsAccessibilityHandleOccludingViewsEnabled();
 
-// Enables text change types for text changed events.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityTextChangeTypes);
-AX_BASE_EXPORT bool IsAccessibilityTextChangeTypesEnabled();
-
 // Enables the addition of `labeledby` relationships in the accessibility tree.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityLabeledBy);
 AX_BASE_EXPORT bool IsAccessibilityLabeledByEnabled();
@@ -80,22 +76,6 @@ AX_BASE_EXPORT bool IsAccessibilityTreeForViewsEnabled();
 // Serialize Views' accessibility data as soon as it changes.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kViewsAccessibilitySerializeOnDataChange);
 AX_BASE_EXPORT bool IsViewsAccessibilitySerializeOnDataChangeEnabled();
-
-// Experiment to measure the performance impact of various accessibility
-// changes.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(
-    kAccessibilityPerformanceMeasurementExperiment);
-AX_BASE_EXPORT bool IsAccessibilityPerformanceMeasurementExperimentEnabled();
-
-enum class AccessibilityPerformanceMeasurementExperimentGroup {
-  kAXModeComplete,
-  kWebContentsOnly,
-  kAXModeCompleteNoInlineTextBoxes,
-  kRendererSerializationOnly,
-};
-
-AX_BASE_EXPORT AccessibilityPerformanceMeasurementExperimentGroup
-GetAccessibilityPerformanceMeasurementExperimentGroup();
 
 // Use Alternative mechanism for acquiring image descriptions.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kImageDescriptionsAlternateRouting);
@@ -255,6 +235,13 @@ AX_BASE_EXPORT BASE_DECLARE_FEATURE(
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityAndroidMath);
 AX_BASE_EXPORT bool IsAccessibilityAndroidMathEnabled();
 
+// When enabled, web content accessibility runs on a background thread instead
+// of the UI thread. Use `IsAccessibilityAndroidBackgroundThreadEnabled()` to
+// check it. It returns true only when the device runs Android R or later and
+// the feature is enabled.
+AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityAndroidBackgroundThread);
+AX_BASE_EXPORT bool IsAccessibilityAndroidBackgroundThreadEnabled();
+
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -262,6 +249,14 @@ AX_BASE_EXPORT bool IsAccessibilityAndroidMathEnabled();
 // tools/methods to fix the AXTree. This is not available on Android.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAXTreeFixing);
 AX_BASE_EXPORT bool IsAXTreeFixingEnabled();
+
+#if !BUILDFLAG(IS_CHROMEOS)
+// Shows the Page Colors control in chrome://settings/accessibility, which lets
+// users override the web theme's forced colors independently of the operating
+// system theme. This is not available on Android or ChromeOS.
+AX_BASE_EXPORT BASE_DECLARE_FEATURE(kPageColorsSettings);
+AX_BASE_EXPORT bool IsPageColorsSettingsEnabled();
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 
 // Identify and annotate the main node of the AXTree where one was not already
 // provided.
@@ -282,13 +277,6 @@ AX_BASE_EXPORT bool IsScreenAIOCREnabled();
 // If enabled, ScreenAI library will be loaded from //third_party/screen-ai.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kScreenAITestMode);
 AX_BASE_EXPORT bool IsScreenAITestModeEnabled();
-
-#if BUILDFLAG(IS_LINUX)
-// Enables advanced partition allocation checks in ScreenAI service.
-// TODO(crbug.com/418199684): Remove when the bug is fixed.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(
-    kScreenAIPartitionAllocAdvancedChecksEnabled);
-#endif  // BUILDFLAG(IS_LINUX)
 
 #endif  // !BUILDFLAG(IS_ANDROID)
 

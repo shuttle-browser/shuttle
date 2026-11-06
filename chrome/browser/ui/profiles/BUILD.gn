@@ -83,7 +83,8 @@ source_set("impl") {
       sources += []
 
       deps += [
-        "//chrome/browser/ui:chrome_pages",
+        "//chrome/browser/enterprise",
+
         # TODO(crbug.com/430804948): This dependency is here because of
         # signin_intercept_first_run_experience_dialog.h listed above - see
         # comment in :profiles above.

@@ -191,11 +191,11 @@ source_set("policy") {
     "//chrome/common:constants",
     "//components/enterprise",
     "//components/keyed_service/core",
+    "//components/omnibox/browser",
     "//components/policy/core/browser",
     "//components/policy/core/common",
     "//components/policy/resources/webui/mojom:mojo_bindings",
     "//components/prefs",
-    "//components/omnibox/browser",
     "//components/signin/public/identity_manager",
     "//google_apis",
     "//net",
@@ -316,7 +316,6 @@ source_set("impl") {
     "//chrome/browser/browsing_data",
     "//chrome/browser/download",
     "//chrome/browser/external_protocol",
-    "//chrome/browser/first_party_sets",
     "//chrome/browser/first_run",
     "//chrome/browser/infobars",
     "//chrome/browser/lifetime",
@@ -482,6 +481,7 @@ source_set("impl") {
       "browser_signin_policy_handler.cc",
       "file_selection_dialogs_policy_handler.cc",
     ]
+    deps += [ "//chrome/browser/signin" ]
   }
 
   if (is_win) {

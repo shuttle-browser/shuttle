@@ -45,6 +45,10 @@ AuthenticatorQrCenteredView::AuthenticatorQrCenteredView(
                                    gfx::Size(qr_margin, qr_margin));
   qr_code_image_->GetViewAccessibility().SetName(
       l10n_util::GetStringUTF16(IDS_WEBAUTHN_QR_CODE_ALT_TEXT));
+  const int border_radius = views::LayoutProvider::Get()->GetCornerRadiusMetric(
+      views::Emphasis::kHigh);
+  qr_code_image_->SetBackground(views::CreateRoundedRectBackground(
+      kColorQrCodeBackground, border_radius, 2));
 
   // QR code rendering is unavailable: components/qr_code_generator was removed
   // from this build, so the image is left empty.
@@ -52,15 +56,6 @@ AuthenticatorQrCenteredView::AuthenticatorQrCenteredView(
 }
 
 AuthenticatorQrCenteredView::~AuthenticatorQrCenteredView() = default;
-
-void AuthenticatorQrCenteredView::OnThemeChanged() {
-  views::View::OnThemeChanged();
-
-  const int border_radius = views::LayoutProvider::Get()->GetCornerRadiusMetric(
-      views::Emphasis::kHigh);
-  qr_code_image_->SetBackground(views::CreateRoundedRectBackground(
-      GetColorProvider()->GetColor(kColorQrCodeBackground), border_radius, 2));
-}
 
 BEGIN_METADATA(AuthenticatorQrCenteredView)
 END_METADATA

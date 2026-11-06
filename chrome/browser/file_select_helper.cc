@@ -128,7 +128,7 @@ void DeleteFiles(std::vector<base::FilePath> paths) {
 }
 
 bool IsValidProfile(Profile* profile) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   if (!profile) {
     return false;
   }
@@ -148,6 +148,21 @@ std::u16string GetDisplayName(const base::FilePath& content_uri) {
   return display_name;
 }
 #endif
+
+#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS) || BUILDFLAG(IS_ANDROID)
+// Returns whether files picked by the user can be scanned by enterprise
+// content analysis.
+bool IsFileAttachedScanningEnabled() {
+#if BUILDFLAG(IS_ANDROID)
+  // On Android, scanning stays behind a flag until the content analysis UI is
+  // implemented there.
+  return base::FeatureList::IsEnabled(
+      enterprise_connectors::kEnableFileAttachedEnterpriseScanOnClank);
+#else
+  return true;
+#endif  // BUILDFLAG(IS_ANDROID)
+}
+#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS) || BUILDFLAG(IS_ANDROID)
 
 }  // namespace
 
@@ -449,8 +464,8 @@ bool FileSelectHelper::AbortIfWebContentsDestroyed() {
 
 void FileSelectHelper::SetFileSelectListenerForTesting(
     scoped_refptr<content::FileSelectListener> listener) {
-  DCHECK(listener);
-  DCHECK(!listener_);
+  CHECK(listener, base::NotFatalUntil::M162);
+  CHECK(!listener_, base::NotFatalUntil::M162);
   listener_ = std::move(listener);
 }
 
@@ -558,10 +573,10 @@ void FileSelectHelper::RunFileChooser(
     content::RenderFrameHost* render_frame_host,
     scoped_refptr<content::FileSelectListener> listener,
     FileChooserParamsPtr params) {
-  DCHECK(!render_frame_host_);
-  DCHECK(!web_contents_);
-  DCHECK(listener);
-  DCHECK(!listener_);
+  CHECK(!render_frame_host_, base::NotFatalUntil::M162);
+  CHECK(!web_contents_, base::NotFatalUntil::M162);
+  CHECK(listener, base::NotFatalUntil::M162);
+  CHECK(!listener_, base::NotFatalUntil::M162);
   DCHECK(params->default_file_name.empty() ||
          params->mode == FileChooserParams::Mode::kSave)
       << "The default_file_name parameter should only be specified for Save "
@@ -612,8 +627,8 @@ void FileSelectHelper::GetSanitizedFilenameOnUIThread(
 void FileSelectHelper::RunFileChooserOnUIThread(
     const base::FilePath& default_file_path,
     FileChooserParamsPtr params) {
-  DCHECK(params);
-  DCHECK(!select_file_dialog_);
+  CHECK(params, base::NotFatalUntil::M162);
+  CHECK(!select_file_dialog_, base::NotFatalUntil::M162);
   if (AbortIfWebContentsDestroyed())
     return;
 
@@ -751,8 +766,8 @@ void FileSelectHelper::EnumerateDirectoryImpl(
     content::WebContents* tab,
     scoped_refptr<content::FileSelectListener> listener,
     const base::FilePath& path) {
-  DCHECK(listener);
-  DCHECK(!listener_);
+  CHECK(listener, base::NotFatalUntil::M162);
+  CHECK(!listener_, base::NotFatalUntil::M162);
   dialog_type_ = ui::SelectFileDialog::SELECT_NONE;
   web_contents_ = tab;
   listener_ = std::move(listener);
@@ -841,7 +856,7 @@ void FileSelectHelper::OnVisibilityChanged(content::Visibility visibility) {
 
 void FileSelectHelper::InitLifecycleObserver(
     content::WebContents* web_contents) {
-  DCHECK(web_contents);
+  CHECK(web_contents, base::NotFatalUntil::M162);
   content::WebContentsObserver::Observe(web_contents);
 
   tabs::TabInterface* tab_interface =

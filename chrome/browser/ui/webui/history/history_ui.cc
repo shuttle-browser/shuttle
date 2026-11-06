@@ -80,8 +80,14 @@ content::WebUIDataSource* CreateAndAddHistoryUIHTMLSource(Profile* profile) {
   source->AddBoolean("isGlicEnabled", false);
   source->AddBoolean("isGlicWebActuationAvailable", false);
 
+  source->AddBoolean(
+      "isBrowsingHistoryFilterByActorEnabled",
+      base::FeatureList::IsEnabled(history::kBrowsingHistoryFilterByActor));
   // Shuttle: no sync device info, so no filtering by device.
   source->AddBoolean("isBrowsingHistoryFilterByDeviceEnabled", false);
+  source->AddBoolean(
+      "isBrowsingHistoryFilterByTimePeriodEnabled",
+      base::FeatureList::IsEnabled(history::kBrowsingHistoryFilterByTime));
   source->AddBoolean("isCriticalActionsEnabled", false);
   source->AddBoolean("isCriticalActionsChatLinkoutsEnabled", false);
 

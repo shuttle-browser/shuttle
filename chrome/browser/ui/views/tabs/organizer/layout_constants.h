@@ -5,6 +5,7 @@
 #ifndef CHROME_BROWSER_UI_VIEWS_TABS_ORGANIZER_LAYOUT_CONSTANTS_H_
 #define CHROME_BROWSER_UI_VIEWS_TABS_ORGANIZER_LAYOUT_CONSTANTS_H_
 
+#include "chrome/browser/ui/color/chrome_color_id.h"
 #include "ui/color/color_id.h"
 #include "ui/gfx/geometry/insets.h"
 
@@ -18,7 +19,7 @@ inline constexpr int kOrganizerPanelDefaultWidth = 320;
 
 // Background color of the organizer panel.
 inline constexpr ui::ColorId kOrganizerPanelBackgroundColor =
-    ui::kColorSysSurface2;
+    kColorOrganizerPanelBackground;
 
 // Margins for the panel controls view.
 inline constexpr gfx::Insets kOrganizerPanelControlsMargins =

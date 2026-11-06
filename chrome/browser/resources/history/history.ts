@@ -13,7 +13,7 @@ export {CrDialogElement} from 'chrome://resources/cr_elements/cr_dialog/cr_dialo
 export {CrRouter} from 'chrome://resources/js/cr_router.js';
 export {getTrustedHTML} from 'chrome://resources/js/static_types.js';
 export {HistoryAppElement} from './app.js';
-export type {BrowserProxy, RemoveVisitsRequest} from './browser_proxy.js';
+export type {BrowserProxy, HistoryIdentityState, RemoveVisitsRequest} from './browser_proxy.js';
 export {BrowserProxyImpl} from './browser_proxy.js';
 export {HistoryPageViewHistogram, VisitContextMenuAction} from './constants.js';
 export {HistoryFilterChipsElement} from './history_filter_chips.js';

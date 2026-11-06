@@ -125,7 +125,7 @@ void ClearBrowsingDataHandler::OnJavascriptAllowed() {
   dse_service_observation_.Observe(
       TemplateURLServiceFactory::GetForProfile(profile_));
 
-  DCHECK(counters_.empty());
+  CHECK(counters_.empty(), base::NotFatalUntil::M162);
 
   for (const std::string& pref : kCounterPrefs) {
     AddCounter(

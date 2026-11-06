@@ -125,7 +125,7 @@ NTPResourceCache::WindowType NTPResourceCache::GetWindowType(Profile* profile) {
 base::RefCountedMemory* NTPResourceCache::GetNewTabHTML(
     WindowType win_type,
     const content::WebContents::Getter& wc_getter) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   switch (win_type) {
     case NORMAL:
       if (!new_tab_normal_html_) {
@@ -143,7 +143,7 @@ base::RefCountedMemory* NTPResourceCache::GetNewTabHTML(
 base::RefCountedMemory* NTPResourceCache::GetNewTabCSS(
     WindowType win_type,
     const content::WebContents::Getter& wc_getter) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (!new_tab_css_) {
     CreateNewTabCSS(wc_getter);
@@ -161,7 +161,8 @@ void NTPResourceCache::Shutdown() {
 
 void NTPResourceCache::OnNativeThemeUpdated(ui::NativeTheme* updated_theme) {
   // TODO(crbug.com/40677117): Remove the global accessor to NativeTheme.
-  DCHECK_EQ(updated_theme, ui::NativeTheme::GetInstanceForNativeUi());
+  CHECK_EQ(updated_theme, ui::NativeTheme::GetInstanceForNativeUi(),
+           base::NotFatalUntil::M162);
   Invalidate();
 }
 
@@ -174,7 +175,7 @@ void NTPResourceCache::CreateNewTabCSS(
   auto* web_contents = wc_getter.Run();
   const ui::NativeTheme* native_theme =
       webui::GetNativeThemeDeprecated(web_contents);
-  DCHECK(native_theme);
+  CHECK(native_theme, base::NotFatalUntil::M162);
 
   const ui::ThemeProvider& tp =
       ThemeService::GetThemeProviderForProfile(profile_);

@@ -207,7 +207,7 @@ TabSharingUIViews::TabSharingUIViews(
       capture_type_(capture_type),
       captured_surface_control_active_(captured_surface_control_active),
       uma_logger_(content::DesktopMediaID::Type::TYPE_WEB_CONTENTS) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (auto* rfh = content::RenderFrameHost::FromID(capturer)) {
     if (auto* rph = rfh->GetProcess()) {
@@ -241,7 +241,7 @@ gfx::NativeViewId TabSharingUIViews::OnStarted(
     base::OnceClosure stop_callback,
     content::MediaStreamUI::SourceCallback source_callback,
     const std::vector<content::DesktopMediaID>& media_ids) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   source_callback_ = std::move(source_callback);
   stop_callback_ = std::move(stop_callback);
   CreateInfobarsForAllTabs();
@@ -252,7 +252,7 @@ gfx::NativeViewId TabSharingUIViews::OnStarted(
 
 void TabSharingUIViews::OnRegionCaptureRectChanged(
     const std::optional<gfx::Rect>& region_capture_rect) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (!shared_tab_) {
     return;
@@ -268,18 +268,18 @@ void TabSharingUIViews::OnRegionCaptureRectChanged(
 }
 
 void TabSharingUIViews::StartSharing(infobars::InfoBar* infobar) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   if (source_callback_.is_null()) {
     return;
   }
 
   WebContents* shared_tab =
       infobars::ContentInfoBarManager::WebContentsFromInfoBar(infobar);
-  DCHECK(shared_tab);
-  DCHECK_EQ(infobars_[shared_tab], infobar);
+  CHECK(shared_tab, base::NotFatalUntil::M162);
+  CHECK_EQ(infobars_[shared_tab], infobar, base::NotFatalUntil::M162);
 
   RenderFrameHost* main_frame = shared_tab->GetPrimaryMainFrame();
-  DCHECK(main_frame);
+  CHECK(main_frame, base::NotFatalUntil::M162);
   source_callback_.Run(
       content::DesktopMediaID(content::DesktopMediaID::TYPE_WEB_CONTENTS,
                               content::DesktopMediaID::kNullId,
@@ -290,7 +290,7 @@ void TabSharingUIViews::StartSharing(infobars::InfoBar* infobar) {
 }
 
 void TabSharingUIViews::StopSharing(std::string_view reason) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   if (!stop_callback_.is_null()) {
     if (log_message_callback_) {
       log_message_callback_.Run(
@@ -313,7 +313,7 @@ ScreensharingControlsHistogramLogger& TabSharingUIViews::GetUmaLogger() {
 }
 
 void TabSharingUIViews::OnBrowserCreated(BrowserWindowInterface* browser) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   CHECK(browser);
 
   if (IsCapturableByCapturer(browser->GetProfile())) {
@@ -391,7 +391,7 @@ void TabSharingUIViews::PrimaryPageChanged(content::Page& page) {
 }
 
 void TabSharingUIViews::WebContentsDestroyed() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   // TODO(crbug.com/40207587): Prevent StopSharing() from interacting with
   // |shared_tab_| while it is being destroyed.
   StopSharing("WebContentsDestroyed");
@@ -402,7 +402,8 @@ void TabSharingUIViews::OnConfidentialityChanged(
     policy::DlpRulesManager::Level old_restriction_level,
     policy::DlpRulesManager::Level new_restriction_level,
     content::WebContents* web_contents) {
-  DCHECK(old_restriction_level != new_restriction_level);
+  CHECK(old_restriction_level != new_restriction_level,
+        base::NotFatalUntil::M162);
   if (old_restriction_level == policy::DlpRulesManager::Level::kBlock ||
       new_restriction_level == policy::DlpRulesManager::Level::kBlock) {
     // We only call this function if it was previously blocked or should be
@@ -418,7 +419,7 @@ void TabSharingUIViews::ApplyDlpForAllUsersForTesting() {
 #endif
 
 void TabSharingUIViews::CreateInfobarsForAllTabs() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   GlobalBrowserCollection::GetInstance()->ForEach(
       [this](BrowserWindowInterface* browser) {
         if (!IsCapturableByCapturer(browser->GetProfile())) {
@@ -447,15 +448,15 @@ void TabSharingUIViews::CreateInfobarsForAllTabs() {
 }
 
 void TabSharingUIViews::CreateInfobarForWebContents(WebContents* contents) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(contents);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK(contents, base::NotFatalUntil::M162);
 
   // Don't show the info bar in a Picture in Picture window, since it doesn't
   // typically fit anyway.
   BrowserWindowInterface* browser =
       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents);
-  if (browser && browser->GetType() ==
-                     BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE) {
+  if (browser &&
+      browser->GetType() == BrowserWindowInterface::Type::TYPE_FLOATING) {
     return;
   }
 
@@ -768,7 +769,7 @@ void TabSharingUIViews::UpdateTabCaptureData(WebContents* contents,
 
 bool TabSharingUIViews::IsShareInsteadButtonPossible(
     content::WebContents* web_contents) const {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (source_callback_.is_null()) {
     // No callback to support share-this-tab-instead.
@@ -796,14 +797,14 @@ bool TabSharingUIViews::IsShareInsteadButtonPossible(
 }
 
 bool TabSharingUIViews::IsCapturableByCapturer(const Profile* profile) const {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   CHECK(profile);
 
   return profile->GetOriginalProfile() == profile_;
 }
 
 void TabSharingUIViews::OnCapturedSurfaceControlByCapturer() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (!captured_surface_control_active_) {
     captured_surface_control_active_ = true;
@@ -824,7 +825,7 @@ TabSharingUIViews::CapturedSurfaceControlObserver::
     CapturedSurfaceControlObserver(content::WebContents* web_contents,
                                    base::OnceClosure callback)
     : callback_(std::move(callback)) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   CHECK(callback_);
 
   Observe(web_contents);
@@ -835,7 +836,7 @@ TabSharingUIViews::CapturedSurfaceControlObserver::
 
 void TabSharingUIViews::CapturedSurfaceControlObserver::
     OnCapturedSurfaceControl() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   Observe(nullptr);
 

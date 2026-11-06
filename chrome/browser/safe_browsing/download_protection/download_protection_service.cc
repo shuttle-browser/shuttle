@@ -159,12 +159,12 @@ DownloadProtectionService::DownloadProtectionService(
           DownloadProtectionDelegate::CreateForPlatform()) {}
 
 DownloadProtectionService::~DownloadProtectionService() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   CancelPendingRequests();
 }
 
 void DownloadProtectionService::SetEnabled(bool enabled) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (enabled == enabled_) {
     return;
   }
@@ -248,7 +248,7 @@ bool DownloadProtectionService::ShouldCheckDownloadUrl(
 void DownloadProtectionService::CheckDownloadUrl(
     download::DownloadItem* item,
     CheckDownloadCallback callback) {
-  DCHECK(!item->GetUrlChain().empty());
+  CHECK(!item->GetUrlChain().empty(), base::NotFatalUntil::M162);
   content::WebContents* web_contents =
       content::DownloadItemUtils::GetWebContents(item);
   // |web_contents| can be null in tests.
@@ -307,19 +307,19 @@ void DownloadProtectionService::CheckFileSystemAccessWrite(
 base::CallbackListSubscription
 DownloadProtectionService::RegisterClientDownloadRequestCallback(
     const ClientDownloadRequestCallback& callback) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   return client_download_request_callbacks_.Add(callback);
 }
 
 base::CallbackListSubscription
 DownloadProtectionService::RegisterFileSystemAccessWriteRequestCallback(
     const FileSystemAccessWriteRequestCallback& callback) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   return file_system_access_write_request_callbacks_.Add(callback);
 }
 
 void DownloadProtectionService::CancelPendingRequests() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   // It is sufficient to delete the list of CheckClientDownloadRequests.
   context_download_requests_.clear();
 }
@@ -328,10 +328,12 @@ void DownloadProtectionService::RequestFinished(
     CheckClientDownloadRequestBase* request,
     content::BrowserContext* browser_context,
     DownloadCheckResult result) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   MaybeLogSecuritySensitiveDownloadEvent(browser_context, result);
-  DCHECK(context_download_requests_.contains(browser_context));
-  DCHECK(context_download_requests_[browser_context].contains(request));
+  CHECK(context_download_requests_.contains(browser_context),
+        base::NotFatalUntil::M162);
+  CHECK(context_download_requests_[browser_context].contains(request),
+        base::NotFatalUntil::M162);
   context_download_requests_[browser_context].erase(request);
 }
 
@@ -359,7 +361,7 @@ void DownloadProtectionService::ShowDetailsForDownload(
 
   navigator->OpenURL(
       content::OpenURLParams::CreateBrowserInitiated(
-          learn_more_url, WindowOpenDisposition::NEW_FOREGROUND_TAB,
+          learn_more_url, WindowOpenDisposition::kNewForegroundTab,
           ui::PAGE_TRANSITION_LINK),
       /*navigation_handle_callback=*/{});
 }
@@ -374,11 +376,13 @@ void DownloadProtectionService::SetDownloadProtectionData(
     download::DownloadItem* item,
     const std::string& token,
     const ClientDownloadResponse::Verdict& verdict,
-    const ClientDownloadResponse::TailoredVerdict& tailored_verdict) {
+    const ClientDownloadResponse::TailoredVerdict& tailored_verdict,
+    bool is_registered_app_store) {
   if (item) {
-    item->SetUserData(kDownloadProtectionDataKey,
-                      std::make_unique<DownloadProtectionData>(
-                          token, verdict, tailored_verdict));
+    item->SetUserData(
+        kDownloadProtectionDataKey,
+        std::make_unique<DownloadProtectionData>(
+            token, verdict, tailored_verdict, is_registered_app_store));
   }
 }
 
@@ -425,10 +429,25 @@ DownloadProtectionService::GetDownloadProtectionTailoredVerdict(
     return ClientDownloadResponse::TailoredVerdict();
 }
 
+// static
+bool DownloadProtectionService::WasFromRegisteredAppStore(
+    const download::DownloadItem* item) {
+  if (!item) {
+    return false;
+  }
+  const base::SupportsUserData::Data* protection_data =
+      item->GetUserData(kDownloadProtectionDataKey);
+  if (protection_data) {
+    return static_cast<const DownloadProtectionData*>(protection_data)
+        ->is_registered_app_store();
+  }
+  return false;
+}
+
 void DownloadProtectionService::MaybeSendDangerousDownloadOpenedReport(
     download::DownloadItem* item,
     bool show_download_in_folder) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   content::BrowserContext* browser_context =
       content::DownloadItemUtils::GetBrowserContext(item);
   Profile* profile = Profile::FromBrowserContext(browser_context);
@@ -536,10 +555,10 @@ void DownloadProtectionService::CheckDownloadWithLocalDecryption(
   DownloadCoreService* download_core_service =
       DownloadCoreServiceFactory::GetForBrowserContext(
           content::DownloadItemUtils::GetBrowserContext(item));
-  DCHECK(download_core_service);
+  CHECK(download_core_service, base::NotFatalUntil::M162);
   ChromeDownloadManagerDelegate* delegate =
       download_core_service->GetDownloadManagerDelegate();
-  DCHECK(delegate);
+  CHECK(delegate, base::NotFatalUntil::M162);
 
   DownloadItemWarningData::SetHasShownLocalDecryptionPrompt(item, true);
 

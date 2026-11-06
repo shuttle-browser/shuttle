@@ -5,8 +5,10 @@
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
 
 #include <atomic>
+#include <optional>
 #include <string_view>
 
+#include "base/json/json_writer.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/ui/browser_window.h"
@@ -29,6 +31,7 @@
 #include "chrome/browser/ui/webui/searchbox/webui_omnibox_handler.h"
 #include "chrome/browser/ui/webui/theme_colors_source_manager.h"
 #include "chrome/browser/ui/webui/theme_colors_source_manager_factory.h"
+#include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_user_profile.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
@@ -42,6 +45,18 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/webui/webui_util.h"
+
+namespace {
+
+// Returns whether the WebUIDataSource of `web_ui` is shared by the windows of
+// all profiles, i.e. it is in TopChromeWebUIProfile. If so, the loadTimeData
+// values that depend on the profile are passed to each frame instead of being
+// in the data source.
+bool IsWebUIDataSourceShared(content::WebUI* web_ui) {
+  return Profile::FromWebUI(web_ui)->IsTopChromeWebUIProfile();
+}
+
+}  // namespace
 
 bool OmniboxPopupUIConfig::IsWebUIEnabled(
     content::BrowserContext* browser_context) {
@@ -62,19 +77,18 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
   content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
       profile_, chrome::kChromeUIOmniboxPopupHost);
 
-  const bool session_allows_drag_and_drop = false;
-
-  source->AddLocalizedStrings(SearchboxHandler::GetWebUIDataSourceDict(
-      Profile::FromWebUI(web_ui),
-      {.enable_voice_search = false,
-       .enable_lens_search = false,
-       .session_allows_drag_and_drop = session_allows_drag_and_drop}));
+  source->AddLocalizedStrings(
+      SearchboxHandler::GetProfileIndependentWebUIDataSourceDict(
+          {.enable_voice_search = false, .enable_lens_search = false}));
+  // The values that depend on the profile. If the data source is shared by the
+  // windows of all profiles, WebUIRenderFrameCreated() passes them to each
+  // frame instead.
+  if (!IsWebUIDataSourceShared(web_ui)) {
+    source->AddLocalizedStrings(GetProfileLoadTimeData(profile_));
+  }
 
   source->AddBoolean("isTopChromeSearchbox", true);
   FullWebUIOmniboxLayoutHelper::PopulateLoadTimeData(source);
-  source->AddString("searchboxDefaultIcon",
-                    GetDefaultSearchProviderIcon(
-                        TemplateURLServiceFactory::GetForProfile(profile_)));
   source->AddBoolean(
       "omniboxPopupDebugEnabled",
       base::FeatureList::IsEnabled(omnibox::kWebUIOmniboxPopupDebug));
@@ -129,6 +143,32 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
 OmniboxPopupUI::~OmniboxPopupUI() = default;
 
 WEB_UI_CONTROLLER_TYPE_IMPL(OmniboxPopupUI)
+
+// static
+base::DictValue OmniboxPopupUI::GetProfileLoadTimeData(Profile* profile) {
+  // Shuttle: no contextual search session, so drag and drop of context is
+  // never allowed.
+  base::DictValue dict =
+      SearchboxHandler::GetProfileDependentWebUIDataSourceDict(
+          profile, {.session_allows_drag_and_drop = false});
+
+  dict.Set("searchboxDefaultIcon",
+           GetDefaultSearchProviderIcon(
+               TemplateURLServiceFactory::GetForProfile(profile)));
+  return dict;
+}
+
+void OmniboxPopupUI::WebUIRenderFrameCreated(
+    content::RenderFrameHost* render_frame_host) {
+  // If the data source isn't shared, the constructor added these values to it.
+  if (!IsWebUIDataSourceShared(web_ui())) {
+    return;
+  }
+  if (std::optional<std::string> json = base::WriteJson(GetProfileLoadTimeData(
+          webui::GetUserProfile(web_ui()->GetWebContents())))) {
+    render_frame_host->SetWebUIProperty("profileLoadTimeData", *json);
+  }
+}
 
 // The popup's chrome://theme/colors.css and layout_constants_v0.css are
 // render-blocking stylesheets in <head>. Serve them from the renderer without

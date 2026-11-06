@@ -159,6 +159,7 @@ source_set("impl") {
   ]
   public_deps = [ ":signin" ]
   deps = [
+    "//base:i18n",
     "//chrome/browser:browser_process_platform_part",
     "//chrome/browser:global_features",
     "//chrome/browser/content_settings:content_settings_factory",
@@ -278,6 +279,7 @@ source_set("impl") {
       "//chromeos/ash/components/account_manager",
       "//chromeos/ash/components/install_attributes",
       "//chromeos/ash/components/network",
+      "//components/signin/public/base:device_id_helper",
     ]
   } else {
     sources += [

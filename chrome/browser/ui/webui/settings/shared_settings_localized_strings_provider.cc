@@ -142,6 +142,18 @@ void AddLiveCaptionSectionStrings(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_CAPTIONS_MASK_OFFENSIVE_WORDS_TITLE},
       {"captionsEnableLiveCaptionSubtitle",
        IDS_SETTINGS_CAPTIONS_ENABLE_LIVE_CAPTION_SUBTITLE},
+      {"speechRecognitionSmallExpertModelTitle",
+       IDS_SETTINGS_CAPTIONS_SPEECH_RECOGNITION_SMALL_EXPERT_MODEL_SECTION_TITLE},
+      {"speechRecognitionSmallExpertModelSubtitle",
+       IDS_SETTINGS_CAPTIONS_SPEECH_RECOGNITION_SMALL_EXPERT_MODEL_SECTION_SUBTITLE},
+      {"speechRecognitionSmallExpertModelDeleteButton",
+       IDS_SETTINGS_CAPTIONS_SPEECH_RECOGNITION_SMALL_EXPERT_MODEL_DELETE_BUTTON},
+      {"speechRecognitionSmallExpertModelDownloadProgress",
+       IDS_SETTINGS_CAPTIONS_LIVE_CAPTION_DOWNLOAD_PROGRESS},
+      {"speechRecognitionSmallExpertModelDownloadComplete",
+       IDS_SETTINGS_CAPTIONS_LIVE_CAPTION_DOWNLOAD_COMPLETE},
+      {"speechRecognitionSmallExpertModelDownloadError",
+       IDS_SETTINGS_CAPTIONS_LIVE_CAPTION_DOWNLOAD_ERROR},
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
 
@@ -150,6 +162,10 @@ void AddLiveCaptionSectionStrings(content::WebUIDataSource* html_source) {
   html_source->AddBoolean("enableLiveCaption",
                           captions::IsLiveCaptionFeatureSupported());
   html_source->AddBoolean("enableLiveCaptionMultiLanguage", true);
+  html_source->AddBoolean(
+      "enableLiveCaptionSpeechRecognitionSmallExpertModel",
+      base::FeatureList::IsEnabled(
+          media::kLiveCaptionSpeechRecognitionSmallExpertModel));
 
   html_source->AddBoolean("enableLiveTranslate", liveTranslateEnabled);
 }

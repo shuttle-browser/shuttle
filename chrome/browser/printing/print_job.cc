@@ -107,7 +107,7 @@ PrefService* GetPrefsForWebContents(content::WebContents* web_contents) {
 }
 
 content::WebContents* GetWebContents(content::GlobalRenderFrameHostId rfh_id) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   auto* rfh = content::RenderFrameHost::FromID(rfh_id);
   return rfh ? content::WebContents::FromRenderFrameHost(rfh) : nullptr;
 }
@@ -171,18 +171,20 @@ class PrintJob::PdfConversionState {
 
 PrintJob::PrintJob(PrintJobManager* print_job_manager)
     : print_job_manager_(print_job_manager) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(print_job_manager_);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK(print_job_manager_, base::NotFatalUntil::M162);
 }
 
 PrintJob::PrintJob() = default;
 
 PrintJob::~PrintJob() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   // The job should be finished (or at least canceled) when it is destroyed.
+  // TODO(crbug.com/574773963): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(!is_job_pending_);
-  DCHECK(!is_canceling_);
-  DCHECK(!worker_ || !worker_->IsRunning());
+  CHECK(!is_canceling_, base::NotFatalUntil::M162);
+  CHECK(!worker_ || !worker_->IsRunning(), base::NotFatalUntil::M162);
 
   for (auto& observer : observers_) {
     observer.OnDestruction();
@@ -192,11 +194,11 @@ PrintJob::~PrintJob() {
 void PrintJob::Initialize(std::unique_ptr<PrinterQuery> query,
                           const std::u16string& name,
                           uint32_t page_count) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(!worker_);
-  DCHECK(!is_job_pending_);
-  DCHECK(!is_canceling_);
-  DCHECK(!document_);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK(!worker_, base::NotFatalUntil::M162);
+  CHECK(!is_job_pending_, base::NotFatalUntil::M162);
+  CHECK(!is_canceling_, base::NotFatalUntil::M162);
+  CHECK(!document_, base::NotFatalUntil::M162);
   worker_ = query->TransferContextToNewWorker(this);
   worker_->Start();
   rfh_id_ = query->rfh_id();
@@ -237,7 +239,7 @@ void PrintJob::StartConversionToNativeFormat(
     const gfx::Rect& content_area,
     const gfx::Point& physical_offsets,
     const GURL& url) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (PrintedDocument::HasDebugDumpPath())
     document()->DebugDumpData(print_data.get(), FILE_PATH_LITERAL(".pdf"));
@@ -261,7 +263,7 @@ void PrintJob::StartConversionToNativeFormat(
 }
 
 void PrintJob::ResetPageMapping() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   pdf_page_mapping_ =
       GetFullPageMapping(pdf_page_mapping_, document_->page_count());
@@ -269,7 +271,7 @@ void PrintJob::ResetPageMapping() {
 #endif  // BUILDFLAG(IS_WIN)
 
 void PrintJob::StartPrinting() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (!worker_->IsRunning() || is_job_pending_) {
     NOTREACHED();
@@ -302,7 +304,7 @@ void PrintJob::StartPrinting() {
 }
 
 void PrintJob::Stop() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (quit_closure_) {
     // In case we're running a nested run loop to wait for a job to finish,
@@ -323,7 +325,7 @@ void PrintJob::Stop() {
 }
 
 void PrintJob::Cancel() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (is_canceling_)
     return;
@@ -345,7 +347,7 @@ void PrintJob::Cancel() {
 
 
 bool PrintJob::FlushJob(base::TimeDelta timeout) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   // Make sure the object outlive this message loop.
   scoped_refptr<PrintJob> handle(this);
@@ -394,8 +396,8 @@ void PrintJob::StartPdfToEmfConversion(
     const gfx::Size& page_size,
     const gfx::Rect& content_area,
     const GURL& url) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(!pdf_conversion_state_);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK(!pdf_conversion_state_, base::NotFatalUntil::M162);
   pdf_conversion_state_ = std::make_unique<PdfConversionState>(
       page_size, content_area, use_skia_, url);
 
@@ -418,7 +420,7 @@ void PrintJob::StartPdfToEmfConversion(
 }
 
 void PrintJob::OnPdfConversionStarted(uint32_t page_count) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (page_count <= 0) {
     // Be sure to live long enough.
@@ -435,8 +437,8 @@ void PrintJob::OnPdfConversionStarted(uint32_t page_count) {
 void PrintJob::OnPdfPageConverted(uint32_t page_index,
                                   float scale_factor,
                                   std::unique_ptr<MetafilePlayer> metafile) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(pdf_conversion_state_);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK(pdf_conversion_state_, base::NotFatalUntil::M162);
   if (!document_ || !metafile || page_index == kInvalidPageIndex ||
       page_index >= pdf_page_mapping_.size()) {
     // Be sure to live long enough.
@@ -463,8 +465,8 @@ void PrintJob::StartPdfToTextConversion(
     scoped_refptr<base::RefCountedMemory> bytes,
     const gfx::Size& page_size,
     const GURL& url) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(!pdf_conversion_state_);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK(!pdf_conversion_state_, base::NotFatalUntil::M162);
   pdf_conversion_state_ = std::make_unique<PdfConversionState>(
       gfx::Size(), gfx::Rect(), use_skia_, url);
   gfx::Rect page_area = gfx::Rect(0, 0, page_size.width(), page_size.height());
@@ -484,8 +486,8 @@ void PrintJob::StartPdfToPostScriptConversion(
     const gfx::Point& physical_offsets,
     bool ps_level2,
     const GURL& url) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(!pdf_conversion_state_);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK(!pdf_conversion_state_, base::NotFatalUntil::M162);
   pdf_conversion_state_ = std::make_unique<PdfConversionState>(
       gfx::Size(), gfx::Rect(), use_skia_, url);
   const PrintSettings& settings = document()->settings();
@@ -510,8 +512,8 @@ void PrintJob::StartPdfToPostScriptConversion(
 
 void PrintJob::UpdatePrintedDocument(
     scoped_refptr<PrintedDocument> new_document) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(new_document);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK(new_document, base::NotFatalUntil::M162);
 
   document_ = new_document;
   if (worker_)
@@ -519,7 +521,7 @@ void PrintJob::UpdatePrintedDocument(
 }
 
 void PrintJob::ClearPrintedDocument() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (!document_)
     return;
@@ -530,9 +532,9 @@ void PrintJob::ClearPrintedDocument() {
 }
 
 void PrintJob::SyncPrintedDocumentToWorker() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(worker_);
-  DCHECK(!is_job_pending_);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK(worker_, base::NotFatalUntil::M162);
+  CHECK(!is_job_pending_, base::NotFatalUntil::M162);
   worker_->PostTask(
       FROM_HERE,
       base::BindOnce(&HoldRefCallback, base::WrapRefCounted(this),
@@ -543,7 +545,7 @@ void PrintJob::SyncPrintedDocumentToWorker() {
 
 #if BUILDFLAG(IS_WIN)
 void PrintJob::OnPageDone(PrintedPage* page) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   if (pdf_conversion_state_) {
     pdf_conversion_state_->OnPageProcessed(
         base::BindRepeating(&PrintJob::OnPdfPageConverted, this));
@@ -553,7 +555,7 @@ void PrintJob::OnPageDone(PrintedPage* page) {
 #endif  // BUILDFLAG(IS_WIN)
 
 void PrintJob::OnFailed() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   Stop();
 
@@ -565,7 +567,7 @@ void PrintJob::OnFailed() {
 }
 
 void PrintJob::OnDocDone(int job_id, PrintedDocument* document) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (printing_start_time_.has_value()) {
     base::UmaHistogramMediumTimes(
@@ -586,7 +588,7 @@ void PrintJob::OnDocDone(int job_id, PrintedDocument* document) {
 }
 
 void PrintJob::OnDocumentDone() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   // Be sure to live long enough. The instance could be destroyed by the
   // `JOB_DONE` broadcast.
@@ -603,7 +605,7 @@ void PrintJob::OnDocumentDone() {
 }
 
 void PrintJob::ControlledWorkerShutdown() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   // The deadlock this code works around is specific to window messaging on
   // Windows, so we aren't likely to need it on any other platforms.

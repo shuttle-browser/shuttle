@@ -306,11 +306,12 @@ void ChromePageInfoDelegate::OpenCookiesDialog() {
 void ChromePageInfoDelegate::OpenCertificateDialog(
     net::X509Certificate* certificate) {
   gfx::NativeWindow top_window = web_contents_->GetTopLevelNativeWindow();
-  DCHECK(certificate);
-  DCHECK(top_window);
+  CHECK(certificate, base::NotFatalUntil::M162);
+  CHECK(top_window, base::NotFatalUntil::M162);
 
   FocusWebContents();
-  ShowCertificateViewer(web_contents_, top_window, certificate);
+  ShowCertificateViewer(web_contents_, top_window, certificate,
+                        CertificateViewerEntrypoint::kPageInfo);
 }
 
 void ChromePageInfoDelegate::OpenConnectionHelpCenterPage(
@@ -319,7 +320,7 @@ void ChromePageInfoDelegate::OpenConnectionHelpCenterPage(
       content::OpenURLParams::CreateBrowserInitiated(
           GURL(chrome::kPageInfoHelpCenterURL),
           ui::DispositionFromEventFlags(
-              event.flags(), WindowOpenDisposition::NEW_FOREGROUND_TAB),
+              event.flags(), WindowOpenDisposition::kNewForegroundTab),
           ui::PAGE_TRANSITION_LINK),
       /*navigation_handle_callback=*/{});
 }
@@ -356,7 +357,7 @@ void ChromePageInfoDelegate::OpenSafeBrowsingHelpCenterPage(
       content::OpenURLParams::CreateBrowserInitiated(
           GURL(url),
           ui::DispositionFromEventFlags(
-              event_flags, WindowOpenDisposition::NEW_FOREGROUND_TAB),
+              event_flags, WindowOpenDisposition::kNewForegroundTab),
           ui::PAGE_TRANSITION_LINK),
       /*navigation_handle_callback=*/{});
 }

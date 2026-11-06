@@ -114,7 +114,7 @@ ExtensionPostInstallDialogModel::ExtensionPostInstallDialogModel(
 ExtensionPostInstallDialogModel::~ExtensionPostInstallDialogModel() = default;
 
 std::u16string ExtensionPostInstallDialogModel::GetHowToUseText() const {
-  DCHECK(show_how_to_use_);
+  CHECK(show_how_to_use_, base::NotFatalUntil::M162);
   return how_to_use_text_;
 }
 

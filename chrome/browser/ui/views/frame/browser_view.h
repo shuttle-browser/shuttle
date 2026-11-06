@@ -311,8 +311,12 @@ class BrowserView : public BrowserWindow,
   // normal window (i.e. a browser window, not an app or popup).
   bool GetIsNormalType() const;
 
+  // Returns true if the Browser object associated with this BrowserView is a
+  // floating window (e.g. Document Picture-in-Picture or always-on-top popup).
+  bool GetIsFloatingType() const;
+
   // Returns true if the Browser object associated with this BrowserView is for
-  // a Picture in Picture window.
+  // a Document Picture-in-Picture window.
   bool GetIsPictureInPictureType() const;
 
   // Returns true if the top browser controls (a.k.a. top-chrome UIs) are
@@ -526,7 +530,7 @@ class BrowserView : public BrowserWindow,
       ui::mojom::WindowShowState* show_state) const override;
   views::View* GetContentsView() override;
   views::ClientView* CreateClientView(views::Widget* widget) override;
-  views::View* CreateOverlayView() override;
+  std::unique_ptr<views::View> CreateOverlayView() override;
 #if BUILDFLAG(IS_MAC)
   views::View* CreateMacOverlayView();
 #endif
@@ -641,7 +645,10 @@ class BrowserView : public BrowserWindow,
   TabDragTarget* GetTabDragTarget(const gfx::Point& point_in_screen);
 
 #if BUILDFLAG(IS_CHROMEOS)
-  // This is used only for SWA/PWA scenario.
+  // This is used only for SWA/PWA scenario. Not used when
+  // features::kUseUnifiedLockedStateController is enabled.
+  // TODO(crbug.com/438540029): Remove this when the migration to
+  // LockedStateController is completed.
   void OnLockedForOnTaskUpdated(bool locked_for_on_task);
 
   bool IsLockedFullscreen() const;

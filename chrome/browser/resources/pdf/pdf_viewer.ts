@@ -13,6 +13,9 @@ import './elements/viewer_password_dialog.js';
 import './elements/ink_text_annotations.js';
 import './elements/viewer_bottom_toolbar.js';
 import './elements/viewer_side_panel.js';
+import './elements/viewer_signature_bottom_toolbar.js';
+import './elements/viewer_signature_dialog.js';
+import './elements/viewer_signature_side_panel.js';
 import './elements/viewer_text_bottom_toolbar.js';
 import './elements/viewer_text_side_panel.js';
 // </if>
@@ -294,6 +297,7 @@ export class PdfViewerElement extends PdfViewerBaseElement {
 
       // <if expr="enable_pdf_ink2">
       pdfInk2Enabled_: {type: Boolean},
+      pdfSignaturesEnabled_: {type: Boolean},
       pdfTextAnnotationsEnabled_: {type: Boolean},
       // </if>
 
@@ -305,6 +309,9 @@ export class PdfViewerElement extends PdfViewerBaseElement {
 
       showPasswordDialog_: {type: Boolean},
       showPropertiesDialog_: {type: Boolean},
+      // <if expr="enable_pdf_ink2">
+      showSignatureDialog_: {type: Boolean},
+      // </if>
       sidenavCollapsed_: {type: Boolean},
 
       // <if expr="enable_pdf_ink2">
@@ -371,6 +378,7 @@ export class PdfViewerElement extends PdfViewerBaseElement {
   private pdfGetSaveDataInBlocks_: boolean = false;
   // <if expr="enable_pdf_ink2">
   protected accessor pdfInk2Enabled_: boolean = false;
+  protected accessor pdfSignaturesEnabled_: boolean = false;
   protected accessor pdfTextAnnotationsEnabled_: boolean = false;
   // </if>
   // <if expr="enable_pdf_save_to_drive">
@@ -394,6 +402,9 @@ export class PdfViewerElement extends PdfViewerBaseElement {
   // </if>
   protected accessor showPasswordDialog_: boolean = false;
   protected accessor showPropertiesDialog_: boolean = false;
+  // <if expr="enable_pdf_ink2">
+  protected accessor showSignatureDialog_: boolean = false;
+  // </if>
   protected accessor sidenavCollapsed_: boolean;
 
   // <if expr="enable_pdf_ink2">
@@ -689,6 +700,9 @@ export class PdfViewerElement extends PdfViewerBaseElement {
       case AnnotationMode.TEXT:
         record(UserAction.EXIT_INK2_TEXT_ANNOTATION_MODE);
         break;
+      case AnnotationMode.SIGNATURE:
+        record(UserAction.EXIT_INK2_SIGNATURE_MODE);
+        break;
       case AnnotationMode.OFF:
         break;
       default:
@@ -702,6 +716,9 @@ export class PdfViewerElement extends PdfViewerBaseElement {
         break;
       case AnnotationMode.TEXT:
         record(UserAction.ENTER_INK2_TEXT_ANNOTATION_MODE);
+        break;
+      case AnnotationMode.SIGNATURE:
+        record(UserAction.ENTER_INK2_SIGNATURE_MODE);
         break;
       case AnnotationMode.OFF:
         break;
@@ -747,6 +764,7 @@ export class PdfViewerElement extends PdfViewerBaseElement {
       await Ink2Manager.getInstance().initializeTextAnnotations();
     }
     this.annotationMode_ = newAnnotationMode;
+    this.showSignatureDialog_ = newAnnotationMode === AnnotationMode.SIGNATURE;
   }
   // </if> enable_pdf_ink2
 
@@ -847,6 +865,13 @@ export class PdfViewerElement extends PdfViewerBaseElement {
     assert(this.showPropertiesDialog_);
     this.showPropertiesDialog_ = false;
   }
+
+  // <if expr="enable_pdf_ink2">
+  protected onSignatureDialogClose_() {
+    assert(this.showSignatureDialog_);
+    this.showSignatureDialog_ = false;
+  }
+  // </if>
 
   /**
    * @return Whether two up view was enabled when the user last toggled it,
@@ -987,6 +1012,8 @@ export class PdfViewerElement extends PdfViewerBaseElement {
         loadTimeData.getBoolean('pdfGetSaveDataInBlocks');
     // <if expr="enable_pdf_ink2">
     this.pdfInk2Enabled_ = loadTimeData.getBoolean('pdfInk2Enabled');
+    this.pdfSignaturesEnabled_ =
+        loadTimeData.getBoolean('pdfSignaturesEnabled');
     this.pdfTextAnnotationsEnabled_ =
         loadTimeData.getBoolean('pdfTextAnnotationsEnabled');
     // </if>

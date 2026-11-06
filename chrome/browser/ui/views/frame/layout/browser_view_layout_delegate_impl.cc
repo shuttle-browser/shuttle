@@ -253,3 +253,7 @@ BrowserViewLayoutDelegateImpl::AddOnGlassModeChangedCallback(
   }
   return base::CallbackListSubscription();
 }
+
+int BrowserViewLayoutDelegateImpl::GetRestoredWindowCornerRadius() const {
+  return browser_view_->GetFrameView()->GetRestoredWindowCornerRadius();
+}

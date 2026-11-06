@@ -14,7 +14,6 @@
 #include "base/metrics/user_metrics_action.h"
 #include "chrome/browser/favicon/favicon_service_factory.h"
 #include "chrome/browser/favicon/history_ui_favicon_request_handler_factory.h"
-#include "chrome/browser/sessions/session_restore.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "chrome/browser/ui/actions/chrome_action_properties.h"
 #include "chrome/browser/ui/browser_actions.h"
@@ -31,7 +30,6 @@
 #include "components/sessions/core/live_tab_context.h"
 #include "components/sessions/core/session_id.h"
 #include "components/sessions/core/tab_restore_service.h"
-#include "components/tabs/public/tab_interface.h"
 #include "ui/actions/actions.h"
 #include "ui/base/accelerators/menu_label_accelerator_util.h"
 #include "ui/base/window_open_disposition.h"
@@ -78,9 +76,9 @@ void RecentTabsDynamicMenu::ExecuteRecentTab(
   // Foreign-session (synced) tabs no longer exist; only local entries.
   WindowOpenDisposition disposition =
       context.GetProperty(chrome::kDispositionKey);
-  if (disposition == WindowOpenDisposition::CURRENT_TAB ||
-      disposition == WindowOpenDisposition::UNKNOWN) {
-    disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
+  if (disposition == WindowOpenDisposition::kCurrentTab ||
+      disposition == WindowOpenDisposition::kUnknown) {
+    disposition = WindowOpenDisposition::kNewForegroundTab;
   }
   if (recent_item.is_local()) {
     base::RecordAction(
@@ -126,9 +124,9 @@ void RecentTabsDynamicMenu::ExecuteRecentSplit(
   }
   WindowOpenDisposition disposition =
       context.GetProperty(chrome::kDispositionKey);
-  if (disposition == WindowOpenDisposition::CURRENT_TAB ||
-      disposition == WindowOpenDisposition::UNKNOWN) {
-    disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
+  if (disposition == WindowOpenDisposition::kCurrentTab ||
+      disposition == WindowOpenDisposition::kUnknown) {
+    disposition = WindowOpenDisposition::kNewForegroundTab;
   }
   ExecuteRestoreEntry(recent_item.session_id(), disposition);
 }

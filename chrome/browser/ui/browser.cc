@@ -87,7 +87,6 @@
 #include "chrome/browser/ui/status_bubble.h"
 #include "chrome/browser/ui/tab_contents/core_tab_helper.h"
 #include "chrome/browser/ui/tab_dialogs.h"
-#include "chrome/browser/ui/tab_helpers.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/tab_change_type.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
@@ -353,7 +352,7 @@ Browser::~Browser() {
   //
   // TODO(crbug.com/40887606): This DCHECK doesn't always pass.
   // TODO(crbug.com/40064092): convert this to CHECK.
-  DCHECK(tab_strip_model_->empty());
+  CHECK(tab_strip_model_->empty(), base::NotFatalUntil::M162);
 
   SessionServiceBase* service = GetAppropriateSessionServiceForProfile(this);
 
@@ -515,7 +514,7 @@ WebContents* Browser::OpenURL(
     base::OnceCallback<void(content::NavigationHandle&)>
         navigation_handle_callback) {
 #if DCHECK_IS_ON()
-  DCHECK(params.Valid());
+  CHECK(params.Valid(), base::NotFatalUntil::M162);
 #endif
 
   return BrowserWebContentsDelegate::From(this)->OpenURLFromTab(

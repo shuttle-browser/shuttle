@@ -27,10 +27,7 @@ component("views") {
 
   defines = [ "CHROME_VIEWS_IMPLEMENTATION" ]
 
-  public_deps = [
-    "//chrome/browser:browser_public_dependencies",
-    "//chrome/browser/ui/tabs:tab_enums",
-  ]
+  public_deps = [ "//chrome/browser/ui/tabs:tab_enums" ]
 
   deps = [
     "//base",
@@ -52,13 +49,6 @@ component("views") {
     "//ui/views",
     "//url",
   ]
-
-  if (is_chromeos) {
-    deps += [
-      "//chromeos/ash/experiences/arc",
-      "//chromeos/ash/experiences/arc/intent_helper",
-    ]
-  }
 }
 
 source_set("bubble_anchor_util_views") {
@@ -71,10 +61,7 @@ source_set("bubble_anchor_util_views") {
 
 source_set("bubble_anchor_util_views_impl") {
   sources = [ "bubble_anchor_util_views.cc" ]
-  public_deps = [
-    ":bubble_anchor_util_views",
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = [ ":bubble_anchor_util_views" ]
   deps = [
     "//base",
     "//build:buildflag_header_h",
@@ -98,7 +85,6 @@ source_set("bubble_anchor_util_views_impl") {
 
 source_set("browser_commands_views") {
   sources = [ "browser_commands_views.cc" ]
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
   deps = [
     "//base",
     "//build:buildflag_header_h",
@@ -122,7 +108,6 @@ source_set("browser_commands_views") {
 
 source_set("browser_dialogs_views") {
   sources = [ "browser_dialogs_views.cc" ]
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
   deps = [
     ":task_manager_view",
     "//base",
@@ -252,14 +237,17 @@ source_set("status_bubble") {
     "//ui/display",
     "//ui/gfx",
     "//ui/gfx/geometry",
+    "//ui/native_theme",
     "//ui/views",
   ]
+  if (is_chromeos) {
+    deps += [ "//ash/public/cpp" ]
+  }
 }
 
 if (is_win) {
   source_set("network_profile_bubble_view") {
     sources = [ "network_profile_bubble_view.cc" ]
-    public_deps = [ "//chrome/browser:browser_public_dependencies" ]
     deps = [
       "//base",
       "//chrome/app:branded_strings",
@@ -451,7 +439,6 @@ source_set("elevation_icon_setter") {
 if (use_aura) {
   source_set("accelerator_utils_aura") {
     sources = [ "accelerator_utils_aura.cc" ]
-    public_deps = [ "//chrome/browser:browser_public_dependencies" ]
     deps = [
       "//base",
       "//chrome/browser/ui:accelerator_table",
@@ -641,7 +628,6 @@ if (is_linux) {
       "//ui/gfx/geometry",
     ]
     deps = [
-      "//chrome/browser:browser_public_dependencies",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/views/frame:browser_frame_view_linux",
@@ -704,7 +690,6 @@ source_set("javascript_app_modal_event_blocker") {
 if (use_aura) {
   source_set("javascript_app_modal_event_blocker_aura") {
     sources = [ "javascript_app_modal_event_blocker_aura.cc" ]
-    public_deps = [ "//chrome/browser:browser_public_dependencies" ]
     deps = [
       ":javascript_app_modal_event_blocker",
       "//base",
@@ -842,7 +827,6 @@ source_set("simple_web_view_dialog") {
   sources = [ "simple_web_view_dialog.cc" ]
   public_deps = [
     "//base",
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/ui/toolbar",
     "//chrome/browser/ui/views/location_bar",
     "//components/web_modal",
@@ -880,6 +864,10 @@ source_set("screen_capture_notification_ui_views") {
     ":screen_sharing_util",
     ":views",
     "//base",
+    "//chrome/app:generated_resources",
+    "//chrome/app/theme:theme_resources",
+    "//chrome/browser:shell_integration",
+    "//chrome/browser/profiles:profile",
     "//chrome/browser/ui:browser_init_state",
     "//chrome/browser/ui:screen_capture_notification_ui",
     "//chrome/browser/ui/browser_window",
@@ -1020,14 +1008,12 @@ source_set("certificate_selector") {
     "//components/strings:components_strings",
     "//components/web_modal",
     "//content/public/browser",
+    "//extensions/browser",
     "//ui/base",
     "//ui/base/metadata",
   ]
   if (is_chromeos) {
-    deps += [
-      "//chrome/browser/ash/certificate_provider",
-      "//extensions/browser",
-    ]
+    deps += [ "//chrome/browser/ash/certificate_provider" ]
   }
 }
 
@@ -1279,6 +1265,7 @@ source_set("global_error_bubble_view") {
     "//chrome/browser/ui:bubble_anchor_util",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/global_error",
+    "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/browser/ui/views/interaction",
     "//chrome/browser/ui/views/toolbar",
     "//ui/base",
@@ -1299,7 +1286,10 @@ source_set("upgrade_notification_controller") {
     "//chrome/browser/ui:browser_element_identifiers",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/dialogs",
+    "//chrome/browser/ui/views/frame:browser_view_header",
+    "//chrome/browser/ui/views/frame:toolbar_button_provider",
     "//chrome/browser/ui/views/interaction",
+    "//chrome/browser/ui/views/toolbar:app_menu_control",
   ]
   if (is_win) {
     public_deps += [ ":critical_notification_bubble_view" ]
@@ -1376,7 +1366,6 @@ source_set("find_bar_views") {
     "//build:buildflag_header_h",
     "//chrome/app:generated_resources",
     "//chrome/app/vector_icons",
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/enterprise",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/themes",
@@ -1429,21 +1418,18 @@ source_set("constrained_web_dialog_delegate_views") {
 source_set("session_crashed_bubble_view") {
   public = [ "session_crashed_bubble_view.h" ]
   sources = [ "session_crashed_bubble_view.cc" ]
-  public_deps = [
-    "//chrome/browser/ui:session_crashed_bubble",
-    "//ui/views",
-  ]
+  public_deps = [ "//ui/views" ]
   deps = [
     ":layout_provider",
     "//base",
     "//build:branding_buildflags",
     "//chrome/app:branded_strings",
     "//chrome/app:generated_resources",
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/metrics",
     "//chrome/browser/prefs:util",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/ui:bubble_anchor_util",
+    "//chrome/browser/ui:session_crashed_bubble",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/browser/ui/views/toolbar",

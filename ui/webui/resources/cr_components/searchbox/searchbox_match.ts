@@ -81,6 +81,15 @@ export class SearchboxMatchElement extends CrLitElement {
       },
 
       /**
+       * Whether the secondary text is only shown while the match is selected
+       * or hovered.
+       */
+      showSecondaryTextOnlyOnSelection: {
+        type: Boolean,
+        reflect: true,
+      },
+
+      /**
        * Whether the match features an image (as opposed to an icon or favicon).
        */
       hasImage: {
@@ -133,6 +142,15 @@ export class SearchboxMatchElement extends CrLitElement {
       // Private properties
       //========================================================================
 
+      /**
+       * Whether the secondary text is a URL, e.g. a page title followed by its
+       * URL. The URL layout rules key on it.
+       */
+      secondaryTextIsUrl_: {
+        type: Boolean,
+        reflect: true,
+      },
+
       isTopChromeSearchbox_: {
         type: Boolean,
         reflect: true,
@@ -171,6 +189,7 @@ export class SearchboxMatchElement extends CrLitElement {
 
   override accessor ariaLabel: string = '';
   accessor hasAction: boolean = false;
+  accessor showSecondaryTextOnlyOnSelection: boolean = false;
   accessor hasImage: boolean = false;
   accessor hasKeywordChip: boolean = false;
   accessor isEntitySuggestion: boolean = false;
@@ -183,6 +202,7 @@ export class SearchboxMatchElement extends CrLitElement {
   accessor showEllipsis: boolean = false;
   accessor virtualFocusEnabled: boolean = false;
   accessor resultSequenceId: number = 0;
+  private accessor secondaryTextIsUrl_: boolean = false;
   private accessor isTopChromeSearchbox_: boolean =
       loadTimeData.getBoolean('isTopChromeSearchbox');
   private accessor isLensSearchbox_: boolean =
@@ -218,8 +238,11 @@ export class SearchboxMatchElement extends CrLitElement {
       this.hasAction = this.computeHasAction_();
       this.hasKeywordChip = this.computeHasKeywordChip_();
       this.hasImage = this.computeHasImage_();
+      this.showSecondaryTextOnlyOnSelection =
+          this.match.showSecondaryTextOnlyOnSelection;
       this.isEntitySuggestion = this.computeIsEntitySuggestion_();
       this.secondaryTextPlacement = this.computeSecondaryTextPlacement_();
+      this.secondaryTextIsUrl_ = this.match.secondaryTextIsUrl;
       this.removeButtonAriaLabel_ = this.computeRemoveButtonAriaLabel_();
       this.separatorText_ = this.computeSeparatorText_();
       this.tailSuggestPrefix_ = this.computeTailSuggestPrefix_();
@@ -390,12 +413,12 @@ export class SearchboxMatchElement extends CrLitElement {
   }
 
   private computeSecondaryTextHtml_(): TrustedHTML {
-    if (!this.match) {
+    const secondaryText = this.match?.suggestTemplate.secondaryText;
+    if (!secondaryText) {
       return window.trustedTypes!.emptyHTML;
     }
     return this.sanitizeInnerHtml_(
-        this.renderFormattedString_(this.match.suggestTemplate.secondaryText)
-            .innerHTML);
+        this.renderFormattedString_(secondaryText).innerHTML);
   }
 
   private computeHasAction_() {
@@ -463,18 +486,26 @@ export class SearchboxMatchElement extends CrLitElement {
 
   /**
    * Maps the color and weight of a FormattedString fragment to CSS classes.
-   * Colors without a CSS class yet are rendered with the default color.
+   * Each suggest color gets a class named after its color type.
+   * Other colors get no class and keep the default color.
    */
   private getFragmentCssClasses_(fragment: FormattedStringFragment): string[] {
     const classes = [];
-    if (fragment.color === ColorType.kOnSurfaceDeemphasis) {
-      classes.push('dim');
+    switch (fragment.color) {
+      case ColorType.kSuggestQueryText:
+        classes.push('suggest-query-text');
+        break;
+      case ColorType.kSuggestHintText:
+        classes.push('suggest-hint-text');
+        break;
+      case ColorType.kSuggestActionHigh:
+        classes.push('suggest-action-high');
+        break;
+      default:
+        break;
     }
     if (fragment.isBolded) {
-      classes.push('match');
-    }
-    if (fragment.color === ColorType.kPrimary) {
-      classes.push('url');
+      classes.push('bolded');
     }
     return classes;
   }
@@ -525,7 +556,7 @@ export class SearchboxMatchElement extends CrLitElement {
   }
 
   private getMatchSecondaryText_(): string {
-    return this.match ? this.match.suggestTemplate.secondaryText.text : '';
+    return this.match?.suggestTemplate.secondaryText?.text ?? '';
   }
 
   protected getFocusIndicatorCssClass_(): string {

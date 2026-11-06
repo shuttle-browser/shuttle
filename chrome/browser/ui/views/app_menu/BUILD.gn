@@ -90,6 +90,7 @@ source_set("impl") {
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/actions",
     "//chrome/browser/ui/actions:actions_headers",
+    "//chrome/browser/ui/actions:actions_util",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/color:color_headers",
     "//chrome/browser/ui/tabs:tab_group",
@@ -135,6 +136,10 @@ source_set("impl") {
   if (!is_chromeos) {
     deps += [
     ]
+  }
+
+  if (is_win || is_mac || is_linux) {
+    deps += [ "//chrome/browser/lifetime" ]
   }
 }
 

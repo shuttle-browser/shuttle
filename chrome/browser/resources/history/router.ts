@@ -53,6 +53,7 @@ export class HistoryRouterElement extends CrLitElement {
     after: null,
     includeUserVisits: true,
     includeActorVisits: true,
+    clientIds: [],
   };
   timeRangeStart?: Date;
 

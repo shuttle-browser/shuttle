@@ -63,7 +63,7 @@
 
 ChromeBrowserFieldTrials::ChromeBrowserFieldTrials(PrefService* local_state)
     : local_state_(local_state) {
-  DCHECK(local_state_);
+  CHECK(local_state_, base::NotFatalUntil::M162);
 }
 
 ChromeBrowserFieldTrials::~ChromeBrowserFieldTrials() = default;
@@ -374,5 +374,7 @@ void ChromeBrowserFieldTrials::RegisterFeatureOverrides(
 
 void ChromeBrowserFieldTrials::EnableRuntimeMutableFeatures(
     base::FeatureList* feature_list) {
+  variations::PlatformFieldTrials::EnableRuntimeMutableFeatures(feature_list);
+
   // Add calls to enable runtime-mutable features here.
 }

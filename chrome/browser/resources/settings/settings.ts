@@ -6,7 +6,6 @@ import './settings_ui/settings_ui.js';
 
 export {CrPolicyPrefIndicatorElement} from '/shared/settings/controls/cr_policy_pref_indicator.js';
 export {ExtensionControlledIndicatorElement} from '/shared/settings/controls/extension_controlled_indicator.js';
-export {DEFAULT_CHECKED_VALUE, DEFAULT_UNCHECKED_VALUE} from '/shared/settings/controls/settings_boolean_control_mixin.js';
 export {ExtensionControlBrowserProxyImpl} from '/shared/settings/extension_control_browser_proxy.js';
 export type {ExtensionControlBrowserProxy} from '/shared/settings/extension_control_browser_proxy.js';
 export {LifetimeBrowserProxyImpl} from '/shared/settings/lifetime_browser_proxy.js';
@@ -14,10 +13,6 @@ export type {LifetimeBrowserProxy} from '/shared/settings/lifetime_browser_proxy
 export {ProfileInfoBrowserProxyImpl} from '/shared/settings/people_page/profile_info_browser_proxy.js';
 export type {ProfileInfo, ProfileInfoBrowserProxy} from '/shared/settings/people_page/profile_info_browser_proxy.js';
 export {prefToString, stringToPrefValue} from '/shared/settings/prefs/pref_util.js';
-export {SettingsPrefsElement} from '/shared/settings/prefs/prefs.js';
-export {PrefsMixin} from '/shared/settings/prefs/prefs_mixin.js';
-export type {PrefsMixinInterface} from '/shared/settings/prefs/prefs_mixin.js';
-export {CrSettingsPrefs} from '/shared/settings/prefs/prefs_types.js';
 export {PrefService} from '/shared/settings/prefs2/pref_service.js';
 export {PrefServiceObserverMixin} from '/shared/settings/prefs2/pref_service_observer_mixin.js';
 export type {PrefServiceObserverMixinInterface} from '/shared/settings/prefs2/pref_service_observer_mixin.js';
@@ -28,6 +23,8 @@ export {PrivacyPageBrowserProxyImpl} from '/shared/settings/privacy_page/privacy
 export type {MetricsReporting, PrivacyPageBrowserProxy} from '/shared/settings/privacy_page/privacy_page_browser_proxy.js';
 export {SecureDnsMode, SecureDnsUiManagementMode, SecurityPageBrowserProxyImpl} from '/shared/settings/security_page/security_page_browser_proxy.js';
 export type {ResolverOption, SecureDnsSetting, SecurityPageBrowserProxy} from '/shared/settings/security_page/security_page_browser_proxy.js';
+export {WebUiListenerMixin} from '/shared/settings/web_ui_listener_mixin.js';
+export type {WebUiListenerMixinInterface} from '/shared/settings/web_ui_listener_mixin.js';
 export {browserProxyFactory as customizeColorSchemeModeBrowserProxyFactory, ColorSchemeMode, CustomizeColorSchemeModeClientCallbackRouter, CustomizeColorSchemeModeClientRemote, CustomizeColorSchemeModeHandlerRemote} from 'chrome://resources/cr_components/customize_color_scheme_mode/customize_color_scheme_mode.mojom-webui.js';
 export type {BrowserProxy as CustomizeColorSchemeModeBrowserProxy} from 'chrome://resources/cr_components/customize_color_scheme_mode/customize_color_scheme_mode.mojom-webui.js';
 export {CrActionMenuElement} from 'chrome://resources/cr_elements/cr_action_menu/cr_action_menu.js';
@@ -46,6 +43,7 @@ export {PluralStringProxyImpl} from 'chrome://resources/js/plural_string_proxy.j
 export {getTrustedHTML} from 'chrome://resources/js/static_types.js';
 export {SettingsAboutPageElement} from './about_page/about_page.js';
 export {ControlledRadioButtonElement} from './controls/controlled_radio_button.js';
+export {DEFAULT_CHECKED_VALUE, DEFAULT_UNCHECKED_VALUE} from './controls/settings_boolean_control_mixin.js';
 export {SettingsDropdownMenuElement} from './controls/settings_dropdown_menu.js';
 export {SettingsRadioGroupElement} from './controls/settings_radio_group.js';
 export {SettingsToggleButtonElement} from './controls/settings_toggle_button.js';
@@ -117,6 +115,7 @@ export {ExtensionControlledMessageElement} from './search_page/extension_control
 export {FeatureShortcutsPageElement} from './search_page/feature_shortcuts_page.js';
 export {KeyboardShortcutPageElement} from './search_page/keyboard_shortcut_page.js';
 export {SettingsSearchEngineListDialogElement} from './search_page/search_engine_list_dialog.js';
+export {SettingsSearchEngineMoreEnginesDialogElement} from './search_page/search_engine_more_engines_dialog.js';
 export {ChoiceMadeLocation, SearchEnginesBrowserProxyImpl, SearchEnginesInteractions} from './search_page/search_engines_browser_proxy.js';
 export type {CategorizedTemplateUrls, DefaultSearchEnginePickerData, SearchEngine, SearchEngineId, SearchEnginesBrowserProxy, SearchEnginesInfo} from './search_page/search_engines_browser_proxy.js';
 export {SettingsSearchPageElement} from './search_page/search_page.js';

@@ -4,7 +4,6 @@
 
 #include "chrome/browser/ui/page_info/chrome_page_info_ui_delegate.h"
 
-#include "base/feature_list.h"
 #include "base/notreached.h"
 #include "build/build_config.h"
 #include "chrome/browser/page_info/page_info_features.h"
@@ -18,7 +17,6 @@
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
 #include "components/content_settings/core/common/content_settings_types.h"
-#include "components/content_settings/core/common/features.h"
 #include "components/page_info/core/features.h"
 #include "components/permissions/permission_decision_auto_blocker.h"
 #include "components/permissions/permission_manager.h"
@@ -168,18 +166,14 @@ bool ChromePageInfoUiDelegate::ShouldShowSettingsLinkForPermission(
     case ContentSettingsType::NOTIFICATIONS:
       return false;
     case ContentSettingsType::MEDIASTREAM_CAMERA:
-      if (base::FeatureList::IsEnabled(
-              content_settings::features::kLeftHandSideActivityIndicators) &&
-          system_permission_settings::IsDenied(type)) {
+      if (system_permission_settings::IsDenied(type)) {
         *text_id = IDS_PAGE_INFO_CAMERA_SYSTEM_SETTINGS_DESCRIPTION;
         *link_id = IDS_PAGE_INFO_SETTINGS_OF_A_SYSTEM_LINK;
         return true;
       }
       return false;
     case ContentSettingsType::MEDIASTREAM_MIC:
-      if (base::FeatureList::IsEnabled(
-              content_settings::features::kLeftHandSideActivityIndicators) &&
-          system_permission_settings::IsDenied(type)) {
+      if (system_permission_settings::IsDenied(type)) {
         *text_id = IDS_PAGE_INFO_MICROPHONE_SYSTEM_SETTINGS_DESCRIPTION;
         *link_id = IDS_PAGE_INFO_SETTINGS_OF_A_SYSTEM_LINK;
         return true;
@@ -195,9 +189,7 @@ bool ChromePageInfoUiDelegate::ShouldShowSettingsLinkForPermission(
       return false;
 #endif
     case ContentSettingsType::CLIPBOARD_READ_WRITE:
-      if (base::FeatureList::IsEnabled(
-              content_settings::features::kLeftHandSideActivityIndicators) &&
-          system_permission_settings::IsDenied(type)) {
+      if (system_permission_settings::IsDenied(type)) {
         *text_id = IDS_PAGE_INFO_CLIPBOARD_SYSTEM_SETTINGS_DESCRIPTION;
         *link_id = IDS_PAGE_INFO_SETTINGS_OF_A_SYSTEM_LINK;
         return true;

@@ -740,6 +740,18 @@ group("all_rust") {
   }
 }
 
+if (toolkit_views) {
+  group("views_examples") {
+    testonly = true
+
+    deps = [ "//ui/views/examples:views_examples" ]
+
+    if (is_mac) {
+      deps += [ "//chrome/views_examples/mac/signing" ]
+    }
+  }
+}
+
 # TODO(https://crbug.com/1112776): ensure remoting is functional on Linux builds with
 # other than X11 Ozone backends.
 if (enable_remoting && ((is_linux && ozone_platform_x11) ||

@@ -25,7 +25,7 @@
 namespace chrome {
 
 void ToggleAlwaysShowToolbarInFullscreen(BrowserWindowInterface* browser) {
-  DCHECK(browser);
+  CHECK(browser, base::NotFatalUntil::M162);
 
   // Toggle the value of the preference.
   PrefService* prefs = browser->GetProfile()->GetPrefs();

@@ -6,6 +6,7 @@
 
 #include <string>
 
+#include "base/check_deref.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
 #include "base/i18n/message_formatter.h"
@@ -231,6 +232,20 @@ void AddA11yStrings(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_ACCESSIBILITY_TOAST_FREQUENCY_TITLE},
       {"toastAlertLevelDescription",
        IDS_SETTINGS_ACCESSIBILITY_TOAST_FREQUENCY_DESCRIPTION},
+      {"pageColorsTitle", IDS_SETTINGS_PAGE_COLORS_TITLE},
+      {"pageColorsSubtitle", IDS_SETTINGS_PAGE_COLORS_SUBTITLE},
+      {"pageColorsOptionNoPreference",
+       IDS_SETTINGS_PAGE_COLORS_OPTION_NO_PREFERENCE},
+      {"pageColorsOptionOff", IDS_SETTINGS_PAGE_COLORS_OPTION_OFF},
+      {"pageColorsOptionDusk", IDS_SETTINGS_PAGE_COLORS_OPTION_DUSK},
+      {"pageColorsOptionDesert", IDS_SETTINGS_PAGE_COLORS_OPTION_DESERT},
+      {"pageColorsOptionNightSky", IDS_SETTINGS_PAGE_COLORS_OPTION_NIGHT_SKY},
+      {"pageColorsOptionAquatic", IDS_SETTINGS_PAGE_COLORS_OPTION_AQUATIC},
+      {"pageColorsOptionWhite", IDS_SETTINGS_PAGE_COLORS_OPTION_WHITE},
+      {"applyPageColorsOnlyOnIncreasedContrastTitle",
+       IDS_SETTINGS_APPLY_PAGE_COLORS_ONLY_ON_INCREASED_CONTRAST_TITLE},
+      {"applyPageColorsOnlyOnIncreasedContrastSubtitle",
+       IDS_SETTINGS_APPLY_PAGE_COLORS_ONLY_ON_INCREASED_CONTRAST_SUBTITLE},
 #endif
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
       {"overscrollHistoryNavigationTitle",
@@ -242,6 +257,11 @@ void AddA11yStrings(content::WebUIDataSource* html_source) {
       {"axTreeFixingSubtitle", IDS_SETTINGS_AX_TREE_FIXING_SUBTITLE},
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
+
+#if !BUILDFLAG(IS_CHROMEOS)
+  html_source->AddBoolean("pageColorsSettingsEnabled",
+                          features::IsPageColorsSettingsEnabled());
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 
   AddAxAnnotationsSectionStrings(html_source);
   AddCaptionSubpageStrings(html_source);
@@ -337,7 +357,6 @@ void AddAppearanceStrings(content::WebUIDataSource* html_source,
       {"darkMode", IDS_NTP_CUSTOMIZE_CHROME_COLOR_SCHEME_MODE_DARK_LABEL},
       {"systemMode", IDS_NTP_CUSTOMIZE_CHROME_COLOR_SCHEME_MODE_SYSTEM_LABEL},
       {"showHomeButton", IDS_SETTINGS_SHOW_HOME_BUTTON},
-      {"showOrganizerPanelButton", IDS_SETTINGS_SHOW_ORGANIZER_PANEL_BUTTON},
       {"showEverythingMenuButton", IDS_SETTINGS_SHOW_EVERYTHING_MENU_BUTTON},
       {"tabStripPosition", IDS_SETTINGS_TAB_STRIP_POSITION},
       {"tabScrollAutoShowOnOverflow", IDS_TAB_SCROLL_AUTO_SHOW_ON_OVERFLOW},
@@ -1026,87 +1045,7 @@ void AddPrivacyStrings(content::WebUIDataSource* html_source,
        IDS_SETTINGS_SECURE_DNS_OPEN_CHROME_OS_SETTINGS_LABEL},
 #endif
       {"safeBrowsingEnhancedLearnMoreLabel",
-       IDS_SETTINGS_SAFEBROWSING_ENHANCED_LEARN_MORE_LABEL},
-      {"securityTitle", IDS_SETTINGS_SECURITY_TITLE},
-      {"securityStandardBundleTitle",
-       IDS_SETTINGS_SECURITY_STANDARD_BUNDLE_TITLE},
-      {"securityEnhancedBundleTitle",
-       IDS_SETTINGS_SECURITY_ENHANCED_BUNDLE_TITLE},
-      {"securityBundleStandardBulletOne",
-       IDS_SETTINGS_SECURITY_BUNDLE_STANDARD_BULLET_ONE},
-      {"securityBundleStandardBulletTwo",
-       IDS_SETTINGS_SECURITY_BUNDLE_STANDARD_BULLET_TWO},
-      {"securityBundleStandardBulletThree",
-       IDS_SETTINGS_SECURITY_BUNDLE_STANDARD_BULLET_THREE},
-      {"securityBundleEnhancedBulletOne",
-       IDS_SETTINGS_SECURITY_BUNDLE_ENHANCED_BULLET_ONE},
-      {"securityBundleEnhancedBulletTwo",
-       IDS_SETTINGS_SECURITY_BUNDLE_ENHANCED_BULLET_TWO},
-      {"securityBundleEnhancedBulletThree",
-       IDS_SETTINGS_SECURITY_BUNDLE_ENHANCED_BULLET_THREE},
-      {"securitySafeBrowsingTitle", IDS_SETTINGS_SECURITY_SAFE_BROWSING_TITLE},
-      {"securitySafeBrowsingDesc",
-       IDS_SETTINGS_SECURITY_SAFE_BROWSING_DESCRIPTION},
-      {"securitySafeBrowsingStandardTitle",
-       IDS_SETTINGS_SECURITY_SAFE_BROWSING_STANDARD_TITLE},
-      {"securitySafeBrowsingStandardSubtitle",
-       IDS_SETTINGS_SECURITY_SAFE_BROWSING_STANDARD_SUBTITLE},
-      {"securitySafeBrowsingStandardWhatItDoesHeading",
-       IDS_SETTINGS_SECURITY_SAFE_BROWSING_STANDARD_WHAT_IT_DOES_HEADING},
-      {"securitySafeBrowsingStandardWhatItDoesContent",
-       IDS_SETTINGS_SECURITY_SAFE_BROWSING_STANDARD_WHAT_IT_DOES_CONTENT},
-      {"securitySafeBrowsingStandardHowItWorksHeading",
-       IDS_SETTINGS_SECURITY_SAFE_BROWSING_STANDARD_HOW_IT_WORKS_HEADING},
-      {"securitySafeBrowsingStandardHowItWorksContent",
-       IDS_SETTINGS_SECURITY_SAFE_BROWSING_STANDARD_HOW_IT_WORKS_CONTENT},
-      {"securitySafeBrowsingEnhancedTitle",
-       IDS_SETTINGS_SECURITY_SAFE_BROWSING_ENHANCED_TITLE},
-      {"securitySafeBrowsingEnhancedSubtitle",
-       IDS_SETTINGS_SECURITY_SAFE_BROWSING_ENHANCED_SUBTITLE},
-      {"securityFeatureRowStateEnhanced",
-       IDS_SETTINGS_SECURITY_FEATURE_ROW_STATE_ENHANCED},
-      {"securityFeatureRowStateEnhancedCustom",
-       IDS_SETTINGS_SECURITY_FEATURE_ROW_STATE_ENHANCED_CUSTOM},
-      {"securityFeatureRowStateEnhancedStrict",
-       IDS_SETTINGS_SECURITY_FEATURE_ROW_STATE_ENHANCED_STRICT},
-      {"securityFeatureRowStateStandard",
-       IDS_SETTINGS_SECURITY_FEATURE_ROW_STATE_STANDARD},
-      {"securityFeatureRowStateOff",
-       IDS_SETTINGS_SECURITY_FEATURE_ROW_STATE_OFF},
-      {"securityAccountAndNetworkSectionTitle",
-       IDS_SETTINGS_SECURITY_ACCOUNT_AND_NETWORK_SECTION_TITLE},
-      {"securityHttpsFirstModeToggleLabel",
-       IDS_SETTINGS_SECURITY_HTTPS_FIRST_MODE_TOGGLE_LABEL},
-      {"securityHttpsFirstModeBalancedLabel",
-       IDS_SETTINGS_SECURITY_HTTPS_FIRST_MODE_BALANCED_LABEL},
-      {"securityHttpsFirstModeBalancedSublabel",
-       IDS_SETTINGS_SECURITY_HTTPS_FIRST_MODE_BALANCED_SUBLABEL},
-      {"securityHttpsFirstModeStrictLabel",
-       IDS_SETTINGS_SECURITY_HTTPS_FIRST_MODE_STRICT_LABEL},
-      {"securityHttpsFirstModeStrictSublabel",
-       IDS_SETTINGS_SECURITY_HTTPS_FIRST_MODE_STRICT_SUBLABEL},
-      {"securitySecureDnsTitle", IDS_SETTINGS_SECURITY_SECURE_DNS_TITLE},
-      {"securitySecureDnsDescription",
-       IDS_SETTINGS_SECURITY_SECURE_DNS_DESCRIPTION},
-      {"securitySecureDnsDefault", IDS_SETTINGS_SECURITY_SECURE_DNS_DEFAULT},
-      {"securitySecureDnsFallback", IDS_SETTINGS_SECURITY_SECURE_DNS_FALLBACK},
-      {"securitySecureDnsCustom", IDS_SETTINGS_SECURITY_SECURE_DNS_CUSTOM},
-      {"securityJavascriptGuardrailsTitle",
-       IDS_SETTINGS_SECURITY_JAVASCRIPT_GUARDRAILS_TITLE},
-      {"securityJavascriptGuardrailsDesc",
-       IDS_SETTINGS_SECURITY_JAVASCRIPT_GUARDRAILS_DESCRIPTION},
-      {"securityJavascriptGuardrailsUnrecognizedSites",
-       IDS_SETTINGS_SECURITY_JAVASCRIPT_GUARDRAILS_UNRECOGNIZED_SITES},
-      {"securityJavascriptGuardrailsStrictForAllSites",
-       IDS_SETTINGS_SECURITY_JAVASCRIPT_GUARDRAILS_STRICT_FOR_ALL_SITES},
-      {"securityJavascriptGuardrailsUnrecognizedSitesDesc",
-       IDS_SETTINGS_SECURITY_JAVASCRIPT_GUARDRAILS_UNRECOGNIZED_SITES_DESCRIPTION},
-      {"securityJavascriptGuardrailsStrictForAllSitesDesc",
-       IDS_SETTINGS_SECURITY_JAVASCRIPT_GUARDRAILS_STRICT_FOR_ALL_SITES_DESCRIPTION},
-      {"securityJavascriptGuardrailsManageSiteExceptions",
-       IDS_SETTINGS_SECURITY_JAVASCRIPT_GUARDRAILS_MANAGE_SITE_EXCEPTIONS},
-      {"securityJavascriptGuardrailsManageSiteExceptionsDesc",
-       IDS_SETTINGS_SECURITY_JAVASCRIPT_GUARDRAILS_MANAGE_SITE_EXCEPTIONS_DESCRIPTION}};
+       IDS_SETTINGS_SAFEBROWSING_ENHANCED_LEARN_MORE_LABEL}};
   html_source->AddLocalizedStrings(kLocalizedStrings);
 
   html_source->AddString("cookiesSettingsHelpCenterURL",
@@ -1158,12 +1097,6 @@ void AddPrivacyStrings(content::WebUIDataSource* html_source,
       advanced_protection_url, "utm_campaign", "ChromeSettings");
   html_source->AddString("advancedProtectionURL",
                          advanced_protection_url.spec());
-
-  html_source->AddString(
-      "securityAdvancedProtectionProgramLabel",
-      l10n_util::GetStringFUTF16(
-          IDS_SETTINGS_SECURITY_ADVANCED_PROTECTION_PROGRAM_LABEL,
-          base::UTF8ToUTF16(advanced_protection_url.spec())));
 
   AddPersonalizationOptionsStrings(html_source);
   AddSecureDnsStrings(html_source);
@@ -1223,6 +1156,13 @@ void AddSearchStrings(content::WebUIDataSource* html_source, Profile* profile) {
       {"searchEnginesCancelButton", IDS_CANCEL},
       {"searchEnginesConfirmationToastLabel",
        IDS_SEARCH_ENGINE_CHOICE_SETTINGS_CONFIRMATION_TOAST_LABEL},
+      {"searchEnginesPickerTitle", IDS_SETTINGS_SEARCH_ENGINES_PICKER_TITLE},
+      {"searchEnginesMoreOptions", IDS_SETTINGS_SEARCH_ENGINES_MORE_OPTIONS},
+      {"searchEnginesMoreEngines", IDS_SETTINGS_SEARCH_ENGINES_MORE_ENGINES},
+      {"searchEnginesSearchPlaceholder",
+       IDS_SETTINGS_SEARCH_ENGINES_SEARCH_PLACEHOLDER},
+      {"searchEnginesNoSearchResults",
+       IDS_SETTINGS_SEARCH_ENGINES_NO_SEARCH_RESULTS},
       {"defaultSearch", IDS_SETTINGS_DEFAULT_SEARCH},
       {"searchActivate", IDS_SETTINGS_SEARCH_ACTIVATE},
       {"searchDeactivate", IDS_SETTINGS_SEARCH_DEACTIVATE},
@@ -1266,14 +1206,18 @@ void AddSearchStrings(content::WebUIDataSource* html_source, Profile* profile) {
   html_source->AddString("searchExplanationLearnMoreURL",
                          chrome::kOmniboxLearnMoreURL);
 
-  regional_capabilities::RegionalCapabilitiesService* regional_capabilities =
-      regional_capabilities::RegionalCapabilitiesServiceFactory::GetForProfile(
-          profile);
+  const bool is_eea =
+      CHECK_DEREF(regional_capabilities::RegionalCapabilitiesServiceFactory::
+                      GetForProfile(profile))
+          .IsInEeaCountry();
   html_source->AddLocalizedString(
       "searchEnginesSettingsDialogSubtitle",
-      regional_capabilities->IsInEeaCountry()
-          ? IDS_SEARCH_ENGINE_CHOICE_SETTINGS_SUBTITLE
-          : IDS_SEARCH_ENGINE_CHOICE_SETTINGS_SUBTITLE_NON_EEA);
+      is_eea ? IDS_SEARCH_ENGINE_CHOICE_SETTINGS_SUBTITLE
+             : IDS_SEARCH_ENGINE_CHOICE_SETTINGS_SUBTITLE_NON_EEA);
+  html_source->AddLocalizedString(
+      "searchEnginesPickerSubtitle",
+      is_eea ? IDS_SETTINGS_SEARCH_ENGINES_PICKER_SUBTITLE
+             : IDS_SETTINGS_SEARCH_ENGINES_PICKER_SUBTITLE_NON_EEA);
 
   html_source->AddLocalizedString(
       "saveGuestChoiceText", IDS_SEARCH_ENGINE_CHOICE_GUEST_SESSION_CHECKBOX);
@@ -2391,6 +2335,7 @@ void AddSystemStrings(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_SYSTEM_HARDWARE_ACCELERATION_LABEL},
 #if BUILDFLAG(IS_WIN)
       {"isolationStateLabel", IDS_SETTINGS_SYSTEM_ISOLATION_STATE_LABEL},
+      {"isolationStateSubLabel", IDS_SETTINGS_SYSTEM_ISOLATION_STATE_SUBLABEL},
 #endif  // BUILDFLAG(IS_WIN)
       {"proxySettingsLabel", IDS_SETTINGS_SYSTEM_PROXY_SETTINGS_LABEL},
 #if BUILDFLAG(IS_WIN) && BUILDFLAG(GOOGLE_CHROME_BRANDING)
@@ -2428,14 +2373,6 @@ void AddSystemStrings(content::WebUIDataSource* html_source) {
       l10n_util::GetStringUTF16(
           IDS_SETTINGS_SYSTEM_PROXY_SETTINGS_YOUR_DEVICE_LABEL));
 
-#if BUILDFLAG(IS_WIN)
-  html_source->AddString(
-      "isolationStateSubLabel",
-      l10n_util::GetStringFUTF16(
-          IDS_SETTINGS_SYSTEM_ISOLATION_STATE_SUBLABEL,
-          l10n_util::GetStringUTF16(IDS_SHORT_PRODUCT_NAME)));
-#endif  // BUILDFLAG(IS_WIN)
-
   // TODO(dbeam): we should probably rename anything involving "localized
   // strings" to "load time data" as all primitive types are used now.
   SystemHandler::AddLoadTimeData(html_source);
@@ -2449,8 +2386,6 @@ void AddExtensionsStrings(content::WebUIDataSource* html_source) {
 
 void AddSecurityKeysStrings(content::WebUIDataSource* html_source) {
   static constexpr webui::LocalizedString kSecurityKeysStrings[] = {
-      {"securityBundleResetToDefaultsButtonLabel",
-       IDS_SETTINGS_SECURITY_BUNDLE_RESET_TO_DEFAULTS_BUTTON_LABEL},
       {"securityKeysBioEnrollmentAddTitle",
        IDS_SETTINGS_SECURITY_KEYS_BIO_ENROLLMENT_ADD_TITLE},
       {"securityKeysBioEnrollmentDelete",

@@ -12,6 +12,11 @@ AutocompleteProviderClient::GetGeolocationHeaderService() const {
   return nullptr;
 }
 
+sessions::TabRestoreService* AutocompleteProviderClient::GetTabRestoreService()
+    const {
+  return nullptr;
+}
+
 DocumentSuggestionsService*
 AutocompleteProviderClient::GetDocumentSuggestionsService() const {
   return nullptr;

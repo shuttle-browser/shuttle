@@ -15,7 +15,6 @@ component("features") {
     "//base",
     "//components/optimization_guide/proto:optimization_guide_proto",
   ]
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
   defines = [ "IS_OPTIMIZATION_GUIDE_FEATURES_IMPL" ]
 }
 
@@ -42,6 +41,5 @@ source_set("page_content") {
   deps = [
     "//base",
     "//components/optimization_guide/proto:optimization_guide_proto",
-    "//url",
   ]
 }

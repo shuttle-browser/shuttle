@@ -316,13 +316,13 @@ export class SearchboxDropdownElement extends CrLitElement {
   }
 
   /**
-   * Whether a match of the other kind (contextual or not) has the same
-   * description as the match. The CSS uses this to show only one copy at a
-   * time.
+   * Whether a match of the other kind (showing its description only on
+   * selection or always) has the same description as the match. The CSS uses
+   * this to show only one copy at a time.
    */
   protected hasDuplicateDescription_(match: AutocompleteMatch): boolean {
     return this.duplicateDescriptions_.has(
-        match.suggestTemplate.secondaryText.text);
+        match.suggestTemplate.secondaryText?.text ?? '');
   }
 
   /**

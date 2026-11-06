@@ -30,6 +30,10 @@
 #include "components/search/ntp_features.h"
 #include "ui/base/class_property.h"
 #include "ui/base/models/menu_separator_types.h"
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+#include "chrome/browser/global_features.h"
+#include "chrome/browser/lifetime/scheduled_restart_manager.h"
+#endif
 #if BUILDFLAG(IS_CHROMEOS)
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
@@ -101,16 +105,19 @@ class AppMenuBuilder {
                  BrowserWindowInterface* browser_window_interface,
                  ui::ElementIdentifier highlighted_menu_identifier,
                  std::optional<ui::ColorId> bg_color = std::nullopt,
+                 std::optional<ui::ColorId> fg_color = std::nullopt,
                  DisplayType default_display_type = DisplayType::kRow)
       : AppMenuBuilder(static_cast<actions::BaseAction*>(parent),
                        browser_window_interface,
                        highlighted_menu_identifier,
                        bg_color,
+                       fg_color,
                        default_display_type) {}
   AppMenuBuilder(actions::BaseAction* parent,
                  BrowserWindowInterface* browser_window_interface,
                  ui::ElementIdentifier highlighted_menu_identifier,
                  std::optional<ui::ColorId> bg_color = std::nullopt,
+                 std::optional<ui::ColorId> fg_color = std::nullopt,
                  DisplayType default_display_type = DisplayType::kRow)
       : parent_(parent),
         browser_window_interface_(browser_window_interface),
@@ -118,6 +125,7 @@ class AppMenuBuilder {
                    ->root_action_item()),
         highlighted_menu_identifier_(highlighted_menu_identifier),
         bg_color_(bg_color),
+        fg_color_(fg_color),
         default_display_type_(default_display_type) {}
   AppMenuBuilder(const AppMenuBuilder&) = delete;
   AppMenuBuilder& operator=(const AppMenuBuilder&) = delete;
@@ -128,6 +136,9 @@ class AppMenuBuilder {
                             AppMenuActionItem::ActionParams params = {}) {
     if (!params.container_color.has_value()) {
       params.container_color = bg_color_;
+    }
+    if (!params.foreground_color.has_value()) {
+      params.foreground_color = fg_color_;
     }
     if (!params.display_type.has_value()) {
       params.display_type = default_display_type_;
@@ -175,6 +186,9 @@ class AppMenuBuilder {
     if (!params.container_color.has_value()) {
       params.container_color = bg_color_;
     }
+    if (!params.foreground_color.has_value()) {
+      params.foreground_color = fg_color_;
+    }
     if (!params.display_type.has_value()) {
       params.display_type = default_display_type_;
     }
@@ -208,23 +222,30 @@ class AppMenuBuilder {
       DisplayType display_type,
       std::optional<base::FunctionRef<void(AppMenuBuilder&)>> build_section =
           std::nullopt,
-      std::optional<ui::ColorId> bg_color = std::nullopt) {
+      std::optional<ui::ColorId> bg_color = std::nullopt,
+      std::optional<ui::ColorId> fg_color = std::nullopt) {
     if (!parent_) {
       return *this;
     }
     const std::optional<ui::ColorId> section_bg_color =
         bg_color.has_value() ? bg_color : bg_color_;
+    const std::optional<ui::ColorId> section_fg_color =
+        fg_color.has_value() ? fg_color : fg_color_;
     auto item = actions::ActionItem::Builder().Build();
     item->SetProperty(AppMenuActionItem::kDisplayTypeKey, display_type);
     if (section_bg_color.has_value()) {
       item->SetProperty(AppMenuActionItem::kContainerColorKey,
                         section_bg_color.value());
     }
+    if (section_fg_color.has_value()) {
+      item->SetProperty(AppMenuActionItem::kForegroundColorKey,
+                        section_fg_color.value());
+    }
     auto* item_ptr = parent_->AddChild(std::move(item));
     if (build_section.has_value()) {
       AppMenuBuilder section_builder(item_ptr, browser_window_interface_,
                                      highlighted_menu_identifier_,
-                                     section_bg_color);
+                                     section_bg_color, section_fg_color);
       (*build_section)(section_builder);
     }
     return *this;
@@ -239,6 +260,9 @@ class AppMenuBuilder {
       AppMenuActionItem::ActionParams params = {}) {
     if (!params.container_color.has_value()) {
       params.container_color = bg_color_;
+    }
+    if (!params.foreground_color.has_value()) {
+      params.foreground_color = fg_color_;
     }
     if (!params.is_alerted.has_value()) {
       params.is_alerted = IsElementIdAlerted(params.element_id);
@@ -292,6 +316,7 @@ class AppMenuBuilder {
   raw_ptr<actions::ActionItem> scope_;
   ui::ElementIdentifier highlighted_menu_identifier_;
   std::optional<ui::ColorId> bg_color_;
+  std::optional<ui::ColorId> fg_color_;
   DisplayType default_display_type_ = DisplayType::kRow;
   // Tracks whether any action or nested submenu added by this builder is
   // alerted, so parent submenu rows can also be highlighted when a child item
@@ -380,9 +405,37 @@ void ActionAppMenuManager::AddNotificationActions(actions::ActionItem* root) {
               return true;
             };
 
-        maybe_add_notification(
-            kActionUpgradeDialog,
-            {.minor_text = AppMenuModel::GetUpgradeDialogSubstringText()});
+        if (maybe_add_notification(
+                kActionUpgradeDialog,
+                {.minor_text =
+                     AppMenuModel::GetUpgradeDialogSubstringText()})) {
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+          actions::ActionItem* scheduled_restart_action =
+              actions::ActionManager::Get().FindAction(
+                  kActionScheduledRestartDialog, scope);
+          CHECK(scheduled_restart_action);
+          // Only update visibility when `ScheduledRestartManager` exists. In
+          // production the action starts hidden when the manager is absent; in
+          // unit tests without `GlobalFeatures`, tests set `ActionItem`
+          // visibility directly.
+          if (g_browser_process && g_browser_process->GetFeatures()) {
+            if (auto* srm = g_browser_process->GetFeatures()
+                                ->scheduled_restart_manager()) {
+              scheduled_restart_action->SetVisible(
+                  scheduled_restart::ScheduledRestartManager::
+                      IsAppMenuItemEnabled() &&
+                  srm->IsUpgradeAvailableForScheduling());
+            }
+          }
+          if (scheduled_restart_action->GetVisible()) {
+            section.AddAction(
+                kActionScheduledRestartDialog,
+                {.display_type = DisplayType::kNotification,
+                 .item_height = AppMenuActionItem::ItemHeight::kMedium,
+                 .element_id = AppMenuModel::kScheduledRestartMenuItem});
+          }
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+        }
 
         // At most one non-upgrade notification item (Global Error or Default
         // Browser, ordered by priority) should be shown at a time. Return early
@@ -424,7 +477,8 @@ void ActionAppMenuManager::AddBlockHeaderActions(actions::ActionItem* root) {
 
 void ActionAppMenuManager::AddYourChromeActions(actions::ActionItem* root) {
   AppMenuBuilder(root, browser_window_interface_, highlighted_menu_identifier_,
-                 kColorAppMenuYourChromeBackground)
+                 kColorAppMenuYourChromeBackground,
+                 kColorAppMenuYourChromeForeground)
       .AddSection(DisplayType::kSection, [this](AppMenuBuilder& section) {
         section.AddHeader(IDS_APP_MENU_YOUR_CHROME_HEADER);
 
@@ -438,6 +492,11 @@ void ActionAppMenuManager::AddYourChromeActions(actions::ActionItem* root) {
                   recent_tabs_menu_->GetWeakPtr()),
               /*build_submenu=*/std::nullopt,
               {.element_id = AppMenuModel::kHistoryMenuItem});
+
+          section.AddSubmenu(
+              kActionOtherDeviceTabsSubmenu, [](AppMenuBuilder& sub) {},
+              {.element_id = AppMenuModel::kOtherDeviceTabsMenuItem,
+               .is_submenu = true});
         }
 
         section.AddAction(kActionShowDownloadsPage,
@@ -477,14 +536,16 @@ void ActionAppMenuManager::AddYourChromeActions(actions::ActionItem* root) {
 void ActionAppMenuManager::AddToolsAndActionsActions(
     actions::ActionItem* root) {
   AppMenuBuilder(root, browser_window_interface_, highlighted_menu_identifier_,
-                 kColorAppMenuToolsAndActionsBackground)
+                 kColorAppMenuToolsAndActionsBackground,
+                 kColorAppMenuToolsAndActionsForeground)
       .AddSection(DisplayType::kSection, [this](AppMenuBuilder& section) {
         section.AddHeader(IDS_APP_MENU_TOOLS_AND_ACTIONS_HEADER)
             .AddSubmenu(
                 kActionZoomSubmenu,
                 [](AppMenuBuilder& sub) {
                   sub.AddAction(kActionZoomMinus)
-                      .AddAction(kActionZoomNormal)
+                      .AddAction(kActionZoomNormal,
+                                 {.display_type = DisplayType::kLabel})
                       .AddAction(kActionZoomPlus)
                       .AddAction(kActionFullscreen);
                 },
@@ -608,8 +669,6 @@ void ActionAppMenuManager::AddFooterActions(actions::ActionItem* root) {
                .text_override = GetManagedUiMenuItemLabel(profile),
                .icon_override =
                    ui::ImageModel::FromVectorIcon(GetManagedUiIcon(profile))});
-          section.AddAction(kActionChromeEnterpriseReleaseNotes,
-                            {.display_type = DisplayType::kRow});
         }
 #endif  // !BUILDFLAG(IS_CHROMEOS)
       });

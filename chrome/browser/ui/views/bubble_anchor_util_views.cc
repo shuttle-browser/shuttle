@@ -19,7 +19,6 @@
 #include "chrome/browser/ui/views/toolbar/app_menu_control.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
-#include "components/content_settings/core/common/features.h"
 #include "ui/base/interaction/element_highlighter.h"
 #include "ui/views/bubble/bubble_border.h"
 #include "ui/views/interaction/element_tracker_views.h"
@@ -36,9 +35,7 @@ AnchorConfiguration GetPageInfoAnchorConfiguration(
   auto* location_bar_view =
       browser_view ? browser_view->GetLocationBarView() : nullptr;
 
-  if (base::FeatureList::IsEnabled(
-          content_settings::features::kLeftHandSideActivityIndicators) &&
-      location_bar_view) {
+  if (location_bar_view) {
     auto* permission_dashboard_view =
         location_bar_view->permission_dashboard_view();
 
@@ -145,7 +142,8 @@ AnchorConfiguration GetAppMenuAnchorConfiguration(
 gfx::Rect GetPageInfoAnchorRect(BrowserWindowInterface* browser) {
   // GetPageInfoAnchorConfiguration()'s anchor should be preferred if
   // available.
-  DCHECK(GetPageInfoAnchorConfiguration(browser).anchor.IsNull());
+  CHECK(GetPageInfoAnchorConfiguration(browser).anchor.IsNull(),
+        base::NotFatalUntil::M162);
 
   BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
   // Get position in view (taking RTL UI into account).

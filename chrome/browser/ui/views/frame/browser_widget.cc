@@ -132,8 +132,7 @@ void BrowserWidget::InitBrowserWidget() {
   params.delegate = browser_view_;
 
   BrowserWindowInterface* browser = browser_view_->browser();
-  if (browser->GetType() ==
-      BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE) {
+  if (browser->GetType() == BrowserWindowInterface::Type::TYPE_FLOATING) {
     params.z_order = ui::ZOrderLevel::kFloatingWindow;
     params.visible_on_all_workspaces = true;
 #if !BUILDFLAG(IS_WIN)
@@ -217,7 +216,7 @@ void BrowserWidget::InitBrowserWidget() {
 #endif
 
   if (!browser_native_widget_->UsesNativeSystemMenu()) {
-    DCHECK(non_client_view());
+    CHECK(non_client_view(), base::NotFatalUntil::M162);
     non_client_view()->set_context_menu_controller(this);
   }
 }
@@ -382,7 +381,7 @@ void BrowserWidget::ShowContextMenuForViewImpl(
   // Do not show context menu for Document picture-in-picture browser. Context:
   // http://b/274862709.
   if (browser_view_->browser()->GetType() ==
-      BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE) {
+      BrowserWindowInterface::Type::TYPE_FLOATING) {
     return;
   }
 

@@ -17,6 +17,7 @@
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+#include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_ids.h"
@@ -143,11 +144,13 @@ void PinnedActionToolbarButton::SetIconVisibility(bool is_visible) {
 void PinnedActionToolbarButton::AddHighlight() {
   anchor_higlight_ = AddAnchorHighlight();
   GetViewAccessibility().SetCheckedState(ax::mojom::CheckedState::kTrue);
+  UpdateStatusIndicator();
 }
 
 void PinnedActionToolbarButton::ResetHighlight() {
   anchor_higlight_.reset();
   GetViewAccessibility().SetCheckedState(ax::mojom::CheckedState::kFalse);
+  UpdateStatusIndicator();
 }
 
 bool PinnedActionToolbarButton::IsHighlighted() const {
@@ -242,7 +245,9 @@ void PinnedActionToolbarButton::UpdateIcon() {
                                     ? icons->touch_icon
                                     : icons->icon;
 
-  if (is_icon_visible_ && action_engaged_) {
+  if (is_icon_visible_ && action_engaged_ &&
+      engaged_indicator_style_ ==
+          ActionItemEngagedIndicatorStyle::kUnderline) {
     UpdateIconsWithColors(
         icon, GetColorProvider()->GetColor(kColorToolbarActionItemEngaged),
         GetColorProvider()->GetColor(kColorToolbarActionItemEngaged),
@@ -260,6 +265,16 @@ bool PinnedActionToolbarButton::ShouldShowEphemerallyInToolbar() {
   return should_show_in_toolbar_ || has_anchor_;
 }
 
+void PinnedActionToolbarButton::SetEngagedIndicatorStyle(
+    ActionItemEngagedIndicatorStyle style) {
+  if (engaged_indicator_style_ == style) {
+    return;
+  }
+  engaged_indicator_style_ = style;
+  UpdateStatusIndicator();
+  UpdateIcon();
+}
+
 void PinnedActionToolbarButton::SetActionEngaged(bool action_engaged) {
   action_engaged_ = action_engaged;
   UpdateFlexPriority();
@@ -270,6 +285,20 @@ void PinnedActionToolbarButton::HideStatusIndicator() {
 }
 
 void PinnedActionToolbarButton::UpdateStatusIndicator() {
+  if (engaged_indicator_style_ ==
+      ActionItemEngagedIndicatorStyle::kCircleHighlight) {
+    status_indicator_->Hide();
+    SetDefaultBackgroundColorId(action_engaged_ && is_icon_visible_ &&
+                                        !IsActive()
+                                    ? kColorAvatarButtonHighlightDefault
+                                    : kChromeColorsStart);
+    UpdateColorsAndInsets();
+    return;
+  }
+  if (GetDefaultBackgroundColorId() != kChromeColorsStart) {
+    SetDefaultBackgroundColorId(kChromeColorsStart);
+    UpdateColorsAndInsets();
+  }
   if (action_engaged_ && is_icon_visible_) {
     status_indicator_->Show();
   } else {
@@ -336,6 +365,8 @@ void PinnedActionToolbarButtonActionViewInterface::ActionItemChangedImpl(
   }
 
   // Update whether the action is engaged before updating the view.
+  action_view_->SetEngagedIndicatorStyle(
+      action_item->GetProperty(kActionItemEngagedIndicatorStyleKey));
   action_view_->SetActionEngaged(
       action_item->GetProperty(kActionItemUnderlineIndicatorKey));
 

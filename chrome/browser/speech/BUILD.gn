@@ -118,6 +118,7 @@ source_set("impl") {
       "//components/content_settings/core/browser",
       "//components/keyed_service/content",
       "//components/keyed_service/core",
+      "//components/live_caption",
       "//components/live_caption:constants",
       "//components/live_caption:utils",
       "//components/prefs",
@@ -182,7 +183,10 @@ source_set("impl") {
   }
 
   if (is_chromeos) {
-    deps += [ "//ash/constants" ]
+    deps += [
+      "//ash",
+      "//ash/constants",
+    ]
   }
 }
 

@@ -130,7 +130,7 @@ void ChromeLabsViewController::ParseModelDataAndAddLabs() {
       bool valid_entry_type =
           entry->type == flags_ui::FeatureEntry::FEATURE_VALUE ||
           entry->type == flags_ui::FeatureEntry::FEATURE_WITH_PARAMS_VALUE;
-      DCHECK(valid_entry_type);
+      CHECK(valid_entry_type, base::NotFatalUntil::M162);
       int default_index =
           GetIndexOfEnabledLabState(entry, flags_state_, flags_storage_);
       chrome_labs_bubble_view_->AddLabItem(

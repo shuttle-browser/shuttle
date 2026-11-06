@@ -66,13 +66,13 @@ DownloadFeedbackImpl::DownloadFeedbackImpl(
       file_path_(file_path),
       ping_request_(ping_request),
       ping_response_(ping_response) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   DVLOG(1) << "DownloadFeedback constructed " << this << " for "
            << file_path.AsUTF8Unsafe();
 }
 
 DownloadFeedbackImpl::~DownloadFeedbackImpl() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   DVLOG(1) << "DownloadFeedback destructed " << this;
 
   base::ThreadPool::CreateSequencedTaskRunner(

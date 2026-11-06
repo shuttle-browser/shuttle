@@ -69,6 +69,7 @@ are declared in tools/grit/grit_args.gni.
       <part file="settings_strings.grdp" />
       <if expr="not is_android">
         <part file="shared_settings_strings.grdp"/>
+        <part file="settings_search_tag_strings.grdp" />
       </if>
 
       <if expr="chrome_root_store_cert_management_ui">
@@ -881,6 +882,9 @@ are declared in tools/grit/grit_args.gni.
           </message>
           <message name="IDS_RELAUNCH_TO_UPDATE_ALT_MINOR_TEXT" desc="Minor text for the alternate text label of the relaunch to update Chrome menu item">
             Your tabs will reopen
+          </message>
+          <message name="IDS_SCHEDULED_RESTART_MENU_ITEM" desc="The text label of the relaunch later menu item in the 3-dot app menu. Selecting it opens a dialog where the user can schedule Chrome to relaunch later to apply a pending update. &quot;Relaunch&quot; is an imperative verb.">
+            Relaunch later...
           </message>
         </if>
         <if expr="not use_titlecase">
@@ -1921,6 +1925,10 @@ are declared in tools/grit/grit_args.gni.
           desc="Download context menu: Always open the download using the default handler for the platform.">
             Always open with system viewer
           </message>
+          <message name="IDS_DOWNLOAD_MENU_OPEN_WITH"
+                   desc="Download context menu: Open the system dialog to choose an application to open the download with.">
+            Open &amp;with...
+          </message>
           <message name="IDS_DOWNLOAD_MENU_CANCEL"
                    desc="Download context menu: Cancel">
             &amp;Cancel
@@ -1988,6 +1996,10 @@ are declared in tools/grit/grit_args.gni.
           <message name="IDS_DOWNLOAD_MENU_PLATFORM_OPEN_ALWAYS"
                    desc="In Title Case: Download context menu: Always open the download using the default handler for the platform.">
             Always Open With System Viewer
+          </message>
+          <message name="IDS_DOWNLOAD_MENU_OPEN_WITH"
+                   desc="In Title Case: Download context menu: Open the system dialog to choose an application to open the download with.">
+            Open &amp;With...
           </message>
           <message name="IDS_DOWNLOAD_MENU_CANCEL"
                    desc="In Title Case: Download context menu: Cancel">
@@ -5663,6 +5675,39 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_PINNED_ACTION_BUTTON_ACCESSIBLE_TITLE" is_accessibility_with_no_ui="true" desc="Used to indicate to a screen reader user that an action is pinned in the toolbar">
         <ph name="ACTION_NAME">$1<ex>Bookmarks</ex></ph> - pinned
       </message>
+      <message name="IDS_CONTEXTUAL_TASKS_ASK_ABOUT_THIS_PAGE" desc="Title for the zero state header in the Contextual Tasks side panel prompting the user to ask about the current page.">
+        Ask about this page
+      </message>
+      <!-- TODO(crbug.com/576221905): Mark as translatable. -->
+      <message name="IDS_LENS_SELECTION_SUGGESTION_DEFAULT_LABEL" desc="Default label for the Google Lens smart selection suggestion." translateable="false">
+        Search with Google Lens
+      </message>
+
+      <!-- Contextual Tasks side panel identity -->
+      <message name="IDS_CONTEXTUAL_TASKS_IDENTITY_TOOLTIP_BODY" desc="Body text of the identity tooltip in the Contextual Tasks side panel informing the user which Google Account they are signed in to Search with.">
+        You're signed in to Search with your <ph name="USER_EMAIL">$1<ex>account@gmail.com</ex></ph> account
+      </message>
+      <message name="IDS_CONTEXTUAL_TASKS_IDENTITY_TOOLTIP_SCREENREADER" is_accessibility_with_no_ui="true" desc="Screen reader announcement for the identity tooltip in the Contextual Tasks side panel informing the user which Google Account they are signed in to Search with.">
+        You're signed in to Search with your <ph name="USER_EMAIL">$1<ex>account@gmail.com</ex></ph> account
+      </message>
+      <message name="IDS_CONTEXTUAL_TASKS_IDENTITY_TOOLTIP_MANAGE_ACCOUNT_BUTTON" desc="Label for the button in the Contextual Tasks side panel identity tooltip that opens the user's Google Account page.">
+        Manage account
+      </message>
+      <message name="IDS_CONTEXTUAL_TASKS_IDENTITY_TOOLTIP_CLOSE_BUTTON" desc="Accessible label and tooltip for the close button on the Contextual Tasks side panel identity tooltip.">
+        Close
+      </message>
+      <message name="IDS_CONTEXTUAL_TASKS_ACCOUNT_BUTTON_TOOLTIP" desc="Tooltip and accessible label for the account avatar button in the Contextual Tasks side panel toolbar showing the signed-in user's name and email.">
+        Google Account: <ph name="USER_NAME">$1<ex>Jane Doe</ex></ph> (<ph name="USER_EMAIL">$2<ex>account@gmail.com</ex></ph>)
+      </message>
+      <message name="IDS_CONTEXTUAL_TASKS_ACCOUNT_BUTTON_EMAIL_ONLY_TOOLTIP" desc="Tooltip and accessible label for the account avatar button in the Contextual Tasks side panel toolbar showing the signed-in user's email.">
+        Google Account: <ph name="USER_EMAIL">$1<ex>account@gmail.com</ex></ph>
+      </message>
+      <message name="IDS_CONTEXTUAL_TASKS_ACCOUNT_BUTTON_SIGNED_OUT_TOOLTIP" desc="Tooltip and accessible label for the account avatar indicator in the Contextual Tasks side panel toolbar when the user is signed out of Search.">
+        Signed out
+      </message>
+      <message name="IDS_CONTEXTUAL_TASKS_MENU_SIGN_IN" desc="The 'Sign in' option in the Contextual Tasks 3-dot overflow menu shown when the user is signed out.">
+        Sign in
+      </message>
 
 
 
@@ -5896,16 +5941,16 @@ Keep your key file in a safe place. You will need it to create new versions of y
           <message name="IDS_VIEW_ORGANIZER_PANEL" desc="In Title Case: The tooltip for the button in the top container that shows the organizer panel.">
             View Organizer
           </message>
-          <message name="IDS_HIDE_ORGANIZER_PANEL" desc="In Title Case: The tooltip for the button in the top container that hides the organizer panel.">
-            Hide Organizer
+          <message name="IDS_ORGANIZER_PANEL_CLOSE_TAB_SEARCH" desc="In Title Case: The label for the close button in the organizer panel to close tab search.">
+            Close Tab Search
           </message>
         </then>
         <else>
           <message name="IDS_VIEW_ORGANIZER_PANEL" desc="The tooltip for the button in the top container that shows the organizer panel.">
             View organizer
           </message>
-          <message name="IDS_HIDE_ORGANIZER_PANEL" desc="The tooltip for the button in the top container that hides the organizer panel.">
-            Hide organizer
+          <message name="IDS_ORGANIZER_PANEL_CLOSE_TAB_SEARCH" desc="The label for the close button in the organizer panel to close tab search.">
+            Close tab search
           </message>
         </else>
       </if>
@@ -5918,14 +5963,23 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_ORGANIZER_PANEL_NO_RECENTLY_CLOSED_TABS" desc="Text shown in the recently closed tabs section of the organizer panel when there are no recently closed tabs.">
         No recently closed tabs
       </message>
+      <message name="IDS_ORGANIZER_PANEL_COLLAPSE" desc="The tooltip for an organizer panel section header when it is expanded.">
+        Collapse
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_EXPAND" desc="The tooltip for an organizer panel section header when it is collapsed.">
+        Expand
+      </message>
       <message name="IDS_ORGANIZER_PANEL_SHOW_ALL" desc="The label for the menu item in an organizer panel list section header that shows all items in the section.">
         Show all
       </message>
-      <message name="IDS_ORGANIZER_PANEL_SHOW_SOME" desc="The label for the menu item in an organizer panel list section header that limits the section to showing a few items.">
-        Show some
+      <message name="IDS_ORGANIZER_PANEL_SHOW_SOME" desc="The label for the menu item in an organizer panel list section header that limits the section to showing the most recent items.">
+        Show most recent
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_OPTIONS" desc="The tooltip for the button in an organizer panel section header that opens the options menu.">
+        Options
       </message>
       <message name="IDS_ORGANIZER_PANEL_SPLIT_VIEW" desc="The title for a split view item in an organizer panel list section.">
-        Split View
+        Split view
       </message>
       <message name="IDS_ORGANIZER_PANEL_TAB_GROUPS" desc="The label on the organizer panel list section corresponding to tab groups.">
         Tab Groups
@@ -5935,6 +5989,12 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </message>
       <message name="IDS_ORGANIZER_PANEL_CROSS_DEVICE_TABS" desc="The label on the organizer panel list section corresponding to tabs on other devices.">
         Tabs on other devices
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_RECENTLY_VISITED" desc="The label on the organizer panel list section corresponding to recently visited tabs.">
+        Recently visited
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_CURRENTLY_PLAYING" desc="The description text shown in the organizer panel for a tab or split view that is currently playing audio.">
+        Currently playing
       </message>
       <message name="IDS_TAB_STRIP_BUTTON_TOOLTIP" desc="The tooltip for the tab strip button.">
         Tab strip
@@ -6448,10 +6508,10 @@ Keep your key file in a safe place. You will need it to create new versions of y
           Take back from agent
         </message>
         <message name="IDS_TAB_CXMENU_FOCUS_TAB_GROUP" desc="The label of the tab context menu item for focusing the tab group containing the tab.">
-          Focus on tab group
+          Focus on group
         </message>
         <message name="IDS_TAB_CXMENU_UNFOCUS_TAB_GROUP" desc="The label of the tab context menu item for unfocusing the tab group containing the tab.">
-          Unfocus tab group
+          Unfocus group
         </message>
         <message name="IDS_TAB_CXMENU_FOCUS_TABS" desc="The label of the tab context menu item for focusing one or more tabs. [ICU Syntax]">
           {NUM_TABS, plural, =1 {Focus on tab} other {Focus on tabs}}
@@ -6543,10 +6603,10 @@ Keep your key file in a safe place. You will need it to create new versions of y
           Take Back From Agent
         </message>
         <message name="IDS_TAB_CXMENU_FOCUS_TAB_GROUP" desc="In Title Case: The label of the tab context menu item for focusing the tab group containing the tab.">
-          Focus on Tab Group
+          Focus on Group
         </message>
         <message name="IDS_TAB_CXMENU_UNFOCUS_TAB_GROUP" desc="In Title Case: The label of the tab context menu item for unfocusing the tab group containing the tab.">
-          Unfocus Tab Group
+          Unfocus Group
         </message>
         <message name="IDS_TAB_CXMENU_FOCUS_TABS" desc="In Title Case: The label of the tab context menu item for focusing one or more tabs. [ICU Syntax]">
           {NUM_TABS, plural, =1 {Focus on Tab} other {Focus on Tabs}}
@@ -6749,6 +6809,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
         <message name="IDS_NEW_TAB_IN_GROUP_NO_NAME" desc="The label of a context menu item for adding a new tab into an existing group with no name.">
           {NUM_TABS, plural, =1 {New tab in 1 tab} other {New tab in # tabs}}
         </message>
+        <message name="IDS_NEW_TAB_BUTTON_CXMENU_NEW_TAB" desc="The label of a context menu item for opening a new tab.">
+          New tab
+        </message>
       </if>
       <if expr="use_titlecase">
         <message name="IDS_NEW_TAB_IN_GROUP" desc="The label of a context menu item for adding a new tab into a group.">
@@ -6759,6 +6822,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
         </message>
         <message name="IDS_NEW_TAB_IN_GROUP_NO_NAME" desc="The label of a context menu item for adding a new tab into an existing group with no name.">
           {NUM_TABS, plural, =1 {New Tab in 1 Tab} other {New Tab in # Tabs}}
+        </message>
+        <message name="IDS_NEW_TAB_BUTTON_CXMENU_NEW_TAB" desc="In Title Case: The label of a context menu item for opening a new tab.">
+          New Tab
         </message>
       </if>
 
@@ -6796,13 +6862,19 @@ Keep your key file in a safe place. You will need it to create new versions of y
         Ungroup
       </message>
       <message name="IDS_TAB_GROUP_HEADER_CXMENU_FOCUS_GROUP" desc="The label for focus group in the tab group editor bubble.">
-        Focus on Tab Group
+        Focus on group
       </message>
       <message name="IDS_TAB_GROUP_HEADER_CXMENU_UNFOCUS_GROUP" desc="The label for unfocus group in the tab group editor bubble.">
-        Unfocus Tab Group
+        Unfocus group
       </message>
       <message name="IDS_TAB_GROUP_HEADER_UNFOCUS_BUTTON" desc="The label for the unfocus button header attached to a focused tab group.">
         Unfocus
+      </message>
+      <message name="IDS_TAB_GROUP_FOCUS_EXITED_TOAST_BODY" desc="Text shown in a toast when focus mode is exited because a tab outside of the focused tab group was activated.">
+        Unfocused tab group
+      </message>
+      <message name="IDS_NON_GROUP_FOCUS_EXITED_TOAST_BODY" desc="Text shown in a toast when non-group focus mode is exited because a tab outside of focus mode was activated. [ICU Syntax]">
+        {NUM_TABS, plural, =1 {Unfocused tab} other {Unfocused tabs}}
       </message>
       <message name="IDS_TAB_GROUP_HEADER_CXMENU_CLOSE_GROUP" desc="The label of the tab group header context menu item for closing all tabs in the current group.">
         Close agent tabs
@@ -7336,7 +7408,7 @@ Keep your key file in a safe place. You will need it to create new versions of y
           Homepage
         </message>
         <message name="IDS_RESET_PROFILE_SETTINGS_HOMEPAGE_IS_NTP" desc="Tag in the feedback details of the Reset Profile Settings dialog">
-          Homepage is the New Tab page
+          Homepage is the new tab page
         </message>
         <message name="IDS_RESET_PROFILE_SETTINGS_YES" desc="'Yes' value for 'Homepage is NTP' and 'Show homebutton' in the feedback details of the Reset Profile Settings dialog">
           Yes
@@ -7479,6 +7551,16 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_PAGE_SPECIFIC_SITE_DATA_DIALOG_DELETE_BUTTON_TOOLTIP"
           desc="The tooltip that is used for button button that clears storage accessed by the site. The button is shown in the `Cookies and site data` dialog.">
         Delete saved data for <ph name="SITE_NAME">$1<ex>example.com</ex></ph>
+        <message name="IDS_INFOBAR_PENDING_COUNT" desc="Label on the count badge shown in an infobar next to its close button when more infobars are queued behind it, waiting to be shown. Indicates how many more infobars are queued, e.g. '+2'.">
+          {COUNT, plural,
+           =1 {+1}
+           other {+#}}
+        </message>
+        <message name="IDS_INFOBAR_PENDING_COUNT_TOOLTIP" desc="Tooltip and accessible name for the count badge shown in an infobar when more infobars are queued behind it. Explains that the queued notifications appear once the current infobar is closed.">
+          {COUNT, plural,
+           =1 {1 more infobar will appear when this one is closed}
+           other {# more infobars will appear when this one is closed}}
+        </message>
       </message>
 
       <!-- Accessiblility strings for Infobars in Views -->
@@ -7693,6 +7775,9 @@ This can include information about installed software, files, your browser, the 
 
       <message name="IDS_HISTORY_MENU" desc="The text label of the History (and recent tabs) sub-menu in the wrench menu.">
         &amp;History
+      </message>
+      <message name="IDS_OTHER_DEVICE_TABS_MENU" desc="The text label of the 'Other device tabs' sub-menu in the wrench menu that lists the tabs currently open on the user's other devices.">
+        Other device tabs
       </message>
       <message name="IDS_DEFAULT_DOWNLOAD_FILENAME" desc="Default name for downloaded files when we have no idea what they could be.">
         download
@@ -9472,17 +9557,11 @@ This can include information about installed software, files, your browser, the 
       <message name="IDS_RELAUNCH_RECOMMENDED_RESTART_NOW" desc="Button label to relaunch immediately.">
         Relaunch now
       </message>
-      <message name="IDS_RELAUNCH_RECOMMENDED_RESTART_WHEN_IDLE" desc="Button label to schedule an update when the user steps away.">
-        Update when I step away
+      <message name="IDS_RELAUNCH_RECOMMENDED_RESTART_WHEN_IDLE" desc="Button label to schedule an update when not in use.">
+        Update when not in use
       </message>
       <message name="IDS_RELAUNCH_RECOMMENDED_BODY_SCHEDULE_IMPORTANT_UPDATE" desc="Emphasized phrase inside the first body paragraph of the scheduled restart reminder bubble dialog.">
         important security update
-      </message>
-      <message name="IDS_RELAUNCH_RECOMMENDED_BODY_SCHEDULE_IDLE_DURATION" desc="Emphasized idle duration inside the first body paragraph of the scheduled restart reminder bubble dialog.">
-        5 minutes
-      </message>
-      <message name="IDS_RELAUNCH_RECOMMENDED_BODY_SCHEDULE_TABS_REOPEN" desc="The second body paragraph for the scheduled restart reminder bubble dialog.">
-        All of your open tabs and windows will reopen automatically.
       </message>
       <message name="IDS_APP_MENU_BUTTON_RESTART_SCHEDULED" desc="Short label next to app-menu button when a scheduled update is pending.">
         Update scheduled
@@ -9495,6 +9574,16 @@ This can include information about installed software, files, your browser, the 
         {COUNT, plural,
           =1 {Your Incognito window won't reopen.}
           other {Your # Incognito windows won't reopen.}}
+      </message>
+      <message name="IDS_IDLE_TIMEOUT_ISOLATED" desc="The text in the Idle Timeout dialog variant when there are Isolated windows open. This warns the user that Isolated windows will close automatically, and their content will be lost.">
+        {COUNT, plural,
+          =1 {Your Isolated window won't reopen.}
+          other {Your # Isolated windows won't reopen.}}
+      </message>
+      <message name="IDS_IDLE_TIMEOUT_INCOGNITO_AND_ISOLATED" desc="The text in the Idle Timeout dialog variant when there are Incognito and Isolated windows open. This warns the user that Incognito and Isolated windows will close automatically, and their content will be lost.">
+        {COUNT, plural,
+          =1 {There is Incognito or Isolated window open. It won't reopen.}
+          other {There are # Incognito and Isolated windows open across profiles. They won't reopen.}}
       </message>
       <message name="IDS_IDLE_TIMEOUT_CLOSE_COUNTDOWN" desc="In the Idle Timeout dialog, a countdown that ticks every second. When it reaches zero, Chrome closes all browsers.">
         {0, plural,
@@ -10211,6 +10300,9 @@ This can include information about installed software, files, your browser, the 
     </message>
     <message name="IDS_ACCOUNT_SELECTION_BACK" desc="Title of the button that lets the user go back to a previous sheet.">
       Back
+    </message>
+    <message name="IDS_ACCOUNT_SELECTION_IDP_PICKER_BODY" desc="Text to prompt a user to choose an identity provider to sign in with, shown above a list of identity providers. Placeholder text that is not translated yet." translateable="false">
+      Choose a provider to continue
     </message>
     <message name="IDS_SIGNIN_CONTINUE" desc="Title of the button that allows the user to continue with signing in to an account from an identity provider.">
       Continue

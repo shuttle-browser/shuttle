@@ -67,8 +67,9 @@ ContextMenuContentTypeFactory::~ContextMenuContentTypeFactory() = default;
 std::unique_ptr<ContextMenuContentType> ContextMenuContentTypeFactory::Create(
     content::RenderFrameHost* render_frame_host,
     const content::ContextMenuParams& params) {
-  if (IsUserSessionBlocked())
+  if (IsUserSessionBlocked()) {
     return std::make_unique<NullContextMenuContentType>(params);
+  }
 
   return CreateInternal(render_frame_host, params);
 }
@@ -90,8 +91,6 @@ ContextMenuContentTypeFactory::CreateInternal(
         web_view_guest->GetWeakPtr(), params));
   }
 
-  content::WebContents* web_contents =
-      content::WebContents::FromRenderFrameHost(render_frame_host);
   const extensions::mojom::ViewType view_type =
       extensions::GetViewType(web_contents);
 

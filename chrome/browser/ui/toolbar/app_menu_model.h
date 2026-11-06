@@ -142,6 +142,7 @@ enum AppMenuAction {
   MENU_ACTION_CHROME_ENTERPRISE_RELEASE_NOTES = 123,
   MENU_ACTION_MANAGE_SKILLS = 124,
   MENU_ACTION_SHOW_SKILLS_AND_EXTENSIONS = 125,
+  MENU_ACTION_SCHEDULED_RESTART_DIALOG = 126,
   LIMIT_MENU_ACTION
 };
 // LINT.ThenChange(/tools/metrics/histograms/metadata/ui/enums.xml:WrenchMenuAction)
@@ -234,6 +235,7 @@ class AppMenuModel : public ui::SimpleMenuModel,
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kTabGroupsMenuItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kDownloadsMenuItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kHistoryMenuItem);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kOtherDeviceTabsMenuItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kExtensionsMenuItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kSkillsAndExtensionsMenuItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kClearBrowsingDataMenuItem);
@@ -252,6 +254,7 @@ class AppMenuModel : public ui::SimpleMenuModel,
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kInstallAppItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kCreateShortcutItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kSetBrowserAsDefaultMenuItem);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kScheduledRestartMenuItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kHelpMenuItem);
 
   // Internal placeholder container command IDs.
@@ -262,6 +265,8 @@ class AppMenuModel : public ui::SimpleMenuModel,
   static constexpr int kFindAndEditMenuPlaceholder = IDC_FIND_AND_EDIT_MENU;
   static constexpr int kSaveAndShareMenuPlaceholder = IDC_SAVE_AND_SHARE_MENU;
   static constexpr int kRecentTabsMenuPlaceholder = IDC_RECENT_TABS_MENU;
+  static constexpr int kOtherDeviceTabsMenuPlaceholder =
+      IDC_OTHER_DEVICE_TABS_MENU;
   static constexpr int kSharingHubMenuPlaceholder = IDC_SHARING_HUB_MENU;
   static constexpr int kProfileMenuPlaceholder = IDC_PROFILE_MENU_IN_APP_MENU;
   static constexpr int kReadingListMenuPlaceholder = IDC_READING_LIST_MENU;
@@ -361,6 +366,10 @@ class AppMenuModel : public ui::SimpleMenuModel,
   void LogMenuMetrics(int command_id);
 
  private:
+  // Adds the "Relaunch later..." menu item if a pending update is eligible for
+  // scheduled restart. Returns whether the menu item was added.
+  bool AddScheduledRestartMenuItem();
+
   // Adds actionable global error menu items to the menu.
   // Examples: Extension permissions and sign in errors.
   // Returns a boolean indicating whether any menu items were added.

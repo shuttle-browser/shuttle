@@ -103,9 +103,8 @@ bool ChromePingManagerFactory::ShouldSendPersistedReport(Profile* profile) {
 
 bool ChromePingManagerFactory::ServiceIsCreatedWithBrowserContext() const {
   // PingManager is created at startup to send persisted reports.
-  return true;
+  return !::features::IsLazyAfterStartupKeyedServicesEnabled();
 }
-
 bool ChromePingManagerFactory::ServiceIsNULLWhileTesting() const {
   return !kAllowPingManagerInTests;
 }

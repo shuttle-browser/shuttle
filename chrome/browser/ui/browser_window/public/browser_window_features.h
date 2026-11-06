@@ -74,11 +74,13 @@ class OrganizerPanelController;
 class ScrimViewController;
 class SessionServiceBrowserHelper;
 class TabDragServiceFeature;
+class TabGroupFocusIphController;
 class TabListBridge;
 
 class TabMenuModelDelegate;
 class TabStripModel;
 class TabStripServiceFeature;
+class TabsFromOtherDevicesSidePanelCoordinator;
 class ToastService;
 class UnloadController;
 class UpgradeNotificationController;
@@ -281,6 +283,8 @@ class BrowserWindowFeatures {
   // Controller for managing TabStrip UI decoupled TabStrip platform.
   std::unique_ptr<tabs_api::TabStripUIControllerImpl> tab_strip_ui_controller_;
 
+  std::unique_ptr<TabsFromOtherDevicesSidePanelCoordinator>
+      tabs_from_other_devices_side_panel_coordinator_;
   std::unique_ptr<ToastService> toast_service_;
   std::unique_ptr<UpgradeNotificationController>
       upgrade_notification_controller_;

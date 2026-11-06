@@ -18,6 +18,12 @@ BASE_FEATURE(kRealboxCr23Theming,
              "NtpRealboxCr23Theming",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+
+// If enabled, loads the experimental NTP component extension, which overrides
+// chrome://newtab.
+BASE_FEATURE(kNtpComponentExtension, base::FEATURE_DISABLED_BY_DEFAULT);
+const base::FeatureParam<bool> kNtpComponentExtensionUseComponentUpdater{
+    &kNtpComponentExtension, "use_component_updater", true};
 // If enabled, segmentation data will be collected to decide whether or not to
 // show the Drive module.
 BASE_FEATURE(kNtpDriveModuleSegmentation, base::FEATURE_DISABLED_BY_DEFAULT);
@@ -32,6 +38,10 @@ BASE_FEATURE(kNtpShortcutsRedesign, base::FEATURE_DISABLED_BY_DEFAULT);
 // visibility settings are added.
 BASE_FEATURE(kNtpSimplificationBookmarkBar, base::FEATURE_ENABLED_BY_DEFAULT);
 
+
+// If enabled, the NTP composebox will be lazy-loaded after initial page
+// render instead of on the critical loading path.
+BASE_FEATURE(kNtpLazyLoadComposebox, base::FEATURE_DISABLED_BY_DEFAULT);
 const base::FeatureParam<bool> kNtpRealboxCr23ExpandedStateBgMatchesOmnibox(
     &ntp_features::kRealboxCr23Theming,
     "kNtpRealboxCr23ExpandedStateBgMatchesOmnibox",

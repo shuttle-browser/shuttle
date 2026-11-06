@@ -11,6 +11,7 @@
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "chrome/browser/ui/browser_window/public/desktop_browser_window_capabilities.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/common/chrome_features.h"
@@ -46,6 +47,8 @@ const std::string_view* GetWebUIMetricsHostname(const GURL& webui_url) {
           {content::kChromeUIResourcesHost, "Resources"},
           {chrome::kChromeUISettingsHost, "Settings"},
           {chrome::kChromeUITabSearchHost, "TabSearch"},
+          {chrome::kChromeUITabsFromOtherDevicesSidePanelHost,
+           "TabsFromOtherDevices"},
           {chrome::kChromeUIThemeHost, "Theme"},
           {chrome::kChromeUITopChromeDomain, "TopChrome"},
       });
@@ -154,7 +157,8 @@ void AppendWebUIResourceURLToCodeCachePairs(
     // Stripping the .code_cache suffix from code cache resource paths
     // yields the corresponding resource paths.
     constexpr std::string_view kCodeCacheResourceSuffix = ".code_cache";
-    DCHECK(code_cache_path.ends_with(kCodeCacheResourceSuffix));
+    CHECK(code_cache_path.ends_with(kCodeCacheResourceSuffix),
+          base::NotFatalUntil::M162);
     std::string_view resource_path = code_cache_path.substr(
         0, code_cache_path.size() - kCodeCacheResourceSuffix.size());
 

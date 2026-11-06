@@ -58,7 +58,7 @@ BrowserWindowCreateParams BrowserWindowCreateParams::CreateForApp(
     const gfx::Rect& window_bounds,
     Profile* profile,
     bool user_gesture) {
-  DCHECK(!app_name.empty());
+  CHECK(!app_name.empty(), base::NotFatalUntil::M162);
   BrowserWindowCreateParams params(
       BrowserWindowInterface::TYPE_APP, profile, user_gesture);
   params.app_name = app_name;
@@ -74,7 +74,7 @@ BrowserWindowCreateParams BrowserWindowCreateParams::CreateForAppPopup(
     const gfx::Rect& window_bounds,
     Profile* profile,
     bool user_gesture) {
-  DCHECK(!app_name.empty());
+  CHECK(!app_name.empty(), base::NotFatalUntil::M162);
   BrowserWindowCreateParams params(
       BrowserWindowInterface::TYPE_APP_POPUP, profile, user_gesture);
   params.app_name = app_name;
@@ -89,10 +89,11 @@ BrowserWindowCreateParams BrowserWindowCreateParams::CreateForPictureInPicture(
     bool trusted_source,
     Profile* profile,
     bool user_gesture) {
-  BrowserWindowCreateParams params(
-      BrowserWindowInterface::TYPE_PICTURE_IN_PICTURE, profile, user_gesture);
+  BrowserWindowCreateParams params(BrowserWindowInterface::TYPE_FLOATING,
+                                   profile, user_gesture);
   params.app_name = app_name;
   params.is_trusted_source = trusted_source;
+  params.pip_options.emplace();
   return params;
 }
 
@@ -137,6 +138,8 @@ BrowserWindowInterface* CreateBrowserWindow(
     BrowserWindowCreateParams create_params) {
   CHECK_EQ(BrowserWindowInterface::CreationStatus::kOk,
            GetBrowserWindowCreationStatusForProfile(*create_params.profile));
+  CHECK(!create_params.is_pip() ||
+        create_params.type == BrowserWindowInterface::TYPE_FLOATING);
 
   return Browser::Create(std::move(create_params));
 }
@@ -144,6 +147,8 @@ BrowserWindowInterface* CreateBrowserWindow(
 std::unique_ptr<BrowserWindowInterface>
 DeprecatedCreateOwnedBrowserWindowForTesting(
     BrowserWindowCreateParams create_params) {
+  CHECK(!create_params.is_pip() ||
+        create_params.type == BrowserWindowInterface::TYPE_FLOATING);
   return Browser::DeprecatedCreateOwnedForTesting(
       std::move(create_params));  // IN-TEST
 }

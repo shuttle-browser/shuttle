@@ -162,6 +162,7 @@ source_set("top_bucket_domains") {
 
 source_set("top_bucket_domains_header") {
   sources = [ "top_bucket_domains.h" ]
+  public_deps = [ "//base" ]
 }
 
 source_set("test_top_bucket_domains") {
@@ -178,4 +179,5 @@ source_set("test_top_bucket_domains") {
 
 source_set("test_top_bucket_domains_header") {
   sources = [ "test_top_bucket_domains.h" ]
+  public_deps = [ "//base" ]
 }

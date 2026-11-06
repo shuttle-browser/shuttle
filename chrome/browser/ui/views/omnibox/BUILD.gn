@@ -12,6 +12,7 @@ source_set("omnibox") {
     "omnibox_context_menu_mixin.h",
     "omnibox_full_popup_webui_content.h",
     "omnibox_header_view.h",
+    "omnibox_latency_tracker.h",
     "omnibox_local_answer_header_view.h",
     "omnibox_match_cell_view.h",
     "omnibox_mouse_enter_exit_handler.h",
@@ -73,6 +74,10 @@ source_set("omnibox") {
     "//ui/views",
     "//ui/views/controls/webview",
   ]
+
+  if (is_chromeos) {
+    public_deps += [ "//ui/base/ime/ash" ]
+  }
 }
 
 source_set("impl") {
@@ -81,6 +86,7 @@ source_set("impl") {
     "omnibox_context_menu_mixin.cc",
     "omnibox_full_popup_webui_content.cc",
     "omnibox_header_view.cc",
+    "omnibox_latency_tracker.cc",
     "omnibox_local_answer_header_view.cc",
     "omnibox_match_cell_view.cc",
     "omnibox_mouse_enter_exit_handler.cc",
@@ -146,6 +152,7 @@ source_set("impl") {
     "//components/search",
     "//components/search_engines",
     "//components/security_state/core",
+    "//components/startup_metric_utils",
     "//components/strings:components_strings",
     "//components/url_formatter",
     "//components/vector_icons",
@@ -155,13 +162,6 @@ source_set("impl") {
     "//ui/content_accelerators",
     "//ui/strings:ui_strings_grit",
   ]
-
-  # These .cc files include headers still compiled in //chrome/browser/ui:ui:
-  # browser.h, view_ids.h, views/frame/browser_view.h,
-  # views/frame/contents_web_view.h and views/theme_copying_widget.h. Reach
-  # them via browser_public_dependencies; the reverse edge is the
-  # allow_circular_includes_from entry on //chrome/browser/ui:ui.
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 
   if (is_mac) {
     deps += [ ":native_widget_mac" ]

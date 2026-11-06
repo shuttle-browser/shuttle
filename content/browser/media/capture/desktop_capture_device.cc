@@ -301,8 +301,6 @@ class DesktopCaptureDevice::Core : public webrtc::DesktopCapturer::Callback {
 
   base::TimeDelta GetDelayBeforeNextRefreshAttempt() const;
 
-  void SetNotificationWindowId(gfx::NativeViewId window_id);
-
   void SetMockTimeForTesting(
       scoped_refptr<base::SingleThreadTaskRunner> task_runner,
       const base::TickClock* tick_clock);
@@ -573,13 +571,6 @@ void DesktopCaptureDevice::Core::RequestRefreshFrame() {
   }
 }
 
-void DesktopCaptureDevice::Core::SetNotificationWindowId(
-    gfx::NativeViewId window_id) {
-  CHECK(task_runner_->BelongsToCurrentThread(), base::NotFatalUntil::M160);
-  CHECK(window_id, base::NotFatalUntil::M160);
-  desktop_capturer_->SetExcludedWindow(window_id);
-}
-
 void DesktopCaptureDevice::Core::SetMockTimeForTesting(
     scoped_refptr<base::SingleThreadTaskRunner> task_runner,
     const base::TickClock* tick_clock) {
@@ -845,7 +836,7 @@ void DesktopCaptureDevice::Core::OnCaptureResultZeroCopy(
   // OnIncomingCapturedBufferExt() takes color space and several other
   // video frame properties as explicit, separate parameters.
   media::VideoFrameMetadata metadata;
-  metadata.source_size =
+  metadata.capture.source_size =
       gfx::Size(frame->size().width(), frame->size().height());
   metadata.device_scale_factor = frame->device_scale_factor();
 
@@ -1098,7 +1089,7 @@ void DesktopCaptureDevice::Core::OnCaptureResultLegacy(
   // This passes the information to the frame metadata for screen and non-chrome
   // window captures.
   media::VideoFrameMetadata metadata;
-  metadata.source_size =
+  metadata.capture.source_size =
       gfx::Size(frame->size().width(), frame->size().height());
   metadata.device_scale_factor = frame->device_scale_factor();
 
@@ -1367,6 +1358,8 @@ std::unique_ptr<media::VideoCaptureDevice> DesktopCaptureDevice::Create(
     }
   }
   options.set_allow_wgc_window_capturer(true);
+  options.set_allow_fallback_for_wgc_window_capturer(
+      base::FeatureList::IsEnabled(features::kWebRtcWgcWindowCroppingFallback));
   if (source.type == DesktopMediaID::TYPE_WINDOW) {
     options.set_allow_wgc_zero_hertz(true);
   }
@@ -1394,7 +1387,11 @@ std::unique_ptr<media::VideoCaptureDevice> DesktopCaptureDevice::Create(
                 << ", allow_wgc_window_capturer: "
                 << options.allow_wgc_window_capturer()
                 << ", allow_wgc_zero_hertz: " << options.allow_wgc_zero_hertz()
-                << ", wgc_require_border: " << options.wgc_require_border();
+                << ", wgc_require_border: " << options.wgc_require_border()
+                << ", allow_fallback_for_wgc_window_capturer: "
+                << options.allow_fallback_for_wgc_window_capturer()
+                << ", allow_wgc_using_texture: "
+                << options.allow_wgc_using_texture();
 #endif
   string_stream << "}";
   VLOG(1) << string_stream.str();
@@ -1511,16 +1508,6 @@ void DesktopCaptureDevice::InvalidateBuffers() {
   }
   thread_.task_runner()->PostTask(
       FROM_HERE, base::BindOnce(&Core::InvalidateBuffers, core_->GetWeakPtr()));
-}
-
-void DesktopCaptureDevice::SetNotificationWindowId(
-    gfx::NativeViewId window_id) {
-  // This may be called after the capturer has been stopped.
-  if (!core_)
-    return;
-  thread_.task_runner()->PostTask(
-      FROM_HERE, base::BindOnce(&Core::SetNotificationWindowId,
-                                core_->GetWeakPtr(), window_id));
 }
 
 DesktopCaptureDevice::DesktopCaptureDevice(

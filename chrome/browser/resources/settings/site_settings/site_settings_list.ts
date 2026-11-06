@@ -7,9 +7,9 @@ import 'chrome://resources/cr_elements/icons.html.js';
 import '../icons.html.js';
 import '../settings_shared.css.js';
 
-import {PrefsMixin} from '/shared/settings/prefs/prefs_mixin.js';
+import {PrefServiceObserverMixin} from '/shared/settings/prefs2/pref_service_observer_mixin.js';
+import {WebUiListenerMixin} from '/shared/settings/web_ui_listener_mixin.js';
 import {I18nMixin} from 'chrome://resources/cr_elements/i18n_mixin.js';
-import {WebUiListenerMixin} from 'chrome://resources/cr_elements/web_ui_listener_mixin.js';
 import {assert} from 'chrome://resources/js/assert.js';
 import {focusWithoutInk} from 'chrome://resources/js/focus_without_ink.js';
 import type {DomRepeatEvent} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
@@ -54,8 +54,8 @@ export function defaultSettingLabel(
 }
 
 
-const SettingsSiteSettingsListElementBase =
-    PrefsMixin(BaseMixin(WebUiListenerMixin(I18nMixin(PolymerElement))));
+const SettingsSiteSettingsListElementBase = PrefServiceObserverMixin(
+    BaseMixin(WebUiListenerMixin(I18nMixin(PolymerElement))));
 
 class SettingsSiteSettingsListElement extends
     SettingsSiteSettingsListElementBase {
@@ -76,16 +76,6 @@ class SettingsSiteSettingsListElement extends
         computed: 'computeCategoryMap(categoryList)',
       },
     };
-  }
-
-  static get observers() {
-    return [
-      'updateNotificationsLabel_(prefs.generated.notification.*)',
-      'updateLocationLabel_(prefs.generated.geolocation.*)',
-      'updateSiteDataLabel_(prefs.generated.cookie_default_content_setting.*)',
-      'updateThirdPartyCookiesLabel_(prefs.profile.cookie_controls_mode.*,' +
-          'prefs.generated.third_party_cookie_blocking_setting.*)',
-    ];
   }
 
   declare categoryList: CategoryListItem[];
@@ -111,6 +101,23 @@ class SettingsSiteSettingsListElement extends
   private computeCategoryMap(categoryList: CategoryListItem[]):
       Map<ContentSettingsTypes, number> {
     return new Map(categoryList.map((e, index) => [e.id, index]));
+  }
+
+  override connectedCallback() {
+    super.connectedCallback();
+
+    this.addPrefObserver<SettingsState>(
+        'generated.geolocation',
+        pref => this.onGeneratedGeolocationChanged_(pref));
+    this.addPrefObserver<SettingsState>(
+        'generated.notification',
+        pref => this.onGeneratedNotificationChanged_(pref));
+    this.addPrefObserver<ContentSetting>(
+        'generated.cookie_default_content_setting',
+        pref => this.onGeneratedCookieDefaultContentSettingChanged_(pref));
+    this.addPrefObserver<CookieControlsMode>(
+        'profile.cookie_controls_mode',
+        pref => this.onProfileCookieControlsModeChanged_(pref));
   }
 
   override ready() {
@@ -248,15 +255,16 @@ class SettingsSiteSettingsListElement extends
    * Update the geolocation link row label when the geolocation setting
    * description changes.
    */
-  private updateLocationLabel_() {
-    const state = this.getPref('generated.geolocation').value;
+  private onGeneratedGeolocationChanged_(
+      pref: chrome.settingsPrivate.PrefObject<SettingsState>) {
     const index = this.categoryMap_.get(ContentSettingsTypes.GEOLOCATION);
-
     // The location row might not be part of the current site-settings-list
     // but the class always observes the preference.
-    if (index === -1) {
+    if (index === undefined || index === -1) {
       return;
     }
+
+    const state = pref.value;
 
     let label = 'siteSettingsLocationBlocked';
     if (state === SettingsState.LOUD) {
@@ -269,20 +277,20 @@ class SettingsSiteSettingsListElement extends
     this.set(`categoryList.${index}.subLabel`, this.i18n(label));
   }
 
-
   /**
    * Update the notifications link row label when the notifications setting
    * description changes.
    */
-  private updateNotificationsLabel_() {
-    const state = this.getPref('generated.notification').value;
+  private onGeneratedNotificationChanged_(
+      pref: chrome.settingsPrivate.PrefObject<SettingsState>) {
     const index = this.categoryMap_.get(ContentSettingsTypes.NOTIFICATIONS);
-
     // The notification row might not be part of the current site-settings-list
     // but the class always observes the preference.
-    if (index === -1) {
+    if (index === undefined || index === -1) {
       return;
     }
+
+    const state = pref.value;
 
     let label = 'siteSettingsNotificationsBlocked';
     if (state === SettingsState.LOUD) {
@@ -299,16 +307,16 @@ class SettingsSiteSettingsListElement extends
    * Update the site data link row label when the default cookies content
    * setting changes.
    */
-  private updateSiteDataLabel_() {
-    const state =
-        this.getPref('generated.cookie_default_content_setting').value;
+  private onGeneratedCookieDefaultContentSettingChanged_(
+      pref: chrome.settingsPrivate.PrefObject<ContentSetting>) {
     const index = this.categoryMap_.get(ContentSettingsTypes.SITE_DATA);
-
     // The site data row might not be part of the current site-settings-list
     // but the class always observes the preference.
-    if (index === -1) {
+    if (index === undefined || index === -1) {
       return;
     }
+
+    const state = pref.value;
 
     let label;
     if (state === ContentSetting.ALLOW) {
@@ -325,16 +333,17 @@ class SettingsSiteSettingsListElement extends
   /**
    * Update the third-party cookies link row label when the pref changes.
    */
-  private updateThirdPartyCookiesLabel_() {
+  private onProfileCookieControlsModeChanged_(
+      pref: chrome.settingsPrivate.PrefObject<CookieControlsMode>) {
     const index = this.categoryMap_.get(ContentSettingsTypes.COOKIES);
     // The third-party cookies might not be part of the current
     // site-settings-list but the class always observes the preference.
-    if (index === -1) {
+    if (index === undefined || index === -1) {
       return;
     }
 
     let label;
-    const state = this.getPref('profile.cookie_controls_mode').value;
+    const state = pref.value;
     if (state === CookieControlsMode.OFF ||
         state === CookieControlsMode.INCOGNITO_ONLY) {
       label = 'thirdPartyCookiesLinkRowSublabelEnabled';

@@ -52,7 +52,6 @@ class BrowsingHistoryHandler : public history::mojom::PageHandler,
 
   ~BrowsingHistoryHandler() override;
 
-  void StartQueryHistory();
 
   void SetPage(mojo::PendingRemote<history::mojom::Page> pending_page) override;
 
@@ -62,6 +61,7 @@ class BrowsingHistoryHandler : public history::mojom::PageHandler,
                     std::optional<double> begin_timestamp,
                     bool include_user_visits,
                     bool include_actor_visits,
+                    const std::vector<std::string>& client_ids,
                     QueryHistoryCallback callback) override;
 
   void QueryHistoryContinuation(
@@ -89,6 +89,12 @@ class BrowsingHistoryHandler : public history::mojom::PageHandler,
   // ProfileBasedBrowsingHistoryDriver implementation.
   Profile* GetProfile() override;
 
+  // history::mojom::PageHandler:
+  // Shuttle: no sync, so the synced device list is always empty.
+  void GetSyncedDevicesForFiltering(
+      GetSyncedDevicesForFilteringCallback callback) override;
+  void GetTimePeriodOptions(GetTimePeriodOptionsCallback callback) override;
+
   // For tests. This does not take the ownership of the clock. |clock| must
   // outlive the BrowsingHistoryHandler instance.
   void set_clock(base::Clock* clock) { clock_ = clock; }
@@ -108,7 +114,8 @@ class BrowsingHistoryHandler : public history::mojom::PageHandler,
                                 const std::string& query,
                                 std::optional<double> begin_timestamp,
                                 bool include_user_visits,
-                                bool include_actor_visits);
+                                bool include_actor_visits,
+                                const std::vector<std::string>& client_ids);
 
  private:
   FRIEND_TEST_ALL_PREFIXES(BrowsingHistoryHandlerTest,

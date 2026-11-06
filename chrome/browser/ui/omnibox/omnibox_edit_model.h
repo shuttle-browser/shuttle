@@ -176,6 +176,7 @@ class OmniboxEditModel {
                          bool* write_url);
 
   bool user_input_in_progress() const { return user_input_in_progress_; }
+  bool has_temporary_text() const { return has_temporary_text_; }
 
   std::u16string user_text() const { return user_text_; }
 
@@ -271,7 +272,7 @@ class OmniboxEditModel {
   void OpenSelection(
       OmniboxPopupSelection selection,
       base::TimeTicks timestamp = base::TimeTicks(),
-      WindowOpenDisposition disposition = WindowOpenDisposition::CURRENT_TAB,
+      WindowOpenDisposition disposition = WindowOpenDisposition::kCurrentTab,
       bool via_keyboard = false,
       const searchbox::AutocompleteSnapshot* snapshot = nullptr);
   void OpenSelection(OmniboxPopupSelection selection, bool via_keyboard);
@@ -280,7 +281,7 @@ class OmniboxEditModel {
   // selection.
   void OpenCurrentSelection(
       base::TimeTicks timestamp = base::TimeTicks(),
-      WindowOpenDisposition disposition = WindowOpenDisposition::CURRENT_TAB,
+      WindowOpenDisposition disposition = WindowOpenDisposition::kCurrentTab,
       bool via_keyboard = false);
 
   OmniboxFocusState focus_state() const { return focus_state_; }

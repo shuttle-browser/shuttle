@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "base/compiler_specific.h"
@@ -22,12 +23,14 @@
 #include "base/observer_list.h"
 #include "base/sequence_checker.h"
 #include "base/time/time.h"
+#include "base/timer/timer.h"
 #include "base/types/expected.h"
 #include "base/types/pass_key.h"
 #include "components/variations/client_filterable_state.h"
 #include "components/variations/entropy_provider.h"
 #include "components/variations/metrics.h"
 #include "components/variations/processed_study.h"
+#include "components/variations/proto/variations_seed.pb.h"
 #include "components/variations/service/safe_seed_manager.h"
 #include "components/variations/service/variations_field_trial_creator.h"
 #include "components/variations/service/variations_service_client.h"
@@ -292,8 +295,8 @@ class VariationsService
   // Wrapper for SimulateAndApplyRuntimeMutableChanges.
   void SimulateAndApplyUploadedSeed(
       base::PassKey<metrics::RuntimeMutableFeaturesHandlerBase> pass_key,
-      const VariationsSeed& seed) {
-    SimulateAndApplyRuntimeMutableChanges(seed);
+      VariationsSeed seed) {
+    SimulateAndApplyRuntimeMutableChanges(std::move(seed));
   }
 
   // Cancels the currently pending fetch request.
@@ -389,15 +392,19 @@ class VariationsService
 
   // Records a 304 response from the variations server. Updates the client fetch
   // time and clears failure streaks. If `response_date` has a value (present on
-  // secure HTTPS responses), updates the stored seed date.
+  // secure HTTPS responses), updates the stored seed date. If `country_code` is
+  // non-empty (present on secure HTTPS responses), updates the stored session
+  // country and administrative area.
   void RecordSuccessfulFetchSeedNotModified(
-      std::optional<base::Time> response_date);
+      std::optional<base::Time> response_date,
+      std::string_view country_code = std::string_view(),
+      std::string_view geo_level1 = std::string_view());
 
   // Performs a simulation of the given `seed` to find any runtime mutable
   // changes that need to be applied to the current session, and apply them.
-  // Virtual and protected for testing.
-  virtual void SimulateAndApplyRuntimeMutableChanges(
-      const VariationsSeed& seed);
+  // Takes ownership of `seed` (which may be delayed and retried if the current
+  // UMA log cannot be rotated yet). Virtual and protected for testing.
+  virtual void SimulateAndApplyRuntimeMutableChanges(VariationsSeed seed);
 
  private:
   FRIEND_TEST_ALL_PREFIXES(VariationsServiceTest,
@@ -490,8 +497,9 @@ class VariationsService
     raw_ptr<const base::FieldTrial> trial_to_override = nullptr;
     std::string previous_override_to_replace;
     std::vector<std::string> feature_names;
-    std::unique_ptr<const base::RuntimeFieldTrialInfo> override_info;
+    std::unique_ptr<base::RuntimeFieldTrialInfo> override_info;
     std::vector<base::FeatureList::RuntimeMutableFeatureUpdate> feature_updates;
+    Study::ActivationType activation_type = Study::ACTIVATE_ON_STARTUP;
   };
 
   // Prepares the runtime mutable changes of the `simulated_trial`'s selected
@@ -592,6 +600,15 @@ class VariationsService
 
   // True if variations seed fetching is paused.
   bool seed_fetching_paused_ = false;
+
+  // Timer used to retry `SimulateAndApplyRuntimeMutableChanges()` when it is
+  // too early to close the UMA log.
+  base::OneShotTimer runtime_mutable_seed_retry_timer_;
+
+  // Number of times `SimulateAndApplyRuntimeMutableChanges()` has been retried
+  // due to `ShouldDelayRuntimeMutability()`. Acts as a per-session cap (up to
+  // `kMaxRuntimeMutableSeedRetries`) and is never reset.
+  int runtime_mutable_seed_retry_count_ = 0;
 
 #if BUILDFLAG(IS_CHROMEOS)
   std::unique_ptr<DeviceVariationsRestrictionByPolicyApplicator>

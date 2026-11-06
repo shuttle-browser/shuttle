@@ -216,7 +216,7 @@ DbusAppmenu::~DbusAppmenu() {
 }
 
 void DbusAppmenu::Initialize(DbusMenu::InitializedCallback callback) {
-  DCHECK(!initialized_);
+  CHECK(!initialized_, base::NotFatalUntil::M162);
   initialized_ = true;
 
   // First build static menu content.
@@ -338,7 +338,7 @@ void DbusAppmenu::AddEntryToHistoryMenu(
 }
 
 void DbusAppmenu::GetTopSitesData() {
-  DCHECK(top_sites_);
+  CHECK(top_sites_, base::NotFatalUntil::M162);
 
   top_sites_->GetMostVisitedURLs(base::BindOnce(
       &DbusAppmenu::OnTopSitesReceived, weak_ptr_factory_.GetWeakPtr()));
@@ -535,14 +535,13 @@ void DbusAppmenu::ExecuteCommand(int command_id, int event_flags) {
     if (item->session_id.is_valid() && service) {
       service->RestoreEntryById(BrowserLiveTabContext::From(browser_),
                                 item->session_id,
-                                WindowOpenDisposition::UNKNOWN);
+                                WindowOpenDisposition::kUnknown);
     } else {
-      DCHECK(item->url.is_valid());
-      browser_->OpenURL(
-          content::OpenURLParams::CreateBrowserInitiated(
-              item->url, WindowOpenDisposition::NEW_FOREGROUND_TAB,
-              ui::PAGE_TRANSITION_AUTO_BOOKMARK),
-          /*navigation_handle_callback=*/{});
+      CHECK(item->url.is_valid(), base::NotFatalUntil::M162);
+      browser_->OpenURL(content::OpenURLParams::CreateBrowserInitiated(
+                            item->url, WindowOpenDisposition::kNewForegroundTab,
+                            ui::PAGE_TRANSITION_AUTO_BOOKMARK),
+                        /*navigation_handle_callback=*/{});
     }
   }
 }

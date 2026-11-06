@@ -19,6 +19,11 @@
 #include "extensions/buildflags/buildflags.h"
 #include "extensions/common/constants.h"
 #include "printing/buildflags/buildflags.h"
+#include "ui/webui/buildflags.h"
+
+#if BUILDFLAG(ENABLE_WEBUI_NTP)
+#include "chrome/grit/new_tab_page_extension_resources.h"
+#endif  // BUILDFLAG(ENABLE_WEBUI_NTP)
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/constants/ash_extension_constants.h"
@@ -34,6 +39,9 @@ namespace extensions {
 bool IsComponentExtensionAllowlisted(const std::string& extension_id) {
   constexpr auto kAllowed = base::MakeFixedFlatSet<std::string_view>({
       extension_misc::kInAppPaymentsSupportAppId,
+#if BUILDFLAG(ENABLE_WEBUI_NTP)
+      extension_misc::kNewTabPageExtensionId,
+#endif  // BUILDFLAG(ENABLE_WEBUI_NTP)
       extension_misc::kPdfExtensionId,
 #if BUILDFLAG(IS_CHROMEOS)
       extension_misc::kAssessmentAssistantExtensionId,

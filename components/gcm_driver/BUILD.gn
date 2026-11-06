@@ -52,7 +52,6 @@ static_library("gcm_driver") {
     "//components/os_crypt/browser",
     "//components/pref_registry",
     "//components/prefs",
-    "//components/signin/public/identity_manager",
     "//components/version_info",
     "//google_apis",
     "//google_apis/gcm",
@@ -79,10 +78,6 @@ static_library("gcm_driver") {
     ]
   } else {
     sources += [
-      "account_tracker.cc",
-      "account_tracker.h",
-      "gcm_account_tracker.cc",
-      "gcm_account_tracker.h",
       "gcm_client_factory.cc",
       "gcm_client_factory.h",
       "gcm_client_impl.cc",

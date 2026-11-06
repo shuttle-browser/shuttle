@@ -43,8 +43,9 @@
 #include "chrome/browser/ui/startup/google_api_keys_infobar_delegate.h"
 #include "chrome/browser/ui/startup/obsolete_system_infobar_delegate.h"
 #include "chrome/browser/ui/startup/oscryptasync_availability_infobar_delegate.h"
+#include "chrome/browser/ui/tab_sharing/tab_sharing_infobar_delegate.h"
+#include "chrome/browser/ui/tab_sharing/tab_sharing_ui.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/js_optimization/js_optimizations_infobar_delegate.h"
 #include "chrome/browser/ui/views/site_data/page_specific_site_data_dialog_controller.h"
 #include "chrome/common/pref_names.h"
@@ -58,7 +59,10 @@
 #include "components/signin/public/base/signin_buildflags.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/desktop_media_id.h"
 #include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/web_contents_media_capture_id.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/common/buildflags.h"
 #include "extensions/buildflags/buildflags.h"
@@ -139,6 +143,7 @@ TriggerRequirements RequirementsFor(InfoBarType type) {
     case InfoBarType::kObsoleteSystem:
     case InfoBarType::kOSCryptAsyncAvailability:
     case InfoBarType::kPageInfo:
+    case InfoBarType::kTabSharing:
     case InfoBarType::kWebAppBlockedMigration:
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
     case InfoBarType::kPdf:
@@ -148,6 +153,10 @@ TriggerRequirements RequirementsFor(InfoBarType type) {
     case InfoBarType::kSigninQRCode:
 #endif
       return {.web_contents = true};
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+    case InfoBarType::kEnableLinkCapturing:
+      return {.profile = true, .web_contents = true};
+#endif
 #if BUILDFLAG(ENABLE_EXTENSIONS)
     case InfoBarType::kIncognitoConnectability:
     case InfoBarType::kInstallationError:
@@ -157,7 +166,6 @@ TriggerRequirements RequirementsFor(InfoBarType type) {
     case InfoBarType::kExtensionDevTools:
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
     case InfoBarType::kDefaultBrowser:
-    case InfoBarType::kEnableLinkCapturing:
     case InfoBarType::kSessionRestore:
 #endif
 #if BUILDFLAG(IS_MAC)
@@ -252,11 +260,9 @@ void InfoBarInternalsHandler::GetInfoBars(GetInfoBarsCallback callback) {
                        const std::string& label = "Trigger") {
     add_entry_with_actions(type, name, description, {{action, label}});
   };
-  if (base::FeatureList::IsEnabled(features::kInfoBarInlineLinks)) {
-    add_entry(InfoBarType::kAlternateNav, "Alternate Nav",
-              "The Alternate Nav infobar is shown when a user searches for a "
-              "term they may have meant to navigate to.");
-  }
+  add_entry(InfoBarType::kAlternateNav, "Alternate Nav",
+            "The Alternate Nav infobar is shown when a user searches for a "
+            "term they may have meant to navigate to.");
   add_entry(InfoBarType::kBadFlags, "Bad Flags",
             "The Bad Flags infobar warns users that they are running Chrome "
             "with an unsupported command-line flag.");
@@ -382,6 +388,11 @@ void InfoBarInternalsHandler::GetInfoBars(GetInfoBarsCallback callback) {
             "is enabled.");
 #endif
 
+  add_entry(InfoBarType::kTabSharing, "Tab Sharing",
+            "The Tab Sharing infobar is shown when a tab is being shared via "
+            "screen capture or casting, allowing the user to stop sharing or "
+            "switch the shared tab. This trigger shows the infobar.");
+
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   add_entry(InfoBarType::kThemeInstalled, "Theme Installed",
             "The Theme Installed infobar is shown when a user installs a "
@@ -486,6 +497,17 @@ bool InfoBarInternalsHandler::PerformInfoBarActionInternal(
       // Shuttle: no "controlled by automation" infobar (always-on CDP).
       return false;
     case InfoBarType::kDevToolsSharedProcess: {
+      if (infobars::IsInfoBarMigrated(
+              infobars::InfoBarDelegate::DEV_TOOLS_SHARED_PROCESS_DELEGATE)) {
+        if (!browser_infobar_manager) {
+          return false;
+        }
+        RegisterProcessSharingInfoBarSpec(*browser_infobar_manager);
+        return browser_infobar_manager->Show(
+                   active_tab,
+                   infobars::InfoBarDelegate::
+                       DEV_TOOLS_SHARED_PROCESS_DELEGATE) != nullptr;
+      }
       auto* infobar_manager =
           infobars::ContentInfoBarManager::FromWebContents(web_contents);
       if (!infobar_manager) {
@@ -860,6 +882,31 @@ bool InfoBarInternalsHandler::PerformInfoBarActionInternal(
       return false;
     }
 #endif
+    case InfoBarType::kTabSharing: {
+      content::RenderFrameHost* const main_frame =
+          web_contents->GetPrimaryMainFrame();
+      if (!main_frame) {
+        return false;
+      }
+      const content::GlobalRenderFrameHostId frame_id =
+          main_frame->GetGlobalId();
+      const content::DesktopMediaID media_id(
+          content::DesktopMediaID::TYPE_WEB_CONTENTS,
+          content::DesktopMediaID::kNullId,
+          content::WebContentsMediaCaptureId(frame_id.child_id.GetUnsafeValue(),
+                                             frame_id.frame_routing_id));
+      tab_sharing_ui_.reset();
+      tab_sharing_ui_ =
+          TabSharingUI::Create(frame_id, media_id, u"Infobar Internals",
+                               /*app_preferred_current_tab=*/false,
+                               TabSharingInfoBarDelegate::TabShareType::CAPTURE,
+                               /*captured_surface_control_active=*/false);
+      tab_sharing_ui_->OnStarted(
+          /*stop_callback=*/base::DoNothing(),
+          /*source_callback=*/base::DoNothing(),
+          /*media_ids=*/{});
+      return true;
+    }
 #if BUILDFLAG(ENABLE_EXTENSIONS)
     case InfoBarType::kThemeInstalled: {
       ThemeService* theme_service = ThemeServiceFactory::GetForProfile(profile);

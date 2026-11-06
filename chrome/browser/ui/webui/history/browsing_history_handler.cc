@@ -44,6 +44,7 @@
 #include "components/favicon/core/large_icon_service.h"
 #include "components/favicon_base/favicon_url_parser.h"
 #include "components/history/core/browser/features.h"
+#include "components/history/core/browser/time_period_filter_utils.h"
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/prefs/pref_service.h"
 #include "components/query_parser/snippet.h"
@@ -214,7 +215,12 @@ BrowsingHistoryHandler::BrowsingHistoryHandler(
       web_contents_(web_contents),
       page_handler_(this, std::move(pending_page_handler)),
       clock_(base::DefaultClock::GetInstance()),
-      browsing_history_service_(nullptr) {}
+      browsing_history_service_(nullptr) {
+  HistoryService* local_history = HistoryServiceFactory::GetForProfile(
+      profile_, ServiceAccessType::EXPLICIT_ACCESS);
+  browsing_history_service_ =
+      std::make_unique<BrowsingHistoryService>(this, local_history);
+}
 
 BrowsingHistoryHandler::~BrowsingHistoryHandler() = default;
 
@@ -228,27 +234,14 @@ void BrowsingHistoryHandler::SetPage(
   deferred_callbacks_.clear();
 }
 
-void BrowsingHistoryHandler::StartQueryHistory() {
-  HistoryService* local_history = HistoryServiceFactory::GetForProfile(
-      profile_, ServiceAccessType::EXPLICIT_ACCESS);
-  browsing_history_service_ =
-      std::make_unique<BrowsingHistoryService>(this, local_history);
-
-  // 150 = RESULTS_PER_PAGE from chrome/browser/resources/history/constants.js
-  SendHistoryQuery(150, std::string(), std::nullopt, true, true);
-}
-
-void BrowsingHistoryHandler::QueryHistory(const std::string& query,
-                                          int max_count,
-                                          std::optional<double> begin_timestamp,
-                                          bool include_user_visits,
-                                          bool include_actor_visits,
-                                          QueryHistoryCallback callback) {
-  if (!browsing_history_service_) {
-    // Page was refreshed, so need to call StartQueryHistory here
-    StartQueryHistory();
-  }
-
+void BrowsingHistoryHandler::QueryHistory(
+    const std::string& query,
+    int max_count,
+    std::optional<double> begin_timestamp,
+    bool include_user_visits,
+    bool include_actor_visits,
+    const std::vector<std::string>& client_ids,
+    QueryHistoryCallback callback) {
   // Reset the query history continuation callback. Since it is repopulated in
   // OnQueryComplete(), it cannot be reset earlier, as the early return above
   // prevents the QueryHistory() call to the browsing history service.
@@ -262,7 +255,7 @@ void BrowsingHistoryHandler::QueryHistory(const std::string& query,
   query_history_callback_ = std::move(callback);
 
   SendHistoryQuery(max_count, query, begin_timestamp, include_user_visits,
-                   include_actor_visits);
+                   include_actor_visits, client_ids);
 }
 
 void BrowsingHistoryHandler::SendHistoryQuery(
@@ -270,7 +263,8 @@ void BrowsingHistoryHandler::SendHistoryQuery(
     const std::string& query,
     std::optional<double> begin_timestamp,
     bool include_user_visits,
-    bool include_actor_visits) {
+    bool include_actor_visits,
+    const std::vector<std::string>& client_ids) {
   query_timer_ = base::ElapsedTimer();
   history::QueryOptions options;
   options.max_count = max_count;
@@ -313,6 +307,8 @@ void BrowsingHistoryHandler::SendHistoryQuery(
         base::Time::FromMillisecondsSinceUnixEpoch(begin_timestamp.value());
   }
 
+  options.client_ids = client_ids;
+
   browsing_history_service_->QueryHistory(base::UTF8ToUTF16(text_query),
                                           options);
 }
@@ -344,7 +340,7 @@ void BrowsingHistoryHandler::RemoveVisits(
       NOTREACHED() << "Unable to extract arguments";
     }
 
-    DCHECK_GT(timestamps.size(), 0U);
+    CHECK_GT(timestamps.size(), 0U, base::NotFatalUntil::M162);
     BrowsingHistoryService::HistoryEntry entry;
     entry.url = GURL(url);
 
@@ -443,4 +439,31 @@ void BrowsingHistoryHandler::HistoryDeleted() {
 
 Profile* BrowsingHistoryHandler::GetProfile() {
   return profile_;
+}
+
+void BrowsingHistoryHandler::GetTimePeriodOptions(
+    GetTimePeriodOptionsCallback callback) {
+  std::vector<history::mojom::TimePeriodOptionPtr> options_mojom;
+  for (const history::TimePeriodOption& option :
+       history::ComputeTimePeriodOptions(clock_->Now())) {
+    auto option_mojom = history::mojom::TimePeriodOption::New();
+    option_mojom->id =
+        static_cast<history::mojom::TimePeriodOptionId>(option.id);
+    option_mojom->label = base::UTF16ToUTF8(option.label);
+    if (!option.begin_time.is_null()) {
+      option_mojom->begin_time =
+          option.begin_time.InMillisecondsFSinceUnixEpoch();
+    }
+    if (!option.end_time.is_null()) {
+      option_mojom->end_time = option.end_time.InMillisecondsFSinceUnixEpoch();
+    }
+    options_mojom.push_back(std::move(option_mojom));
+  }
+  std::move(callback).Run(std::move(options_mojom));
+}
+
+// Shuttle: no sync, so there are never synced devices to filter by.
+void BrowsingHistoryHandler::GetSyncedDevicesForFiltering(
+    GetSyncedDevicesForFilteringCallback callback) {
+  std::move(callback).Run(std::vector<history::mojom::DevicePtr>());
 }

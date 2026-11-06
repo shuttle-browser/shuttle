@@ -11,17 +11,15 @@
 #include "base/check_is_test.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
+#include "base/memory/self_deleting.h"
 #include "base/types/expected_macros.h"
 #include "build/build_config.h"
 #include "chrome/browser/app_mode/app_mode_utils.h"
-#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/device_api/device_attribute_api.h"
-#include "chrome/browser/permissions/permission_manager_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/pref_names.h"
 #include "components/permissions/features.h"
 #include "content/public/browser/browser_thread.h"
-#include "content/public/browser/permission_controller_delegate.h"
 #include "content/public/browser/render_frame_host.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "url/origin.h"
@@ -33,6 +31,7 @@
 #include "chrome/browser/ash/app_mode/web_app/kiosk_web_app_data.h"
 #include "chrome/browser/ash/app_mode/web_app/kiosk_web_app_manager.h"
 #include "chrome/browser/ash/profiles/profile_helper.h"
+#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/common/url_constants.h"
 #include "chromeos/components/kiosk/kiosk_utils.h"
 #include "components/user_manager/user_manager.h"
@@ -87,14 +86,25 @@ Profile* GetProfile(content::RenderFrameHost& host) {
 }
 
 bool IsAffiliatedUser(Profile* profile) {
-#if BUILDFLAG(IS_CHROMEOS)
   const user_manager::User* user =
       ash::ProfileHelper::Get()->GetUserByProfile(profile);
   return (user != nullptr) && user->IsAffiliated();
-#else
-  return false;
-#endif  // BUILDFLAG(IS_CHROMEOS)
 }
+
+bool IsAllowedByContentSettings(content::RenderFrameHost& host,
+                                const url::Origin& origin) {
+  switch (HostContentSettingsMapFactory::GetForProfile(GetProfile(host))
+              ->GetContentSetting(origin.GetURL(), origin.GetURL(),
+                                  ContentSettingsType::DEVICE_ATTRIBUTES)) {
+    case CONTENT_SETTING_ALLOW:
+      return true;
+    case CONTENT_SETTING_BLOCK:
+      return false;
+    default:
+      NOTREACHED();
+  }
+}
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 bool IsTrustedContext(content::RenderFrameHost& host,
                       const url::Origin& origin) {
@@ -125,27 +135,14 @@ bool IsAllowedByPermissionsPolicy(content::RenderFrameHost& host) {
   return host.IsFeatureEnabled(
       network::mojom::PermissionsPolicyFeature::kDeviceAttributes);
 }
-
-bool IsAllowedByContentSettings(content::RenderFrameHost& host,
-                                const url::Origin& origin) {
-  switch (HostContentSettingsMapFactory::GetForProfile(GetProfile(host))
-              ->GetContentSetting(origin.GetURL(), origin.GetURL(),
-                                  ContentSettingsType::DEVICE_ATTRIBUTES)) {
-    case CONTENT_SETTING_ALLOW:
-      return true;
-    case CONTENT_SETTING_BLOCK:
-      return false;
-    default:
-      NOTREACHED();
-  }
-}
 }  // namespace
 
 DeviceServiceImpl::DeviceServiceImpl(
     content::RenderFrameHost& host,
     mojo::PendingReceiver<blink::mojom::DeviceAPIService> receiver,
-    std::unique_ptr<DeviceAttributeApi> device_attribute_api)
-    : DocumentService(host, std::move(receiver)),
+    std::unique_ptr<DeviceAttributeApi> device_attribute_api,
+    base::SelfDeletingPassKey key)
+    : DocumentService(host, std::move(receiver), key),
       device_attribute_api_(std::move(device_attribute_api)) {
   Profile* const profile = GetProfile(host);
   pref_change_registrar_.Init(profile->GetPrefs());
@@ -162,7 +159,6 @@ DeviceServiceImpl::DeviceServiceImpl(
       ash::prefs::kKioskBrowserPermissionsAllowedForOrigins,
       base::BindRepeating(&DeviceServiceImpl::OnDisposingIfNeeded,
                           base::Unretained(this)));
-#endif  // BUILDFLAG(IS_CHROMEOS)
   content_settings_observation_.Observe(
       HostContentSettingsMapFactory::GetForProfile(profile));
 }
@@ -194,8 +190,8 @@ void DeviceServiceImpl::Create(
   }
   // The object is bound to the lifetime of |host| and the mojo
   // connection. See DocumentService for details.
-  new DeviceServiceImpl(*host, std::move(receiver),
-                        std::move(device_attribute_api));
+  base::MakeSelfDeleting<DeviceServiceImpl>(*host, std::move(receiver),
+                                            std::move(device_attribute_api));
 }
 
 // static
@@ -223,6 +219,7 @@ void DeviceServiceImpl::OnContentSettingChanged(
   }
   OnDisposingIfNeeded();
 }
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 void DeviceServiceImpl::OnDisposingIfNeeded() {
   // DeviceServiceImpl is allocated on the heap, thus it is safe to remove it
@@ -257,7 +254,8 @@ void DeviceServiceImpl::GetAnnotatedLocation(
 }
 
 void DeviceServiceImpl::GetDeviceAttribute(
-    void (DeviceAttributeApi::*method)(DeviceAttributeCallback callback),
+    [[maybe_unused]] void (DeviceAttributeApi::*method)(
+        DeviceAttributeCallback callback),
     DeviceAttributeCallback callback) {
   if (!IsAffiliatedUser(GetProfile(render_frame_host()))) {
     device_attribute_api_->ReportNotAffiliatedError(std::move(callback));
@@ -270,4 +268,5 @@ void DeviceServiceImpl::GetDeviceAttribute(
   }
 
   (device_attribute_api_.get()->*method)(std::move(callback));
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 }

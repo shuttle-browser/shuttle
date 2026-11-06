@@ -8,7 +8,9 @@
 #include <memory>
 #include <utility>
 
+#include "base/callback_list.h"
 #include "base/memory/raw_ptr.h"
+#include "base/values.h"
 #include "build/build_config.h"
 #include "chrome/browser/ui/webui/omnibox_popup/mojom/omnibox_popup.mojom.h"
 #include "chrome/browser/ui/webui/top_chrome/top_chrome_web_ui_controller.h"
@@ -52,9 +54,17 @@ class OmniboxPopupUI : public TopChromeWebUIController,
   ~OmniboxPopupUI() override;
 
   // content::WebUIController:
+  void WebUIRenderFrameCreated(
+      content::RenderFrameHost* render_frame_host) override;
   void PopulateLocalResourceLoaderConfig(
       blink::mojom::LocalResourceLoaderConfig* config,
       const url::Origin& requesting_origin) override;
+
+  // Returns the loadTimeData values that depend on `profile`, the profile of
+  // the window that shows the popup. They are in the WebUIDataSource, or passed
+  // to each frame in WebUIRenderFrameCreated() if the data source is shared by
+  // the windows of all profiles, i.e. in TopChromeWebUIProfile.
+  static base::DictValue GetProfileLoadTimeData(Profile* profile);
 
   // Instantiates the implementor of the searchbox::mojom::PageHandlerFactory
   // mojo interface passing the pending receiver that will be internally bound.

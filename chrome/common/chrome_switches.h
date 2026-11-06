@@ -927,6 +927,12 @@ inline constexpr char kNoOpForTestingProcess[] = "no-op-for-testing";
 
 #if BUILDFLAG(IS_WIN)
 
+// The user path component identifying the directory in which the staged child
+// module resides (see child_module::GetModulesDirForUser()). The browser
+// computes this on behalf of renderers, which cannot.
+inline constexpr char kChildModuleUserPathComponent[] =
+    "child-module-user-path-component";
+
 // Force-enables the profile shortcut manager. This is needed for tests since
 // they use a custom-user-data-dir which disables this.
 inline constexpr char kEnableProfileShortcutManager[] =
@@ -1022,6 +1028,16 @@ inline constexpr char kDebugPrint[] = "debug-print";
 
 // Overrides the glic guest URL.
 inline constexpr char kGlicGuestURL[] = "glic-guest-url";
+
+// Overrides the GEiC guest URL.
+inline constexpr char kGeicGuestURL[] = "geic-guest-url";
+
+// Treats the GEiC FRE as completed without persisting anything. GEiC
+// counterpart of `--glic-always-skip-fre`.
+inline constexpr char kGeicAlwaysSkipFre[] = "geic-always-skip-fre";
+
+// Clears all GEiC FRE status at startup. `--geic-always-skip-fre` wins over it.
+inline constexpr char kGeicResetFre[] = "geic-reset-fre";
 
 inline constexpr char kSkillsV2Origin[] = "skills-v2-origin";
 

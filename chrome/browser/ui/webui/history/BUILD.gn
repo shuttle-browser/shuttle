@@ -53,6 +53,7 @@ source_set("history") {
       "//chrome/common",
       "//components/favicon_base",
       "//components/history/core/browser",
+      "//components/keyed_service/core",
       "//components/pref_registry",
       "//components/prefs",
       "//components/query_parser",

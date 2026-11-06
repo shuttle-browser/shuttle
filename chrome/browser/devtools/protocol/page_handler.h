@@ -67,6 +67,10 @@ class PageHandler : public protocol::Page::Backend {
                   std::optional<bool> generate_document_outline,
                   std::unique_ptr<PrintToPDFCallback> callback) override;
 
+  void GetAnnotatedPageContent(
+      std::optional<bool> include_actionable_information,
+      std::unique_ptr<GetAnnotatedPageContentCallback> callback) override;
+
  private:
 #if BUILDFLAG(ENABLE_PRINTING)
   void OnPDFCreated(bool return_as_stream,
@@ -75,13 +79,17 @@ class PageHandler : public protocol::Page::Backend {
                     scoped_refptr<base::RefCountedMemory> data);
 #endif
 
+  // Returns whether `agent_host_` targets the primary (active) page of
+  // `web_contents_`, as opposed to e.g. a prerendered page.
+  bool IsAttachedToPrimaryPage() const;
+
   scoped_refptr<content::DevToolsAgentHost> agent_host_;
   base::WeakPtr<content::WebContents> web_contents_;
 
 #if !BUILDFLAG(IS_ANDROID)
   bool enabled_ = false;
-  const bool is_trusted_;
 #endif  // !BUILDFLAG(IS_ANDROID)
+  const bool is_trusted_;
 
   base::WeakPtrFactory<PageHandler> weak_ptr_factory_{this};
 };

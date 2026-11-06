@@ -11,6 +11,7 @@
 #include <set>
 
 #include "base/containers/fixed_flat_set.h"
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/user_metrics.h"
@@ -23,10 +24,8 @@
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/favicon/favicon_service_factory.h"
 #include "chrome/browser/favicon/favicon_utils.h"
-#include "chrome/browser/favicon/history_ui_favicon_request_handler_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search/search.h"
-#include "chrome/browser/sessions/session_restore.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_live_tab_context.h"
@@ -34,11 +33,9 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tabs/tab_group_theme.h"
-#include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/favicon/core/history_ui_favicon_request_handler.h"
 #include "components/favicon_base/favicon_types.h"
 #include "components/history/core/common/pref_names.h"
 #include "components/prefs/scoped_user_pref_update.h"
@@ -278,7 +275,8 @@ void RecentTabsSubMenuModel::ExecuteCommand(int command_id, int event_flags) {
   if (ExecuteCustomCommand(command_id, event_flags)) {
     return;
   }
-  DCHECK_NE(IDC_RECENT_TABS_NO_DEVICE_TABS, command_id);
+  CHECK_NE(IDC_RECENT_TABS_NO_DEVICE_TABS, command_id,
+           base::NotFatalUntil::M162);
 
   sessions::TabRestoreService* service =
       TabRestoreServiceFactory::GetForProfile(browser_->GetProfile());
@@ -287,12 +285,13 @@ void RecentTabsSubMenuModel::ExecuteCommand(int command_id, int event_flags) {
   CHECK(context);
 
   WindowOpenDisposition disposition = ui::DispositionFromEventFlags(
-      event_flags, WindowOpenDisposition::NEW_FOREGROUND_TAB);
+      event_flags, WindowOpenDisposition::kNewForegroundTab);
 
   if (IsCommandType(CommandType::Tab, command_id)) {
     const TabItems& tab_items = *GetTabVectorForCommandId(command_id);
     const TabItem& item = tab_items.at(command_id);
-    DCHECK(item.tab_id.is_valid() && item.url.is_valid());
+    CHECK(item.tab_id.is_valid() && item.url.is_valid(),
+          base::NotFatalUntil::M162);
 
     if (item.session_tag.empty()) {  // Restore tab of local session.
       base::RecordAction(
@@ -342,6 +341,7 @@ void RecentTabsSubMenuModel::Build() {
   // The menu contains:
   // - History to open the full history tab.
   // - History to open in side panel.
+  // - Tabs from other devices to open in side panel.
   // - Separator
   // - Recent tabs header
   // - A list of local recently closed tabs, groups, and/or windows.
@@ -444,11 +444,11 @@ void RecentTabsSubMenuModel::BuildLocalTabItem(
   local_tab_items_.emplace(command_id, item);
   AddTabFavicon(command_id, this, item.url);
   // We shouldn't get here if there is no recently closed title.
-  DCHECK(recent_tabs_title_index_.has_value());
+  CHECK(recent_tabs_title_index_.has_value(), base::NotFatalUntil::M162);
   // visual_data should only be populated if the tab was part of a tab group
   // when closed. We shouldn't set the minor icon for the item most recently
   // closed, as this creates visual clutter alongside the shortcut text.
-  if (tab.group_visual_data.has_value() &&
+  if (tab.group_visual_data.has_value() && !tab.is_group_ephemeral &&
       curr_model_index > recent_tabs_title_index_.value() + 1) {
     const ui::ColorProvider* color_provider =
         BrowserWindow::FromBrowser(browser_)->GetColorProvider();
@@ -761,36 +761,20 @@ void RecentTabsSubMenuModel::AddTabFavicon(int command_id,
   // Set default icon first.
   menu_model->SetIcon(index_in_menu, favicon::GetDefaultFaviconModel());
 
-  const bool is_local_tab = IsCommandType(CommandType::LocalTab, command_id);
-  if (is_local_tab) {
-    // Request only from local storage to avoid leaking user data.
-    favicon::FaviconService* favicon_service =
-        FaviconServiceFactory::GetForProfile(
-            browser_->GetProfile(), ServiceAccessType::EXPLICIT_ACCESS);
-    // Can be null for tests.
-    if (!favicon_service) {
-      return;
-    }
-    favicon_service->GetFaviconImageForPageURL(
-        url,
-        base::BindOnce(&RecentTabsSubMenuModel::OnFaviconDataAvailable,
-                       weak_ptr_factory_.GetWeakPtr(), command_id, menu_model),
-        &local_tab_cancelable_task_tracker_);
-  } else {
-    favicon::HistoryUiFaviconRequestHandler*
-        history_ui_favicon_request_handler =
-            HistoryUiFaviconRequestHandlerFactory::GetForBrowserContext(
-                browser_->GetProfile());
-    // Can be null for tests.
-    if (!history_ui_favicon_request_handler) {
-      return;
-    }
-    history_ui_favicon_request_handler->GetFaviconImageForPageURL(
-        url,
-        base::BindOnce(&RecentTabsSubMenuModel::OnFaviconDataAvailable,
-                       weak_ptr_factory_for_other_devices_tab_.GetWeakPtr(),
-                       command_id, menu_model));
+  CHECK(IsCommandType(CommandType::LocalTab, command_id));
+  // Request only from local storage to avoid leaking user data.
+  favicon::FaviconService* favicon_service =
+      FaviconServiceFactory::GetForProfile(browser_->GetProfile(),
+                                           ServiceAccessType::EXPLICIT_ACCESS);
+  // Can be null for tests.
+  if (!favicon_service) {
+    return;
   }
+  favicon_service->GetFaviconImageForPageURL(
+      url,
+      base::BindOnce(&RecentTabsSubMenuModel::OnFaviconDataAvailable,
+                     weak_ptr_factory_.GetWeakPtr(), command_id, menu_model),
+      &local_tab_cancelable_task_tracker_);
 }
 
 void RecentTabsSubMenuModel::OnFaviconDataAvailable(
@@ -803,7 +787,7 @@ void RecentTabsSubMenuModel::OnFaviconDataAvailable(
   }
   const std::optional<size_t> index_in_menu =
       menu_model->GetIndexOfCommandId(command_id);
-  DCHECK(index_in_menu.has_value());
+  CHECK(index_in_menu.has_value(), base::NotFatalUntil::M162);
   menu_model->SetIcon(index_in_menu.value(),
                       ui::ImageModel::FromImage(image_result.image));
   ui::MenuModelDelegate* delegate = menu_model_delegate();
@@ -815,7 +799,7 @@ void RecentTabsSubMenuModel::OnFaviconDataAvailable(
 
 RecentTabsSubMenuModel::TabItems*
 RecentTabsSubMenuModel::GetTabVectorForCommandId(int command_id) {
-  DCHECK(IsCommandType(CommandType::Tab, command_id));
+  CHECK(IsCommandType(CommandType::Tab, command_id), base::NotFatalUntil::M162);
   return IsCommandType(CommandType::RemoteTab, command_id) ? &remote_tab_items_
                                                            : &local_tab_items_;
 }

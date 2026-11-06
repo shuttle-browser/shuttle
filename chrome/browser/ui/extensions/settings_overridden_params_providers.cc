@@ -175,7 +175,7 @@ SecondarySearchInfo GetSecondarySearchInfo(Profile* profile) {
       GetNumberOfExtensionsThatOverrideSearch(profile);
   // This method should only be called when there's an extension that overrides
   // the search engine.
-  DCHECK_GE(num_overriding_extensions, 1u);
+  CHECK_GE(num_overriding_extensions, 1u, base::NotFatalUntil::M162);
 
   // Another extension would take over.
   std::optional<const TemplateURL> secondary_extension_search;
@@ -189,11 +189,14 @@ SecondarySearchInfo GetSecondarySearchInfo(Profile* profile) {
     std::string primary_ext_id =
         extension_prefs_value_map->GetExtensionControllingPref(search_pref_key);
 
+    // Search overrides are registered in the regular profile
+    // (TemplateURLService is redirected to the original profile in OTR
+    // profiles), so always query the regular profile's effective pref value.
     const base::Value* secondary_pref =
         extension_prefs_value_map->GetEffectivePrefValue(
-            search_pref_key, profile->IsIncognitoProfile(),
-            /* from_incognito= */ nullptr,
-            /* ignore_extension_id= */ primary_ext_id);
+            search_pref_key, /*incognito=*/false,
+            /*from_incognito=*/nullptr,
+            /*ignore_extension_id=*/primary_ext_id);
 
     if (secondary_pref) {
       std::unique_ptr<TemplateURLData> url_data =
@@ -412,7 +415,7 @@ std::optional<ExtensionSettingsOverriddenDialog::Params> GetNtpOverriddenParams(
       content::BrowserURLHandler::GetInstance()->GetPossibleRewrites(ntp_url,
                                                                      profile);
   // We already know that the extension is the primary NTP controller.
-  DCHECK(!possible_rewrites.empty());
+  CHECK(!possible_rewrites.empty(), base::NotFatalUntil::M162);
   DCHECK_EQ(extension->url().host(), possible_rewrites[0].host())
       << "Unexpected NTP URL: " << possible_rewrites[0];
 
@@ -456,8 +459,8 @@ std::optional<ExtensionSettingsOverriddenDialog::Params> GetNtpOverriddenParams(
         IDS_EXTENSION_NTP_OVERRIDDEN_DIALOG_TITLE_GENERIC);
     histogram_name = kGenericDialogHistogramName;
   }
-  DCHECK(!dialog_title.empty());
-  DCHECK(histogram_name);
+  CHECK(!dialog_title.empty(), base::NotFatalUntil::M162);
+  CHECK(histogram_name, base::NotFatalUntil::M162);
 
   std::u16string dialog_message = l10n_util::GetStringFUTF16(
       IDS_EXTENSION_NTP_OVERRIDDEN_DIALOG_BODY_GENERIC,
@@ -558,10 +561,14 @@ void GetSearchOverriddenParamsThenRun(
   // Find the active search engine (which is provided by the extension).
   TemplateURLService* template_url_service =
       TemplateURLServiceFactory::GetForProfile(profile);
+  // TODO(crbug.com/577354943): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(template_url_service->IsExtensionControlledDefaultSearch());
   const TemplateURL* default_search =
       template_url_service->GetDefaultSearchProvider();
-  DCHECK(default_search);
+  CHECK(default_search, base::NotFatalUntil::M162);
+  // TODO(crbug.com/577354943): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK_EQ(TemplateURL::NORMAL_CONTROLLED_BY_EXTENSION,
             default_search->type());
 
@@ -600,7 +607,7 @@ void GetSearchOverriddenParamsThenRun(
       histogram_name = kBackToGoogleHistogramName;
       break;
     case SecondarySearchInfo::Type::kNonGoogleInDefaultList:
-      DCHECK(!secondary_search.name.empty());
+      CHECK(!secondary_search.name.empty(), base::NotFatalUntil::M162);
       histogram_name = kBackToOtherHistogramName;
       break;
     case SecondarySearchInfo::Type::kOther:
@@ -701,7 +708,7 @@ void GetSearchOverriddenParamsThenRun(
 #endif
       break;
     case SecondarySearchInfo::Type::kNonGoogleInDefaultList:
-      DCHECK(!secondary_search.name.empty());
+      CHECK(!secondary_search.name.empty(), base::NotFatalUntil::M162);
       dialog_title = l10n_util::GetStringFUTF16(
           IDS_EXTENSION_SEARCH_OVERRIDDEN_DIALOG_TITLE_BACK_TO_OTHER,
           secondary_search.name);

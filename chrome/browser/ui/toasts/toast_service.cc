@@ -37,7 +37,6 @@
 #include "ui/base/ui_base_features.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/menus/simple_menu_model.h"
-#include "ui/strings/grit/ui_strings.h"
 
 DEFINE_USER_DATA(ToastService);
 
@@ -142,7 +141,7 @@ void ToastService::RegisterToasts() {
                   window->OpenGURL(
                       chrome::GetSettingsUrl(
                           chrome::kSafeBrowsingEnhancedProtectionSubPage),
-                      WindowOpenDisposition::NEW_FOREGROUND_TAB);
+                      WindowOpenDisposition::kNewForegroundTab);
                 }))
             .AddCloseButton()
             .Build());
@@ -230,7 +229,7 @@ void ToastService::RegisterToasts() {
               base::BindRepeating([](BrowserWindowInterface* window) {
                 window->OpenGURL(
                     chrome::GetSettingsUrl(chrome::kSecuritySubPage),
-                    WindowOpenDisposition::NEW_FOREGROUND_TAB);
+                    WindowOpenDisposition::kNewForegroundTab);
               }))
           .AddCloseButton()
           .AddGlobalScoped()
@@ -275,4 +274,10 @@ void ToastService::RegisterToasts() {
           .AddGlobalScoped()
           .Build());
 
+  toast_registry_->RegisterToast(
+      ToastId::kTabGroupFocusExited,
+      ToastSpecification::Builder(kFilterTiltShiftIcon,
+                                  IDS_TAB_GROUP_FOCUS_EXITED_TOAST_BODY)
+          .AddGlobalScoped()
+          .Build());
 }  // RegisterToasts() end.

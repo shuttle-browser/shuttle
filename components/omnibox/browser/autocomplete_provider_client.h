@@ -51,6 +51,10 @@ namespace component_updater {
 class ComponentUpdateService;
 }
 
+namespace sessions {
+class TabRestoreService;
+}  // namespace sessions
+
 namespace signin {
 class IdentityManager;
 }
@@ -90,6 +94,7 @@ class AutocompleteProviderClient : public OmniboxAction::Client {
   virtual OmniboxTriggeredFeatureService* GetOmniboxTriggeredFeatureService()
       const = 0;
   virtual ProviderStateService* GetProviderStateService() const = 0;
+  virtual sessions::TabRestoreService* GetTabRestoreService() const;
 
   // The value to use for Accept-Languages HTTP header when making an HTTP
   // request.

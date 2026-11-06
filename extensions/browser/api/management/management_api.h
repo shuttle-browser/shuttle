@@ -37,7 +37,7 @@ class ManagementGetAllFunction : public ExtensionFunction {
   DECLARE_EXTENSION_FUNCTION("management.getAll", MANAGEMENT_GETALL)
 
  protected:
-  ~ManagementGetAllFunction() override {}
+  ~ManagementGetAllFunction() override = default;
 
   // ExtensionFunction:
   ResponseAction Run() override;
@@ -48,7 +48,7 @@ class ManagementGetFunction : public ExtensionFunction {
   DECLARE_EXTENSION_FUNCTION("management.get", MANAGEMENT_GET)
 
  protected:
-  ~ManagementGetFunction() override {}
+  ~ManagementGetFunction() override = default;
 
   // ExtensionFunction:
   ResponseAction Run() override;
@@ -59,7 +59,7 @@ class ManagementGetSelfFunction : public ExtensionFunction {
   DECLARE_EXTENSION_FUNCTION("management.getSelf", MANAGEMENT_GETSELF)
 
  protected:
-  ~ManagementGetSelfFunction() override {}
+  ~ManagementGetSelfFunction() override = default;
 
   // ExtensionFunction:
   ResponseAction Run() override;
@@ -71,7 +71,7 @@ class ManagementGetPermissionWarningsByIdFunction : public ExtensionFunction {
                              MANAGEMENT_GETPERMISSIONWARNINGSBYID)
 
  protected:
-  ~ManagementGetPermissionWarningsByIdFunction() override {}
+  ~ManagementGetPermissionWarningsByIdFunction() override = default;
 
   // ExtensionFunction:
   ResponseAction Run() override;
@@ -84,7 +84,7 @@ class ManagementGetPermissionWarningsByManifestFunction
                              MANAGEMENT_GETPERMISSIONWARNINGSBYMANIFEST)
 
  protected:
-  ~ManagementGetPermissionWarningsByManifestFunction() override {}
+  ~ManagementGetPermissionWarningsByManifestFunction() override = default;
 
   // ExtensionFunction:
   ResponseAction Run() override;
@@ -95,7 +95,7 @@ class ManagementLaunchAppFunction : public ExtensionFunction {
   DECLARE_EXTENSION_FUNCTION("management.launchApp", MANAGEMENT_LAUNCHAPP)
 
  protected:
-  ~ManagementLaunchAppFunction() override {}
+  ~ManagementLaunchAppFunction() override = default;
 
   // ExtensionFunction:
   ResponseAction Run() override;
@@ -232,7 +232,7 @@ class ManagementSetLaunchTypeFunction : public ExtensionFunction {
                              MANAGEMENT_SETLAUNCHTYPE)
 
  protected:
-  ~ManagementSetLaunchTypeFunction() override {}
+  ~ManagementSetLaunchTypeFunction() override = default;
 
   ResponseAction Run() override;
 };
