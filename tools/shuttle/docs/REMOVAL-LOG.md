@@ -1067,3 +1067,47 @@ Also: `CheckIdle` skips while the browser quits and looks sessions up with `find
 (`gn check`). Documented, not changed: an expired session leaves its external CDP sockets open (targets detach).
 Probe additions: wait-for longer than the timeout, `beforeunload` on both close paths, headless activated tab; tab
 existence checked on `/json/list`.
+
+## Fork commit 57 (2026-11-04..): Chromium 157 merge (branch `sh/merge-157`, in progress)
+
+- **57** Merge of Chromium 157.0.8103.39 (log in the private merge notes) plus the m157 prune
+  (`prune/m157.txt`, Toby's calls 2026-11-04..06):
+  - **Wave A** (`5b984cc1ed`): Platform Runtime / request-header-integrity, history clusters leftovers, VR browser
+    side, vertical tabs, picture-in-picture browser UI, site token provider.
+  - **Wave B batch 1** (`0ff02c9d57`): optimization_guide (kept: the CDP `Page.getAnnotatedPageContent` path and the
+    TFLite op resolver), page content annotations, permission prediction (also the crowd-deny / abusive-origin quiet
+    UI), omnibox ML scoring + on-device tail model, multistep filter, page image service, v8 compile hints (chrome
+    side), segmentation platform, visited URL ranking, language-detection model service (blink's LanguageDetector
+    reports "unavailable"), supervised users / Family Link. Behaviour: no client-side phishing model (URL checks stay),
+    heuristic omnibox scoring, local loading predictor, no child accounts, FedCM passive volume default.
+  - **Wave B batch 2** (`ea240ae0b7`): enterprise connectors (content analysis, real-time URL checks, event
+    reporting), enterprise/cloud reporting, device trust + device signals, DLP / data controls / data protection,
+    watermarking, Isolated Mode, client certificate provisioning, platform auth (SSO), idle timeout actions, profile
+    management, network header injection, cache encryption, enterprise groups/webstore, connectors-internals and
+    watermark WebUIs, enterprise extension APIs; cloud policy (CBCM + enrollment dialog, DM server client,
+    user/machine/profile cloud policy, component cloud policy, remote commands, invalidation); `components/reporting`
+    (encrypted reporting); 49 policies (`prune/policies-m157-enterprise.txt`). Kept: local/platform policy,
+    chrome://policy, chrome://management (generic disclosure), ProfileIdService (same device id as before).
+    Behaviour = no admin configured anything: default-allow for clipboard, drag-drop, print, file pickers,
+    screen/tab sharing; downloads get the plain Safe Browsing verdict (**no cloud deep scanning, including the
+    consumer Enhanced Protection "scan this file" prompt; download feedback no longer uploads**); profiles are
+    never cloud managed; cloud-only policies can't be set.
+
+Verified so far: macOS dev build green after each wave, `smoke-all` 14/14; Linux `gn gen` + `check-ninja-inputs`
+green (dev and release configs). Open: Linux release build, chrome://management and chrome://certificate-manager
+don't render on 157 (predates batch 2), SH-Review.
+
+## Fork commit 58 (2026-11-06): page tools: snapshot filter, covered-click retry, save-text
+
+- **58** (`2528fcbb8c`, on `sh/merge-157`) Three page-tool improvements from SWP-Lead's Stripe onboarding run
+  (all in `chrome/browser/shuttle/page_tools.cc` + `config/agent-browser-tools.json`):
+  - `snapshot { filter }`: case-insensitive regex; keeps matching lines with their ancestors and children. Searches
+    the full tree (text too) unless `interactive` is set (agent-browser's default snapshot is interactive-only).
+  - `click` / `dblclick` / `hover`: when agent-browser reports the element "is covered by" another, scroll it into
+    view and retry once; the result says "(Was covered: scrolled into view and retried.)".
+  - New tool `save-text { selector, regex?, to: file|clipboard, name? }`: writes an element's text (e.g. a one-time
+    API key) to `<profile>/shuttle/secrets/<agent>/<name>.txt` (dir 0700, file 0600) or the clipboard (marked
+    confidential) and returns only its length and a 12-hex SHA-256, so the secret never enters the agent's context.
+
+Verified: macOS dev build, by hand through MCP (filter on headings and text, a button under a fixed bottom bar, file
+modes, clipboard content, hash), `smoke-all` 14/14. Review: pending (SH-Review, with the 157 PR).
