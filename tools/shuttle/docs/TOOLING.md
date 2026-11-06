@@ -782,6 +782,10 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   Restarting `sccache-dist-scheduler` on the host clears it (servers re-register within ~15 s). MAGWIN's Wi-Fi
   receive rate was 52 Mbit/s until adapter power saving was turned off (then ~700): a slow host link makes the
   build upload-bound and adds 300-500 ms LAN latency for everyone on MAGWIN.
+  The scheduler/server ports are allowed by Hyper-V firewall rules pinned to the Mac's LAN IP
+  (`Get-NetFirewallHyperVRule`, `SH-Sccache-LAN`): after the Mac got a new DHCP address the build hung at
+  `sccache --dist-status` (ssh still worked). Fix: `Set-NetFirewallHyperVRule -Name SH-Sccache-LAN -RemoteAddresses
+  <mac ip>` (admin PowerShell) or a DHCP reservation for the Mac.
 - **`smoke-mcp.mjs` timing flake (2026-10-11):** on a fresh profile the first one or two runs can fail "cookies
   isolated" / "opened tabs join the session" (fixed 1.5-2 s sleeps); reruns pass. Poll instead of sleeping.
 - **en-US-only UI (B3, 2026-10-11):** `scripts/prune-locales.py` keeps `lang="en-US"` and `lang="en"` grit elements
