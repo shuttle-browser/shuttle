@@ -29,13 +29,20 @@
         "includeUrls": {
           "type": "boolean",
           "description": "Show link hrefs."
+        },
+        "filter": {
+          "type": "string",
+          "description": "Regex (case-insensitive): keep only matching lines with their ancestors and children. Searches the full tree (text too) unless interactive is set."
         }
+      },
+      "map": {
+        "filter": ""
       }
     },
     {
       "name": "click",
       "ab": "click",
-      "description": "Click an element by @ref or CSS selector.",
+      "description": "Click an element by @ref or CSS selector. If another element covers it, scrolls it to the viewport centre and retries once.",
       "props": {
         "selector": {
           "type": "string",
@@ -253,6 +260,41 @@
       ]
     },
     {
+      "name": "save-text",
+      "ab": "get_text",
+      "special": "save_text",
+      "description": "Save an element's text (e.g. a one-time API key) to a private file or the clipboard without returning it; returns only length and a short SHA-256.",
+      "props": {
+        "selector": {
+          "type": "string"
+        },
+        "regex": {
+          "type": "string",
+          "description": "Keep only the first match (its first group if any)."
+        },
+        "to": {
+          "type": "string",
+          "enum": [
+            "file",
+            "clipboard"
+          ],
+          "description": "Default file: <profile>/shuttle/secrets/<agent>/<name>.txt, mode 0600."
+        },
+        "name": {
+          "type": "string",
+          "description": "File name for to=file: [a-z0-9-], max 64."
+        }
+      },
+      "map": {
+        "regex": "",
+        "to": "",
+        "name": ""
+      },
+      "required": [
+        "selector"
+      ]
+    },
+    {
       "name": "screenshot",
       "ab": "screenshot",
       "description": "Screenshot of the tab, an element or the full page; returns an image.",
@@ -347,7 +389,7 @@
     {
       "name": "hover",
       "ab": "hover",
-      "description": "Hover an element.",
+      "description": "Hover an element. If another element covers it, scrolls it to the viewport centre and retries once.",
       "props": {
         "selector": {
           "type": "string",
@@ -361,7 +403,7 @@
     {
       "name": "dblclick",
       "ab": "dblclick",
-      "description": "Double-click an element.",
+      "description": "Double-click an element. If another element covers it, scrolls it to the viewport centre and retries once.",
       "props": {
         "selector": {
           "type": "string",

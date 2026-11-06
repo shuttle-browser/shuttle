@@ -14,6 +14,7 @@
 #include "base/files/file_path.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/types/expected.h"
 #include "base/values.h"
 #include "chrome/browser/shuttle/mcp_tools.h"
 
@@ -55,6 +56,16 @@ class PageToolManager {
   static base::FilePath FindBinary();
 
  private:
+  // A page tool call in flight (with what it needs for a retry or for
+  // post-processing the result).
+  struct PendingCall;
+
+  void Send(PendingCall call, ToolCallback callback);
+  void OnResult(PendingCall call,
+                ToolCallback callback,
+                base::expected<base::DictValue, std::string> result);
+  void SaveText(PendingCall call, ToolCallback callback, std::string text);
+
   Sidecar* GetOrCreateSidecar(const std::string& session_id,
                               const std::string& host,
                               const base::FilePath& states_dir);

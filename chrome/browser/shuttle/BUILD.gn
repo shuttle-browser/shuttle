@@ -62,8 +62,6 @@ source_set("impl") {
   sources = [
     "agent_browser_sidecar.cc",
     "agent_browser_sidecar.h",
-    "shuttle_service.cc",
-    "shuttle_service_factory.cc",
     "avatar_cache.cc",
     "avatar_cache.h",
     "home_tab.cc",
@@ -80,6 +78,8 @@ source_set("impl") {
     "session_cdp_filter.h",
     "session_manager.cc",
     "session_manager.h",
+    "shuttle_service.cc",
+    "shuttle_service_factory.cc",
   ]
 
   deps = [
@@ -91,8 +91,8 @@ source_set("impl") {
     "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/headless",
     "//chrome/browser/lifetime",
-    "//chrome/browser/profiles/keep_alive",
     "//chrome/browser/profiles:profile",
+    "//chrome/browser/profiles/keep_alive",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/navigator",
     "//chrome/browser/ui/tabs:tab_enums",
@@ -108,12 +108,15 @@ source_set("impl") {
     "//components/version_info",
     "//components/viz/common",
     "//content/public/browser",
+    "//crypto",
     "//net",
     "//services/data_decoder/public/cpp",
     "//services/network/public/cpp",
     "//services/network/public/mojom",
     "//skia",
+    "//third_party/re2",
     "//ui/base",
+    "//ui/base/clipboard",
     "//ui/gfx",
     "//ui/gfx/codec",
     "//ui/gfx/geometry",
