@@ -273,3 +273,10 @@ remove components/safe_browsing/core/browser/realtime/chrome_enterprise_url_look
 remove components/safe_browsing/core/browser/realtime/chrome_enterprise_url_lookup_service.h
 remove chrome/browser/safe_browsing/chrome_enterprise_url_lookup_service_factory.cc
 remove chrome/browser/safe_browsing/chrome_enterprise_url_lookup_service_factory.h
+# Found while fixing GN: device-signals utility service + consent dialog, DM-server-only protos, ChromeOS-only helper.
+remove chrome/services/system_signals
+remove chrome/browser/ui/views/device_signals_consent
+remove chrome/browser/policy/device_account_initializer.cc
+remove chrome/browser/policy/device_account_initializer.h
+remove components/enterprise/common/proto/synced_from_google3/chrome_reporting_entity.proto
+remove components/enterprise/common/proto/upload_request_response.proto
