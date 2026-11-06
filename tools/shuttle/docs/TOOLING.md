@@ -432,6 +432,10 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     them back (26 lines for `components/language_detection` + the TFLite op resolver). Before deleting a component,
     grep content/, blink, services/ and media/ for it: engine code there (LanguageDetector, WebRTC voice isolation)
     needs it, and we keep engine code close to upstream.
+    Wave B batch 1 build (2026-11-06, 3 runs): a `.proto` still imported a removed component's proto
+    (`filter_execution_metadata.proto` -> multistep_filter; protoc fails and blocks ~17k steps, so scan proto
+    imports for missing absolute paths before building), and a kept .cc compiled only because a removed target
+    supplied TFLite include dirs (`client_side_detection_service.cc`, unused `image_embedder.h` include).
 
 ## Gotchas
 
@@ -769,6 +773,15 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   `codesign --strict` fails on any copy of the app from the DMG (`hdiutil makehybrid` sets
   `com.apple.FinderInfo`; installed Google Chrome fails the same way); Gatekeeper accepts it, so verify without
   `--strict`. Timing: small change ~45 s release build + ~5 min sign/notarize (two Apple round trips).
+- **Smoke flakes under load (2026-11-06):** with the Mac at load ~18, `smoke-all.sh` failed one different probe per
+  run (`session-cdp` "foreign tab created during auto-attach is not stalled", `home-tab` "Runtime.evaluate: no reply
+  in 20000 ms"); the third run passed 14/14. Rerun once before debugging a single smoke failure.
+- **sccache-dist stale job slots after a network drop (2026-11-06):** when the build host loses Wi-Fi mid-build
+  (adapter reset), jobs whose state POST failed stay counted: `sccache --dist-status` showed `in_progress` 11 with 1
+  clang running, and the client fell back to local compiles ("Insufficient capacity across 2 available servers").
+  Restarting `sccache-dist-scheduler` on the host clears it (servers re-register within ~15 s). MAGWIN's Wi-Fi
+  receive rate was 52 Mbit/s until adapter power saving was turned off (then ~700): a slow host link makes the
+  build upload-bound and adds 300-500 ms LAN latency for everyone on MAGWIN.
 - **`smoke-mcp.mjs` timing flake (2026-10-11):** on a fresh profile the first one or two runs can fail "cookies
   isolated" / "opened tabs join the session" (fixed 1.5-2 s sleeps); reruns pass. Poll instead of sleeping.
 - **en-US-only UI (B3, 2026-10-11):** `scripts/prune-locales.py` keeps `lang="en-US"` and `lang="en"` grit elements
