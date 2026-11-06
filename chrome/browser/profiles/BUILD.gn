@@ -100,7 +100,6 @@ source_set("misc") {
     "//chrome/browser/push_messaging:service_impl_public",
     "//chrome/browser/reduce_accept_language",
     "//chrome/browser/safe_browsing",
-    "//chrome/browser/send_tab_to_self",
     "//chrome/browser/sessions",
     "//chrome/browser/ssl",
     "//chrome/browser/storage",
@@ -234,7 +233,6 @@ source_set("misc") {
   }
 
   if (enable_extensions) {
-    deps += [ "//chrome/browser/extensions/api/autofill_private" ]
   }
 
   if (enable_bound_session_credentials) {
@@ -799,9 +797,6 @@ source_set("profiles_extra_parts_impl") {
       "//chrome/browser/extensions/keyed_services:keyed_service_factories",
       "//extensions/browser",
     ]
-    if (enable_webui_ntp) {
-      deps += [ "//chrome/browser/ui/webui/new_tab_page_extension" ]
-    }
   }
 
   if (enable_extensions) {

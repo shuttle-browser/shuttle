@@ -56,7 +56,6 @@ source_set("impl") {
   }
 
   if (enable_extensions) {
-    deps += [ "//chrome/browser/sync_file_system" ]
   }
 }
 

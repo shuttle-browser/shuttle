@@ -40,34 +40,6 @@ rust_static_library("dmg_decompress") {
   public_configs = [ ":dmg_public_config" ]
 }
 
-# Test-only bzip2 compressor used to synthesize test payloads.
-rust_static_library("dmg_decompress_test_support") {
-  testonly = true
-  visibility = [ ":*" ]
-  allow_unsafe = true
-  crate_root = "rust/decompress/test_support.rs"
-  sources = [ "rust/decompress/test_support.rs" ]
-  public_configs = [ ":dmg_public_config" ]
-}
-
-rust_static_library("dmg_parser_unittests") {
-  testonly = true
-  is_gtest_unittests = true
-  visibility = [ ":*" ]
-
-  crate_root = "rust/dmg_parser_unittests.rs"
-  sources = [ "rust/dmg_parser_unittests.rs" ]
-  deps = [
-    ":dmg_decompress",
-    ":dmg_decompress_test_support",
-    ":dmg_parser",
-    "//testing/rust_gtest_interop",
-    "//third_party/rust/base64/v0_22:lib",
-    "//third_party/rust/bytemuck/v1:lib",
-    "//third_party/rust/flate2/v1:lib",
-  ]
-}
-
 source_set("read_stream_bridge_hdr") {
   visibility = [ ":*" ]
   sources = [
@@ -141,5 +113,4 @@ executable("crdmg") {
     "//sandbox/mac:seatbelt",
   ]
 }
-
 

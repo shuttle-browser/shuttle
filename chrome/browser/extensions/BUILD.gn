@@ -601,12 +601,6 @@ source_set("extensions") {
     deps += [ "//chrome/browser/spellchecker" ]
   }
   deps += [ "//ui/webui:buildflags" ]
-  if (enable_webui_ntp) {
-    deps += [
-      "//chrome/browser/resources/new_tab_page_extension:resources",
-      "//components/search",
-    ]
-  }
   if (is_android) {
     sources += [
       "api/chrome_extensions_api_client_android.cc",

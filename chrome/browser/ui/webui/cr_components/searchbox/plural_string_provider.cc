@@ -47,6 +47,5 @@ PluralStringProvider::MessageIdMap GetSearchboxPluralStringIds() {
   // Names must match those passed to MojoPluralStringProxy.getPluralString()
   // by the shared components.
   return {
-      {"sharingTabs", IDS_COMPOSE_SHARING_TABS},
   };
 }

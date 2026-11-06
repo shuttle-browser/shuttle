@@ -93,10 +93,6 @@
 #include "chrome/browser/defaults.h"
 #endif
 
-#if BUILDFLAG(ENABLE_WEBUI_NTP)
-#include "chrome/grit/new_tab_page_extension_resources.h"
-#include "components/search/ntp_features.h"
-#endif  // BUILDFLAG(ENABLE_WEBUI_NTP)
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 

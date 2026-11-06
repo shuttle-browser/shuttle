@@ -98,7 +98,6 @@ source_set("impl") {
     "//chrome/browser/task_manager",
     "//chrome/browser/themes",
     "//chrome/browser/tracing",
-    "//chrome/browser/ttc/core:prefs",
     "//chrome/browser/ui:browser_ui_prefs",
     "//chrome/browser/ui/prefs",
     "//chrome/browser/ui/profiles",

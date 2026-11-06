@@ -28,7 +28,6 @@ source_set("suspicious_site_warnings") {
     "//chrome/browser/history",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/safe_browsing",
-    "//chrome/browser/ui/hats",
     "//chrome/common",
     "//chrome/common:constants",
     "//components/content_settings/core/browser",

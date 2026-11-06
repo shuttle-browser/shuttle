@@ -31,9 +31,6 @@ group("resources") {
     public_deps += [
       ":component_extension_resources",
     ]
-    if (enable_webui_ntp) {
-      public_deps += [ "new_tab_page_extension:resources" ]
-    }
   }
 
   if (!is_android) {

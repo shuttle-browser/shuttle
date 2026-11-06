@@ -43,7 +43,6 @@ source_set("signin_prefs_internal") {
   ]
   public_deps = [
     "//base",
-    "//components/device_signals/core/browser:pref_names",
   ]
   deps = [
     "//components/prefs",

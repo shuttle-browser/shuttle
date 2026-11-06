@@ -6781,6 +6781,10 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </if>
 
 
+      <message name="IDS_TAB_SEARCH_MENU" desc="The text label for the tab search menu item">
+        Tab search
+      </message>
+
       <!-- Strings for Window Titles in Menus -->
       <if expr="not use_titlecase">
         <message name="IDS_BROWSER_WINDOW_TITLE_MENU_ENTRY" desc="The format for details of the title displayed in tabs and popup windows. [ICU Syntax]">

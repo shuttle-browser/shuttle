@@ -315,9 +315,6 @@
 #include "chrome/browser/speech/extension_api/tts_extension_api.h"
 #include "extensions/browser/browser_context_keyed_service_factories.h"
 #include "extensions/browser/extensions_browser_client.h"
-#if BUILDFLAG(ENABLE_WEBUI_NTP)
-#include "chrome/browser/ui/webui/new_tab_page_extension/new_tab_page_extension_bridge_factory.h"
-#endif  // BUILDFLAG(ENABLE_WEBUI_NTP)
 #endif
 
 #if BUILDFLAG(ENABLE_PLUGINS)
