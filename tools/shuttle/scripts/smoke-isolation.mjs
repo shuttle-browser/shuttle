@@ -4,7 +4,10 @@
 //   B: blank tab, navigates to the same site: must see nothing of A's.
 //   C: url tab, writes, hops through about:blank and back: must keep its own storage.
 //   A again: still only its own.
-// Regression probe for blank/about:blank agent tabs landing in the default storage partition (fork commit 50).
+//   D, E: Playwright newPage() + goto() over each session endpoint (Target.createTarget about:blank, Page.navigate):
+//   E must see nothing of D's, and D's cookie must be in D's agent storage (Storage.getCookies).
+// Regression probe for blank/about:blank agent tabs landing in the default storage partition (fork commit 50; issue
+// #12: 156.0.0 shared one store across every agent's newPage() tabs).
 import http from 'node:http';
 import { cdp, check, cleanup, finish, gone, mcp, sleep } from './lib/smoke.mjs';
 
@@ -13,7 +16,7 @@ await new Promise((r) => site.listen(0, '127.0.0.1', r));
 cleanup(() => site.close());
 const siteUrl = `http://127.0.0.1:${site.address().port}/`;
 
-const agents = ['smoke-iso-a', 'smoke-iso-b', 'smoke-iso-c'];
+const agents = ['smoke-iso-a', 'smoke-iso-b', 'smoke-iso-c', 'smoke-iso-d', 'smoke-iso-e'];
 cleanup(async () => { for (const id of agents) await mcp('delete-agent', { id }).catch(gone); });
 async function evalIn(cdpUrl, expression) {
   const c = await cdp(cdpUrl);
@@ -40,4 +43,28 @@ const c = await tab(agents[2], siteUrl); await write(c, 'C');
 await nav(c, 'about:blank'); await nav(c, siteUrl);
 await expect('C keeps its own storage after an about:blank hop', c, 'c=C | ls=C');
 await expect('A unchanged', a, 'c=A | ls=A');
+
+// newPage() over the session endpoint.
+async function newPage(agent) {
+  await mcp('create-agent', { id: agent, persistSessionCookies: false });
+  const s = await mcp('open-session', { agent });
+  const client = await cdp(s.cdpEndpoint);
+  cleanup(() => client.close());
+  const targetId = (await client.send('Target.createTarget', { url: 'about:blank' })).result?.targetId;
+  const sid = (await client.send('Target.attachToTarget', { targetId, flatten: true })).result?.sessionId;
+  await client.send('Page.navigate', { url: siteUrl }, sid);
+  await sleep(800);
+  const ev = async (expression) =>
+    (await client.send('Runtime.evaluate', { expression, returnByValue: true }, sid)).result?.result?.value;
+  return { client, ev };
+}
+const pageStorage = 'document.cookie + " | ls=" + (localStorage.getItem("k") ?? "")';
+const d = await newPage(agents[3]), e = await newPage(agents[4]);
+await d.ev('document.cookie = "c=D; max-age=3600"; localStorage.setItem("k", "D")');
+const seenByE = await e.ev(pageStorage);
+check('E (newPage) sees nothing of D (newPage)', seenByE === ' | ls=', JSON.stringify(seenByE));
+const dCookies = (await d.client.send('Storage.getCookies')).result?.cookies ?? [];
+check('D\'s newPage cookie is in D\'s agent storage', dCookies.some((x) => x.name === 'c' && x.value === 'D'),
+  JSON.stringify(dCookies.map((x) => `${x.name}=${x.value}`)));
+await expect('A unchanged after the newPage agents', a, 'c=A | ls=A');
 await finish();
