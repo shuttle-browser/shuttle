@@ -82,6 +82,10 @@ keep components/optimization_guide/core/BUILD.gn
 keep components/optimization_guide/proto
 keep components/optimization_guide/BUILD.gn
 keep components/optimization_guide/features.gni
+# TFLite op resolver: WebRTC voice isolation and on_device_model safety use it.
+keep components/optimization_guide/core/tflite_op_resolver.cc
+keep components/optimization_guide/core/tflite_op_resolver.h
+keep components/optimization_guide/core/inference/BUILD.gn
 remove components/optimization_guide
 remove chrome/browser/optimization_guide
 remove components/page_content_annotations
@@ -94,6 +98,10 @@ remove chrome/browser/ui/webui/multistep_filter_internals
 remove chrome/browser/resources/multistep_filter_internals
 remove chrome/test/data/webui/multistep_filter_internals
 remove chrome/test/data/webui/optimization_guide_internals
+remove chrome/browser/resources/family_link_user_internals
+remove chrome/browser/ui/webui/family_link_user_internals
+remove chrome/browser/resources/segmentation_internals
+remove chrome/browser/ui/webui/segmentation_internals
 remove chrome/browser/v8_compile_hints
 remove components/page_image_service
 remove chrome/browser/page_image_service
@@ -107,7 +115,10 @@ remove components/segmentation_platform
 remove chrome/browser/segmentation_platform
 remove components/visited_url_ranking
 remove chrome/browser/visited_url_ranking
-remove components/language_detection
+# components/language_detection core + renderer stay (blink's LanguageDetector and content use them; no model
+# arrives without the browser-side model service, so the web API reports unavailable).
+remove components/language_detection/core/browser
+remove components/language_detection/content/browser
 remove chrome/browser/language_detection
 remove components/supervised_user
 remove chrome/browser/supervised_user
@@ -120,6 +131,32 @@ remove extensions/browser/supervised_user_extensions_delegate.h
 remove chrome/common/supervised_user_commands.mojom
 # Single files of the omnibox ML scoring / tail model, the OG component installers, audio ML forwarder, AX tree
 # fixing OG service and the page-context eligibility helper: listed by the batch-1 surgery (they need ref cuts).
+remove components/omnibox/browser/autocomplete_scoring_model_executor.cc
+remove components/omnibox/browser/autocomplete_scoring_model_executor.h
+remove components/omnibox/browser/autocomplete_scoring_model_handler.cc
+remove components/omnibox/browser/autocomplete_scoring_model_handler.h
+remove components/omnibox/browser/autocomplete_scoring_model_service.cc
+remove components/omnibox/browser/autocomplete_scoring_model_service.h
+remove components/omnibox/browser/on_device_tail_model_executor.cc
+remove components/omnibox/browser/on_device_tail_model_executor.h
+remove components/omnibox/browser/on_device_tail_model_service.cc
+remove components/omnibox/browser/on_device_tail_model_service.h
+remove components/omnibox/browser/on_device_tail_tokenizer.cc
+remove components/omnibox/browser/on_device_tail_tokenizer.h
+remove chrome/browser/autocomplete/autocomplete_scoring_model_service_factory.cc
+remove chrome/browser/autocomplete/autocomplete_scoring_model_service_factory.h
+remove chrome/browser/autocomplete/on_device_tail_model_service_factory.cc
+remove chrome/browser/autocomplete/on_device_tail_model_service_factory.h
+remove components/component_updater/installer_policies/optimization_hints_component_installer.cc
+remove components/component_updater/installer_policies/optimization_hints_component_installer.h
+remove components/component_updater/installer_policies/prediction_model_component_installer.cc
+remove components/component_updater/installer_policies/prediction_model_component_installer.h
+remove components/safe_browsing/core/browser/client_side_phishing_model.cc
+remove components/safe_browsing/core/browser/client_side_phishing_model.h
+# hints.proto drops its filter_execution_metadata field (reserved 2): it imported the removed multistep_filter proto.
+remove components/optimization_guide/proto/filter_execution_metadata.proto
+# PermissionUiSelector (quiet-UI interface, not prediction) moved out of the removed prediction_service dir to
+# components/permissions/permission_ui_selector.{h,cc}.
 
 # --- Wave B, batch 2 (Toby 2026-11-06): enterprise connectors / reporting / device trust / Isolated Mode / DLP /
 # watermark / client certs / platform auth / idle, device signals, cloud policy (CBCM, DM server), encrypted
