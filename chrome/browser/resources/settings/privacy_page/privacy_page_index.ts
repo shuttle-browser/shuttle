@@ -51,8 +51,6 @@ export class SettingsPrivacyPageIndexElement extends
 
   static get properties() {
     return {
-      privacyGuideViewedPref_: Object,
-
       routes_: {
         type: Object,
         value: () => routes,
@@ -169,12 +167,6 @@ export class SettingsPrivacyPageIndexElement extends
   declare private enableWebBluetoothNewPermissionsBackend_: boolean;
 
   private pendingViewSwitching_: PromiseResolver<void> = new PromiseResolver();
-
-  override connectedCallback() {
-    super.connectedCallback();
-
-    this.mirrorPref('privacy_guide.viewed', 'privacyGuideViewedPref_');
-  }
 
   private beforeNextRenderPromise_(): Promise<void> {
     return new Promise(res => {
