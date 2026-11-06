@@ -1103,10 +1103,30 @@ existence checked on `/json/list`.
   Removed with it: upstream's new NTP component extension (`new_tab_page_extension`, the fork has no NTP), the AIM/NTP
   component-extension installer, views examples, composebox / contextual search / contextual tasks leftovers.
   Certificate manager: a loader-less client cert source answers an empty list (`bf32255f67`, SH-Review P2).
+  Build to green (`817508f0fe`): upstream 158 code in kept files that called removed features was cut or the fork's
+  pre-merge version restored (web-app app-shim notification permission, device API web-app trust, devtools web-app
+  capture, user-education badges + the tab-group focus IPH controller, HaTS surveys (scheduled restart stubbed,
+  suspicious-site warning), sync / sync_file_system backend, supervised-user download filter, enterprise proxy
+  affiliation helper (inlined into `proxy_override_rules_policy_handler.cc`), Indigo context-menu item, child_module,
+  site token provider metrics, screen_ai PDF OCR, vertical-tab layouts and organizer embedding, NTP instant process /
+  new-tab-page allowlists, initial-WebUI fonts, actor file upload backend, remote-actor credential sharing and
+  autofill OAuth2 flags). Top Chrome WebUI shared profile: `TopChromeWebUIProfileImpl` deleted (an OTR profile
+  without an original profile; the fork has no OTR profiles), `webui::` API stubbed to the user profile, so
+  `kTopChromeWebUISharedRenderer` has no effect. Organizer action keeps the fork's View/Hide Organizer label. Merge
+  damage fixed: nested infobar strings in `generated_resources.grd`, orphan fragments in `flag_descriptions.h`,
+  unbalanced `#if` in `device_service_impl`, TabFeatures lost the session/zoom/infobar helpers (startup crash).
+  Pruned (`67f0f10273`, Toby 2026-11-06): `chrome/browser/text_detection` + `enable-text-detection-api` (needs
+  screen_ai), Settings Search 2026 (`chrome/browser/ui/webui/settings/search` + mojom, search tag strings,
+  `plural_string_provider`), the tabs-from-other-devices side panel (references), `contextual_tasks_private`
+  (references). Kept on purpose: scheduled restart, tab-group focus toasts, history time/device filters,
+  organizer-panel segmentation, window.open split tab, infobar count pill, persistent widget API, page-colors
+  settings. Behaviour (OK'd by Toby): no crowd-deny / abusive-origin quiet permission UI, no consumer cloud deep
+  scanning.
 
-Verified so far: macOS dev build green after each wave, `smoke-all` 14/14; Linux `gn gen` + `check-ninja-inputs`
-green (dev and release configs). Open: Linux release build, chrome://management and chrome://certificate-manager
-don't render on 157 (predates batch 2), SH-Review.
+Verified: macOS dev build (158) green, `smoke-all` 14/14; chrome://management, certificate-manager, history,
+settings privacy/security, agents and version render without console errors; Linux `gn gen` +
+`check-ninja-inputs` green (dev and release configs). SH-Review of the 158 merge: no P0-P3 in the highlighted paths
+(broad hunk audit not complete). Open: Linux 158 release build.
 
 ## Fork commit 58 (2026-11-06): page tools: snapshot filter, covered-click retry, save-text
 
@@ -1125,4 +1145,8 @@ modes, clipboard content, hash), `smoke-all` 14/14. Review: SH-Review 3 P2s (sav
 existing files, ignored chmod failures, forwarded sidecar error text) fixed in `8b61c68bd3`: private dirs opened with
 `O_NOFOLLOW` (owner + mode checked), a new `O_EXCL` 0600 file renamed over the destination, any permission failure
 fails the call, errors never carry sidecar text, the clipboard write commits before success. Clipboard
-"confidential" is honoured on macOS only (Linux Ozone ignores it; the tool description says so). Re-review pending.
+"confidential" is honoured on macOS only (Linux Ozone ignores it; the tool description says so). Re-review: the
+error-text and permission/inode P2s closed; the ancestor P2 (a pre-placed `<profile>/shuttle` symlink) fixed in
+`34d4ae3d33` (the profile dir is the anchor, `shuttle/` is opened like `secrets/<agent>`), verified by hand on 158
+(symlinked `shuttle/` → error, nothing written through it); SH-Review: all three P2s closed. Follow-up: `open-session` still creates
+`shuttle/states/<agent>` with `base::CreateDirectory` through such a link.

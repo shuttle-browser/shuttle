@@ -458,6 +458,25 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   - **DIR_METADATA mixins into pruned dirs** came back with new upstream test data / histogram metadata (5 in 158):
     the location-tags hook aborts `gclient runhooks`. Sweep: `git grep -h -o 'mixins: "//[^"]*"' -- '*DIR_METADATA'`
     and test each path.
+  - **Merge damage that `gn gen` can't see, found only by the build** (158, 4 rounds, ~5 h): a `<message>` nested
+    inside another in `generated_resources.grd` (grit `update_resource_ids` fails in the first seconds and blocks
+    every grit dependent while the rest of the build runs on for an hour: read the first FAILED line, not only the
+    count), orphan string fragments (`"delay.";`) in `flag_descriptions.h`, unbalanced `#if`/`#endif`, a fork include
+    swapped for two upstream ones. Before the first build, scan the merge-touched files: nested `<message>` in
+    `*.grd*`, `#if`/`#endif` balance in `*.h/*.cc/*.mm`, and run the resource-id step by hand
+    (`grit.py update_resource_ids -o /tmp/x --input ../../tools/gritsettings/resource_ids.spec` from the out dir).
+  - **Upstream moving code between files loses the fork's half**: 158 deleted `chrome/browser/ui/tab_helpers.cc` and
+    moved its helpers into `tab_features.cc`; the merge took the deletion and kept the fork's `tab_features.cc`, so
+    session/zoom/infobar helpers were never created and the browser crashed at startup (`CanZoomIn`, null
+    ZoomController) with a green build. For every upstream-deleted file the fork had modified, find where upstream
+    moved its contents.
+  - **Removed features come back through kept code**: most of the ~50 compile errors were upstream 158 code in kept
+    files calling removed features (web apps, user education, HaTS, sync, supervised user, enterprise net /
+    connectors, indigo, screen_ai, vertical tabs, OTR profiles). Default: restore the fork's pre-merge function or
+    file (`git show "<merge>^1:<path>"`) and re-apply only the upstream API renames (158: `WindowOpenDisposition`
+    `NEW_*` → `kNew*`, also in fork-only code); two Opus agents per area with the error list worked well.
+  - **sccache-dist path limit**: a few compiles fail remotely with "provided value is too long when setting path"
+    (deep gen paths in the input tar) and sccache compiles them on the Mac; harmless at 3 per 14k.
 
 ## Gotchas
 
