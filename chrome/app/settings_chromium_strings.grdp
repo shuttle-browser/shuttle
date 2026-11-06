@@ -182,10 +182,10 @@
     </message>
     <if expr="is_win">
       <message name="IDS_SETTINGS_SYSTEM_ISOLATION_STATE_LABEL" desc="Label for the Enable process isolation toggle.">
-        Isolate Chromium from other apps
+        Isolate Shuttle from other apps
       </message>
       <message name="IDS_SETTINGS_SYSTEM_ISOLATION_STATE_SUBLABEL" desc="Sublabel for the Enable process isolation toggle.">
-        Protects Chromium's memory from other applications on your computer.
+        Protects Shuttle's memory from other applications on your computer.
       </message>
     </if>
   </if>
