@@ -90,6 +90,7 @@ generate_grd("build_grd") {
       "cr_components/searchbox/icons:build_grdp",
     ]
     grdp_files += [
+      "$root_gen_dir/ui/webui/resources/cr_components/color_change_listener/resources.grdp",
       "$target_gen_dir/cr_components/localized_link/resources.grdp",
       "$target_gen_dir/cr_components/searchbox/icons/resources.grdp",
     ]
