@@ -1068,7 +1068,7 @@ Also: `CheckIdle` skips while the browser quits and looks sessions up with `find
 Probe additions: wait-for longer than the timeout, `beforeunload` on both close paths, headless activated tab; tab
 existence checked on `/json/list`.
 
-## Fork commit 57 (2026-11-04..): Chromium 157 merge (branch `sh/merge-157`, in progress)
+## Fork commit 57 (2026-11-04..): Chromium 157 + 158 merge (branch `sh/merge-157`, in progress)
 
 - **57** Merge of Chromium 157.0.8103.39 (log in the private merge notes) plus the m157 prune
   (`prune/m157.txt`, Toby's calls 2026-11-04..06):
@@ -1098,6 +1098,12 @@ existence checked on `/json/list`.
     chrome://management + chrome://certificate-manager rendered blank); `4aa1e3568f` drops 260 `flag-metadata.json`
     entries (+7 never-expire entries) for flags no longer in `about_flags.cc`.
 
+- **158** (Toby 2026-11-06: straight on, one PR): merge of Chromium 158.0.8127.18 (`7eb0c2ebb4`, V8 15.8.62.9) into
+  this branch; follow-ups: rebrand strings, gn fixes (`51a046a78e`, `d8557d9b2c`), build round 1 (`3b1b352eb9`).
+  Removed with it: upstream's new NTP component extension (`new_tab_page_extension`, the fork has no NTP), the AIM/NTP
+  component-extension installer, views examples, composebox / contextual search / contextual tasks leftovers.
+  Certificate manager: a loader-less client cert source answers an empty list (`bf32255f67`, SH-Review P2).
+
 Verified so far: macOS dev build green after each wave, `smoke-all` 14/14; Linux `gn gen` + `check-ninja-inputs`
 green (dev and release configs). Open: Linux release build, chrome://management and chrome://certificate-manager
 don't render on 157 (predates batch 2), SH-Review.
@@ -1115,4 +1121,8 @@ don't render on 157 (predates batch 2), SH-Review.
     confidential) and returns only its length and a 12-hex SHA-256, so the secret never enters the agent's context.
 
 Verified: macOS dev build, by hand through MCP (filter on headings and text, a button under a fixed bottom bar, file
-modes, clipboard content, hash), `smoke-all` 14/14. Review: pending (SH-Review, with the 157 PR).
+modes, clipboard content, hash), `smoke-all` 14/14. Review: SH-Review 3 P2s (save-text followed links and truncated
+existing files, ignored chmod failures, forwarded sidecar error text) fixed in `8b61c68bd3`: private dirs opened with
+`O_NOFOLLOW` (owner + mode checked), a new `O_EXCL` 0600 file renamed over the destination, any permission failure
+fails the call, errors never carry sidecar text, the clipboard write commits before success. Clipboard
+"confidential" is honoured on macOS only (Linux Ozone ignores it; the tool description says so). Re-review pending.

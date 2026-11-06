@@ -436,6 +436,28 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     (`filter_execution_metadata.proto` -> multistep_filter; protoc fails and blocks ~17k steps, so scan proto
     imports for missing absolute paths before building), and a kept .cc compiled only because a removed target
     supplied TFLite include dirs (`client_side_detection_service.cc`, unused `image_embedder.h` include).
+- **158 merge (157.0.8103.39 → 158.0.8127.18, 2026-11-06, into the open 157 branch, in progress)**: 35,554 upstream
+  files; 16,146 modify/delete + 516 content conflicts (55 auto, 461 by 6 agents with a shared brief, ~25 min wall).
+  Gotchas:
+  - **Sub-agents can't write report files** (the harness refuses: "return findings as text"): have them reply with
+    the report and save it yourself. One agent "resolved" a file by deleting it from the work tree (still `UU` in
+    the index): after the agents, check every listed file exists, not only that no markers are left.
+  - **Upstream splits a target (`components/omnibox/common:features`, `password_manager/core/common:features`)**:
+    gn-fix-loop calls the missing label "not removed by the fork" and stops; point the dep at the fork's
+    combined target instead of restoring the split.
+  - **A target disappearing upstream** (`//chrome/browser:browser_public_dependencies`, gone in 158) breaks
+    fork-only BUILD files the merge never touched: grep fork BUILD files (`chrome/browser/shuttle/`) for labels
+    missing upstream.
+  - **New clang ⇒ new sccache-dist toolchain archive** (158: llvmorg-24-init-14453): remote compiles fail with
+    "unknown warning option" and sccache silently compiles on the Mac. Check the first minutes of the build
+    (buildmon remote count, `local:N(+M)` in siso's line) and stop at once; 158 deleted
+    `tools/clang/alloc_token/ignores_apple.txt` from the toolchain file list.
+  - **gitleaks blocks the merge commit on upstream extension manifests** (`"key"` in
+    `new_tab_page_extension/manifest.json`): the gatekeeper hook scans the staged state before the command runs,
+    so `git rm` and `git commit` must be separate commands.
+  - **DIR_METADATA mixins into pruned dirs** came back with new upstream test data / histogram metadata (5 in 158):
+    the location-tags hook aborts `gclient runhooks`. Sweep: `git grep -h -o 'mixins: "//[^"]*"' -- '*DIR_METADATA'`
+    and test each path.
 
 ## Gotchas
 
