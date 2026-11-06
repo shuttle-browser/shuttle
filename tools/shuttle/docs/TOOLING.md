@@ -424,6 +424,14 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     SIGSEGV on every tab close (intermittent smoke failures). Compare the member order of `TabFeatures` /
     `BrowserWindowFeatures` with upstream after a merge (longest-increasing-subsequence of common members; 0 out of
     place is the goal).
+  - **m157 prune (2026-11-06)**: `prune.py --apply` refuses a dirty tree, so commit the manifest edit first (a
+    `shuttle/:` commit). `keep <path>` lines override `remove` (used for carve-outs: the CDP
+    `Page.getAnnotatedPageContent` path inside optimization_guide). Restoring a deleted target later is a trap:
+    `gn-fix-loop.py` / `fix-gn-refs.py` already dropped every dep on it and `gn gen` stays green without them. After
+    a restore, list the removed dep lines (`git diff -U0 -- '*.gn' '*.gni'`, `^-` lines naming the target) and put
+    them back (26 lines for `components/language_detection` + the TFLite op resolver). Before deleting a component,
+    grep content/, blink, services/ and media/ for it: engine code there (LanguageDetector, WebRTC voice isolation)
+    needs it, and we keep engine code close to upstream.
 
 ## Gotchas
 
