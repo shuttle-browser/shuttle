@@ -51,8 +51,6 @@ source_set("impl") {
     "pinned_tab_container_view.cc",
     "pinned_tab_container_view_horizontal_layout.cc",
     "pinned_tab_container_view_horizontal_layout.h",
-    "pinned_tab_container_view_vertical_layout.cc",
-    "pinned_tab_container_view_vertical_layout.h",
     "root_tab_collection_node.cc",
     "split_tab_view.cc",
     "tab_collection_animating_layout_manager.cc",
@@ -71,8 +69,6 @@ source_set("impl") {
     "tab_group_view.h",
     "tab_group_view_horizontal_layout.cc",
     "tab_group_view_horizontal_layout.h",
-    "tab_group_view_vertical_layout.cc",
-    "tab_group_view_vertical_layout.h",
     "tab_link_drop_handler.cc",
     "tab_link_drop_handler.h",
     "tab_strip_collection_controller.cc",
@@ -88,8 +84,6 @@ source_set("impl") {
     "unpinned_tab_container_view.cc",
     "unpinned_tab_container_view_horizontal_layout.cc",
     "unpinned_tab_container_view_horizontal_layout.h",
-    "unpinned_tab_container_view_vertical_layout.cc",
-    "unpinned_tab_container_view_vertical_layout.h",
   ]
 
   deps = [

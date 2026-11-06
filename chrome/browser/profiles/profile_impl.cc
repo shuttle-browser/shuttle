@@ -59,12 +59,6 @@
 #include "chrome/browser/download/download_core_service.h"
 #include "chrome/browser/download/download_core_service_factory.h"
 #include "chrome/browser/download/download_manager_utils.h"
-#include "chrome/browser/enterprise/client_certificates/certificate_provisioning_service_factory.h"
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/browser/extensions/api/autofill_private/autofill_private_event_router_factory.h"
-#endif
-#include "chrome/browser/safe_browsing/chrome_ping_manager_factory.h"
-#include "chrome/browser/send_tab_to_self/send_tab_to_self_client_service_factory.h"
 #include "chrome/browser/file_system_access/chrome_file_system_access_permission_context.h"
 #include "chrome/browser/file_system_access/file_system_access_permission_context_factory.h"
 #include "chrome/browser/heavy_ad_intervention/heavy_ad_service_factory.h"

@@ -130,7 +130,6 @@ base::span<const base::cstring_view> ChromeURLHosts() {
       safe_browsing::kChromeUISafeBrowsingHost,
 #if !BUILDFLAG(IS_ANDROID)
       kChromeUITabSearchHost,
-      kChromeUITabsFromOtherDevicesSidePanelHost,
       kChromeUITermsHost,
 #endif
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)

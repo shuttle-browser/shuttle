@@ -4,13 +4,15 @@
 
 #include "components/proxy_config/proxy_override_rules_policy_handler.h"
 
+#include <string>
 #include <variant>
 
 #include "base/check.h"
 #include "build/build_config.h"
-#include "components/enterprise/net/core/proxy_policy_utils.h"
 #include "components/policy/core/browser/configuration_policy_handler.h"
 #include "components/policy/core/browser/policy_error_map.h"
+#include "components/policy/core/common/policy_map.h"
+#include "components/policy/core/common/policy_types.h"
 #include "components/policy/core/common/schema.h"
 #include "components/policy/policy_constants.h"
 #include "components/prefs/pref_value_map.h"
@@ -30,6 +32,53 @@ policy::PolicyErrorPath CreateNewPath(
   return path;
 }
 
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
+    BUILDFLAG(IS_ANDROID)
+// Shuttle: upstream's enterprise_net::CheckUserAffiliatedProxyPolicy (in
+// components/enterprise/net, pruned with Enterprise Proxy), kept here.
+bool IsUnaffiliatedUserProxyPolicyAllowed(const policy::PolicyMap& policies) {
+  const policy::PolicyMap::Entry* entry =
+      policies.Get(policy::key::kEnableProxyOverrideRulesForAllUsers);
+  if (!entry || entry->scope != policy::POLICY_SCOPE_MACHINE) {
+    return false;
+  }
+  const base::Value* value = entry->value(base::Value::Type::INTEGER);
+  return value && value->GetInt() == 1;
+}
+
+bool CheckUserAffiliatedProxyPolicy(const policy::PolicyMap& policies,
+                                    const std::string& policy_name,
+                                    policy::PolicyErrorMap* errors) {
+  if (errors &&
+      !errors->HasError(policy::key::kEnableProxyOverrideRulesForAllUsers)) {
+    policy::IntRangePolicyHandler enabled_for_all_users_handler(
+        policy::key::kEnableProxyOverrideRulesForAllUsers,
+        /*pref_path=*/nullptr,
+        /*min=*/0,
+        /*max=*/1,
+        /*clamp=*/false);
+    enabled_for_all_users_handler.CheckPolicySettings(policies, errors);
+  }
+
+  const policy::PolicyMap::Entry* entry = policies.Get(policy_name);
+  if (!entry) {
+    return true;
+  }
+
+  if (entry->scope == policy::PolicyScope::POLICY_SCOPE_USER &&
+      !policies.GetDeviceAffiliationIds().empty() &&
+      !policies.IsUserAffiliated() &&
+      !IsUnaffiliatedUserProxyPolicyAllowed(policies)) {
+    if (errors) {
+      errors->AddError(policy_name, IDS_POLICY_UNAFFILIATED_USER_ERROR);
+    }
+    return false;
+  }
+  return true;
+}
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) ||
+        // BUILDFLAG(IS_ANDROID)
+
 }  // namespace
 
 ProxyOverrideRulesPolicyHandler::ProxyOverrideRulesPolicyHandler(
@@ -46,8 +95,7 @@ bool ProxyOverrideRulesPolicyHandler::CheckPolicySettings(
     policy::PolicyErrorMap* errors) {
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
     BUILDFLAG(IS_ANDROID)
-  if (!enterprise_net::CheckUserAffiliatedProxyPolicy(policies, policy_name(),
-                                                      errors)) {
+  if (!CheckUserAffiliatedProxyPolicy(policies, policy_name(), errors)) {
     return false;
   }
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) ||

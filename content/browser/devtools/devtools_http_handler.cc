@@ -1094,7 +1094,7 @@ void DevToolsHttpHandler::OnWebSocketRequest(
     connection_to_client_[connection_id] =
         std::make_unique<DevToolsAgentHostClientImpl>(
             thread_->task_runner(), server_wrapper_.get(), connection_id,
-            browser_agent, std::move(filter));
+            browser_agent, request.peer, std::move(filter));
     AcceptWebSocket(connection_id, request);
     return;
   }

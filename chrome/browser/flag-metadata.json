@@ -613,11 +613,6 @@
     "expiry_milestone": 147
   },
   {
-    "name": "autofill-enable-oauth2-token-fix",
-    "owners": [ "ferny@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 165
-  },
-  {
     "name": "automotive-back-button-bar-streamline",
     "owners": ["eleanorlee@google.com", "clhager@google.com", "wenyufu@chromium.org"],
     "expiry_milestone": 160
@@ -4605,14 +4600,6 @@
     // This is required by test teams to verify functionality on dev/beta
     // channels on devices which have no access to commandline flags.
     "expiry_milestone": -1
-  },
-  {
-    "name": "remote-actor-credential-sharing",
-    "owners": [
-      "derinel@google.com",
-      "anki-team@google.com"
-    ],
-    "expiry_milestone": 160
   },
   {
     "name": "render-document",

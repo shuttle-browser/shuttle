@@ -69,7 +69,6 @@ are declared in tools/grit/grit_args.gni.
       <part file="settings_strings.grdp" />
       <if expr="not is_android">
         <part file="shared_settings_strings.grdp"/>
-        <part file="settings_search_tag_strings.grdp" />
       </if>
 
       <if expr="chrome_root_store_cert_management_ui">
@@ -5941,6 +5940,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
           <message name="IDS_VIEW_ORGANIZER_PANEL" desc="In Title Case: The tooltip for the button in the top container that shows the organizer panel.">
             View Organizer
           </message>
+          <message name="IDS_HIDE_ORGANIZER_PANEL" desc="In Title Case: The tooltip for the button in the top container that hides the organizer panel.">
+            Hide Organizer
+          </message>
           <message name="IDS_ORGANIZER_PANEL_CLOSE_TAB_SEARCH" desc="In Title Case: The label for the close button in the organizer panel to close tab search.">
             Close Tab Search
           </message>
@@ -5948,6 +5950,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
         <else>
           <message name="IDS_VIEW_ORGANIZER_PANEL" desc="The tooltip for the button in the top container that shows the organizer panel.">
             View organizer
+          </message>
+          <message name="IDS_HIDE_ORGANIZER_PANEL" desc="The tooltip for the button in the top container that hides the organizer panel.">
+            Hide organizer
           </message>
           <message name="IDS_ORGANIZER_PANEL_CLOSE_TAB_SEARCH" desc="The label for the close button in the organizer panel to close tab search.">
             Close tab search
@@ -7555,16 +7560,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_PAGE_SPECIFIC_SITE_DATA_DIALOG_DELETE_BUTTON_TOOLTIP"
           desc="The tooltip that is used for button button that clears storage accessed by the site. The button is shown in the `Cookies and site data` dialog.">
         Delete saved data for <ph name="SITE_NAME">$1<ex>example.com</ex></ph>
-        <message name="IDS_INFOBAR_PENDING_COUNT" desc="Label on the count badge shown in an infobar next to its close button when more infobars are queued behind it, waiting to be shown. Indicates how many more infobars are queued, e.g. '+2'.">
-          {COUNT, plural,
-           =1 {+1}
-           other {+#}}
-        </message>
-        <message name="IDS_INFOBAR_PENDING_COUNT_TOOLTIP" desc="Tooltip and accessible name for the count badge shown in an infobar when more infobars are queued behind it. Explains that the queued notifications appear once the current infobar is closed.">
-          {COUNT, plural,
-           =1 {1 more infobar will appear when this one is closed}
-           other {# more infobars will appear when this one is closed}}
-        </message>
       </message>
 
       <!-- Accessiblility strings for Infobars in Views -->
@@ -7574,6 +7569,16 @@ Keep your key file in a safe place. You will need it to create new versions of y
         </message>
         <message name="IDS_ACCNAME_INFOBAR" desc="The accessible name for an infobar.">
           Infobar
+        </message>
+        <message name="IDS_INFOBAR_PENDING_COUNT" desc="Label on the count badge shown in an infobar next to its close button when more infobars are queued behind it, waiting to be shown. Indicates how many more infobars are queued, e.g. '+2'.">
+          {COUNT, plural,
+           =1 {+1}
+           other {+#}}
+        </message>
+        <message name="IDS_INFOBAR_PENDING_COUNT_TOOLTIP" desc="Tooltip and accessible name for the count badge shown in an infobar when more infobars are queued behind it. Explains that the queued notifications appear once the current infobar is closed.">
+          {COUNT, plural,
+           =1 {1 more infobar will appear when this one is closed}
+           other {# more infobars will appear when this one is closed}}
         </message>
       </if>
 

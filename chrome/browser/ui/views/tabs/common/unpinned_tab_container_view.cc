@@ -6,7 +6,6 @@
 
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/views/tabs/common/dragged_tabs_container.h"
 #include "chrome/browser/ui/views/tabs/common/split_tab_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_animating_layout_manager.h"
@@ -16,7 +15,6 @@
 #include "chrome/browser/ui/views/tabs/common/tab_strip_collection_controller.h"
 #include "chrome/browser/ui/views/tabs/common/tab_view.h"
 #include "chrome/browser/ui/views/tabs/common/unpinned_tab_container_view_horizontal_layout.h"
-#include "chrome/browser/ui/views/tabs/common/unpinned_tab_container_view_vertical_layout.h"
 #include "components/tabs/public/tab_group.h"
 #include "content/public/browser/navigation_controller.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
@@ -73,9 +71,8 @@ class UnpinnedTabContainerViewTargeter : public views::ViewTargeterDelegate {
 
 std::unique_ptr<UnpinnedTabContainerView::LayoutManager>
 CreateUnpinnedTabContainerViewLayout(TabStripOrientation orientation) {
-  if (orientation == TabStripOrientation::kVertical) {
-    return std::make_unique<UnpinnedTabContainerViewVerticalLayout>();
-  }
+  // Shuttle: vertical tabs are removed; the horizontal layout serves every
+  // orientation (the vertical layout and its collapse state are gone).
   return std::make_unique<UnpinnedTabContainerViewHorizontalLayout>();
 }
 
@@ -119,16 +116,6 @@ UnpinnedTabContainerView::UnpinnedTabContainerView(
   node_destroyed_subscription_ = collection_node_->RegisterWillDestroyCallback(
       base::BindOnce(&UnpinnedTabContainerView::ResetCollectionNode,
                      base::Unretained(this)));
-
-  if (orientation_ == TabStripOrientation::kVertical) {
-    auto* state_controller =
-        collection_node_->GetController()->GetStateController();
-    CHECK(state_controller);
-    collapsed_state_changed_subscription_ =
-        state_controller->RegisterOnCollapseChanged(base::BindRepeating(
-            &UnpinnedTabContainerView::OnCollapseStateChanged,
-            base::Unretained(this)));
-  }
 }
 
 UnpinnedTabContainerView::~UnpinnedTabContainerView() = default;
@@ -304,13 +291,7 @@ int UnpinnedTabContainerView::GetUnconstrainedPreferredWidth() const {
 }
 
 void UnpinnedTabContainerView::ResetCollectionNode() {
-  collapsed_state_changed_subscription_ = {};
   collection_node_ = nullptr;
-}
-
-void UnpinnedTabContainerView::OnCollapseStateChanged(
-    tabs::VerticalTabStripCollapseState state) {
-  InvalidateLayout();
 }
 
 views::ScrollView* UnpinnedTabContainerView::GetScrollViewForContainer() const {

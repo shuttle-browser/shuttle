@@ -1267,14 +1267,6 @@ int ChromeBrowserMainParts::PreCreateThreadsImpl() {
 
   CHECK(!user_data_dir_.empty(), base::NotFatalUntil::M162);
 
-#if !BUILDFLAG(IS_ANDROID)
-  // Set chrome::DIR_CHILD_MODULE_ROOT before its consumers (e.g.,
-  // ChildModuleManager) are created in PreMainMessageLoopRunImpl().
-  if (base::FeatureList::IsEnabled(child_module::features::kDynamicPatching)) {
-    child_module::InitializeChildModuleRoot();
-  }
-#endif
-
   // Force MediaCaptureDevicesDispatcher to be created on UI thread.
   MediaCaptureDevicesDispatcher::GetInstance();
 

@@ -91,6 +91,8 @@ ContextMenuContentTypeFactory::CreateInternal(
         web_view_guest->GetWeakPtr(), params));
   }
 
+  content::WebContents* web_contents =
+      content::WebContents::FromRenderFrameHost(render_frame_host);
   const extensions::mojom::ViewType view_type =
       extensions::GetViewType(web_contents);
 

@@ -56,6 +56,8 @@
 #include "chrome/browser/ash/boot_times_recorder/boot_times_recorder.h"
 #include "chrome/browser/lifetime/application_lifetime_chromeos.h"
 #include "chromeos/ash/components/login/session/session_termination_manager.h"
+#else  // !BUILDFLAG(IS_CHROMEOS)
+#include "chrome/browser/sessions/profile_diff_after_restart_recorder.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_WIN)

@@ -381,14 +381,8 @@ void MoveTabsToWindowImpl(BrowserWindowInterface* source,
 
 BrowserWindowInterface* CreateNewBrowser(BrowserWindowInterface* browser,
                                          bool user_gesture) {
-  base::TimeTicks now = base::TimeTicks::Now();
   auto params = BrowserWindowCreateParams(browser->GetProfile(), user_gesture);
-  BrowserWindowInterface* new_browser = CreateBrowserWindow(std::move(params));
-  if (auto* manager = InitialWebUIWindowMetricsManager::From(new_browser)) {
-    manager->SetWindowCreationInfo(
-        waap::NewWindowCreationSource::kMoveTabsToNewWindow, now);
-  }
-  return new_browser;
+  return CreateBrowserWindow(std::move(params));
 }
 
 tabs::TabInterface* GetMruTab(BrowserWindowInterface* browser) {

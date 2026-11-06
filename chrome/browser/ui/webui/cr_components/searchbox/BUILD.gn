@@ -80,19 +80,3 @@ source_set("searchbox_impl") {
     ]
   }
 }
-
-source_set("plural_string_provider") {
-  sources = [
-    "plural_string_provider.cc",
-    "plural_string_provider.h",
-  ]
-  public_deps = [
-    "//base",
-    "//mojo/public/cpp/bindings",
-  ]
-  deps = [
-    "//chrome/app:generated_resources",
-    "//ui/base",
-  ]
-}
-

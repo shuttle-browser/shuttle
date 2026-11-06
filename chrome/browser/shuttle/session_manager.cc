@@ -543,7 +543,7 @@ base::expected<content::WebContents*, std::string> SessionManager::AllocateTab(
 
   NavigateParams params(profile_.get(), url, ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
   params.contents_to_insert = std::move(new_contents);
-  params.disposition = WindowOpenDisposition::NEW_BACKGROUND_TAB;
+  params.disposition = WindowOpenDisposition::kNewBackgroundTab;
   params.window_action = NavigateParams::WindowAction::kShowWindowInactive;
   {
     // A window this opens is the agent's: it closes with the agent's tabs.

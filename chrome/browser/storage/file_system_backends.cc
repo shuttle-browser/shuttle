@@ -12,7 +12,6 @@
 #include "build/build_config.h"
 #include "chrome/browser/profiles/profile.h"
 #include "content/public/browser/browser_context.h"
-#include "extensions/buildflags/buildflags.h"
 #include "storage/browser/file_system/file_system_backend.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -28,10 +27,6 @@
 #include "storage/browser/file_system/external_mount_points.h"
 #include "storage/common/file_system/file_system_types.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/browser/sync_file_system/local/sync_file_system_backend.h"
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
 void GetAdditionalFileSystemBackends(
     content::BrowserContext* browser_context,
@@ -67,10 +62,4 @@ void GetAdditionalFileSystemBackends(
   additional_backends->push_back(
       std::make_unique<MediaFileSystemBackend>(storage_partition_path));
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  additional_backends->push_back(
-      std::make_unique<sync_file_system::SyncFileSystemBackend>(
-          Profile::FromBrowserContext(browser_context)));
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 }

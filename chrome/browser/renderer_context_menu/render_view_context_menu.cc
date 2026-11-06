@@ -1126,10 +1126,6 @@ void RenderViewContextMenu::InitMenu() {
             ContextMenuContentType::ITEM_GROUP_GLICSHAREIMAGE)) {
       AppendGlicShareImageItem();
     }
-
-    if (media_image) {
-      AppendIndigoItem();
-    }
   }
 
   if (content_type_->SupportsGroup(
@@ -2810,7 +2806,6 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
     case IDC_CONTENT_CONTEXT_ARCHIVE_GLIC:
     case IDC_CONTENT_CONTEXT_GLIC:
     case IDC_CONTENT_CONTEXT_GLIC_SMART_SUGGESTION:
-    case IDC_CONTENT_CONTEXT_INDIGO:
       return true;
 
     case IDC_CONTENT_CONTEXT_EXIT_FULLSCREEN:
@@ -3071,10 +3066,6 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
 
     case IDC_CONTENT_CONTEXT_GLICSHAREIMAGE:
       ExecGlicShareImage();
-      break;
-
-    case IDC_CONTENT_CONTEXT_INDIGO:
-      ExecIndigo();
       break;
 
     case IDC_CONTENT_CONTEXT_SEARCHLENSFORIMAGE:
@@ -3834,30 +3825,6 @@ void RenderViewContextMenu::ExecGlicSmartSuggestion() {}
 void RenderViewContextMenu::ExecGlicShareImage() {
 }
 
-void RenderViewContextMenu::ExecIndigo() {
-  // See `ExecGlic()` for why the source document must still be active.
-  content::RenderFrameHost* source_frame =
-      source_document_at_menu_open_.AsRenderFrameHostIfValid();
-  if (!source_frame ||
-      &source_frame->GetPage() != &source_web_contents_->GetPrimaryPage()) {
-    return;
-  }
-
-  // Invokes the page-level Try on You image replacement flow on the detected
-  // product image.
-  if (auto* controller = indigo::IndigoPageActionController::From(
-          tabs::TabInterface::MaybeGetFromContents(source_web_contents_))) {
-    UserEducationService::MaybeNotifyNewBadgeFeatureUsed(
-        GetBrowserContext(), features::kIndigoContextMenu);
-    indigo::RecordContextMenuTargetType(
-        content_type_->SupportsGroup(
-            ContextMenuContentType::ITEM_GROUP_MEDIA_IMAGE)
-            ? indigo::IndigoContextMenuTargetType::kImage
-            : indigo::IndigoContextMenuTargetType::kPage);
-    controller->InvokeAction(indigo::EntryPoint::kContextMenu);
-  }
-}
-
 void RenderViewContextMenu::ExecExitFullscreen() {
   BrowserWindowInterface* browser = GetBrowser();
   if (!browser) {
@@ -4310,22 +4277,6 @@ return false;
 
 bool RenderViewContextMenu::CanAppendGlicShareImageItem() const {
   return false;
-}
-
-bool RenderViewContextMenu::CanAppendIndigoItem() const {
-  if (!base::FeatureList::IsEnabled(features::kIndigo) ||
-      !base::FeatureList::IsEnabled(features::kIndigoContextMenu)) {
-    return false;
-  }
-
-  if (!IsNormalBrowser() || IsAnyGlicWebContents(this)) {
-    return false;
-  }
-
-  tabs::TabInterface* tab =
-      tabs::TabInterface::MaybeGetFromContents(source_web_contents_);
-  auto* controller = indigo::IndigoPageActionController::From(tab);
-  return controller && controller->IsPageEligible();
 }
 
 void RenderViewContextMenu::AppendLensGeminiSection() {

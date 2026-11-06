@@ -29,6 +29,7 @@
 #include "chrome/browser/ssl/https_defaulted_callbacks.h"
 #include "chrome/browser/ssl/https_upgrades_navigation_throttle.h"
 #include "chrome/browser/ssl/typed_navigation_upgrade_throttle.h"
+#include "chrome/browser/ui/blocked_content/ad_script_navigation_throttle.h"
 #include "chrome/browser/ui/blocked_content/tab_under_navigation_throttle.h"
 #include "chrome/browser/ui/login/login_navigation_throttle.h"
 #include "chrome/common/chrome_features.h"

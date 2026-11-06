@@ -3524,26 +3524,6 @@ const FeatureEntry::FeatureVariation kEnterpriseProxyErrorHandlingVariations[] =
 };
 #endif  // BUILDFLAG(ENTERPRISE_PROXY)
 
-#if !BUILDFLAG(IS_ANDROID)
-// Testing-only variation for GWS.
-// Note: In production, each remote actor must have its own dedicated origin
-// policy, OAuth client ID, task namespace ID, and UI strings rather than
-// overriding them globally via testing feature parameters.
-const FeatureEntry::FeatureParam kRemoteActorCredentialSharingGwsForTesting[] =
-    {
-        {"allowed_host_for_testing", "gws-prod.corp.google.com"},
-        {"actor_name_for_testing", "Search Agent"},
-        {"oauth_client_id",
-         "320695880279-gnq6the97ga85scn208u5jctnk82qelk.apps."
-         "googleusercontent.com"},
-};
-
-const FeatureEntry::FeatureVariation kRemoteActorCredentialSharingVariations[] =
-    {
-        {"for GWS", kRemoteActorCredentialSharingGwsForTesting, nullptr},
-};
-#endif  // !BUILDFLAG(IS_ANDROID)
-
 const FeatureEntry::Choice kPaymentHandlerCustomSizeChoices[] = {
     {flags_ui::kGenericExperimentChoiceDefault, "", ""},
     {"Static sizing (openWindow)", switches::kEnableFeatures,
@@ -9602,17 +9582,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(blink::features::kWebHID)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
-#if !BUILDFLAG(IS_ANDROID)
-    {"remote-actor-credential-sharing",
-     flag_descriptions::kRemoteActorCredentialSharingName,
-     flag_descriptions::kRemoteActorCredentialSharingDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(
-         password_manager::features::kRemoteActorCredentialSharing,
-         kRemoteActorCredentialSharingVariations,
-         "RemoteActorCredentialSharing")},
-
-#endif
-
 #if BUILDFLAG(IS_ANDROID)
     {"ntp-aurora-v2", flag_descriptions::kNtpAuroraV2Name,
      flag_descriptions::kNtpAuroraV2Description, kOsAndroid,
@@ -9756,11 +9725,6 @@ const FeatureEntry kFeatureEntries[] = {
 
 #if BUILDFLAG(IS_ANDROID)
 #endif  // BUILDFLAG(IS_ANDROID)
-
-    {"autofill-enable-oauth2-token-fix",
-     flag_descriptions::kAutofillEnableOAuth2TokenFixName,
-     flag_descriptions::kAutofillEnableOAuth2TokenFixDescription, kOsAll,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillEnableOAuth2TokenFix)},
 
     {"infobar-queued-count-pill",
      flag_descriptions::kInfoBarQueuedCountPillName,

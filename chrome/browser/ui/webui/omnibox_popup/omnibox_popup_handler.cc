@@ -24,7 +24,6 @@
 #include "chrome/browser/ui/views/omnibox/omnibox_view_views.h"
 #include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_handler.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_web_contents_helper.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/omnibox/browser/omnibox_logging_utils.h"
 #include "components/omnibox/browser/omnibox_popup_selection.h"
 #include "components/omnibox/browser/suggest_template_info_mojo_utils.h"
@@ -244,11 +243,8 @@ void OmniboxPopupHandler::SetInputState(
     mojom_match->allowed_to_be_default_match =
         current_match.allowed_to_be_default_match;
     mojom_match->icon_url = current_match.icon_url;
-    const bookmarks::BookmarkModel* bookmark_model =
-        controller_->client()->GetBookmarkModel();
-    const bool is_bookmarked =
-        bookmark_model &&
-        bookmark_model->IsBookmarked(current_match.destination_url);
+    // Bookmarks were removed.
+    const bool is_bookmarked = false;
     const TemplateURLService* turl_service =
         controller_->client()->GetTemplateURLService();
     const TemplateURL* associated_keyword_turl =

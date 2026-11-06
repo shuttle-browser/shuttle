@@ -898,8 +898,7 @@ void FedCmAccountSelectionView::OnIdpPickerRowClicked(
 
 void FedCmAccountSelectionView::OnShowIdpPickerClicked(const ui::Event& event) {
   if (input_protector_->IsPossiblyUnintendedInteraction(
-          event, /*allow_key_events=*/false) ||
-      is_occluded_by_pip_) {
+          event, /*allow_key_events=*/false)) {
     return;
   }
 

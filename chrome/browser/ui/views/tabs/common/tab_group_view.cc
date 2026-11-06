@@ -19,7 +19,6 @@
 #include "chrome/browser/ui/views/tabs/common/tab_group_line_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_unfocus_button.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_view_horizontal_layout.h"
-#include "chrome/browser/ui/views/tabs/common/tab_group_view_vertical_layout.h"
 #include "chrome/browser/ui/views/tabs/common/tab_strip_collection_controller.h"
 #include "chrome/browser/ui/views/tabs/common/tab_strip_utils.h"
 #include "chrome/browser/ui/views/tabs/common/tab_strip_view.h"
@@ -56,11 +55,10 @@ const TabGroup* GetTabGroupFromNode(TabCollectionNode* node) {
       ->GetTabGroup();
 }
 
+// Shuttle: vertical tabs are removed; the horizontal layout serves every
+// orientation (the vertical layout and its collapse state are gone).
 std::unique_ptr<TabGroupView::LayoutManager> CreateTabGroupViewLayout(
     TabStripOrientation orientation) {
-  if (orientation == TabStripOrientation::kVertical) {
-    return std::make_unique<TabGroupViewVerticalLayout>();
-  }
   return std::make_unique<TabGroupViewHorizontalLayout>();
 }
 
@@ -112,15 +110,6 @@ TabGroupView::TabGroupView(TabCollectionNode* collection_node)
   node_destroyed_subscription_ =
       collection_node_->RegisterWillDestroyCallback(base::BindOnce(
           &TabGroupView::ResetCollectionNode, base::Unretained(this)));
-
-  if (orientation_ == TabStripOrientation::kVertical) {
-    auto* state_controller =
-        collection_node_->GetController()->GetStateController();
-    CHECK(state_controller);
-    collapsed_state_changed_subscription_ =
-        state_controller->RegisterOnCollapseChanged(base::BindRepeating(
-            &TabGroupView::OnCollapseStateChanged, base::Unretained(this)));
-  }
 
   TabGroup* const tab_group =
       const_cast<TabGroup*>(GetTabGroupFromNode(collection_node_));
@@ -318,7 +307,6 @@ std::unique_ptr<views::View> TabGroupView::DetachChildView(
 void TabGroupView::ResetCollectionNode() {
   HideHoverCard(TabSlotController::HoverCardUpdateType::kTabRemoved);
   node_destroyed_subscription_ = {};
-  collapsed_state_changed_subscription_ = {};
   tab_group_data_changed_subscription_ = {};
   tab_group_data_observer_.reset();
   collection_node_ = nullptr;
@@ -359,11 +347,6 @@ void TabGroupView::OnDataChanged() {
 
   group_line_->SchedulePaint();
 
-  InvalidateLayout();
-}
-
-void TabGroupView::OnCollapseStateChanged(
-    tabs::VerticalTabStripCollapseState state) {
   InvalidateLayout();
 }
 
@@ -597,10 +580,8 @@ bool TabGroupView::IsUnfocusButtonFocused() const {
 }
 
 bool TabGroupView::CanShowEditorBubbleButton() const {
-  return orientation_ == TabStripOrientation::kVertical &&
-         (GetTabStripCollapseState() ==
-              tabs::VerticalTabStripCollapseState::kExpanded ||
-          width() > tabs::kVerticalTabStripCollapsedWidth);
+  // Shuttle: no vertical tab strip collapse state (vertical tabs removed).
+  return orientation_ == TabStripOrientation::kVertical;
 }
 
 HorizontalTabClosingHelper* TabGroupView::GetTabClosingHelper() const {

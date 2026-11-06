@@ -31,8 +31,12 @@ class RenderFrameHost;
 // A browser-side mojo service, which corresponds to the navigator.managed Web
 // API. Available only to trusted web applications.
 class DeviceServiceImpl final
-    : public content::DocumentService<blink::mojom::DeviceAPIService>,
-      public content_settings::Observer {
+    : public content::DocumentService<blink::mojom::DeviceAPIService>
+#if BUILDFLAG(IS_CHROMEOS)
+    ,
+      public content_settings::Observer
+#endif  // BUILDFLAG(IS_CHROMEOS)
+{
  public:
   using DeviceAttributeCallback = base::OnceCallback<void(
       base::expected<blink::mojom::DeviceAttributeValuePtr, std::string>)>;
@@ -76,6 +80,7 @@ class DeviceServiceImpl final
       void (DeviceAttributeApi::*method)(DeviceAttributeCallback callback),
       DeviceAttributeCallback callback);
 
+#if BUILDFLAG(IS_CHROMEOS)
   // content_settings::Observer:
   void OnContentSettingChanged(
       const ContentSettingsPattern& primary_pattern,
@@ -86,6 +91,7 @@ class DeviceServiceImpl final
   void OnDisposingIfNeeded();
 
   PrefChangeRegistrar pref_change_registrar_;
+#if BUILDFLAG(IS_CHROMEOS)
   base::ScopedObservation<HostContentSettingsMap, content_settings::Observer>
       content_settings_observation_{this};
 #endif  // BUILDFLAG(IS_CHROMEOS)

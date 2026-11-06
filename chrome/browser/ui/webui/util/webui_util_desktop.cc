@@ -47,8 +47,6 @@ const std::string_view* GetWebUIMetricsHostname(const GURL& webui_url) {
           {content::kChromeUIResourcesHost, "Resources"},
           {chrome::kChromeUISettingsHost, "Settings"},
           {chrome::kChromeUITabSearchHost, "TabSearch"},
-          {chrome::kChromeUITabsFromOtherDevicesSidePanelHost,
-           "TabsFromOtherDevices"},
           {chrome::kChromeUIThemeHost, "Theme"},
           {chrome::kChromeUITopChromeDomain, "TopChrome"},
       });

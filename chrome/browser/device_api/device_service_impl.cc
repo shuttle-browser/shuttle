@@ -85,6 +85,7 @@ Profile* GetProfile(content::RenderFrameHost& host) {
   return Profile::FromBrowserContext(host.GetBrowserContext());
 }
 
+#if BUILDFLAG(IS_CHROMEOS)
 bool IsAffiliatedUser(Profile* profile) {
   const user_manager::User* user =
       ash::ProfileHelper::Get()->GetUserByProfile(profile);
@@ -161,6 +162,7 @@ DeviceServiceImpl::DeviceServiceImpl(
                           base::Unretained(this)));
   content_settings_observation_.Observe(
       HostContentSettingsMapFactory::GetForProfile(profile));
+#endif  // BUILDFLAG(IS_CHROMEOS)
 }
 
 DeviceServiceImpl::~DeviceServiceImpl() = default;
@@ -210,6 +212,7 @@ void DeviceServiceImpl::CreateForTest(
   Create(host, std::move(receiver), std::move(device_attribute_api));
 }
 
+#if BUILDFLAG(IS_CHROMEOS)
 void DeviceServiceImpl::OnContentSettingChanged(
     const ContentSettingsPattern& primary_pattern,
     const ContentSettingsPattern& secondary_pattern,
@@ -257,6 +260,9 @@ void DeviceServiceImpl::GetDeviceAttribute(
     [[maybe_unused]] void (DeviceAttributeApi::*method)(
         DeviceAttributeCallback callback),
     DeviceAttributeCallback callback) {
+#if !BUILDFLAG(IS_CHROMEOS)
+  device_attribute_api_->ReportNotSupportedPlatformError(std::move(callback));
+#else
   if (!IsAffiliatedUser(GetProfile(render_frame_host()))) {
     device_attribute_api_->ReportNotAffiliatedError(std::move(callback));
     return;

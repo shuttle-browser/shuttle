@@ -7,7 +7,6 @@
 #include "base/i18n/rtl.h"
 #include "chrome/browser/ui/views/tabs/common/dragged_tabs_container.h"
 #include "chrome/browser/ui/views/tabs/common/pinned_tab_container_view_horizontal_layout.h"
-#include "chrome/browser/ui/views/tabs/common/pinned_tab_container_view_vertical_layout.h"
 #include "chrome/browser/ui/views/tabs/common/split_tab_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_animating_layout_manager.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_node.h"
@@ -28,9 +27,8 @@ namespace {
 
 std::unique_ptr<PinnedTabContainerView::LayoutManager>
 CreatePinnedTabContainerViewLayout(TabStripOrientation orientation) {
-  if (orientation == TabStripOrientation::kVertical) {
-    return std::make_unique<PinnedTabContainerViewVerticalLayout>();
-  }
+  // Shuttle: vertical tabs are removed; the horizontal layout serves every
+  // orientation (the vertical layout and its collapse state are gone).
   return std::make_unique<PinnedTabContainerViewHorizontalLayout>();
 }
 

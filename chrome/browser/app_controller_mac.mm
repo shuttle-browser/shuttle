@@ -179,7 +179,7 @@ void OpenAgentsWindow(Profile* profile) {
   base::AutoReset<bool> auto_reset_in_run(&g_is_opening_new_window, true);
   NavigateParams params(profile, GURL("chrome://agents/"),
                         ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
-  params.disposition = WindowOpenDisposition::NEW_WINDOW;
+  params.disposition = WindowOpenDisposition::kNewWindow;
   params.window_action = NavigateParams::WindowAction::kShowWindow;
   Navigate(&params);
 }

@@ -13,6 +13,7 @@
 #include "chrome/browser/safe_browsing/chrome_user_population_helper.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/common/chrome_features.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/buildflags.h"
 #include "components/safe_browsing/content/browser/web_ui/web_ui_content_info_singleton.h"

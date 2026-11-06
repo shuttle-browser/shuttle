@@ -80,8 +80,7 @@
 #include "extensions/common/permissions/permissions_data.h"
 #endif
 
-#include "chrome/browser/enterprise/connectors/common.h"
-#include "chrome/browser/enterprise/connectors/connectors_service.h"
+#include "chrome/browser/enterprise/util/managed_browser_utils.h"
 #include "components/policy/core/common/policy_map.h"
 #include "components/policy/core/common/policy_namespace.h"
 #include "components/policy/core/common/policy_service.h"

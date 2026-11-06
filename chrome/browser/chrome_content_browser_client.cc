@@ -2632,16 +2632,6 @@ void ChromeContentBrowserClient::AppendExtraCommandLineSwitches(
         if (!profile->IsTopChromeWebUIProfile()) {
           AppendExtraCommandLineSwitchesFromPrefs(command_line,
                                                   profile->GetPrefs());
-#if BUILDFLAG(ENABLE_WEBUI_NTP)
-          InstantService* instant_service =
-              InstantServiceFactory::GetForProfile(profile);
-          if (instant_service &&
-              instant_service->IsInstantProcess(process->GetDeprecatedID()) &&
-              !base::FeatureList::IsEnabled(
-                  features::kInstantUsesSpareRenderer)) {
-            command_line->AppendSwitch(switches::kInstantProcess);
-          }
-#endif
         }
       }
 
@@ -3893,7 +3883,9 @@ bool ChromeContentBrowserClient::IsUnboundedElementAllowedForSubframesOf(
   // Allowlist of outermost main frames whose subframes may use the Unbounded
   // Element API.
   // TODO(crbug.com/571879162): Remove this temporary allowlist.
-  return origin.IsSameOriginWith(GURL(chrome::kChromeUINewTabPageURL));
+  // Shuttle: the chrome://new-tab-page WebUI (the only allowlisted origin) is
+  // removed.
+  return false;
 }
 
 bool ChromeContentBrowserClient::CanCreateWindow(
@@ -4028,27 +4020,9 @@ void ChromeContentBrowserClient::OverrideWebPreferences(
 // with extensions (the chrome.fontSettings API can change these).
 // - http://crbug.com/40337093, http://crbug.com/41304476.
 #if !BUILDFLAG(IS_ANDROID) || BUILDFLAG(ENABLE_DESKTOP_ANDROID_EXTENSIONS)
-  bool is_initial_webui = false;
-#if !BUILDFLAG(IS_ANDROID)
-  is_initial_webui =
-      waap::IsForInitialWebUI(main_frame_site.GetSecurityPrincipal());
-#endif
   // Enabling the FontFamilyCache needs some KeyedService that might not be
   // available for some irregular profiles, like the System Profile.
-  if (is_initial_webui) {
-    // Initial WebUI uses the browser UI font from text_defaults.css and
-    // layout_constants_v0.css rather than user web-content font preferences.
-    // Clearing the default generic font maps avoids populating FontFamilyCache
-    // during startup prewarming and prevents prewarming or loading unused
-    // default web fonts such as "Times New Roman".
-    web_prefs->standard_font_family_map.clear();
-    web_prefs->fixed_font_family_map.clear();
-    web_prefs->serif_font_family_map.clear();
-    web_prefs->sans_serif_font_family_map.clear();
-    web_prefs->cursive_font_family_map.clear();
-    web_prefs->fantasy_font_family_map.clear();
-    web_prefs->math_font_family_map.clear();
-  } else if (!AreKeyedServicesDisabledForProfileByDefault(profile)) {
+  if (!AreKeyedServicesDisabledForProfileByDefault(profile)) {
     FontFamilyCache::FillFontFamilyMap(profile,
                                        prefs::kWebKitStandardFontFamilyMap,
                                        &web_prefs->standard_font_family_map);
@@ -4567,13 +4541,6 @@ void ChromeContentBrowserClient::GetAdditionalFileSystemBackends(
     const base::FilePath& storage_partition_path,
     std::vector<std::unique_ptr<storage::FileSystemBackend>>*
         additional_backends) {
-  // Serves the files that the actor file upload tool stages in
-  // storage::InMemoryFileRegistry.
-  if (base::FeatureList::IsEnabled(actor::kGlicActorFileUploadTool)) {
-    additional_backends->push_back(
-        std::make_unique<storage::InMemoryFileSystemBackend>());
-  }
-
   ::GetAdditionalFileSystemBackends(browser_context, storage_partition_path,
                                     additional_backends);
 }

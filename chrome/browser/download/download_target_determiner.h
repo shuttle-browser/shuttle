@@ -29,10 +29,6 @@
 class Profile;
 class DownloadPrefs;
 
-namespace supervised_user {
-struct WebFilteringResult;
-}  // namespace supervised_user
-
 // Determines the target of the download.
 //
 // Terminology:
@@ -135,7 +131,6 @@ class DownloadTargetDeterminer : public download::DownloadItem::Observer {
   // Result indicating how the workflow should proceed. The loop ends when a
   // handler returns COMPLETE.
   enum State {
-    STATE_CHECK_SUPERVISED_USER_URL_FILTER,
     STATE_GENERATE_TARGET_PATH,
     STATE_SET_INSECURE_DOWNLOAD_STATUS,
     STATE_NOTIFY_EXTENSIONS,
@@ -195,17 +190,6 @@ class DownloadTargetDeterminer : public download::DownloadItem::Observer {
   void DoLoop();
 
   // === Main workflow ===
-
-  // Checks whether any URL in the download's redirect chain is blocked by the
-  // supervised user URL filter.
-  // Next state:
-  // - STATE_CHECK_SUPERVISED_USER_URL_FILTER : If more URLs remain in the
-  //   redirect chain.
-  // - STATE_GENERATE_TARGET_PATH : Once all URLs in the chain have been
-  //   checked.
-  Result DoCheckSupervisedUserUrlFilter();
-  void CheckSupervisedUserDownloadUrlDone(
-      supervised_user::WebFilteringResult result);
 
   // Generates an initial target path. This target is based only on the state of
   // the download item.
@@ -396,7 +380,6 @@ class DownloadTargetDeterminer : public download::DownloadItem::Observer {
 
   // state
   State next_state_;
-  size_t supervised_user_url_chain_index_ = 0;
   DownloadConfirmationReason confirmation_reason_ =
       DownloadConfirmationReason::NONE;
   bool should_notify_extensions_;

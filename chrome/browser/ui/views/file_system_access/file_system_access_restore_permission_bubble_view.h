@@ -16,7 +16,6 @@
 #include "ui/base/metadata/metadata_header_macros.h"
 
 class BrowserWindowInterface;
-class PictureInPictureInputProtector;
 
 namespace ui {
 class Event;
@@ -81,8 +80,6 @@ class FileSystemAccessRestorePermissionBubbleView
   const std::u16string window_title_;
   base::OnceCallback<void(permissions::PermissionAction)> callback_;
   base::CallbackListSubscription tab_deactivation_subscription_;
-  std::unique_ptr<PictureInPictureInputProtector>
-      picture_in_picture_input_protector_;
 };
 
 void ShowFileSystemAccessRestorePermissionDialog(

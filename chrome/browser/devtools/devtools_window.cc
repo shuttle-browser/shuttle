@@ -1924,9 +1924,6 @@ void DevToolsWindow::OpenInNewTab(const GURL& url) {
     NavigateParams nav_params(displayer.browser_window_interface(), fixed_url,
                               ui::PAGE_TRANSITION_LINK);
     nav_params.FillNavigateParamsFromOpenURLParams(params);
-    // Like AddSelectedTabWithURL(), don't let web apps capture the new tab.
-    nav_params.web_app_navigation_data.emplace();
-    nav_params.web_app_navigation_data->SetNavigationCapturingForceOff(true);
     Navigate(&nav_params);
 #endif
   }

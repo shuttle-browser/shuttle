@@ -205,6 +205,12 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
           &TabFeatures::WillDiscardContents, weak_factory_.GetWeakPtr())));
   tab_subscriptions_.push_back(webui::InitEmbeddingContext(&tab));
 
+  CreateSessionServiceTabHelper(tab.GetContents());
+
+  zoom::ZoomController::CreateForWebContents(tab.GetContents());
+
+  infobars::ContentInfoBarManager::CreateForWebContents(tab.GetContents());
+
   CreateSubresourceFilterWebContentsHelper(tab.GetContents());
 
   if (!content_settings::PageSpecificContentSettings::GetDelegateForWebContents(
@@ -625,6 +631,12 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
   CHECK_EQ(old_contents, tab->GetContents(), base::NotFatalUntil::M162);
 
   Profile* profile = tab->GetBrowserWindowInterface()->GetProfile();
+
+  CreateSessionServiceTabHelper(new_contents);
+
+  zoom::ZoomController::CreateForWebContents(new_contents);
+
+  infobars::ContentInfoBarManager::CreateForWebContents(new_contents);
 
   CreateSubresourceFilterWebContentsHelper(new_contents);
 

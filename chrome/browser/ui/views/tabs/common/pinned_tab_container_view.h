@@ -55,7 +55,6 @@ class PinnedTabContainerView
       const gfx::Point& loc_in_container);
 
  private:
-  friend class PinnedTabContainerViewVerticalLayout;
   friend class PinnedTabContainerViewHorizontalLayout;
 
   static constexpr int kTabPadding = 4;

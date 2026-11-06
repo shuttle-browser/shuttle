@@ -130,17 +130,9 @@ class OrganizerPanelViewImpl : public OrganizerPanelView,
     }
   }
 
-  bool IsPositionInWindowCaption(const gfx::Point& point) const override {
-    if (!web_view_) {
-      return false;
-    }
-    if (!DoesVerticalTabStripSupportEmbeddedOrganizerPanel(browser_.get())) {
-      return false;
-    }
-    const gfx::Point point_in_webview =
-        views::View::ConvertPointToTarget(this, web_view_, point);
-    return web_view_->IsPositionInWindowCaption(point_in_webview);
-  }
+  // Shuttle: no IsPositionInWindowCaption override. Upstream treats the panel
+  // as window caption only when embedded in the vertical tab strip, which the
+  // fork doesn't have; the base class returns false.
 
  private:
   const raw_ref<BrowserWindowInterface> browser_;

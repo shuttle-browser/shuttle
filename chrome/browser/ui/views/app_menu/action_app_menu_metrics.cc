@@ -495,9 +495,6 @@ void ActionAppMenuMetrics::LogMenuActionWithId(actions::ActionId action_id) {
       RecordAction(MENU_ACTION_TAKE_SCREENSHOT, "TakeScreenshot");
       break;
 
-    case kActionSidePanelShowTabsFromOtherDevices:
-      RecordTimeToAction();
-      break;
     case kActionTabSearch:
       RecordAction(MENU_ACTION_TAB_SEARCH, "TabSearch");
       break;

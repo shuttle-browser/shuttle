@@ -753,12 +753,6 @@ inline constexpr char kAutofillGmailOtpPreLaunchMetricsName[] =
 inline constexpr char kAutofillGmailOtpPreLaunchMetricsDescription[] =
     "Enables pre-launch metrics for one-time passwords (OTPs) received in "
     "Gmail.";
-inline constexpr char kAutofillEnableOAuth2TokenFixName[] =
-    "Enable Autofill OAuth2 token fix";
-inline constexpr char kAutofillEnableOAuth2TokenFixDescription[] =
-    "When enabled, Autofill payments requests fetch OAuth2 tokens from the "
-    "identity service on each request, instead of keeping local cache in "
-    "Autofill components.";
 
 inline constexpr char
     kAutofillEnableOffersInClankKeyboardAccessoryDescription[] =
@@ -1165,8 +1159,6 @@ inline constexpr char kActorLiveNotificationDescription[] =
     "Enables live notification (promoted ongoing) support for Actor tasks on "
     "Android.";
 
-    "delay.";
-
 inline constexpr char kActorNotificationIntentRoutingName[] =
     "Actor notification intent routing";
 inline constexpr char kActorNotificationIntentRoutingDescription[] =
@@ -1202,8 +1194,6 @@ inline constexpr char kActorStepProgressNotificationName[] =
 inline constexpr char kActorStepProgressNotificationDescription[] =
     "Enables streaming Actor task step progress worklog notification updates "
     "on Android.";
-
-    "delay.";
 
 inline constexpr char kGlicCaptureRegionDescription[] =
     "Enables Glic to capture a region of the screen.";

@@ -8,8 +8,6 @@
 #include <utility>
 
 #include "build/build_config.h"
-#include "chrome/browser/contextual_tasks/search_journey_tracker.h"
-#include "chrome/browser/contextual_tasks/search_journey_tracker_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"

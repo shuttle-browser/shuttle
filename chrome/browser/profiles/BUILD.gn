@@ -161,12 +161,7 @@ source_set("misc") {
       "//content/public/browser",
     ]
   } else {
-    sources += [
-      "top_chrome_webui_profile_impl.cc",
-      "top_chrome_webui_profile_impl.h",
-    ]
     deps += [
-      "//chrome/browser:chrome_content_browser_client",
       "//chrome/browser/accessibility/tree_fixing:prefs",
       "//chrome/browser/ui/dialogs:browser_dialogs",
     ]

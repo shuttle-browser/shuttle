@@ -2268,11 +2268,7 @@ void PdfAccessibilityTreeBuilderHeuristic::BuildPageTree() {
     RecordHeaderFooterLocationHistograms(block_nodes, page_properties);
   }
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  AddRemainingAnnotations(images, block_node, has_ocr_text);
-#else
   AddRemainingAnnotations(images, block_node);
-#endif
 }
 
 ui::AXNodeData* PdfAccessibilityTreeBuilderHeuristic::CreateLineBreakingNode(

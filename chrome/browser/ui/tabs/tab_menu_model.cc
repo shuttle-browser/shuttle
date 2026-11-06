@@ -250,12 +250,6 @@ void TabMenuModel::Build(int index) {
         AddItemWithStringId(TabStripModel::CommandToggleFocusGroup,
                             is_focused ? IDS_TAB_CXMENU_UNFOCUS_TAB_GROUP
                                        : IDS_TAB_CXMENU_FOCUS_TAB_GROUP);
-        if (!is_focused) {
-          const user_education::DisplayNewBadge show_badge =
-              UserEducationService::MaybeShowNewBadge(
-                  tab_strip_->profile(), features::kTabGroupsFocusing);
-          SetIsNewFeatureAt(GetItemCount() - 1, show_badge);
-        }
       }
     } else if (base::FeatureList::IsEnabled(features::kNonGroupFocus) &&
                tab_strip_->AreAllUngrouped(tab_handles)) {

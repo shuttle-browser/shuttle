@@ -162,10 +162,10 @@ void AddLiveCaptionSectionStrings(content::WebUIDataSource* html_source) {
   html_source->AddBoolean("enableLiveCaption",
                           captions::IsLiveCaptionFeatureSupported());
   html_source->AddBoolean("enableLiveCaptionMultiLanguage", true);
-  html_source->AddBoolean(
-      "enableLiveCaptionSpeechRecognitionSmallExpertModel",
-      base::FeatureList::IsEnabled(
-          media::kLiveCaptionSpeechRecognitionSmallExpertModel));
+  // Shuttle: the speech recognition small expert model installer was removed,
+  // so the model section of the live caption page stays hidden.
+  html_source->AddBoolean("enableLiveCaptionSpeechRecognitionSmallExpertModel",
+                          false);
 
   html_source->AddBoolean("enableLiveTranslate", liveTranslateEnabled);
 }

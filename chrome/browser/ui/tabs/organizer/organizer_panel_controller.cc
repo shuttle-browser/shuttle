@@ -113,27 +113,9 @@ bool OrganizerPanelController::IsOrganizerPanelVisible() const {
   return is_visible_;
 }
 
-bool OrganizerPanelController::IsOrganizerPanelEmbeddedInVerticalTabStrip()
-    const {
-  return IsOrganizerPanelVisible() &&
-         (GetCurrentOrganizerPanelLocation() ==
-              OrganizerPanelLocation::kVerticalTabStrip ||
-          (GetCurrentOrganizerPanelLocation() ==
-               OrganizerPanelLocation::kNone &&
-           OrganizerPanelHost::GetPreferredLocation(*browser_window_) ==
-               OrganizerPanelLocation::kVerticalTabStrip));
-}
-
 void OrganizerPanelController::SetOrganizerVisible(bool visible,
                                                    bool immediate) {
   if (is_visible_ == visible) {
-    return;
-  }
-
-  if (auto* const vertical_tabs =
-          tabs::VerticalTabStripStateController::From(&*browser_window_);
-      visible && vertical_tabs && vertical_tabs->IsResizing()) {
-    // Cannot show during vertical tab strip resize.
     return;
   }
 
@@ -227,22 +209,19 @@ void OrganizerPanelController::UpdateOrganizerActionItem() {
     return;
   }
 
-  const bool is_panel_in_vertical_strip =
-      IsOrganizerPanelEmbeddedInVerticalTabStrip();
-  const auto& text = is_panel_in_vertical_strip
-                         ? IDS_ORGANIZER_PANEL_CLOSE_TAB_SEARCH
-                         : IDS_TAB_SEARCH_MENU;
+  // Shuttle: the fork keeps its View/Hide Organizer label and grid icon
+  // (no vertical tab strip, so upstream's tab-search / close-tab-search
+  // variants are cut).
+  const auto& text = IsOrganizerPanelVisible() ? IDS_HIDE_ORGANIZER_PANEL
+                                               : IDS_VIEW_ORGANIZER_PANEL;
   const std::u16string title_and_tooltip =
       chrome::GetCleanText(l10n_util::GetStringUTF16(text));
   organizer_action->SetText(title_and_tooltip);
   organizer_action->SetTooltipText(title_and_tooltip);
 
-  const gfx::VectorIcon& icon =
-      is_panel_in_vertical_strip
-          ? (features::IsRoundedIconsEnabled() ? kCloseSmallIcon
-                                               : kCloseChromeRefreshOldIcon)
-          : (features::IsRoundedIconsEnabled() ? kManageSearchIcon
-                                               : kTabSearchTabStripOldIcon);
+  const gfx::VectorIcon& icon = features::IsRoundedIconsEnabled()
+                                    ? kGridViewIcon
+                                    : kSavedTabGroupBarEverythingOldIcon;
   organizer_action->SetImage(
       ui::ImageModel::FromVectorIcon(icon, ui::kColorIcon));
 }

@@ -348,10 +348,8 @@ class RenderViewContextMenu
   void AppendPrintPreviewItems();
   void AppendSearchWebForImageItems();
   void AppendGlicShareImageItem();
-  void AppendIndigoItem();
   bool CanAppendRegionSearchItem() const;
   bool CanAppendGlicShareImageItem() const;
-  bool CanAppendIndigoItem() const;
   void AppendLensGeminiSection();
   void AppendRevisedTextSelectionSection();
   void AppendProtocolHandlerSubMenu();
@@ -410,7 +408,6 @@ class RenderViewContextMenu
   void ExecSaveLinkAs();
   void ExecSaveAs();
   void ExecGlicShareImage();
-  void ExecIndigo();
   void ExecExitFullscreen();
   void ExecCopyLinkText();
   void ExecCopyImageAt();

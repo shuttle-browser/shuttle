@@ -78,7 +78,6 @@
 #include "chrome/browser/ssl/ssl_config_service_manager.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/tracing/chrome_tracing_delegate.h"
-#include "chrome/browser/ttc/core/prefs.h"
 #include "chrome/browser/ui/browser_ui_prefs.h"
 #include "chrome/browser/ui/network_profile_bubble.h"
 #include "chrome/browser/ui/prefs/prefs_tab_helper.h"
@@ -1074,8 +1073,8 @@ inline constexpr char kDeprecatedBrowserColorVariantDoNotUse[] =
     "browser.theme.color_variant";
 inline constexpr char kDeprecatedGrayscaleThemeEnabledDoNotUse[] =
     "browser.theme.is_grayscale";
-inline constexpr char kDeprecatedNtpCustomBackgroundDictDoNotUse[] =
-    "ntp.custom_background_dict";
+// Shuttle: upstream's kDeprecatedNtpCustomBackgroundDictDoNotUse migration is
+// not taken; ThemeService still registers prefs::k...DoNotUse (pre-158).
 
 // Register local state used only for migration (clearing or moving to a new
 // key).
@@ -1587,7 +1586,6 @@ void RegisterProfilePrefsForMigration(
   registry->RegisterIntegerPref(kDeprecatedBrowserColorVariantDoNotUse, 0);
   registry->RegisterBooleanPref(kDeprecatedGrayscaleThemeEnabledDoNotUse,
                                 false);
-  registry->RegisterDictionaryPref(kDeprecatedNtpCustomBackgroundDictDoNotUse);
 }
 
 }  // namespace
@@ -2884,7 +2882,6 @@ void MigrateObsoleteProfilePrefs(PrefService* profile_prefs,
   profile_prefs->ClearPref(kDeprecatedUserColorDoNotUse);
   profile_prefs->ClearPref(kDeprecatedBrowserColorVariantDoNotUse);
   profile_prefs->ClearPref(kDeprecatedGrayscaleThemeEnabledDoNotUse);
-  profile_prefs->ClearPref(kDeprecatedNtpCustomBackgroundDictDoNotUse);
 
   // Please don't delete the following line. It is used by PRESUBMIT.py.
   // END_MIGRATE_OBSOLETE_PROFILE_PREFS

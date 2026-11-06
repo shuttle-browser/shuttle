@@ -326,8 +326,9 @@ class TabStrip::TabDragContextImpl : public TabDragContext,
             tab_strip_->controller_->GetBrowserWindowInterface()) {
       const int home =
           browser->GetTabStripModel()->GetShuttleHomeTabIndex();
-      for (const TabSlotView* view : dragging_views) {
-        if (home != TabStripModel::kNoTab &&
+      for (const views::View* dragging_view : dragging_views) {
+        const TabSlotView* view = views::AsViewClass<TabSlotView>(dragging_view);
+        if (home != TabStripModel::kNoTab && view &&
             view->GetTabSlotViewType() == TabSlotView::ViewType::kTab &&
             tab_strip_->GetModelIndexOf(view) == home) {
           return;
