@@ -42,7 +42,6 @@ static_library("safe_browsing") {
     "//chrome/browser/google",
     "//chrome/browser/history",
     "//chrome/browser/net",
-    "//chrome/browser/optimization_guide",
     "//chrome/browser/preloading/prefetch/no_state_prefetch",
     "//chrome/browser/profiles",
     "//chrome/browser/profiles:profile",

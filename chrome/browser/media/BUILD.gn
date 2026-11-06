@@ -28,26 +28,6 @@ source_set("access_handler_impl") {
   ]
 }
 
-source_set("audio_process_ml_model_forwarder") {
-  sources = [
-    "audio_process_ml_model_forwarder.cc",
-    "audio_process_ml_model_forwarder.h",
-  ]
-  public_deps = [
-    "//base",
-    "//components/optimization_guide/core:prediction",
-    "//components/optimization_guide/proto:optimization_guide_proto",
-    "//mojo/public/cpp/bindings",
-    "//services/audio/public/mojom",
-  ]
-  deps = [
-    "//chrome/browser/media/webrtc",
-    "//chrome/common:constants",
-    "//components/prefs",
-    "//content/public/browser",
-  ]
-}
-
 source_set("media") {
   public = [
     "audio_service_util.h",

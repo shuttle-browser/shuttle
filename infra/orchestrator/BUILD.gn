@@ -124,6 +124,5 @@ group("gpu_test_trigger_cas") {
 
     # mb
     "//build/gn_helpers.py",
-    "//tools/mb/",
   ]
 }

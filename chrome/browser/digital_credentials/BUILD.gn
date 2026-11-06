@@ -4,7 +4,6 @@ if (is_android) {
 
 source_set("digital_credentials") {
   sources = [
-    "digital_credentials_keyed_service.h",
     "digital_identity_interstitial_closed_reason.h",
     "digital_identity_low_risk_origins.h",
   ]
@@ -26,7 +25,6 @@ source_set("digital_credentials") {
 
 source_set("impl") {
   sources = [
-    "digital_credentials_keyed_service.cc",
     "digital_identity_low_risk_origins.cc",
   ]
   deps = [
@@ -36,11 +34,8 @@ source_set("impl") {
     "//chrome/app/vector_icons",
     "//chrome/browser:resources",
     "//chrome/browser/net",
-    "//chrome/browser/optimization_guide",
     "//chrome/browser/profiles:profile",
     "//components/keyed_service/content",
-    "//components/optimization_guide/core:features",
-    "//components/optimization_guide/proto:optimization_guide_proto",
     "//content/public/browser",
     "//url",
   ]

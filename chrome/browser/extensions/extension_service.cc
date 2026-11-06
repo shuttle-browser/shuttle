@@ -70,7 +70,6 @@
 #include "components/crx_file/id_util.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
-#include "components/supervised_user/core/browser/supervised_user_preferences.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/storage_partition.h"
@@ -632,12 +631,9 @@ void ExtensionService::CheckManagementPolicy() {
       to_remove.insert(disable_reason::DISABLE_UNSUPPORTED_MANIFEST_VERSION);
     }
 
-    // If this profile is not supervised, then remove any supervised user
-    // related disable reasons.
-    bool is_supervised = profile() && profile()->IsChild();
-    if (!is_supervised) {
-      to_remove.insert(disable_reason::DISABLE_CUSTODIAN_APPROVAL_REQUIRED);
-    }
+    // There are no supervised profiles, so remove any supervised user related
+    // disable reasons.
+    to_remove.insert(disable_reason::DISABLE_CUSTODIAN_APPROVAL_REQUIRED);
 
     DisableReasonSet shared_disable_reasons =
         base::STLSetIntersection<DisableReasonSet>(to_remove, to_add);

@@ -16,8 +16,6 @@
 #include "chrome/browser/ntp_tiles/chrome_popular_sites_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/supervised_user/supervised_user_service_factory.h"
-#include "chrome/browser/supervised_user/supervised_user_url_filtering_service_factory.h"
 #include "components/history/core/browser/top_sites.h"
 #include "components/image_fetcher/core/image_fetcher_impl.h"
 #include "components/ntp_tiles/features.h"
@@ -93,9 +91,6 @@ ChromeMostVisitedSitesFactory::NewForProfile(Profile* profile) {
 
   auto most_visited_sites = std::make_unique<ntp_tiles::MostVisitedSites>(
       profile->GetPrefs(), IdentityManagerFactory::GetForProfile(profile),
-      supervised_user::SupervisedUserServiceFactory::GetForProfile(profile),
-      supervised_user::SupervisedUserUrlFilteringServiceFactory::GetForProfile(
-          profile),
       TopSitesFactory::GetForProfile(profile),
       ShouldCreatePopularSites(profile)
           ? ChromePopularSitesFactory::NewForProfile(profile)

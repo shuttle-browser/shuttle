@@ -31,16 +31,12 @@ class PlatformHandle;
 
 
 class ApplicationLocaleStorage;
-class AudioProcessMlModelForwarder;
 class BrowserProcess;
 
 namespace installer_downloader {
 class InstallerDownloaderController;
 }
 
-namespace optimization_guide {
-class OptimizationGuideGlobalFeature;
-}  // namespace optimization_guide
 
 namespace safe_browsing {
 class ApplicationAdvancedProtectionStatusDetector;
@@ -149,15 +145,6 @@ class GlobalFeatures {
   }
 #endif
 
-  optimization_guide::OptimizationGuideGlobalFeature*
-  optimization_guide_global_feature() {
-    return optimization_guide_global_feature_.get();
-  }
-
-  AudioProcessMlModelForwarder* audio_process_ml_model_forwarder() {
-    return audio_process_ml_model_forwarder_.get();
-  }
-
   safe_browsing::ApplicationAdvancedProtectionStatusDetector*
   application_advanced_protection_status_detector() {
     return application_advanced_protection_status_detector_.get();
@@ -225,13 +212,6 @@ class GlobalFeatures {
   std::unique_ptr<installer_downloader::InstallerDownloaderController>
       installer_downloader_controller_;
 #endif
-
-  std::unique_ptr<optimization_guide::OptimizationGuideGlobalFeature>
-      optimization_guide_global_feature_;
-
-  // Must be outlived by `optimization_guide_global_feature_`.
-  std::unique_ptr<AudioProcessMlModelForwarder>
-      audio_process_ml_model_forwarder_;
 
   std::unique_ptr<safe_browsing::ApplicationAdvancedProtectionStatusDetector>
       application_advanced_protection_status_detector_;

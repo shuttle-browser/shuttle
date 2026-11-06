@@ -65,7 +65,6 @@
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_manager_observer.h"
 #include "chrome/browser/profiles/profiles_state.h"
-#include "chrome/browser/segmentation_platform/chrome_browser_main_extra_parts_segmentation_platform.h"
 #include "chrome/browser/sessions/chrome_serialized_navigation_driver.h"
 #include "chrome/browser/shell_integration.h"
 #include "chrome/browser/shuttle/switches.h"
@@ -151,7 +150,6 @@
 #include "chrome/browser/share/share_history.h"
 #include "chrome/browser/ui/page_info/chrome_page_info_client.h"
 #include "components/page_info/android/page_info_client.h"
-#include "components/supervised_user/core/browser/android/android_parental_controls.h"
 #else
 #include <vector>
 
@@ -316,10 +314,6 @@
 #include "ui/aura/env.h"
 #endif
 
-#if BUILDFLAG(USE_ON_DEVICE_MODEL_SERVICE)
-#include "chrome/browser/optimization_guide/chrome_browser_main_extra_parts_optimization_guide.h"
-#endif
-
 // Separate per-platform blocks specifically for chrome_browser_main code. Put
 // other per-platform includes in the appropriate section above.
 #if BUILDFLAG(IS_WIN)
@@ -352,7 +346,6 @@
 #if BUILDFLAG(CHROME_FOR_TESTING)
 #include "chrome/browser/chrome_for_testing/chrome_browser_main_extra_parts_cft.h"
 #include "chrome/browser/chrome_for_testing/config.h"
-#include "chrome/browser/optimization_guide/model_execution/optimization_guide_global_state.h"
 #include "components/component_updater/component_updater_service.h"
 #endif
 
@@ -846,17 +839,9 @@ std::unique_ptr<content::BrowserMainParts> ChromeBrowserMainParts::Create(
       std::make_unique<chrome_for_testing::ChromeBrowserMainExtraPartsCft>());
 #endif
 
-#if BUILDFLAG(USE_ON_DEVICE_MODEL_SERVICE)
-  main_parts->AddParts(
-      std::make_unique<ChromeBrowserMainExtraPartsOptimizationGuide>());
-#endif
-
   // Always add ChromeBrowserMainExtraPartsGpu last to make sure
   // GpuDataManager initialization could pick up about:flags settings.
   main_parts->AddParts(std::make_unique<ChromeBrowserMainExtraPartsGpu>());
-
-  main_parts->AddParts(
-      std::make_unique<ChromeBrowserMainExtraPartsSegmentationPlatform>());
 
   return main_parts;
 }
@@ -2106,11 +2091,6 @@ int ChromeBrowserMainParts::PreMainMessageLoopRunImpl() {
 
 #if BUILDFLAG(CHROME_FOR_TESTING)
   if (g_browser_process->component_updater()) {
-    // Initialize OptimizationGuideGlobalState early so that ManifestMonitor is
-    // available to parse the Optimization Guide manifest and register any
-    // required on-device model components during startup blocking.
-    optimization_guide::OptimizationGuideGlobalState::CreateOrGet();
-
     // Delay browser startup until all components required by the Chrome for
     // Testing configuration are installed and up to date.
     g_browser_process->component_updater()->EnsureRequiredComponentsReady(

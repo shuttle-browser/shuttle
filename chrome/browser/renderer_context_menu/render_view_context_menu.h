@@ -25,7 +25,6 @@
 #include "components/renderer_context_menu/render_view_context_menu_base.h"
 #include "components/renderer_context_menu/render_view_context_menu_observer.h"
 #include "components/renderer_context_menu/render_view_context_menu_proxy.h"
-#include "components/supervised_user/core/browser/supervised_user_url_filtering_service.h"
 #include "content/public/browser/context_menu_params.h"
 #include "content/public/browser/weak_document_ptr.h"
 #include "content/public/common/buildflags.h"
@@ -474,11 +473,6 @@ class RenderViewContextMenu
   // Under the correct conditions, issues a preconnection to the Lens URL and
   // warms up a renderer process.
   void MaybePrepareForLensQuery();
-
-  // Does not execute "Save link as" if the URL is blocked by the URL filter.
-  void CheckSupervisedUserURLFilterAndSaveLinkAs();
-  void OnSupervisedUserURLFilterChecked(
-      supervised_user::WebFilteringResult result);
 
   void MaybeAppendOpenGlicItem(bool add_separator = true);
   void MaybeAppendGlicSmartSuggestionItem();

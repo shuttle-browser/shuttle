@@ -30,7 +30,6 @@ class NavigationHandle;
 namespace predictors {
 
 class LoadingStatsCollector;
-struct OptimizationGuidePrediction;
 class ResourcePrefetchPredictor;
 using NavigationId = base::IdType64<content::NavigationHandle>;
 
@@ -159,9 +158,7 @@ class LoadingDataCollector {
   virtual void RecordMainFrameLoadComplete(NavigationId navigation_id);
 
   // Called when the page committed by the navigation is destroyed.
-  virtual void RecordPageDestroyed(
-      NavigationId navigation_id,
-      const std::optional<OptimizationGuidePrediction>& prediction);
+  virtual void RecordPageDestroyed(NavigationId navigation_id);
 
  private:
   using NavigationMap =

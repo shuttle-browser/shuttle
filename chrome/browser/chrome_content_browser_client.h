@@ -100,10 +100,6 @@ class IsolationInfo;
 class SiteForCookies;
 }  // namespace net
 
-namespace optimization_guide {
-class ModelBrokerClient;
-}  // namespace optimization_guide
-
 namespace safe_browsing {
 class AsyncCheckTracker;
 class RealTimeUrlLookupServiceBase;
@@ -1075,18 +1071,6 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       base::SupportsUserData* context_user_data,
       content::RenderFrameHost* rfh,
       mojo::PendingReceiver<blink::mojom::AIManager> receiver) override;
-
-  // Binds to an existing or new instance of
-  // `language_detection::ContentLanguageDetectionDriver` which receives the
-  // model from Optimization Guide. The instance is owned by
-  // `context_user_data` to ensure it does not outlive the execution context for
-  // which it was created.
-  void BindLanguageDetectionDriver(
-      content::BrowserContext* browser_context,
-      base::SupportsUserData* context_user_data,
-      mojo::PendingReceiver<
-          language_detection::mojom::ContentLanguageDetectionDriver> receiver)
-      override;
 
 #if BUILDFLAG(IS_WIN)
   void OnTracingServiceStarted() override;

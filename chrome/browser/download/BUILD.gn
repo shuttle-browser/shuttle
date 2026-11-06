@@ -191,7 +191,6 @@ source_set("impl") {
     "//chrome/browser/net",
     "//chrome/browser/notifications",
     "//chrome/browser/offline_items_collection",
-    "//chrome/browser/optimization_guide",
     "//chrome/browser/plugins",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/profiles/keep_alive",

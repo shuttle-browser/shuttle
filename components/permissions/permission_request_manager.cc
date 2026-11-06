@@ -45,7 +45,7 @@
 #include "components/permissions/permission_uma_util.h"
 #include "components/permissions/permission_util.h"
 #include "components/permissions/permissions_client.h"
-#include "components/permissions/prediction_service/permission_ui_selector.h"
+#include "components/permissions/permission_ui_selector.h"
 #include "components/permissions/request_type.h"
 #include "components/permissions/resolvers/permission_prompt_options.h"
 #include "components/permissions/switches.h"
@@ -1428,11 +1428,7 @@ void PermissionRequestManager::ResetViewStateForCurrentRequest() {
   current_request_first_display_time_ = base::Time();
   current_request_decision_time_ = base::Time();
   current_request_prompt_disposition_.reset();
-  prediction_grant_likelihood_.reset();
-  permission_request_relevance_.reset();
-  permission_ai_relevance_model_.reset();
   current_request_ui_to_use_.reset();
-  was_decision_held_back_.reset();
   selector_decisions_.clear();
   should_dismiss_current_request_ = false;
   did_show_prompt_ = false;
@@ -1489,8 +1485,7 @@ void PermissionRequestManager::CurrentRequestsDecided(
         time_to_decision, DetermineCurrentRequestUIDisposition(),
         DetermineCurrentRequestUIDispositionReasonForUMA(),
         view_ ? std::optional(view_->GetPromptVariants()) : std::nullopt,
-        prediction_grant_likelihood_, permission_request_relevance_,
-        permission_ai_relevance_model_, was_decision_held_back_, ignore_reason,
+        ignore_reason,
         did_show_prompt_, did_click_manage_, did_click_learn_more_,
         requests_[0]->GetContentSettingsType() ==
                 ContentSettingsType::GEOLOCATION_WITH_OPTIONS
@@ -1856,35 +1851,11 @@ PermissionRequestManager::TakePermissionUiDecisionIfReady() {
 
   for (size_t i = 0; i < selector_decisions_.size(); i++) {
     const std::optional<UiDecision>& decision = selector_decisions_[i];
-    const std::unique_ptr<PermissionUiSelector>& selector =
-        permission_ui_selectors_[i];
 
     if (!decision.has_value()) {
       // We should wait for all higher priority selectors before taking a
       // decision.
       return std::nullopt;
-    }
-
-    if (selector->IsPermissionRequestSupported(
-            requests_.front()->request_type())) {
-      if (!prediction_grant_likelihood_.has_value()) {
-        prediction_grant_likelihood_ =
-            selector->PredictedGrantLikelihoodForUKM();
-      }
-
-      if (!permission_request_relevance_.has_value()) {
-        permission_request_relevance_ =
-            selector->PermissionRequestRelevanceForUKM();
-      }
-
-      if (!permission_ai_relevance_model_.has_value()) {
-        permission_ai_relevance_model_ =
-            selector->PermissionAiRelevanceModelForUKM();
-      }
-
-      if (!was_decision_held_back_.has_value()) {
-        was_decision_held_back_ = selector->WasSelectorDecisionHeldback();
-      }
     }
 
     if (decision->quiet_ui_reason.has_value()) {

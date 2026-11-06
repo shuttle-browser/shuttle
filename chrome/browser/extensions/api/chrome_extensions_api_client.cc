@@ -32,8 +32,6 @@
 #include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/extensions/system_display/display_info_provider.h"
 #include "chrome/browser/favicon/favicon_utils.h"
-#include "chrome/browser/supervised_user/supervised_user_extensions_delegate_impl.h"
-#include "chrome/browser/supervised_user/supervised_user_service_factory.h"
 #include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
@@ -55,7 +53,6 @@
 #include "extensions/browser/extension_action.h"
 #include "extensions/browser/extension_action_manager.h"
 #include "extensions/browser/extension_registry.h"
-#include "extensions/browser/supervised_user_extensions_delegate.h"
 #include "extensions/buildflags/buildflags.h"
 #include "google_apis/gaia/gaia_urls.h"
 #include "pdf/buildflags.h"
@@ -415,13 +412,6 @@ ManagementAPIDelegate* ChromeExtensionsAPIClient::CreateManagementAPIDelegate()
   return new ChromeManagementAPIDelegate;
 }
 
-std::unique_ptr<SupervisedUserExtensionsDelegate>
-ChromeExtensionsAPIClient::CreateSupervisedUserExtensionsDelegate(
-    content::BrowserContext* browser_context) const {
-  return std::make_unique<SupervisedUserExtensionsDelegateImpl>(
-      browser_context);
-}
-
 std::unique_ptr<DisplayInfoProvider>
 ChromeExtensionsAPIClient::CreateDisplayInfoProvider() const {
   return CreateChromeDisplayInfoProvider();
@@ -494,13 +484,6 @@ void ChromeExtensionsAPIClient::SaveImageDataToClipboard(
       std::move(success_callback), std::move(error_callback));
 }
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-std::vector<KeyedServiceBaseFactory*>
-ChromeExtensionsAPIClient::GetFactoryDependencies() {
-  std::vector<KeyedServiceBaseFactory*> dependencies;
-  dependencies.push_back(supervised_user::SupervisedUserServiceFactory::GetInstance());
-  return dependencies;
-}
 
 WebstorePrivateAPIDelegate*
 ChromeExtensionsAPIClient::GetWebstorePrivateAPIDelegate() {

@@ -31,7 +31,6 @@ browser_exposed_mojom_targets = [
   "//chrome/browser/ui/webui/omnibox_internals/logging:mojo_bindings",
   "//chrome/browser/ui/webui/omnibox_popup/mojom:mojom",
   "//chrome/browser/ui/webui/page_action_internals:mojo_bindings",
-  "//chrome/browser/ui/webui/segmentation_internals:mojo_bindings",
   "//chrome/browser/ui/webui/subresource_filter:mojo_bindings",
   "//chrome/browser/ui/webui/suggest_internals:mojo_bindings",
   "//chrome/browser/ui/webui/tab_strip_internals:mojo_bindings",
@@ -41,7 +40,6 @@ browser_exposed_mojom_targets = [
   "//chrome/browser/ui/webui/webnn_internals:mojo_bindings",
   "//chrome/common:mojo_bindings",
   "//chrome/common:offline_page_auto_fetcher_mojom",
-  "//chrome/common:supervised_user_commands_mojom",
   "//chrome/services/file_util/public/mojom:mojom",
   "//components/media_gallery_util/public/mojom:mojom",
   "//chrome/services/printing/public/mojom:mojom",
@@ -75,12 +73,9 @@ browser_exposed_mojom_targets = [
   "//components/network_hints/common:mojo_bindings",
   "//components/no_state_prefetch/common:mojo_bindings",
   "//components/omnibox/browser:mojo_bindings",
-  "//components/optimization_guide/content/mojom:mojo_interfaces",
   "//components/optimization_guide/core:interfaces",
-  "//components/optimization_guide/optimization_guide_internals/webui:mojo_bindings",
   "//components/os_crypt/async/common:algorithm_mojom",
   "//components/os_crypt/async/common:common_mojom",
-  "//components/page_image_service/mojom:mojo_bindings",
   "//components/page_load_metrics/common:page_load_metrics_mojom",
   "//components/paint_preview/common/mojom:mojom",
   "//components/payments/mojom:mojom",
@@ -268,13 +263,10 @@ browser_exposed_mojom_targets = [
 ]
 
 if (!is_android) {
-  browser_exposed_mojom_targets += [
-    "//chrome/browser/ui/webui/iwa_dev:mojo_bindings",
-  ]
+  browser_exposed_mojom_targets +=
+      [ "//chrome/browser/ui/webui/iwa_dev:mojo_bindings" ]
 }
 
-
 if (enable_webui_ntp) {
-  browser_exposed_mojom_targets += [
-  ]
+  browser_exposed_mojom_targets += []
 }

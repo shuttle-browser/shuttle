@@ -48,10 +48,6 @@
 #include "components/security_interstitials/core/ssl_error_ui.h"
 #include "components/security_interstitials/core/unsafe_resource.h"
 #include "components/security_interstitials/core/unsafe_resource_locator.h"
-#include "components/supervised_user/core/browser/supervised_user_error_page.h"  // nogncheck
-#include "components/supervised_user/core/browser/supervised_user_interstitial.h"
-#include "components/supervised_user/core/browser/supervised_user_service.h"
-#include "components/supervised_user/core/browser/supervised_user_utils.h"
 #include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/render_frame_host.h"
@@ -72,16 +68,6 @@
 
 #if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
 #include "components/security_interstitials/content/captive_portal_blocking_page.h"
-#endif
-
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
-    BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/supervised_user/supervised_user_verification_controller_client.h"
-#include "chrome/browser/supervised_user/supervised_user_verification_page_blocked_sites.h"
-#endif
-
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-#include "chrome/browser/supervised_user/supervised_user_verification_page_youtube.h"
 #endif
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
@@ -123,14 +109,6 @@ class InterstitialHTMLSource : public content::URLDataSource {
       const GURL& url,
       const content::WebContents::Getter& wc_getter,
       content::URLDataSource::GotDataCallback callback) override;
-
- private:
-  std::string GetSupervisedUserAskParentInterstitialHTML(
-      const std::string& path);
-#if BUILDFLAG(IS_ANDROID)
-  std::string GetSupervisedUserSiteBlockedInterstitialHTML(
-      const std::string& path);
-#endif  // BUILDFLAG(IS_ANDROID)
 };
 
 std::unique_ptr<SSLBlockingPage> CreateSslBlockingPage(
@@ -398,45 +376,6 @@ std::unique_ptr<EnterpriseWarnPage> CreateEnterpriseWarnPage(
 }
 #endif
 
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-std::unique_ptr<SupervisedUserVerificationPageForYouTube>
-CreateSupervisedUserVerificationPageForYouTube(
-    content::WebContents* web_contents,
-    bool is_main_frame) {
-  const GURL kRequestUrl("https://supervised-user-verification.example.net");
-  return std::make_unique<SupervisedUserVerificationPageForYouTube>(
-      web_contents, "first.last@gmail.com", kRequestUrl,
-      /*child_account_service*/ nullptr,
-      std::make_unique<SupervisedUserVerificationControllerClient>(
-          web_contents,
-          Profile::FromBrowserContext(web_contents->GetBrowserContext())
-              ->GetPrefs(),
-          g_browser_process->GetApplicationLocale(),
-          chrome::ChromeUINewTabURLAsGURL(), kRequestUrl),
-      is_main_frame);
-}
-#endif
-
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
-    BUILDFLAG(IS_ANDROID)
-std::unique_ptr<SupervisedUserVerificationPageForBlockedSites>
-CreateSupervisedUserVerificationPageForBlockedSites(
-    content::WebContents* web_contents,
-    bool is_main_frame) {
-  const GURL kRequestUrl("https://supervised-user-verification.example.net");
-  return std::make_unique<SupervisedUserVerificationPageForBlockedSites>(
-      web_contents, "first.last@gmail.com", kRequestUrl,
-      /*child_account_service*/ nullptr,
-      std::make_unique<SupervisedUserVerificationControllerClient>(
-          web_contents,
-          Profile::FromBrowserContext(web_contents->GetBrowserContext())
-              ->GetPrefs(),
-          g_browser_process->GetApplicationLocale(),
-          chrome::ChromeUINewTabURLAsGURL(), kRequestUrl),
-      is_main_frame);
-}
-#endif
-
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 std::unique_ptr<TestSafeBrowsingBlockingPageQuiet>
 CreateSafeBrowsingQuietBlockingPage(content::WebContents* web_contents) {
@@ -626,24 +565,6 @@ void InterstitialHTMLSource::StartDataRequest(
     interstitial_delegate = CreateInsecureFormPage(web_contents);
   } else if (path_without_query == "/https_only") {
     interstitial_delegate = CreateHttpsOnlyModePage(web_contents);
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  } else if (path_without_query == "/supervised-user-verify") {
-    interstitial_delegate = CreateSupervisedUserVerificationPageForYouTube(
-        web_contents, /*is_main_frame=*/true);
-  } else if (path_without_query == "/supervised-user-verify-subframe") {
-    interstitial_delegate = CreateSupervisedUserVerificationPageForYouTube(
-        web_contents, /*is_main_frame=*/false);
-#endif
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
-    BUILDFLAG(IS_ANDROID)
-  } else if (path_without_query == "/supervised-user-verify-blocked-site") {
-    interstitial_delegate = CreateSupervisedUserVerificationPageForBlockedSites(
-        web_contents, /*is_main_frame=*/true);
-  } else if (path_without_query ==
-             "/supervised-user-verify-blocked-site-subframe") {
-    interstitial_delegate = CreateSupervisedUserVerificationPageForBlockedSites(
-        web_contents, /*is_main_frame=*/false);
-#endif
   }
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
@@ -652,16 +573,10 @@ void InterstitialHTMLSource::StartDataRequest(
         CreateSafeBrowsingQuietBlockingPage(web_contents);
     html = blocking_page->GetHTML();
     interstitial_delegate = std::move(blocking_page);
-  } else if (path_without_query == "/supervised-user-ask-parent") {
-#else
-  if (path_without_query == "/supervised-user-ask-parent") {
-#endif  // BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-    html = GetSupervisedUserAskParentInterstitialHTML(path);
-#if BUILDFLAG(IS_ANDROID)
-  } else if (path_without_query == "/supervised-user-site-blocked") {
-    html = GetSupervisedUserSiteBlockedInterstitialHTML(path);
-#endif  // BUILDFLAG(IS_ANDROID)
   } else if (interstitial_delegate.get()) {
+#else
+  if (interstitial_delegate.get()) {
+#endif  // BUILDFLAG(SAFE_BROWSING_AVAILABLE)
     html = interstitial_delegate.get()->GetHTMLContents();
   } else {
     html = ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(
@@ -671,62 +586,3 @@ void InterstitialHTMLSource::StartDataRequest(
       base::MakeRefCounted<base::RefCountedString>(std::move(html)));
 }
 
-std::string InterstitialHTMLSource::GetSupervisedUserAskParentInterstitialHTML(
-    const std::string& path) {
-  GURL url("https://localhost/" + path);
-
-  bool allow_access_requests = true;
-  std::string allow_access_requests_string;
-  if (net::GetValueForKeyInQuery(url, "allow_access_requests",
-                                 &allow_access_requests_string)) {
-    allow_access_requests = allow_access_requests_string == "1";
-  }
-
-  std::string custodian_name = "Alice";
-  net::GetValueForKeyInQuery(url, "custodian", &custodian_name);
-  std::string second_custodian_name = "Bob";
-  net::GetValueForKeyInQuery(url, "second_custodian", &second_custodian_name);
-  std::string custodian_email = "alice.bloggs@gmail.com";
-  net::GetValueForKeyInQuery(url, "custodian_email", &custodian_email);
-  std::string second_custodian_email = "bob.bloggs@gmail.com";
-  net::GetValueForKeyInQuery(url, "second_custodian_email",
-                             &second_custodian_email);
-  // The interstitial implementation provides a fallback image so no need to set
-  // one here.
-  std::string profile_image_url;
-  net::GetValueForKeyInQuery(url, "profile_image_url", &profile_image_url);
-  std::string profile_image_url2;
-  net::GetValueForKeyInQuery(url, "profile_image_url2", &profile_image_url2);
-
-  supervised_user::FilteringBehaviorReason reason =
-      supervised_user::FilteringBehaviorReason::DEFAULT;
-  std::string reason_string;
-  if (net::GetValueForKeyInQuery(url, "reason", &reason_string)) {
-    if (reason_string == "safe_sites") {
-      reason = supervised_user::FilteringBehaviorReason::ASYNC_CHECKER;
-    } else if (reason_string == "manual") {
-      reason = supervised_user::FilteringBehaviorReason::MANUAL;
-    }
-  }
-
-  supervised_user::Custodian first_custodian(custodian_name, custodian_email,
-                                             profile_image_url);
-  supervised_user::Custodian second_custodian(
-      second_custodian_name, second_custodian_email, profile_image_url2);
-
-  return supervised_user::BuildErrorPageHtmlWithApprovals(
-      allow_access_requests, first_custodian, second_custodian, reason,
-      g_browser_process->GetApplicationLocale(),
-      /*already_sent_remote_request=*/false,
-      /*is_main_frame=*/true, /*ios_font_size_multiplier=*/std::nullopt);
-}
-
-#if BUILDFLAG(IS_ANDROID)
-std::string
-InterstitialHTMLSource::GetSupervisedUserSiteBlockedInterstitialHTML(
-    const std::string& path) {
-  return supervised_user::BuildErrorPageHtmlWithoutApprovals(
-      GURL("https://localhost/" + path),
-      g_browser_process->GetApplicationLocale());
-}
-#endif  // BUILDFLAG(IS_ANDROID)

@@ -31,7 +31,6 @@
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/history/history_utils.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/supervised_user/supervised_user_url_filtering_service_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
@@ -49,8 +48,6 @@
 #include "components/prefs/pref_service.h"
 #include "components/query_parser/snippet.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/supervised_user/core/browser/supervised_user_url_filtering_service.h"
-#include "components/supervised_user/core/browser/supervised_user_utils.h"
 #include "content/public/browser/url_data_source.h"
 #include "content/public/browser/web_ui.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
@@ -117,20 +114,6 @@ constexpr UrlIdentity::FormatOptions url_identity_options{
     .default_options = {UrlIdentity::DefaultFormatOptions::
                             kOmitSchemePathAndTrivialSubdomains}};
 
-history::mojom::FilteringBehavior FilteringBehaviorToMojom(
-    supervised_user::FilteringBehavior filtering_behavior) {
-  switch (filtering_behavior) {
-    case supervised_user::FilteringBehavior::kAllow:
-      return history::mojom::FilteringBehavior::kAllow;
-    case supervised_user::FilteringBehavior::kBlock:
-      return history::mojom::FilteringBehavior::kBlock;
-    case supervised_user::FilteringBehavior::kInvalid:
-      return history::mojom::FilteringBehavior::kInvalid;
-    default:
-      return history::mojom::FilteringBehavior::kUnknown;
-  }
-}
-
 // Converts `entry` to a history::mojom::QueryResult to be owned by the caller.
 history::mojom::HistoryEntryPtr HistoryEntryToMojom(
     const BrowsingHistoryService::HistoryEntry& entry,
@@ -186,7 +169,6 @@ history::mojom::HistoryEntryPtr HistoryEntryToMojom(
   std::u16string snippet_string;
   std::u16string date_relative_day;
   std::u16string date_time_of_day;
-  bool is_blocked_visit = false;
 
   // Only pass in the strings we need (search results need a shortdate
   // and snippet, browse results need day and time information). Makes sure that
@@ -207,26 +189,14 @@ history::mojom::HistoryEntryPtr HistoryEntryToMojom(
     date_time_of_day = base::TimeFormatTimeOfDay(entry.time);
   }
 
-  supervised_user::FilteringBehavior filtering_behavior;
-  if (profile.IsChild()) {
-    filtering_behavior =
-        supervised_user::SupervisedUserUrlFilteringServiceFactory::
-            GetForProfile(&profile)
-                ->GetFilteringBehavior(entry.url.GetWithEmptyPath())
-                .behavior;
-    is_blocked_visit = entry.blocked_visit;
-    result_mojom->host_filtering_behavior =
-        FilteringBehaviorToMojom(filtering_behavior);
-  } else {
-    result_mojom->host_filtering_behavior =
-        history::mojom::FilteringBehavior::kUnknown;
-  }
+  result_mojom->host_filtering_behavior =
+      history::mojom::FilteringBehavior::kUnknown;
 
   result_mojom->date_time_of_day = base::UTF16ToUTF8(date_time_of_day);
   result_mojom->date_relative_day = base::UTF16ToUTF8(date_relative_day);
   result_mojom->snippet = base::UTF16ToUTF8(snippet_string);
   result_mojom->starred = false;
-  result_mojom->blocked_visit = is_blocked_visit;
+  result_mojom->blocked_visit = false;
   result_mojom->is_url_in_remote_user_data = IsEntryInRemoteUserData(entry);
   result_mojom->remote_icon_url_for_uma = entry.remote_icon_url_for_uma.spec();
   result_mojom->is_actor_visit = entry.is_actor_visit;

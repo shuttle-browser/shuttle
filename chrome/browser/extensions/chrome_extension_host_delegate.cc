@@ -28,11 +28,9 @@
 #include "chrome/browser/content_settings/request_desktop_site_web_contents_observer_android.h"
 #include "chrome/browser/extensions/tab_helper.h"
 #include "chrome/browser/history/history_tab_helper.h"
-#include "chrome/browser/optimization_guide/optimization_guide_web_contents_observer.h"
 #include "chrome/browser/page_load_metrics/page_load_metrics_initialize.h"
 #include "chrome/browser/subresource_filter/chrome_content_subresource_filter_web_contents_helper_factory.h"
 #include "components/content_settings/browser/page_specific_content_settings.h"
-#include "components/optimization_guide/core/optimization_guide_features.h"
 #include "extensions/browser/view_type_utils.h"
 #include "extensions/common/mojom/view_type.mojom.h"
 #endif
@@ -85,10 +83,6 @@ void ChromeExtensionHostDelegate::CreateTab(
                               web_contents.get()));
   if (!profile->IsOffTheRecord()) {
     HistoryTabHelper::GetOrCreateForWebContents(web_contents.get());
-  }
-  if (optimization_guide::features::IsOptimizationHintsEnabled()) {
-    OptimizationGuideWebContentsObserver::CreateForWebContents(
-        web_contents.get());
   }
   InitializePageLoadMetricsForWebContents(web_contents.get());
   RequestDesktopSiteWebContentsObserverAndroid::CreateForWebContents(

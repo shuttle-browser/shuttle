@@ -24,8 +24,6 @@
 #include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
-#include "components/supervised_user/core/common/buildflags.h"
-#include "components/supervised_user/core/common/features.h"
 #include "content/public/browser/browser_context.h"
 #include "extensions/browser/api/extensions_api_client.h"
 #include "extensions/browser/api/management/management_api_constants.h"
@@ -38,8 +36,6 @@
 #include "extensions/browser/management_policy.h"
 #include "extensions/browser/manifest_v2_handler.h"
 #include "extensions/browser/requirements_checker.h"
-#include "extensions/browser/supervised_extension_approval_result.h"
-#include "extensions/browser/supervised_user_extensions_delegate.h"
 #include "extensions/browser/uninstall_reason.h"
 #include "extensions/buildflags/buildflags.h"
 #include "extensions/common/api/management.h"
@@ -454,25 +450,6 @@ ExtensionFunction::ResponseAction ManagementSetEnabledFunction::Run() {
     return RespondNow(NoArguments());
   }
 
-  if (IsSupervisedExtensionApprovalFlowRequired(target_extension)) {
-    // Either ask for parent permission or notify the child that their parent
-    // has disabled this action.
-    auto approval_callback = base::BindOnce(
-        &ManagementSetEnabledFunction::OnSupervisedExtensionApprovalDone, this);
-    AddRef();  // Matched in OnSupervisedExtensionApprovalDone().
-
-    SupervisedUserExtensionsDelegate* supervised_user_extensions_delegate =
-        ManagementAPI::GetFactoryInstance()
-            ->Get(browser_context())
-            ->GetSupervisedUserExtensionsDelegate();
-    CHECK(supervised_user_extensions_delegate)
-        << "Implied by IsSupervisedExtensionApprovalFlowRequired";
-    supervised_user_extensions_delegate->RequestToEnableExtensionOrShowError(
-        *target_extension, GetSenderWebContents(),
-        std::move(approval_callback));
-    return RespondLater();
-  }
-
   // Disable extension.
   if (!should_enable) {
     disable_reason::DisableReason reason = disable_reason::DISABLE_USER_ACTION;
@@ -632,81 +609,6 @@ bool ManagementSetEnabledFunction::HasUnsupportedRequirements(
   ExtensionPrefs* prefs = ExtensionPrefs::Get(browser_context());
   return prefs->HasDisableReason(
       extension_id, disable_reason::DISABLE_UNSUPPORTED_REQUIREMENT);
-}
-
-bool ManagementSetEnabledFunction::IsSupervisedExtensionApprovalFlowRequired(
-    const Extension* target_extension) const {
-  SupervisedUserExtensionsDelegate* supervised_user_extensions_delegate =
-      ManagementAPI::GetFactoryInstance()
-          ->Get(browser_context())
-          ->GetSupervisedUserExtensionsDelegate();
-
-  if (!supervised_user_extensions_delegate) {
-    return false;
-  }
-  if (!supervised_user_extensions_delegate->IsChild()) {
-    return false;
-  }
-  // Don't prompt the user if the extension has unsupported requirements.
-  // TODO(crbug.com/40127008): If OnRequirementsChecked() passes, the extension
-  // will enable, bypassing parent approval.
-  if (HasUnsupportedRequirements(extension_id_)) {
-    return false;
-  }
-  // Only ask for parent approval if the extension still requires
-  // approval.
-  if (supervised_user_extensions_delegate->IsExtensionAllowedByParent(
-          *target_extension)) {
-    return false;
-  }
-  return true;
-}
-
-void ManagementSetEnabledFunction::OnSupervisedExtensionApprovalDone(
-    SupervisedExtensionApprovalResult result) {
-  // TODO(crbug.com/1320442): Investigate whether ENABLE_SUPERVISED_USERS can
-  // be ported to //extensions.
-  switch (result) {
-    case SupervisedExtensionApprovalResult::kApproved: {
-      // Grant parent approval.
-      extensions::SupervisedUserExtensionsDelegate*
-          supervised_user_extensions_delegate =
-              extensions::ManagementAPI::GetFactoryInstance()
-                  ->Get(browser_context())
-                  ->GetSupervisedUserExtensionsDelegate();
-      CHECK(supervised_user_extensions_delegate);
-      auto* registry = ExtensionRegistry::Get(browser_context());
-      const Extension* extension =
-          registry->GetInstalledExtension(extension_id_);
-      CHECK(extension);
-      supervised_user_extensions_delegate->AddExtensionApproval(*extension);
-
-      const ManagementAPIDelegate* delegate =
-          ManagementAPI::GetFactoryInstance()
-              ->Get(browser_context())
-              ->GetDelegate();
-      delegate->EnableExtension(browser_context(), extension_id_);
-      Respond(NoArguments());
-      break;
-    }
-
-    case SupervisedExtensionApprovalResult::kCanceled: {
-      Respond(Error(keys::kUserDidNotReEnableError));
-      break;
-    }
-
-    case SupervisedExtensionApprovalResult::kFailed: {
-      Respond(Error(keys::kParentPermissionFailedError));
-      break;
-    }
-
-    case SupervisedExtensionApprovalResult::kBlocked: {
-      Respond(Error(keys::kUserCantModifyError, extension_id_));
-      break;
-    }
-  }
-  // Matches the AddRef in Run().
-  Release();
 }
 
 const Extension* ManagementSetEnabledFunction::GetExtension() {
@@ -1169,10 +1071,7 @@ void ManagementEventRouter::BroadcastEvent(
 
 ManagementAPI::ManagementAPI(content::BrowserContext* context)
     : browser_context_(context),
-      delegate_(ExtensionsAPIClient::Get()->CreateManagementAPIDelegate()),
-      supervised_user_extensions_delegate_(
-          ExtensionsAPIClient::Get()->CreateSupervisedUserExtensionsDelegate(
-              browser_context_)) {
+      delegate_(ExtensionsAPIClient::Get()->CreateManagementAPIDelegate()) {
   EventRouter* event_router = EventRouter::Get(browser_context_);
   event_router->RegisterObserver(this, management::OnInstalled::kEventName);
   event_router->RegisterObserver(this, management::OnUninstalled::kEventName);
@@ -1183,9 +1082,6 @@ ManagementAPI::ManagementAPI(content::BrowserContext* context)
 ManagementAPI::~ManagementAPI() = default;
 
 void ManagementAPI::Shutdown() {
-  // Ensure that SupervisedUserExtensionsDelegate is released prior to
-  // destruction to release the raw pointer to browser_context_.
-  supervised_user_extensions_delegate_.reset();
   EventRouter::Get(browser_context_)->UnregisterObserver(this);
 }
 

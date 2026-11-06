@@ -18,8 +18,6 @@ import("//third_party/widevine/cdm/widevine.gni")
 import("//tools/grit/grit_rule.gni")
 import("//ui/webui/webui_features.gni")
 
-assert(enable_supervised_users)
-
 grit("resources") {
   source = "resources/renderer_resources.grd"
   inputs = [
@@ -98,11 +96,6 @@ static_library("renderer") {
     "plugins/non_loadable_plugin_placeholder.h",
     "plugins/pdf_plugin_placeholder.cc",
     "plugins/pdf_plugin_placeholder.h",
-    "supervised_user/supervised_user_error_page_controller.cc",
-    "supervised_user/supervised_user_error_page_controller.h",
-    "supervised_user/supervised_user_error_page_controller_delegate.h",
-    "supervised_user/supervised_user_error_page_controller_delegate_impl.cc",
-    "supervised_user/supervised_user_error_page_controller_delegate_impl.h",
     "url_loader_throttle_provider_impl.cc",
     "url_loader_throttle_provider_impl.h",
     "v8_unwinder.cc",
@@ -146,11 +139,7 @@ static_library("renderer") {
     "//components/no_state_prefetch/common",
     "//components/no_state_prefetch/renderer",
     "//components/omnibox/common",
-    "//components/optimization_guide/content/renderer",
     "//components/optimization_guide/core:features",
-    "//components/page_content_annotations/content/mojom",
-    "//components/page_content_annotations/content/renderer",
-    "//components/page_content_annotations/core:features",
     "//components/page_load_metrics/renderer",
     "//components/paint_preview/buildflags",
     "//components/pdf/common:constants",
@@ -172,7 +161,6 @@ static_library("renderer") {
     "//components/spellcheck:buildflags",
     "//components/subresource_filter/content/renderer",
     "//components/subresource_filter/core/common",
-    "//components/supervised_user/core/common:buildflags",
     "//components/surface_embed/common",
     "//components/surface_embed/renderer",
     "//components/visitedlink/renderer",

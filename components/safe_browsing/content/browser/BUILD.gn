@@ -187,8 +187,6 @@ if (safe_browsing_mode != 0) {
     ]
 
     deps = [
-      "//components/optimization_guide/core",
-      "//components/optimization_guide/proto:optimization_guide_proto",
       "//components/prefs",
       "//components/safe_browsing/content/browser/web_ui",
       "//components/safe_browsing/content/common:interfaces",
@@ -203,8 +201,6 @@ if (safe_browsing_mode != 0) {
       "//net",
       "//net/traffic_annotation",
       "//services/network/public/cpp",
-      "//third_party/tflite_support",
-      "//third_party/tflite_support:tflite_support_proto",
       "//third_party/zlib/google:compression_utils",
       "//url",
     ]
@@ -230,7 +226,6 @@ if (safe_browsing_mode != 0) {
     deps = [
       ":client_side_detection_images_cache",
       ":client_side_detection_service",
-      "//components/optimization_guide/proto:optimization_guide_proto",
       "//components/permissions",
       "//components/safe_browsing:buildflags",
       "//components/safe_browsing/content/browser",

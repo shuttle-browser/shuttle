@@ -17,8 +17,6 @@
 #include "chrome/browser/infobars/browser_infobar_manager.h"
 #include "chrome/browser/infobars/infobar_features.h"
 #include "chrome/browser/local_network_access/ip_address_space_overrides_prefs_observer.h"
-#include "chrome/browser/media/audio_process_ml_model_forwarder.h"
-#include "chrome/browser/optimization_guide/model_execution/optimization_guide_global_state.h"
 #include "chrome/browser/permissions/system/platform_handle.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/safe_browsing/application_advanced_protection_status_detector.h"
@@ -186,14 +184,6 @@ void GlobalFeatures::PostBrowserProcessInitCore() {
           &ChromeMetricsServiceAccessor::IsMetricsAndCrashReportingEnabled)));
 #endif
 
-  optimization_guide_global_feature_ =
-      std::make_unique<optimization_guide::OptimizationGuideGlobalFeature>();
-
-  if (media::IsAudioProcessMlModelUsageEnabled()) {
-    audio_process_ml_model_forwarder_ =
-        AudioProcessMlModelForwarder::Create(g_browser_process->local_state());
-  }
-
   if (base::FeatureList::IsEnabled(
           safe_browsing::kRelaunchNotificationForAdvancedProtection)) {
     application_advanced_protection_status_detector_ = std::make_unique<
@@ -231,8 +221,6 @@ void GlobalFeatures::PostMainMessageLoopRun() {
 
 #if !BUILDFLAG(IS_ANDROID)
 #endif
-  audio_process_ml_model_forwarder_.reset();
-  optimization_guide_global_feature_.reset();
 
   application_advanced_protection_status_detector_.reset();
   tab_drag_session_manager_.reset();

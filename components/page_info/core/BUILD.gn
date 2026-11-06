@@ -21,7 +21,6 @@ static_library("core") {
     "//base/i18n:language_tag",
     "//components/history/core/browser",
     "//components/keyed_service/core",
-    "//components/optimization_guide/core",
     "//components/pref_registry",
     "//components/search",
     "//components/search_engines",

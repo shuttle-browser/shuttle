@@ -167,7 +167,6 @@ source_set("impl") {
     "//chrome/browser/lifetime",
     "//chrome/browser/metrics",
     "//chrome/browser/prefs",
-    "//chrome/browser/supervised_user",
     "//chrome/browser/ui:simple_message_box_headers",
     "//chrome/browser/ui/dialogs:browser_dialogs",
     "//chrome/browser/webdata_services",
@@ -176,7 +175,6 @@ source_set("impl") {
     "//components/profile_metrics",
     "//components/signin/core/browser",
     "//components/signin/public/webdata",
-    "//components/supervised_user/core/browser",
     "//components/tabs:public",
     "//extensions/buildflags",
   ]

@@ -3237,9 +3237,9 @@ class CONTENT_EXPORT ContentBrowserClient {
       const url::Origin& origin,
       mojo::PendingReceiver<blink::mojom::TranslationManager> receiver);
 
-  // Binds to a singleton new instance of
-  // `language_detection::ContentLanguageDetectionDriver` which receives the
-  // model from a local file specified by a flag param..
+  // Binds a `language_detection::mojom::ContentLanguageDetectionDriver`. The
+  // default implementation reports that no model is available (Shuttle: the
+  // language detection model service is removed).
   virtual void BindLanguageDetectionDriver(
       BrowserContext* browser_context,
       base::SupportsUserData* context_user_data,

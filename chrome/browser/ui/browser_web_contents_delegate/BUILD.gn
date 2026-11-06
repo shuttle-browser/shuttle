@@ -38,6 +38,7 @@ if (!is_android) {
       "//components/find_in_page",
       "//components/headless/console_message_logger",
       "//components/javascript_dialogs",
+      "//components/optimization_guide/content/browser",
       "//components/page_load_metrics/browser",
       "//components/printing/browser",
       "//content/public/browser",

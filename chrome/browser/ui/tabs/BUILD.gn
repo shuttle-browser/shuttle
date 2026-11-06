@@ -61,24 +61,6 @@ source_set("utils") {
   deps = [ "//content/public/browser" ]
 }
 
-source_set("page_context_eligibility_helper") {
-  sources = [
-    "page_context_eligibility_helper.cc",
-    "page_context_eligibility_helper.h",
-  ]
-  public_deps = [
-    ":tabs_public",
-    "//ui/base/unowned_user_data",
-  ]
-  deps = [
-    "//base",
-    "//chrome/browser/profiles:profile",
-    "//chrome/browser/signin",
-    "//components/optimization_guide/content/browser:page_context_eligibility",
-    "//components/signin/public/identity_manager",
-  ]
-}
-
 if (!is_android) {
   source_set("features") {
     sources = [
@@ -394,7 +376,6 @@ if (!is_android) {
 
     public_deps = [
       ":features",
-      ":page_context_eligibility_helper",
       ":tab_enums",
       ":tab_group",
       ":tab_strip_model_observer",
@@ -409,7 +390,6 @@ if (!is_android) {
       "//chrome/browser/ui/startup:startup_tab",
       "//chrome/browser/ui/views/permissions/chip",
       "//components/keyed_service/core",
-      "//components/optimization_guide/content/browser:page_context_eligibility",
       "//components/tabs:public",
       "//content/public/browser",
       "//skia",
@@ -430,7 +410,6 @@ if (!is_android) {
 
   source_set("impl") {
     public_deps = [
-      ":page_context_eligibility_helper",
       "//chrome/browser:browser_public_dependencies",
       "//chrome/browser/loader",
     ]
@@ -486,10 +465,6 @@ if (!is_android) {
       "//chrome/browser/metrics",
       "//chrome/browser/navigation_predictor",
       "//chrome/browser/net",
-      "//chrome/browser/optimization_guide",
-      "//chrome/browser/page_content_annotations",
-      "//chrome/browser/page_content_annotations:extraction_service",
-      "//chrome/browser/page_content_annotations:fetcher",
       "//chrome/browser/page_info",
       "//chrome/browser/page_load_metrics",
       "//chrome/browser/permissions",
@@ -508,7 +483,6 @@ if (!is_android) {
       "//chrome/browser/ssl",
       "//chrome/browser/storage_access_api",
       "//chrome/browser/subresource_filter",
-      "//chrome/browser/supervised_user",
       "//chrome/browser/tab_contents",
       "//chrome/browser/task_manager",
       "//chrome/browser/themes",
@@ -553,7 +527,6 @@ if (!is_android) {
       "//chrome/browser/ui/views/page_info",
       "//chrome/browser/ui/views/toolbar",
       "//chrome/browser/ui/webui:webui_util",
-      "//chrome/browser/v8_compile_hints",
       "//chrome/common",
       "//components/blocked_content",
       "//components/captive_portal/core:buildflags",
@@ -574,11 +547,7 @@ if (!is_android) {
       "//components/javascript_dialogs",
       "//components/metrics:content",
       "//components/metrics_services_manager",
-      "//components/multistep_filter/core:features",
-      "//components/optimization_guide/content/browser:page_context_eligibility",
       "//components/optimization_guide/core:features",
-      "//components/page_content_annotations/content",
-      "//components/page_content_annotations/core",
       "//components/performance_manager",
       "//components/permissions",
       "//components/pref_registry",
@@ -616,8 +585,6 @@ if (!is_android) {
 
     if (is_win || is_mac || is_linux || is_chromeos) {
       deps += [
-        "//chrome/browser/multistep_filter",
-        "//chrome/browser/multistep_filter/ui",
         "//chrome/browser/ui/shared_highlighting",
       ]
     }

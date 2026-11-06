@@ -18,7 +18,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "base/values.h"
-#include "chrome/browser/autocomplete/autocomplete_scoring_model_service_factory.h"
 #include "chrome/browser/autocomplete/chrome_autocomplete_provider_client.h"
 #include "chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.h"
 #include "chrome/browser/bitmap_fetcher/bitmap_fetcher_service.h"
@@ -40,7 +39,6 @@
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "components/omnibox/browser/autocomplete_provider.h"
 #include "components/omnibox/browser/autocomplete_result.h"
-#include "components/omnibox/browser/autocomplete_scoring_model_service.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
 #include "components/omnibox/common/omnibox_feature_configs.h"
 #include "components/search_engines/template_url.h"
@@ -227,30 +225,15 @@ void OmniboxInternalsPageHandler::StartOmniboxQuery(
 
 void OmniboxInternalsPageHandler::GetMlModelVersion(
     GetMlModelVersionCallback callback) {
-  if (auto* service = GetMlService()) {
-    auto version = service->GetModelVersion();
-    if (version == -1) {
-      service->AddOnModelUpdatedCallback(
-          base::BindOnce(&OmniboxInternalsPageHandler::GetMlModelVersion,
-                         weak_factory_.GetWeakPtr(), std::move(callback)));
-    } else {
-      std::move(callback).Run(version);
-    }
-  } else {
-    std::move(callback).Run(-1);
-  }
+  // Shuttle: the omnibox ML scoring model is removed.
+  std::move(callback).Run(-1);
 }
 
 void OmniboxInternalsPageHandler::StartMl(
     const AutocompleteMatch::ScoringSignals& signals,
     StartMlCallback callback) {
-  if (auto* service = GetMlService()) {
-    std::vector<AutocompleteScoringModelService::Result> result =
-        service->BatchScoreAutocompleteUrlMatchesSync({&signals});
-    std::move(callback).Run(result.size() ? result[0].value_or(-1) : -1);
-  } else {
-    std::move(callback).Run(-1);
-  }
+  // Shuttle: the omnibox ML scoring model is removed.
+  std::move(callback).Run(-1);
 }
 
 std::unique_ptr<AutocompleteController>
@@ -284,11 +267,4 @@ OmniboxInternalsPageHandler::GetAutocompleteControllerType(
     return mojom::AutocompleteControllerType::kMlDisabledDebug;
   }
   return mojom::AutocompleteControllerType::kBrowser;
-}
-
-AutocompleteScoringModelService* OmniboxInternalsPageHandler::GetMlService() {
-  return OmniboxFieldTrial::IsMlUrlScoringEnabled()
-             ? AutocompleteScoringModelServiceFactory::GetInstance()
-                   ->GetForProfile(profile_)
-             : nullptr;
 }

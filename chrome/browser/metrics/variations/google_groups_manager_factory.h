@@ -20,8 +20,7 @@ class GoogleGroupsManagerFactory : public ProfileKeyedServiceFactory {
 
  private:
   // `BrowserContextKeyedServiceFactory` overrides.
-  //
-  // Returns nullptr if `OptimizationGuideKeyedService` is null.
+
   std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(
       content::BrowserContext* context) const override;
   bool ServiceIsCreatedWithBrowserContext() const override;

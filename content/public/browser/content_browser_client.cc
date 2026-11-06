@@ -12,6 +12,7 @@
 #include "base/check.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
+#include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/functional/callback_helpers.h"
 #include "base/memory/safe_ref.h"
@@ -25,9 +26,7 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
-#include "components/language_detection/content/browser/content_language_detection_driver.h"
 #include "components/language_detection/content/common/language_detection.mojom.h"
-#include "components/language_detection/core/browser/language_detection_model_provider.h"
 #include "content/browser/ai/echo_ai_manager_impl.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/webauth/default_authenticator_request_client_delegate.h"
@@ -69,6 +68,7 @@
 #include "media/mojo/mojom/media_service.mojom.h"
 #include "media/mojo/mojom/speech_recognizer.mojom.h"
 #include "mojo/public/cpp/bindings/message.h"
+#include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "net/base/isolation_info.h"
 #include "net/cookies/cookie_setting_override.h"
 #include "net/cookies/site_for_cookies.h"
@@ -1930,40 +1930,23 @@ void ContentBrowserClient::BindTranslationManager(
     mojo::PendingReceiver<blink::mojom::TranslationManager> receiver) {}
 
 namespace {
-// TODO(https://crbug.com/383035345): Use BASE_FEATURE_PARAM.
-const base::FeatureParam<std::string> kLanguageDetectionLocalFileModelPath{
-    &blink::features::kLanguageDetectionAPI,
-    "language_detection_local_file_model_path", ""};
-
-// We need to initialize the provider after it is created. This should not be
-// inside `GetContentLanguageDetectionDriver` or it will be performed on every
-// call.
-language_detection::LanguageDetectionModelProvider*
-CreateLanguageDetectionModelProvider() {
-  auto* provider = new language_detection::LanguageDetectionModelProvider(
-      base::ThreadPool::CreateSequencedTaskRunner(
-          {base::MayBlock(), base::TaskPriority::BEST_EFFORT}));
-  const std::string model_file_path =
-      kLanguageDetectionLocalFileModelPath.Get();
-  if (model_file_path.length()) {
-    provider->ReplaceModelFile(base::FilePath::FromASCII(model_file_path));
-  } else {
-    // There is no model and there's not going to be one. If we don't call this
-    // the provider will queue requests, expecting that some time in the future
-    // a model will become available.
-    provider->UnloadModelFile();
+// Shuttle: the language detection model service (components/language_detection
+// browser side) is removed. This driver always reports the model as not
+// available, so blink's LanguageDetector resolves "unavailable" instead of
+// waiting for a model that never arrives.
+class UnavailableLanguageDetectionDriver
+    : public language_detection::mojom::ContentLanguageDetectionDriver {
+ public:
+  void GetLanguageDetectionModel(
+      GetLanguageDetectionModelCallback callback) override {
+    std::move(callback).Run(base::File());
   }
-  return provider;
-}
-
-// Returns a singleton of `ContentLanguageDetectionDriver`. This will provide
-// the model from a flag-param path.
-language_detection::ContentLanguageDetectionDriver&
-GetContentLanguageDetectionDriver() {
-  static base::NoDestructor<language_detection::ContentLanguageDetectionDriver>
-      driver(CreateLanguageDetectionModelProvider());
-  return *driver.get();
-}
+  void GetLanguageDetectionModelStatus(
+      GetLanguageDetectionModelStatusCallback callback) override {
+    std::move(callback).Run(
+        language_detection::mojom::LanguageDetectionModelStatus::kNotAvailable);
+  }
+};
 }  // namespace
 
 void ContentBrowserClient::BindLanguageDetectionDriver(
@@ -1971,9 +1954,9 @@ void ContentBrowserClient::BindLanguageDetectionDriver(
     base::SupportsUserData* context_user_data,
     mojo::PendingReceiver<
         language_detection::mojom::ContentLanguageDetectionDriver> receiver) {
-  if (base::FeatureList::IsEnabled(blink::features::kLanguageDetectionAPI)) {
-    GetContentLanguageDetectionDriver().AddReceiver(std::move(receiver));
-  }
+  mojo::MakeSelfOwnedReceiver(
+      std::make_unique<UnavailableLanguageDetectionDriver>(),
+      std::move(receiver));
 }
 
 #if !BUILDFLAG(IS_ANDROID)

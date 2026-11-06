@@ -50,7 +50,6 @@
 #include "chrome/browser/devtools/devtools_policy_dialog.h"
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/lifetime/application_lifetime_desktop.h"
-#include "chrome/browser/multistep_filter/ui/filter_ui_controller.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/profiles/profile_window.h"
 #include "chrome/browser/shell_integration.h"
@@ -108,7 +107,6 @@
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/content_settings/core/common/features.h"
-#include "components/multistep_filter/core/features.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
 #include "components/omnibox/browser/vector_icons.h"
 #include "components/policy/core/common/policy_pref_names.h"
@@ -857,41 +855,6 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
                     : vector_icons::kArrowBackOldIcon,
                 ui::kColorIcon))
             .SetVisible(false)
-            .Build());
-  }
-
-  if (base::FeatureList::IsEnabled(multistep_filter::kMultistepFilter)) {
-    root_action_item_->AddChild(
-        actions::ActionItem::Builder()
-            .SetActionId(kActionMultistepFilter)
-            .SetInvokeActionCallback(base::BindRepeating(
-                [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                   actions::ActionInvocationContext context) {
-                  tabs::TabInterface* tab = bwi->GetActiveTabInterface();
-                  if (!tab) {
-                    return;
-                  }
-                  multistep_filter::FilterUiController* filter_ui_controller =
-                      multistep_filter::FilterUiController::From(tab);
-                  if (!filter_ui_controller) {
-                    // The controller is null in off-the-record (incognito)
-                    // sessions.
-                    return;
-                  }
-                  filter_ui_controller->OnActionInvoked();
-                },
-                bwi))
-            .SetImage(ui::ImageModel::FromVectorIcon(
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-                vector_icons::kFastForwardCircleSparkIcon
-#else
-                features::IsRoundedIconsEnabled()
-                    ? vector_icons::kPlayArrowIcon
-                    : vector_icons::kPlayArrowChromeRefreshOldIcon
-#endif
-                ))
-            .SetText(
-                l10n_util::GetStringUTF16(IDS_MULTISTEP_FILTER_CUE_ACTION_TEXT))
             .Build());
   }
 

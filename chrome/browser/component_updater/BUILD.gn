@@ -139,7 +139,6 @@ source_set("impl") {
     "//components/certificate_transparency:proto_gen",
     "//components/embedder_support/origin_trials",
     "//components/on_device_translation/buildflags",
-    "//components/optimization_guide/core",
     "//components/optimization_guide/proto:optimization_guide_proto",
     "//components/permissions",
     "//components/privacy_sandbox:features",

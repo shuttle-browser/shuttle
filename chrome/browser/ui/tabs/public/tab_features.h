@@ -72,7 +72,6 @@ class MixedContentSettingsTabHelper;
 class OneTimePermissionsTrackerHelper;
 class RecentlyAudibleHelper;
 class SearchEngineTabHelper;
-class SupervisedUserNavigationObserver;
 class TabDialogs;
 
 namespace blocked_content {
@@ -94,10 +93,6 @@ class WebContentsTopSitesObserver;
 namespace metrics {
 class MetricsServicesWebContentsObserver;
 }  // namespace metrics
-
-namespace page_content_annotations {
-class PageContentAnnotationsWebContentsObserver;
-}  // namespace page_content_annotations
 
 namespace predictors {
 class LoadingPredictorTabHelper;
@@ -158,10 +153,6 @@ namespace prerender {
 class NoStatePrefetchTabHelper;
 }  // namespace prerender
 
-namespace v8_compile_hints {
-class V8CompileHintsTabHelper;
-}  // namespace v8_compile_hints
-
 namespace page_actions {
 class PageActionController;
 }  // namespace page_actions
@@ -180,17 +171,11 @@ class ChromeRLZTrackerWebContentsObserver;
 class PluginObserver;
 #endif
 
-namespace multistep_filter {
-class ChromeFilterNavigationObserver;
-class FilterUiController;
-}  // namespace multistep_filter
-
 namespace tabs {
 
 class ChildTabAlertHelper;
 class ContextHighlightTabFeature;
 class InactiveWindowMouseEventController;
-class PageContextEligibilityHelper;
 class TabAlertController;
 class TabAttachmentTracker;
 class TabCreationMetricsController;
@@ -371,9 +356,6 @@ class TabFeatures {
   std::unique_ptr<back_to_opener::BackToOpenerController>
       back_to_opener_controller_;
 
-  std::unique_ptr<tabs::PageContextEligibilityHelper>
-      page_context_eligibility_helper_;
-
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   std::unique_ptr<metrics::DesktopSessionDurationObserver>
       desktop_session_duration_observer_;
@@ -409,10 +391,6 @@ class TabFeatures {
       navigation_extension_enabler_;
 #endif
 
-  std::unique_ptr<multistep_filter::FilterUiController> filter_ui_controller_;
-  std::unique_ptr<multistep_filter::ChromeFilterNavigationObserver>
-      filter_navigation_observer_;
-
   std::unique_ptr<TabAttachmentTracker> tab_attachment_tracker_;
 
   // Prefetches zero-prefix suggestions on opening or switching to an NTP.
@@ -428,9 +406,6 @@ class TabFeatures {
 
   std::unique_ptr<TabCaptureContentsBorderHelper>
       tab_capture_contents_border_helper_;
-
-  std::unique_ptr<v8_compile_hints::V8CompileHintsTabHelper>
-      v8_compile_hints_tab_helper_;
 
   std::unique_ptr<StorageAccessAPITabHelper> storage_access_api_tab_helper_;
 
@@ -473,9 +448,6 @@ class TabFeatures {
 
   std::unique_ptr<chrome_browser_net::NetErrorTabHelper> net_error_tab_helper_;
 
-  std::unique_ptr<SupervisedUserNavigationObserver>
-      supervised_user_navigation_observer_;
-
   std::unique_ptr<TabDialogs> tab_dialogs_;
 
   std::unique_ptr<metrics::MetricsServicesWebContentsObserver>
@@ -483,10 +455,6 @@ class TabFeatures {
 
   std::unique_ptr<blocked_content::PopupOpenerTabHelper>
       popup_opener_tab_helper_;
-
-  std::unique_ptr<
-      page_content_annotations::PageContentAnnotationsWebContentsObserver>
-      page_content_annotations_web_contents_observer_;
 
   std::unique_ptr<CoreTabHelper> core_tab_helper_;
 

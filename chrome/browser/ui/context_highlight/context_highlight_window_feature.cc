@@ -10,11 +10,17 @@
 #include "chrome/browser/ui/context_highlight/context_highlight_tab_feature.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/views/interaction/browser_elements_views.h"
-#include "components/page_content_annotations/core/tracked_element_feature.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/viz/common/surfaces/tracked_element_rects.h"
 
-using ::page_content_annotations::TrackedElementFeature;
+namespace {
+// Shuttle: was page_content_annotations::TrackedElementFeature::kAIHighlight
+// (component removed); the first browser-level viz tracked element feature.
+constexpr int32_t kAIHighlightFeatureValue =
+    static_cast<int32_t>(
+        viz::TrackedElementFeature::kTrackedElementFeatureEnd) +
+    1;
+}  // namespace
 
 ContextHighlightWindowFeature::ContextHighlightWindowFeature(
     BrowserWindowInterface& browser)
@@ -42,8 +48,8 @@ void ContextHighlightWindowFeature::OnTrackedElementRectsChanged(
     const viz::TrackedElementRects& rects,
     float device_scale_factor) {
   // View is created lazyly
-  const auto kAIHighlightFeature = static_cast<viz::TrackedElementFeature>(
-      TrackedElementFeature::kAIHighlight);
+  const auto kAIHighlightFeature =
+      static_cast<viz::TrackedElementFeature>(kAIHighlightFeatureValue);
   bool has_highlight_rects = rects.contains(kAIHighlightFeature) &&
                              !rects.at(kAIHighlightFeature).empty();
   if (!context_highlight_view_tracker_.view() && has_highlight_rects) {

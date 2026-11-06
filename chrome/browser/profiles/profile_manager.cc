@@ -64,7 +64,6 @@
 #include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/signin_util.h"
-#include "chrome/browser/supervised_user/child_accounts/child_account_service_factory.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/channel_info.h"
@@ -90,10 +89,6 @@
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/primary_account_mutator.h"
 #include "components/signin/public/identity_manager/tribool.h"
-#include "components/supervised_user/core/browser/child_account_service.h"
-#include "components/supervised_user/core/browser/supervised_user_service.h"
-#include "components/supervised_user/core/common/pref_names.h"
-#include "components/supervised_user/core/common/supervised_user_constants.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/storage_partition.h"
@@ -981,7 +976,6 @@ void ProfileManager::InitProfileUserPrefs(Profile* profile) {
 
   size_t avatar_index;
   std::string profile_name;
-  std::string supervised_user_id;
   {
     ProfileAttributesEntry* entry =
         storage.GetProfileAttributesWithPath(profile->GetPath());
@@ -990,7 +984,6 @@ void ProfileManager::InitProfileUserPrefs(Profile* profile) {
     if (entry) {
       avatar_index = entry->GetAvatarIconIndex();
       profile_name = base::UTF16ToUTF8(entry->GetLocalProfileName());
-      supervised_user_id = entry->GetSupervisedUserId();
     } else {
       avatar_index = 0;
 #if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
@@ -1009,11 +1002,6 @@ void ProfileManager::InitProfileUserPrefs(Profile* profile) {
 
   if (!profile->GetPrefs()->HasPrefPath(prefs::kProfileName)) {
     profile->GetPrefs()->SetString(prefs::kProfileName, profile_name);
-  }
-
-  if (!profile->GetPrefs()->HasPrefPath(prefs::kSupervisedUserId)) {
-    profile->GetPrefs()->SetString(prefs::kSupervisedUserId,
-                                   supervised_user_id);
   }
 }
 
@@ -1303,14 +1291,6 @@ void ProfileManager::DoFinalInitForServices(Profile* profile) {
     ::chromeos::DeskApiExtensionManagerFactory::GetForProfile(profile);
   }
 #endif
-
-  // After the ManagementPolicy has been set, update it for the Supervised User
-  // Extension Delegate, which has been created before the profile
-  // initialization and needs to obtain the new policies.
-  extensions::ManagementAPI::GetFactoryInstance()
-      ->Get(profile)
-      ->GetSupervisedUserExtensionsDelegate()
-      ->UpdateManagementPolicyRegistration();
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
   // Ensure NavigationPredictorKeyedService is started.
@@ -1728,9 +1708,6 @@ void ProfileManager::AddProfileToStorage(Profile* profile) {
 
   // Shuttle: there is no profile avatar UI, the index is always 0.
   init_params.icon_index = 0;
-
-  init_params.supervised_user_id =
-      profile->GetPrefs()->GetString(prefs::kSupervisedUserId);
 
 #if BUILDFLAG(IS_CHROMEOS)
   user_manager::User* user =

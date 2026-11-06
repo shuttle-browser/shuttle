@@ -23,7 +23,6 @@ import("//testing/libfuzzer/fuzzer_test.gni")
 import("//third_party/protobuf/proto_library.gni")
 
 assert(enable_extensions_core)
-assert(enable_supervised_users)
 assert(!is_fuchsia, "Fuchsia shouldn't use anything in //chrome")
 
 source_set("external_loader") {
@@ -550,7 +549,6 @@ source_set("extensions") {
     "//components/services/unzip/content",
     "//components/signin/public/browser",
     "//components/spellcheck/browser",
-    "//components/supervised_user/core/browser",
     "//components/tabs:public",
     "//components/universal_optout",
     "//components/update_client",
@@ -587,7 +585,6 @@ source_set("extensions") {
   public_deps = [
     "//chrome/browser/extensions/api/messaging",
     "//chrome/browser/media/webrtc",
-    "//chrome/browser/supervised_user",
     "//chrome/browser/ui/tab_contents",
     "//chrome/browser/ui/webui/extensions:headers",
     "//chrome/browser/upgrade_detector",
@@ -626,7 +623,6 @@ source_set("extensions") {
       "//chrome/browser/page_load_metrics",
       "//chrome/browser/ui/android/tab_model",
       "//components/content_settings/browser",
-      "//components/optimization_guide/core:features",
     ]
 
     if (enable_desktop_android_extensions) {
@@ -883,11 +879,9 @@ source_set("extensions") {
       "//chrome/browser/resource_coordinator:mojo_bindings",
       "//chrome/browser/ui/tabs:tab_enums",
       "//components/cbor",
-      "//components/optimization_guide/core:features",
       "//components/security_interstitials/content:security_interstitial_page",
       "//components/security_state/content",
       "//components/site_engagement/core/mojom:mojo_bindings",
-      "//components/supervised_user/core/common",
       "//components/webauthn/json",
 
       # TODO(crbug.com/346472679): Remove this dependency:

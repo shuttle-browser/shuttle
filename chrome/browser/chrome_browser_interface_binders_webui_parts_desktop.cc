@@ -15,8 +15,6 @@
 #include "chrome/browser/ui/webui/infobar_internals/infobar_internals.mojom.h"
 #include "chrome/browser/ui/webui/infobar_internals/infobar_internals_ui.h"
 #include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter_service.h"
-#include "chrome/browser/ui/webui/multistep_filter_internals/multistep_filter_internals.mojom.h"
-#include "chrome/browser/ui/webui/multistep_filter_internals/multistep_filter_internals_ui.h"
 #include "chrome/browser/ui/webui/omnibox_internals/logging/logs.mojom.h"
 #include "chrome/browser/ui/webui/omnibox_internals/omnibox_internals_ui.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
@@ -26,11 +24,9 @@
 #include "chrome/browser/ui/webui/webui_gallery/webui_gallery_ui.h"
 #include "chrome/common/chrome_features.h"
 #include "components/browser_apis/tab_drag/tab_drag_api.mojom.h"
-#include "components/multistep_filter/core/features.h"
 #include "components/omnibox/browser/searchbox.mojom.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/optimization_guide/core/optimization_guide_features.h"
-#include "components/page_image_service/mojom/page_image_service.mojom.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
 #include "components/signin/public/base/signin_buildflags.h"
 #include "content/public/browser/render_frame_host.h"
@@ -113,21 +109,12 @@ void PopulateChromeWebUIFrameBindersPartsDesktop(
       page_action_internals::mojom::PageHandlerFactory, PageActionInternalsUI>(
       map);
 
-  RegisterWebUIControllerInterfaceBinder<
-      page_image_service::mojom::PageImageServiceHandler, HistoryUI>(map);
-
   RegisterWebUIControllerInterfaceBinder<searchbox::mojom::PageHandlerFactory,
                                          OmniboxPopupUI>(map);
 
   // TODO(crbug.com/398926117): Create a generic mechanism for these interfaces.
   map->Add<metrics_reporter::mojom::PageMetricsHost>(
       &BindMetricsReporterService);
-
-  if (base::FeatureList::IsEnabled(multistep_filter::kMultistepFilter)) {
-    RegisterWebUIControllerInterfaceBinder<
-        multistep_filter_internals::mojom::PageHandlerFactory,
-        multistep_filter_internals::MultistepFilterInternalsUI>(map);
-  }
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   RegisterWebUIControllerInterfaceBinder<updater_ui::mojom::PageHandlerFactory,

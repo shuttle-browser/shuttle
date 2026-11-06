@@ -568,11 +568,6 @@ inline constexpr char kPackExtensionKey[] = "pack-extension-key";
 // crashpad (or breakpad) is initialized.
 inline constexpr char kPreCrashpadCrashTest[] = "pre-crashpad-crash-test";
 
-// Used to mock the response received from the Web Permission Prediction
-// Service. Used for testing.
-inline constexpr char kPredictionServiceMockLikelihood[] =
-    "prediction-service-mock-likelihood";
-
 // A directory where Chrome looks for json files describing default/preinstalled
 // web apps. This overrides any default directory to load preinstalled web apps
 // from.

@@ -52,7 +52,6 @@
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/supervised_user/core/common/pref_names.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/buildflags/buildflags.h"
 
@@ -627,10 +626,8 @@ bool ManagementUIHandler::managed() const {
 
 void ManagementUIHandler::RegisterPrefChange(
     PrefChangeRegistrar& pref_registrar) {
-  pref_registrar_.Add(
-      prefs::kSupervisedUserId,
-      base::BindRepeating(&ManagementUIHandler::UpdateManagedState,
-                          base::Unretained(this)));
+  // Shuttle: the supervised-user id pref is gone with supervised users; there
+  // is no pref to observe on desktop.
 }
 
 void ManagementUIHandler::UpdateManagedState() {

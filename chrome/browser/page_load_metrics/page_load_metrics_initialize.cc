@@ -43,7 +43,6 @@
 #include "chrome/browser/page_load_metrics/observers/multi_tab_loading_page_load_metrics_observer.h"
 #include "chrome/browser/page_load_metrics/observers/navigation_initiator_page_load_metrics_observer.h"
 #include "chrome/browser/page_load_metrics/observers/omnibox_suggestion_used_page_load_metrics_observer.h"
-#include "chrome/browser/page_load_metrics/observers/optimization_guide_page_load_metrics_observer.h"
 #include "chrome/browser/page_load_metrics/observers/page_anchors_metrics_observer.h"
 #include "chrome/browser/page_load_metrics/observers/protocol_page_load_metrics_observer.h"
 #include "chrome/browser/page_load_metrics/observers/scheme_page_load_metrics_observer.h"
@@ -218,8 +217,6 @@ void PageLoadMetricsEmbedder::RegisterObservers(
         std::make_unique<DocumentWritePageLoadMetricsObserver>());
     tracker->AddObserver(
         std::make_unique<MultiTabLoadingPageLoadMetricsObserver>());
-    tracker->AddObserver(
-        std::make_unique<OptimizationGuidePageLoadMetricsObserver>());
     tracker->AddObserver(
         std::make_unique<SignedExchangePageLoadMetricsObserver>());
     tracker->AddObserver(

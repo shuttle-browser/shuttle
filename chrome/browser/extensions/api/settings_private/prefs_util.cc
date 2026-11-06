@@ -39,8 +39,6 @@
 #include "components/language/core/browser/pref_names.h"
 #include "components/live_caption/pref_names.h"
 #include "components/omnibox/browser/omnibox_prefs.h"
-#include "components/optimization_guide/core/feature_registry/feature_registration.h"
-#include "components/optimization_guide/core/optimization_guide_prefs.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
 #include "components/permissions/pref_names.h"
 #include "components/prefs/pref_service.h"
@@ -50,7 +48,6 @@
 #include "components/search_engines/default_search_manager.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/spellcheck/browser/pref_names.h"
-#include "components/supervised_user/core/common/pref_names.h"
 #include "components/themes/pref_names.h"
 #include "components/unified_consent/pref_names.h"
 #include "components/universal_optout/prefs.h"
@@ -1067,10 +1064,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
   // Import data
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-  // Supervised Users.  This setting is queried in our Tast tests (b/241943380).
-  (*s_allowlist)[::prefs::kSupervisedUserExtensionsMayRequestPermissions] =
-      settings_api::PrefType::kBoolean;
-
 #if BUILDFLAG(IS_CHROMEOS)
   (*s_allowlist)[::ash::prefs::kDocumentScanAPITrustedExtensions] =
       settings_api::PrefType::kList;
@@ -1166,9 +1159,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
           settings_api::PrefType::kNumber;
   (*s_allowlist)[optimization_guide::prefs::
                      kProductSpecificationsEnterprisePolicyAllowed] =
-      settings_api::PrefType::kNumber;
-  (*s_allowlist)[optimization_guide::prefs::
-                     kAutofillPredictionImprovementsEnterprisePolicyAllowed] =
       settings_api::PrefType::kNumber;
   (*s_allowlist)[optimization_guide::prefs::kChromeSuggestionsSettings] =
       settings_api::PrefType::kNumber;

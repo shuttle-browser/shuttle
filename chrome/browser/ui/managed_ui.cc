@@ -19,8 +19,6 @@
 #include "chrome/grit/generated_resources.h"
 #include "components/policy/core/common/management/management_service.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/supervised_user/core/browser/supervised_user_preferences.h"
-#include "components/supervised_user/core/common/supervised_user_constants.h"
 #include "components/vector_icons/vector_icons.h"
 #include "extensions/buildflags/buildflags.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -48,13 +46,9 @@ enum ManagementStringType : size_t {
 };
 
 bool ShouldDisplayManagedByParentUi(Profile* profile) {
-#if BUILDFLAG(IS_CHROMEOS)
-  // Don't display the managed by parent UI on ChromeOS, because similar UI is
-  // displayed at the OS level.
+  // Shuttle: supervised users / Family Link are removed; no profile is
+  // managed by a parent.
   return false;
-#else
-  return profile && profile->IsChild();
-#endif  // BUILDFLAG(IS_CHROMEOS)
 }
 
 ManagementStringType GetManagementStringType(Profile* profile) {
@@ -127,10 +121,6 @@ bool ShouldDisplayManagedUi(Profile* profile) {
 GURL GetManagedUiUrl(Profile* profile) {
   if (enterprise_util::IsBrowserManaged(profile)) {
     return GURL(chrome::kChromeUIManagementURL);
-  }
-
-  if (ShouldDisplayManagedByParentUi(profile)) {
-    return GURL(supervised_user::kManagedByParentUiMoreInfoUrl);
   }
 
   return GURL();
@@ -251,9 +241,6 @@ std::u16string GetManagedUiWebUILabel(Profile* profile) {
                                         chrome::kChromeUIManagementURL16,
                                         base::UTF8ToUTF16(*account_manager));
     case SUPERVISED:
-      return l10n_util::GetStringFUTF16(
-          IDS_MANAGED_BY_PARENT_WITH_HYPERLINK,
-          base::UTF8ToUTF16(supervised_user::kManagedByParentUiMoreInfoUrl));
     case NOT_MANAGED:
       return std::u16string();
   }

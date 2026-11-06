@@ -8,7 +8,6 @@
 #include "chrome/browser/chrome_browser_interface_binders.h"
 #include "chrome/browser/chrome_browser_interface_binders_webui_parts.h"
 #include "chrome/browser/media/media_engagement_score_details.mojom.h"
-#include "chrome/browser/optimization_guide/optimization_guide_internals_ui.h"
 #include "chrome/browser/ui/webui/bluetooth_internals/bluetooth_internals.mojom.h"
 #include "chrome/browser/ui/webui/bluetooth_internals/bluetooth_internals_ui.h"
 #include "chrome/browser/ui/webui/chrome_urls/chrome_urls_ui.h"
@@ -22,7 +21,6 @@
 #include "chrome/browser/ui/webui/omnibox_internals/omnibox_internals.mojom.h"
 #include "chrome/browser/ui/webui/omnibox_internals/omnibox_internals_ui.h"
 #include "chrome/browser/ui/webui/policy/policy_ui.h"
-#include "chrome/browser/ui/webui/segmentation_internals/segmentation_internals_ui.h"
 #include "chrome/browser/ui/webui/subresource_filter/subresource_filter_internals_ui.h"
 #include "chrome/browser/ui/webui/suggest_internals/suggest_internals.mojom.h"
 #include "chrome/browser/ui/webui/suggest_internals/suggest_internals_ui.h"
@@ -148,14 +146,6 @@ void PopulateChromeWebUIFrameBindersPartsAllPlatforms(
 
   RegisterWebUIControllerInterfaceBinder<::mojom::UsbInternalsPageHandler,
                                          UsbInternalsUI>(map);
-
-  RegisterWebUIControllerInterfaceBinder<
-      optimization_guide_internals::mojom::PageHandlerFactory,
-      OptimizationGuideInternalsUI>(map);
-
-  RegisterWebUIControllerInterfaceBinder<
-      segmentation_internals::mojom::PageHandlerFactory,
-      SegmentationInternalsUI>(map);
 
   RegisterWebUIControllerInterfaceBinder<chrome_urls::mojom::PageHandlerFactory,
                                          chrome_urls::ChromeUrlsUI>(map);

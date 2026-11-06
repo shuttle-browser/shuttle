@@ -27,7 +27,7 @@
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "components/custom_handlers/protocol_handler.h"
 #include "components/permissions/permission_request_manager.h"
-#include "components/permissions/prediction_service/permission_ui_selector.h"
+#include "components/permissions/permission_ui_selector.h"
 #include "components/permissions/request_type.h"
 #include "net/base/schemeful_site.h"
 #include "services/device/public/cpp/geolocation/buildflags.h"

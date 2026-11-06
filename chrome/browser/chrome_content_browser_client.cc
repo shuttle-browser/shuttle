@@ -99,7 +99,6 @@
 #include "chrome/browser/hid/chrome_hid_delegate.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/interstitials/enterprise_util.h"
-#include "chrome/browser/language_detection/language_detection_model_service_factory.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/loader/keep_alive_request_tracker.h"
 #include "chrome/browser/media/audio_service_util.h"
@@ -122,8 +121,6 @@
 #include "chrome/browser/net/profile_network_context_service.h"
 #include "chrome/browser/net/profile_network_context_service_factory.h"
 #include "chrome/browser/net/system_network_context_manager.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/performance_manager/public/chrome_browser_main_extra_parts_performance_manager.h"
 #include "chrome/browser/performance_manager/public/chrome_content_browser_client_performance_manager_part.h"
 #include "chrome/browser/plugins/plugin_utils.h"
@@ -254,8 +251,6 @@
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
 #include "components/language/core/browser/pref_names.h"
-#include "components/language_detection/content/browser/content_language_detection_driver.h"
-#include "components/language_detection/content/common/language_detection.mojom.h"
 #include "components/lens/buildflags.h"
 #include "components/live_caption/caption_util.h"
 #include "components/media_device_salt/media_device_salt_service.h"
@@ -300,7 +295,6 @@
 #include "components/site_isolation/pref_names.h"
 #include "components/site_isolation/preloaded_isolated_origins.h"
 #include "components/site_isolation/site_isolation_policy.h"
-#include "components/supervised_user/core/common/features.h"
 #include "components/user_prefs/user_prefs.h"
 #include "components/variations/variations_associated_data.h"
 #include "components/variations/variations_switches.h"
@@ -8284,34 +8278,6 @@ void ChromeContentBrowserClient::BindAIManager(
   // The on-device AI APIs are not supported in this browser. Dropping the
   // receiver (instead of falling back to the content layer's echo
   // implementation) makes the APIs unavailable to pages.
-}
-
-namespace {
-
-const char kContentLanguageDetectionDriverUserDataKey[] =
-    "ContentLanguageDetectionDriverUserDataKey";
-
-}  // namespace
-
-void ChromeContentBrowserClient::BindLanguageDetectionDriver(
-    content::BrowserContext* browser_context,
-    base::SupportsUserData* context_user_data,
-    mojo::PendingReceiver<
-        language_detection::mojom::ContentLanguageDetectionDriver> receiver) {
-  if (!context_user_data->GetUserData(
-          kContentLanguageDetectionDriverUserDataKey)) {
-    context_user_data->SetUserData(
-        kContentLanguageDetectionDriverUserDataKey,
-        std::make_unique<language_detection::ContentLanguageDetectionDriver>(
-            LanguageDetectionModelServiceFactory::GetForProfile(
-                Profile::FromBrowserContext(browser_context))));
-  }
-
-  auto* language_detection_driver =
-      static_cast<language_detection::ContentLanguageDetectionDriver*>(
-          context_user_data->GetUserData(
-              kContentLanguageDetectionDriverUserDataKey));
-  language_detection_driver->AddReceiver(std::move(receiver));
 }
 
 void ChromeContentBrowserClient::SetSamplingProfiler(

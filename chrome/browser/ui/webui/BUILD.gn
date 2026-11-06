@@ -54,7 +54,6 @@ source_set("configs") {
     "//chrome/browser/ui/webui/device_log",
     "//chrome/browser/ui/webui/download_internals",
     "//chrome/browser/ui/webui/engagement",
-    "//chrome/browser/ui/webui/family_link_user_internals",
     "//chrome/browser/ui/webui/flags",
     "//chrome/browser/ui/webui/internal_debug_pages_disabled",
     "//chrome/browser/ui/webui/interstitials",
@@ -68,7 +67,6 @@ source_set("configs") {
     "//chrome/browser/ui/webui/policy",
     "//chrome/browser/ui/webui/predictors",
     "//chrome/browser/ui/webui/regional_capabilities_internals",
-    "//chrome/browser/ui/webui/segmentation_internals",
     "//chrome/browser/ui/webui/subresource_filter",
     "//chrome/browser/ui/webui/suggest_internals",
     "//chrome/browser/ui/webui/usb_internals",
@@ -92,7 +90,6 @@ source_set("configs") {
       "//chrome/browser/ui/webui/color_pipeline_internals",
       "//chrome/browser/ui/webui/infobar_internals",
       "//chrome/browser/ui/webui/inspect",
-      "//chrome/browser/ui/webui/multistep_filter_internals",
       "//chrome/browser/ui/webui/omnibox_popup",
       "//chrome/browser/ui/webui/page_action_internals",
       "//chrome/browser/ui/webui/webnn_internals",
@@ -460,7 +457,6 @@ source_set("chrome_web_ui_controller_factory") {
   deps = [
     "//chrome/browser:buildflags",
     "//chrome/browser:flags",
-    "//chrome/browser/optimization_guide",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/webui/about",
     "//chrome/browser/ui/webui/components",
@@ -564,7 +560,6 @@ if (enable_extensions_core) {
       "//chrome/browser/ui:managed_ui",
       "//chrome/common",
       "//chrome/common:constants",
-      "//components/supervised_user/core/common",
     ]
   }
 }

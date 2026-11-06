@@ -19,7 +19,7 @@
 #include "components/permissions/permission_prompt.h"
 #include "components/permissions/permission_uma_constants.h"
 #include "components/permissions/permission_util.h"
-#include "components/permissions/prediction_service/permission_ui_selector.h"
+#include "components/permissions/permission_ui_selector.h"
 #include "components/permissions/request_type.h"
 #include "components/permissions/resolvers/permission_prompt_options.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"

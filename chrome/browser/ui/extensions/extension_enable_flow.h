@@ -16,7 +16,6 @@
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_registry_observer.h"
 #include "extensions/browser/load_error_reporter.h"
-#include "extensions/browser/supervised_user_extensions_delegate.h"
 #include "extensions/common/extension_id.h"
 
 class ExtensionEnableFlowDelegate;
@@ -79,10 +78,6 @@ class ExtensionEnableFlow : public extensions::LoadErrorReporter::Observer,
 
   // Creates an ExtensionInstallPrompt in |prompt_| with the given prompt data.
   void CreatePrompt(std::unique_ptr<extensions::InstallPromptData> prompt);
-
-  // Called when the extension approval flow is complete.
-  void OnExtensionApprovalDone(
-      extensions::SupervisedExtensionApprovalResult result);
 
   // Starts/stops observing extension load notifications.
   void StartObserving();

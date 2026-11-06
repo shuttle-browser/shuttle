@@ -15,7 +15,6 @@
 #include "components/omnibox/browser/autocomplete_provider.h"
 #include "components/omnibox/browser/autocomplete_provider_client.h"
 #include "components/omnibox/browser/on_device_head_model.h"
-#include "components/omnibox/browser/on_device_tail_model_executor.h"
 
 class AutocompleteProviderListener;
 
@@ -66,11 +65,6 @@ class OnDeviceHeadProvider : public AutocompleteProvider {
   // Helper function to be called when searches to the head model is done.
   void HeadModelSearchDone(std::unique_ptr<OnDeviceHeadProviderParams> params);
 
-  // Helper function to be called when searches to the tail model is done.
-  void TailModelSearchDone(
-      std::unique_ptr<OnDeviceHeadProviderParams> params,
-      std::vector<OnDeviceTailModelExecutor::Prediction> predictions);
-
   // Helper functions to read head model filename from the static
   // OnDeviceModelUpdateListener instance.
   std::string GetOnDeviceHeadModelFilename() const;
@@ -82,11 +76,6 @@ class OnDeviceHeadProvider : public AutocompleteProvider {
       const std::string& model_filename,
       const size_t provider_max_matches,
       std::unique_ptr<OnDeviceHeadProviderParams> params);
-
-  // Determines whether should fetch tail suggestions.
-  static bool ShouldFetchTailSuggestions(
-      const OnDeviceHeadProviderParams& params,
-      const std::string& locale);
 
   raw_ptr<AutocompleteProviderClient> client_;
 

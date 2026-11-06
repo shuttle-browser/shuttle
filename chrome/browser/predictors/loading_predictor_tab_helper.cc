@@ -14,8 +14,6 @@
 #include "base/metrics/histogram_macros.h"
 #include "base/timer/elapsed_timer.h"
 #include "base/trace_event/trace_event.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/predictors/lcp_critical_path_predictor/lcp_critical_path_predictor_util.h"
 #include "chrome/browser/predictors/loading_predictor.h"
 #include "chrome/browser/predictors/loading_predictor_factory.h"
@@ -27,8 +25,6 @@
 #include "chrome/common/chrome_features.h"
 #include "components/google/core/common/google_util.h"
 #include "components/no_state_prefetch/browser/no_state_prefetch_manager.h"
-#include "components/optimization_guide/core/hints/optimization_guide_decider.h"
-#include "components/optimization_guide/proto/hints.pb.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/global_routing_id.h"
@@ -48,9 +44,6 @@ using content::BrowserThread;
 namespace predictors {
 
 namespace {
-
-constexpr char kLoadingPredictorOptimizationHintsReceiveStatusHistogram[] =
-    "LoadingPredictor.OptimizationHintsReceiveStatus";
 
 // TODO(537801204): It's possible that the navigation initiator's frame is gone
 // by now, meaning that its IDs cannot be fetched and its connection allowlist
@@ -133,58 +126,6 @@ bool IsHandledNavigation(content::NavigationHandle* navigation_handle) {
          !navigation_handle->IsSameDocument() &&
          !navigation_handle->IsPageActivation() &&
          navigation_handle->GetURL().SchemeIsHTTPOrHTTPS();
-}
-
-network::mojom::RequestDestination GetDestination(
-    optimization_guide::proto::ResourceType type) {
-  switch (type) {
-    case optimization_guide::proto::RESOURCE_TYPE_UNKNOWN:
-      return network::mojom::RequestDestination::kEmpty;
-    case optimization_guide::proto::RESOURCE_TYPE_CSS:
-      return network::mojom::RequestDestination::kStyle;
-    case optimization_guide::proto::RESOURCE_TYPE_SCRIPT:
-      return network::mojom::RequestDestination::kScript;
-  }
-}
-
-bool ShouldPrefetchDestination(network::mojom::RequestDestination destination) {
-  switch (features::kLoadingPredictorPrefetchSubresourceType.Get()) {
-    case features::PrefetchSubresourceType::kAll:
-      return true;
-    case features::PrefetchSubresourceType::kCss:
-      return destination == network::mojom::RequestDestination::kStyle;
-    case features::PrefetchSubresourceType::kJsAndCss:
-      return destination == network::mojom::RequestDestination::kScript ||
-             destination == network::mojom::RequestDestination::kStyle;
-  }
-  NOTREACHED();
-}
-
-// Util class for recording the status for when we received optimization hints
-// for navigations that we requested them for.
-class ScopedOptimizationHintsReceiveStatusRecorder {
- public:
-  ScopedOptimizationHintsReceiveStatusRecorder()
-      : status_(OptimizationHintsReceiveStatus::kUnknown) {}
-  ~ScopedOptimizationHintsReceiveStatusRecorder() {
-    DCHECK_NE(status_, OptimizationHintsReceiveStatus::kUnknown);
-    UMA_HISTOGRAM_ENUMERATION(
-        kLoadingPredictorOptimizationHintsReceiveStatusHistogram, status_);
-  }
-
-  void set_status(OptimizationHintsReceiveStatus status) { status_ = status; }
-
- private:
-  OptimizationHintsReceiveStatus status_;
-};
-
-bool ShouldConsultOptimizationGuide(const GURL& current_main_frame_url,
-                                    content::WebContents* web_contents) {
-  GURL previous_main_frame_url = web_contents->GetLastCommittedURL();
-
-  // Consult the Optimization Guide on all cross-origin page loads.
-  return url::Origin::Create(current_main_frame_url) !=
-         url::Origin::Create(previous_main_frame_url);
 }
 
 // These values are persisted to logs. Entries should not be renumbered and
@@ -343,10 +284,8 @@ LoadingPredictorTabHelper::DocumentPageDataHolder::DocumentPageDataHolder(
 LoadingPredictorTabHelper::DocumentPageDataHolder::~DocumentPageDataHolder() {
   if (page_data_->predictor_) {
     page_data_->predictor_->loading_data_collector()->RecordPageDestroyed(
-        page_data_->navigation_id_,
-        page_data_->last_optimization_guide_prediction_);
+        page_data_->navigation_id_);
   }
-  page_data_->last_optimization_guide_prediction_ = std::nullopt;
 }
 
 LoadingPredictorTabHelper::NavigationPageDataHolder::NavigationPageDataHolder(
@@ -368,15 +307,6 @@ LoadingPredictorTabHelper::LoadingPredictorTabHelper(
   auto* predictor = LoadingPredictorFactory::GetForProfile(profile);
   if (predictor)
     predictor_ = predictor->GetWeakPtr();
-  if (base::FeatureList::IsEnabled(
-          features::kLoadingPredictorUseOptimizationGuide)) {
-    optimization_guide_decider_ =
-        OptimizationGuideKeyedServiceFactory::GetForProfile(profile);
-    if (optimization_guide_decider_) {
-      optimization_guide_decider_->RegisterOptimizationTypes(
-          {optimization_guide::proto::LOADING_PREDICTOR});
-    }
-  }
 }
 
 LoadingPredictorTabHelper::~LoadingPredictorTabHelper() = default;
@@ -423,9 +353,6 @@ void LoadingPredictorTabHelper::DidStartNavigation(
     return;
   }
 
-  const bool should_consult_optimization_guide = ShouldConsultOptimizationGuide(
-      navigation_handle->GetURL(), web_contents());
-
   PageData& page_data = PageData::CreateForNavigationHandle(*navigation_handle);
   page_data.predictor_ = predictor_;
 
@@ -449,13 +376,12 @@ void LoadingPredictorTabHelper::DidStartNavigation(
             weak_ptr_factory_.GetWeakPtr(), base::WrapRefCounted(&page_data),
             navigation_handle->GetInitiatorOrigin(),
             navigation_handle->GetURL(), initiator_network_restrictions_id,
-            initiator_frame_id, should_consult_optimization_guide));
+            initiator_frame_id));
   } else {
     PrepareForPageLoad(base::WrapRefCounted(&page_data),
                        navigation_handle->GetInitiatorOrigin(),
                        navigation_handle->GetURL(),
-                       initiator_network_restrictions_id, initiator_frame_id,
-                       should_consult_optimization_guide);
+                       initiator_network_restrictions_id, initiator_frame_id);
   }
 }
 
@@ -464,8 +390,7 @@ void LoadingPredictorTabHelper::PrepareForPageLoad(
     const std::optional<url::Origin> initiator_origin,
     const GURL main_frame_url,
     base::UnguessableToken initiator_network_restrictions_id,
-    content::GlobalRenderFrameHostId initiator_frame_id,
-    bool should_consult_optimization_guide) {
+    content::GlobalRenderFrameHostId initiator_frame_id) {
   TRACE_EVENT("navigation", "LoadingPredictorTabHelper::PrepareForPageLoad.");
   is_prepare_for_pageload_called_for_testing_ = true;
   if (!predictor_ || predictor_->WasShutdown()) {
@@ -476,29 +401,6 @@ void LoadingPredictorTabHelper::PrepareForPageLoad(
           initiator_origin, main_frame_url, HintOrigin::NAVIGATION,
           initiator_network_restrictions_id, /*preconnectable=*/false,
           /*preconnect_prediction=*/std::nullopt, initiator_frame_id);
-
-  if ((page_data->has_local_preconnect_predictions_for_current_navigation_ &&
-       !features::ShouldAlwaysRetrieveOptimizationGuidePredictions()) ||
-      !optimization_guide_decider_ || !should_consult_optimization_guide) {
-    return;
-  }
-
-  TRACE_EVENT("navigation",
-              "LoadingPredictorTabHelper::PrepareForPageLoad."
-              "OptimizationGuidePrediction");
-  page_data->last_optimization_guide_prediction_ =
-      OptimizationGuidePrediction();
-  page_data->last_optimization_guide_prediction_->decision =
-      optimization_guide::OptimizationGuideDecision::kUnknown;
-
-  bool should_add_preconnects =
-      !page_data->has_local_preconnect_predictions_for_current_navigation_;
-  optimization_guide_decider_->CanApplyOptimization(
-      main_frame_url, optimization_guide::proto::LOADING_PREDICTOR,
-      base::BindOnce(&LoadingPredictorTabHelper::OnOptimizationGuideDecision,
-                     weak_ptr_factory_.GetWeakPtr(), std::move(page_data),
-                     initiator_origin, main_frame_url, should_add_preconnects,
-                     initiator_network_restrictions_id, initiator_frame_id));
 }
 
 void LoadingPredictorTabHelper::DidRedirectNavigation(
@@ -511,46 +413,6 @@ void LoadingPredictorTabHelper::DidRedirectNavigation(
 
   MaybePrewarmMainResourceAndSubresourcesOnNavigation(*navigation_handle,
                                                       *predictor_);
-
-  if (!IsHandledNavigation(navigation_handle)) {
-    return;
-  }
-
-  auto* page_data = PageData::GetForNavigationHandle(*navigation_handle);
-  // PageData may not be created in DidStartNavigation if IsHandledNavigation()
-  // changes after the start of the navigation.
-  if (!page_data)
-    return;
-
-  const auto& redirect_chain = navigation_handle->GetRedirectChain();
-  auto redirect_size = redirect_chain.size();
-  CHECK_GE(redirect_size, 2U);
-  bool is_same_origin_redirect =
-      url::Origin::Create(redirect_chain[redirect_size - 2]) ==
-      url::Origin::Create(navigation_handle->GetURL());
-
-  // If we are not trying to get an optimization guide prediction for this page
-  // load, just return.
-  if (!optimization_guide_decider_ ||
-      !page_data->last_optimization_guide_prediction_)
-    return;
-
-  base::UnguessableToken initiator_network_restrictions_id;
-  content::GlobalRenderFrameHostId initiator_frame_id;
-  GetInitiatorIds(navigation_handle, initiator_network_restrictions_id,
-                  initiator_frame_id);
-
-  // Get an updated prediction for the navigation.
-  optimization_guide_decider_->CanApplyOptimization(
-      navigation_handle->GetURL(), optimization_guide::proto::LOADING_PREDICTOR,
-      base::BindOnce(
-          &LoadingPredictorTabHelper::OnOptimizationGuideDecision,
-          weak_ptr_factory_.GetWeakPtr(), base::WrapRefCounted(page_data),
-          navigation_handle->GetInitiatorOrigin(), navigation_handle->GetURL(),
-          !(page_data
-                ->has_local_preconnect_predictions_for_current_navigation_ &&
-            is_same_origin_redirect),
-          initiator_network_restrictions_id, initiator_frame_id));
 }
 
 void LoadingPredictorTabHelper::DidFinishNavigation(
@@ -641,123 +503,6 @@ void LoadingPredictorTabHelper::DocumentOnLoadCompletedInPrimaryMainFrame() {
 
   predictor_->loading_data_collector()->RecordMainFrameLoadComplete(
       page_data->navigation_id_);
-}
-
-void LoadingPredictorTabHelper::OnOptimizationGuideDecision(
-    scoped_refptr<PageData> page_data,
-    const std::optional<url::Origin>& initiator_origin,
-    const GURL& main_frame_url,
-    bool should_add_preconnects_to_prediction,
-    base::UnguessableToken network_restrictions_id,
-    content::GlobalRenderFrameHostId initiator_frame_id,
-    optimization_guide::OptimizationGuideDecision decision,
-    const optimization_guide::OptimizationMetadata& metadata) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-
-  if (!predictor_)
-    return;
-
-  ScopedOptimizationHintsReceiveStatusRecorder recorder;
-
-  if (!page_data->has_committed_) {
-    if (!page_data->navigation_page_data_holder_ ||
-        page_data->navigation_page_data_holder_->navigation_handle_->GetURL() !=
-            main_frame_url) {
-      // The current navigation has either redirected or a new one has started,
-      // so return.
-      recorder.set_status(
-          OptimizationHintsReceiveStatus::kAfterRedirectOrNextNavigationStart);
-      return;
-    }
-  }
-  if (page_data->has_committed_) {
-    // There is not a pending navigation.
-    recorder.set_status(OptimizationHintsReceiveStatus::kAfterNavigationFinish);
-
-    // This hint is no longer relevant, so return.
-    if (!page_data->document_page_data_holder_)
-      return;
-
-    // If we get here, we have not navigated away from the navigation we
-    // received hints for. Proceed to get the preconnect prediction so we can
-    // see how the predicted resources match what was actually fetched for
-    // counterfactual logging purposes.
-  } else {
-    recorder.set_status(
-        OptimizationHintsReceiveStatus::kBeforeNavigationFinish);
-  }
-
-  if (!page_data->last_optimization_guide_prediction_) {
-    // Data for the navigation has already been recorded, do not proceed any
-    // further, even for counterfactual logging.
-    return;
-  }
-
-  page_data->last_optimization_guide_prediction_->decision = decision;
-  page_data->last_optimization_guide_prediction_
-      ->optimization_guide_prediction_arrived = base::TimeTicks::Now();
-
-  if (decision != optimization_guide::OptimizationGuideDecision::kTrue)
-    return;
-
-  if (!metadata.loading_predictor_metadata()) {
-    // Metadata is not applicable, so just log an unknown decision.
-    page_data->last_optimization_guide_prediction_->decision =
-        optimization_guide::OptimizationGuideDecision::kUnknown;
-    return;
-  }
-
-  PreconnectPrediction prediction;
-  url::Origin main_frame_origin = url::Origin::Create(main_frame_url);
-  net::SchemefulSite main_frame_site = net::SchemefulSite(main_frame_url);
-  auto network_anonymization_key =
-      net::NetworkAnonymizationKey::CreateSameSite(std::move(main_frame_site));
-
-  std::set<url::Origin> predicted_origins;
-  std::vector<GURL> predicted_subresources;
-  const auto lp_metadata = metadata.loading_predictor_metadata();
-  for (const auto& subresource : lp_metadata->subresources()) {
-    GURL subresource_url(subresource.url());
-    if (!subresource_url.is_valid())
-      continue;
-    predicted_subresources.push_back(subresource_url);
-    if (!subresource.preconnect_only() &&
-        base::FeatureList::IsEnabled(features::kLoadingPredictorPrefetch)) {
-      network::mojom::RequestDestination destination =
-          GetDestination(subresource.resource_type());
-      if (ShouldPrefetchDestination(destination)) {
-        // TODO(falken): Detect duplicates.
-        prediction.prefetch_requests.emplace_back(subresource_url, destination);
-      }
-    } else if (should_add_preconnects_to_prediction) {
-      url::Origin subresource_origin = url::Origin::Create(subresource_url);
-      if (subresource_origin == main_frame_origin) {
-        // We are already connecting to the main frame origin by default, so
-        // don't include this in the prediction.
-        continue;
-      }
-      if (predicted_origins.find(subresource_origin) != predicted_origins.end())
-        continue;
-      predicted_origins.insert(subresource_origin);
-      prediction.requests.emplace_back(subresource_origin, 1,
-                                       network_anonymization_key);
-    }
-  }
-
-  page_data->last_optimization_guide_prediction_->preconnect_prediction =
-      prediction;
-  page_data->last_optimization_guide_prediction_->predicted_subresources =
-      predicted_subresources;
-
-  // Only prepare page load if the navigation is still pending and we want to
-  // use the predictions to pre* subresources.
-  if (!page_data->document_page_data_holder_ &&
-      features::ShouldUseOptimizationGuidePredictions()) {
-    predictor_->PrepareForPageLoad(
-        initiator_origin, main_frame_url, HintOrigin::OPTIMIZATION_GUIDE,
-        network_restrictions_id,
-        /*preconnectable=*/false, prediction, initiator_frame_id);
-  }
 }
 
 NAVIGATION_HANDLE_USER_DATA_KEY_IMPL(

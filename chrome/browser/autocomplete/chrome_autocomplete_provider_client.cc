@@ -18,10 +18,8 @@
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/autocomplete/autocomplete_classifier_factory.h"
-#include "chrome/browser/autocomplete/autocomplete_scoring_model_service_factory.h"
 #include "chrome/browser/autocomplete/document_suggestions_service_factory.h"
 #include "chrome/browser/autocomplete/in_memory_url_index_factory.h"
-#include "chrome/browser/autocomplete/on_device_tail_model_service_factory.h"
 #include "chrome/browser/autocomplete/provider_state_service_factory.h"
 #include "chrome/browser/autocomplete/remote_suggestions_service_factory.h"
 #include "chrome/browser/autocomplete/shortcuts_backend_factory.h"
@@ -55,15 +53,12 @@
 #include "components/omnibox/browser/actions/omnibox_pedal_provider.h"
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/omnibox/browser/autocomplete_match.h"
-#include "components/omnibox/browser/autocomplete_scoring_model_service.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
 #include "components/omnibox/browser/omnibox_triggered_feature_service.h"
-#include "components/omnibox/browser/on_device_tail_model_service.h"
 #include "components/omnibox/browser/shortcuts_backend.h"
 #include "components/omnibox/browser/tab_matcher.h"
 #include "components/omnibox/common/omnibox_feature_configs.h"
 #include "components/omnibox/common/omnibox_features.h"
-#include "components/optimization_guide/core/feature_registry/feature_registration.h"
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
@@ -371,16 +366,6 @@ ChromeAutocompleteProviderClient::GetOmniboxTriggeredFeatureService() const {
 signin::IdentityManager* ChromeAutocompleteProviderClient::GetIdentityManager()
     const {
   return IdentityManagerFactory::GetForProfile(profile_);
-}
-
-AutocompleteScoringModelService*
-ChromeAutocompleteProviderClient::GetAutocompleteScoringModelService() const {
-  return AutocompleteScoringModelServiceFactory::GetForProfile(profile_);
-}
-
-OnDeviceTailModelService*
-ChromeAutocompleteProviderClient::GetOnDeviceTailModelService() const {
-  return OnDeviceTailModelServiceFactory::GetForProfile(profile_);
 }
 
 ProviderStateService*

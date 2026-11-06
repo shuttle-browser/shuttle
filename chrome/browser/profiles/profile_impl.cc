@@ -41,8 +41,6 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/after_startup_task_utils.h"
-#include "chrome/browser/autocomplete/autocomplete_scoring_model_service_factory.h"
-#include "chrome/browser/autocomplete/on_device_tail_model_service_factory.h"
 #include "chrome/browser/background/background_contents_service_factory.h"
 #include "chrome/browser/background_fetch/background_fetch_delegate_factory.h"
 #include "chrome/browser/background_fetch/background_fetch_delegate_impl.h"
@@ -68,7 +66,6 @@
 #include "chrome/browser/notifications/platform_notification_service_impl.h"
 #include "chrome/browser/origin_trials/origin_trials_factory.h"
 #include "chrome/browser/permissions/permission_manager_factory.h"
-#include "chrome/browser/permissions/prediction_service/prediction_model_handler_provider_factory.h"
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
 #include "chrome/browser/policy/profile_policy_connector.h"
 #include "chrome/browser/policy/profile_policy_connector_builder.h"
@@ -152,8 +149,6 @@
 #include "components/spellcheck/spellcheck_buildflags.h"
 #include "components/subscription_eligibility/subscription_eligibility_prefs.h"
 #include "components/subscription_eligibility/subscription_eligibility_service.h"
-#include "components/supervised_user/core/common/pref_names.h"
-#include "components/supervised_user/core/common/supervised_user_constants.h"
 #include "components/url_formatter/url_fixer.h"
 #include "components/user_prefs/user_prefs.h"
 #include "components/version_info/channel.h"
@@ -676,8 +671,7 @@ void ProfileImpl::LoadPrefsForNormalStartup(bool async_prefs) {
       profile_policy_connector_->policy_service(),
       g_browser_process->browser_policy_connector(),
       std::move(pref_validation_delegate), GetIOTaskRunner(), key_.get(), path_,
-      async_prefs, g_browser_process->os_crypt_async(),
-      g_browser_process->device_parental_controls());
+      async_prefs, g_browser_process->os_crypt_async());
   key_->SetPrefs(prefs_.get());
 }
 
@@ -695,11 +689,6 @@ void ProfileImpl::DoFinalInit(CreateMode create_mode) {
     prefs->SetTime(prefs::kProfileCreationTime, path_creation_time_);
 
   pref_change_registrar_.Init(prefs);
-  pref_change_registrar_.Add(
-      prefs::kSupervisedUserId,
-      base::BindRepeating(&ProfileImpl::UpdateSupervisedUserIdInStorage,
-                          base::Unretained(this)));
-
   // Changes in the profile avatar.
   pref_change_registrar_.Add(
       prefs::kProfileAvatarIndex,
@@ -743,7 +732,6 @@ void ProfileImpl::DoFinalInit(CreateMode create_mode) {
   CreateProfileDirectory(io_task_runner_.get(), base_cache_path, false);
 
   // Initialize components that depend on the current value.
-  UpdateSupervisedUserIdInStorage();
   UpdateIsEphemeralInStorage();
   UpdateAiSubscriptionTierInStorage();
 
@@ -966,8 +954,9 @@ const Profile* ProfileImpl::GetOriginalProfile() const {
 }
 
 bool ProfileImpl::IsChild() const {
-  return GetPrefs()->GetString(prefs::kSupervisedUserId) ==
-         supervised_user::kChildAccountSUID;
+  // Shuttle: supervised users / Family Link are removed; no profile is a
+  // child profile.
+  return false;
 }
 
 ExtensionSpecialStoragePolicy* ProfileImpl::GetExtensionSpecialStoragePolicy() {
@@ -1521,14 +1510,6 @@ GURL ProfileImpl::GetHomePage() {
   if (!home_page.is_valid())
     return chrome::ChromeUINewTabURLAsGURL();
   return home_page;
-}
-
-void ProfileImpl::UpdateSupervisedUserIdInStorage() {
-  ProfileManager* profile_manager = g_browser_process->profile_manager();
-  ProfileAttributesEntry* entry = profile_manager->GetProfileAttributesStorage()
-                                      .GetProfileAttributesWithPath(GetPath());
-  if (entry)
-    entry->SetSupervisedUserId(GetPrefs()->GetString(prefs::kSupervisedUserId));
 }
 
 void ProfileImpl::UpdateNameInStorage() {

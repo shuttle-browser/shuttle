@@ -23,12 +23,6 @@ namespace content {
 class NavigationHandle;
 }  // namespace content
 
-namespace optimization_guide {
-class OptimizationGuideDecider;
-enum class OptimizationGuideDecision;
-class OptimizationMetadata;
-}  // namespace optimization_guide
-
 namespace tabs {
 class TabInterface;
 }  // namespace tabs
@@ -117,10 +111,6 @@ class LoadingPredictorTabHelper : public content::WebContentsObserver {
 
     bool has_local_preconnect_predictions_for_current_navigation_ = false;
 
-    // The optimization guide prediction for the current navigation.
-    std::optional<OptimizationGuidePrediction>
-        last_optimization_guide_prediction_;
-
     // Stores weak ptrs to the document and navigation page data holders, in
     // order to determine the current state of the navigation.
     base::WeakPtr<DocumentPageDataHolder> document_page_data_holder_;
@@ -162,18 +152,6 @@ class LoadingPredictorTabHelper : public content::WebContentsObserver {
     base::WeakPtrFactory<NavigationPageDataHolder> weak_factory_{this};
   };
 
-  // Callback invoked when |optimization_guide_decider_| has the information
-  // required to decide if it has remote predictions for the page load.
-  void OnOptimizationGuideDecision(
-      scoped_refptr<PageData> page_helper,
-      const std::optional<url::Origin>& initiator_origin,
-      const GURL& main_frame_url,
-      bool should_add_preconnects_to_prediction,
-      base::UnguessableToken network_restrictions_id,
-      content::GlobalRenderFrameHostId initiator_frame_id,
-      optimization_guide::OptimizationGuideDecision decision,
-      const optimization_guide::OptimizationMetadata& metadata);
-
   // Calls LoadingPredictor::PrepareForPageLoad doing prefetch and/or
   // preconnect. This is called asynchronously after main resource fetching if
   // kLCPPPrefetchSubresourceAsync is enabled.
@@ -181,17 +159,12 @@ class LoadingPredictorTabHelper : public content::WebContentsObserver {
                           const std::optional<url::Origin> initiator_origin,
                           const GURL main_frame_url,
                           base::UnguessableToken network_restrictions_id,
-                          content::GlobalRenderFrameHostId initiator_frame_id,
-                          bool should_consult_optimization_guide);
+                          content::GlobalRenderFrameHostId initiator_frame_id);
 
   bool is_prepare_for_pageload_called_for_testing_ = false;
 
   // Owned by profile.
   base::WeakPtr<LoadingPredictor> predictor_;
-
-  // The optimization guide decider to consult for remote predictions.
-  raw_ptr<optimization_guide::OptimizationGuideDecider>
-      optimization_guide_decider_ = nullptr;
 
   ui::ScopedUnownedUserData<LoadingPredictorTabHelper>
       scoped_unowned_user_data_;

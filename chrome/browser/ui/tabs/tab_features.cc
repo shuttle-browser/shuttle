@@ -26,10 +26,6 @@
 #include "chrome/browser/lookalikes/safety_tip_web_contents_observer.h"
 #include "chrome/browser/media/media_engagement_service.h"
 #include "chrome/browser/net/net_error_tab_helper.h"
-#include "chrome/browser/optimization_guide/optimization_guide_web_contents_observer.h"
-#include "chrome/browser/page_content_annotations/multi_source_page_context_fetcher.h"
-#include "chrome/browser/page_content_annotations/page_content_annotations_service_factory.h"
-#include "chrome/browser/page_content_annotations/page_content_extraction_service_factory.h"
 #include "chrome/browser/page_load_metrics/page_load_metrics_initialize.h"
 #include "chrome/browser/permissions/one_time_permissions_tracker_helper.h"
 #include "chrome/browser/predictors/loading_predictor_factory.h"
@@ -38,7 +34,6 @@
 #include "chrome/browser/resource_coordinator/tab_helper.h"
 #include "chrome/browser/ssl/https_only_mode_tab_helper.h"
 #include "chrome/browser/subresource_filter/chrome_content_subresource_filter_web_contents_helper_factory.h"
-#include "chrome/browser/supervised_user/supervised_user_navigation_observer.h"
 #include "chrome/browser/ui/find_bar/find_bar_state.h"
 #include "chrome/browser/ui/javascript_dialogs/javascript_tab_modal_dialog_manager_delegate_desktop.h"
 #include "chrome/browser/ui/omnibox/omnibox_tab_helper.h"
@@ -57,9 +52,6 @@
 #include "components/javascript_dialogs/tab_modal_dialog_manager.h"
 #include "components/metrics/content/metrics_services_web_contents_observer.h"
 #include "components/metrics_services_manager/metrics_services_manager.h"
-#include "components/optimization_guide/core/optimization_guide_features.h"
-#include "components/page_content_annotations/content/annotate_page_content_request.h"
-#include "components/page_content_annotations/content/page_content_annotations_web_contents_observer.h"
 #include "components/performance_manager/embedder/performance_manager_registry.h"
 #include "components/permissions/permission_recovery_success_rate_tracker.h"
 #include "components/permissions/permission_request_manager.h"
@@ -75,13 +67,9 @@
 #include "chrome/browser/enterprise/reporting/saas_usage/saas_usage_navigation_observer.h"
 #include "chrome/browser/external_protocol/external_protocol_observer.h"
 #include "chrome/browser/loader/from_gws_navigation_and_keep_alive_request_observer.h"
-#include "chrome/browser/multistep_filter/chrome_filter_navigation_observer.h"
-#include "chrome/browser/multistep_filter/ui/filter_ui_controller.h"
 #include "chrome/browser/navigation_predictor/navigation_predictor_preconnect_client.h"
 #include "chrome/browser/net/http_auth_cache_status.h"
 #include "chrome/browser/net/qwac_web_contents_observer.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_tab_helper.h"
 #include "chrome/browser/preloading/prefetch/zero_suggest_prefetch/zero_suggest_prefetch_tab_helper.h"
 #include "chrome/browser/profiles/profile.h"
@@ -113,7 +101,6 @@
 #include "chrome/browser/ui/tabs/alert/tab_alert_controller.h"
 #include "chrome/browser/ui/tabs/back_to_opener/back_to_opener_controller.h"
 #include "chrome/browser/ui/tabs/inactive_window_mouse_event_controller.h"
-#include "chrome/browser/ui/tabs/page_context_eligibility_helper.h"
 #include "chrome/browser/ui/tabs/public/tab_dialog_manager.h"
 #include "chrome/browser/ui/tabs/tab_creation_metrics_controller.h"
 #include "chrome/browser/ui/tabs/tab_model.h"
@@ -132,7 +119,6 @@
 #include "components/download/content/factory/navigation_monitor_factory.h"
 #include "components/download/content/public/download_navigation_observer.h"
 #include "components/enterprise/browser/reporting/reporting_features.h"
-#include "components/multistep_filter/core/features.h"
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 #include "chrome/browser/metrics/desktop_session_duration/desktop_session_duration_observer.h"
 #endif
@@ -142,7 +128,6 @@
 #endif
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/tab_attachment_tracker.h"
-#include "chrome/browser/v8_compile_hints/v8_compile_hints_tab_helper.h"
 #include "chrome/common/chrome_features.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/permissions/permission_indicators_tab_data.h"
@@ -204,21 +189,6 @@
 
 namespace tabs {
 
-namespace {
-
-using page_content_annotations::AnnotatedPageContentRequest;
-
-std::optional<int64_t> GetPageContentAnnotationsTabId(
-    content::WebContents* web_contents) {
-  SessionID id = sessions::SessionTabHelper::IdForTab(web_contents);
-  if (id.is_valid()) {
-    return id.id();
-  }
-  return std::nullopt;
-}
-
-}  // namespace
-
 TabFeatures::TabFeatures() = default;
 TabFeatures::~TabFeatures() = default;
 
@@ -249,20 +219,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
 
   if (!profile->IsOffTheRecord()) {
     HistoryTabHelper::GetOrCreateForWebContents(tab.GetContents());
-  }
-
-  if (optimization_guide::features::IsOptimizationHintsEnabled()) {
-    OptimizationGuideWebContentsObserver::CreateForWebContents(
-        tab.GetContents());
-  }
-
-  auto* page_content_extraction_service = page_content_annotations::
-      PageContentExtractionServiceFactory::GetForProfile(profile);
-  if (page_content_extraction_service) {
-    AnnotatedPageContentRequest::CreateForWebContents(
-        tab.GetContents(), *page_content_extraction_service,
-        base::BindRepeating(&page_content_annotations::FetchPageContext),
-        base::BindRepeating(&GetPageContentAnnotationsTabId));
   }
 
   InitializePageLoadMetricsForWebContents(tab.GetContents());
@@ -309,10 +265,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
         std::make_unique<JsOptimizationsPageActionController>(
             tab, *page_action_controller_);
   }
-
-  page_context_eligibility_helper_ =
-      GetUserDataFactory().CreateInstance<tabs::PageContextEligibilityHelper>(
-          tab, tab);
 
   // Features that are only enabled for normal browser windows. By default most
   // features should be instantiated in this block.
@@ -439,20 +391,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
   }
 #endif
 
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-  if (base::FeatureList::IsEnabled(multistep_filter::kMultistepFilter)) {
-    filter_ui_controller_ =
-        GetUserDataFactory()
-            .CreateInstance<multistep_filter::FilterUiController>(tab, tab);
-    filter_navigation_observer_ =
-        GetUserDataFactory()
-            .CreateInstance<multistep_filter::ChromeFilterNavigationObserver>(
-                tab, tab);
-  }
-#endif
-
-
   uma_browsing_activity_tab_helper_ =
       std::make_unique<UMABrowsingActivityTabHelper>(tab.GetContents());
 
@@ -499,9 +437,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
       std::make_unique<extensions::NavigationExtensionEnabler>(
           tab.GetContents());
 #endif
-
-  v8_compile_hints_tab_helper_ =
-      v8_compile_hints::V8CompileHintsTabHelper::MaybeCreate(tab.GetContents());
 
   storage_access_api_tab_helper_ = std::make_unique<StorageAccessAPITabHelper>(
       tab.GetContents(),
@@ -584,13 +519,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
           .CreateInstance<chrome_browser_net::NetErrorTabHelper>(
               tab, tab, tab.GetContents());
 
-  // Do not create for OTR.
-  if (!profile->IsOffTheRecord()) {
-    supervised_user_navigation_observer_ =
-        GetUserDataFactory().CreateInstance<SupervisedUserNavigationObserver>(
-            tab, tab, tab.GetContents());
-  }
-
   // Shuttle: SearchTabHelper is removed; it used to create OmniboxTabHelper,
   // which ToastController and the omnibox observe on every tab.
   OmniboxTabHelper::CreateForWebContents(tab.GetContents(), profile);
@@ -611,15 +539,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
               tab, tab, tab.GetContents(),
               base::DefaultTickClock::GetInstance(),
               HostContentSettingsMapFactory::GetForProfile(profile));
-
-  if (auto* page_content_annotations_service =
-          PageContentAnnotationsServiceFactory::GetForProfile(profile)) {
-    page_content_annotations_web_contents_observer_ =
-        GetUserDataFactory()
-            .CreateInstance<page_content_annotations::
-                                PageContentAnnotationsWebContentsObserver>(
-                tab, tab, tab.GetContents(), *page_content_annotations_service);
-  }
 
   core_tab_helper_ = GetUserDataFactory().CreateInstance<CoreTabHelper>(
       tab, tab, tab.GetContents());
@@ -720,19 +639,6 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
 
   if (!profile->IsOffTheRecord()) {
     HistoryTabHelper::GetOrCreateForWebContents(new_contents);
-  }
-
-  if (optimization_guide::features::IsOptimizationHintsEnabled()) {
-    OptimizationGuideWebContentsObserver::CreateForWebContents(new_contents);
-  }
-
-  auto* page_content_extraction_service = page_content_annotations::
-      PageContentExtractionServiceFactory::GetForProfile(profile);
-  if (page_content_extraction_service) {
-    AnnotatedPageContentRequest::CreateForWebContents(
-        new_contents, *page_content_extraction_service,
-        base::BindRepeating(&page_content_annotations::FetchPageContext),
-        base::BindRepeating(&GetPageContentAnnotationsTabId));
   }
 
   InitializePageLoadMetricsForWebContents(new_contents);
@@ -852,9 +758,6 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
       std::make_unique<extensions::NavigationExtensionEnabler>(new_contents);
 #endif
 
-  v8_compile_hints_tab_helper_ =
-      v8_compile_hints::V8CompileHintsTabHelper::MaybeCreate(new_contents);
-
   storage_access_api_tab_helper_ = std::make_unique<StorageAccessAPITabHelper>(
       new_contents,
       StorageAccessAPIServiceFactory::GetForBrowserContext(profile));
@@ -942,13 +845,6 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
           .CreateInstance<chrome_browser_net::NetErrorTabHelper>(*tab, *tab,
                                                                  new_contents);
 
-  if (supervised_user_navigation_observer_) {
-    supervised_user_navigation_observer_.reset();
-    supervised_user_navigation_observer_ =
-        GetUserDataFactory().CreateInstance<SupervisedUserNavigationObserver>(
-            *tab, *tab, new_contents);
-  }
-
   OmniboxTabHelper::CreateForWebContents(new_contents, profile);
 
   tab_dialogs_.reset();
@@ -969,16 +865,6 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
           .CreateInstance<blocked_content::PopupOpenerTabHelper>(
               *tab, *tab, new_contents, base::DefaultTickClock::GetInstance(),
               HostContentSettingsMapFactory::GetForProfile(profile));
-
-  page_content_annotations_web_contents_observer_.reset();
-  if (auto* page_content_annotations_service =
-          PageContentAnnotationsServiceFactory::GetForProfile(profile)) {
-    page_content_annotations_web_contents_observer_ =
-        GetUserDataFactory()
-            .CreateInstance<page_content_annotations::
-                                PageContentAnnotationsWebContentsObserver>(
-                *tab, *tab, new_contents, *page_content_annotations_service);
-  }
 
   core_tab_helper_.reset();
   core_tab_helper_ = GetUserDataFactory().CreateInstance<CoreTabHelper>(

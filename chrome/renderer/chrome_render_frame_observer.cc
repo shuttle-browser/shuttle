@@ -41,7 +41,6 @@
 #include "components/no_state_prefetch/renderer/no_state_prefetch_helper.h"
 #include "components/no_state_prefetch/renderer/no_state_prefetch_utils.h"
 #include "components/offline_pages/buildflags/buildflags.h"
-#include "components/optimization_guide/content/renderer/page_text_agent.h"
 #include "components/variations/variations_switches.h"
 #include "components/web_cache/renderer/web_cache_impl.h"
 #include "content/public/common/bindings_policy.h"
@@ -100,10 +99,6 @@ using blink::WebLocalFrame;
 using blink::WebNode;
 using blink::WebString;
 using content::RenderFrame;
-
-// Maximum number of characters in the document to index.
-// Any text beyond this point will be clipped.
-static const size_t kMaxIndexChars = 65535;
 
 
 // For a page that auto-refreshes, we still show the bubble, if
@@ -184,7 +179,6 @@ ChromeRenderFrameObserver::ChromeRenderFrameObserver(
     content::RenderFrame* render_frame,
     web_cache::WebCacheImpl* web_cache_impl)
     : content::RenderFrameObserver(render_frame),
-      page_text_agent_(new optimization_guide::PageTextAgent(render_frame)),
       web_cache_impl_(web_cache_impl) {
   render_frame->GetAssociatedInterfaceRegistry()
       ->AddInterface<chrome::mojom::ChromeRenderFrame>(base::BindRepeating(
@@ -539,32 +533,10 @@ bool ChromeRenderFrameObserver::ShouldCapturePageTextForTranslateOrPhishing(
 
 void ChromeRenderFrameObserver::CapturePageText(
     blink::WebMeaningfulLayout layout_type) {
-  bool capture_for_translate_phishing =
-      ShouldCapturePageTextForTranslateOrPhishing(layout_type);
-
-  uint32_t capture_max_size =
-      capture_for_translate_phishing ? kMaxIndexChars : 0;
-  auto text_callback = page_text_agent_->MaybeRequestTextDumpOnLayoutEvent(
-      layout_type, &capture_max_size);
-  bool capture_for_opt_guide = !!text_callback;
-
-  if (!capture_for_translate_phishing && !capture_for_opt_guide) {
+  // Shuttle: the page text dump only fed optimization_guide's PageTextAgent
+  // (removed); the phishing classifier captures what it needs itself.
+  if (!ShouldCapturePageTextForTranslateOrPhishing(layout_type)) {
     return;
-  }
-  DCHECK_GT(capture_max_size, 0U);
-
-  scoped_refptr<const base::RefCountedString16> contents;
-
-  {
-    TRACE_EVENT0("renderer", "ChromeRenderFrameObserver::CapturePageText");
-    contents = base::MakeRefCounted<const base::RefCountedString16>(
-        WebFrameContentDumper::DumpFrameTreeAsText(
-            render_frame()->GetWebFrame(), capture_max_size)
-            .Utf16());
-  }
-
-  if (text_callback) {
-    std::move(text_callback).Run(contents);
   }
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)

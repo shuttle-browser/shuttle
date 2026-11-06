@@ -26,7 +26,6 @@
 
 class AutocompleteController;
 class AutocompleteResult;
-class AutocompleteScoringModelService;
 class Profile;
 
 // Implementation of mojo::OmniboxInternalsPageHandler.  StartOmniboxQuery()
@@ -89,9 +88,6 @@ class OmniboxInternalsPageHandler : public AutocompleteController::Observer,
   // Compares `controller` with `controller_` & `ml_disabled_controller_`.
   mojom::AutocompleteControllerType GetAutocompleteControllerType(
       AutocompleteController* controller);
-
-  // Helper to get the ML service for this profile.
-  AutocompleteScoringModelService* GetMlService();
 
   // A controller to allow chrome://omnibox-internals to try inputs without
   // messing with location bar omnibox.

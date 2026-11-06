@@ -5,8 +5,6 @@
 #include "chrome/browser/digital_credentials/digital_identity_low_risk_origins.h"
 
 #include "base/strings/string_util.h"
-#include "chrome/browser/digital_credentials/digital_credentials_keyed_service.h"
-#include "chrome/browser/profiles/profile.h"
 #include "content/public/browser/render_frame_host.h"
 #include "url/gurl.h"
 #include "url/origin.h"
@@ -60,22 +58,6 @@ bool IsLowRiskOriginMatcher(const url::Origin& to_check,
   return false;
 }
 
-bool IsLastCommittedURLLowFriction(RenderFrameHost& render_frame_host) {
-  Profile* profile =
-      Profile::FromBrowserContext(render_frame_host.GetBrowserContext());
-  if (!profile) {
-    return false;
-  }
-
-  DigitalCredentialsKeyedService* service =
-      DigitalCredentialsKeyedServiceFactory::GetForProfile(profile);
-  if (!service) {
-    return false;
-  }
-
-  return service->IsLowFrictionUrl(render_frame_host.GetLastCommittedURL());
-}
-
 }  // anonymous namespace
 
 bool IsLastCommittedOriginLowRisk(RenderFrameHost& render_frame_host) {
@@ -87,8 +69,7 @@ bool IsLastCommittedOriginLowRisk(RenderFrameHost& render_frame_host) {
     origins_vector.emplace_back(origin_str);
   }
   return IsLowRiskOriginMatcher(render_frame_host.GetLastCommittedOrigin(),
-                                origins_vector) ||
-         IsLastCommittedURLLowFriction(render_frame_host);
+                                origins_vector);
 }
 
 bool IsLowRiskOriginMatcherForTesting(

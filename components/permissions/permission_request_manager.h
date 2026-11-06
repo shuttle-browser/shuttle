@@ -28,7 +28,7 @@
 #include "components/permissions/permission_prompt.h"
 #include "components/permissions/permission_request_queue.h"
 #include "components/permissions/permission_uma_constants.h"
-#include "components/permissions/prediction_service/permission_ui_selector.h"
+#include "components/permissions/permission_ui_selector.h"
 #include "components/permissions/request_type.h"
 #include "components/permissions/resolvers/permission_prompt_options.h"
 #include "components/tabs/public/tab_interface.h"
@@ -297,20 +297,6 @@ class PermissionRequestManager
 
   void set_on_page_loaded_time_for_testing(base::TimeTicks time) {
     on_page_loaded_time_ = time;
-  }
-
-  std::optional<PermissionUiSelector::PredictionGrantLikelihood>
-  prediction_grant_likelihood_for_testing() const {
-    return prediction_grant_likelihood_;
-  }
-
-  std::optional<bool> was_decision_held_back_for_testing() const {
-    return was_decision_held_back_;
-  }
-
-  std::optional<PermissionRequestRelevance>
-  permission_request_relevance_for_testing() const {
-    return permission_request_relevance_;
   }
 
   std::optional<permissions::PermissionPromptDisposition>
@@ -660,24 +646,6 @@ class PermissionRequestManager
   // |requests_|, and whether to show warnings. This will be nullopt if we are
   // still waiting on the result from |permission_ui_selectors_|.
   std::optional<UiDecision> current_request_ui_to_use_;
-
-  // The likelihood value returned by the Web Permission Predictions Service,
-  // to be recorded in UKM.
-  std::optional<PermissionUiSelector::PredictionGrantLikelihood>
-      prediction_grant_likelihood_;
-
-  // The permission request relevance returned by an on-device ML model,
-  // to be recorded in UKM.
-  std::optional<PermissionRequestRelevance> permission_request_relevance_;
-
-  // The AI model version used for the permission decision, to be recorded in
-  // UKM.
-  std::optional<permissions::PermissionAiRelevanceModel>
-      permission_ai_relevance_model_;
-
-  // Status of the decision made by the Web Permission Prediction Service, if
-  // it was held back or not.
-  std::optional<bool> was_decision_held_back_;
 
   // True when the prompt is being temporary destroyed to be recreated for the
   // correct browser or when the tab is hidden. In those cases, callbacks from

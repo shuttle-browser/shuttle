@@ -31,7 +31,7 @@
 #include "base/time/time.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/safe_browsing/core/browser/client_side_detection_service_base.h"
-#include "components/safe_browsing/core/browser/client_side_phishing_model.h"
+#include "components/safe_browsing/core/browser/csd_model_type.h"
 #include "components/safe_browsing/core/common/proto/csd.pb.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_thread.h"
@@ -74,9 +74,7 @@ class ClientSideDetectionService
   // TODO(crbug.com/502615476): Once `ClientSideDetectionService::Delegate` is
   // removed, update this to accept `content::BrowserContext*` and
   // `std::unique_ptr<ClientSideDetectionServiceBase::Delegate>`
-  ClientSideDetectionService(
-      std::unique_ptr<Delegate> delegate_ptr,
-      optimization_guide::OptimizationGuideModelProvider* opt_guide);
+  explicit ClientSideDetectionService(std::unique_ptr<Delegate> delegate_ptr);
 
   ClientSideDetectionService(const ClientSideDetectionService&) = delete;
   ClientSideDetectionService& operator=(const ClientSideDetectionService&) =

@@ -49,8 +49,6 @@ static_library("browser") {
     "//components/metrics",
     "//components/signin/internal/identity_manager:capabilities",
     "//components/signin/public/identity_manager",
-    "//components/supervised_user/core/common:buildflags",
-    "//components/supervised_user/core/common:features",
     "//components/version_info",
     "//components/webdata/common",
     "//crypto",

@@ -634,9 +634,7 @@ source_set("browser_sources") {
   deps = [
     "//cc",
     "//components/input",
-    "//components/language_detection/content/browser",
     "//components/language_detection/content/common",
-    "//components/language_detection/core/browser:language_detection_model_service",
     "//components/services/storage/public/cpp",
     "//components/variations",
     "//components/viz/host",

@@ -63,10 +63,6 @@ class UkmConsentParamBrowserTest;
 class CrOSPreChoiceMetricsManagerTest;
 }  // namespace metrics
 
-namespace optimization_guide {
-class ChromeOnDeviceModelServiceController;
-}  // namespace optimization_guide
-
 namespace safe_browsing {
 class ChromeSafeBrowsingUIManagerDelegate;
 class DownloadUrlSBClient;
@@ -81,10 +77,6 @@ class ReporterRunner;
 
 namespace settings {
 class MetricsReportingHandler;
-}
-
-namespace segmentation_platform {
-class FieldTrialRegisterImpl;
 }
 
 namespace feed {
@@ -163,7 +155,6 @@ class ChromeMetricsServiceAccessor : public metrics::MetricsServiceAccessor {
   friend class safe_browsing::IncidentReportingService;
   friend class safe_browsing::ServicesDelegateDesktop;
   friend class safe_browsing::internal::ReporterRunner;
-  friend class segmentation_platform::FieldTrialRegisterImpl;
   friend class ChromeMetricsServiceClient;
   friend class ChromePasswordManagerClient;
   friend class NavigationMetricsRecorder;
@@ -172,8 +163,6 @@ class ChromeMetricsServiceAccessor : public metrics::MetricsServiceAccessor {
   friend class BrowserProcessImpl;
   friend class GlobalFeatures;
   friend class subscription_eligibility::SubscriptionEligibilityMetricsProvider;
-  friend class OptimizationGuideKeyedService;
-  friend class optimization_guide::ChromeOnDeviceModelServiceController;
   friend class WebUITabStripFieldTrial;
   friend class feed::FeedServiceDelegateImpl;
   friend class FirstRunService;

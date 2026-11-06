@@ -86,8 +86,6 @@ inline constexpr char kChromeUIExtensionsHost[] = "extensions";
 inline constexpr char kChromeUIExtensionsInternalsHost[] =
     "extensions-internals";
 inline constexpr char kChromeUIExtensionsURL[] = "chrome://extensions/";
-inline constexpr char kChromeUIFamilyLinkUserInternalsHost[] =
-    "family-link-user-internals";
 inline constexpr char kChromeUIFavicon2Host[] = "favicon2";
 inline constexpr char kChromeUIFaviconHost[] = "favicon";
 inline constexpr char kChromeUIFaviconURL[] = "chrome://favicon/";
@@ -146,8 +144,6 @@ inline constexpr char kChromeUIQuitHost[] = "quit";
 inline constexpr char kChromeUIQuitURL[] = "chrome://quit/";
 inline constexpr char kChromeUIRestartHost[] = "restart";
 inline constexpr char kChromeUIRestartURL[] = "chrome://restart/";
-inline constexpr char kChromeUISegmentationInternalsHost[] =
-    "segmentation-internals";
 inline constexpr char kChromeUISettingsHost[] = "settings";
 inline constexpr char16_t kChromeUISettingsHost16[] = u"settings";
 inline constexpr char kChromeUISettingsURL[] = "chrome://settings/";
@@ -186,8 +182,6 @@ inline constexpr char kChromeUIWebNNInternalsHost[] = "webnn-internals";
 #if BUILDFLAG(IS_ANDROID)
 inline constexpr char kChromeUINativeNewTabURL[] = "chrome-native://newtab/";
 #else
-inline constexpr char kChromeUIMultistepFilterInternalsHost[] =
-    "multistep-filter-internals";
 inline constexpr char kChromeUIReadLaterHost[] = "read-later.top-chrome";
 inline constexpr char kChromeUIReadLaterURL[] =
     "chrome://read-later.top-chrome/";

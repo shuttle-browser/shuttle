@@ -101,9 +101,6 @@ class ChromeExtensionsAPIClient : public ExtensionsAPIClient {
       content::BrowserContext* browser_context) const override;
 #endif  // BUILDFLAG(IS_CHROMEOS)
   ManagementAPIDelegate* CreateManagementAPIDelegate() const override;
-  std::unique_ptr<SupervisedUserExtensionsDelegate>
-  CreateSupervisedUserExtensionsDelegate(
-      content::BrowserContext* browser_context) const override;
   std::unique_ptr<DisplayInfoProvider> CreateDisplayInfoProvider()
       const override;
   MetricsPrivateDelegate* GetMetricsPrivateDelegate() override;
@@ -125,8 +122,6 @@ class ChromeExtensionsAPIClient : public ExtensionsAPIClient {
       base::OnceClosure success_callback,
       base::OnceCallback<void(const std::string&)> error_callback) override;
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-  std::vector<KeyedServiceBaseFactory*> GetFactoryDependencies() override;
 
   WebstorePrivateAPIDelegate* GetWebstorePrivateAPIDelegate() override;
 

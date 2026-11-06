@@ -20,8 +20,6 @@ import("//printing/buildflags/buildflags.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
 import("//third_party/widevine/cdm/widevine.gni")
 import("//tools/grit/grit_rule.gni")
-
-assert(enable_supervised_users)
 assert(!is_fuchsia, "Fuchsia shouldn't use anything in //chrome")
 
 grit("resources") {
@@ -163,7 +161,6 @@ static_library("common_lib") {
     ":mojo_bindings",
     ":offline_page_auto_fetcher_mojom",
     ":request_code_constants",
-    ":supervised_user_commands_mojom",
     ":url_constants",
     "//base",
     "//base:base_static",
@@ -205,7 +202,6 @@ static_library("common_lib") {
     "//components/services/app_service",
     "//components/services/heap_profiling/public/cpp",
     "//components/strings",
-    "//components/supervised_user/core/common",
     "//components/url_formatter",
     "//components/variations",
     "//components/variations/net",
@@ -493,7 +489,6 @@ static_library("url_constants") {
     "//build/config/chromebox_for_meetings:buildflags",
     "//components/enterprise/buildflags",
     "//components/signin/public/base:signin_buildflags",
-    "//components/supervised_user/core/common:buildflags",
     "//content/public/common",
     "//extensions/buildflags",
     "//net:buildflags",
@@ -501,7 +496,6 @@ static_library("url_constants") {
   ]
   deps = [
     "//components/lens:buildflags",
-    "//components/optimization_guide/optimization_guide_internals/webui:url_constants",
     "//components/safe_browsing/core/common",
     "//device/vr/buildflags",
   ]
@@ -620,7 +614,6 @@ mojom("mojo_bindings") {
     "//components/content_settings/common:mojom",
     "//components/content_settings/core/common:mojo_bindings",
     "//components/no_state_prefetch/common:mojo_bindings",
-    "//components/page_content_annotations/content/mojom",
     "//content/public/common:interfaces",
     "//media/mojo/mojom",
     "//mojo/public/mojom/base",
@@ -683,10 +676,6 @@ mojom("glic_enums_mojom") {
   generate_legacy_js_bindings = true
 
   public_deps = [ "//mojo/public/mojom/base" ]
-}
-
-mojom("supervised_user_commands_mojom") {
-  sources = [ "supervised_user_commands.mojom" ]
 }
 
 mojom("offline_page_auto_fetcher_mojom") {

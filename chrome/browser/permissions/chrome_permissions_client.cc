@@ -31,7 +31,6 @@
 #include "chrome/browser/permissions/permission_actions_history_factory.h"
 #include "chrome/browser/permissions/permission_decision_auto_blocker_factory.h"
 #include "chrome/browser/permissions/permission_revocation_request.h"
-#include "chrome/browser/permissions/prediction_service/permissions_ai_ui_selector.h"
 #include "chrome/browser/permissions/pref_based_quiet_permission_ui_selector.h"
 #include "chrome/browser/permissions/quiet_notification_permission_ui_config.h"
 #include "chrome/browser/permissions/system/system_permission_settings.h"
@@ -61,6 +60,7 @@
 #include "components/permissions/constants.h"
 #include "components/permissions/contexts/bluetooth_chooser_context.h"
 #include "components/permissions/features.h"
+#include "components/permissions/permission_actions_history.h"
 #include "components/permissions/permission_hats_trigger_helper.h"
 #include "components/permissions/permission_request.h"
 #include "components/permissions/permission_uma_util.h"
@@ -122,7 +122,6 @@
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS) && !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-#include "chrome/browser/permissions/prediction_service/contextual_notification_permission_ui_selector.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #endif
 
@@ -455,13 +454,7 @@ std::vector<std::unique_ptr<permissions::PermissionUiSelector>>
 ChromePermissionsClient::CreatePermissionUiSelectors(
     content::BrowserContext* browser_context) {
   std::vector<std::unique_ptr<permissions::PermissionUiSelector>> selectors;
-#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-  selectors.emplace_back(
-      std::make_unique<ContextualNotificationPermissionUiSelector>());
-#endif
   selectors.emplace_back(std::make_unique<PrefBasedQuietPermissionUiSelector>(
-      Profile::FromBrowserContext(browser_context)));
-  selectors.emplace_back(std::make_unique<PermissionsAiUiSelector>(
       Profile::FromBrowserContext(browser_context)));
   return selectors;
 }

@@ -338,10 +338,7 @@ void LoadingDataCollector::RecordMainFrameLoadComplete(
     predictor_->RecordPageRequestSummary(summary);
 }
 
-void LoadingDataCollector::RecordPageDestroyed(
-    NavigationId navigation_id,
-    const std::optional<OptimizationGuidePrediction>&
-        optimization_guide_prediction) {
+void LoadingDataCollector::RecordPageDestroyed(NavigationId navigation_id) {
   auto nav_it = inflight_navigations_.find(navigation_id);
   if (nav_it == inflight_navigations_.end()) {
     return;
@@ -351,8 +348,7 @@ void LoadingDataCollector::RecordPageDestroyed(
   CHECK(summary->navigation_committed.has_value());
   inflight_navigations_.erase(nav_it);
   if (stats_collector_) {
-    stats_collector_->RecordPageRequestSummary(*summary,
-                                               optimization_guide_prediction);
+    stats_collector_->RecordPageRequestSummary(*summary);
   }
 }
 

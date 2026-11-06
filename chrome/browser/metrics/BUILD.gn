@@ -176,10 +176,6 @@ source_set("metrics") {
     ]
   }
 
-  if (!is_chromeos) {
-    public += [ "family_link_user_metrics_provider.h" ]
-  }
-
   if (is_win) {
     public += [
       "antivirus_metrics_provider_win.h",
@@ -289,7 +285,6 @@ source_set("impl") {
     "//chrome/browser/safe_browsing",
     "//chrome/browser/site_isolation",
     "//chrome/browser/subscription_eligibility",
-    "//chrome/browser/supervised_user",
     "//chrome/browser/tracing",
     "//chrome/browser/ui:browser_otr_state",
     "//chrome/browser/ui:recently_audible_helper",
@@ -310,7 +305,6 @@ source_set("impl") {
     "//components/services/paint_preview_compositor/public/mojom",
     "//components/signin/core/browser",
     "//components/startup_metric_utils",
-    "//components/supervised_user/core/browser",
     "//components/ukm",
     "//components/ukm:ukm_recorder",
     "//services/resource_coordinator/public/cpp/memory_instrumentation:browser",
@@ -434,10 +428,6 @@ source_set("impl") {
       "//components/metrics/structured:structured_metrics_validator",
       "//components/metrics/structured/lib",
     ]
-  }
-
-  if (!is_chromeos) {
-    sources += [ "family_link_user_metrics_provider.cc" ]
   }
 
   if (is_win) {

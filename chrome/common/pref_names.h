@@ -3084,4 +3084,27 @@ inline constexpr int kCpuPerformanceTierOverrideNone = -1;
 
 }  // namespace prefs
 
+// Shuttle: GenAI policy prefs that used to live in
+// components/optimization_guide/core/feature_registry (removed). Policy
+// handlers and settings still map onto these, so the names and values stay.
+namespace optimization_guide::prefs {
+
+inline constexpr char kComposeEnterprisePolicyAllowed[] =
+    "optimization_guide.model_execution.compose_enterprise_policy_allowed";
+inline constexpr char kWallpaperSearchEnterprisePolicyAllowed[] =
+    "optimization_guide.model_execution.wallpaper_search_enterprise_policy_"
+    "allowed";
+inline constexpr char kHistorySearchEnterprisePolicyAllowed[] =
+    "optimization_guide.model_execution.history_search_"
+    "enterprise_policy_allowed";
+inline constexpr char kProductSpecificationsEnterprisePolicyAllowed[] =
+    "optimization_guide.model_execution.tab_compare_settings_enterprise_policy";
+inline constexpr char kChromeSuggestionsSettings[] =
+    "contextual_cueing.chrome_suggestions_settings";
+inline constexpr char kGeminiSettings[] = "browser.gemini_settings";
+inline constexpr char kFindAndFillWithGeminiSettings[] =
+    "autofill.personal_context.find_and_fill_with_gemini_settings";
+
+}  // namespace optimization_guide::prefs
+
 #endif  // CHROME_COMMON_PREF_NAMES_H_

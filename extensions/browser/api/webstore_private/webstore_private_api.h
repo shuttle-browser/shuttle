@@ -18,7 +18,6 @@
 #include "extensions/browser/api/webstore_private/extension_install_status.h"
 #include "extensions/browser/extension_function.h"
 #include "extensions/browser/extension_install_prompt_client.h"
-#include "extensions/browser/supervised_user_extensions_delegate.h"
 #include "extensions/browser/webstore_install_helper.h"
 #include "extensions/browser/webstore_install_result.h"
 #include "extensions/browser/webstore_installer.h"
@@ -103,37 +102,12 @@ class WebstorePrivateBeginInstallWithManifest3Function
       extensions::ExtensionInstallStatus install_status,
       std::u16string blocked_message);
 
-  void RequestExtensionApproval(content::WebContents* web_contents);
-
-#if BUILDFLAG(IS_ANDROID)
-  // Called when the parent access flow on Android desktop completes to show the
-  // browser parent approval permission dialog.
-  void OnParentAuthenticationDone(content::WebContents* web_contents,
-                                  SupervisedExtensionApprovalResult result);
-#endif  // !BUILDFLAG(IS_ANDROID)
-
-  // Handles the result of the extension approval flow.
-  void OnExtensionApprovalDone(SupervisedExtensionApprovalResult result);
-
-  void OnExtensionApprovalApproved();
-
-  void OnExtensionApprovalCanceled();
-
-  void OnExtensionApprovalFailed();
-
-  void OnExtensionApprovalBlocked();
-
-  // Returns true if the parental approval prompt was shown, false if there was
-  // an error showing it.
-  bool PromptForParentApproval();
-
   void OnFrictionPromptDone(bool result);
   void OnInstallPromptDone(
       ExtensionInstallPromptClient::DoneCallbackPayload payload);
   void OnRequestPromptDone(
       ExtensionInstallPromptClient::DoneCallbackPayload payload);
   void OnBlockByPolicyPromptDone();
-  void OnRequestParentApprovalPromptCancelled();
 
   // Permissions are granted by default.
   void HandleInstallProceed(bool withhold_permissions = false);

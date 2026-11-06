@@ -44,7 +44,6 @@ source_set("renderer_context_menu") {
       "//components/custom_handlers",
       "//components/lens:buildflags",
       "//components/renderer_context_menu",
-      "//components/supervised_user/core/browser",
       "//content/public/browser",
       "//content/public/common:buildflags",
       "//extensions/buildflags",

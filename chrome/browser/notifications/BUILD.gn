@@ -195,7 +195,6 @@ source_set("impl") {
     "//chrome/browser/lifetime:termination_notification",
     "//chrome/browser/metrics",
     "//chrome/browser/notifications/scheduler:factory",
-    "//chrome/browser/optimization_guide",
     "//chrome/browser/permissions",
     "//chrome/browser/safe_browsing",
     "//chrome/browser/ui/browser_window",
@@ -231,7 +230,6 @@ source_set("impl") {
       "//chrome/browser/flags:flags_android",
       "//chrome/browser/notifications/chime/android",
       "//chrome/browser/notifications/scheduler/public",
-      "//chrome/browser/segmentation_platform",
       "//components/browser_ui/notifications/android",
     ]
   }

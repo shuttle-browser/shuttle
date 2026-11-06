@@ -17,9 +17,7 @@ source_set("webid") {
   public_deps = [
     "//base",
     "//build:buildflag_header_h",
-    "//chrome/browser/optimization_guide",
     "//chrome/browser/webid:fedcm_clickthrough_rate_metadata_proto",
-    "//components/segmentation_platform/public",
     "//content/public/browser",
     "//ui/base/unowned_user_data",
     "//ui/gfx",
@@ -30,7 +28,6 @@ source_set("webid") {
     "//chrome/app/resources:platform_locale_settings",
     "//chrome/app/resources:platform_locale_settings_grit",
     "//chrome/browser/profiles:profile",
-    "//chrome/browser/segmentation_platform",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/webid",
     "//components/favicon/content",

@@ -21,8 +21,6 @@
 #include "chrome/browser/autocomplete/tab_matcher_desktop.h"
 #endif
 
-class AutocompleteScoringModelService;
-class OnDeviceTailModelService;
 class Profile;
 class TabMatcher;
 
@@ -86,9 +84,6 @@ class ChromeAutocompleteProviderClient : public AutocompleteProviderClient {
   OmniboxTriggeredFeatureService* GetOmniboxTriggeredFeatureService()
       const override;
   signin::IdentityManager* GetIdentityManager() const override;
-  AutocompleteScoringModelService* GetAutocompleteScoringModelService()
-      const override;
-  OnDeviceTailModelService* GetOnDeviceTailModelService() const override;
   ProviderStateService* GetProviderStateService() const override;
 
   bool IsOffTheRecord() const override;

@@ -136,10 +136,6 @@
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/omnibox/browser/zero_suggest_provider.h"
 #include "components/on_device_translation/buildflags/buildflags.h"
-#include "components/optimization_guide/core/delivery/prefs.h"
-#include "components/optimization_guide/core/feature_registry/feature_registration.h"
-#include "components/optimization_guide/core/hints/prefs.h"
-#include "components/optimization_guide/core/optimization_guide_prefs.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
 #include "components/permissions/permission_hats_trigger_helper.h"
 #include "components/permissions/pref_names.h"
@@ -164,7 +160,6 @@
 #include "components/search_engines/template_url_prepopulate_data.h"
 #include "components/security_interstitials/content/insecure_form_blocking_page.h"
 #include "components/security_interstitials/content/stateful_ssl_host_state_delegate.h"
-#include "components/segmentation_platform/public/segmentation_platform_service.h"
 #include "components/sessions/core/session_id_generator.h"
 #include "components/signin/core/browser/active_primary_accounts_metrics_recorder.h"
 #include "components/signin/public/base/signin_pref_names.h"
@@ -174,13 +169,11 @@
 #include "components/subresource_filter/content/browser/ruleset_service.h"
 #include "components/subresource_filter/core/common/constants.h"
 #include "components/subscription_eligibility/subscription_eligibility_prefs.h"
-#include "components/supervised_user/core/browser/supervised_user_preferences.h"
 #include "components/tracing/common/pref_names.h"
 #include "components/unified_consent/pref_names.h"
 #include "components/universal_optout/prefs.h"
 #include "components/update_client/update_client.h"
 #include "components/variations/service/variations_service.h"
-#include "components/visited_url_ranking/internal/url_grouping/group_suggestions_service_impl.h"
 #include "components/webui/chrome_urls/pref_names.h"
 #include "components/webui/flags/pref_service_flags_storage.h"
 #include "content/public/browser/render_process_host.h"
@@ -1603,7 +1596,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   metrics::TabStatsTracker::RegisterPrefs(registry);
   network_time::NetworkTimeTracker::RegisterPrefs(registry);
   omnibox::RegisterLocalStatePrefs(registry);
-  optimization_guide::prefs::RegisterLocalStatePrefs(registry);
   policy::BrowserPolicyConnector::RegisterPrefs(registry);
   policy::LocalTestPolicyProvider::RegisterLocalStatePrefs(registry);
   policy::ManagementService::RegisterLocalStatePrefs(registry);
@@ -1620,8 +1612,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   safe_browsing::RegisterLocalStatePrefs(registry);
   search_engines::SearchEngineChoiceService::RegisterLocalStatePrefs(registry);
   secure_origin_allowlist::RegisterPrefs(registry);
-  segmentation_platform::SegmentationPlatformService::RegisterLocalStatePrefs(
-      registry);
   SerialPolicyAllowedPorts::RegisterPrefs(registry);
   HidPolicyAllowedDevices::RegisterLocalStatePrefs(registry);
   sessions::SessionIdGenerator::RegisterPrefs(registry);
@@ -1910,8 +1900,19 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   NotifierStateTracker::RegisterProfilePrefs(registry);
   ntp_tiles::CustomLinksManagerImpl::RegisterProfilePrefs(registry);
   ntp_tiles::MostVisitedSites::RegisterProfilePrefs(registry);
-  optimization_guide::prefs::RegisterProfilePrefs(registry);
-  optimization_guide::RegisterGenAiFeatures(registry);  // GenAI policy prefs
+  // Shuttle: GenAI policy prefs (were registered by optimization_guide's
+  // RegisterGenAiFeatures, removed); policy handlers and settings map onto
+  // them.
+  for (const char* gen_ai_pref :
+       {optimization_guide::prefs::kComposeEnterprisePolicyAllowed,
+        optimization_guide::prefs::kWallpaperSearchEnterprisePolicyAllowed,
+        optimization_guide::prefs::kHistorySearchEnterprisePolicyAllowed,
+        optimization_guide::prefs::
+            kProductSpecificationsEnterprisePolicyAllowed,
+        optimization_guide::prefs::kChromeSuggestionsSettings,
+        optimization_guide::prefs::kFindAndFillWithGeminiSettings}) {
+    registry->RegisterIntegerPref(gen_ai_pref, 0, PrefRegistry::LOSSY_PREF);
+  }
 #if !BUILDFLAG(IS_ANDROID)
   PageColorsController::RegisterProfilePrefs(registry);
 #endif
@@ -1960,22 +1961,17 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
       registry);
   security_interstitials::InsecureFormBlockingPage::RegisterProfilePrefs(
       registry);
-  segmentation_platform::SegmentationPlatformService::RegisterProfilePrefs(
-      registry);
   SearchPreloadService::RegisterProfilePrefs(registry);
   SessionStartupPref::RegisterProfilePrefs(registry);
   SigninPrefs::RegisterProfilePrefs(registry);
   site_engagement::SiteEngagementService::RegisterProfilePrefs(registry);
   subscription_eligibility::prefs::RegisterProfilePrefs(registry);
-  supervised_user::RegisterProfilePrefs(registry);
   TemplateURLPrepopulateData::RegisterProfilePrefs(registry);
   universal_optout::prefs::RegisterProfilePrefs(registry);
   // Shuttle: UnifiedConsentService is gone (B2d); its pref stays registered
   // (always false) because the pref-based consent helper still reads it.
   registry->RegisterBooleanPref(
       unified_consent::prefs::kUrlKeyedAnonymizedDataCollectionEnabled, false);
-  visited_url_ranking::GroupSuggestionsServiceImpl::RegisterProfilePrefs(
-      registry);
   omnibox::RegisterProfilePrefs(registry);
   ZeroSuggestProvider::RegisterProfilePrefs(registry);
 

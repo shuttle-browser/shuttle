@@ -589,7 +589,6 @@ template("build_webui") {
         "//chrome/browser/resources/conflicts",
         "//chrome/browser/resources/device_log",
         "//chrome/browser/resources/downloads",
-        "//chrome/browser/resources/family_link_user_internals",
         "//chrome/browser/resources/history",
         "//chrome/browser/resources/management",
         "//chrome/browser/resources/media",

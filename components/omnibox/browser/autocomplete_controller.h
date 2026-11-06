@@ -497,12 +497,6 @@ class AutocompleteController : public AutocompleteProviderListener,
       const base::trace_event::MemoryDumpArgs& args,
       base::trace_event::ProcessMemoryDump* process_memory_dump) override;
 
-  // Runs the batch scoring for all the eligible matches in `results_.matches_`.
-  void RunBatchUrlScoringModel(OldResult& old_result);
-  void RunBatchUrlScoringModelMappedSearchBlending(OldResult& old_result);
-  void RunBatchUrlScoringModelPiecewiseMappedSearchBlending(
-      OldResult& old_result);
-
   // Constructs a destination URL from supplied search terms args.
   // TODO(crbug.com/40257536): look for a way to dissolve this function into
   // direct application where it's needed.

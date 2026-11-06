@@ -93,7 +93,6 @@ source_set("impl") {
     "//components/content_settings/core/browser:cookie_settings",
     "//components/guest_view/buildflags",
     "//components/pref_registry",
-    "//components/supervised_user/core/browser",
     "//pdf:features",
     "//services/metrics/public/cpp:ukm_builders",
     "//ui/webui",
@@ -164,12 +163,10 @@ source_set("content_settings_factory_impl") {
     "//chrome/browser/profiles",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/search_engines",
-    "//chrome/browser/supervised_user",
     "//chrome/browser/webid",
     "//components/content_settings/core/browser",
     "//components/content_settings/core/browser:cookie_settings",
     "//components/permissions:permissions_common",
-    "//components/supervised_user/core/browser",
     "//ui/webui",
   ]
 

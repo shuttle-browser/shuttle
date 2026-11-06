@@ -19,7 +19,6 @@
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/history/history_service_factory.h"
-#include "chrome/browser/page_image_service/image_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -37,8 +36,6 @@
 #include "components/grit/components_scaled_resources.h"
 #include "components/history/core/browser/features.h"
 #include "components/history/core/common/pref_names.h"
-#include "components/page_image_service/image_service.h"
-#include "components/page_image_service/image_service_handler.h"
 #include "components/prefs/pref_service.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/tabs/public/tab_interface.h"
@@ -148,18 +145,4 @@ void HistoryUI::BindInterface(
   browsing_history_handler_ = std::make_unique<BrowsingHistoryHandler>(
       std::move(pending_page_handler), Profile::FromWebUI(web_ui()),
       web_ui()->GetWebContents());
-}
-
-void HistoryUI::BindInterface(
-    mojo::PendingReceiver<page_image_service::mojom::PageImageServiceHandler>
-        pending_page_handler) {
-  base::WeakPtr<page_image_service::ImageService> image_service_weak;
-  if (auto* image_service =
-          page_image_service::ImageServiceFactory::GetForBrowserContext(
-              Profile::FromWebUI(web_ui()))) {
-    image_service_weak = image_service->GetWeakPtr();
-  }
-  image_service_handler_ =
-      std::make_unique<page_image_service::ImageServiceHandler>(
-          std::move(pending_page_handler), std::move(image_service_weak));
 }

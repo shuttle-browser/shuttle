@@ -65,7 +65,6 @@
 #include "chrome/renderer/plugins/non_loadable_plugin_placeholder.h"
 #include "chrome/renderer/plugins/pdf_plugin_placeholder.h"
 #include "chrome/renderer/process_state.h"
-#include "chrome/renderer/supervised_user/supervised_user_error_page_controller_delegate_impl.h"
 #include "chrome/renderer/url_loader_throttle_provider_impl.h"
 #include "chrome/renderer/v8_unwinder.h"
 #include "chrome/renderer/websocket_handshake_throttle_provider_impl.h"
@@ -92,9 +91,6 @@
 #include "components/no_state_prefetch/renderer/no_state_prefetch_helper.h"
 #include "components/no_state_prefetch/renderer/no_state_prefetch_render_frame_observer.h"
 #include "components/no_state_prefetch/renderer/no_state_prefetch_utils.h"
-#include "components/optimization_guide/core/optimization_guide_features.h"
-#include "components/page_content_annotations/content/renderer/page_stability_monitor_manager.h"
-#include "components/page_content_annotations/core/page_content_annotations_features.h"
 #include "components/page_load_metrics/renderer/metrics_render_frame_observer.h"
 #include "components/paint_preview/buildflags/buildflags.h"
 #include "components/pdf/common/constants.h"
@@ -565,19 +561,10 @@ void ChromeContentRendererClient::RenderFrameCreated(
 
   GoogleAccountsPrivateApiExtension::Create(render_frame);
 
-  const bool search_result_extractor_enabled =
-      render_frame->IsMainFrame() &&
-      page_content_annotations::features::ShouldExtractRelatedSearches();
-  if (search_result_extractor_enabled) {
-    continuous_search::SearchResultExtractorImpl::Create(render_frame);
-  }
-
   new NetErrorHelper(render_frame);
 
   new security_interstitials::SecurityInterstitialPageControllerDelegateImpl(
       render_frame);
-
-  new SupervisedUserErrorPageControllerDelegateImpl(render_frame);
 
   if (!render_frame->IsMainFrame()) {
     auto* main_frame_no_state_prefetch_helper =
@@ -652,10 +639,6 @@ void ChromeContentRendererClient::RenderFrameCreated(
     new wallet::BoardingPassExtractor(render_frame, registry);
   }
 #endif
-
-  // Wire up the PageStabilityMonitorManager to allow components to
-  // request stability monitors for this frame.
-  new page_content_annotations::PageStabilityMonitorManager(render_frame);
 }
 
 void ChromeContentRendererClient::WebViewCreated(
@@ -1023,8 +1006,6 @@ void ChromeContentRendererClient::PrepareErrorPage(
 
   security_interstitials::SecurityInterstitialPageControllerDelegateImpl::Get(
       render_frame)
-      ->PrepareForErrorPage();
-  SupervisedUserErrorPageControllerDelegateImpl::Get(render_frame)
       ->PrepareForErrorPage();
 }
 

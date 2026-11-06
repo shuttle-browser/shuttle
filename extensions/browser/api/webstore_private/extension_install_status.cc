@@ -11,7 +11,6 @@
 #include "components/enterprise/browser/reporting/common_pref_names.h"
 #include "components/policy/core/common/cloud/cloud_policy_client_types.h"
 #include "components/prefs/pref_service.h"
-#include "components/supervised_user/core/common/pref_names.h"
 #include "components/user_prefs/user_prefs.h"
 #include "content/public/browser/browser_context.h"
 #include "extensions/browser/api/management/management_api.h"
@@ -21,7 +20,6 @@
 #include "extensions/browser/extensions_browser_client.h"
 #include "extensions/browser/managed_installation_mode.h"
 #include "extensions/browser/manifest_v2_handler.h"
-#include "extensions/browser/supervised_user_extensions_delegate.h"
 #include "extensions/buildflags/buildflags.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/extension_urls.h"
@@ -89,10 +87,6 @@ ExtensionInstallStatus PerformSynchronousChecks(
 
   const GURL update_url = extension_urls::GetWebstoreUpdateUrl();
 
-  auto* supervised_user_extensions_delegate =
-      ManagementAPI::GetFactoryInstance()
-          ->Get(browser_context)
-          ->GetSupervisedUserExtensionsDelegate();
   auto* extension_management_client =
       ExtensionsBrowserClient::Get()->GetExtensionManagementClient(
           browser_context);
@@ -111,18 +105,8 @@ ExtensionInstallStatus PerformSynchronousChecks(
   }
 
   ExtensionRegistry* registry = ExtensionRegistry::Get(browser_context);
-
-  // Check if parent approval is needed for a supervised user to install
-  // a new extension.
   PrefService* prefs = user_prefs::UserPrefs::Get(browser_context);
-  if (!registry->GetInstalledExtension(extension_id) &&
-      supervised_user_extensions_delegate->IsChild() &&
-      !supervised_user_extensions_delegate->CanSkipExtensionParentApprovals() &&
-      !prefs->GetDict(prefs::kSupervisedUserApprovedExtensions)
-           .contains(extension_id) &&
-      manifest_type != Manifest::Type::kTheme) {
-    return kCustodianApprovalRequiredForInstallation;
-  }
+
   // Check if parent approval is needed for a supervised user to enable
   // an existing extension which is missing parental approval.
   if (registry->GetInstalledExtension(extension_id) &&

@@ -33,16 +33,9 @@
 #include "components/prefs/pref_change_registrar.h"
 #include "components/prefs/pref_service.h"
 #include "components/search/ntp_features.h"
-#include "components/supervised_user/core/common/buildflags.h"
 #include "extensions/buildflags/buildflags.h"
 #include "third_party/re2/src/re2/re2.h"
 
-#if BUILDFLAG(ENABLE_SUPERVISED_USERS)
-#include "components/supervised_user/core/browser/family_link_user_capabilities.h"
-#include "components/supervised_user/core/browser/supervised_user_service.h"
-#include "components/supervised_user/core/browser/supervised_user_url_filtering_service.h"
-#include "components/supervised_user/core/common/features.h"
-#endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 // GN doesn't understand conditional includes, so we need nogncheck here.
@@ -186,9 +179,6 @@ const NTPTilesVector& CustomLinksCache::GetList() const {
 MostVisitedSites::MostVisitedSites(
     PrefService* prefs,
     signin::IdentityManager* identity_manager,
-    supervised_user::SupervisedUserService* supervised_user_service,
-    supervised_user::SupervisedUserUrlFilteringService*
-        supervised_user_url_filtering_service,
     scoped_refptr<history::TopSites> top_sites,
     std::unique_ptr<PopularSites> popular_sites,
     std::unique_ptr<CustomLinksManager> custom_links_manager,
@@ -197,9 +187,6 @@ MostVisitedSites::MostVisitedSites(
     bool is_default_chrome_app_migrated)
     : prefs_(prefs),
       identity_manager_(identity_manager),
-      supervised_user_service_(supervised_user_service),
-      supervised_user_url_filtering_service_(
-          supervised_user_url_filtering_service),
       top_sites_(top_sites),
       popular_sites_(std::move(popular_sites)),
       custom_links_manager_(std::move(custom_links_manager)),
@@ -208,12 +195,6 @@ MostVisitedSites::MostVisitedSites(
       is_default_chrome_app_migrated_(is_default_chrome_app_migrated),
       is_observing_(false) {
   DCHECK(prefs_);
-#if BUILDFLAG(ENABLE_SUPERVISED_USERS)
-  if (supervised_user_url_filtering_service_) {
-    url_filtering_service_observation_.Observe(
-        supervised_user_url_filtering_service);
-  }
-#endif
 }
 
 MostVisitedSites::~MostVisitedSites() {
@@ -244,7 +225,7 @@ bool MostVisitedSites::DoesSourceExist(TileSource source) const {
     case TileSource::HOMEPAGE:
       return homepage_client_ != nullptr;
     case TileSource::ALLOWLIST:
-      return supervised_user_service_ != nullptr;
+      return false;
     case TileSource::CUSTOM_LINKS:
       return custom_links_manager_ != nullptr;
     case TileSource::ENTERPRISE_SHORTCUTS:
@@ -527,11 +508,6 @@ void MostVisitedSites::ClearBlockedUrls() {
   }
 }
 
-#if BUILDFLAG(ENABLE_SUPERVISED_USERS)
-void MostVisitedSites::OnUrlFilteringServiceChanged() {
-  BuildCurrentTiles(/*is_user_triggered=*/false);
-}
-#endif
 
 double MostVisitedSites::GetSuggestionScore(const GURL& url) const {
   if (current_tiles_.has_value()) {
@@ -596,14 +572,6 @@ void MostVisitedSites::OnMostVisitedURLsAvailable(
     if (visited.url.is_empty()) {
       break;  // This is the signal that there are no more real visited sites.
     }
-#if BUILDFLAG(ENABLE_SUPERVISED_USERS)
-    if (supervised_user_url_filtering_service_ &&
-        supervised_user_url_filtering_service_
-            ->GetFilteringBehavior(visited.url)
-            .IsBlocked()) {
-      continue;
-    }
-#endif
 
     NTPTile tile;
     tile.title = custom_links_manager_ ? GenerateShortTitle(visited.title)
@@ -640,14 +608,6 @@ MostVisitedSites::CreatePopularSitesSections(
     size_t num_actual_tiles) {
   std::map<SectionType, NTPTilesVector> sections = {
       std::make_pair(SectionType::PERSONALIZED, NTPTilesVector())};
-#if BUILDFLAG(ENABLE_SUPERVISED_USERS)
-  // For child accounts popular sites tiles will not be added.
-  if (identity_manager_ &&
-      supervised_user::IsPrimaryAccountSubjectToParentalControls(
-          identity_manager_) == signin::Tribool::kTrue) {
-    return sections;
-  }
-#endif
 
   if (!popular_sites_) {
     return sections;
@@ -857,13 +817,6 @@ void MostVisitedSites::ReloadCustomLinksCache() {
   size_t num_tiles = std::min(links.size(), max_links);
   for (size_t i = 0; i < num_tiles; ++i) {
     const CustomLinksManager::Link& link = links.at(i);
-#if BUILDFLAG(ENABLE_SUPERVISED_USERS)
-    if (supervised_user_url_filtering_service_ &&
-        supervised_user_url_filtering_service_->GetFilteringBehavior(link.url)
-            .IsBlocked()) {
-      continue;
-    }
-#endif
 
     NTPTile tile;
     tile.title = link.title;

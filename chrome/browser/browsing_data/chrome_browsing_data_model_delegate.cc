@@ -20,7 +20,6 @@
 #include "components/content_settings/browser/page_specific_content_settings.h"
 #include "components/media_device_salt/media_device_salt_service.h"
 #include "components/permissions/permissions_client.h"
-#include "components/supervised_user/core/common/features.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/storage_partition_config.h"
 #include "net/base/features.h"

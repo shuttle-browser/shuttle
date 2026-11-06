@@ -40,7 +40,6 @@
 #include "chrome/browser/extensions/webstore_reinstaller.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/supervised_user/supervised_user_browser_utils.h"
 #include "chrome/browser/ui/extensions/extension_multiple_uninstall_dialog.h"
 #include "chrome/browser/ui/select_file_policy/chrome_select_file_policy.h"
 #include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
@@ -152,9 +151,6 @@ namespace {
 #if !BUILDFLAG(IS_ANDROID)
 constexpr char kUnpackedAppsFolder[] = "apps_target";
 #endif  // !BUILDFLAG(IS_ANDROID)
-
-const char kCannotUpdateChildAccountProfileSettingsError[] =
-    "Cannot change settings for a child account profile.";
 
 ui::FileInfo* g_drop_file_for_testing = nullptr;
 
@@ -588,9 +584,6 @@ DeveloperPrivateUpdateProfileConfigurationFunction::Run() {
   CHECK(profile);
 
   if (update.in_developer_mode) {
-    if (supervised_user::AreExtensionsPermissionsEnabled(profile)) {
-      return RespondNow(Error(kCannotUpdateChildAccountProfileSettingsError));
-    }
     util::SetDeveloperModeForProfile(profile, *update.in_developer_mode);
   }
 
@@ -887,10 +880,6 @@ ExtensionFunction::ResponseAction DeveloperPrivateLoadUnpackedFunction::Run() {
   }
 
   Profile* profile = Profile::FromBrowserContext(browser_context());
-  if (profile && supervised_user::AreExtensionsPermissionsEnabled(profile)) {
-    return RespondNow(
-        Error("Child account users cannot load unpacked extensions."));
-  }
   PrefService* prefs = profile->GetPrefs();
   if (!prefs->GetBoolean(prefs::kExtensionsUIDeveloperMode)) {
     return RespondNow(

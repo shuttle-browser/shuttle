@@ -54,8 +54,6 @@
 #include "chrome/browser/media/media_engagement_service.h"
 #include "chrome/browser/media/webrtc/media_device_salt_service_factory.h"
 #include "chrome/browser/media/webrtc/webrtc_event_log_manager.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/permissions/permission_actions_history_factory.h"
 #include "chrome/browser/permissions/permission_decision_auto_blocker_factory.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_manager_factory.h"
@@ -457,11 +455,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
       heavy_ad_service->heavy_ad_blocklist()->ClearBlockList(delete_begin_,
                                                              delete_end_);
     }
-
-    OptimizationGuideKeyedService* optimization_guide_keyed_service =
-        OptimizationGuideKeyedServiceFactory::GetForProfile(profile_);
-    if (optimization_guide_keyed_service)
-      optimization_guide_keyed_service->ClearData();
 
     content::PrefetchServiceDelegate::ClearData(profile_);
 

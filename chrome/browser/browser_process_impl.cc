@@ -61,7 +61,6 @@
 #include "chrome/browser/intranet_redirect_detector.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
-#include "chrome/browser/media/audio_process_ml_model_forwarder.h"
 #include "chrome/browser/media/chrome_media_session_client.h"
 #include "chrome/browser/media/webrtc/webrtc_event_log_manager.h"
 #include "chrome/browser/media/webrtc/webrtc_log_uploader.h"
@@ -72,7 +71,6 @@
 #include "chrome/browser/net/system_network_context_manager.h"
 #include "chrome/browser/notifications/notification_platform_bridge.h"
 #include "chrome/browser/notifications/system_notification_helper.h"
-#include "chrome/browser/optimization_guide/model_execution/optimization_guide_global_state.h"
 #include "chrome/browser/permissions/chrome_permissions_client.h"
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
 #include "chrome/browser/prefs/browser_prefs.h"
@@ -129,8 +127,6 @@
 #include "components/subresource_filter/content/browser/safe_browsing_ruleset_publisher.h"
 #include "components/subresource_filter/core/browser/subresource_filter_features.h"
 #include "components/subresource_filter/core/common/constants.h"
-#include "components/supervised_user/core/browser/device_parental_controls.h"
-#include "components/supervised_user/core/browser/device_parental_controls_noop_impl.h"
 #include "components/ukm/ukm_service.h"
 #include "components/update_client/net/network_chromium.h"
 #include "components/update_client/update_query_params.h"
@@ -189,7 +185,6 @@
 #include "chrome/browser/ssl/chrome_security_state_client.h"
 #include "chrome/browser/webapps/webapps_client_android.h"
 #include "chrome/browser/webauthn/android/chrome_webauthn_client_android.h"
-#include "components/supervised_user/core/browser/android/android_parental_controls.h"
 #include "components/webauthn/android/webauthn_client_android.h"
 
 namespace chrome_browser_prefs {
@@ -312,13 +307,6 @@ BrowserProcessImpl::BrowserProcessImpl(StartupData* startup_data)
           static_cast<ChromeMetricsServicesManagerClient*>(
               startup_data->chrome_feature_list_creator()
                   ->GetMetricsServicesManagerClient())),
-#if BUILDFLAG(IS_ANDROID)
-      device_parental_controls_(
-          std::make_unique<supervised_user::AndroidParentalControls>()),
-#else
-      device_parental_controls_(
-          std::make_unique<supervised_user::DeviceParentalControlsNoOpImpl>()),
-#endif
       platform_part_(std::make_unique<BrowserProcessPlatformPart>()),
       network_time_tracker_(startup_data->chrome_feature_list_creator()
                                 ->TakeNetworkTimeTracker()),
@@ -352,10 +340,6 @@ const ui::UnownedUserDataHost& BrowserProcessImpl::GetUnownedUserDataHost()
 }
 
 void BrowserProcessImpl::Init() {
-#if BUILDFLAG(IS_ANDROID)
-  device_parental_controls_->Init();
-#endif
-
 #if BUILDFLAG(IS_CHROMEOS)
   CHECK(metrics_services_manager_client_);
   metrics_services_manager_client_->OnCrosSettingsCreated();
@@ -1071,12 +1055,6 @@ BrowserProcessImpl::background_printing_manager() {
 #endif
 }
 
-supervised_user::DeviceParentalControls&
-BrowserProcessImpl::device_parental_controls() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return *device_parental_controls_;
-}
-
 IntranetRedirectDetector* BrowserProcessImpl::intranet_redirect_detector() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (!intranet_redirect_detector_) {
@@ -1576,13 +1554,6 @@ void BrowserProcessImpl::PreMainMessageLoopRun() {
 #if BUILDFLAG(IS_CHROMEOS)
   soda_installer_impl_ = std::make_unique<speech::SodaInstallerImplChromeOS>();
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-  if (features_->audio_process_ml_model_forwarder()) {
-    // TODO(crbug.com/454930933): Once the model provider is available from
-    // PreCreateThreads, move this init to GlobalFeatures initialization.
-    features_->audio_process_ml_model_forwarder()->Initialize(
-        features_->optimization_guide_global_feature()->GetModelProvider());
-  }
 }
 
 void BrowserProcessImpl::CreateIconManager() {

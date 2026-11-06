@@ -27,8 +27,6 @@ source_set("management") {
 
   deps = [
     "//build:chromeos_buildflags",
-    "//components/supervised_user/core/common:buildflags",
-    "//components/supervised_user/core/common:features",
     "//content/public/browser",
     "//extensions/browser/api:extensions_api_client",
     "//extensions/common:mojom",

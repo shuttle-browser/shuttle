@@ -65,7 +65,6 @@ import("//v8/gni/v8.gni")
 
 assert(!is_ios, "Chromium/iOS shouldn't use anything in //chrome")
 assert(!is_fuchsia, "Fuchsia shouldn't use anything in //chrome")
-assert(enable_supervised_users)
 
 if (is_android) {
   import("//build/config/android/rules.gni")
@@ -283,10 +282,7 @@ if (is_android) {
       "//chrome/browser/metrics:android_browsertests",
       "//chrome/browser/metrics:test_support",
       "//chrome/browser/offline_items_collection",
-      "//chrome/browser/optimization_guide",
       "//chrome/browser/origin_trials:browser_tests",
-      "//chrome/browser/page_content_annotations:android_browser_tests",
-      "//chrome/browser/page_content_annotations:extraction_service",
       "//chrome/browser/page_load_metrics:android_browsertests",
       "//chrome/browser/policy:android_browsertests",
       "//chrome/browser/policy:browser_tests",
@@ -299,12 +295,10 @@ if (is_android) {
       "//chrome/browser/profiles:android_browsertests",
       "//chrome/browser/safe_browsing:test_support",
       "//chrome/browser/search_engines",
-      "//chrome/browser/segmentation_platform:test_utils",
       "//chrome/browser/site_protection",
       "//chrome/browser/site_protection:utils",
       "//chrome/browser/ssl:android_browsertests",
       "//chrome/browser/ssl:cert_verifier_test_support",
-      "//chrome/browser/supervised_user:android_browser_tests",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/android/hats:browser_tests",
       "//chrome/browser/ui/browser_window",
@@ -313,7 +307,6 @@ if (is_android) {
       "//chrome/browser/ui/tabs:tab_enums",
       "//chrome/browser/ui/webui/policy",
       "//chrome/browser/user_agent:browser_tests",
-      "//chrome/browser/visited_url_ranking:browser_tests",
       "//chrome/browser/webauthn",
       "//chrome/browser/webid",
       "//chrome/browser/webid:android_browsertests",
@@ -351,9 +344,6 @@ if (is_android) {
       "//components/offline_pages/core/background:test_support",
       "//components/optimization_guide/core",
       "//components/optimization_guide/core:test_support",
-      "//components/page_content_annotations/content",
-      "//components/page_content_annotations/core",
-      "//components/page_content_annotations/core:test_support",
       "//components/page_load_metrics/browser:test_support",
       "//components/page_load_metrics/browser/observers/ad_metrics:test_support",
       "//components/policy:chrome_settings_proto_generated_compile",
@@ -376,11 +366,6 @@ if (is_android) {
       "//components/security_interstitials/core:unsafe_resource",
       "//components/security_state/content",
       "//components/security_state/content/android",
-      "//components/segmentation_platform/embedder/default_model",
-      "//components/segmentation_platform/internal",
-      "//components/segmentation_platform/internal:test_support",
-      "//components/segmentation_platform/public",
-      "//components/segmentation_platform/public:test_support",
       "//components/session_proto_db",
       "//components/signin/public/identity_manager",
       "//components/signin/public/identity_manager:test_support",
@@ -396,7 +381,6 @@ if (is_android) {
       "//components/unified_consent",
       "//components/user_manager",
       "//components/variations/service",
-      "//components/visited_url_ranking/public",
       "//components/webapk:proto",
       "//components/webui/chrome_urls",
       "//content/test:android_test_message_pump_support",

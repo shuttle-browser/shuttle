@@ -21,7 +21,7 @@
 #include "components/permissions/permission_request_data.h"
 #include "components/permissions/permission_request_enums.h"
 #include "components/permissions/permission_uma_constants.h"
-#include "components/permissions/prediction_service/permission_ui_selector.h"
+#include "components/permissions/permission_ui_selector.h"
 #include "components/permissions/request_type.h"
 #include "components/permissions/resolvers/permission_prompt_options.h"
 #include "content/public/browser/permission_result.h"
@@ -134,12 +134,6 @@ class PermissionUmaUtil {
       PermissionPromptDisposition ui_disposition,
       std::optional<PermissionPromptDispositionReason> ui_reason,
       std::optional<std::vector<ElementAnchoredBubbleVariant>> variants,
-      std::optional<PermissionUiSelector::PredictionGrantLikelihood>
-          predicted_grant_likelihood,
-      std::optional<PermissionRequestRelevance> permission_request_relevance,
-      std::optional<permissions::PermissionAiRelevanceModel>
-          permission_ai_relevance_model,
-      std::optional<bool> prediction_decision_held_back,
       std::optional<permissions::PermissionIgnoredReason> ignored_reason,
       bool did_show_prompt,
       bool did_click_manage,
@@ -462,12 +456,6 @@ class PermissionUmaUtil {
       const GURL& requesting_origin,
       content::BrowserContext* browser_context,
       content::RenderFrameHost* render_frame_host,
-      std::optional<PermissionUiSelector::PredictionGrantLikelihood>
-          predicted_grant_likelihood,
-      std::optional<PermissionRequestRelevance> permission_request_relevance,
-      std::optional<permissions::PermissionAiRelevanceModel>
-          permission_ai_relevance_model,
-      std::optional<bool> prediction_decision_held_back,
       const PromptOptions& prompt_options,
       std::optional<GeolocationAccuracy> initial_geolocation_accuracy_selection,
       std::optional<GeolocationPromptType> geolocation_prompt_type,

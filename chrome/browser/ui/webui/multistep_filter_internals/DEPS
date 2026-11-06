@@ -1,5 +1,0 @@
-include_rules = [
-  "+components/multistep_filter/core",
-  "+chrome/browser/multistep_filter/core",
-  "+chrome/browser/profiles",
-]

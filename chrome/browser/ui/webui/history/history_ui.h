@@ -8,7 +8,6 @@
 #include <memory>
 
 #include "base/memory/scoped_refptr.h"
-#include "components/page_image_service/mojom/page_image_service.mojom.h"
 #include "content/public/browser/webui_config.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -23,10 +22,6 @@ class RefCountedMemory;
 }
 
 class BrowsingHistoryHandler;
-
-namespace page_image_service {
-class ImageServiceHandler;
-}
 
 class HistoryUIConfig : public content::WebUIConfig {
  public:
@@ -55,9 +50,6 @@ class HistoryUI : public ui::MojoWebUIController {
   // Instantiates the implementors of mojom interfaces.
   void BindInterface(
       mojo::PendingReceiver<history::mojom::PageHandler> pending_page_handler);
-  void BindInterface(
-      mojo::PendingReceiver<page_image_service::mojom::PageImageServiceHandler>
-          pending_page_handler);
 
   // For testing only.
   BrowsingHistoryHandler* GetBrowsingHistoryHandlerForTesting() {
@@ -66,8 +58,6 @@ class HistoryUI : public ui::MojoWebUIController {
 
  private:
   std::unique_ptr<BrowsingHistoryHandler> browsing_history_handler_;
-  std::unique_ptr<page_image_service::ImageServiceHandler>
-      image_service_handler_;
   WEB_UI_CONTROLLER_TYPE_DECL();
 };
 
