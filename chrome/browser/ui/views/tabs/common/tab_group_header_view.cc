@@ -137,7 +137,6 @@ END_METADATA
 TabGroupHeaderView::TabGroupHeaderView(
     Delegate& delegate,
     TabStripOrientation orientation,
-    tabs::VerticalTabStripStateController* state_controller,
     const tab_groups::TabGroupVisualData* tab_group_visual_data)
     : HoverCardAnchorTarget(this),
       tab_group_visual_data_(*tab_group_visual_data),
@@ -155,8 +154,7 @@ TabGroupHeaderView::TabGroupHeaderView(
                          ? AddChildView(std::make_unique<views::ImageView>())
                          : nullptr),
       delegate_(delegate),
-      orientation_(orientation),
-      editor_bubble_tracker_(state_controller) {
+      orientation_(orientation) {
   SetProperty(views::kElementIdentifierKey, kTabGroupHeaderElementId);
   attention_indicator_->SetProperty(views::kElementIdentifierKey,
                                     kTabGroupHeaderAttentionIndicatorElementId);

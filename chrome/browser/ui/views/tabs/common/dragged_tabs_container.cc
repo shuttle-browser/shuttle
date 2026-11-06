@@ -14,7 +14,6 @@
 #include "base/types/to_address.h"
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_node.h"
 #include "chrome/browser/ui/views/tabs/common/tab_drag_handler.h"
 #include "chrome/browser/ui/views/tabs/common/tab_strip_collection_controller.h"
@@ -628,16 +627,6 @@ const TabDragHandler& DraggedTabsContainer::GetDragHandler() const {
   CHECK(collection_node_);
   CHECK(collection_node_->GetController());
   return collection_node_->GetController()->GetDragHandler();
-}
-
-tabs::VerticalTabStripCollapseState
-DraggedTabsContainer::GetTabStripCollapseState() const {
-  const auto* controller =
-      collection_node_ ? collection_node_->GetController() : nullptr;
-  if (!controller) {
-    return tabs::VerticalTabStripCollapseState::kExpanded;
-  }
-  return controller->GetStateController()->GetCollapseState();
 }
 
 void DraggedTabsContainer::ResetCollectionNode() {

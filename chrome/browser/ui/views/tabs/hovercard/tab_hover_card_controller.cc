@@ -20,8 +20,6 @@
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/chrome_widget_sublevel.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
@@ -100,36 +98,23 @@ base::TimeDelta GetShowDelay(BrowserWindowInterface* browser,
   //               |                                |
   //       minimum tab width               standard tab width
   int tab_width = 0, tab_min_width = 0, tab_standard_width = 0;
-  auto* vertical_tab_strip_state_controller =
-      tabs::VerticalTabStripStateController::From(browser);
-  if (vertical_tab_strip_state_controller &&
-      vertical_tab_strip_state_controller->ShouldDisplayVerticalTabs()) {
-    // For vertical tabs, we use tab strip width instead of tab widths. The
-    // minimum width is the collapsed state while the standard width is tied to
-    // the default uncollapsed width.
-    tab_width = tab_strip->width();
-
-    tab_min_width = tabs::kVerticalTabStripCollapsedWidth;
-    tab_standard_width = tabs::kVerticalTabStripDefaultUncollapsedWidth;
-  } else {
-    // Use the largest tab in the tab strip when determining the delay so that
-    // the delay is consistent for all tabs within the tab strip.
-    tab_width = anchor_target->GetView()->width();
-    for (int i = 0; i < browser->GetTabStripModel()->count(); i++) {
-      tabs::TabInterface* tab = browser->GetTabStripModel()->GetTabAtIndex(i);
-      if (!tab) {
-        continue;
-      }
-      views::View* tab_anchor = tab_strip->GetTabAnchorView(tab->GetHandle());
-      if (tab_anchor) {
-        tab_width = std::max(tab_width, tab_anchor->width());
-      }
+  // Use the largest tab in the tab strip when determining the delay so that
+  // the delay is consistent for all tabs within the tab strip.
+  tab_width = anchor_target->GetView()->width();
+  for (int i = 0; i < browser->GetTabStripModel()->count(); i++) {
+    tabs::TabInterface* tab = browser->GetTabStripModel()->GetTabAtIndex(i);
+    if (!tab) {
+      continue;
     }
-
-    const TabStyle* tab_style = TabStyle::Get();
-    tab_min_width = tab_style->GetPinnedWidth(/*is_split=*/false);
-    tab_standard_width = tab_style->GetStandardWidth(/*is_split=*/false);
+    views::View* tab_anchor = tab_strip->GetTabAnchorView(tab->GetHandle());
+    if (tab_anchor) {
+      tab_width = std::max(tab_width, tab_anchor->width());
+    }
   }
+
+  const TabStyle* tab_style = TabStyle::Get();
+  tab_min_width = tab_style->GetPinnedWidth(/*is_split=*/false);
+  tab_standard_width = tab_style->GetStandardWidth(/*is_split=*/false);
 
   constexpr base::TimeDelta kMinimumTriggerDelay = base::Milliseconds(300);
   if (tab_width <= tab_min_width) {
@@ -159,13 +144,7 @@ views::WidgetFadeAnimator::SlideDirection ComputeSlideDirection(
     return views::WidgetFadeAnimator::SlideDirection::kNone;
   }
 
-  auto* controller = tabs::VerticalTabStripStateController::From(browser);
-
-  if (controller && controller->ShouldDisplayVerticalTabs()) {
-    return views::WidgetFadeAnimator::SlideDirection::kTrailing;
-  } else {
-    return views::WidgetFadeAnimator::SlideDirection::kDown;
-  }
+  return views::WidgetFadeAnimator::SlideDirection::kDown;
 }
 
 }  // anonymous namespace

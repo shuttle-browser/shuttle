@@ -14,7 +14,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
 #include "chrome/browser/ui/views/tabs/common/horizontal_tab_style_views.h"
-#include "chrome/browser/ui/views/tabs/common/vertical_tab_style_views.h"
 #include "ui/gfx/color_utils.h"
 
 // static
@@ -65,9 +64,6 @@ ui::metadata::TypeConverter<TabStyle::TabColors>::GetValidStrings() {
 std::unique_ptr<TabStyleViews> TabStyleViews::Create(
     std::unique_ptr<TabStyleViewDelegate> delegate,
     TabStripOrientation orientation) {
-  if (orientation == TabStripOrientation::kVertical) {
-    return std::make_unique<VerticalTabStyleViews>(std::move(delegate));
-  }
   return std::make_unique<HorizontalTabStyleViews>(std::move(delegate));
 }
 

@@ -19,7 +19,6 @@ if (!is_android) {
     deps = [
       "//base",
       "//chrome/browser/devtools",
-      "//chrome/browser/history_clusters",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/resources/omnibox_popup:resources",
       "//chrome/browser/search_engines",

@@ -147,7 +147,6 @@ source_set("impl") {
       "//chrome/browser/ui/toolbar/chrome_labs",
       "//chrome/browser/ui/views/frame:toolbar_button_provider",
       "//chrome/browser/ui/views/tabs/common",
-      "//chrome/browser/ui/views/tabs/vertical",
       "//chrome/browser/ui/views/toolbar",
       "//chrome/browser/upgrade_detector",
       "//chrome/common",

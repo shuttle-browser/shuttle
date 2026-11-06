@@ -27,7 +27,6 @@
 #include "chrome/browser/extensions/open_tab_helper.h"
 #include "chrome/browser/extensions/tab_helper.h"
 #include "chrome/browser/extensions/window_controller.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/resource_coordinator/lifecycle_unit_state.mojom-forward.h"
 #include "chrome/browser/resource_coordinator/utils.h"
@@ -1866,11 +1865,6 @@ ExtensionFunction::ResponseAction TabsReloadFunction::Run() {
                                &web_contents, nullptr, &error)) {
       return RespondNow(Error(std::move(error)));
     }
-  }
-
-  if (PictureInPictureWindowManager::IsChildWebContents(web_contents)) {
-    return RespondNow(
-        Error(tabs_constants::kNotAllowedForPictureInPictureError));
   }
 
   web_contents->GetController().Reload(

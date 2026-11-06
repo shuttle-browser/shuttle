@@ -21,7 +21,6 @@ source_set("window_metadata") {
 
   deps = [
     "//chrome/app:generated_resources",
-    "//chrome/browser/picture_in_picture",
     "//chrome/browser/sessions",
     "//chrome/browser/ui:browser_init_state",
     "//chrome/browser/ui:browser_window_header",

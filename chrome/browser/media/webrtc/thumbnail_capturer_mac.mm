@@ -34,7 +34,6 @@
 #include "chrome/browser/media/webrtc/delegated_source_list_capturer.h"
 #include "chrome/browser/media/webrtc/desktop_capturer_wrapper.h"
 #include "chrome/browser/media/webrtc/desktop_media_list_base.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/desktop_capture_pip_utils.h"
 #include "content/public/browser/global_routing_id.h"
@@ -912,9 +911,8 @@ std::unique_ptr<ThumbnailCapturer> CreateThumbnailCapturerMac(
   }
 
   if (@available(macOS 14.4, *)) {
-    auto pip_web_contents_getter = base::BindRepeating([]() {
-      return PictureInPictureWindowManager::GetInstance()->GetWebContents();
-    });
+    auto pip_web_contents_getter = base::BindRepeating(
+        []() -> content::WebContents* { return nullptr; });
     auto pip_window_to_exclude_getter =
         base::BindRepeating([](content::DesktopMediaID::Id screen_id) {
           return content::desktop_capture::

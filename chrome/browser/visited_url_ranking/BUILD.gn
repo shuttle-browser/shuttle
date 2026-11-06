@@ -45,7 +45,6 @@ source_set("impl") {
     "//chrome/browser/segmentation_platform",
     "//chrome/common",
     "//components/history/core/browser",
-    "//components/history_clusters/core",
     "//components/keyed_service/core",
     "//components/search_engines",
     "//components/sessions",

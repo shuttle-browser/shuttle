@@ -20,7 +20,6 @@
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_features.h"
 #include "components/history/core/browser/history_service.h"
-#include "components/history_clusters/core/config.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/url_deduplication/url_deduplication_helper.h"
 #include "components/visited_url_ranking/internal/history_url_visit_data_fetcher.h"
@@ -144,7 +143,7 @@ VisitedURLRankingServiceFactory::BuildServiceInstanceForBrowserContext(
   transformers.emplace(
       URLVisitAggregatesTransformType::kHistoryVisibilityScoreFilter,
       std::make_unique<HistoryURLVisitAggregatesVisibilityScoreTransformer>(
-          history_clusters::Config().content_visibility_threshold));
+          /*visibility_score=*/0.5f));
   transformers.emplace(
       URLVisitAggregatesTransformType::kHistoryCategoriesFilter,
       std::make_unique<HistoryURLVisitAggregatesCategoriesTransformer>(

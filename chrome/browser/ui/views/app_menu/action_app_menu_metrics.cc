@@ -483,10 +483,6 @@ void ActionAppMenuMetrics::LogMenuActionWithId(actions::ActionId action_id) {
     case kActionTabSearch:
       RecordAction(MENU_ACTION_TAB_SEARCH, "TabSearch");
       break;
-    case kActionToggleVerticalTabs:
-      RecordAction(MENU_ACTION_TOGGLE_VERTICAL_TABS, "ToggleVerticalTabs");
-      break;
-
     case kActionNameWindow:
       RecordAction(MENU_ACTION_NAME_WINDOW, "NameWindow");
       break;

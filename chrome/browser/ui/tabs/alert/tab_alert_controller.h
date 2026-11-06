@@ -13,7 +13,6 @@
 #include "base/scoped_observation.h"
 #include "chrome/browser/media/webrtc/media_stream_capture_indicator.h"
 #include "chrome/browser/ui/tabs/contents_observing_tab_feature.h"
-#include "chrome/browser/vr/vr_tab_helper.h"
 #include "components/tabs/public/tab_alert.h"
 #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
 
@@ -35,8 +34,7 @@ struct CompareAlerts {
 // active alerts. Callers can subscribe and be notified when the tab alert that
 // should be shown changes.
 class TabAlertController : public tabs::ContentsObservingTabFeature,
-                           public MediaStreamCaptureIndicator::Observer,
-                           public vr::VrTabHelper::Observer {
+                           public MediaStreamCaptureIndicator::Observer {
  public:
   explicit TabAlertController(TabInterface& tab);
   TabAlertController(const TabAlertController&) = delete;
@@ -97,9 +95,6 @@ class TabAlertController : public tabs::ContentsObservingTabFeature,
   void OnIsCapturingDisplayChanged(content::WebContents* contents,
                                    bool is_capturing_display) override;
 
-  // VrTabHelper::Observer:
-  void OnIsContentDisplayedInHeadsetChanged(bool state) override;
-
  private:
   class ScopedAlertNotifier;
 
@@ -128,11 +123,6 @@ class TabAlertController : public tabs::ContentsObservingTabFeature,
   base::ScopedObservation<MediaStreamCaptureIndicator,
                           MediaStreamCaptureIndicator::Observer>
       media_stream_capture_indicator_observation_{this};
-
-  // Observes the VrTabHelper so that the controller will be notified when a tab
-  // is displaying content to a headset.
-  base::ScopedObservation<vr::VrTabHelper, vr::VrTabHelper::Observer>
-      vr_tab_helper_observation_{this};
 
   // Subscriptions to be notified when an alert status has changed.
   base::CallbackListSubscription recently_audible_subscription_;

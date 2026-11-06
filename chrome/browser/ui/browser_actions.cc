@@ -86,8 +86,6 @@
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_metrics.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/file_system_access/file_system_access_bubble_controller.h"
@@ -345,77 +343,6 @@ void BrowserActions::InitializePageActionIconActions() {
 void BrowserActions::InitializeChromeMenuActions() {
   Profile* const profile = base::to_address(profile_);
   BrowserWindowInterface* const bwi = base::to_address(bwi_);
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                if (context.GetProperty(chrome::kActionInvocationSourceKey) ==
-                    chrome::ActionInvocationSource::kAppMenu) {
-                  tabs::RecordVerticalTabStripModeChanged(
-                      !tabs::VerticalTabStripStateController::From(bwi)
-                           ->ShouldDisplayVerticalTabs(),
-                      tabs::VerticalTabStripEntryPoint::kAppMenu);
-                }
-                chrome::ToggleVerticalTabs(bwi);
-              },
-              bwi))
-          .SetActionId(kActionToggleVerticalTabs)
-          .SetText(l10n_util::GetStringUTF16(IDS_SWITCH_TO_VERTICAL_TAB))
-          .SetTooltipText(l10n_util::GetStringUTF16(IDS_SWITCH_TO_VERTICAL_TAB))
-          .SetImage(ui::ImageModel::FromVectorIcon(
-              features::IsRoundedIconsEnabled() ? kDockToRightIcon
-                                                : kDockToLeftOldIcon))
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                chrome::ToggleVerticalTabsExpandOnHover(bwi);
-              },
-              bwi))
-          .SetActionId(kActionToggleVerticalTabsExpandOnHover)
-          .SetText(l10n_util::GetStringUTF16(
-              IDS_VERTICAL_TABS_ENABLE_EXPAND_ON_HOVER))
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                auto* controller =
-                    tabs::VerticalTabStripStateController::From(bwi);
-                if (!controller) {
-                  // The controller is only instantiated for normal browsers.
-                  return;
-                }
-                bool collapse = controller->GetCollapseState() ==
-                                tabs::VerticalTabStripCollapseState::kExpanded;
-                controller->RequestCollapse(collapse);
-                if (context.GetProperty(chrome::kActionInvocationSourceKey) ==
-                    chrome::ActionInvocationSource::kKeyboardShortcut) {
-                  base::RecordAction(base::UserMetricsAction(
-                      collapse ? "VerticalTabs_TabStrip_"
-                                 "KeyboardShortcutToggleCollapsed"
-                               : "VerticalTabs_TabStrip_"
-                                 "KeyboardShortcutToggleUncollapsed"));
-                } else {
-                  base::RecordAction(base::UserMetricsAction(
-                      collapse
-                          ? "VerticalTabs_TabStrip_ButtonToggleCollapsed"
-                          : "VerticalTabs_TabStrip_ButtonToggleUncollapsed"));
-                }
-              },
-              bwi))
-          .SetActionId(kActionToggleCollapseVertical)
-          .SetAccelerator(ui::Accelerator(
-              ui::VKEY_L, ui::EF_SHIFT_DOWN | ui::EF_PLATFORM_ACCELERATOR))
-          .SetEnabled(false)
-          .Build());
 
   if (organizer_panel::IsOrganizerPanelFeatureEnabled()) {
     root_action_item_->AddChild(

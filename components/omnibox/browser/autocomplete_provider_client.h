@@ -45,10 +45,6 @@ class TopSites;
 class URLDatabase;
 }  // namespace history
 
-namespace history_clusters {
-class HistoryClustersService;
-}
-
 namespace network {
 class SharedURLLoaderFactory;
 }
@@ -75,7 +71,6 @@ class AutocompleteProviderClient : public OmniboxAction::Client {
   virtual const AutocompleteSchemeClassifier& GetSchemeClassifier() const = 0;
   virtual AutocompleteClassifier* GetAutocompleteClassifier() = 0;
   virtual history::HistoryService* GetHistoryService() = 0;
-  virtual history_clusters::HistoryClustersService* GetHistoryClustersService();
   virtual scoped_refptr<history::TopSites> GetTopSites() = 0;
   virtual history::URLDatabase* GetInMemoryDatabase() = 0;
   virtual InMemoryURLIndex* GetInMemoryURLIndex() = 0;

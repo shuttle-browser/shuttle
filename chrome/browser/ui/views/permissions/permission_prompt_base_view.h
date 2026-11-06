@@ -8,8 +8,6 @@
 #include <memory>
 
 #include "base/memory/weak_ptr.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_occlusion_observer.h"
-#include "chrome/browser/picture_in_picture/scoped_picture_in_picture_occlusion_observation.h"
 #include "chrome/browser/ui/url_identity.h"
 #include "components/permissions/permission_prompt.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -30,7 +28,6 @@ class BrowserWindowInterface;
 // * Ensure no button is selected by default to prevent unintended button
 // presses
 class PermissionPromptBaseView : public views::BubbleDialogDelegateView,
-                                 public PictureInPictureOcclusionObserver,
                                  public content::WebContentsObserver {
   METADATA_HEADER(PermissionPromptBaseView, views::BubbleDialogDelegateView)
 
@@ -43,14 +40,6 @@ class PermissionPromptBaseView : public views::BubbleDialogDelegateView,
   // views::BubbleDialogDelegateView:
   // Overridden to elide the prompt title if needed
   void AddedToWidget() override;
-
-  // Overridden to provide input protection on dialog default buttons.
-  bool ShouldIgnoreButtonPressedEventHandling(
-      View* button,
-      const ui::Event& event) const override;
-
-  // PictureInPictureOcclusionObserver:
-  void OnOcclusionStateChanged(bool occluded) override;
 
  protected:
   // Performs clickjacking checks and executes the button callback if the click
@@ -84,11 +73,6 @@ class PermissionPromptBaseView : public views::BubbleDialogDelegateView,
   static std::u16string GetBlockText(
       const std::vector<permissions::PermissionRequest*>& visible_requests);
 
-  // Starts observing our widget for occlusion by a picture-in-picture window.
-  // Subclasses must manually call this if they override `AddedToWidget()`
-  // without calling `PermissionPromptBaseView::AddedToWidget()`.
-  void StartTrackingPictureInPictureOcclusion();
-
   void AnchorToPageInfoOrChip();
 
   BrowserWindowInterface* GetBrowser();
@@ -110,17 +94,9 @@ class PermissionPromptBaseView : public views::BubbleDialogDelegateView,
  private:
   void HostPaintAsActiveChanged();
 
-  // True if this permission prompt is for a picture-in-picture window. This
-  // means it will be in an always-on-top window, and needs to be tracked by the
-  // PictureInPictureOcclusionTracker.
-  bool IsForPictureInPictureWindow() const;
-
   base::CallbackListSubscription host_paint_as_active_subscription_;
 
   const UrlIdentity url_identity_;
-
-  ScopedPictureInPictureOcclusionObservation occlusion_observation_{this};
-  bool occluded_by_picture_in_picture_ = false;
 
   // Boolean value to track if the host was always active while the prompt was
   // displayed.

@@ -4,7 +4,6 @@
 
 import("//build/config/buildflags_paint_preview.gni")
 import("//chrome/common/features.gni")
-import("//chrome/common/request_header_integrity/buildflags.gni")
 import("//components/guest_view/buildflags/buildflags.gni")
 import("//components/offline_pages/buildflags/features.gni")
 import("//components/optimization_guide/features.gni")
@@ -116,9 +115,7 @@ static_library("renderer") {
 
   defines = []
 
-  public_deps = [
-    "//components/signin/public/base:signin_buildflags",
-  ]
+  public_deps = [ "//components/signin/public/base:signin_buildflags" ]
 
   deps = [
     ":process_state",
@@ -129,7 +126,6 @@ static_library("renderer") {
     "//chrome/common",
     "//chrome/common:mojo_bindings",
     "//chrome/common/net",
-    "//chrome/common/request_header_integrity:buildflags",
     "//chrome/services/speech/buildflags",
     "//components/base32",
     "//components/cdm/renderer",
@@ -144,7 +140,6 @@ static_library("renderer") {
     "//components/google/core/common",
     "//components/guest_view/buildflags",
     "//components/heap_profiling/in_process",
-    "//components/history_clusters/core",
     "//components/language/core/common",
     "//components/metrics:child_call_stack_profile_builder",
     "//components/network_hints/renderer",
@@ -242,10 +237,6 @@ static_library("renderer") {
       "//components/pdf/renderer",
       "//pdf:features",
     ]
-  }
-
-  if (enable_request_header_integrity) {
-    deps += [ "//chrome/common/request_header_integrity" ]
   }
 
   if (enable_widevine_cdm_component) {

@@ -17,10 +17,6 @@
 class TabCollectionNode;
 class GlowHoverController;
 
-namespace tabs {
-enum class VerticalTabStripCollapseState;
-}  // namespace tabs
-
 // The view class for vertical split tab container. It manages layout
 // of the tabs within the split. It also ensures hover states are synchronized
 // with tab views within the split.
@@ -74,8 +70,6 @@ class SplitTabView : public TabCollectionZOrderManager,
   views::ProposedLayout CalculateVerticalLayout(
       const views::SizeBounds& size_bounds) const;
 
-  void OnCollapseStateChanged(tabs::VerticalTabStripCollapseState state);
-
   // Handles removing a `child_view` from `this` for reparenting to other
   // TabCollectionNode views. Records relevant metadata used for animating move
   // operations.
@@ -86,12 +80,10 @@ class SplitTabView : public TabCollectionZOrderManager,
   raw_ptr<TabCollectionNode> collection_node_ = nullptr;
   bool hovered_ = false;
   bool pinned_ = false;
-  bool collapsed_ = false;
   std::unique_ptr<GlowHoverController> hover_controller_;
 
   base::CallbackListSubscription node_destroyed_subscription_;
   base::CallbackListSubscription paint_as_active_subscription_;
-  base::CallbackListSubscription collapsed_state_changed_subscription_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_TABS_COMMON_SPLIT_TAB_VIEW_H_

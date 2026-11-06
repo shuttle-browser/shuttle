@@ -146,12 +146,6 @@ struct NavigateParams;
 class Profile;
 #endif
 
-#if BUILDFLAG(ENABLE_VR)
-namespace vr {
-class ChromeXrIntegrationClient;
-}
-#endif
-
 class ChromeContentBrowserClient : public content::ContentBrowserClient {
  public:
   using PopupNavigationDelegateFactory =
@@ -790,13 +784,6 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       const net::IsolationInfo& isolation_info,
       mojo::PendingRemote<network::mojom::URLLoaderFactory>* out_factory)
       override;
-  std::unique_ptr<content::VideoOverlayWindow>
-  CreateWindowForVideoPictureInPicture(
-      content::VideoPictureInPictureWindowController* controller) override;
-  base::ScopedClosureRunner MaybeGetScopedPictureInPictureTucker(
-      content::WebContents* web_contents) override;
-  media::PictureInPictureEventsInfo::AutoPipInfo GetAutoPipInfo(
-      const content::WebContents& web_contents) const override;
   void RegisterRendererPreferenceWatcher(
       content::BrowserContext* browser_context,
       mojo::PendingRemote<blink::mojom::RendererPreferenceWatcher> watcher)
@@ -890,10 +877,6 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
 
   bool IsDragAllowedByPolicy(const content::ClipboardEndpoint& source,
                              const content::DropData& drop_data) override;
-
-#if BUILDFLAG(ENABLE_VR)
-  content::XrIntegrationClient* GetXrIntegrationClient() override;
-#endif
 
   bool ShouldInheritCrossOriginEmbedderPolicyImplicitly(
       const GURL& url) override;
@@ -1332,10 +1315,6 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
 #if BUILDFLAG(IS_CHROMEOS)
   std::unique_ptr<content::SmartCardDelegate> smart_card_delegate_;
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-#if BUILDFLAG(ENABLE_VR)
-  std::unique_ptr<vr::ChromeXrIntegrationClient> xr_integration_client_;
-#endif
 
   // Returned from GetNetworkContextsParentDirectory() but created on the UI
   // thread because it needs to access the Local State prefs.

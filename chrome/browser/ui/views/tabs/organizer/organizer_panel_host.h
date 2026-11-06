@@ -18,14 +18,7 @@ enum class OrganizerPanelLocation {
   kNone,
   // In a slide-out tray.
   kOrganizerTray,
-  // In the vertical tab strip.
-  kVerticalTabStrip
 };
-
-// Returns whether the vertical tab strip in `browser` supports hosting the
-// embedded organizer panel.
-bool DoesVerticalTabStripSupportEmbeddedOrganizerPanel(
-    BrowserWindowInterface& browser);
 
 // Object that hosts an organizer panel view.
 class OrganizerPanelHost {

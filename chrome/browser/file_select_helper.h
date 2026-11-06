@@ -29,8 +29,6 @@
 #endif
 
 class Profile;
-class ScopedDisallowPictureInPicture;
-class ScopedTuckPictureInPicture;
 
 namespace content {
 class FileSelectListener;
@@ -351,15 +349,6 @@ class FileSelectHelper : public base::RefCountedThreadSafe<
 
   std::unique_ptr<content::WebContentsBasedCanceller>
       web_contents_based_canceller_;
-
-#if !BUILDFLAG(IS_ANDROID)
-  // When not null, this prevents picture-in-picture windows from opening.
-  std::unique_ptr<ScopedDisallowPictureInPicture>
-      scoped_disallow_picture_in_picture_;
-
-  // When not null, this tucks picture-in-picture windows out of the way.
-  std::unique_ptr<ScopedTuckPictureInPicture> scoped_tuck_picture_in_picture_;
-#endif  // !BUILDFLAG(IS_ANDROID)
 
   base::WeakPtrFactory<FileSelectHelper> weak_ptr_factory_{this};
 };

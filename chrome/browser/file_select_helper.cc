@@ -59,10 +59,6 @@
 
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/content_uri_utils.h"
-#else
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
-#include "chrome/browser/picture_in_picture/scoped_disallow_picture_in_picture.h"
-#include "chrome/browser/picture_in_picture/scoped_tuck_picture_in_picture.h"
 #endif  // BUILDFLAG(IS_ANDROID)
 
 using blink::mojom::FileChooserFileInfo;
@@ -681,18 +677,6 @@ void FileSelectHelper::RunFileChooser(
   listener_ = std::move(listener);
   InitLifecycleObserver(web_contents_);
 
-#if !BUILDFLAG(IS_ANDROID)
-  if (PictureInPictureWindowManager::GetInstance()
-          ->ShouldFileDialogBlockPictureInPicture(web_contents_)) {
-    scoped_disallow_picture_in_picture_ =
-        std::make_unique<ScopedDisallowPictureInPicture>();
-  } else if (PictureInPictureWindowManager::GetInstance()
-                 ->ShouldFileDialogTuckPictureInPicture(web_contents_)) {
-    scoped_tuck_picture_in_picture_ =
-        std::make_unique<ScopedTuckPictureInPicture>();
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
-
   base::ThreadPool::PostTask(
       FROM_HERE, {base::MayBlock()},
       base::BindOnce(&FileSelectHelper::GetFileTypesInThreadPool, this,
@@ -835,11 +819,6 @@ void FileSelectHelper::RunFileChooserOnUIThread(
 // reference we added in RunFileChooser().
 void FileSelectHelper::RunFileChooserEnd() {
 #if !BUILDFLAG(IS_ANDROID)
-  // Ensure picture-in-picture occlusion mitigation stops, even if we need to
-  // keep this instance alive for temporary files.
-  scoped_disallow_picture_in_picture_.reset();
-  scoped_tuck_picture_in_picture_.reset();
-
   if (web_contents_based_canceller_) {
     LogFileChooserCancelledByWindowResize(web_contents_, /*cancelled=*/false);
   }

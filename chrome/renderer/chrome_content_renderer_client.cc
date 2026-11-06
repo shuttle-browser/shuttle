@@ -44,7 +44,6 @@
 #include "chrome/common/profiler/chrome_thread_profiler_client.h"
 #include "chrome/common/profiler/core_unwinders.h"
 #include "chrome/common/profiler/thread_profiler_configuration.h"
-#include "chrome/common/request_header_integrity/buildflags.h"
 #include "chrome/common/secure_origin_allowlist.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/common/webui_url_constants.h"
@@ -87,7 +86,6 @@
 #include "components/grit/components_scaled_resources.h"
 #include "components/guest_view/buildflags/buildflags.h"
 #include "components/heap_profiling/in_process/heap_profiler_controller.h"
-#include "components/history_clusters/core/config.h"
 #include "components/metrics/call_stacks/call_stack_profile_builder.h"
 #include "components/network_hints/renderer/web_prescient_networking_impl.h"
 #include "components/no_state_prefetch/renderer/no_state_prefetch_client.h"
@@ -243,12 +241,6 @@
 #endif  // BUILDFLAG(HAS_SPELLCHECK_PANEL)
 #endif  // BUILDFLAG(ENABLE_SPELLCHECK)
 
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-#include "chrome/common/request_header_integrity/chrome_companero.mojom.h"  // nogncheck
-#include "chrome/common/request_header_integrity/chrome_companero_loader.h"  // nogncheck
-#include "chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.h"  // nogncheck
-#endif
-
 #if BUILDFLAG(ENABLE_LIBRARY_CDMS) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID)
 #include "chrome/renderer/media/chrome_key_systems.h"
 #endif
@@ -398,17 +390,6 @@ void ChromeContentRendererClient::RenderThreadStarted() {
       thread->GetIOTaskRunner(), std::move(module_event_sink));
 #endif
 
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-  if (request_header_integrity::RequestHeaderIntegrityURLLoaderThrottle::
-          IsFeatureEnabled()) {
-    mojo::PendingRemote<request_header_integrity::mojom::ChromeCompanero>
-        remote;
-    thread->BindHostReceiver(remote.InitWithNewPipeAndPassReceiver());
-    request_header_integrity::ChromeCompaneroLoader::GetInstance()
-        .SetMojoRemote(std::move(remote));
-  }
-#endif
-
   browser_interface_broker_ =
       blink::Platform::Current()->GetBrowserInterfaceBroker();
 
@@ -504,9 +485,6 @@ void ChromeContentRendererClient::RenderThreadStarted() {
     WebSecurityPolicy::AddSchemeToSecureContextSafelist(
         WebString::FromAscii(scheme));
   }
-
-  WebSecurityPolicy::RegisterURLSchemeAsSupportingFetchAPI(
-      WebString::FromAscii(chrome::kChromeExperimentalSiteTokenProviderScheme));
 
   // This doesn't work in single-process mode.
   if (!base::CommandLine::ForCurrentProcess()->HasSwitch(

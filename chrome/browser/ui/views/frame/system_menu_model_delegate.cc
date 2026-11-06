@@ -15,8 +15,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_metrics.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/common/pref_names.h"
@@ -103,11 +101,7 @@ bool SystemMenuModelDelegate::IsCommandIdVisible(int command_id) const {
   }
 #endif
   if (command_id == IDC_TAB_SCROLL_BUTTONS_TOGGLE_PIN) {
-    if (base::FeatureList::IsEnabled(tabs::kTabStripUnification)) {
-      return !BrowserView::GetBrowserViewForBrowser(browser_)
-                  ->ShouldDrawVerticalTabStrip();
-    }
-    return false;
+    return base::FeatureList::IsEnabled(tabs::kTabStripUnification);
   }
   return true;
 }
@@ -122,9 +116,6 @@ bool SystemMenuModelDelegate::IsItemForCommandIdDynamic(int command_id) const {
   return std::set{IDC_RESTORE_TAB,
                   IDC_TAB_SEARCH_TOGGLE_PIN,
                   IDC_GLIC_TOGGLE_PIN,
-                  IDC_TOGGLE_VERTICAL_TABS,
-                  IDC_TOGGLE_VERTICAL_TABS_COLLAPSE,
-                  IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER,
                   IDC_TAB_SCROLL_BUTTONS_TOGGLE_PIN}
       .contains(command_id);
 }
@@ -184,35 +175,6 @@ std::u16string SystemMenuModelDelegate::GetLabelForCommandId(
       }
 #endif
       break;
-    case IDC_TOGGLE_VERTICAL_TABS: {
-      auto* controller = tabs::VerticalTabStripStateController::From(browser_);
-      CHECK(controller);
-#if BUILDFLAG(IS_MAC)
-      string_id = controller->ShouldDisplayVerticalTabs()
-                      ? IDS_SWITCH_TO_HORIZONTAL_TAB_MAC
-                      : IDS_SWITCH_TO_VERTICAL_TAB_MAC;
-#else
-      string_id = controller->ShouldDisplayVerticalTabs()
-                      ? IDS_SWITCH_TO_HORIZONTAL_TAB
-                      : IDS_SWITCH_TO_VERTICAL_TAB;
-#endif
-      break;
-    }
-    case IDC_TOGGLE_VERTICAL_TABS_COLLAPSE: {
-      auto* controller = tabs::VerticalTabStripStateController::From(browser_);
-      CHECK(controller);
-      string_id = controller->IsCollapsed() ? IDS_EXPAND_VERTICAL_TABS
-                                            : IDS_COLLAPSE_VERTICAL_TABS;
-      break;
-    }
-    case IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER: {
-      auto* controller = tabs::VerticalTabStripStateController::From(browser_);
-      CHECK(controller);
-      string_id = controller->IsExpandOnHoverEnabled()
-                      ? IDS_VERTICAL_TABS_DISABLE_EXPAND_ON_HOVER
-                      : IDS_VERTICAL_TABS_ENABLE_EXPAND_ON_HOVER;
-      break;
-    }
     case IDC_TAB_SEARCH_TOGGLE_PIN:
       string_id = browser_->GetProfile()->GetPrefs()->GetBoolean(
                       prefs::kTabSearchPinnedToTabstrip)
@@ -252,26 +214,6 @@ void SystemMenuModelDelegate::ExecuteCommand(int command_id, int event_flags) {
       base::RecordAction(
           base::UserMetricsAction("SystemContextMenu_NameWindow"));
       break;
-    case IDC_TOGGLE_VERTICAL_TABS: {
-      auto* controller = tabs::VerticalTabStripStateController::From(browser_);
-      if (controller) {
-        const bool is_vertical = !controller->ShouldDisplayVerticalTabs();
-        tabs::RecordVerticalTabStripModeChanged(
-            is_vertical, tabs::VerticalTabStripEntryPoint::kSystemContextMenu);
-      }
-      break;
-    }
-    case IDC_TOGGLE_VERTICAL_TABS_COLLAPSE: {
-      auto* controller = tabs::VerticalTabStripStateController::From(browser_);
-      if (controller) {
-        const bool collapse = controller->GetCollapseState() ==
-                              tabs::VerticalTabStripCollapseState::kExpanded;
-        base::RecordAction(base::UserMetricsAction(
-            collapse ? "VerticalTabs_TabStrip_ContextMenuToggleCollapsed"
-                     : "VerticalTabs_TabStrip_ContextMenuToggleUncollapsed"));
-      }
-      break;
-    }
     case IDC_TAB_SEARCH_TOGGLE_PIN: {
       PrefService* prefs = browser_->GetProfile()->GetPrefs();
       const bool is_pinned =

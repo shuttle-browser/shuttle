@@ -13,7 +13,6 @@
 #include "build/branding_buildflags.h"
 #include "build/buildflag.h"
 #include "chrome/browser/devtools/devtools_window.h"
-#include "chrome/browser/history_clusters/history_clusters_tab_helper.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/omnibox/chrome_omnibox_client.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
@@ -411,13 +410,6 @@ void OmniboxPopupHandler::OnCutOrCopy(uint32_t sequence_number,
                           "ByPageContext.",
                           page_context}),
             elapsed);
-      }
-    }
-
-    if (web_contents_) {
-      if (auto* clusters_helper =
-              HistoryClustersTabHelper::FromWebContents(web_contents_)) {
-        clusters_helper->OnOmniboxUrlCopied();
       }
     }
   }

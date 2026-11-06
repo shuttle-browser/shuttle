@@ -19,7 +19,6 @@
 #include "chrome/browser/file_select_helper.h"
 #include "chrome/browser/headless/headless_mode_util.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/preloading/preloading_prefs.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/repost_form_warning_controller.h"
@@ -289,15 +288,9 @@ const BrowserWebContentsDelegate* BrowserWebContentsDelegate::From(
 
 BrowserWebContentsDelegate::~BrowserWebContentsDelegate() = default;
 
-content::PictureInPictureResult
-BrowserWebContentsDelegate::EnterPictureInPicture(
-    content::WebContents* web_contents) {
-  return PictureInPictureWindowManager::GetInstance()
-      ->EnterVideoPictureInPicture(web_contents);
-}
-
-void BrowserWebContentsDelegate::ExitPictureInPicture() {
-  PictureInPictureWindowManager::GetInstance()->ExitPictureInPicture();
+bool BrowserWebContentsDelegate::IsDocumentPictureInPictureBlockedBySystem()
+    const {
+  return true;
 }
 
 content::KeyboardEventProcessingResult

@@ -87,7 +87,6 @@ source_set("impl") {
     "//chrome/browser/ui/views/controls",
     "//chrome/browser/ui/views/file_system_access",
     "//chrome/browser/ui/views/frame:browser_view_header",
-    "//chrome/browser/vr",
     "//components/content_settings/browser/ui",
     "//components/dom_distiller/core",
     "//components/omnibox/browser:vector_icons",

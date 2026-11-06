@@ -245,7 +245,6 @@ if (!is_android && !is_mac) {
 
       if (is_chrome_branded) {
         data_deps += [
-          "//chrome/common/request_header_integrity/internal:chromecompaneros",
         ]
       }
 
@@ -1236,7 +1235,6 @@ if (is_win) {
       sources = [ "$root_out_dir/libchromecompaneros.dylib" ]
       outputs = [ "{{bundle_contents_dir}}/Libraries/{{source_file_part}}" ]
       public_deps = [
-        "//chrome/common/request_header_integrity/internal:chromecompaneros",
       ]
     }
   }

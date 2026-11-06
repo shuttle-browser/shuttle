@@ -64,17 +64,8 @@ class ExternalProtocolDialog : public views::DialogDelegateView,
   void SetRememberSelectionCheckboxCheckedForTesting(bool checked);
   void OnDialogAccepted();
 
-  // Trigger input protection to protect against certain kinds of clickjacking.
-  void TriggerInputProtection();
-
   // views::DialogDelegate:
-  bool ShouldIgnoreButtonPressedEventHandling(
-      View* button,
-      const ui::Event& event) const override;
   bool ShouldAllowKeyEventsDuringInputProtection() const override;
-
-  // Simulates Picture-in-Picture occlussion changed for testing.
-  void SimulateOcclusionStateChangedForTesting(bool occluded);
 
   const base::WeakPtr<content::WebContents> web_contents_;
 
@@ -85,11 +76,6 @@ class ExternalProtocolDialog : public views::DialogDelegateView,
 
   // The message box whose commands we handle.
   raw_ptr<views::MessageBoxView> message_box_view_ = nullptr;
-
-  // The PictureInPictureWatcher tracks dialog occlussions by Picture-in-Picture
-  // windows, to ensure input protection and ignore spurious interactions.
-  class PictureInPictureWatcher;
-  std::unique_ptr<PictureInPictureWatcher> picture_in_picture_watcher_;
 
   // Observes the dialog's widget for activation changes to re-arm input
   // protection on z-order/activation reveals.

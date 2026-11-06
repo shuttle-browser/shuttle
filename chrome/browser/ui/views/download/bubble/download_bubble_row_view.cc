@@ -168,7 +168,6 @@ void DownloadBubbleRowView::AddedToWidget() {
     focus_manager->AddFocusChangeListener(this);
     RegisterAccelerators(focus_manager);
   }
-  pip_occlusion_observation_.Observe(GetWidget());
 }
 
 void DownloadBubbleRowView::RemovedFromWidget() {
@@ -953,16 +952,6 @@ bool DownloadBubbleRowView::AcceleratorPressed(
 bool DownloadBubbleRowView::CanHandleAccelerators() const {
   bool focused = Contains(GetFocusManager()->GetFocusedView());
   return focused;
-}
-
-void DownloadBubbleRowView::OnOcclusionStateChanged(bool occluded) {
-  transparent_button_->SetEnabled(!occluded);
-  for (auto& [command, action_button] : quick_actions_) {
-    action_button->SetEnabled(!occluded);
-  }
-  for (auto& [command, main_page_button] : main_page_buttons_) {
-    main_page_button->SetEnabled(!occluded);
-  }
 }
 
 std::u16string_view DownloadBubbleRowView::GetSecondaryLabelTextForTesting() {

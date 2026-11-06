@@ -9,14 +9,11 @@
 
 #include "base/functional/bind.h"
 #include "base/memory/weak_ptr.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_occlusion_tracker.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/views/bubble_anchor_util_views.h"
-#include "chrome/browser/ui/views/picture_in_picture/document_pip_host.h"
 #include "chrome/browser/ui/views/title_origin_label.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/grit/generated_resources.h"
@@ -126,7 +123,6 @@ void PermissionPromptBaseView::AddedToWidget() {
   permissions::PermissionUmaUtil::RecordPromptShownInActiveBrowser(
       request_type_, /*embedded_permission_element_initiated*/ false,
       record_host_always_active_value_);
-  StartTrackingPictureInPictureOcclusion();
 }
 
 void PermissionPromptBaseView::AnchorToPageInfoOrChip() {
@@ -151,22 +147,6 @@ void PermissionPromptBaseView::AnchorToPageInfoOrChip() {
     SetAnchorRect(bubble_anchor_util::GetPageInfoAnchorRect(GetBrowser()));
   }
   SetArrow(configuration.bubble_arrow);
-}
-
-bool PermissionPromptBaseView::ShouldIgnoreButtonPressedEventHandling(
-    View* button,
-    const ui::Event& event) const {
-  // Ignore button pressed events whenever we're occluded by a
-  // picture-in-picture window.
-  return occluded_by_picture_in_picture_;
-}
-
-void PermissionPromptBaseView::OnOcclusionStateChanged(bool occluded) {
-  // Protect from immediate input if the dialog has just become unoccluded.
-  if (occluded_by_picture_in_picture_ && !occluded) {
-    TriggerInputProtection();
-  }
-  occluded_by_picture_in_picture_ = occluded;
 }
 
 void PermissionPromptBaseView::FilterUnintenedEventsAndRunCallbacks(
@@ -238,22 +218,6 @@ std::u16string PermissionPromptBaseView::GetBlockText(
   return GetBlockTextInternal(visible_requests.size(), visible_requests[0]);
 }
 
-void PermissionPromptBaseView::StartTrackingPictureInPictureOcclusion() {
-  // If we're for a picture-in-picture window, then we are in an always-on-top
-  // widget that should be tracked by the PictureInPictureOcclusionTracker.
-  if (IsForPictureInPictureWindow()) {
-    PictureInPictureOcclusionTracker* tracker =
-        PictureInPictureWindowManager::GetInstance()->GetOcclusionTracker();
-    if (tracker) {
-      tracker->OnPictureInPictureWidgetOpened(GetWidget());
-    }
-  }
-
-  // Either way, we want to know if we're ever occluded by an always-on-top
-  // window.
-  occlusion_observation_.Observe(GetWidget());
-}
-
 const BrowserWindowInterface* PermissionPromptBaseView::GetBrowser() const {
   if (!web_contents()) {
     return nullptr;
@@ -294,14 +258,6 @@ void PermissionPromptBaseView::HostPaintAsActiveChanged() {
   if (!host_widget || !host_widget->ShouldPaintAsActive()) {
     record_host_always_active_value_ = false;
   }
-}
-
-bool PermissionPromptBaseView::IsForPictureInPictureWindow() const {
-  if (const BrowserWindowInterface* browser = GetBrowser()) {
-    return browser->GetType() ==
-           BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE;
-  }
-  return !!DocumentPipHost::FromChildWebContents(web_contents());
 }
 
 BEGIN_METADATA(PermissionPromptBaseView)

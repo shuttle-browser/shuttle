@@ -172,10 +172,6 @@ class UkmPageLoadMetricsObserver
       base::TimeTicks page_end_time,
       ukm::builders::PageLoad* builder);
 
-  void RecordMemoriesMetrics(
-      ukm::builders::PageLoad& builder,
-      const page_load_metrics::PageEndReason page_end_reason);
-
   void RecordResponsivenessMetrics();
 
   void RecordPageLoadTimestampMetrics(ukm::builders::PageLoad& builder);
@@ -247,9 +243,6 @@ class UkmPageLoadMetricsObserver
 
   // Guaranteed to be non-null during the lifetime of |this|.
   raw_ptr<network::NetworkQualityTracker> network_quality_tracker_;
-
-  // The ID of this navigation, as recorded at each navigation start.
-  int64_t navigation_id_ = -1;
 
   // The number of body (not header) prefilter bytes consumed by requests for
   // the page.

@@ -21,7 +21,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/recently_audible_helper.h"
 #include "chrome/browser/ui/tabs/alert/child_tab_alert_helper.h"
-#include "chrome/browser/vr/vr_tab_helper.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/tabs/public/tab_alert.h"
 #include "components/tabs/public/tab_interface.h"
@@ -96,9 +95,6 @@ TabAlertController::TabAlertController(TabInterface& tab)
       MediaCaptureDevicesDispatcher::GetInstance()
           ->GetMediaStreamCaptureIndicator()
           .get());
-  if (auto* vr_tab_helper = vr::VrTabHelper::From(&tab)) {
-    vr_tab_helper_observation_.Observe(vr_tab_helper);
-  }
   if (auto* audible_helper = RecentlyAudibleHelper::From(&tab)) {
     recently_audible_subscription_ =
         audible_helper->RegisterRecentlyAudibleChangedCallback(
@@ -303,10 +299,6 @@ void TabAlertController::OnDiscardContents(TabInterface* tab_interface,
                                            content::WebContents* new_contents) {
   tabs::ContentsObservingTabFeature::OnDiscardContents(
       tab_interface, old_contents, new_contents);
-  vr_tab_helper_observation_.Reset();
-  if (auto* vr_tab_helper = vr::VrTabHelper::From(tab_interface)) {
-    vr_tab_helper_observation_.Observe(vr_tab_helper);
-  }
   if (auto* audible_helper = RecentlyAudibleHelper::From(tab_interface)) {
     recently_audible_subscription_ =
         audible_helper->RegisterRecentlyAudibleChangedCallback(
@@ -412,11 +404,6 @@ void TabAlertController::OnIsCapturingDisplayChanged(
                                     ->IsCapturingWindow(contents);
     UpdateAlertState(TabAlert::kDesktopCapturing, is_desktop_capturing_active);
   }
-}
-
-void TabAlertController::OnIsContentDisplayedInHeadsetChanged(bool state) {
-  ScopedAlertNotifier notifier(this);
-  UpdateAlertState(TabAlert::kVrPresentingInHeadset, state);
 }
 
 void TabAlertController::OnRecentlyAudibleStateChanged(bool was_audible) {

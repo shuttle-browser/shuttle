@@ -7,8 +7,6 @@
 #include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_occlusion_tracker.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -363,19 +361,6 @@ base::OnceClosure ShowDeviceChooserDialog(
       views::BubbleDialogDelegateView::CreateBubble(std::move(bubble));
   widget->SetZOrderSublevel(ChromeWidgetSublevel::kSublevelSecurity);
   widget->Show();
-
-  // If we're opening this device chooser dialog on a picture-in-picture window,
-  // then our widget is also always-on-top and needs to be tracked by the
-  // PictureInPictureOcclusionTracker so it can handle our widget occluding
-  // other widgets.
-  if (browser->GetType() ==
-      BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE) {
-    PictureInPictureOcclusionTracker* tracker =
-        PictureInPictureWindowManager::GetInstance()->GetOcclusionTracker();
-    if (tracker) {
-      tracker->OnPictureInPictureWidgetOpened(widget);
-    }
-  }
 
   return close_closure;
 }

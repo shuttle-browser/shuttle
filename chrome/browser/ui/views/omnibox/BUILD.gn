@@ -112,7 +112,6 @@ source_set("impl") {
     "//chrome/app/vector_icons",
     "//chrome/browser:file_select_helper",
     "//chrome/browser/external_protocol",
-    "//chrome/browser/history_clusters",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/page_load_metrics",
     "//chrome/browser/profiles:profile",

@@ -53,7 +53,6 @@
 #include "components/signin/public/identity_manager/access_token_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/primary_account_change_event.h"
-#include "components/site_token_provider/features.h"
 #include "components/version_info/channel.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/storage_partition.h"
@@ -190,7 +189,7 @@ class ChromeOAuthConsumerRegistry : public signin::OAuthConsumerRegistry {
   signin::OAuthConsumer GetOAuthConsumerForSiteTokenProvider() const override {
     return signin::OAuthConsumer(
         signin::oauth_consumer_name::kSiteTokenProviderName,
-        {site_token_provider::features::kSiteTokenOAuth2Scope.Get()});
+        /*scopes=*/{});
   }
 };
 

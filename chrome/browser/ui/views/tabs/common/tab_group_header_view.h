@@ -8,7 +8,6 @@
 #include "base/callback_list.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
 #include "chrome/browser/ui/views/tabs/groups/tab_group_editor_bubble_tracker.h"
 #include "chrome/browser/ui/views/tabs/hovercard/hover_card_anchor_target.h"
@@ -26,7 +25,6 @@ class TabGroup;
 
 namespace tabs {
 struct TabGroupData;
-class VerticalTabStripStateController;
 }  // namespace tabs
 
 namespace views {
@@ -73,7 +71,6 @@ class TabGroupHeaderView : public views::FlexLayoutView,
   TabGroupHeaderView(
       Delegate& delegate,
       TabStripOrientation orientation,
-      tabs::VerticalTabStripStateController* state_controller,
       const tab_groups::TabGroupVisualData* tab_group_visual_data);
   TabGroupHeaderView(const TabGroupHeaderView&) = delete;
   TabGroupHeaderView& operator=(const TabGroupHeaderView&) = delete;

@@ -27,7 +27,6 @@
 namespace {
 constexpr int kTabVerticalPadding = 2;
 constexpr int kGroupLineWidth = 2;
-constexpr int kGroupLineCollapsedLeadingPadding = 6;
 constexpr int kGroupHeaderHeight = 26;
 constexpr int kGroupHeaderVerticalMargin = 4;
 constexpr int kFocusedHeadersGap = 2;
@@ -69,21 +68,10 @@ views::ProposedLayout TabGroupViewLayout::CalculateVerticalLayout(
   views::ProposedLayout layouts;
   int width = 0;
   int height = kGroupHeaderVerticalMargin;
-  auto tab_strip_collapse_state = tab_group_view->GetTabStripCollapseState();
 
   gfx::Rect header_bounds;
   gfx::Rect group_line_bounds;
   group_line_bounds.set_width(kGroupLineWidth);
-
-  // If the tab strip is collapsed then the group line should appear on the
-  // leading side of all grouped tabs and the header.
-  if (tab_strip_collapse_state !=
-      tabs::VerticalTabStripCollapseState::kExpanded) {
-    group_line_bounds.set_x(kGroupLineCollapsedLeadingPadding);
-    group_line_bounds.set_y(height);
-    header_bounds.set_x(
-        GetLayoutConstant(LayoutConstant::kVerticalTabStripHorizontalPadding));
-  }
 
   if (tab_group_view->unfocus_header_) {
     if (tab_group_view->IsGroupFocused()) {
@@ -121,14 +109,10 @@ views::ProposedLayout TabGroupViewLayout::CalculateVerticalLayout(
       header_bounds.height() + kGroupHeaderVerticalMargin + kTabVerticalPadding;
   width = std::max(width, header_bounds.width());
 
-  // If the tab strip is not collapsed then the group line is below and left
-  // aligned with the header.
-  if (tab_strip_collapse_state ==
-      tabs::VerticalTabStripCollapseState::kExpanded) {
-    group_line_bounds.set_x(
-        (TabGroupView::kTabLeadingPadding - kGroupLineWidth) / 2);
-    group_line_bounds.set_y(height);
-  }
+  // The group line is below and left aligned with the header.
+  group_line_bounds.set_x(
+      (TabGroupView::kTabLeadingPadding - kGroupLineWidth) / 2);
+  group_line_bounds.set_y(height);
 
   const auto children =
       tab_group_view->collection_node_
@@ -146,17 +130,8 @@ views::ProposedLayout TabGroupViewLayout::CalculateVerticalLayout(
     CHECK(!drag_data || !drag_data->should_hide);
     bounds.set_y(drag_data ? drag_data->offset.y() : height);
 
-    // If the tab strip is not collapsed and not focused then the groups tabs
-    // should be inset.
-    int child_x = 0;
-    if (tab_strip_collapse_state !=
-        tabs::VerticalTabStripCollapseState::kExpanded) {
-      child_x =
-          GetLayoutConstant(LayoutConstant::kVerticalTabStripHorizontalPadding);
-    } else if (!is_focused) {
-      child_x = TabGroupView::kTabLeadingPadding;
-    }
-    bounds.set_x(child_x);
+    // If the group is not focused then the groups tabs should be inset.
+    bounds.set_x(is_focused ? 0 : TabGroupView::kTabLeadingPadding);
     // If width is bounded, child views should respect the width constraints
     // and take up the available width excluding trailing horizontal padding.
     if (size_bounds.width().is_bounded()) {

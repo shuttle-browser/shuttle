@@ -29,7 +29,6 @@
 #include "chrome/browser/ui/views/tabs/horizontal/horizontal_tab_strip_overflow_indicator_view.h"
 #include "chrome/browser/ui/views/tabs/horizontal/tab_scroll_button_container.h"
 #include "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_controller.h"
-#include "chrome/browser/ui/views/tabs/vertical/vertical_tab_strip_scroll_bar.h"
 #include "chrome/common/pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/tabs/public/tab_collection_types.h"
@@ -463,27 +462,6 @@ bool TabStripView::IsTabScrollButtonsPinned() const {
                : true;
 }
 
-void TabStripView::SetCollapsedState(bool is_collapsed) {
-  if (is_collapsed != is_collapsed_) {
-    is_collapsed_ = is_collapsed;
-    InvalidateLayout();
-  }
-}
-
-void TabStripView::SetIsAnimatingSize(bool is_animating) {
-  for (views::ScrollView* scroll_view :
-       {pinned_tabs_scroll_view_, unpinned_tabs_scroll_view_}) {
-    // Scrollbars are not visible in the horizontal orientation so only update
-    // for the vertical orientation.
-    if (scroll_view && orientation_ == TabStripOrientation::kVertical) {
-      if (auto* scroll_bar = views::AsViewClass<VerticalTabStripScrollBar>(
-              scroll_view->vertical_scroll_bar())) {
-        scroll_bar->SetIsAnimatingSize(is_animating);
-      }
-    }
-  }
-}
-
 bool TabStripView::IsPositionInWindowCaption(const gfx::Point& point) {
   for (views::View* child : children()) {
     if (!child->GetVisible()) {
@@ -569,9 +547,6 @@ void TabStripView::SetScrollViewProperties(views::ScrollView* scroll_view) {
         views::ScrollView::ScrollBarMode::kDisabled);
     scroll_view->SetOverflowGradientMask(
         views::ScrollView::GradientDirection::kVertical);
-    scroll_view->SetVerticalScrollBar(
-        std::make_unique<VerticalTabStripScrollBar>(
-            collection_node_->GetController()->GetStateController()));
   } else {
     scroll_view->SetHorizontalScrollBarMode(
         views::ScrollView::ScrollBarMode::kHiddenButEnabled);
@@ -742,12 +717,6 @@ void TabStripView::EnableOverflowVisuals(views::ScrollView* scroll_view) {
     scroll_view->SetDrawOverflowIndicator(true);
     scroll_view->SetVerticalScrollBarMode(
         views::ScrollView::ScrollBarMode::kEnabled);
-
-    // Restore normal VerticalTabStripScrollBar scrollbar behavior.
-    if (auto* scroll_bar = views::AsViewClass<VerticalTabStripScrollBar>(
-            scroll_view->vertical_scroll_bar())) {
-      scroll_bar->SetIsAnimatingSize(false);
-    }
   }
 
   // Reset the active view as it is no longer needed after post-activation
@@ -765,13 +734,6 @@ void TabStripView::DisableOverflowVisuals(views::ScrollView* scroll_view) {
     scroll_view->SetDrawOverflowIndicator(false);
     scroll_view->SetVerticalScrollBarMode(
         views::ScrollView::ScrollBarMode::kHiddenButEnabled);
-
-    // Suppress scrollbar visuals to avoid artifacts as views are resized to
-    // target bounds whilst simultaneously scrolling to target.
-    if (auto* scroll_bar = views::AsViewClass<VerticalTabStripScrollBar>(
-            scroll_view->vertical_scroll_bar())) {
-      scroll_bar->SetIsAnimatingSize(true);
-    }
   }
 }
 

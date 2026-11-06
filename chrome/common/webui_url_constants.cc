@@ -10,7 +10,6 @@
 #include "base/containers/fixed_flat_set.h"
 #include "base/no_destructor.h"
 #include "build/build_config.h"
-#include "components/history_clusters/history_clusters_internals/webui/url_constants.h"
 #include "components/optimization_guide/optimization_guide_internals/webui/url_constants.h"
 #include "components/safe_browsing/core/common/web_ui_constants.h"
 #include "device/vr/buildflags/buildflags.h"
@@ -111,7 +110,6 @@ base::span<const base::cstring_view> ChromeURLHosts() {
       kChromeUIFamilyLinkUserInternalsHost,
       kChromeUIFlagsHost,
       kChromeUIHistoryHost,
-      history_clusters_internals::kChromeUIHistoryClustersInternalsHost,
       kChromeUIInterstitialHost,
       kChromeUILocalStateHost,
 #if !BUILDFLAG(IS_ANDROID)

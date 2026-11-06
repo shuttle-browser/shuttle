@@ -14,7 +14,6 @@ import("//build/config/ui.gni")
 import("//chrome/browser/buildflags.gni")
 import("//chrome/browser/downgrade/buildflags.gni")
 import("//chrome/common/features.gni")
-import("//chrome/common/request_header_integrity/buildflags.gni")
 import("//chrome/services/speech/buildflags/buildflags.gni")
 import("//components/allocation_recorder/testing/testing.gni")
 import("//components/captive_portal/core/features.gni")
@@ -155,7 +154,6 @@ source_set("global_features") {
   public_deps = [
     "//base",
     "//build:branding_buildflags",
-    "//chrome/common/request_header_integrity:buildflags",
   ]
 }
 
@@ -513,7 +511,6 @@ if (!is_android) {
     deps = [
       ":chrome_browser_interface_binders_webui_parts",
       "//base",
-      "//chrome/browser/history_clusters",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/webui/color_pipeline_internals",
       "//chrome/browser/ui/webui/downloads",
@@ -534,7 +531,6 @@ if (!is_android) {
       "//chrome/common:chrome_features",
       "//components/browser_apis/tab_drag:mojom",
       "//components/guest_contents/common:mojom",
-      "//components/history_clusters/core",
       "//components/multistep_filter/core:features",
       "//components/omnibox/browser:mojo_bindings",
       "//components/omnibox/common",
@@ -550,7 +546,6 @@ if (!is_android) {
       "//ui/webui/resources/cr_components/color_change_listener:mojom",
       "//ui/webui/resources/cr_components/customize_color_scheme_mode:mojom",
       "//ui/webui/resources/cr_components/history:mojo_bindings",
-      "//ui/webui/resources/cr_components/history_clusters:mojo_bindings",
       "//ui/webui/resources/cr_components/theme_color_picker:mojom",
       "//ui/webui/resources/js/browser_command:mojo_bindings",
     ]
@@ -571,8 +566,7 @@ if (!is_android) {
       ]
     }
     if (!is_chromeos) {
-      deps += [
-      ]
+      deps += []
     }
     if (!is_official_build) {
     }
@@ -1036,7 +1030,6 @@ source_set("core") {
     "//chrome/browser/performance_monitor",
     "//chrome/browser/permissions",
     "//chrome/browser/permissions/system",
-    "//chrome/browser/picture_in_picture",
     "//chrome/browser/policy:path_parser",
     "//chrome/browser/policy:policy_util",
     "//chrome/browser/predictors",
@@ -1070,7 +1063,6 @@ source_set("core") {
     "//chrome/browser/site_isolation",
     "//chrome/browser/site_protection",
     "//chrome/browser/site_protection:utils",
-    "//chrome/browser/site_token_provider",
     "//chrome/browser/speech",
     "//chrome/browser/spellchecker",
     "//chrome/browser/ssl",
@@ -1123,7 +1115,6 @@ source_set("core") {
     "//chrome/browser/updater",
     "//chrome/browser/upgrade_detector",
     "//chrome/browser/usb",
-    "//chrome/browser/vr",
     "//chrome/browser/webauthn",
     "//chrome/browser/webauthn:chrome_web_authentication_delegate",
     "//chrome/browser/webid",
@@ -1157,8 +1148,6 @@ source_set("core") {
     "//components/heap_profiling/in_process",
     "//components/heavy_ad_intervention",
     "//components/history/content/browser",
-    "//components/history_clusters/core",
-    "//components/history_clusters/history_clusters_internals/webui",
     "//components/javascript_dialogs",
     "//components/language/content/browser",
     "//components/language/core/browser",
@@ -1297,9 +1286,7 @@ source_set("core") {
   }
 
   if (enable_extensions) {
-    deps += [
-      "//chrome/browser/controlled_frame",
-    ]
+    deps += [ "//chrome/browser/controlled_frame" ]
   }
 
   if (is_win || is_mac || is_linux) {
@@ -1331,9 +1318,7 @@ source_set("core") {
   }
 
   if (!is_android || is_desktop_android) {
-    deps += [
-      "//chrome/browser/ui/webui/discards",
-    ]
+    deps += [ "//chrome/browser/ui/webui/discards" ]
   }
 
   if (enable_dice_support) {
@@ -1738,8 +1723,7 @@ source_set("core") {
   }
 
   if (enable_dice_support) {
-    deps += [
-    ]
+    deps += []
   }
 
   if (enable_screen_ai_service) {
@@ -1751,8 +1735,7 @@ source_set("core") {
   }
 
   if (enable_webui_ntp) {
-    deps += [
-    ]
+    deps += []
   }
 
   if (enable_webui_history) {
@@ -1839,16 +1822,9 @@ source_set("core") {
     ]
   }
 
-  deps += [ "//chrome/browser/vr:chrome_xr_integration_client" ]
-
   if (enable_vr) {
-    sources += [
-      "vr/chrome_xr_integration_client.cc",
-      "vr/ui_host/vr_ui_host_impl.cc",
-      "vr/ui_host/vr_ui_host_impl.h",
-    ]
+    sources += []
     deps += [
-      "//chrome/browser/vr:vr_common",
       "//device/vr",
       "//device/vr/public/mojom:isolated_xr_service",
     ]
@@ -1890,13 +1866,6 @@ source_set("core") {
   }
 
   if (safe_browsing_mode == 1) {
-  }
-
-  if (enable_request_header_integrity) {
-    deps += [
-      "//chrome/browser/request_header_integrity",
-      "//chrome/common/request_header_integrity",
-    ]
   }
 
   if (enable_webui_tabstrip_ntb) {
@@ -1965,10 +1934,6 @@ source_set("browser") {
     "//cc",
     "//chrome:extra_resources",
     "//chrome/browser/accessibility:impl",
-    "//chrome/browser/shuttle",
-    "//chrome/browser/shuttle:agent_partition",
-    "//chrome/browser/shuttle:impl",
-    "//chrome/browser/shuttle:switches",
     "//chrome/browser/autocomplete",
     "//chrome/browser/autocomplete:impl",
     "//chrome/browser/background",
@@ -2016,8 +1981,6 @@ source_set("browser") {
     "//chrome/browser/hid:impl",
     "//chrome/browser/history",
     "//chrome/browser/history:impl",
-    "//chrome/browser/history_clusters",
-    "//chrome/browser/history_clusters:impl",
     "//chrome/browser/interstitials:impl",
     "//chrome/browser/language",
     "//chrome/browser/language:impl",
@@ -2054,8 +2017,6 @@ source_set("browser") {
     "//chrome/browser/page_info:impl",
     "//chrome/browser/performance_manager",
     "//chrome/browser/performance_manager:impl",
-    "//chrome/browser/picture_in_picture",
-    "//chrome/browser/picture_in_picture:impl",
     "//chrome/browser/plugins:impl",
     "//chrome/browser/policy",
     "//chrome/browser/policy:impl",
@@ -2107,9 +2068,12 @@ source_set("browser") {
     "//chrome/browser/service_worker",
     "//chrome/browser/sessions",
     "//chrome/browser/sessions:impl",
+    "//chrome/browser/shuttle",
+    "//chrome/browser/shuttle:agent_partition",
+    "//chrome/browser/shuttle:impl",
+    "//chrome/browser/shuttle:switches",
     "//chrome/browser/signin",
     "//chrome/browser/signin:impl",
-    "//chrome/browser/site_token_provider",
     "//chrome/browser/ssl",
     "//chrome/browser/ssl:impl",
     "//chrome/browser/status_icons",
@@ -2181,8 +2145,6 @@ source_set("browser") {
     "//chrome/browser/updates/announcement_notification:impl",
     "//chrome/browser/visited_url_ranking",
     "//chrome/browser/visited_url_ranking:impl",
-    "//chrome/browser/vr",
-    "//chrome/browser/vr:impl",
     "//components/certificate_transparency",
     "//components/certificate_transparency:proto",
     "//components/content_relationship_verification",
@@ -2194,7 +2156,6 @@ source_set("browser") {
     "//components/embedder_support:user_agent",
     "//components/facilitated_payments/core/features",
     "//components/history/content/browser",
-    "//components/history_clusters/core",
     "//components/keyed_service/content",
     "//components/manta",
     "//components/metrics/private_metrics",
@@ -2403,8 +2364,7 @@ source_set("browser") {
   ]
 
   if (enable_webui_ntp) {
-    deps += [
-    ]
+    deps += []
   }
 
   if (is_android) {
@@ -2423,9 +2383,7 @@ source_set("browser") {
     deps -= [ "//components/storage_monitor" ]
   } else {
     #!is_android
-    deps += [
-      "//chrome/browser/accessibility/live_caption:impl",
-    ]
+    deps += [ "//chrome/browser/accessibility/live_caption:impl" ]
 
     #!is_android
 
@@ -2823,7 +2781,6 @@ source_set("browser") {
   }
 
   if (is_win) {
-
     deps += [
       "//chrome/browser/taskbar",
       "//chrome/browser/ui:accessibility_util",
@@ -2958,12 +2915,10 @@ source_set("browser") {
   }
 
   if (enable_dice_support) {
-    public_deps += [
-    ]
+    public_deps += []
 
     if (!is_android) {
-      deps += [
-      ]
+      deps += []
     }
   }
 
@@ -3050,13 +3005,6 @@ source_set("browser") {
     ]
   }
 
-  if (enable_request_header_integrity) {
-    deps += [
-      "//chrome/browser/request_header_integrity",
-      "//chrome/common/request_header_integrity",
-    ]
-  }
-
   if (enable_service_discovery) {
     deps += [
       "//chrome/browser/local_discovery",
@@ -3121,7 +3069,6 @@ source_set("browser") {
     deps += [ "//chrome/browser/captive_portal" ]
   }
 
-
   if (enable_rlz) {
     deps += [ "//chrome/browser/rlz" ]
   }
@@ -3183,9 +3130,7 @@ source_set("browser") {
   }
 
   if (!is_android || enable_webui_ntp) {
-    deps += [
-      "//chrome/browser/ui/color:mixers",
-    ]
+    deps += [ "//chrome/browser/ui/color:mixers" ]
   }
 
   if (enterprise_data_controls) {
@@ -3298,13 +3243,11 @@ source_set("browser") {
       "//chrome/browser/ui/views/app_menu:impl",
       "//chrome/browser/ui/views/js_optimization",
       "//chrome/browser/ui/views/location_bar",
-      "//chrome/browser/ui/views/picture_in_picture",
       "//chrome/browser/ui/views/toolbar",
       "//chrome/browser/ui/views/toolbar:impl",
       "//chrome/browser/ui/views/zoom",
       "//chrome/browser/ui/webui/browser_command",
       "//chrome/browser/ui/webui/color_pipeline_internals",
-      "//chrome/browser/ui/webui/cr_components/history_clusters",
       "//chrome/browser/ui/webui/infobar_internals",
       "//chrome/browser/ui/webui/inspect",
       "//chrome/browser/ui/webui/metrics_reporter",
@@ -3429,9 +3372,7 @@ source_set("browser") {
     ]
 
     if (enable_dice_support) {
-      deps += [
-        "//services/audio/public/cpp",
-      ]
+      deps += [ "//services/audio/public/cpp" ]
     }
   }
 
@@ -3505,7 +3446,6 @@ source_set("browser") {
       "//chrome/browser/ui/views/frame:browser_desktop_window_tree_host_linux_impl",
       "//chrome/browser/ui/views/frame:browser_native_widget_aura_linux",
       "//chrome/browser/ui/views/frame:browser_native_widget_aura_linux_impl",
-      "//chrome/browser/ui/views/frame:picture_in_picture_browser_frame_view_linux",
       "//ui/linux:linux_ui_factory",
       "//ui/platform_window",
     ]
@@ -3698,7 +3638,6 @@ source_set("browser") {
       "//chrome/browser/ui/views/frame:multi_contents_view_mini_toolbar",
       "//chrome/browser/ui/views/frame:multi_contents_view_mini_toolbar_impl",
       "//chrome/browser/ui/views/frame:opaque_browser_frame_view_layout_delegate",
-      "//chrome/browser/ui/views/frame:picture_in_picture_browser_frame_view",
       "//chrome/browser/ui/views/frame:safe_invoke",
       "//chrome/browser/ui/views/frame:scrim_view",
       "//chrome/browser/ui/views/frame:scrim_view_controller",
@@ -3714,8 +3653,6 @@ source_set("browser") {
       "//chrome/browser/ui/views/frame:themed_background_impl",
       "//chrome/browser/ui/views/frame:top_container_view",
       "//chrome/browser/ui/views/frame:top_container_view_impl",
-      "//chrome/browser/ui/views/frame:vertical_tab_strip_background_blur_backdrop",
-      "//chrome/browser/ui/views/frame:vertical_tab_strip_region_view",
       "//chrome/browser/ui/views/frame:web_contents_close_handler",
       "//chrome/browser/ui/views/frame:windows_icon_painter",
       "//chrome/browser/ui/views/fullscreen_control",
@@ -3726,8 +3663,6 @@ source_set("browser") {
       "//chrome/browser/ui/views/location_bar/cookie_controls:impl",
       "//chrome/browser/ui/views/omnibox",
       "//chrome/browser/ui/views/omnibox:impl",
-      "//chrome/browser/ui/views/overlay",
-      "//chrome/browser/ui/views/overlay:impl",
       "//chrome/browser/ui/views/page_action",
       "//chrome/browser/ui/views/page_action:impl",
       "//chrome/browser/ui/views/page_info",
@@ -3770,8 +3705,6 @@ source_set("browser") {
       "//chrome/browser/ui/views/tabs/shared:impl",
       "//chrome/browser/ui/views/tabs/tab",
       "//chrome/browser/ui/views/tabs/tab:impl",
-      "//chrome/browser/ui/views/tabs/vertical",
-      "//chrome/browser/ui/views/tabs/vertical:impl",
       "//chrome/browser/ui/views/webauthn",
       "//chrome/browser/ui/views/webid",
       "//chrome/browser/ui/views/zoom",
@@ -4018,9 +3951,7 @@ group("browser_public_dependencies") {
       "//components/image_fetcher/core",
     ]
   } else {
-    public_deps += [
-      "//extensions/buildflags",
-    ]
+    public_deps += [ "//extensions/buildflags" ]
   }
   if (is_chromeos) {
     public_deps += [
@@ -4098,7 +4029,6 @@ group("browser_generated_files") {
     "//chrome/browser/ui/webui/segmentation_internals:mojo_bindings",
     "//chrome/browser/ui/webui/suggest_internals:mojo_bindings",
     "//chrome/browser/ui/webui/usb_internals:mojo_bindings",
-    "//chrome/common/request_header_integrity:buildflags",
     "//components/enterprise/connectors:mojom",
     "//components/webui/chrome_urls/mojom:mojo_bindings",
   ]
@@ -4128,8 +4058,7 @@ group("browser_generated_files") {
     }
   }
   if (!is_android || enable_webui_ntp) {
-    public_deps += [
-    ]
+    public_deps += []
   }
   if (!is_android || is_desktop_android) {
     public_deps += [ "//chrome/browser/ui/webui/discards:mojo_bindings" ]
@@ -4323,7 +4252,6 @@ source_set("unexpire_flags") {
 }
 
 if (!is_android) {
-
 }
 
 if (is_android) {

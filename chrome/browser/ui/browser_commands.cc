@@ -83,7 +83,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_selection_state.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
@@ -1828,35 +1827,6 @@ void ToggleTabScrollButtonsPin(BrowserWindowInterface* browser) {
   const bool is_pinned =
       prefs->GetBoolean(prefs::kTabScrollButtonsPinnedToTabstrip);
   prefs->SetBoolean(prefs::kTabScrollButtonsPinnedToTabstrip, !is_pinned);
-}
-
-void ToggleVerticalTabs(BrowserWindowInterface* browser) {
-  tabs::VerticalTabStripStateController* controller =
-      tabs::VerticalTabStripStateController::From(browser);
-  if (!controller) {
-    return;
-  }
-  controller->SetVerticalTabsEnabled(!controller->ShouldDisplayVerticalTabs());
-}
-
-void ToggleVerticalTabsExpandOnHover(BrowserWindowInterface* browser) {
-  tabs::VerticalTabStripStateController* controller =
-      tabs::VerticalTabStripStateController::From(browser);
-  if (!controller) {
-    return;
-  }
-  controller->SetExpandOnHoverEnabled(!controller->IsExpandOnHoverEnabled());
-}
-
-void ToggleCollapseVerticalTabs(BrowserWindowInterface* browser) {
-  tabs::VerticalTabStripStateController* controller =
-      tabs::VerticalTabStripStateController::From(browser);
-  if (!controller) {
-    return;
-  }
-  bool collapse = controller->GetCollapseState() ==
-                  tabs::VerticalTabStripCollapseState::kExpanded;
-  controller->RequestCollapse(collapse);
 }
 
 bool CanCloseFind(BrowserWindowInterface* browser) {

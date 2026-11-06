@@ -149,7 +149,6 @@ class TabCollection : public SupportsHandles<TabCollectionHandleFactory> {
   // - UNPINNED:  A container for unpinned tabs.
   // - GROUP:     A container to grouped tabs.
   // - SPLIT:     A container for split tabs.
-  // LINT.IfChange(TYPE)
   enum class Type : uint8_t {
     MIN,
     TABSTRIP = MIN,
@@ -161,7 +160,6 @@ class TabCollection : public SupportsHandles<TabCollectionHandleFactory> {
   };
 
   using TypeEnumSet = base::EnumSet<Type, Type::MIN, Type::MAX>;
-  // LINT.ThenChange(chrome/browser/ui/views/tabs/vertical/tab_collection_node.h:TYPE)
 
   ~TabCollection() override;
   TabCollection(const TabCollection&) = delete;

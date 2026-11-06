@@ -34,7 +34,6 @@
 #include "chrome/browser/ui/tabs/tab_menu_model_delegate.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_delegate.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/webui_url_constants.h"
@@ -152,19 +151,9 @@ void TabMenuModel::Build(int index) {
 
   int num_tabs = indices.size();
 
-  auto* controller = tabs::VerticalTabStripStateController::From(
-      tab_strip_->delegate()->GetBrowserWindowInterface());
-  bool showing_vertical_tabs =
-      controller && controller->ShouldDisplayVerticalTabs();
-
-  if (showing_vertical_tabs) {
-    AddItemWithStringId(TabStripModel::CommandNewTabToRight,
-                        IDS_TAB_CXMENU_NEWTABBELOW);
-  } else {
-    AddItemWithStringId(TabStripModel::CommandNewTabToRight,
-                        base::i18n::IsRTL() ? IDS_TAB_CXMENU_NEWTABTOLEFT
-                                            : IDS_TAB_CXMENU_NEWTABTORIGHT);
-  }
+  AddItemWithStringId(TabStripModel::CommandNewTabToRight,
+                      base::i18n::IsRTL() ? IDS_TAB_CXMENU_NEWTABTOLEFT
+                                          : IDS_TAB_CXMENU_NEWTABTORIGHT);
   SetElementIdentifierAt(GetItemCount() - 1, kAddNewTabAdjacentMenuItem);
 
   if (!tab_strip_->GetSplitForTab(index).has_value()) {
@@ -381,30 +370,6 @@ void TabMenuModel::Build(int index) {
             ui::kColorMenuIcon, ui::SimpleMenuModel::kDefaultIconSize));
   }
 
-  if (controller) {
-    AddSeparator(ui::NORMAL_SEPARATOR);
-    const int switch_to_horizontal_id =
-#if BUILDFLAG(IS_MAC)
-        IDS_SWITCH_TO_HORIZONTAL_TAB_MAC;
-#else
-        IDS_SWITCH_TO_HORIZONTAL_TAB;
-#endif
-
-    const int switch_to_vertical_id =
-#if BUILDFLAG(IS_MAC)
-        IDS_SWITCH_TO_VERTICAL_TAB_MAC;
-#else
-        IDS_SWITCH_TO_VERTICAL_TAB;
-#endif
-    if (controller->ShouldDisplayVerticalTabs()) {
-      AddItemWithStringId(TabStripModel::CommandToggleVertical,
-                          switch_to_horizontal_id);
-    } else {
-      AddItemWithStringId(TabStripModel::CommandToggleVertical,
-                          switch_to_vertical_id);
-    }
-  }
-
   // Append extension items for the 'tab' context if the feature is enabled.
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   if (base::FeatureList::IsEnabled(
@@ -433,14 +398,9 @@ void TabMenuModel::Build(int index) {
   AddItemWithStringId(TabStripModel::CommandCloseOtherTabs,
                       IDS_TAB_CXMENU_CLOSEOTHERTABS);
 
-  if (showing_vertical_tabs) {
-    AddItemWithStringId(TabStripModel::CommandCloseTabsToRight,
-                        IDS_TAB_CXMENU_CLOSETABSBELOW);
-  } else {
-    AddItemWithStringId(TabStripModel::CommandCloseTabsToRight,
-                        base::i18n::IsRTL() ? IDS_TAB_CXMENU_CLOSETABSTOLEFT
-                                            : IDS_TAB_CXMENU_CLOSETABSTORIGHT);
-  }
+  AddItemWithStringId(TabStripModel::CommandCloseTabsToRight,
+                      base::i18n::IsRTL() ? IDS_TAB_CXMENU_CLOSETABSTOLEFT
+                                          : IDS_TAB_CXMENU_CLOSETABSTORIGHT);
   SetEnabledAt(GetItemCount() - 1,
                tab_strip_->IsContextMenuCommandEnabled(
                    index,

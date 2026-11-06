@@ -231,7 +231,6 @@ views::ProposedLayout TabStripViewLayout::CalculateVerticalLayout(
   views::ScrollView* unpinned_tabs_scroll_view =
       tab_strip_view->unpinned_tabs_scroll_view();
   views::Separator* tabs_separator = tab_strip_view->GetTabsSeparator();
-  const bool is_collapsed = tab_strip_view->is_collapsed_;
 
   if (!size_bounds.width().is_bounded()) {
     return layouts;
@@ -255,9 +254,8 @@ views::ProposedLayout TabStripViewLayout::CalculateVerticalLayout(
   const int unpinned_preferred_height =
       unpinned_tabs_scroll_view->GetPreferredSize(size_bounds).height();
 
-  const bool should_show_separator = pinned_preferred_height != 0 &&
-                                     unpinned_preferred_height != 0 &&
-                                     is_collapsed;
+  // The vertical tab strip (the only collapsible one) is gone: never collapsed.
+  const bool should_show_separator = false;
 
   // If the height is bounded, calculate the available space for laying out the
   // pinned and unpinned containers.

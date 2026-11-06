@@ -24,11 +24,9 @@
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/webui/cr_components/history/history_util.h"
-#include "chrome/browser/ui/webui/cr_components/history_clusters/history_clusters_util.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/browser/ui/webui/history/browsing_history_handler.h"
 #include "chrome/browser/ui/webui/history/navigation_handler.h"
-#include "chrome/browser/ui/webui/history_clusters/history_clusters_handler.h"
 #include "chrome/browser/ui/webui/managed_ui_handler.h"
 #include "chrome/browser/ui/webui/metrics_handler.h"
 #include "chrome/browser/ui/webui/theme_source.h"
@@ -39,9 +37,6 @@
 #include "components/grit/components_scaled_resources.h"
 #include "components/history/core/browser/features.h"
 #include "components/history/core/common/pref_names.h"
-#include "components/history_clusters/core/config.h"
-#include "components/history_clusters/core/features.h"
-#include "components/history_clusters/core/history_clusters_prefs.h"
 #include "components/page_image_service/image_service.h"
 #include "components/page_image_service/image_service_handler.h"
 #include "components/prefs/pref_service.h"
@@ -97,9 +92,6 @@ content::WebUIDataSource* CreateAndAddHistoryUIHTMLSource(Profile* profile) {
                                             ? "webui-refresh-2026"
                                             : "");
 
-  // History clusters
-  HistoryClustersUtil::PopulateSource(source, profile, /*in_side_panel=*/false);
-
   return source;
 }
 
@@ -136,11 +128,6 @@ HistoryUI::HistoryUI(content::WebUI* web_ui)
 
   content::URLDataSource::Add(profile, std::make_unique<ThemeSource>(profile));
 
-  pref_change_registrar_.Init(profile->GetPrefs());
-  pref_change_registrar_.Add(history_clusters::prefs::kVisible,
-                             base::BindRepeating(&HistoryUI::UpdateDataSource,
-                                                 base::Unretained(this)));
-
   web_ui->AddMessageHandler(std::make_unique<webui::NavigationHandler>());
   web_ui->AddMessageHandler(std::make_unique<MetricsHandler>());
 }
@@ -164,25 +151,6 @@ void HistoryUI::BindInterface(
 }
 
 void HistoryUI::BindInterface(
-    mojo::PendingReceiver<history_clusters::mojom::PageHandlerFactory>
-        pending_page_handler_factory) {
-  history_clusters_handler_factory_receiver_.reset();
-  history_clusters_handler_factory_receiver_.Bind(
-      std::move(pending_page_handler_factory));
-}
-
-void HistoryUI::CreatePageHandler(
-    mojo::PendingRemote<history_clusters::mojom::Page> page,
-    mojo::PendingReceiver<history_clusters::mojom::PageHandler> receiver) {
-  history_clusters_handler_ =
-      std::make_unique<history_clusters::HistoryClustersHandler>(
-          std::move(receiver), std::move(page), Profile::FromWebUI(web_ui()),
-          web_ui()->GetWebContents(),
-          // HistoryUI should always be in a tab. Look it up unconditionally.
-          tabs::TabInterface::GetFromContents(web_ui()->GetWebContents()));
-}
-
-void HistoryUI::BindInterface(
     mojo::PendingReceiver<page_image_service::mojom::PageImageServiceHandler>
         pending_page_handler) {
   base::WeakPtr<page_image_service::ImageService> image_service_weak;
@@ -194,24 +162,4 @@ void HistoryUI::BindInterface(
   image_service_handler_ =
       std::make_unique<page_image_service::ImageServiceHandler>(
           std::move(pending_page_handler), std::move(image_service_weak));
-}
-
-void HistoryUI::UpdateDataSource() {
-  CHECK(web_ui());
-
-  Profile* profile = Profile::FromWebUI(web_ui());
-
-  base::DictValue update;
-
-  const bool is_managed = profile->GetPrefs()->IsManagedPreference(
-      history_clusters::prefs::kVisible);
-  // History clusters are always visible unless the visibility prefs
-  // is set to false by policy.
-  update.Set(
-      kIsHistoryClustersVisibleKey,
-      profile->GetPrefs()->GetBoolean(history_clusters::prefs::kVisible) ||
-          !is_managed);
-
-  content::WebUIDataSource::Update(profile, chrome::kChromeUIHistoryHost,
-                                   std::move(update));
 }

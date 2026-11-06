@@ -60,7 +60,6 @@
 #include "chrome/browser/ui/tabs/tab_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -521,30 +520,6 @@ void BrowserCommandController::HandleCommandWithDisposition(
       break;
     case IDC_TAB_SCROLL_BUTTONS_TOGGLE_PIN:
       ToggleTabScrollButtonsPin(browser_);
-      break;
-    case IDC_TOGGLE_VERTICAL_TABS:
-      ToggleVerticalTabs(browser_);
-      break;
-    case IDC_TOGGLE_VERTICAL_TABS_COLLAPSE:
-#if !BUILDFLAG(IS_MAC)
-      // On Mac, the logging for both the keyboard shortcut and the view menu
-      // is handled in BrowserNativeWidgetMac::ExecuteCommand to correctly
-      // distinguish between the two trigger sources.
-      if (auto* controller =
-              tabs::VerticalTabStripStateController::From(browser_)) {
-        if (controller->IsCollapsed()) {
-          base::RecordAction(base::UserMetricsAction(
-              "VerticalTabs_TabStrip_KeyboardShortcutToggleUncollapsed"));
-        } else {
-          base::RecordAction(base::UserMetricsAction(
-              "VerticalTabs_TabStrip_KeyboardShortcutToggleCollapsed"));
-        }
-      }
-#endif  // !BUILDFLAG(IS_MAC)
-      ToggleCollapseVerticalTabs(browser_);
-      break;
-    case IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER:
-      ToggleVerticalTabsExpandOnHover(browser_);
       break;
     // Window management commands
     case IDC_NEW_WINDOW:
@@ -1231,11 +1206,6 @@ void BrowserCommandController::InitCommandState() {
   UpdateTabRestoreCommandState();
   command_updater_->UpdateCommandEnabled(IDC_EXIT, true);
   command_updater_->UpdateCommandEnabled(IDC_NAME_WINDOW, true);
-  command_updater_->UpdateCommandEnabled(IDC_TOGGLE_VERTICAL_TABS, true);
-  command_updater_->UpdateCommandEnabled(
-      IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER, true);
-  command_updater_->UpdateCommandEnabled(IDC_TOGGLE_VERTICAL_TABS_COLLAPSE,
-                                         true);
 #if BUILDFLAG(IS_CHROMEOS)
   command_updater_->UpdateCommandEnabled(IDC_TOGGLE_MULTITASK_MENU, true);
   command_updater_->UpdateCommandEnabled(IDC_MINIMIZE_WINDOW, true);
@@ -1914,10 +1884,6 @@ void BrowserCommandController::UpdateCommandsForTabGroupFocusChanged() {
   if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
     if (auto* const action = FindAction(kActionUnfocusTabGroup, browser_)) {
       action->SetVisible(false);
-    }
-    if (auto* const action =
-            FindAction(kActionToggleCollapseVertical, browser_)) {
-      action->SetVisible(true);
     }
   }
 }

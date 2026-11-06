@@ -7,7 +7,6 @@
 #include <string>
 
 #include "base/strings/utf_string_conversions.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/sessions/session_service.h"
 #include "chrome/browser/sessions/session_service_factory.h"
 #include "chrome/browser/sessions/session_service_lookup.h"
@@ -80,13 +79,8 @@ std::u16string WindowMetadataController::GetWindowTitleForCurrentTab(
     return base::UTF8ToUTF16(user_title_);
   }
 
-  // For document picture-in-picture windows, we use the title from the opener
-  // WebContents instead of the picture-in-picture WebContents itself.
   content::WebContents* web_contents_for_title =
-      browser_->GetType() ==
-              BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE
-          ? PictureInPictureWindowManager::GetInstance()->GetWebContents()
-          : browser_->tab_strip_model()->GetActiveWebContents();
+      browser_->tab_strip_model()->GetActiveWebContents();
 
   return GetWindowTitleFromWebContents(include_app_name,
                                        web_contents_for_title);
@@ -98,14 +92,6 @@ std::u16string WindowMetadataController::GetWindowTitleForTab(
 
   if (title.empty()) {
     title = tab.Get()->GetContents()->GetTitle();
-    if (browser_->GetType() ==
-        BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE) {
-      content::WebContents* pip_web_contents =
-          PictureInPictureWindowManager::GetInstance()->GetWebContents();
-      if (pip_web_contents) {
-        title = pip_web_contents->GetTitle();
-      }
-    }
     title = FormatTitleForDisplay(title);
   }
 

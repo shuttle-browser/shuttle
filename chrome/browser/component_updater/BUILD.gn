@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 import("//build/config/chrome_build.gni")
-import("//chrome/common/request_header_integrity/buildflags.gni")
 import("//components/safe_browsing/buildflags.gni")
 import("//extensions/buildflags/buildflags.gni")
 import("//media/media_options.gni")
@@ -26,7 +25,6 @@ source_set("component_updater") {
     "mei_preload_component_installer.h",
     "pki_metadata_component_installer.h",
     "pki_metadata_component_installer_policy.h",
-    "platform_runtime_component_installer.h",
     "privacy_sandbox_attestations_component_installer.h",
     "private_verification_tokens_installer.h",
     "recovery_improved_component_installer.h",
@@ -110,7 +108,6 @@ source_set("impl") {
     "mei_preload_component_installer.cc",
     "pki_metadata_component_installer.cc",
     "pki_metadata_component_installer_policy.cc",
-    "platform_runtime_component_installer.cc",
     "privacy_sandbox_attestations_component_installer.cc",
     "private_verification_tokens_installer.cc",
     "recovery_improved_component_installer.cc",
@@ -138,7 +135,6 @@ source_set("impl") {
     "//chrome/browser/resource_coordinator",
     "//chrome/browser/update_client",
     "//chrome/common",
-    "//chrome/common/request_header_integrity:buildflags",
     "//components/certificate_transparency",
     "//components/certificate_transparency:proto_gen",
     "//components/embedder_support/origin_trials",
@@ -264,9 +260,6 @@ source_set("impl") {
     deps += [ "//chrome/browser/chrome_for_testing:browser" ]
   }
 
-  if (enable_request_header_integrity) {
-    deps += [ "//chrome/browser/request_header_integrity" ]
-  }
 }
 
 if (!is_android) {

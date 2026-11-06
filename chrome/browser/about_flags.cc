@@ -92,9 +92,6 @@
 #include "components/error_page/common/error_page_switches.h"
 #include "components/heavy_ad_intervention/heavy_ad_features.h"
 #include "components/history/core/browser/features.h"
-#include "components/history_clusters/core/config.h"
-#include "components/history_clusters/core/features.h"
-#include "components/history_clusters/core/on_device_clustering_features.h"
 #include "components/input/features.h"
 #include "components/language/core/common/language_experiments.h"
 #include "components/lens/buildflags.h"
@@ -957,26 +954,6 @@ constexpr FeatureEntry::FeatureVariation
         {"without Auto Prompt",
          kHappinessTrackingSurveysForDesktopDemoWithoutAutoPrompt, nullptr}};
 #endif  // !BUILDFLAG(IS_ANDROID)
-
-const FeatureEntry::FeatureParam kJourneysShowAllVisitsParams[] = {
-    {"JourneysLocaleOrLanguageAllowlist", "*"},
-    // To show all visits, set the number of visits above the fold to a very
-    // high number.
-    {"JourneysNumVisitsToAlwaysShowAboveTheFold", "200"},
-};
-const FeatureEntry::FeatureParam kJourneysAllLocalesParams[] = {
-    {"JourneysLocaleOrLanguageAllowlist", "*"},
-};
-const FeatureEntry::FeatureVariation kJourneysVariations[] = {
-    {"No 'Show More' - Show all visits", kJourneysShowAllVisitsParams, nullptr},
-    {"All Supported Locales", kJourneysAllLocalesParams, nullptr},
-};
-
-
-
-
-
-
 
 const FeatureEntry::FeatureParam kVoiceSearchCoherenceRealboxArm1Params[] = {
     {"VoiceSearchCoherenceSearchboxWithLiveTranscription", "false"},
@@ -5719,12 +5696,6 @@ const FeatureEntry kFeatureEntries[] = {
                                     "PowerTools")},
 
 
-    {"history-journeys", flag_descriptions::kJourneysName,
-     flag_descriptions::kJourneysDescription, kOsDesktop | kOsAndroid,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(history_clusters::internal::kJourneys,
-                                    kJourneysVariations,
-                                    "HistoryJourneys")},
-
     {"annotated-page-content-extraction",
      flag_descriptions::kAnnotatedPageContentExtractionName,
      flag_descriptions::kAnnotatedPageContentExtractionDescription, kOsAndroid,
@@ -7403,18 +7374,6 @@ const FeatureEntry kFeatureEntries[] = {
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || \
     BUILDFLAG(IS_CHROMEOS)
-    {"auto-picture-in-picture-on-window-occluded",
-     flag_descriptions::kAutoPictureInPictureOnWindowOccludedName,
-     flag_descriptions::kAutoPictureInPictureOnWindowOccludedDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(media::kAutoPictureInPictureOnWindowOccluded)},
-
-    {"document-picture-in-picture-animate-resize",
-     flag_descriptions::kDocumentPictureInPictureAnimateResizeName,
-     flag_descriptions::kDocumentPictureInPictureAnimateResizeDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(media::kDocumentPictureInPictureAnimateResize)},
-
     {"browser-initiated-automatic-picture-in-picture",
      flag_descriptions::kBrowserInitiatedAutomaticPictureInPictureName,
      flag_descriptions::kBrowserInitiatedAutomaticPictureInPictureDescription,

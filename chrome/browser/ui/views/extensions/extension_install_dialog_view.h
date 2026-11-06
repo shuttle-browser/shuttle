@@ -25,7 +25,6 @@
 #include "ui/views/metadata/view_factory.h"
 #include "ui/views/view.h"
 
-class PictureInPictureInputProtector;
 class Profile;
 class ExtensionJustificationView;
 
@@ -161,12 +160,6 @@ class ExtensionInstallDialogView : public views::BubbleDialogDelegateView,
   // The justification text field view where users enter their justification for
   // requesting an extension.
   raw_ptr<ExtensionJustificationView> justification_view_ = nullptr;
-
-  // The PictureInPictureInputProtector tracks dialog occlusions by
-  // Picture-in-Picture windows, to ensure input protection and ignore spurious
-  // interactions.
-  std::unique_ptr<PictureInPictureInputProtector>
-      picture_in_picture_input_protector_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_EXTENSIONS_EXTENSION_INSTALL_DIALOG_VIEW_H_

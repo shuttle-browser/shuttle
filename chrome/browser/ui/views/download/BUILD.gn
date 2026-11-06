@@ -76,7 +76,6 @@ source_set("download") {
       "//chrome/browser:icon_manager",
       "//chrome/browser:primitives",
       "//chrome/browser/download/bubble",
-      "//chrome/browser/picture_in_picture",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/profiles:profile_util",
       "//chrome/browser/safe_browsing",

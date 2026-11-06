@@ -20,7 +20,6 @@
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_about_handler.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/renderer_host/chrome_navigation_ui_data.h"
@@ -220,46 +219,9 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
       return {GetOrCreateBrowser(profile, params.user_gesture,
                                  should_trigger_session_restore),
               -1};
-    case WindowOpenDisposition::NEW_PICTURE_IN_PICTURE: {
-      // The picture in picture window should be part of the opener's web app,
-      // if any.
-      std::string app_name;
-      if (params.browser && !BrowserInitState::From(params.browser)
-                                 ->create_params()
-                                 .app_name.empty()) {
-        app_name =
-            BrowserInitState::From(params.browser)->create_params().app_name;
-      }
-
-      auto browser_params =
-          BrowserWindowCreateParams::CreateForPictureInPicture(
-              app_name, params.trusted_source, profile, params.user_gesture);
-      DCHECK(params.contents_to_insert);
-      auto pip_options =
-          params.contents_to_insert->GetPictureInPictureOptions();
-      if (!pip_options.has_value()) {
-        return {nullptr, -1};
-      }
-
-      browser_params.pip_options = pip_options;
-
-      const ui::BaseWindow* const browser_window = params.browser->GetWindow();
-      const gfx::NativeWindow native_window =
-          browser_window ? browser_window->GetNativeWindow()
-                         : gfx::NativeWindow();
-      const display::Screen* const screen = display::Screen::Get();
-      const display::Display display =
-          browser_window ? screen->GetDisplayNearestWindow(native_window)
-                         : screen->GetDisplayForNewWindows();
-
-      browser_params.initial_bounds =
-          PictureInPictureWindowManager::GetInstance()
-              ->CalculateInitialPictureInPictureWindowBounds(*pip_options,
-                                                             display);
-
-      browser_params.omit_from_session_restore = true;
-      return {CreateBrowserWindow(std::move(browser_params)), -1};
-    }
+    case WindowOpenDisposition::NEW_PICTURE_IN_PICTURE:
+      // Picture-in-picture windows are not supported in Shuttle.
+      return {nullptr, -1};
     case WindowOpenDisposition::NEW_POPUP: {
       // Make a new popup window.
       // Coerce app-style if |source| represents an app.
@@ -345,10 +307,6 @@ void NormalizeDisposition(NavigateParams* params) {
       // remove it if disposition implies the tab is going to open in the
       // background.
       params->tabstrip_add_types &= ~AddTabTypes::ADD_ACTIVE;
-      break;
-
-    case WindowOpenDisposition::NEW_PICTURE_IN_PICTURE:
-      PictureInPictureWindowManager::SetWindowParams(*params);
       break;
 
     case WindowOpenDisposition::NEW_WINDOW:
@@ -579,20 +537,9 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
     return nullptr;
   }
 
-  // Picture-in-picture browser windows must have a source contents in order for
-  // the window to function correctly. If we have no source contents to work
-  // with (e.g. if an extension popup attempts to open a PiP window), we should
-  // cancel the navigation.  The source URL must also be of a type that's
-  // allowed to open document PiP.  See `PictureInPictureWindowManager` for
-  // details on what's allowed.
+  // Picture-in-picture windows are not supported in Shuttle.
   if (params->disposition == WindowOpenDisposition::NEW_PICTURE_IN_PICTURE) {
-    const GURL& url = params->source_contents
-                          ? params->source_contents->GetLastCommittedURL()
-                          : GURL();
-    if (!PictureInPictureWindowManager::IsSupportedForDocumentPictureInPicture(
-            url)) {
-      return nullptr;
-    }
+    return nullptr;
   }
 
   // If no source WebContents was specified, we use the selected one from the
@@ -664,50 +611,6 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
   if (params->switch_to_singleton_tab) {
     DCHECK_EQ(params->disposition, WindowOpenDisposition::SINGLETON_TAB);
     contents_to_navigate_or_insert = params->switch_to_singleton_tab;
-  }
-
-  // If this is a Picture in Picture window, then notify the pip manager about
-  // it. This enables the opener and pip window to stay connected, so that (for
-  // example), the pip window does not outlive the opener.
-  //
-  // We do this before creating the browser window, so that the browser can talk
-  // to the PictureInPictureWindowManager.  Otherwise, the manager has no idea
-  // that there's a pip window.
-  if (params->disposition == WindowOpenDisposition::NEW_PICTURE_IN_PICTURE) {
-    // Picture in picture windows may not be opened by other picture in
-    // picture windows, or without an opener.
-    if (!params->browser ||
-        params->browser->GetType() ==
-            BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE) {
-      params->browser = nullptr;
-      return nullptr;
-    }
-
-    // When the standalone Document PiP window is enabled, route to the
-    // DocumentPipHost-backed path instead of creating a Browser. The manager
-    // takes ownership of the child WebContents and shows the window itself, so
-    // Navigate() returns early without a Browser.
-    if (base::FeatureList::IsEnabled(features::kDocumentPipStandaloneWindow)) {
-      std::optional<blink::mojom::PictureInPictureWindowOptions> pip_options =
-          contents_to_navigate_or_insert->GetPictureInPictureOptions();
-      if (pip_options.has_value()) {
-        const bool focus_contents =
-            params->window_action ==
-                NavigateParams::WindowAction::kShowWindow &&
-            params->user_gesture;
-        PictureInPictureWindowManager::GetInstance()
-            ->EnterStandaloneDocumentPictureInPicture(
-                params->source_contents, std::move(params->contents_to_insert),
-                std::move(*pip_options), focus_contents);
-      }
-      // If the WebContents doesn't have valid PiP options, don't enter PiP
-      // mode and don't create a browser window.
-      params->browser = nullptr;
-      return nullptr;
-    }
-
-    PictureInPictureWindowManager::GetInstance()->EnterDocumentPictureInPicture(
-        params->source_contents, contents_to_navigate_or_insert);
   }
 
   int singleton_index = -1;

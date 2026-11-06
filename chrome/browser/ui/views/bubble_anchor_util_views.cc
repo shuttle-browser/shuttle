@@ -13,11 +13,9 @@
 #include "chrome/browser/ui/location_bar/location_bar_override_data.h"
 #include "chrome/browser/ui/views/frame/app_menu_button.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
-#include "chrome/browser/ui/views/frame/picture_in_picture_browser_frame_view.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
 #include "chrome/browser/ui/views/permissions/chip/permission_chip_view.h"
 #include "chrome/browser/ui/views/permissions/chip/permission_dashboard_view.h"
-#include "chrome/browser/ui/views/picture_in_picture/document_pip_host.h"
 #include "chrome/browser/ui/views/toolbar/app_menu_control.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
@@ -74,14 +72,6 @@ AnchorConfiguration GetPageInfoAnchorConfiguration(
                 views::BubbleBorder::TOP_LEFT};
       }
     }
-  }
-
-  if (anchor == Anchor::kLocationBar &&
-      browser_view->GetIsPictureInPictureType()) {
-    auto* frame_view = static_cast<PictureInPictureBrowserFrameView*>(
-        browser_view->browser_widget()->GetFrameView());
-    return {views::BubbleAnchor(frame_view->GetLocationIconView()),
-            kLocationIconElementId, views::BubbleBorder::TOP_LEFT};
   }
 
   // Fall back to menu button.
@@ -142,18 +132,6 @@ AnchorConfiguration GetPermissionPromptBubbleAnchorConfiguration(
     // there is a single source of truth between this and
     // `GetPageInfoAnchorConfiguration()`.
     return GetPageInfoAnchorConfiguration(browser);
-  }
-
-  // For for non-Browser hosted PiP windows anchor to the location icon.
-  auto* pip_host = DocumentPipHost::FromChildWebContents(web_contents);
-  if (pip_host && pip_host->GetWidget()) {
-    views::View* location_icon =
-        views::ElementTrackerViews::GetInstance()->GetFirstMatchingView(
-            kLocationIconElementId,
-            views::ElementTrackerViews::GetContextForWidget(
-                pip_host->GetWidget()));
-    return {views::BubbleAnchor(location_icon), kLocationIconElementId,
-            views::BubbleBorder::TOP_LEFT};
   }
 
   return {};

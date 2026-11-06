@@ -155,10 +155,6 @@ namespace split_tabs {
 class SplitTabHighlightController;
 }  // namespace split_tabs
 
-namespace tabs {
-class VerticalTabStripStateController;
-}  // namespace tabs
-
 namespace tabs_api {
 class TabStripUIControllerImpl;
 }  // namespace tabs_api
@@ -292,8 +288,6 @@ class BrowserWindowFeatures {
   std::unique_ptr<ToastService> toast_service_;
   std::unique_ptr<UpgradeNotificationController>
       upgrade_notification_controller_;
-  std::unique_ptr<tabs::VerticalTabStripStateController>
-      vertical_tab_strip_state_controller_;
 
   // Must come after fullscreen_controller_.
   std::unique_ptr<WindowFeatureController> window_feature_controller_;

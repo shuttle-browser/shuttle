@@ -23,7 +23,6 @@ class BrowserViewLayoutDelegateImpl : public BrowserViewLayoutDelegate {
   ~BrowserViewLayoutDelegateImpl() override;
 
   TabStripType GetTabStripType() const override;
-  bool IsVerticalTabStripCollapsed() const override;
   BrowserLayoutParams GetBrowserLayoutParams(
       bool use_browser_bounds) const override;
   WindowState GetBrowserWindowState() const override;

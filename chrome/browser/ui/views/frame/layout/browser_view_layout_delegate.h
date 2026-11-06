@@ -36,10 +36,9 @@ class BrowserViewLayoutDelegate {
   };
 
   // The style of tab strip present, if any.
-  enum class TabStripType { kNone, kVertical, kHorizontal };
+  enum class TabStripType { kNone, kHorizontal };
 
   virtual TabStripType GetTabStripType() const = 0;
-  virtual bool IsVerticalTabStripCollapsed() const = 0;
   virtual BrowserLayoutParams GetBrowserLayoutParams(
       bool use_browser_bounds) const = 0;
   virtual WindowState GetBrowserWindowState() const = 0;

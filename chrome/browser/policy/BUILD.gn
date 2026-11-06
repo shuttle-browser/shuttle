@@ -433,7 +433,6 @@ source_set("impl") {
     "//components/enterprise/buildflags",
     "//components/enterprise/network_header_injection/core:policy",
     "//components/history/core/common",
-    "//components/history_clusters/core",
     "//components/infobars/content",
     "//components/language/core/browser",
     "//components/live_caption:constants",

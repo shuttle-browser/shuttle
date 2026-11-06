@@ -100,9 +100,7 @@ void ImmersiveModeControllerMac::SetEnabled(bool enabled) {
   }
   enabled_ = enabled;
   if (enabled) {
-    // Vertical tab strip should stay visible and will not be reparented to the
-    // tab overlay.
-    if (separate_tab_strip_ && !browser_view_->ShouldDrawVerticalTabStrip()) {
+    if (separate_tab_strip_) {
       tab_widget_height_ = browser_view_->tab_strip_view()->height();
       tab_widget_height_ += static_cast<BrowserFrameViewMac*>(
                                 browser_view_->browser_widget()->GetFrameView())
@@ -363,12 +361,7 @@ void ImmersiveModeControllerMac::OnViewBoundsChanged(
     return;
   }
   overlay_height_ = bounds.height();
-  // TODO(b/475222200): Currently tab strips are duplicated when switching to
-  // vertical tabs while in immersive leaves behind the horizontal tab, and
-  // OnViewBoundsChanged does not get called.
-  // tab_overlay_widget size should only be set if we aren't drawing the
-  // vertical tabstrip.
-  if (separate_tab_strip_ && !browser_view_->ShouldDrawVerticalTabStrip()) {
+  if (separate_tab_strip_) {
     gfx::Size new_size(bounds.width(), tab_widget_height_);
     browser_view_->tab_overlay_widget()->SetSize(new_size);
     browser_view_->tab_overlay_view()->SetSize(new_size);

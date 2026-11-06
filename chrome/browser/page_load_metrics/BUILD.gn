@@ -131,7 +131,6 @@ source_set("impl") {
     "//chrome/browser/engagement",
     "//chrome/browser/heavy_ad_intervention",
     "//chrome/browser/history",
-    "//chrome/browser/history_clusters",
     "//chrome/browser/optimization_guide",
     "//chrome/browser/predictors",
     "//chrome/browser/preloading/prefetch/no_state_prefetch",

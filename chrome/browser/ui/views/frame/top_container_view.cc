@@ -32,47 +32,6 @@ TopContainerView::TopContainerView(BrowserView* browser_view)
 
 TopContainerView::~TopContainerView() = default;
 
-bool TopContainerView::IsPositionInWindowCaption(
-    const gfx::Point& test_point) const {
-  ToolbarView* const toolbar = browser_view_->toolbar();
-  for (auto& child : children()) {
-    gfx::Point logical_test_point(GetMirroredXInView(test_point.x()),
-                                  test_point.y());
-    if (child->GetVisible() && child->bounds().Contains(logical_test_point)) {
-      if (child == toolbar) {
-        const auto in_toolbar =
-            views::View::ConvertPointToTarget(this, toolbar, test_point);
-        const bool is_caption = toolbar->IsPositionInWindowCaption(in_toolbar);
-        toolbar->RecordHitTestMetrics(is_caption);
-        if (is_caption) {
-          return true;
-        }
-      }
-      return false;
-    }
-  }
-
-#if BUILDFLAG(IS_CHROMEOS)
-  // On ChromeOS, the order of frame hit-testing is different, so if the area
-  // with the caption buttons is not excluded here, it will override the actual
-  // caption buttons with "frame", which in turn will prevent the buttons from
-  // being used.
-  const auto params =
-      browser_view_->browser_widget()->GetFrameView()->GetBrowserLayoutParams();
-  const gfx::Point in_browser =
-      views::View::ConvertPointToTarget(this, browser_view_, test_point);
-  const gfx::Rect caption_rect(
-      browser_view_->width() - params.trailing_exclusion.content.width(), 0,
-      params.trailing_exclusion.content.width(),
-      params.trailing_exclusion.content.height());
-  if (caption_rect.Contains(in_browser)) {
-    return false;
-  }
-#endif
-
-  return true;
-}
-
 void TopContainerView::PaintChildren(const views::PaintInfo& paint_info) {
 // For ChromeOS, we don't need to manually call
 // `BrowserFrameViewChromeOS::Paint` here since it will be triggered by

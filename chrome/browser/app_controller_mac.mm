@@ -96,7 +96,6 @@
 #include "chrome/browser/ui/startup/url_util.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/color_provider_browser_helper.h"
 #include "chrome/browser/ui/webui/util/webui_util_desktop.h"
@@ -527,11 +526,6 @@ Profile* GetLastProfileMac() {
 // Reset `_keepAlive` if Chrome is running in hidden mode, recreating it when
 // Chrome is no longer hidden.
 - (void)resetKeepAliveWhileHidden;
-
-// A callback that updates the relevant commands in the tab menu that depend on
-// position of the tab strip.
-- (void)onVerticalTabStripModeChanged:
-    (tabs::VerticalTabStripStateController*)stateController;
 @end
 
 class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
@@ -690,10 +684,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   // By remembering this bit, Chromium knows whether to enable or disable
   // Cmd+Shift+T and the related "File > Reopen Closed Tab" entry.
   BOOL _tabRestoreWasEnabled;
-
-  // Callback subscription that notifies when the mode of the vertical tab strip
-  // state controller changes.
-  base::CallbackListSubscription _verticalTabSubscription;
 
   // The last active browser, used to query its ColorProvider on demand.
   // WeakPtr self-nulls on browser destruction.
@@ -1012,31 +1002,12 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   if (!browser)
     return;
 
-  // Since we may have different windows with different profiles, we clear the
-  // subscription each time a window becomes the main.
-  _verticalTabSubscription = {};
-
   if (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL) {
     if (!_tabMenuBridge) {
       _tabMenuBridge = std::make_unique<TabMenuBridge>(
           [[NSApp mainMenu] itemWithTag:IDC_TAB_MENU]);
     }
     _tabMenuBridge->SetTabStripModel(browser->GetTabStripModel());
-
-    if (auto* vertical_tab_strip_state_controller =
-            tabs::VerticalTabStripStateController::From(browser)) {
-      _verticalTabSubscription =
-          vertical_tab_strip_state_controller->RegisterOnModeChanged(
-              base::BindRepeating(
-                  [](AppController* controller,
-                     tabs::VerticalTabStripStateController* state_controller) {
-                    [controller onVerticalTabStripModeChanged:state_controller];
-                  },
-                  self));
-      // If the browser begins in VT mode, we want to ensure that we have the
-      // correct text.
-      [self onVerticalTabStripModeChanged:vertical_tab_strip_state_controller];
-    }
   } else if (_tabMenuBridge) {
     _tabMenuBridge->SetTabStripModel(nullptr);
   }
@@ -1045,56 +1016,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 
   _lastActiveBrowser = browser->GetWeakPtr();
   [self setLastProfile:profile];
-}
-
-- (void)onVerticalTabStripModeChanged:
-    (tabs::VerticalTabStripStateController*)stateController {
-  if (!_tabMenuBridge) {
-    return;
-  }
-
-  NSMenu* tabSubmenu = [[[NSApp mainMenu] itemWithTag:IDC_TAB_MENU] submenu];
-  if (!tabSubmenu) {
-    return;
-  }
-
-  bool enabled = stateController->ShouldDisplayVerticalTabs();
-
-  auto updateMenuState = ^(NSInteger tag, bool enableVerticalTabs) {
-    NSMutableArray<NSMenuItem*>* matchingItems = [NSMutableArray array];
-    for (NSMenuItem* item in [tabSubmenu itemArray]) {
-      if (item.tag == tag) {
-        [matchingItems addObject:item];
-      }
-    }
-
-    // There are 2 copies of "New Tab to Right" and "Close Tabs to Right"
-    // for horizontal and vertical tab modes.
-    CHECK_EQ(matchingItems.count, 2u);
-
-    NSMenuItem* horizontalItem = matchingItems[0];
-    NSMenuItem* verticalItem = matchingItems[1];
-
-    NSMenuItem* activeItem =
-        horizontalItem.hidden ? verticalItem : horizontalItem;
-    NSMenuItem* incomingItem =
-        enableVerticalTabs ? verticalItem : horizontalItem;
-
-    if (activeItem != incomingItem) {
-      incomingItem.keyEquivalent = activeItem.keyEquivalent;
-      incomingItem.keyEquivalentModifierMask =
-          activeItem.keyEquivalentModifierMask;
-
-      horizontalItem.hidden = enableVerticalTabs;
-      verticalItem.hidden = !enableVerticalTabs;
-    }
-  };
-
-  // Process "New Tab to the Right" / "New Tab Below" items.
-  updateMenuState(IDC_NEW_TAB_TO_RIGHT, enabled);
-
-  // Process "Close Tabs to the Right" / "Close Tabs Below" items.
-  updateMenuState(IDC_WINDOW_CLOSE_TABS_TO_RIGHT, enabled);
 }
 
 // Called when shutting down or logging out.

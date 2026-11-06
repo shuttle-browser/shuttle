@@ -24,8 +24,6 @@
 #include "chrome/browser/ui/tabs/tab_muted_utils.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/event_utils.h"
 #include "chrome/browser/ui/views/frame/browser_frame_view.h"
@@ -39,8 +37,6 @@
 #include "chrome/browser/ui/views/tabs/common/tab_strip_utils.h"
 #include "chrome/browser/ui/views/tabs/common/tab_strip_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_view_horizontal_layout.h"
-#include "chrome/browser/ui/views/tabs/common/tab_view_vertical_layout.h"
-#include "chrome/browser/ui/views/tabs/common/vertical_tab_style_views.h"
 #include "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_controller.h"
 #include "chrome/browser/ui/views/tabs/shared/tab_strip_types.h"
 #include "chrome/browser/ui/views/tabs/tab/alert_indicator_button.h"
@@ -133,9 +129,6 @@ TabStripUserGestureDetails GetGestureDetail(const ui::Event& event) {
 
 std::unique_ptr<TabView::LayoutManager> CreateTabViewLayout(
     TabStripOrientation orientation) {
-  if (orientation == TabStripOrientation::kVertical) {
-    return std::make_unique<TabViewVerticalLayout>();
-  }
   return std::make_unique<TabViewHorizontalLayout>();
 }
 }  // namespace
@@ -374,15 +367,6 @@ TabView::TabView(TabCollectionNode* collection_node)
           &TabView::OnTabDataChanged, base::Unretained(this)));
 
   CHECK(collection_node_->GetController());
-  if (orientation_ == TabStripOrientation::kVertical) {
-    auto* state_controller =
-        collection_node_->GetController()->GetStateController();
-    CHECK(state_controller);
-    OnCollapseStateChanged(state_controller->GetCollapseState());
-    collapsed_state_changed_subscription_ =
-        state_controller->RegisterOnCollapseChanged(base::BindRepeating(
-            &TabView::OnCollapseStateChanged, base::Unretained(this)));
-  }
   close_button_observation_.Observe(close_button_);
 }
 
@@ -994,14 +978,14 @@ views::BubbleBorder::Arrow TabView::GetAnchorPosition() const {
   if (orientation_ == TabStripOrientation::kHorizontal) {
     return views::BubbleBorder::Arrow::TOP_LEFT;
   }
-  if (pinned_ && !collapsed_) {
+  if (pinned_) {
     return views::BubbleBorder::Arrow::TOP_LEFT;
   }
   return views::BubbleBorder::Arrow::LEFT_TOP;
 }
 
 views::BubbleAnchor TabView::GetAnchor() {
-  if (split_ && !collapsed_) {
+  if (split_) {
     return views::BubbleAnchor(parent());
   }
   return views::BubbleAnchor(this);
@@ -1020,7 +1004,6 @@ void TabView::ResetCollectionNode() {
   // execution during the rest of this cleanup.
   tab_data_changed_subscription_ = base::CallbackListSubscription();
   tab_state_changed_subscription_ = base::CallbackListSubscription();
-  collapsed_state_changed_subscription_ = base::CallbackListSubscription();
   node_destroyed_subscription_ = base::CallbackListSubscription();
 
   collection_node_ = nullptr;
@@ -1065,11 +1048,6 @@ void TabView::OnAXNameChanged(ax::mojom::StringAttribute attribute,
   if (GetWidget() && active_) {
     GetWidget()->UpdateAccessibleNameForRootView();
   }
-}
-
-void TabView::OnCollapseStateChanged(
-    tabs::VerticalTabStripCollapseState state) {
-  collapsed_ = state == tabs::VerticalTabStripCollapseState::kCollapsed;
 }
 
 void TabView::OnTabStateChanged() {
@@ -1326,28 +1304,6 @@ bool TabView::IsDragging() const {
     }
   }
   return false;
-}
-
-// static
-int TabView::UncollapsedMinWidth() {
-  // This is the width of a tab in a split that is in a tab group, while the
-  // tab strip is in the narrowest uncollapsed state.
-  return (tabs::kVerticalTabStripUncollapsedMinWidth -
-          2 * GetLayoutConstant(
-                  LayoutConstant::kVerticalTabStripHorizontalPadding) -
-          SplitTabView::kSplitViewGap - TabGroupView::kTabLeadingPadding) /
-         2;
-}
-
-// static
-int TabView::CollapsedWidth() {
-  return tabs::kVerticalTabStripCollapsedWidth -
-         2 * GetLayoutConstant(
-                 LayoutConstant::kVerticalTabStripHorizontalPadding);
-}
-
-bool TabView::IsInExpandOnHover(int width) const {
-  return collapsed_ && width > CollapsedWidth();
 }
 
 const tabs::TabInterface* TabView::GetTabInterface() const {

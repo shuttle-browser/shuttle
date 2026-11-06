@@ -10,12 +10,12 @@
 #include "base/functional/bind.h"
 #include "chrome/browser/extensions/browser_window_util.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/prefs/prefs_tab_helper.h"
+#include "content/public/browser/web_contents_delegate.h"
 #include "extensions/browser/extensions_browser_client.h"
 #include "extensions/buildflags/buildflags.h"
 #include "ui/base/base_window.h"
@@ -233,12 +233,10 @@ bool ChromeExtensionHostDelegate::CheckMediaAccessPermission(
 content::PictureInPictureResult
 ChromeExtensionHostDelegate::EnterPictureInPicture(
     content::WebContents* web_contents) {
-  return PictureInPictureWindowManager::GetInstance()
-      ->EnterVideoPictureInPicture(web_contents);
+  // Shuttle: picture-in-picture browser UI is removed.
+  return content::PictureInPictureResult::kNotSupported;
 }
 
-void ChromeExtensionHostDelegate::ExitPictureInPicture() {
-  PictureInPictureWindowManager::GetInstance()->ExitPictureInPicture();
-}
+void ChromeExtensionHostDelegate::ExitPictureInPicture() {}
 
 }  // namespace extensions

@@ -13,7 +13,6 @@
 
 #if BUILDFLAG(IS_WIN)
 #include "chrome/browser/ui/views/frame/browser_frame_view_win.h"
-#include "chrome/browser/ui/views/frame/picture_in_picture_browser_frame_view.h"
 #endif
 
 #if BUILDFLAG(IS_LINUX)
@@ -22,7 +21,6 @@
 #include "chrome/browser/ui/views/frame/browser_frame_view_linux.h"
 #include "chrome/browser/ui/views/frame/browser_frame_view_linux_native.h"
 #include "chrome/browser/ui/views/frame/browser_native_widget_aura_linux.h"
-#include "chrome/browser/ui/views/frame/picture_in_picture_browser_frame_view_linux.h"
 #include "ui/linux/linux_ui.h"
 #endif
 
@@ -66,12 +64,6 @@ std::unique_ptr<OpaqueBrowserFrameView> CreateOpaqueBrowserFrameViewLinux(
 std::unique_ptr<BrowserFrameView> CreateBrowserFrameViewLinux(
     BrowserWidget* widget,
     BrowserView* browser_view) {
-  if (browser_view->browser()->GetType() ==
-      BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE) {
-    return std::make_unique<PictureInPictureBrowserFrameViewLinux>(
-        widget, browser_view);
-  }
-
   auto opaque_browser_view =
       CreateOpaqueBrowserFrameViewLinux(widget, browser_view);
   opaque_browser_view->InitViews();
@@ -84,12 +76,6 @@ std::unique_ptr<BrowserFrameView> CreateBrowserFrameViewLinux(
 std::unique_ptr<BrowserFrameView> CreateBrowserFrameViewWin(
     BrowserWidget* widget,
     BrowserView* browser_view) {
-  if (browser_view->browser()->GetType() ==
-      BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE) {
-    return std::make_unique<PictureInPictureBrowserFrameView>(widget,
-                                                              browser_view);
-  }
-
   if (widget->ShouldUseNativeFrame()) {
     return std::make_unique<BrowserFrameViewWin>(widget, browser_view);
   }

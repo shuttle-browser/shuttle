@@ -21,7 +21,6 @@ if (!is_android) {
       "//chrome/browser/custom_handlers",
       "//chrome/browser/devtools",
       "//chrome/browser/headless",
-      "//chrome/browser/picture_in_picture",
       "//chrome/browser/preloading:prefs",
       "//chrome/browser/search",
       "//chrome/browser/ui:browser_command_controller",

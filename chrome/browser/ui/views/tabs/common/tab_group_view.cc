@@ -10,7 +10,6 @@
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_group_data.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/tabs/common/dragged_tabs_container.h"
 #include "chrome/browser/ui/views/tabs/common/split_tab_view.h"
@@ -82,7 +81,6 @@ TabGroupView::TabGroupView(TabCollectionNode* collection_node)
       group_header_(AddChildView(std::make_unique<TabGroupHeaderView>(
           *this,
           orientation_,
-          collection_node_->GetController()->GetStateController(),
           &tab_group_visual_data_))),
       group_line_(AddChildView(std::make_unique<TabGroupLineView>(*this))),
       layout_manager_(*SetLayoutManager(std::make_unique<
@@ -193,12 +191,10 @@ std::unique_ptr<views::Widget> TabGroupView::ShowGroupEditorBubble(
     return nullptr;
   }
 
-  // When the tab strip is collapsed, anchor to the group header, otherwise
-  // anchor to the editor bubble button.
+  // Anchor to the editor bubble button if there is one, otherwise to the group
+  // header.
   views::View* anchor_view =
-      (GetTabStripCollapseState() !=
-           tabs::VerticalTabStripCollapseState::kExpanded ||
-       !group_header_->editor_bubble_button())
+      !group_header_->editor_bubble_button()
           ? views::AsViewClass<views::View>(group_header_)
           : views::AsViewClass<views::View>(
                 group_header_->editor_bubble_button());

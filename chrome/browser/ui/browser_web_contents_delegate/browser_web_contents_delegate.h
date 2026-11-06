@@ -46,9 +46,9 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
       const BrowserWindowInterface* browser);
 
   // content::WebContentsDelegate:
-  content::PictureInPictureResult EnterPictureInPicture(
-      content::WebContents* web_contents) override;
-  void ExitPictureInPicture() override;
+  // Shuttle has no picture-in-picture UI: video PiP falls back to content's
+  // default (kNotSupported) and Document PiP windows are refused up front.
+  bool IsDocumentPictureInPictureBlockedBySystem() const override;
   content::KeyboardEventProcessingResult PreHandleKeyboardEvent(
       content::WebContents* source,
       const input::NativeWebKeyboardEvent& event) override;

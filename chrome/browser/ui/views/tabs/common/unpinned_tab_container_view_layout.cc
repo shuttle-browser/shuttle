@@ -237,17 +237,12 @@ views::ProposedLayout UnpinnedTabContainerViewLayout::CalculateVerticalLayout(
   int width = 0;
   int height = 0;
   int dragged_view_bottom = 0;
-  auto collapse_state = tab_container_view->GetTabStripCollapseState();
 
   const int horizontal_padding =
       GetLayoutConstant(LayoutConstant::kVerticalTabStripHorizontalPadding);
 
   for (auto* child : children) {
-    int x =
-        views::AsViewClass<TabGroupView>(child) &&
-                collapse_state != tabs::VerticalTabStripCollapseState::kExpanded
-            ? 0
-            : horizontal_padding;
+    int x = horizontal_padding;
     views::SizeBound child_height_bound = size_bounds.height();
     // In focused mode, pass the scroll viewport height constraint to the child
     // focused group if the incoming size bounds height is unbounded, so that

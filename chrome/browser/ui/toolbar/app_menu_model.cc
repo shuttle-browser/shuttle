@@ -52,8 +52,6 @@
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/recent_tabs_sub_menu_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_metrics.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/app_menu_icon_controller.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
@@ -322,22 +320,6 @@ void ToolsMenuModel::Build(BrowserWindowInterface* browser) {
   AddItemWithStringIdAndVectorIcon(
       this, IDC_NAME_WINDOW, IDS_NAME_WINDOW,
       features::IsRoundedIconsEnabled() ? kWebAssetIcon : kNameWindowOldIcon);
-
-  if (auto* controller = tabs::VerticalTabStripStateController::From(browser)) {
-    if (controller->ShouldDisplayVerticalTabs()) {
-      AddItemWithStringIdAndVectorIcon(
-          this, IDC_TOGGLE_VERTICAL_TABS, IDS_SWITCH_TO_HORIZONTAL_TAB,
-          features::IsRoundedIconsEnabled() ? kToolbarIcon : kToolbarOldIcon);
-    } else {
-      AddItemWithStringIdAndVectorIcon(
-          this, IDC_TOGGLE_VERTICAL_TABS, IDS_SWITCH_TO_VERTICAL_TAB,
-          base::i18n::IsRTL() ? features::IsRoundedIconsEnabled()
-                                    ? kDockToLeftIcon
-                                    : kDockToRightOldIcon
-          : features::IsRoundedIconsEnabled() ? kDockToRightIcon
-                                              : kDockToLeftOldIcon);
-    }
-  }
 
   AddSeparator(ui::NORMAL_SEPARATOR);
 
@@ -934,14 +916,6 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
             delta);
       }
       LogMenuAction(MENU_ACTION_SAFETY_HUB_MANAGE_EXTENSIONS);
-      break;
-    case IDC_TOGGLE_VERTICAL_TABS:
-      if (auto* controller =
-              tabs::VerticalTabStripStateController::From(browser_)) {
-        const bool is_vertical = !controller->ShouldDisplayVerticalTabs();
-        tabs::RecordVerticalTabStripModeChanged(
-            is_vertical, tabs::VerticalTabStripEntryPoint::kAppMenu);
-      }
       break;
     case IDC_CHROME_ENTERPRISE_RELEASE_NOTES:
       if (!uma_action_recorded_) {

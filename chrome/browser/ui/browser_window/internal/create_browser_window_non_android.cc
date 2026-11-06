@@ -38,9 +38,6 @@ BrowserWindowCreateParams BrowserWindowCreateParams::Clone() const {
   clone.can_maximize = can_maximize;
   clone.can_fullscreen = can_fullscreen;
   clone.pip_options = pip_options;
-  clone.vertical_tab_strip_collapsed = vertical_tab_strip_collapsed;
-  clone.vertical_tab_strip_uncollapsed_width =
-      vertical_tab_strip_uncollapsed_width;
   clone.focused_tab_group_id = focused_tab_group_id;
 #if BUILDFLAG(IS_CHROMEOS)
   clone.display_id = display_id;

@@ -126,9 +126,6 @@
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/performance_manager/public/chrome_browser_main_extra_parts_performance_manager.h"
 #include "chrome/browser/performance_manager/public/chrome_content_browser_client_performance_manager_part.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
-#include "chrome/browser/picture_in_picture/scoped_tuck_picture_in_picture.h"
-#include "chrome/browser/picture_in_picture/video_overlay_window.h"
 #include "chrome/browser/plugins/plugin_utils.h"
 #include "chrome/browser/policy/chrome_policy_blocklist_service_factory.h"
 #include "chrome/browser/policy/policy_util.h"
@@ -170,9 +167,6 @@
 #include "chrome/browser/site_protection/site_familiarity_process_selection_deferring_condition.h"
 #include "chrome/browser/site_protection/site_familiarity_process_selection_user_data.h"
 #include "chrome/browser/site_protection/site_familiarity_utils.h"
-#include "chrome/browser/site_token_provider/site_token_proxying_url_loader_factory.h"
-#include "chrome/browser/site_token_provider/site_token_url_loader_factory.h"
-#include "chrome/browser/site_token_provider/site_token_url_loader_header_client.h"
 #include "chrome/browser/speech/chrome_speech_recognition_manager_delegate.h"
 #include "chrome/browser/ssl/chrome_security_blocking_page_factory.h"
 #include "chrome/browser/ssl/chrome_security_state_util.h"
@@ -200,7 +194,6 @@
 #include "chrome/browser/ui/webui/log_web_ui_url.h"
 #include "chrome/browser/universal_web_contents_observers.h"
 #include "chrome/browser/usb/chrome_usb_delegate.h"
-#include "chrome/browser/vr/vr_tab_helper.h"
 #include "chrome/browser/webauthn/chrome_web_authentication_delegate_base.h"
 #include "chrome/browser/webauthn/webauthn_pref_names.h"
 #include "chrome/common/buildflags.h"
@@ -220,7 +213,6 @@
 #include "chrome/common/profiler/process_type.h"
 #include "chrome/common/profiler/thread_profiler_configuration.h"
 #include "chrome/common/renderer_configuration.mojom.h"
-#include "chrome/common/request_header_integrity/buildflags.h"
 #include "chrome/common/secure_origin_allowlist.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/common/webui_url_constants.h"
@@ -308,7 +300,6 @@
 #include "components/site_isolation/pref_names.h"
 #include "components/site_isolation/preloaded_isolated_origins.h"
 #include "components/site_isolation/site_isolation_policy.h"
-#include "components/site_token_provider/features.h"
 #include "components/supervised_user/core/common/features.h"
 #include "components/user_prefs/user_prefs.h"
 #include "components/variations/variations_associated_data.h"
@@ -543,7 +534,6 @@
 #include "chrome/browser/loader/features.h"
 #include "chrome/browser/loader/fetch_keepalive_process_manager.h"
 #include "chrome/browser/metrics/usage_scenario/chrome_responsiveness_calculator_delegate.h"
-#include "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -706,10 +696,6 @@
 #include "chrome/browser/enterprise/connectors/analysis/content_analysis_delegate.h"
 #endif
 
-#if BUILDFLAG(ENABLE_VR)
-#include "chrome/browser/vr/chrome_xr_integration_client.h"
-#endif
-
 #if BUILDFLAG(USE_MINIKIN_HYPHENATION) && !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/component_updater/hyphenation_component_installer.h"
 #endif
@@ -737,10 +723,6 @@
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager_android.h"
 #endif  // BUILDFLAG(IS_ANDROID)
-
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-#include "chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.h"  // nogncheck crbug.com/40147906
-#endif
 
 #include "base/win/windows_h_disallowed.h"
 
@@ -775,13 +757,6 @@ namespace {
 // Whether to disable caching of the advanced-protection state in
 // ShouldEnableStrictSiteIsolation().
 bool g_disable_advanced_protection_caching_for_tests = false;
-
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-// Kill-switch for the request integrity headers support for prefetches
-// initiated by `content::PrefetchContainer`.
-BASE_FEATURE(kPrefetchRequestIntegrityHeaders,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-#endif
 
 // Cached version of the locale so we can return the locale on the I/O
 // thread.
@@ -4009,20 +3984,6 @@ bool ChromeContentBrowserClient::CanCreateWindow(
   DCHECK(!prerender::ChromeNoStatePrefetchContentsDelegate::FromWebContents(
       web_contents));
 
-#if !BUILDFLAG(IS_ANDROID)
-  // For Automatic Document Picture-in-Picture, the window creation is
-  // authorized by the browser rather than a user gesture. If AutoPip
-  // preconditions are met, permit the window creation.
-  if (disposition == WindowOpenDisposition::NEW_PICTURE_IN_PICTURE) {
-    auto* auto_pip_tab_helper =
-        AutoPictureInPictureTabHelper::FromWebContents(web_contents);
-    if (auto_pip_tab_helper &&
-        auto_pip_tab_helper->AreAutoPictureInPicturePreconditionsMet()) {
-      return true;
-    }
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
-
   const BlockedWindowParams blocked_params(
       target_url, opener->GetGlobalFrameToken(), source_origin,
       opener->GetSiteInstance(), referrer, frame_name, disposition, features,
@@ -4257,8 +4218,6 @@ void ChromeContentBrowserClient::OverrideWebPreferences(
     web_prefs->is_initial_profile =
         profile->GetOriginalProfile()->GetBaseName() ==
         ProfileManager::GetInitialProfileDir();
-
-    web_prefs->immersive_mode_enabled = vr::VrTabHelper::IsInVr(web_contents);
   }
 
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
@@ -5377,12 +5336,6 @@ std::unique_ptr<blink::URLLoaderThrottle> CreateGoogleURLLoaderThrottle(
           profile->GetPrefs()->GetInteger(
               policy::policy_prefs::kForceYouTubeRestrict),
           profile->GetPrefs()->GetString(prefs::kAllowedDomainsForApps)
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY) && !BUILDFLAG(IS_ANDROID)
-              ,
-          // Only the copy pushed to renderers carries this; the throttle
-          // built here reads the block from its own process instead.
-          net::HttpRequestHeaders()
-#endif
       );
   return std::make_unique<GoogleURLLoaderThrottle>(
 #if BUILDFLAG(IS_ANDROID)
@@ -5426,15 +5379,6 @@ ChromeContentBrowserClient::CreateURLLoaderThrottles(
   result.push_back(
       std::make_unique<captive_portal::CaptivePortalURLLoaderThrottle>(
           wc_getter.Run()));
-#endif
-
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-  if (request_header_integrity::RequestHeaderIntegrityURLLoaderThrottle::
-          IsFeatureEnabled()) {
-    result.push_back(
-        std::make_unique<request_header_integrity::
-                             RequestHeaderIntegrityURLLoaderThrottle>());
-  }
 #endif
 
   if (chrome_navigation_ui_data &&
@@ -5925,13 +5869,6 @@ void ChromeContentBrowserClient::
                                       factories);
   }
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-
-  if (base::FeatureList::IsEnabled(
-          site_token_provider::features::kSiteTokenProviderEnabled)) {
-    factories->emplace(chrome::kChromeExperimentalSiteTokenProviderScheme,
-                       site_token_provider::SiteTokenURLLoaderFactory::Create(
-                           render_process_id));
-  }
 }
 
 void ChromeContentBrowserClient::WillCreateURLLoaderFactory(
@@ -6003,18 +5940,6 @@ void ChromeContentBrowserClient::WillCreateURLLoaderFactory(
 
   MaybeSetTargetNetwork(GetBoundNetworkFromRenderFrameHost(frame),
                         factory_builder, is_for_network_service);
-
-  // The proxying factory only sets kURLLoadOptionUseHeaderClient on matching
-  // requests, so it does nothing without a header client. Site token headers
-  // are only injected for top-level document navigations (not subresources or
-  // iframes).
-  if (header_client && type == URLLoaderFactoryType::kNavigation && frame &&
-      !frame->GetParentOrOuterDocument()) {
-    site_token_provider::SiteTokenProxyingURLLoaderFactory::MaybeProxyRequest(
-        browser_context, factory_builder);
-    site_token_provider::SiteTokenURLLoaderHeaderClient::MaybeWrap(
-        browser_context, header_client);
-  }
 
   // WARNING: This must be the last wrapper in the chain for
   // TrustedURLLoaderHeaderClient. This ensures that our client is the outermost
@@ -6603,41 +6528,6 @@ bool ChromeContentBrowserClient::HandleExternalProtocol(
             sandbox_flags, has_user_gesture, initiating_origin,
             std::move(weak_initiator_document), out_factory);
   return true;
-}
-
-std::unique_ptr<content::VideoOverlayWindow>
-ChromeContentBrowserClient::CreateWindowForVideoPictureInPicture(
-    content::VideoPictureInPictureWindowController* controller) {
-  return CreateVideoOverlayWindow(controller);
-}
-
-base::ScopedClosureRunner
-ChromeContentBrowserClient::MaybeGetScopedPictureInPictureTucker(
-    content::WebContents* web_contents) {
-#if !BUILDFLAG(IS_ANDROID)
-  if (PictureInPictureWindowManager::GetInstance()
-          ->ShouldFileDialogTuckPictureInPicture(web_contents)) {
-    // Make the `ScopedTuckPictureInPicture` share the same lifecycle as the
-    // `ScopedClosureRunner`.
-    auto tucker = std::make_unique<ScopedTuckPictureInPicture>();
-    return base::ScopedClosureRunner(
-        base::DoNothingWithBoundArgs(std::move(tucker)));
-  }
-#endif
-  return base::ScopedClosureRunner();
-}
-
-media::PictureInPictureEventsInfo::AutoPipInfo
-ChromeContentBrowserClient::GetAutoPipInfo(
-    const content::WebContents& web_contents) const {
-#if BUILDFLAG(IS_ANDROID)
-  return media::PictureInPictureEventsInfo::AutoPipInfo();
-#else
-  auto* auto_pip_tab_helper =
-      AutoPictureInPictureTabHelper::FromWebContents(&web_contents);
-  return auto_pip_tab_helper ? auto_pip_tab_helper->GetAutoPipInfo()
-                             : media::PictureInPictureEventsInfo::AutoPipInfo();
-#endif  // BUILDFLAG(IS_ANDROID)
 }
 
 void ChromeContentBrowserClient::RegisterRendererPreferenceWatcher(
@@ -7289,17 +7179,6 @@ bool ChromeContentBrowserClient::IsDragAllowedByPolicy(
   return true;
 #endif  // BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
 }
-
-#if BUILDFLAG(ENABLE_VR)
-content::XrIntegrationClient*
-ChromeContentBrowserClient::GetXrIntegrationClient() {
-  if (!xr_integration_client_) {
-    xr_integration_client_ = std::make_unique<vr::ChromeXrIntegrationClient>(
-        base::PassKey<ChromeContentBrowserClient>());
-  }
-  return xr_integration_client_.get();
-}
-#endif  // BUILDFLAG(ENABLE_VR)
 
 bool ChromeContentBrowserClient::
     ShouldInheritCrossOriginEmbedderPolicyImplicitly(const GURL& url) {
@@ -8622,27 +8501,10 @@ void ChromeContentBrowserClient::ModifyRequestHeadersForPrefetch(
     std::vector<std::string>& removed_headers,
     net::HttpRequestHeaders& modified_headers,
     net::HttpRequestHeaders& modified_cors_exempt_headers) {
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-  if (base::FeatureList::IsEnabled(kPrefetchRequestIntegrityHeaders) &&
-      request_header_integrity::RequestHeaderIntegrityURLLoaderThrottle::
-          IsFeatureEnabled()) {
-    request_header_integrity::RequestHeaderIntegrityURLLoaderThrottle::
-        ModifyRequestIntegrityHeadersForPrefetch(url, removed_headers,
-                                                 modified_cors_exempt_headers);
-  }
-#endif
 }
 
 void ChromeContentBrowserClient::UpdateCorsExemptHeaderForPrefetch(
     network::mojom::NetworkContextParams* params) {
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-  if (base::FeatureList::IsEnabled(kPrefetchRequestIntegrityHeaders) &&
-      request_header_integrity::RequestHeaderIntegrityURLLoaderThrottle::
-          IsFeatureEnabled()) {
-    request_header_integrity::RequestHeaderIntegrityURLLoaderThrottle::
-        UpdateCorsExemptHeaders(params);
-  }
-#endif
 }
 
 bool ChromeContentBrowserClient::IsFullscreenAllowedForUnfocusedWebContents(

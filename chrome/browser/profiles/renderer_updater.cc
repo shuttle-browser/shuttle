@@ -17,7 +17,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/renderer_configuration.mojom.h"
-#include "chrome/common/request_header_integrity/buildflags.h"
 #include "components/content_settings/common/content_settings_manager.mojom.h"
 #include "components/content_settings/core/browser/content_settings_utils.h"
 #include "components/content_settings/core/common/content_settings.h"
@@ -39,11 +38,6 @@
 
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 #endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY) && !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/request_header_integrity/platform_runtime_host.h"  // nogncheck
-#include "net/http/http_request_headers.h"
-#endif
 
 RendererUpdater::RendererUpdater(Profile* profile)
     : profile_(profile),
@@ -79,15 +73,6 @@ RendererUpdater::RendererUpdater(Profile* profile)
       base::BindRepeating(&RendererUpdater::UpdateAllRenderers,
                           base::Unretained(this)));
 
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY) && !BUILDFLAG(IS_ANDROID)
-  if (auto* platform_runtime_host =
-          g_browser_process->GetFeatures()->platform_runtime_host()) {
-    platform_runtime_subscription_ =
-        platform_runtime_host->RegisterHeadersChangedCallback(
-            base::BindRepeating(&RendererUpdater::UpdateAllRenderers,
-                                base::Unretained(this)));
-  }
-#endif
 }
 
 RendererUpdater::~RendererUpdater() {
@@ -212,17 +197,5 @@ chrome::mojom::DynamicParamsPtr RendererUpdater::CreateRendererDynamicParams()
       GetBoundSessionThrottlerParams(),
 #endif
       force_google_safesearch_.GetValue(), force_youtube_restrict_.GetValue(),
-      allowed_domains_for_apps_.GetValue()
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY) && !BUILDFLAG(IS_ANDROID)
-          ,
-      GetPlatformRuntimeHeaders()
-#endif
-  );
+      allowed_domains_for_apps_.GetValue());
 }
-
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY) && !BUILDFLAG(IS_ANDROID)
-net::HttpRequestHeaders RendererUpdater::GetPlatformRuntimeHeaders() const {
-  auto* host = g_browser_process->GetFeatures()->platform_runtime_host();
-  return host ? host->headers() : net::HttpRequestHeaders();
-}
-#endif

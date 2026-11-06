@@ -150,7 +150,6 @@ source_set("webrtc") {
     "//chrome/browser/media:access_handler",
     "//chrome/browser/media/prefs",
     "//chrome/browser/permissions/system",
-    "//chrome/browser/picture_in_picture",
     "//chrome/browser/policy:policy_util",
     "//chrome/browser/profiles:profile_manager",
     "//chrome/browser/profiles:profile_util",

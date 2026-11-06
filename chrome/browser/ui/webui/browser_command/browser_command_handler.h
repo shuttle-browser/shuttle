@@ -62,7 +62,6 @@ class BrowserCommandHandler : public CommandUpdaterDelegate,
   virtual void NavigateToEnhancedProtectionSetting();
   virtual void OpenAISettings();
   virtual void OpenSplitView();
-  virtual void EnableVerticalTabs();
 
   raw_ptr<Profile, DanglingUntriaged> profile_;
   std::vector<browser_command::mojom::Command> supported_commands_;

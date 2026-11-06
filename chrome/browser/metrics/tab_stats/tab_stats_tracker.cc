@@ -68,7 +68,6 @@
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #endif
 
 namespace metrics {
@@ -108,13 +107,8 @@ void UmaHistogramCounts10000WithTabStripModeVariant(
     return;
   }
 
-  auto* controller = tabs::VerticalTabStripStateController::From(
-      tab_strip.browser_window_interface());
-  const char* suffix = controller && controller->ShouldDisplayVerticalTabs()
-                           ? ".VerticalTabStrip"
-                           : ".HorizontalTabStrip";
-
-  base::UmaHistogramCounts10000(base::StrCat({histogram_name, suffix}), value);
+  base::UmaHistogramCounts10000(
+      base::StrCat({histogram_name, ".HorizontalTabStrip"}), value);
 }
 #endif
 
@@ -889,15 +883,6 @@ void TabStatsTracker::UmaStatsReportingDelegate::ReportHeartbeatMetrics(
         tab_strip_model && tab_strip_model->GetFocusedGroup().has_value();
     base::UmaHistogramBoolean(kFocusModeIsActiveHistogramName,
                               is_in_focus_mode);
-
-    auto* controller = tabs::VerticalTabStripStateController::From(
-        tab_strip.browser_window_interface());
-    if (controller && controller->ShouldDisplayVerticalTabs()) {
-      base::UmaHistogramEnumeration(
-          kVerticalTabStripCollapseStateHistogramName,
-          controller->IsCollapsed() ? VerticalTabStripCollapseState::kCollapsed
-                                    : VerticalTabStripCollapseState::kExpanded);
-    }
 
     // Record the width of all open browser windows with tabs.
     const ui::BaseWindow* window =

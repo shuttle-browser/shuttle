@@ -7,7 +7,6 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "chrome/browser/chrome_browser_interface_binders_webui_parts.h"
-#include "chrome/browser/history_clusters/history_clusters_service_factory.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/webui/color_pipeline_internals/color_pipeline_internals_ui.h"
 #include "chrome/browser/ui/webui/downloads/downloads.mojom.h"
@@ -27,7 +26,6 @@
 #include "chrome/browser/ui/webui/webui_gallery/webui_gallery_ui.h"
 #include "chrome/common/chrome_features.h"
 #include "components/browser_apis/tab_drag/tab_drag_api.mojom.h"
-#include "components/history_clusters/core/history_clusters_service.h"
 #include "components/multistep_filter/core/features.h"
 #include "components/omnibox/browser/searchbox.mojom.h"
 #include "components/omnibox/common/omnibox_features.h"
@@ -48,7 +46,6 @@
 #include "ui/webui/resources/cr_components/color_change_listener/color_change_listener.mojom.h"
 #include "ui/webui/resources/cr_components/customize_color_scheme_mode/customize_color_scheme_mode.mojom.h"
 #include "ui/webui/resources/cr_components/history/history.mojom.h"
-#include "ui/webui/resources/cr_components/history_clusters/history_clusters.mojom.h"
 #include "ui/webui/resources/cr_components/theme_color_picker/theme_color_picker.mojom.h"
 #include "ui/webui/resources/js/browser_command/browser_command.mojom.h"
 
@@ -116,14 +113,6 @@ void PopulateChromeWebUIFrameBindersPartsDesktop(
       page_action_internals::mojom::PageHandlerFactory, PageActionInternalsUI>(
       map);
 
-  auto* history_clusters_service =
-      HistoryClustersServiceFactory::GetForBrowserContext(
-          render_frame_host->GetProcess()->GetBrowserContext());
-  if (history_clusters_service &&
-      history_clusters_service->is_journeys_feature_flag_enabled()) {
-    RegisterWebUIControllerInterfaceBinder<
-        history_clusters::mojom::PageHandlerFactory, HistoryUI>(map);
-  }
   RegisterWebUIControllerInterfaceBinder<
       page_image_service::mojom::PageImageServiceHandler, HistoryUI>(map);
 

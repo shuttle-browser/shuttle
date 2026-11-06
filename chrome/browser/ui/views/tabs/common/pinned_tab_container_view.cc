@@ -64,17 +64,6 @@ PinnedTabContainerView::PinnedTabContainerView(
   node_destroyed_subscription_ = collection_node_->RegisterWillDestroyCallback(
       base::BindOnce(&PinnedTabContainerView::ResetCollectionNode,
                      base::Unretained(this)));
-
-  if (orientation_ == TabStripOrientation::kVertical) {
-    if (auto* state_controller =
-            collection_node_->GetController()->GetStateController()) {
-      OnCollapseStateChanged(state_controller->GetCollapseState());
-      collapsed_state_changed_subscription_ =
-          state_controller->RegisterOnCollapseChanged(base::BindRepeating(
-              &PinnedTabContainerView::OnCollapseStateChanged,
-              base::Unretained(this)));
-    }
-  }
 }
 
 PinnedTabContainerView::~PinnedTabContainerView() = default;
@@ -114,13 +103,8 @@ gfx::Size PinnedTabContainerView::GetMinimumSize() const {
     return gfx::Size(min_width, TabStyle::Get()->GetStandardHeight());
   }
 
-  // The minimum size should be enough to show a row and a half, if needed.
-  auto collapse_state = GetTabStripCollapseState();
   const int num_children = collection_node_->GetDirectChildren().size();
-  const float min_rows = std::min(
-      (collapse_state != tabs::VerticalTabStripCollapseState::kExpanded ? 1.5f
-                                                                        : 1.0f),
-      static_cast<float>(num_children));
+  const float min_rows = std::min(1.0f, static_cast<float>(num_children));
   const int min_height =
       base::ClampCeil(GetLayoutConstant(LayoutConstant::kVerticalTabHeight) *
                       min_rows) +
@@ -168,15 +152,8 @@ PinnedTabContainerView::GetLinkDropIndex(const gfx::Point& loc_in_container) {
     if (auto index = GetLinkDropIndexForHorizontal(loc_in_container)) {
       return index;
     }
-  } else {
-    auto collapse_state = GetTabStripCollapseState();
-    if (collapse_state != tabs::VerticalTabStripCollapseState::kExpanded) {
-      if (auto index = GetLinkDropIndexForCollapsed(loc_in_container)) {
-        return index;
-      }
-    } else if (auto index = GetLinkDropIndexForExpanded(loc_in_container)) {
-      return index;
-    }
+  } else if (auto index = GetLinkDropIndexForExpanded(loc_in_container)) {
+    return index;
   }
 
   // Fallback to the end of the pinned container.
@@ -245,61 +222,13 @@ PinnedTabContainerView::GetLinkDropIndexForHorizontal(
 }
 
 std::optional<BrowserRootView::DropIndex>
-PinnedTabContainerView::GetLinkDropIndexForCollapsed(
-    const gfx::Point& loc_in_container) {
-  // While collapsed, simply use the y-coordinate, similar to the unpinned
-  // container.
-  for (auto& child_node : collection_node_->children()) {
-    auto* view = child_node->view();
-    CHECK(view);
-    if (loc_in_container.y() >= view->bounds().bottom()) {
-      continue;
-    }
-
-    gfx::Point loc_in_child =
-        views::View::ConvertPointToTarget(this, view, loc_in_container);
-    constexpr double kDragOverMargins = 0.2;
-    std::optional<DragPositionHint> hint;
-
-    // Determine whether the drag is above, below, or above the tab/tab split.
-    if (loc_in_child.y() < view->height() * kDragOverMargins) {
-      hint = DragPositionHint::kBefore;
-    } else if (loc_in_child.y() > view->height() * (1 - kDragOverMargins)) {
-      hint = DragPositionHint::kAfter;
-    } else if (child_node->type() == TabCollectionNode::Type::SPLIT) {
-      // If landing in the middle of the split, let the split view decide
-      // which tab to replace.
-      auto* split_view = views::AsViewClass<SplitTabView>(view);
-      gfx::Point loc_in_split =
-          views::View::ConvertPointToTarget(this, split_view, loc_in_container);
-      return split_view->GetLinkDropIndex(loc_in_split);
-    } else {
-      hint = std::nullopt;
-    }
-    return GetDragHandler().GetLinkDropIndexForNode(*child_node, hint);
-  }
-
-  return std::nullopt;
-}
-
-std::optional<BrowserRootView::DropIndex>
 PinnedTabContainerView::GetLinkDropIndexForExpanded(
     const gfx::Point& loc_in_container) {
   return GetLinkDropIndexForHorizontal(loc_in_container);
 }
 
 void PinnedTabContainerView::ResetCollectionNode() {
-  collapsed_state_changed_subscription_ = {};
   collection_node_ = nullptr;
-}
-
-void PinnedTabContainerView::OnCollapseStateChanged(
-    tabs::VerticalTabStripCollapseState state) {
-  // Collapsed state only exists for the vertical orientation.
-  CHECK_EQ(orientation_, TabStripOrientation::kVertical);
-  set_drag_axes(state == tabs::VerticalTabStripCollapseState::kCollapsed
-                    ? DragAxes::kVerticalOnly
-                    : DragAxes::kBoth);
 }
 
 views::ScrollView* PinnedTabContainerView::GetScrollViewForContainer() const {
@@ -400,24 +329,15 @@ views::ProposedLayout PinnedTabContainerView::CalculateVerticalLayout(
   // Since all children are allocated the same width this will be the same for
   // every row.
   if (size_bounds.width().is_bounded() && size_bounds.width().value() > 0) {
-    auto collapse_state = GetTabStripCollapseState();
-
-    // Apply horizontal padding immediately at start of collapse animation by
-    // including collapsing state.
     int available_width =
         size_bounds.width().value() -
         GetLayoutConstant(LayoutConstant::kVerticalTabStripHorizontalPadding);
 
-    // When we are in collapsed state, only one child should be shown per row.
-    // During collapse animation and other cases, fit as many as possible.
-    children_on_row =
-        collapse_state == tabs::VerticalTabStripCollapseState::kCollapsed
-            ? 1
-            : std::min(
-                  children_on_row,
-                  static_cast<int>(std::floor((available_width - child_width) /
-                                              (child_width + kTabPadding)) +
-                                   1));
+    children_on_row = std::min(
+        children_on_row,
+        static_cast<int>(std::floor((available_width - child_width) /
+                                    (child_width + kTabPadding)) +
+                         1));
 
     // Allocate extra space to the tabs.
     available_width -=

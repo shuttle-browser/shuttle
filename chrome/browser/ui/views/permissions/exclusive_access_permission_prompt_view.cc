@@ -136,7 +136,6 @@ void ExclusiveAccessPermissionPromptView::CreateWidget() {
 }
 
 void ExclusiveAccessPermissionPromptView::AddedToWidget() {
-  StartTrackingPictureInPictureOcclusion();
 
   auto title_container = std::make_unique<views::FlexLayoutView>();
   title_container->SetOrientation(views::LayoutOrientation::kHorizontal);

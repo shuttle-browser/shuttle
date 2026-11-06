@@ -6,7 +6,6 @@
 
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/ui/webui/cr_components/history_clusters/history_clusters_util.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/branded_strings.h"
@@ -18,7 +17,6 @@
 #include "components/favicon_base/favicon_url_parser.h"
 #include "components/history/core/browser/features.h"
 #include "components/history/core/common/pref_names.h"
-#include "components/history_clusters/core/history_clusters_prefs.h"
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/strings/grit/components_strings.h"
@@ -48,8 +46,6 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       {"foundSearchResults", IDS_HISTORY_FOUND_SEARCH_RESULTS},
       {"goToGeminiChat", IDS_HISTORY_GO_TO_GEMINI_CHAT},
       {"goToGeminiChatError", IDS_HISTORY_GO_TO_GEMINI_CHAT_ERROR},
-      {"historyClustersTabLabel", IDS_HISTORY_CLUSTERS_BY_GROUP_TAB_LABEL},
-      {"historyListTabLabel", IDS_HISTORY_CLUSTERS_BY_DATE_TAB_LABEL},
       {"historyMenuButton", IDS_HISTORY_HISTORY_MENU_DESCRIPTION},
       {"historyMenuItem", IDS_HISTORY_HISTORY_MENU_ITEM},
       {"itemsSelected", IDS_HISTORY_ITEMS_SELECTED},
@@ -93,10 +89,6 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
   bool allow_deleting_history =
       prefs->GetBoolean(prefs::kAllowDeletingBrowserHistory);
   source->AddBoolean("allowDeletingHistory", allow_deleting_history);
-
-  source->AddInteger(
-      "lastSelectedTab",
-      prefs->GetInteger(history_clusters::prefs::kLastSelectedTab));
 
   // History embeddings were removed; provide neutral values for the keys the
   // history frontend still reads.

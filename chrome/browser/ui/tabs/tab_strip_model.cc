@@ -67,8 +67,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
 #include "chrome/browser/ui/tabs/tab_utils.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_metrics.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/thumbnails/thumbnail_tab_helper.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/common/chrome_features.h"
@@ -3171,23 +3169,9 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
                               /*delete_groups=*/true);
       break;
     }
-    case CommandToggleVertical: {
-      base::UmaHistogramCounts1000(
-          "Tab.ContextMenu.ToggleVertical.SelectedTabsCount",
-          selection_model_.size());
-      BrowserWindowInterface* const browser =
-          GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-              GetWebContentsAt(context_index));
-      if (auto* controller =
-              tabs::VerticalTabStripStateController::From(browser)) {
-        const bool is_vertical = !controller->ShouldDisplayVerticalTabs();
-        tabs::RecordVerticalTabStripModeChanged(
-            is_vertical, tabs::VerticalTabStripEntryPoint::kTabContextMenu);
-      }
-      chrome::BrowserCommandController::From(browser)->ExecuteCommand(
-          IDC_TOGGLE_VERTICAL_TABS);
+    case CommandToggleVertical:
+      // Vertical tabs are not supported; the command is never offered.
       break;
-    }
     case CommandAddToNewGroupFromMenuItem: {
       base::UmaHistogramCounts1000(
           "Tab.ContextMenu.AddToNewGroupFromMenuItem.SelectedTabsCount",

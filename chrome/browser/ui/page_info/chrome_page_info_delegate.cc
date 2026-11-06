@@ -5,6 +5,7 @@
 #include "chrome/browser/ui/page_info/chrome_page_info_delegate.h"
 
 #include "base/metrics/histogram_functions.h"
+#include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
 #include "chrome/browser/bluetooth/bluetooth_chooser_context_factory.h"
@@ -19,7 +20,6 @@
 #include "chrome/browser/permissions/permission_actions_history_factory.h"
 #include "chrome/browser/permissions/permission_decision_auto_blocker_factory.h"
 #include "chrome/browser/permissions/permission_manager_factory.h"
-#include "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -33,7 +33,6 @@
 #include "chrome/browser/ui/url_identity.h"
 #include "chrome/browser/usb/usb_chooser_context.h"
 #include "chrome/browser/usb/usb_chooser_context_factory.h"
-#include "chrome/browser/vr/vr_tab_helper.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
@@ -481,19 +480,11 @@ bool ChromePageInfoDelegate::IsSubresourceFilterActivated(
 }
 
 bool ChromePageInfoDelegate::HasAutoPictureInPictureBeenRegistered() {
-#if BUILDFLAG(IS_ANDROID)
-  if (!base::FeatureList::IsEnabled(media::kAutoPictureInPictureAndroid)) {
-    return false;
-  }
-#endif
-  auto* auto_pip_tab_helper =
-      AutoPictureInPictureTabHelper::FromWebContents(web_contents_);
-  return auto_pip_tab_helper &&
-         auto_pip_tab_helper->HasAutoPictureInPictureBeenRegistered();
+  return false;
 }
 
 bool ChromePageInfoDelegate::IsContentDisplayedInVrHeadset() {
-  return vr::VrTabHelper::IsContentDisplayedInHeadset(web_contents_);
+  return false;
 }
 
 security_state::SecurityLevel ChromePageInfoDelegate::GetSecurityLevel() {

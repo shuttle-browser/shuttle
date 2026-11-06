@@ -20,10 +20,6 @@ namespace on_device_translation {
 class OnDeviceTranslationServiceLauncherImpl;
 }  // namespace on_device_translation
 
-namespace request_header_integrity {
-class PlatformRuntimeHost;
-}  // namespace request_header_integrity
-
 namespace content {
 class VideoCaptureServiceLauncher;
 class WebNNBrowserHostImpl;
@@ -40,7 +36,6 @@ class ServiceProcessHostPreloadLibraries {
   // should be added here and must be reviewed by the security team.
   friend class screen_ai::ScreenAIServiceHandlerBase;
   friend class on_device_translation::OnDeviceTranslationServiceLauncherImpl;
-  friend class request_header_integrity::PlatformRuntimeHost;
   friend class content::WebNNBrowserHostImpl;
   friend shape_detection::mojom::ShapeDetectionService*
   content::GetShapeDetectionService();

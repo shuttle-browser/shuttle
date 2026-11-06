@@ -30,7 +30,6 @@
 #include "chrome/browser/ui/webui/usb_internals/usb_internals_ui.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/enterprise/connectors/connectors_internals.mojom.h"
-#include "components/history_clusters/history_clusters_internals/webui/history_clusters_internals_ui.h"
 #include "components/policy/core/common/features.h"
 #include "components/site_engagement/core/mojom/site_engagement_details.mojom.h"
 #include "content/public/browser/navigation_controller.h"
@@ -149,10 +148,6 @@ void PopulateChromeWebUIFrameBindersPartsAllPlatforms(
 
   RegisterWebUIControllerInterfaceBinder<::mojom::UsbInternalsPageHandler,
                                          UsbInternalsUI>(map);
-
-  RegisterWebUIControllerInterfaceBinder<
-      history_clusters_internals::mojom::PageHandlerFactory,
-      HistoryClustersInternalsUI>(map);
 
   RegisterWebUIControllerInterfaceBinder<
       optimization_guide_internals::mojom::PageHandlerFactory,

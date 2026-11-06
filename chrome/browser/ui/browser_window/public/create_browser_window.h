@@ -164,12 +164,6 @@ struct BrowserWindowCreateParams {
   // Document Picture in Picture options, specific to TYPE_PICTURE_IN_PICTURE.
   std::optional<blink::mojom::PictureInPictureWindowOptions> pip_options;
 
-  // Specifies the collapsed state for the Vertical Tab Strip. True if the
-  // browser is collapsed.
-  std::optional<bool> vertical_tab_strip_collapsed;
-  // Specifies the width for the uncollapsed Vertical Tab Strip.
-  std::optional<int> vertical_tab_strip_uncollapsed_width;
-
   // Specifies the focused tab group ID, if the window should be created in a
   // focused state.
   std::optional<tab_groups::TabGroupId> focused_tab_group_id;

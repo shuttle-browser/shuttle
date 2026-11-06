@@ -26,7 +26,6 @@ import("//build/toolchain/toolchain.gni")
 import("//chrome/browser/buildflags.gni")
 import("//chrome/browser/downgrade/buildflags.gni")
 import("//chrome/common/features.gni")
-import("//chrome/common/request_header_integrity/buildflags.gni")
 import("//chrome/services/speech/buildflags/buildflags.gni")
 import("//chrome/test/include_js_tests.gni")
 import("//components/allocation_recorder/testing/testing.gni")
@@ -303,7 +302,6 @@ if (is_android) {
       "//chrome/browser/segmentation_platform:test_utils",
       "//chrome/browser/site_protection",
       "//chrome/browser/site_protection:utils",
-      "//chrome/browser/site_token_provider:browser_tests",
       "//chrome/browser/ssl:android_browsertests",
       "//chrome/browser/ssl:cert_verifier_test_support",
       "//chrome/browser/supervised_user:android_browser_tests",
@@ -493,7 +491,6 @@ if (is_android) {
       deps += [
         ":xr_android_emulator_tests_runner",
         ":xr_browser_tests_common",
-        "//chrome/browser/vr:vr_common",
         "//chrome/common:constants",
         "//components/content_settings/core/browser",
         "//components/webxr",
@@ -1068,7 +1065,7 @@ if (!is_android) {
 } else {
   copy("xr_android_emulator_tests_runner") {
     testonly = true
-    sources = [ "//chrome/browser/vr/test/run_xr_android_emulator_tests.py" ]
+    sources = []
     outputs = [ "$root_out_dir/run_xr_android_emulator_tests.py" ]
   }
 }

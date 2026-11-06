@@ -57,8 +57,6 @@ class ChromeAutocompleteProviderClient : public AutocompleteProviderClient {
   const AutocompleteSchemeClassifier& GetSchemeClassifier() const override;
   AutocompleteClassifier* GetAutocompleteClassifier() override;
   history::HistoryService* GetHistoryService() override;
-  history_clusters::HistoryClustersService* GetHistoryClustersService()
-      override;
   scoped_refptr<history::TopSites> GetTopSites() override;
   history::URLDatabase* GetInMemoryDatabase() override;
   InMemoryURLIndex* GetInMemoryURLIndex() override;

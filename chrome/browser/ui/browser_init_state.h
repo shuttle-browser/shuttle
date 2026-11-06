@@ -81,13 +81,6 @@ class BrowserInitState {
     return initial_visible_on_all_workspaces_state_;
   }
 
-  std::optional<bool> is_vertical_tabs_initially_collapsed() const {
-    return initial_vertical_tab_strip_collapsed_;
-  }
-  std::optional<int> get_vertical_tabs_initial_uncollapsed_width() const {
-    return initial_vertical_tab_strip_uncollapsed_width_;
-  }
-
   std::optional<tab_groups::TabGroupId> initial_focused_tab_group_id() const {
     return initial_focused_tab_group_id_;
   }
@@ -123,8 +116,6 @@ class BrowserInitState {
 
   CreationSource creation_source_;
 
-  const std::optional<bool> initial_vertical_tab_strip_collapsed_;
-  const std::optional<int> initial_vertical_tab_strip_uncollapsed_width_;
   const std::optional<tab_groups::TabGroupId> initial_focused_tab_group_id_;
 
   ui::ScopedUnownedUserData<BrowserInitState> scoped_unowned_user_data_;

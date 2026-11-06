@@ -7,11 +7,6 @@
 #include "base/notreached.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
 
-history_clusters::HistoryClustersService*
-AutocompleteProviderClient::GetHistoryClustersService() {
-  return nullptr;
-}
-
 GeolocationHeaderService*
 AutocompleteProviderClient::GetGeolocationHeaderService() const {
   return nullptr;

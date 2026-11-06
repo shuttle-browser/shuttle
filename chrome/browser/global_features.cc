@@ -77,14 +77,6 @@
 #endif  // BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
 
 
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-#include "chrome/browser/request_header_integrity/chrome_companero_host.h"  // nogncheck
-#include "chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.h"  // nogncheck
-#if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/request_header_integrity/platform_runtime_host.h"  // nogncheck
-#endif
-#endif
-
 namespace {
 
 // This is the generic entry point for test code to stub out browser
@@ -209,15 +201,6 @@ void GlobalFeatures::PostBrowserProcessInitCore() {
         g_browser_process->profile_manager());
   }
 
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-  if (request_header_integrity::RequestHeaderIntegrityURLLoaderThrottle::
-          IsFeatureEnabled()) {
-    chrome_companero_host_ = CreateChromeCompaneroHost();
-#if !BUILDFLAG(IS_ANDROID)
-    platform_runtime_host_ = CreatePlatformRuntimeHost();
-#endif
-  }
-#endif
 }
 
 void GlobalFeatures::Init() {
@@ -256,12 +239,6 @@ void GlobalFeatures::PostMainMessageLoopRun() {
 
   glass_frame_service_.reset();
 
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-  chrome_companero_host_.reset();
-#if !BUILDFLAG(IS_ANDROID)
-  platform_runtime_host_.reset();
-#endif
-#endif
 }
 
 void GlobalFeatures::PostDestroyThreads() {
@@ -288,20 +265,6 @@ GlobalFeatures::CreateScheduledRestartManager() {
   return std::make_unique<scheduled_restart::ScheduledRestartManager>(
       *UpgradeDetector::GetInstance());
 }
-#endif
-
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-std::unique_ptr<request_header_integrity::ChromeCompaneroHost>
-GlobalFeatures::CreateChromeCompaneroHost() {
-  return std::make_unique<request_header_integrity::ChromeCompaneroHost>();
-}
-
-#if !BUILDFLAG(IS_ANDROID)
-std::unique_ptr<request_header_integrity::PlatformRuntimeHost>
-GlobalFeatures::CreatePlatformRuntimeHost() {
-  return std::make_unique<request_header_integrity::PlatformRuntimeHost>();
-}
-#endif
 #endif
 
 // static

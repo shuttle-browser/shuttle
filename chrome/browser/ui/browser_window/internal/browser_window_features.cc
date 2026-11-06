@@ -62,7 +62,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_api/tab_strip_service_feature.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller_impl.h"
 #include "chrome/browser/ui/toasts/toast_features.h"
 #include "chrome/browser/ui/toasts/toast_service.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
@@ -371,32 +370,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   // instantiated in this block (please keep this list ordered without taking
   // into consideration buildflags, repeating buildflags is ok):
   if (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL) {
-
-    std::optional<bool> restored_state_collapsed =
-        BrowserInitState::From(browser)->is_vertical_tabs_initially_collapsed();
-    std::optional<int> restored_state_uncollapsed_width =
-        BrowserInitState::From(browser)
-            ->get_vertical_tabs_initial_uncollapsed_width();
-
-    if (!restored_state_collapsed.has_value() &&
-        !restored_state_uncollapsed_width.has_value() &&
-        !browser->CreatedBySessionRestore()) {
-      restored_state_collapsed =
-          profile->GetPrefs()->GetBoolean(prefs::kVerticalTabsCollapsedState);
-      restored_state_uncollapsed_width =
-          profile->GetPrefs()->GetInteger(prefs::kVerticalTabsUncollapsedWidth);
-    }
-
-    vertical_tab_strip_state_controller_ =
-        GetUserDataFactory()
-            .CreateInstance<tabs::VerticalTabStripStateControllerImpl>(
-                *browser, *browser, profile->GetPrefs(),
-                browser_actions_->root_action_item(),
-                SessionServiceFactory::GetForProfile(browser_->GetProfile()),
-                browser_->GetSessionID(), restored_state_collapsed,
-                restored_state_uncollapsed_width);
-
-    // This relies on the vertical tab strip state controller.
     if (organizer_panel::IsOrganizerPanelFeatureEnabled()) {
       organizer_panel_controller_ =
           GetUserDataFactory().CreateInstance<OrganizerPanelController>(

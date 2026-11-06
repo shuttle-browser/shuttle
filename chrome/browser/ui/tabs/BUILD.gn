@@ -360,7 +360,6 @@ if (!is_android) {
       "//chrome/browser/ui/thumbnails",
       "//chrome/browser/ui/toolbar",
       "//chrome/browser/ui/views/tabs/common",
-      "//chrome/browser/ui/views/tabs/vertical",
       "//components/content_settings/core/browser",
       "//components/pref_registry",
       "//components/tab_groups",
@@ -387,10 +386,6 @@ if (!is_android) {
       "tab_style.h",
       "tab_types.h",
       "tab_utils.h",
-      "vertical_tab_strip_metrics.h",
-      "vertical_tab_strip_state.h",
-      "vertical_tab_strip_state_controller.h",
-      "vertical_tab_strip_state_controller_impl.h",
     ]
 
     if (is_win || is_mac || is_linux || is_chromeos) {
@@ -459,9 +454,6 @@ if (!is_android) {
       "tab_metrics_provider.cc",
       "tab_style.cc",
       "tab_utils.cc",
-      "vertical_tab_strip_metrics.cc",
-      "vertical_tab_strip_state_controller.cc",
-      "vertical_tab_strip_state_controller_impl.cc",
     ]
 
     if (is_win || is_mac || is_linux || is_chromeos) {
@@ -485,7 +477,6 @@ if (!is_android) {
       "//chrome/browser/favicon",
       "//chrome/browser/file_system_access",
       "//chrome/browser/history",
-      "//chrome/browser/history_clusters",
       "//chrome/browser/image_fetcher",
       "//chrome/browser/lifetime",
       "//chrome/browser/login_detection",
@@ -502,7 +493,6 @@ if (!is_android) {
       "//chrome/browser/page_info",
       "//chrome/browser/page_load_metrics",
       "//chrome/browser/permissions",
-      "//chrome/browser/picture_in_picture",
       "//chrome/browser/predictors",
       "//chrome/browser/preloading/prefetch:zero_suggest_prefetch",
       "//chrome/browser/preloading/prefetch/no_state_prefetch",
@@ -564,7 +554,6 @@ if (!is_android) {
       "//chrome/browser/ui/views/toolbar",
       "//chrome/browser/ui/webui:webui_util",
       "//chrome/browser/v8_compile_hints",
-      "//chrome/browser/vr",
       "//chrome/common",
       "//components/blocked_content",
       "//components/captive_portal/core:buildflags",

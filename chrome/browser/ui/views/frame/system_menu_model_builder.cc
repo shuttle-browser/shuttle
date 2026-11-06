@@ -17,7 +17,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
 #include "chrome/browser/ui/tabs/features.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/common/chrome_features.h"
@@ -168,62 +167,10 @@ void SystemMenuModelBuilder::BuildSystemMenuForBrowserWindow(
                        kNameWindowOldIcon);
 #endif  // BUILDFLAG(IS_MAC)
 
-  if (auto* controller =
-          tabs::VerticalTabStripStateController::From(browser())) {
-    const bool display_vertical_tabs = controller->ShouldDisplayVerticalTabs();
-
-    if (!display_vertical_tabs &&
-        base::FeatureList::IsEnabled(tabs::kTabStripUnification)) {
-      model->AddItemWithStringId(IDC_TAB_SCROLL_BUTTONS_TOGGLE_PIN,
-                                 IDS_TAB_SCROLL_PIN_BUTTONS_SYSTEM_MENU);
-    }
-
-    model->AddSeparator(ui::NORMAL_SEPARATOR);
-
-    const int switch_to_horizontal_id =
-#if BUILDFLAG(IS_MAC)
-        IDS_SWITCH_TO_HORIZONTAL_TAB_MAC;
-#else
-        IDS_SWITCH_TO_HORIZONTAL_TAB;
-#endif
-
-    const int switch_to_vertical_id =
-#if BUILDFLAG(IS_MAC)
-        IDS_SWITCH_TO_VERTICAL_TAB_MAC;
-#else
-        IDS_SWITCH_TO_VERTICAL_TAB;
-#endif
-    if (display_vertical_tabs) {
-      model->AddItemWithStringId(IDC_TOGGLE_VERTICAL_TABS,
-                                 switch_to_horizontal_id);
-
-      model->AddItemWithStringId(IDC_TOGGLE_VERTICAL_TABS_COLLAPSE,
-                                 controller->IsCollapsed()
-                                     ? IDS_EXPAND_VERTICAL_TABS
-                                     : IDS_COLLAPSE_VERTICAL_TABS);
-      model->SetElementIdentifierAt(
-          model->GetIndexOfCommandId(IDC_TOGGLE_VERTICAL_TABS_COLLAPSE).value(),
-          kToggleVerticalTabsCollapseElementId);
-
-      model->AddItemWithStringId(
-          IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER,
-          controller->IsExpandOnHoverEnabled()
-              ? IDS_VERTICAL_TABS_DISABLE_EXPAND_ON_HOVER
-              : IDS_VERTICAL_TABS_ENABLE_EXPAND_ON_HOVER);
-      model->SetElementIdentifierAt(
-          model->GetIndexOfCommandId(IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER)
-              .value(),
-          kToggleVerticalTabsExpandOnHoverElementId);
-    } else {
-      model->AddItemWithStringId(IDC_TOGGLE_VERTICAL_TABS,
-                                 switch_to_vertical_id);
-    }
-    model->SetElementIdentifierAt(
-        model->GetIndexOfCommandId(IDC_TOGGLE_VERTICAL_TABS).value(),
-        kToggleVerticalTabsElementId);
-
-    model->AddItemWithStringId(IDC_VERTICAL_TABS_SEND_FEEDBACK,
-                               IDS_VERTICAL_TABS_SEND_FEEDBACK);
+  if (browser()->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL &&
+      base::FeatureList::IsEnabled(tabs::kTabStripUnification)) {
+    model->AddItemWithStringId(IDC_TAB_SCROLL_BUTTONS_TOGGLE_PIN,
+                               IDS_TAB_SCROLL_PIN_BUTTONS_SYSTEM_MENU);
   }
 
   if (chrome::CanOpenTaskManager()) {

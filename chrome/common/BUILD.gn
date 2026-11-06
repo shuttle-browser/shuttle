@@ -7,7 +7,6 @@ import("//build/config/chrome_build.gni")
 import("//build/util/process_version.gni")
 import("//chrome/browser/downgrade/buildflags.gni")
 import("//chrome/common/features.gni")
-import("//chrome/common/request_header_integrity/buildflags.gni")
 import("//components/cdm/common/playready.gni")
 import("//components/offline_pages/buildflags/features.gni")
 import("//components/signin/features.gni")
@@ -331,8 +330,7 @@ static_library("common_lib") {
     ]
   } else {
     # Non-Android.
-    sources += [
-    ]
+    sources += []
   }
 
   if (is_win) {
@@ -502,7 +500,6 @@ static_library("url_constants") {
     "//printing/buildflags",
   ]
   deps = [
-    "//components/history_clusters/history_clusters_internals/webui:constants",
     "//components/lens:buildflags",
     "//components/optimization_guide/optimization_guide_internals/webui:url_constants",
     "//components/safe_browsing/core/common",
@@ -676,11 +673,6 @@ mojom("mojo_bindings") {
   if (enable_pdf) {
     enabled_features += [ "enable_pdf" ]
   }
-
-  if (enable_request_header_integrity && !is_android) {
-    enabled_features += [ "enable_request_header_integrity" ]
-    public_deps += [ "//services/network/public/mojom:url_loader_base" ]
-  }
 }
 
 mojom("glic_enums_mojom") {
@@ -693,7 +685,6 @@ mojom("glic_enums_mojom") {
   public_deps = [ "//mojo/public/mojom/base" ]
 }
 
-
 mojom("supervised_user_commands_mojom") {
   sources = [ "supervised_user_commands.mojom" ]
 }
@@ -705,4 +696,3 @@ mojom("offline_page_auto_fetcher_mojom") {
 
 if (!is_android) {
 }
-

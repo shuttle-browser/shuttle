@@ -58,9 +58,6 @@ class TabStripView final : public views::View,
     return unpinned_tabs_scroll_view_;
   }
 
-  void SetCollapsedState(bool is_collapsed);
-  void SetIsAnimatingSize(bool is_animating);
-
   bool IsPositionInWindowCaption(const gfx::Point& point);
 
   // views::View:
@@ -150,7 +147,6 @@ class TabStripView final : public views::View,
   raw_ptr<views::ScrollView> unpinned_tabs_scroll_view_ = nullptr;
   raw_ptr<UnpinnedTabContainerView> unpinned_tabs_container_view_ = nullptr;
   raw_ptr<TabScrollButtonContainer> tab_scroll_button_container_ = nullptr;
-  bool is_collapsed_ = false;
 
   // Used for seek time metrics from the time the mouse enters the tabstrip.
   std::optional<base::TimeTicks> mouse_entered_tabstrip_time_;

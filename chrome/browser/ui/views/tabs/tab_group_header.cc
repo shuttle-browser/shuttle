@@ -30,7 +30,6 @@
 #include "chrome/browser/ui/tabs/tab_group_data.h"
 #include "chrome/browser/ui/tabs/tab_group_features.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_style.h"
 #include "chrome/browser/ui/views/tabs/groups/tab_group_accessibility.h"
@@ -188,9 +187,7 @@ TabGroupHeader::TabGroupHeader(TabSlotController& tab_slot_controller,
       group_title_(u""),
       color_(tab_slot_controller_->GetPaintedGroupColor(
           tab_slot_controller_->GetGroupColorId(group))),
-      is_collapsed_(tab_slot_controller_->IsGroupCollapsed(group)),
-      editor_bubble_tracker_(tabs::VerticalTabStripStateController::From(
-          tab_slot_controller_->GetBrowserWindowInterface())) {
+      is_collapsed_(tab_slot_controller_->IsGroupCollapsed(group)) {
   editor_bubble_opened_subscription_ =
       editor_bubble_tracker_.RegisterOnBubbleOpened(
           base::BindRepeating(&TabSlotController::NotifyTabstripBubbleOpened,

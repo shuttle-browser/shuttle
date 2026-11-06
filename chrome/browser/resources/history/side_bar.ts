@@ -17,7 +17,7 @@ import type {PropertyValues} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
 import {BrowserProxyImpl} from './browser_proxy.js';
-import {Page, TABBED_PAGES} from './router.js';
+import {Page} from './router.js';
 import {getCss} from './side_bar.css.js';
 import {getHtml} from './side_bar.html.js';
 
@@ -50,13 +50,6 @@ export class HistorySideBarElement extends CrLitElement {
   static override get properties() {
     return {
       footerInfo: {type: Object},
-
-      historyClustersEnabled: {type: Boolean},
-
-      historyClustersVisible: {
-        type: Boolean,
-        notify: true,
-      },
 
       /* The id of the currently selected page. */
       selectedPage: {
@@ -94,8 +87,6 @@ export class HistorySideBarElement extends CrLitElement {
       showGMAOnly_: {type: Boolean},
       showGAAOnly_: {type: Boolean},
       showGMAAndGAA_: {type: Boolean},
-
-      showHistoryClusters_: {type: Boolean},
     };
   }
 
@@ -104,8 +95,6 @@ export class HistorySideBarElement extends CrLitElement {
     otherFormsOfHistory: false,
     geminiAppsActivity: false,
   };
-  accessor historyClustersEnabled: boolean = false;
-  accessor historyClustersVisible: boolean = false;
   accessor selectedPage: string = '';
   accessor selectedTab: number = -1;
   protected accessor showFooter_: boolean = false;
@@ -113,7 +102,6 @@ export class HistorySideBarElement extends CrLitElement {
   protected accessor showGMAOnly_: boolean = false;
   protected accessor showGAAOnly_: boolean = false;
   protected accessor showGMAAndGAA_: boolean = false;
-  private accessor showHistoryClusters_: boolean = false;
 
   override connectedCallback() {
     super.connectedCallback();
@@ -125,11 +113,6 @@ export class HistorySideBarElement extends CrLitElement {
 
     if (changedProperties.has('footerInfo')) {
       this.updateFooterVisibility();
-    }
-    if (changedProperties.has('historyClustersEnabled') ||
-        changedProperties.has('historyClustersVisible')) {
-      this.showHistoryClusters_ =
-          this.historyClustersEnabled && this.historyClustersVisible;
     }
   }
 
@@ -217,25 +200,17 @@ export class HistorySideBarElement extends CrLitElement {
   }
 
   /**
-   * @returns The url to navigate to when the history menu item is clicked. It
-   *     reflects the currently selected tab.
+   * @returns The url to navigate to when the history menu item is clicked.
    */
   protected getHistoryItemHref_(): string {
-    return this.showHistoryClusters_ &&
-            TABBED_PAGES[this.selectedTab] === Page.HISTORY_CLUSTERS ?
-        '/' + Page.HISTORY_CLUSTERS :
-        '/';
+    return '/';
   }
 
   /**
-   * @returns The path that determines if the history menu item is selected. It
-   *     reflects the currently selected tab.
+   * @returns The path that determines if the history menu item is selected.
    */
   protected getHistoryItemPath_(): string {
-    return this.showHistoryClusters_ &&
-            TABBED_PAGES[this.selectedTab] === Page.HISTORY_CLUSTERS ?
-        Page.HISTORY_CLUSTERS :
-        Page.HISTORY;
+    return Page.HISTORY;
   }
 }
 

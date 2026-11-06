@@ -28,7 +28,6 @@
 #include "chrome/browser/ui/views/page_info/page_info_view_factory.h"
 #include "chrome/browser/ui/views/page_info/permission_toggle_row_view.h"
 #include "chrome/browser/ui/views/page_info/star_rating_view.h"
-#include "chrome/browser/vr/vr_tab_helper.h"
 #include "chrome/common/url_constants.h"
 #include "components/page_info/core/features.h"
 #include "components/page_info/page_info_ui_delegate.h"
@@ -520,9 +519,6 @@ void PageInfoMainView::SetPageFeatureInfo(const PageFeatureInfo& info) {
       base::BindRepeating(
           [](PageInfoMainView* view) {
             view->GetWidget()->Close();
-#if BUILDFLAG(ENABLE_VR)
-            vr::VrTabHelper::ExitVrPresentation();
-#endif
           },
           this),
       l10n_util::GetStringUTF16(IDS_PAGE_INFO_VR_TURN_OFF_BUTTON_TEXT));

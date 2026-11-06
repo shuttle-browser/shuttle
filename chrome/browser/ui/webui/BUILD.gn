@@ -56,7 +56,6 @@ source_set("configs") {
     "//chrome/browser/ui/webui/engagement",
     "//chrome/browser/ui/webui/family_link_user_internals",
     "//chrome/browser/ui/webui/flags",
-    "//chrome/browser/ui/webui/history_clusters",
     "//chrome/browser/ui/webui/internal_debug_pages_disabled",
     "//chrome/browser/ui/webui/interstitials",
     "//chrome/browser/ui/webui/local_state",

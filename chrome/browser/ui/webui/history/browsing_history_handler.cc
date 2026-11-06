@@ -45,9 +45,6 @@
 #include "components/favicon/core/large_icon_service.h"
 #include "components/favicon_base/favicon_url_parser.h"
 #include "components/history/core/browser/features.h"
-#include "components/history_clusters/core/config.h"
-#include "components/history_clusters/core/features.h"
-#include "components/history_clusters/core/history_clusters_prefs.h"
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/prefs/pref_service.h"
 #include "components/query_parser/snippet.h"
@@ -95,20 +92,6 @@ std::pair<std::string, std::string> SetHistoryEntryUrlAndTitle(
   }
 
   return std::make_tuple(entry.url.spec(), base::UTF16ToUTF8(title_to_set));
-}
-
-// Helper function to check if entry is present in local database (local-side
-// history).
-bool IsUrlInLocalDatabase(const BrowsingHistoryService::HistoryEntry& entry) {
-  switch (entry.entry_type) {
-    case BrowsingHistoryService::HistoryEntry::EntryType::EMPTY_ENTRY:
-    case BrowsingHistoryService::HistoryEntry::EntryType::REMOTE_ENTRY:
-      return false;
-    case BrowsingHistoryService::HistoryEntry::EntryType::LOCAL_ENTRY:
-    case BrowsingHistoryService::HistoryEntry::EntryType::COMBINED_ENTRY:
-      return true;
-  }
-  NOTREACHED();
 }
 
 // Helper function to check if entry is present in user remote data (server-side
@@ -247,15 +230,6 @@ history::mojom::HistoryEntryPtr HistoryEntryToMojom(
   result_mojom->is_url_in_remote_user_data = IsEntryInRemoteUserData(entry);
   result_mojom->remote_icon_url_for_uma = entry.remote_icon_url_for_uma.spec();
   result_mojom->is_actor_visit = entry.is_actor_visit;
-
-  // Additional debugging fields shown only if the debug feature is enabled.
-  if (history_clusters::GetConfig().user_visible_debug) {
-    auto debug_mojom = history::mojom::DebugInfo::New();
-    debug_mojom->is_url_in_local_database = IsUrlInLocalDatabase(entry);
-    debug_mojom->visit_count = entry.visit_count;
-    debug_mojom->typed_count = entry.typed_count;
-    result_mojom->debug = std::move(debug_mojom);
-  }
 
   return result_mojom;
 }
@@ -426,10 +400,8 @@ void BrowsingHistoryHandler::OpenClearBrowsingDataDialog() {
 
 void BrowsingHistoryHandler::RemoveBookmark(const std::string& url) {}
 //
-void BrowsingHistoryHandler::SetLastSelectedTab(const int last_tab) {
-  profile_->GetPrefs()->SetInteger(history_clusters::prefs::kLastSelectedTab,
-                                   last_tab);
-}
+// The Journeys tab is gone, so there is no tab selection to persist.
+void BrowsingHistoryHandler::SetLastSelectedTab(const int last_tab) {}
 
 void BrowsingHistoryHandler::OnQueryComplete(
     const std::vector<BrowsingHistoryService::HistoryEntry>& results,

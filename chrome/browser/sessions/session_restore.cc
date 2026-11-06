@@ -78,7 +78,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_selection_state.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
 #include "chrome/common/chrome_features.h"
@@ -1262,24 +1261,6 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
     params.initial_visible_on_all_workspaces_state = visible_on_all_workspaces;
     params.creation_source =
         BrowserWindowCreateParams::CreationSource::kSessionRestore;
-
-    if (extra_data.contains(
-            tabs::VerticalTabStripStateController::kCollapsedKey)) {
-      params.vertical_tab_strip_collapsed =
-          extra_data.at(tabs::VerticalTabStripStateController::kCollapsedKey) ==
-          "true";
-    }
-
-    if (extra_data.contains(
-            tabs::VerticalTabStripStateController::kUncollapsedWidthKey)) {
-      int uncollapsed_width = 0;
-      if (base::StringToInt(
-              extra_data.at(
-                  tabs::VerticalTabStripStateController::kUncollapsedWidthKey),
-              &uncollapsed_width)) {
-        params.vertical_tab_strip_uncollapsed_width = uncollapsed_width;
-      }
-    }
 
     if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
       auto it = extra_data.find(

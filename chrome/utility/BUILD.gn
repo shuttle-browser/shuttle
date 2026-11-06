@@ -4,7 +4,6 @@
 
 import("//build/config/sysroot.gni")
 import("//chrome/common/features.gni")
-import("//chrome/common/request_header_integrity/buildflags.gni")
 import("//chrome/services/file_util/public/features.gni")
 import("//chrome/services/speech/buildflags/buildflags.gni")
 import("//components/on_device_translation/buildflags/features.gni")
@@ -36,7 +35,6 @@ static_library("utility") {
     "//chrome:strings",
     "//chrome/common",
     "//chrome/common:mojo_bindings",
-    "//chrome/common/request_header_integrity:buildflags",
     "//chrome/services/file_util:buildflags",
     "//chrome/services/speech/buildflags",
     "//components/heap_profiling/in_process",
@@ -86,27 +84,22 @@ static_library("utility") {
   }
 
   if (!is_android) {
-    sources += [
-    ]
+    sources += []
     if (!is_chromeos) {
-      sources += [
-      ]
+      sources += []
     }
     if (is_mac) {
-      sources += [
-      ]
+      sources += []
     }
     if (!is_mac && !is_chromeos) {
       # NSS decryptor is not needed on ChromeOS. Additionally, it depends on
       # system NSS that is unavailable on MacOS/Fuchsia.
-      sources += [
-      ]
+      sources += []
 
       deps += [ "//crypto:buildflags" ]
     }
     if (is_win) {
-      sources += [
-      ]
+      sources += []
 
       deps += [ "//services/proxy_resolver_win" ]
     }
@@ -182,8 +175,7 @@ static_library("utility") {
 
   # NSS decryptor is not needed on ChromeOS.
   if (!is_chromeos && use_nss_certs) {
-    sources += [
-    ]
+    sources += []
     deps += [ "//crypto" ]
     configs += [ "//build/config/linux/nss" ]
   }
@@ -204,10 +196,6 @@ static_library("utility") {
 
   if (safe_browsing_mode == 1 || enable_extractors) {
     deps += [ "//chrome/services/file_util" ]
-  }
-
-  if (enable_request_header_integrity && !is_android) {
-    deps += [ "//chrome/services/platform_runtime" ]
   }
 
   if (safe_browsing_mode == 1) {

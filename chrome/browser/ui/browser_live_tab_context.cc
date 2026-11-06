@@ -33,7 +33,6 @@
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_selection_state.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
 #include "components/sessions/content/content_live_tab.h"
@@ -162,15 +161,6 @@ std::map<std::string, std::string> BrowserLiveTabContext::GetExtraDataForTab(
 std::map<std::string, std::string>
 BrowserLiveTabContext::GetExtraDataForWindow() const {
   std::map<std::string, std::string> data;
-
-  auto* controller =
-      tabs::VerticalTabStripStateController::From(&browser_.get());
-  if (controller) {
-    data[tabs::VerticalTabStripStateController::kCollapsedKey] =
-        base::ToString(controller->IsCollapsed());
-    data[tabs::VerticalTabStripStateController::kUncollapsedWidthKey] =
-        base::NumberToString(controller->GetUncollapsedWidth());
-  }
 
   if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
     if (std::optional<tab_groups::TabGroupId> focused_group =
@@ -394,24 +384,6 @@ sessions::LiveTabContext* BrowserLiveTabContext::Create(
   create_params->initial_show_state = show_state;
   create_params->initial_workspace = workspace;
   create_params->user_title = user_title;
-
-  if (extra_data.contains(
-          tabs::VerticalTabStripStateController::kCollapsedKey)) {
-    create_params->vertical_tab_strip_collapsed =
-        extra_data.at(tabs::VerticalTabStripStateController::kCollapsedKey) ==
-        "true";
-  }
-
-  if (extra_data.contains(
-          tabs::VerticalTabStripStateController::kUncollapsedWidthKey)) {
-    int uncollapsed_width = 0;
-    if (base::StringToInt(
-            extra_data.at(
-                tabs::VerticalTabStripStateController::kUncollapsedWidthKey),
-            &uncollapsed_width)) {
-      create_params->vertical_tab_strip_uncollapsed_width = uncollapsed_width;
-    }
-  }
 
   if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
     auto it = extra_data.find(

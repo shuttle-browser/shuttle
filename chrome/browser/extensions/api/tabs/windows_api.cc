@@ -26,7 +26,6 @@
 #include "chrome/browser/extensions/open_tab_helper.h"
 #include "chrome/browser/extensions/window_controller.h"
 #include "chrome/browser/extensions/window_controller_list.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -925,19 +924,6 @@ ExtensionFunction::ResponseAction WindowsUpdateFunction::Run() {
        show_state == ui::mojom::WindowShowState::kMaximized ||
        show_state == ui::mojom::WindowShowState::kFullscreen)) {
     return RespondNow(Error(tabs_constants::kInvalidWindowStateError));
-  }
-
-  // Prevent Picture-in-Picture windows from being updated to fullscreen,
-  // maximized, or minimized states (https://crbug.com/514080341).
-  content::WebContents* active_contents = window_controller->GetActiveTab();
-  if (active_contents &&
-      PictureInPictureWindowManager::IsChildWebContents(active_contents)) {
-    if (show_state == ui::mojom::WindowShowState::kFullscreen ||
-        show_state == ui::mojom::WindowShowState::kMaximized ||
-        show_state == ui::mojom::WindowShowState::kMinimized) {
-      return RespondNow(
-          Error(tabs_constants::kNotAllowedForPictureInPictureError));
-    }
   }
 
   if (params->update_info.focused) {

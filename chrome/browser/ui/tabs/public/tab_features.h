@@ -65,7 +65,6 @@ class TabUIHelper;
 class ThumbnailTabHelper;
 class UMABrowsingActivityTabHelper;
 class ZeroSuggestPrefetchTabHelper;
-class AutoPictureInPictureTabHelper;
 class ChainedBackNavigationTracker;
 class CoreTabHelper;
 class FileSystemAccessTabHelper;
@@ -103,10 +102,6 @@ class PageContentAnnotationsWebContentsObserver;
 namespace predictors {
 class LoadingPredictorTabHelper;
 }  // namespace predictors
-
-namespace vr {
-class VrTabHelper;
-}  // namespace vr
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 namespace extensions {
@@ -351,8 +346,6 @@ class TabFeatures {
   // server HTTP auth.
   std::unique_ptr<HttpAuthCacheStatus> http_auth_cache_status_;
 
-  std::unique_ptr<vr::VrTabHelper> vr_tab_helper_;
-
   std::unique_ptr<RecentlyAudibleHelper> recently_audible_helper_;
 
   std::unique_ptr<ChildTabAlertHelper> child_tab_alert_helper_;
@@ -482,9 +475,6 @@ class TabFeatures {
 
   std::unique_ptr<SupervisedUserNavigationObserver>
       supervised_user_navigation_observer_;
-
-  std::unique_ptr<AutoPictureInPictureTabHelper>
-      auto_picture_in_picture_tab_helper_;
 
   std::unique_ptr<TabDialogs> tab_dialogs_;
 

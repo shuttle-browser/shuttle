@@ -27,10 +27,6 @@
 #include "base/android/device_info.h"
 #endif
 
-#if !BUILDFLAG(IS_IOS)
-#include "components/history_clusters/core/config.h"  // nogncheck
-#endif
-
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 #include "extensions/common/extension_features.h"  // nogncheck
 #endif
@@ -87,10 +83,6 @@ int AutocompleteClassifier::DefaultOmniboxProviders(bool is_low_memory_device) {
            : AutocompleteProvider::Type::kNone) |
 #endif
 #if !BUILDFLAG(IS_IOS)
-      (history_clusters::GetConfig().is_journeys_enabled_no_locale_check &&
-               history_clusters::GetConfig().omnibox_history_cluster_provider
-           ? AutocompleteProvider::Type::kHistoryClusterProvider
-           : AutocompleteProvider::Type::kNone) |
       AutocompleteProvider::Type::kEnterpriseSearchAggregator |
 #endif
       AutocompleteProvider::Type::kZeroSuggest |

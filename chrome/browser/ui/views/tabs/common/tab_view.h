@@ -14,7 +14,6 @@
 #include "base/scoped_observation.h"
 #include "chrome/browser/ui/tabs/tab_data.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/views/tabs/hovercard/hover_card_anchor_target.h"
 #include "chrome/browser/ui/views/tabs/shared/tab_strip_types.h"
 #include "chrome/browser/ui/views/tabs/tab/alert_indicator_button.h"
@@ -121,7 +120,6 @@ class TabView : public views::View,
   views::BubbleBorder::Arrow GetAnchorPosition() const override;
 
  private:
-  friend class TabViewVerticalLayout;
   friend class TabViewHorizontalLayout;
 
   // views::View
@@ -171,7 +169,6 @@ class TabView : public views::View,
   void OnFrameActiveStateChanged();
   void OnAXNameChanged(ax::mojom::StringAttribute attribute,
                        const std::optional<std::string>& name);
-  void OnCollapseStateChanged(tabs::VerticalTabStripCollapseState state);
   void OnTabStateChanged();
   void OnTabDataChanged(TabChangeType change_type, const tabs::TabData& data);
   void SetSelection(bool selected);
@@ -196,11 +193,6 @@ class TabView : public views::View,
 
   bool IsDragging() const;
 
-  static int UncollapsedMinWidth();
-  static int CollapsedWidth();
-
-  bool IsInExpandOnHover(int width) const;
-
   SkScalar GetCornerRadius() const;
 
   // Applies rounded corners to the view's layer.
@@ -222,7 +214,6 @@ class TabView : public views::View,
 
   base::CallbackListSubscription node_destroyed_subscription_;
   base::CallbackListSubscription tab_state_changed_subscription_;
-  base::CallbackListSubscription collapsed_state_changed_subscription_;
   base::CallbackListSubscription paint_as_active_subscription_;
   base::CallbackListSubscription ax_name_changed_subscription_;
   base::CallbackListSubscription tab_data_changed_subscription_;
@@ -232,7 +223,6 @@ class TabView : public views::View,
   bool selected_ = false;
   bool hovered_ = false;
   bool split_ = false;
-  bool collapsed_ = false;
   bool pinned_ = false;
   bool shift_pressed_on_mouse_down_ = false;
   bool should_fill_background_tab_color_ = false;

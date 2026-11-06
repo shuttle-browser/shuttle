@@ -33,9 +33,6 @@
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_metrics.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_frame_view.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -91,16 +88,12 @@ bool ShouldHandleKeyboardEvent(const input::NativeWebKeyboardEvent& event) {
 }
 
 double GetGlassFrameTintOpacity(bool is_dark_mode,
-                                bool is_vertical_tabs,
                                 bool are_multiple_profiles_open) {
-  // Default opacities mapped by [is_vertical_tabs][is_dark_mode]:
+  // Default opacities mapped by [is_dark_mode]:
   // Values updated after discussion with UX.
-  static constexpr std::array<std::array<double, 2>, 2> kDefaultOpacities = {{
-      {0.55, 0.80},  // Horizontal: light, dark
-      {0.65, 0.80},  // Vertical: light, dark
-  }};
+  static constexpr std::array<double, 2> kDefaultOpacities = {0.55, 0.80};
 
-  double opacity = kDefaultOpacities[is_vertical_tabs][is_dark_mode];
+  double opacity = kDefaultOpacities[is_dark_mode];
   if (are_multiple_profiles_open) {
     const double multiple_open_profiles_opacity_increase = 0.05;
     opacity += multiple_open_profiles_opacity_increase;
@@ -120,13 +113,6 @@ bool IsCommandTriggeredFromMacMenu(NSInteger parent_menu_tag, int command_id) {
       command_item && [command_item isHighlighted];
 
   return is_mouse_click || is_menu_item_focused;
-}
-
-// Returns the corner padding used to extend the glass frame region past the
-// vertical tab strip corners to ensure the toolbar and window material corner
-// radii meet at the tangent point without visual gaps or overlap.
-int GetGlassCornerPadding() {
-  return GetLayoutConstant(LayoutConstant::kToolbarCornerRadius) * 2;
 }
 
 }  // namespace
@@ -201,27 +187,6 @@ BrowserNativeWidgetMac::BrowserNativeWidgetMac(BrowserWidget* browser_widget,
     : views::NativeWidgetMac(browser_widget), browser_view_(browser_view) {
   CHECK(browser_widget);
   CHECK(browser_view);
-  if (features::IsGlassFrameEnabled()) {
-    if (auto* vertical_tab_strip_state_controller =
-            tabs::VerticalTabStripStateController::From(
-                browser_view_->browser())) {
-      vertical_tab_subscription_ =
-          vertical_tab_strip_state_controller->RegisterOnModeChanged(
-              base::BindRepeating(
-                  &BrowserNativeWidgetMac::OnVerticalTabStripModeChanged,
-                  base::Unretained(this)));
-      vertical_tab_collapse_subscription_ =
-          vertical_tab_strip_state_controller->RegisterOnCollapseChanged(
-              base::BindRepeating(
-                  &BrowserNativeWidgetMac::OnVerticalTabStripCollapseChanged,
-                  base::Unretained(this)));
-      vertical_tab_resizing_subscription_ =
-          vertical_tab_strip_state_controller->RegisterOnResizingChanged(
-              base::BindRepeating(
-                  &BrowserNativeWidgetMac::OnVerticalTabStripResizingChanged,
-                  base::Unretained(this)));
-    }
-  }
 }
 
 BrowserNativeWidgetMac::~BrowserNativeWidgetMac() = default;
@@ -265,9 +230,7 @@ void BrowserNativeWidgetMac::GetWindowFrameTitlebarHeight(
 }
 
 std::optional<int> BrowserNativeWidgetMac::GetGlassFrameHeight() const {
-  // If vertical tabs are being drawn, the glass effect view is not restricted
-  // vertically to top chrome (it spans full height).
-  if (!browser_view_ || browser_view_->ShouldDrawVerticalTabStrip()) {
+  if (!browser_view_) {
     return std::nullopt;
   }
 
@@ -285,37 +248,6 @@ std::optional<int> BrowserNativeWidgetMac::GetGlassFrameHeight() const {
   height += top_element_info.top_area_height();
   height += top_element_info.toolbar_preferred_height;
   return height;
-}
-
-std::optional<int> BrowserNativeWidgetMac::GetGlassFrameWidth() const {
-  // If vertical tabs are not being drawn (e.g. horizontal tab strip mode,
-  // popup/app windows, or window too narrow to render vertical tabs), the glass
-  // effect view spans the full window width without horizontal restriction.
-  if (!browser_view_ || !browser_view_->ShouldDrawVerticalTabStrip()) {
-    return std::nullopt;
-  }
-
-  const int corner_padding = GetGlassCornerPadding();
-  const int max_width =
-      tabs::kVerticalTabStripUncollapsedMaxWidth + corner_padding;
-
-  auto* const controller =
-      tabs::VerticalTabStripStateController::From(browser_view_->browser());
-  CHECK(controller);
-
-  // While actively dragging either the window live resize handle or the
-  // vertical tab strip resize handle, expand the glass view to cover the
-  // maximum possible vertical tab strip width to avoid continuous resizing on
-  // every mouse movement.
-  if (is_window_live_resizing_ || controller->IsResizing()) {
-    return max_width;
-  }
-
-  const int width =
-      (controller->IsCollapsed() ? tabs::kVerticalTabStripCollapsedWidth
-                                 : controller->GetUncollapsedWidth()) +
-      corner_padding;
-  return std::min(width, max_width);
 }
 
 void BrowserNativeWidgetMac::OnFocusWindowToolbar() {
@@ -336,18 +268,6 @@ void BrowserNativeWidgetMac::OnWindowFullscreenTransitionComplete() {
   }
 }
 
-void BrowserNativeWidgetMac::OnWindowWillStartLiveResize() {
-  NativeWidgetMac::OnWindowWillStartLiveResize();
-  is_window_live_resizing_ = true;
-  UpdateBackgroundGeometry();
-}
-
-void BrowserNativeWidgetMac::OnWindowDidEndLiveResize() {
-  NativeWidgetMac::OnWindowDidEndLiveResize();
-  is_window_live_resizing_ = false;
-  UpdateBackgroundGeometry();
-}
-
 void BrowserNativeWidgetMac::OnWidgetDestroyed(views::Widget* widget) {
   widget->RemoveObserver(this);
   CHECK(browser_view_);
@@ -366,7 +286,6 @@ void BrowserNativeWidgetMac::OnWidgetDestroyed(views::Widget* widget) {
   }
   browser_view_ = nullptr;
   last_theme_color_.reset();
-  last_is_vertical_tabs_.reset();
   has_multiple_profiles_open_ = false;
   last_is_glass_eligible_ = false;
   glass_eligibility_subscription_ = {};
@@ -497,34 +416,6 @@ void BrowserNativeWidgetMac::ValidateUserInterfaceItem(
       result->enable = omnibox_feature_configs::Toolbelt::Get().enabled;
       break;
     }
-    case IDC_TOGGLE_VERTICAL_TABS: {
-      // TODO(crbug.com/475222200): When in immersive, swapping between tab
-      // strip types create duplicate tab strips. Until that is resolved,
-      // disable the ability to swap between tab strips while in immersive.
-      if (auto* immersive_mode_controller =
-              ImmersiveModeController::From(browser)) {
-        result->set_hidden_state = true;
-        result->new_hidden_state = immersive_mode_controller->IsEnabled();
-      }
-      if (auto* vertical_tab_strip_state_controller =
-              tabs::VerticalTabStripStateController::From(browser)) {
-        result->new_toggle_state =
-            vertical_tab_strip_state_controller->ShouldDisplayVerticalTabs();
-      }
-      break;
-    }
-    case IDC_TOGGLE_VERTICAL_TABS_COLLAPSE: {
-      if (auto* vertical_tab_strip_state_controller =
-              tabs::VerticalTabStripStateController::From(browser)) {
-        result->set_hidden_state = true;
-        result->new_hidden_state =
-            !vertical_tab_strip_state_controller->ShouldDisplayVerticalTabs();
-        result->new_toggle_state =
-            vertical_tab_strip_state_controller->GetCollapseState() !=
-            tabs::VerticalTabStripCollapseState::kExpanded;
-      }
-      break;
-    }
     case IDC_TOGGLE_JAVASCRIPT_APPLE_EVENTS: {
       PrefService* prefs = browser->GetProfile()->GetPrefs();
       result->new_toggle_state =
@@ -604,38 +495,7 @@ bool BrowserNativeWidgetMac::ExecuteCommand(
 
   BrowserWindowInterface* browser = browser_view_->browser();
 
-  if (command == IDC_TOGGLE_VERTICAL_TABS) {
-    if (auto* controller =
-            tabs::VerticalTabStripStateController::From(browser)) {
-      const bool is_vertical = !controller->ShouldDisplayVerticalTabs();
-      tabs::RecordVerticalTabStripModeChanged(
-          is_vertical, tabs::VerticalTabStripEntryPoint::kMacViewMenu);
-    }
-  } else if (command == IDC_TOGGLE_VERTICAL_TABS_COLLAPSE) {
-    if (auto* controller =
-            tabs::VerticalTabStripStateController::From(browser)) {
-      const bool is_view_menu = IsCommandTriggeredFromMacMenu(
-          IDC_VIEW_MENU, IDC_TOGGLE_VERTICAL_TABS_COLLAPSE);
-
-      if (is_view_menu) {
-        if (controller->IsCollapsed()) {
-          base::RecordAction(base::UserMetricsAction(
-              "VerticalTabs_TabStrip_ViewMenuToggleUncollapsed"));
-        } else {
-          base::RecordAction(base::UserMetricsAction(
-              "VerticalTabs_TabStrip_ViewMenuToggleCollapsed"));
-        }
-      } else {
-        if (controller->IsCollapsed()) {
-          base::RecordAction(base::UserMetricsAction(
-              "VerticalTabs_TabStrip_KeyboardShortcutToggleUncollapsed"));
-        } else {
-          base::RecordAction(base::UserMetricsAction(
-              "VerticalTabs_TabStrip_KeyboardShortcutToggleCollapsed"));
-        }
-      }
-    }
-  } else if (command == IDC_NEW_SPLIT_TAB) {
+  if (command == IDC_NEW_SPLIT_TAB) {
     const bool is_tab_menu =
         IsCommandTriggeredFromMacMenu(IDC_TAB_MENU, IDC_NEW_SPLIT_TAB);
 
@@ -851,23 +711,6 @@ void BrowserNativeWidgetMac::AnnounceTextInInProcessWindow(
   }
 }
 
-void BrowserNativeWidgetMac::OnVerticalTabStripModeChanged(
-    tabs::VerticalTabStripStateController* controller) {
-  last_theme_color_.reset();
-  UpdateBackgroundGeometry();
-  UpdateBackgroundColor();
-}
-
-void BrowserNativeWidgetMac::OnVerticalTabStripCollapseChanged(
-    tabs::VerticalTabStripCollapseState state) {
-  UpdateBackgroundGeometry();
-}
-
-void BrowserNativeWidgetMac::OnVerticalTabStripResizingChanged(
-    bool is_resizing) {
-  UpdateBackgroundGeometry();
-}
-
 void BrowserNativeWidgetMac::RemoveGlassBackground(
     const viz::FrameTimingDetails& frame_timing_details) {
   if (last_is_glass_eligible_) {
@@ -899,7 +742,6 @@ void BrowserNativeWidgetMac::RemoveGlassBackground(
     opaque_background_view_ = nil;
   }
   last_theme_color_.reset();
-  last_is_vertical_tabs_.reset();
   has_multiple_profiles_open_ = false;
 }
 
@@ -1009,22 +851,11 @@ void BrowserNativeWidgetMac::UpdateBackgroundGeometry() {
   const int content_width = static_cast<int>(content_view.bounds.size.width);
   const int content_height = static_cast<int>(content_view.bounds.size.height);
 
-  const std::optional<int> target_width = GetGlassFrameWidth();
   const std::optional<int> target_height = GetGlassFrameHeight();
 
-  int glass_x = 0;
   int glass_y = 0;
-  int glass_width = content_width;
   int glass_height = content_height;
-  NSAutoresizingMaskOptions mask = 0;
-
-  if (!target_width.has_value()) {
-    mask |= NSViewWidthSizable;
-  } else {
-    glass_width = *target_width;
-    glass_x = base::i18n::IsRTL() ? (content_width - glass_width) : 0;
-    mask |= base::i18n::IsRTL() ? NSViewMinXMargin : NSViewMaxXMargin;
-  }
+  NSAutoresizingMaskOptions mask = NSViewWidthSizable;
 
   if (!target_height.has_value()) {
     mask |= NSViewHeightSizable;
@@ -1035,7 +866,7 @@ void BrowserNativeWidgetMac::UpdateBackgroundGeometry() {
   }
 
   const NSRect glass_frame =
-      NSMakeRect(glass_x, glass_y, glass_width, glass_height);
+      NSMakeRect(0, glass_y, content_width, glass_height);
 
   glass_background_view_.frame = glass_frame;
   glass_background_view_.autoresizingMask = mask;
@@ -1044,21 +875,13 @@ void BrowserNativeWidgetMac::UpdateBackgroundGeometry() {
   }
 
   if (opaque_background_view_) {
-    int opaque_x = 0;
     int opaque_y = 0;
-    int opaque_width = content_width;
     int opaque_height = content_height;
     NSAutoresizingMaskOptions opaque_mask = 0;
 
     // Compute the bounds for the opaque view which is basically covers
     // the remaining portion of the window that isn't occupied by glass.
     // Unlike glass view, opaque view must resize in both directions.
-    if (target_width.has_value()) {
-      opaque_width = std::max(0, content_width - glass_width);
-      opaque_x = base::i18n::IsRTL() ? 0 : glass_width;
-      opaque_mask = NSViewWidthSizable | NSViewHeightSizable;
-    }
-
     if (target_height.has_value()) {
       opaque_height = std::max(0, content_height - glass_height);
       opaque_y = 0;
@@ -1066,7 +889,7 @@ void BrowserNativeWidgetMac::UpdateBackgroundGeometry() {
     }
 
     opaque_background_view_.frame =
-        NSMakeRect(opaque_x, opaque_y, opaque_width, opaque_height);
+        NSMakeRect(0, opaque_y, content_width, opaque_height);
     opaque_background_view_.autoresizingMask = opaque_mask;
   }
 }
@@ -1080,27 +903,23 @@ void BrowserNativeWidgetMac::UpdateBackgroundColor() {
   const SkColor theme_color = browser_view_->GetColorProvider()->GetColor(
       is_active ? ui::kColorFrameActive : ui::kColorFrameInactive);
 
-  const bool is_vertical_tabs = browser_view_->ShouldDrawVerticalTabStrip();
-
   auto* const glass_frame_service = GlassFrameService::GetInstance();
   const bool are_multiple_profiles_open =
       glass_frame_service && glass_frame_service->HasMultipleOpenProfiles();
 
-  // Avoid updating the background view if the theme colors, tab strip
-  // orientation, and multiple open profiles state haven't changed.
+  // Avoid updating the background view if the theme colors and multiple open
+  // profiles state haven't changed.
   if (last_theme_color_ == theme_color &&
-      last_is_vertical_tabs_ == is_vertical_tabs &&
       has_multiple_profiles_open_ == are_multiple_profiles_open) {
     return;
   }
 
   last_theme_color_ = theme_color;
-  last_is_vertical_tabs_ = is_vertical_tabs;
   has_multiple_profiles_open_ = are_multiple_profiles_open;
 
   const double tint_opacity =
       GetGlassFrameTintOpacity(color_utils::IsDark(theme_color),
-                               is_vertical_tabs, has_multiple_profiles_open_);
+                               has_multiple_profiles_open_);
 
   const CGFloat r = SkColorGetR(theme_color) / 255.0;
   const CGFloat g = SkColorGetG(theme_color) / 255.0;

@@ -39,7 +39,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/tabs/features.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/app_menu_icon_controller.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
@@ -537,38 +536,6 @@ void ActionAppMenuManager::AddToolsAndActionsActions(
             kActionDeveloperSubmenu,
             [this](AppMenuBuilder& sub) {
               sub.AddAction(kActionNameWindow);
-
-              if (auto* controller =
-                      tabs::VerticalTabStripStateController::From(
-                          browser_window_interface_.get())) {
-                if (controller->ShouldDisplayVerticalTabs()) {
-                  sub.AddAction(
-                      kActionToggleVerticalTabs,
-                      {.text_override = l10n_util::GetStringUTF16(
-                           IDS_SWITCH_TO_HORIZONTAL_TAB),
-                       .icon_override = ui::ImageModel::FromVectorIcon(
-                           features::IsRoundedIconsEnabled() ? kToolbarIcon
-                                                             : kToolbarOldIcon,
-                           ui::kColorMenuIcon,
-                           ui::SimpleMenuModel::kDefaultIconSize)});
-                } else {
-                  sub.AddAction(
-                      kActionToggleVerticalTabs,
-                      {.text_override = l10n_util::GetStringUTF16(
-                           IDS_SWITCH_TO_VERTICAL_TAB),
-                       .icon_override = ui::ImageModel::FromVectorIcon(
-                           base::i18n::IsRTL()
-                               ? (features::IsRoundedIconsEnabled()
-                                      ? kDockToLeftIcon
-                                      : kDockToRightOldIcon)
-                               : (features::IsRoundedIconsEnabled()
-                                      ? kDockToRightIcon
-                                      : kDockToLeftOldIcon),
-                           ui::kColorMenuIcon,
-                           ui::SimpleMenuModel::kDefaultIconSize),
-                       .new_badge_feature = &tabs::kVerticalTabsNewBadge});
-                }
-              }
 
               sub.AddDivider()
                   .AddAction(

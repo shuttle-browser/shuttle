@@ -22,7 +22,6 @@
 #include "chrome/browser/file_system_access/file_system_access_tab_helper.h"
 #include "chrome/browser/history/history_tab_helper.h"
 #include "chrome/browser/history/top_sites_factory.h"
-#include "chrome/browser/history_clusters/history_clusters_tab_helper.h"
 #include "chrome/browser/login_detection/login_detection_tab_helper.h"
 #include "chrome/browser/lookalikes/safety_tip_web_contents_observer.h"
 #include "chrome/browser/media/media_engagement_service.h"
@@ -33,7 +32,6 @@
 #include "chrome/browser/page_content_annotations/page_content_extraction_service_factory.h"
 #include "chrome/browser/page_load_metrics/page_load_metrics_initialize.h"
 #include "chrome/browser/permissions/one_time_permissions_tracker_helper.h"
-#include "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.h"
 #include "chrome/browser/predictors/loading_predictor_factory.h"
 #include "chrome/browser/predictors/loading_predictor_tab_helper.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_manager_factory.h"
@@ -50,7 +48,6 @@
 #include "chrome/browser/ui/tab_contents/core_tab_helper.h"
 #include "chrome/browser/ui/tab_dialogs.h"
 #include "chrome/browser/ui/tabs/alert/child_tab_alert_helper.h"
-#include "chrome/browser/vr/vr_tab_helper.h"
 #include "components/blocked_content/popup_blocker_tab_helper.h"
 #include "components/blocked_content/popup_opener_tab_helper.h"
 #include "components/client_hints/browser/client_hints_web_contents_observer.h"
@@ -415,9 +412,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
   context_highlight_tab_feature_ =
       GetUserDataFactory().CreateInstance<ContextHighlightTabFeature>(tab, tab);
 
-  vr_tab_helper_ =
-      GetUserDataFactory().CreateInstance<vr::VrTabHelper>(tab, tab);
-
   recently_audible_helper_ =
       GetUserDataFactory().CreateInstance<RecentlyAudibleHelper>(
           tab, tab, tab.GetContents());
@@ -601,10 +595,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
   // which ToastController and the omnibox observe on every tab.
   OmniboxTabHelper::CreateForWebContents(tab.GetContents(), profile);
 
-  auto_picture_in_picture_tab_helper_ =
-      GetUserDataFactory().CreateInstance<AutoPictureInPictureTabHelper>(
-          tab, tab, tab.GetContents());
-
   if (auto* metrics_services_manager =
           g_browser_process->GetMetricsServicesManager()) {
     metrics_services_web_contents_observer_ =
@@ -685,12 +675,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
 
   login_detection::LoginDetectionTabHelper::MaybeCreateForWebContents(
       tab.GetContents());
-
-  if (!profile->IsOffTheRecord()) {
-    HistoryClustersTabHelper::CreateForWebContents(
-        tab.GetContents(),
-        HistoryTabHelper::FromWebContents(tab.GetContents()));
-  }
 
   if (!blocked_content::PopupBlockerTabHelper::FromWebContents(
           tab.GetContents())) {
@@ -967,11 +951,6 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
 
   OmniboxTabHelper::CreateForWebContents(new_contents, profile);
 
-  auto_picture_in_picture_tab_helper_.reset();
-  auto_picture_in_picture_tab_helper_ =
-      GetUserDataFactory().CreateInstance<AutoPictureInPictureTabHelper>(
-          *tab, *tab, new_contents);
-
   tab_dialogs_.reset();
   tab_dialogs_ = TabDialogs::Create(*tab, new_contents);
 
@@ -1062,11 +1041,6 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
 
   login_detection::LoginDetectionTabHelper::MaybeCreateForWebContents(
       new_contents);
-
-  if (!profile->IsOffTheRecord()) {
-    HistoryClustersTabHelper::CreateForWebContents(
-        new_contents, HistoryTabHelper::FromWebContents(new_contents));
-  }
 
   if (!blocked_content::PopupBlockerTabHelper::FromWebContents(new_contents)) {
     if (auto* pm_registry =

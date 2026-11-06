@@ -148,7 +148,6 @@ source_set("impl") {
     "//chrome/common:chrome_features",
     "//chrome/common:constants",
     "//chrome/common:non_code_constants",
-    "//components/history_clusters/core",
     "//components/infobars/content",
     "//components/infobars/core",
     "//components/network_session_configurator/common",

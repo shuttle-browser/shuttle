@@ -13,15 +13,7 @@ namespace {
 constexpr base::TimeDelta kIgnoreScrollDuration = base::Milliseconds(250);
 }  // namespace
 
-TabGroupEditorBubbleTracker::TabGroupEditorBubbleTracker(
-    tabs::VerticalTabStripStateController* state_controller) {
-  if (state_controller) {
-    vertical_tab_mode_will_change_subscription_ =
-        state_controller->RegisterOnModeWillChange(base::BindRepeating(
-            &TabGroupEditorBubbleTracker::OnVerticalTabStripModeWillChange,
-            base::Unretained(this)));
-  }
-}
+TabGroupEditorBubbleTracker::TabGroupEditorBubbleTracker() = default;
 
 TabGroupEditorBubbleTracker::~TabGroupEditorBubbleTracker() {
   is_open_ = false;
@@ -92,11 +84,6 @@ void TabGroupEditorBubbleTracker::CloseWidget(
       FROM_HERE, widget_.release());
 
   on_bubble_closed_callback_list_.Notify();
-}
-
-void TabGroupEditorBubbleTracker::OnVerticalTabStripModeWillChange(
-    tabs::VerticalTabStripStateController* controller) {
-  CloseWidget(views::Widget::ClosedReason::kUnspecified);
 }
 
 void TabGroupEditorBubbleTracker::OnContentsScrolled() {

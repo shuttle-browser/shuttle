@@ -22,7 +22,6 @@
 #include "chrome/browser/media/webrtc/desktop_media_picker_factory_impl.h"
 #include "chrome/browser/media/webrtc/native_desktop_media_list.h"
 #include "chrome/browser/media/webrtc/tab_desktop_media_list.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/url_identity.h"
 #include "chrome/common/pref_names.h"
@@ -497,42 +496,6 @@ void DisplayMediaAccessHandler::ProcessQueuedPickerRequest(
   }
 
   WebContents* ui_web_contents = web_contents;
-
-#if defined(TOOLKIT_VIEWS)
-  // If `web_contents` is the opener of a Document Picture in Picture window,
-  // and if the pip window currently has the focus, then show the request in the
-  // pip window instead.
-  if (WebContents* const child_web_contents =
-          web_contents->HasPictureInPictureDocument()
-              ? PictureInPictureWindowManager::GetInstance()
-                    ->GetChildWebContents()
-              : nullptr) {
-    // There should not be more than one pip window.  If `web_contents`
-    // believes that it is a document pip opener, then make sure that the
-    // window manager agrees with it.
-    CHECK_EQ(PictureInPictureWindowManager::GetInstance()->GetWebContents(),
-             web_contents);
-
-    // The media-picker prompt will be associated with the PiP window if the
-    // user's last interaction was with the PiP. (This heuristic could in the
-    // future be replaced with an explicit control surface exposed to the
-    // app.)
-    //
-    // Note that `RenderWidgetHostView::HasFocus()` does not work as expected
-    // on Mac; it always returns true.  The Widget's activation state is what
-    // tracks the state we care about.  It's not 100% accurate either as a
-    // proxy for "the user's last interaction", but it's good enough.
-    if (gfx::NativeWindow native_window =
-            child_web_contents->GetTopLevelNativeWindow()) {
-      if (auto* browser_view =
-              BrowserView::GetBrowserViewForNativeWindow(native_window)) {
-        if (browser_view->GetWidget()->IsActive()) {
-          ui_web_contents = child_web_contents;
-        }
-      }
-    }
-  }
-#endif  // defined(TOOLKIT_VIEWS)
 
   std::vector<DesktopMediaList::Type> media_types{
       DesktopMediaList::Type::kWebContents, DesktopMediaList::Type::kWindow};

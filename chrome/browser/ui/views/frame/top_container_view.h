@@ -24,10 +24,6 @@ class TopContainerView : public views::View {
   TopContainerView& operator=(const TopContainerView&) = delete;
   ~TopContainerView() override;
 
-  // When this is the top element in the browser, returns whether `test_point`
-  // is in the caption area.
-  bool IsPositionInWindowCaption(const gfx::Point& test_point) const;
-
   // views::View overrides:
   void PaintChildren(const views::PaintInfo& paint_info) override;
   void ChildPreferredSizeChanged(views::View* child) override;

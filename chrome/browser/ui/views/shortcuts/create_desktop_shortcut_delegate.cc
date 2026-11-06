@@ -11,8 +11,6 @@
 #include "base/strings/strcat.h"
 #include "base/strings/string_util.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
-#include "chrome/browser/picture_in_picture/scoped_picture_in_picture_occlusion_observation.h"
 #include "chrome/browser/profiles/profile_attributes_entry.h"
 #include "chrome/browser/profiles/profile_attributes_storage.h"
 #include "chrome/browser/profiles/profile_manager.h"
@@ -55,11 +53,6 @@ CreateDesktopShortcutDelegate::CreateDesktopShortcutDelegate(
 
 CreateDesktopShortcutDelegate::~CreateDesktopShortcutDelegate() = default;
 
-void CreateDesktopShortcutDelegate::StartObservingForPictureInPictureOcclusion(
-    views::Widget* dialog_widget) {
-  occlusion_observation_.Observe(dialog_widget);
-}
-
 void CreateDesktopShortcutDelegate::OnAccept() {
   if (final_callback_) {
     base::RecordAction(
@@ -100,12 +93,6 @@ void CreateDesktopShortcutDelegate::WebContentsDestroyed() {
 
 void CreateDesktopShortcutDelegate::PrimaryPageChanged(content::Page& page) {
   CloseDialogAsIgnored();
-}
-
-void CreateDesktopShortcutDelegate::OnOcclusionStateChanged(bool occluded) {
-  if (occluded) {
-    PictureInPictureWindowManager::ExitPictureInPictureSoon();
-  }
 }
 
 void CreateDesktopShortcutDelegate::CloseDialogAsIgnored() {

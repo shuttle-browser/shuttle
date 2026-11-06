@@ -27,12 +27,10 @@
 #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_controller.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/views/frame/browser_widget.h"
 #include "chrome/browser/ui/views/frame/contents_container_view.h"
 #include "chrome/browser/ui/views/frame/layout/browser_view_layout_params.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
-#include "chrome/browser/ui/views/frame/vertical_tab_strip_background_blur_backdrop.h"
 #include "chrome/browser/ui/views/tabs/tab.h"
 #include "chrome/common/buildflags.h"
 #include "components/enterprise/buildflags/buildflags.h"
@@ -71,7 +69,6 @@ class BrowserWindowInterface;
 class BrowserViewLayout;
 class ContentsContainerView;
 class ContentsWebView;
-class CustomFloatingCorner;
 struct DropData;
 class ExclusiveAccessBubbleViews;
 class ExclusiveAccessBubbleViewsContext;
@@ -89,15 +86,10 @@ class ToolbarView;
 class TopContainerView;
 class TopControlsSlideController;
 class TopControlsSlideControllerTest;
-class VerticalTabStripRegionView;
 
 namespace gfx {
 class AnimationRunner;
 }  // namespace gfx
-
-namespace tabs {
-class VerticalTabStripStateController;
-}  // namespace tabs
 
 namespace ui {
 class NativeTheme;
@@ -238,18 +230,8 @@ class BrowserView : public BrowserWindow,
 
   MultiContentsView* multi_contents_view() { return multi_contents_view_; }
 
-  // Returns either the Horizontal or Vertical TabStrip.
+  // Returns the TabStrip.
   TabStripRegionView* tab_strip_view() const;
-
-  // Test only function. When the VerticalTabs feature is enabled,
-  // `vertical_tab_strip_container_` will have a value for normal tabbed
-  // browsers even if it is not the active TabStrip. Prefer to use
-  // VerticalTabsBrowserTestMixin or VerticalTabsInteractiveTestMixin to be
-  // automatically placed into VerticalTabs mode.
-  VerticalTabStripRegionView* vertical_tab_strip_region_view_for_testing()
-      const {
-    return vertical_tab_strip_region_view_.get();
-  }
 
   // Accessor for the TabStrip.
   TabStrip* horizontal_tab_strip_for_testing();
@@ -294,14 +276,8 @@ class BrowserView : public BrowserWindow,
   // On macOS, it is possible that the top UI is drawn but hidden.
   bool ShouldDrawTabStrip() const;
 
-  // Returns whether a vertical tabstrip should be shown.
-  bool ShouldDrawVerticalTabStrip() const;
-
   // Returns whether or not strokes should be drawn around and under the tabs.
   bool ShouldDrawTabStrokes() const;
-
-  // Returns whether the vertical tabstrip is collapsed.
-  bool IsVerticalTabStripCollapsed() const;
 
   // Returns true if the profile associated with this Browser window is
   // incognito.
@@ -338,11 +314,6 @@ class BrowserView : public BrowserWindow,
   // Returns true if the Browser object associated with this BrowserView is for
   // a Picture in Picture window.
   bool GetIsPictureInPictureType() const;
-
-  // Returns the document picture in picture options from |browser_|'s
-  // CreateParams.
-  std::optional<blink::mojom::PictureInPictureWindowOptions>
-  GetDocumentPictureInPictureOptions() const;
 
   // Returns true if the top browser controls (a.k.a. top-chrome UIs) are
   // allowed to slide up and down with the gesture scrolls on the current tab's
@@ -738,9 +709,6 @@ class BrowserView : public BrowserWindow,
   // as to what tabs are affected.
   void RevealTopContainerIfNeeded();
 
-  void OnVerticalTabStripModeChanged(
-      tabs::VerticalTabStripStateController* controller);
-
   // Callback for the loading animation(s) associated with this view.
   void LoadingAnimationTimerCallback();
   void LoadingAnimationCallback(base::TimeTicks timestamp);
@@ -1013,15 +981,6 @@ class BrowserView : public BrowserWindow,
   // The view that contains all visible WebContents.
   raw_ptr<MultiContentsView> multi_contents_view_ = nullptr;
 
-  // The view responsible for housing the contents of the vertical tab strip.
-  raw_ptr<VerticalTabStripRegionView> vertical_tab_strip_region_view_ = nullptr;
-  raw_ptr<VerticalTabStripBackgroundBlurBackdrop>
-      vertical_tab_strip_background_blur_backdrop_ = nullptr;
-
-  // Outward-projecting corners of the vertical tab strip.
-  raw_ptr<CustomFloatingCorner> vertical_tab_strip_top_corner_ = nullptr;
-  raw_ptr<CustomFloatingCorner> vertical_tab_strip_bottom_corner_ = nullptr;
-
   // The view responsible for housing the contents of the organizer panel.
   raw_ptr<OrganizerTrayView> organizer_tray_ = nullptr;
 
@@ -1166,11 +1125,6 @@ class BrowserView : public BrowserWindow,
   base::CallbackListSubscription paint_as_active_subscription_;
 
   PrefChangeRegistrar registrar_;
-
-  base::CallbackListSubscription vertical_tab_subscription_;
-
-  std::unique_ptr<tabs::VerticalTabStripStateController::ScopedEnableStateLock>
-      vertical_tabs_enable_state_lock_;
 
 #if BUILDFLAG(IS_CHROMEOS)
   base::CallbackListSubscription on_locked_task_subscription_;

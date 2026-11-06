@@ -7,7 +7,6 @@
 #include "base/containers/fixed_flat_map.h"
 #include "base/containers/map_util.h"
 #include "base/strings/strcat.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -57,22 +56,7 @@ const std::string_view* GetWebUIMetricsHostname(const GURL& webui_url) {
 
 BrowserWindowInterface* GetBrowserForOpeningWebUi(
     BrowserWindowInterface* browser) {
-  if (!browser) {
-    return nullptr;
-  }
-
-  if (browser->GetType() !=
-      BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE) {
-    return browser;
-  }
-
-  auto* opener_web_contents =
-      PictureInPictureWindowManager::GetInstance()->GetWebContents();
-  // We should always have an opener web contents if the current browser is a
-  // picture-in-picture type.
-  DCHECK(opener_web_contents);
-  return GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-      opener_web_contents);
+  return browser;
 }
 
 ui::NativeTheme* GetNativeThemeDeprecated(content::WebContents* web_contents) {

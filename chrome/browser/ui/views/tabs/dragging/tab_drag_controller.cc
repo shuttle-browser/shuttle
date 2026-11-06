@@ -715,15 +715,6 @@ bool TabDragController::CanRestoreFullscreenWindowDuringDrag() const {
   // On macOS in immersive fullscreen mode, the horizontal tab strip is hosted
   // in a separate overlay widget. Restoring the window during drag moves the
   // tab strip back to the browser widget, breaking tab drag assumptions.
-  //
-  // This does not apply to vertical tab strips, which always remain in the
-  // main browser widget regardless of fullscreen state. For vertical tabs,
-  // allow restoration so that dragging all tabs in fullscreen correctly exits
-  // fullscreen and enters the move loop.
-  BrowserView* browser_view = GetBrowserViewForContext(source_context_);
-  if (browser_view && browser_view->ShouldDrawVerticalTabStrip()) {
-    return true;
-  }
   return false;
 #else
   return true;
@@ -3172,9 +3163,6 @@ void TabDragController::SetTabDragPointResolver(
 }
 
 const char* TabDragController::GetTabStripMode() const {
-  BrowserView* browser_view = GetBrowserViewForContext(attached_context_);
-  CHECK(browser_view);
-
-  return browser_view->ShouldDrawVerticalTabStrip() ? "VerticalTabStrip"
-                                                    : "HorizontalTabStrip";
+  CHECK(GetBrowserViewForContext(attached_context_));
+  return "HorizontalTabStrip";
 }

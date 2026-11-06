@@ -24,11 +24,6 @@ class BrowserView;
 @class BrowserWindowTouchBarController;
 @class BrowserWindowTouchBarViewsDelegate;
 
-namespace tabs {
-enum class VerticalTabStripCollapseState;
-class VerticalTabStripStateController;
-}  // namespace tabs
-
 namespace viz {
 class FrameTimingDetails;
 }  // namespace viz
@@ -56,8 +51,6 @@ class BrowserNativeWidgetMac : public views::NativeWidgetMac,
   void OnFocusWindowToolbar() override;
   void OnWindowFullscreenTransitionStart() override;
   void OnWindowFullscreenTransitionComplete() override;
-  void OnWindowWillStartLiveResize() override;
-  void OnWindowDidEndLiveResize() override;
   void OnWidgetDestroyed(views::Widget* widget) override;
 
   // Overridden from BrowserNativeWidget:
@@ -109,12 +102,6 @@ class BrowserNativeWidgetMac : public views::NativeWidgetMac,
   void UpdateBackgroundGeometry();
   void UpdateBackgroundColor();
   std::optional<int> GetGlassFrameHeight() const;
-  std::optional<int> GetGlassFrameWidth() const;
-  void OnVerticalTabStripModeChanged(
-      tabs::VerticalTabStripStateController* controller);
-  void OnVerticalTabStripCollapseChanged(
-      tabs::VerticalTabStripCollapseState state);
-  void OnVerticalTabStripResizingChanged(bool is_resizing);
   void RemoveGlassBackground(
       const viz::FrameTimingDetails& frame_timing_details);
 
@@ -125,13 +112,8 @@ class BrowserNativeWidgetMac : public views::NativeWidgetMac,
   NSView* __strong opaque_background_view_;
 
   std::optional<SkColor> last_theme_color_;
-  std::optional<bool> last_is_vertical_tabs_;
   bool has_multiple_profiles_open_ = false;
   bool last_is_glass_eligible_ = false;
-  bool is_window_live_resizing_ = false;
-  base::CallbackListSubscription vertical_tab_subscription_;
-  base::CallbackListSubscription vertical_tab_collapse_subscription_;
-  base::CallbackListSubscription vertical_tab_resizing_subscription_;
   base::CallbackListSubscription glass_eligibility_subscription_;
   base::CallbackListSubscription multiple_open_profiles_subscription_;
   base::CallbackListSubscription paint_as_active_subscription_;

@@ -821,12 +821,6 @@ inline constexpr char kAutoPictureInPictureAndroidName[] =
 inline constexpr char kAutoPictureInPictureAndroidDescription[] =
     "Enables auto picture in picture on Android";
 
-inline constexpr char kAutoPictureInPictureOnWindowOccludedName[] =
-    "Auto picture in picture on window occluded";
-inline constexpr char kAutoPictureInPictureOnWindowOccludedDescription[] =
-    "Allows auto picture-in-picture to trigger when the window is occluded "
-    "by another window.";
-
 inline constexpr char kBindCookiesToPortName[] =
     "Bind cookies to their setting origin's port";
 inline constexpr char kBindCookiesToPortDescription[] =
@@ -1048,12 +1042,6 @@ inline constexpr char kDeclarativePerformanceObserverDescription[] =
 inline constexpr char kDevicePostureName[] = "Device Posture API";
 inline constexpr char kDevicePostureDescription[] =
     "Enables Device Posture API (foldable devices)";
-
-inline constexpr char kDocumentPictureInPictureAnimateResizeName[] =
-    "Document Picture-in-Picture Animate Resize";
-inline constexpr char kDocumentPictureInPictureAnimateResizeDescription[] =
-    "Use an animation when programmatically resizing a document"
-    "picture-in-picture window";
 
 inline constexpr char kDsePreload2Name[] = "Default Search Engine preload 2";
 inline constexpr char kDsePreload2Description[] =
@@ -2340,10 +2328,6 @@ inline constexpr char kJavascriptHarmonyShippingDescription[] =
     "Some web pages use legacy or non-standard JavaScript extensions that may "
     "conflict with the latest JavaScript features. This flag allows disabling "
     "support of those features for compatibility with such pages.";
-
-inline constexpr char kJourneysName[] = "History Journeys";
-inline constexpr char kJourneysDescription[] =
-    "Enables the History Journeys UI.";
 
 inline constexpr char kJxlImageFormatName[] = "Enable JXL image format";
 inline constexpr char kJxlImageFormatDescription[] =

@@ -289,11 +289,6 @@ NSMenuItem* BuildViewMenu(NSApplication* nsapp,
                   .command_id(IDC_SHOW_FULL_URLS),
               Item(IDS_CONTEXT_MENU_SHOW_SEARCH_TOOLS)
                   .command_id(IDC_SHOW_SEARCH_TOOLS),
-               Item(IDS_SWITCH_TO_VERTICAL_TAB_MAC)
-                   .command_id(IDC_TOGGLE_VERTICAL_TABS),
-              Item(IDS_VERTICAL_TABS_VIEW_MENU_TOGGLE_COLLAPSE)
-                  .command_id(IDC_TOGGLE_VERTICAL_TABS_COLLAPSE)
-                  .key_equivalent(@"L", NSEventModifierFlagCommand),
               Item(IDS_CUSTOMIZE_TOUCH_BAR)
                   .tag(IDC_CUSTOMIZE_TOUCH_BAR)
                   .action(@selector(toggleTouchBarCustomizationPalette:))
@@ -452,9 +447,6 @@ NSMenuItem* BuildTabMenu(NSApplication* nsapp,
               Item(is_rtl ? IDS_TAB_CXMENU_NEWTABTOLEFT
                           : IDS_TAB_CXMENU_NEWTABTORIGHT)
                   .command_id(IDC_NEW_TAB_TO_RIGHT),
-              Item(IDS_TAB_CXMENU_NEWTABBELOW)
-                  .command_id(IDC_NEW_TAB_TO_RIGHT)
-                  .set_hidden(true),
               Item(IDS_NEXT_TAB_MAC)
                   .command_id(IDC_CYCLE_TO_NEXT_TAB),
               Item(IDS_PREV_TAB_MAC)
@@ -482,9 +474,6 @@ NSMenuItem* BuildTabMenu(NSApplication* nsapp,
               Item(is_rtl ? IDS_TAB_CXMENU_CLOSETABSTOLEFT
                           : IDS_TAB_CXMENU_CLOSETABSTORIGHT)
                   .command_id(IDC_WINDOW_CLOSE_TABS_TO_RIGHT),
-              Item(IDS_TAB_CXMENU_CLOSETABSBELOW)
-                  .command_id(IDC_WINDOW_CLOSE_TABS_TO_RIGHT)
-                  .set_hidden(true),
               Item(IDS_MOVE_TAB_TO_NEW_WINDOW)
                   .command_id(IDC_MOVE_TAB_TO_NEW_WINDOW),
               Item(IDS_TAB_CXMENU_ADD_TAB_TO_NEW_SPLIT)

@@ -45,7 +45,6 @@ source_set("impl") {
     "//base",
     "//chrome/browser:browser_about_handler",
     "//chrome/browser:primitives",
-    "//chrome/browser/picture_in_picture",
     "//chrome/browser/prefs",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/renderer_host",

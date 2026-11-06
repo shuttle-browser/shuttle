@@ -35,7 +35,6 @@
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/command_updater.h"
 #include "chrome/browser/external_protocol/external_protocol_handler.h"
-#include "chrome/browser/history_clusters/history_clusters_tab_helper.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/themes/theme_service.h"
@@ -2309,17 +2308,6 @@ void OmniboxViewViews::HandleCutOrCopyAdjustments(
           now - last_omnibox_focus,
           controller()->autocomplete_controller()->input().IsZeroSuggest(),
           controller()->edit_model()->GetPageClassification());
-    }
-
-    if (clipboard_buffer != ui::ClipboardBuffer::kSelection &&
-        location_bar_view_) {
-      auto* web_contents = location_bar_view_->GetWebContents();
-      if (web_contents) {
-        if (auto* clusters_helper =
-                HistoryClustersTabHelper::FromWebContents(web_contents)) {
-          clusters_helper->OnOmniboxUrlCopied();
-        }
-      }
     }
   }
 }

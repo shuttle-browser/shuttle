@@ -24,7 +24,6 @@
 #include "chrome/browser/ui/tabs/tab_menu_model_delegate.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_delegate.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_frame_view.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -492,17 +491,6 @@ TabStripCollectionController::ShowGroupEditorBubble(
       browser_view_->browser(), group_id,
       /*anchor_view=*/anchor_view, /*anchor_rect=*/std::nullopt,
       /*stop_context_menu_propagation=*/stop_context_menu_propagation);
-}
-
-tabs::VerticalTabStripStateController*
-TabStripCollectionController::GetStateController() {
-  return const_cast<tabs::VerticalTabStripStateController*>(
-      std::as_const(*this).GetStateController());
-}
-
-const tabs::VerticalTabStripStateController*
-TabStripCollectionController::GetStateController() const {
-  return tabs::VerticalTabStripStateController::From(browser_view_->browser());
 }
 
 bool TabStripCollectionController::IsContextMenuCommandChecked(

@@ -9,8 +9,8 @@
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
+#include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/layout_constants.h"
-#include "chrome/browser/ui/views/tabs/vertical/top_container_button.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_ink_drop_util.h"
 #include "ui/actions/actions.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
@@ -20,6 +20,7 @@
 #include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/actions/action_view_controller.h"
 #include "ui/views/controls/button/label_button.h"
+#include "ui/views/controls/focus_ring.h"
 #include "ui/views/layout/flex_layout.h"
 #include "ui/views/layout/flex_layout_types.h"
 #include "ui/views/layout/layout_types.h"
@@ -39,7 +40,9 @@ OrganizerPanelControlsView::OrganizerPanelControlsView(
                                                root_action_item);
   CHECK(toggle_organizer_panel_action_item_);
 
-  organizer_button_ = AddChildView(std::make_unique<TopContainerButton>());
+  organizer_button_ = AddChildView(std::make_unique<views::LabelButton>());
+  views::FocusRing::Get(organizer_button_)
+      ->SetColorId(kColorNewTabButtonFocusRing);
   organizer_button_->SetPaintToLayer();
   organizer_button_->layer()->SetFillsBoundsOpaquely(false);
   organizer_button_->SetCallback(

@@ -68,10 +68,6 @@ class PinnedTabContainerView
   // used to determine the drop index.
   std::optional<BrowserRootView::DropIndex> GetLinkDropIndexForHorizontal(
       const gfx::Point& loc_in_container);
-  // While collapsed, only the y-coordinate is used to determine the drop
-  // index, similar to the unpinned container.
-  std::optional<BrowserRootView::DropIndex> GetLinkDropIndexForCollapsed(
-      const gfx::Point& loc_in_container);
   // While expanded, the x-coordinate is used to determine which row the drag
   // lands on, and the y-coordinate is used to determine where within the row
   // the drop index should be.
@@ -79,14 +75,12 @@ class PinnedTabContainerView
       const gfx::Point& loc_in_container);
 
   void ResetCollectionNode();
-  void OnCollapseStateChanged(tabs::VerticalTabStripCollapseState state);
 
   const TabStripOrientation orientation_;
   raw_ptr<TabCollectionNode> collection_node_ = nullptr;
   const raw_ref<TabCollectionAnimatingLayoutManager> layout_manager_;
 
   base::CallbackListSubscription node_destroyed_subscription_;
-  base::CallbackListSubscription collapsed_state_changed_subscription_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_TABS_COMMON_PINNED_TAB_CONTAINER_VIEW_H_

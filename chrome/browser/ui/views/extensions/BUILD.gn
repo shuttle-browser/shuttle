@@ -485,7 +485,6 @@ source_set("extension_install_dialog_view_impl") {
     "//base",
     "//chrome/app:generated_resources",
     "//chrome/app/theme:theme_resources",
-    "//chrome/browser/picture_in_picture",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/ui:scoped_tabbed_browser_displayer",
     "//chrome/browser/ui/browser_web_contents_delegate",

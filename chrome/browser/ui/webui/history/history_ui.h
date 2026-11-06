@@ -9,7 +9,6 @@
 
 #include "base/memory/scoped_refptr.h"
 #include "components/page_image_service/mojom/page_image_service.mojom.h"
-#include "components/prefs/pref_change_registrar.h"
 #include "content/public/browser/webui_config.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -18,17 +17,12 @@
 #include "ui/base/resource/resource_scale_factor.h"
 #include "ui/webui/mojo_web_ui_controller.h"
 #include "ui/webui/resources/cr_components/history/history.mojom-forward.h"
-#include "ui/webui/resources/cr_components/history_clusters/history_clusters.mojom.h"
 
 namespace base {
 class RefCountedMemory;
 }
 
 class BrowsingHistoryHandler;
-
-namespace history_clusters {
-class HistoryClustersHandler;
-}
 
 namespace page_image_service {
 class ImageServiceHandler;
@@ -48,9 +42,7 @@ class HistoryUIConfig : public content::WebUIConfig {
 #endif  // BUILDFLAG(IS_ANDROID)
 };
 
-class HistoryUI
-    : public ui::MojoWebUIController,
-      public history_clusters::mojom::PageHandlerFactory {
+class HistoryUI : public ui::MojoWebUIController {
  public:
   explicit HistoryUI(content::WebUI* web_ui);
   HistoryUI(const HistoryUI&) = delete;
@@ -64,41 +56,18 @@ class HistoryUI
   void BindInterface(
       mojo::PendingReceiver<history::mojom::PageHandler> pending_page_handler);
   void BindInterface(
-      mojo::PendingReceiver<history_clusters::mojom::PageHandlerFactory>
-          pending_page_handler_factory);
-
-  void BindInterface(
       mojo::PendingReceiver<page_image_service::mojom::PageImageServiceHandler>
           pending_page_handler);
 
   // For testing only.
-  history_clusters::HistoryClustersHandler*
-  GetHistoryClustersHandlerForTesting() {
-    return history_clusters_handler_.get();
-  }
-
   BrowsingHistoryHandler* GetBrowsingHistoryHandlerForTesting() {
     return browsing_history_handler_.get();
   }
 
  private:
-  // history_clusters::mojom::PageHandlerFactory:
-  void CreatePageHandler(
-      mojo::PendingRemote<history_clusters::mojom::Page> page,
-      mojo::PendingReceiver<history_clusters::mojom::PageHandler> receiver)
-      override;
-
-  std::unique_ptr<history_clusters::HistoryClustersHandler>
-      history_clusters_handler_;
   std::unique_ptr<BrowsingHistoryHandler> browsing_history_handler_;
   std::unique_ptr<page_image_service::ImageServiceHandler>
       image_service_handler_;
-  PrefChangeRegistrar pref_change_registrar_;
-  mojo::Receiver<history_clusters::mojom::PageHandlerFactory>
-      history_clusters_handler_factory_receiver_{this};
-
-  void UpdateDataSource();
-
   WEB_UI_CONTROLLER_TYPE_DECL();
 };
 

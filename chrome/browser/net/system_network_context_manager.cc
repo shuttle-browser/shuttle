@@ -45,7 +45,6 @@
 #include "chrome/common/chrome_version.h"
 #include "chrome/common/google_url_loader_throttle.h"
 #include "chrome/common/pref_names.h"
-#include "chrome/common/request_header_integrity/buildflags.h"
 #include "components/certificate_transparency/ct_known_logs.h"
 #include "components/embedder_support/user_agent_utils.h"
 #include "components/enterprise/encryption/cache/utils.h"
@@ -108,10 +107,6 @@
 #include "chrome/browser/net/chrome_mojo_proxy_resolver_mac.h"
 #elif BUILDFLAG(IS_LINUX) && BUILDFLAG(USE_DBUS)
 #include "chrome/browser/net/chrome_mojo_proxy_resolver_linux.h"
-#endif
-
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-#include "chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.h"  // nogncheck crbug.com/40147906
 #endif
 
 namespace {
@@ -989,10 +984,6 @@ void SystemNetworkContextManager::ConfigureDefaultNetworkContextParams(
         variations_ids_provider->GetClientDataHeaders(false);
   }
   GoogleURLLoaderThrottle::UpdateCorsExemptHeader(network_context_params);
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-  request_header_integrity::RequestHeaderIntegrityURLLoaderThrottle::
-      UpdateCorsExemptHeaders(network_context_params);
-#endif  // BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
 
   network_context_params->enable_zstd = true;
 

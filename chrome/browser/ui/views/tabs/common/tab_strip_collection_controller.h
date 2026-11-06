@@ -10,7 +10,6 @@
 #include "base/callback_list.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_animating_layout_manager.h"
 #include "chrome/browser/ui/views/tabs/common/tab_drag_handler.h"
 #include "chrome/browser/ui/views/tabs/shared/tab_strip_types.h"
@@ -29,7 +28,6 @@ class TabHoverCardController;
 
 namespace tabs {
 class TabInterface;
-class VerticalTabStripStateController;
 }  // namespace tabs
 
 namespace views {
@@ -85,9 +83,6 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
       const tab_groups::TabGroupId& group_id,
       views::View* anchor_view,
       bool stop_context_menu_propagation);
-
-  tabs::VerticalTabStripStateController* GetStateController();
-  const tabs::VerticalTabStripStateController* GetStateController() const;
 
   TabContextMenuController* GetTabContextMenuController() {
     return context_menu_controller_.get();
