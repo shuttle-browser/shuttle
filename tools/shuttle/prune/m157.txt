@@ -11,11 +11,19 @@
 remove chrome/common/request_header_integrity
 remove chrome/browser/component_updater/platform_runtime_component_installer.cc
 remove chrome/browser/component_updater/platform_runtime_component_installer.h
+remove chrome/services/platform_runtime
 
 # History clusters (Journeys leftovers; Journeys was removed with 155)
 remove components/history_clusters
 remove chrome/browser/history_clusters
 remove chrome/browser/ui/webui/history_clusters
+remove chrome/browser/ui/webui/cr_components/history_clusters
+remove ui/webui/resources/cr_components/history_clusters
+remove components/omnibox/browser/actions/history_clusters_action.cc
+remove components/omnibox/browser/actions/history_clusters_action.h
+remove chrome/test/data/webui/cr_components/history_clusters
+remove chrome/test/data/webui/history_clusters_internals
+remove chrome/test/data/webui/history/history_clusters
 
 # VR browser side (enable_vr = false already; content's WebXR and device/vr's public mojom stay)
 remove chrome/browser/vr
@@ -23,11 +31,29 @@ remove chrome/browser/vr
 # Vertical tabs
 remove chrome/browser/ui/views/tabs/vertical
 remove chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h
+remove chrome/browser/ui/tabs/vertical_tab_strip_metrics.cc
+remove chrome/browser/ui/tabs/vertical_tab_strip_metrics.h
+remove chrome/browser/ui/tabs/vertical_tab_strip_state.h
+remove chrome/browser/ui/tabs/vertical_tab_strip_state_controller.cc
+remove chrome/browser/ui/tabs/vertical_tab_strip_state_controller_impl.cc
+remove chrome/browser/ui/tabs/vertical_tab_strip_state_controller_impl.h
+remove chrome/browser/ui/views/frame/vertical_tab_strip_background_blur_backdrop.cc
+remove chrome/browser/ui/views/frame/vertical_tab_strip_background_blur_backdrop.h
+remove chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
+remove chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
+remove chrome/browser/ui/views/tabs/common/tab_view_vertical_layout.cc
+remove chrome/browser/ui/views/tabs/common/tab_view_vertical_layout.h
+remove chrome/browser/ui/views/tabs/common/vertical_tab_style_views.cc
+remove chrome/browser/ui/views/tabs/common/vertical_tab_style_views.h
 
 # Picture-in-picture browser UI (video PiP window, Document PiP window, auto-PiP); content/blink APIs stay
 remove chrome/browser/picture_in_picture
 remove chrome/browser/ui/views/overlay
 remove chrome/browser/ui/views/picture_in_picture
+remove chrome/browser/ui/views/frame/picture_in_picture_browser_frame_view.cc
+remove chrome/browser/ui/views/frame/picture_in_picture_browser_frame_view.h
+remove chrome/browser/ui/views/frame/picture_in_picture_browser_frame_view_linux.cc
+remove chrome/browser/ui/views/frame/picture_in_picture_browser_frame_view_linux.h
 
 # Site token provider: OAuth site tokens injected into requests (feature-gated off upstream)
 remove components/site_token_provider
