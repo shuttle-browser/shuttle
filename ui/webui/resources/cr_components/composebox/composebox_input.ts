@@ -100,6 +100,7 @@ export class ComposeboxInputElement extends I18nMixinLit
       entrypointName: {type: String, reflect: true},
       cancelButtonTitle: {type: String},
       hideCancel: {type: Boolean},
+      inlineActionButtons: {type: Boolean, reflect: true},
       isBackspacing_: {type: Boolean},
     };
   }
@@ -116,10 +117,12 @@ export class ComposeboxInputElement extends I18nMixinLit
   accessor entrypointName: string = '';
   accessor cancelButtonTitle: string = '';
   accessor hideCancel: boolean = false;
+  accessor inlineActionButtons: boolean = false;
   accessor isBackspacing_: boolean = false;
 
   private resizeObserver_: ResizeObserver|null = null;
   private smartComposeResizeObserver_: ResizeObserver|null = null;
+  private dirObserver_: MutationObserver|null = null;
   private smartComposeHeightUpdateFrame_: number|null = null;
   private lastObservedInputWrapperWidth_: number = -1;
   private anchoredSpan_: HTMLElement|null = null;
@@ -140,6 +143,7 @@ export class ComposeboxInputElement extends I18nMixinLit
 
   override connectedCallback() {
     super.connectedCallback();
+    this.setupDirObserver_();
     this.updateDirection();
     this.setupResizeObservers_();
     this.smartComposeResizeObserver_ = new ResizeObserver(() => {
@@ -158,6 +162,8 @@ export class ComposeboxInputElement extends I18nMixinLit
       this.smartComposeResizeObserver_.disconnect();
       this.smartComposeResizeObserver_ = null;
     }
+    this.dirObserver_?.disconnect();
+    this.dirObserver_ = null;
     if (this.smartComposeHeightUpdateFrame_ !== null) {
       cancelAnimationFrame(this.smartComposeHeightUpdateFrame_);
       this.smartComposeHeightUpdateFrame_ = null;
@@ -508,12 +514,34 @@ export class ComposeboxInputElement extends I18nMixinLit
     this.resizeObserver_.observe(inputWrapper);
   }
 
-  // Update RTL status when the direction of the component changes.
-  // Used mainly for testing to provide a way to update the RTL status.
-  // The use of MutationObserver was considered but rejected since we do not
-  // likely need responsiveness here.
+  private setupDirObserver_() {
+    const inputEl = this.shadowRoot.querySelector<HTMLElement>('#input');
+    if (!inputEl) {
+      return;
+    }
+    this.dirObserver_ ??= new MutationObserver(() => this.updateDirection());
+    this.dirObserver_.disconnect();
+    this.dirObserver_.observe(
+        inputEl, {attributes: true, attributeFilter: ['dir']});
+  }
+
+  // Update RTL status when the direction of the component or inner #input
+  // changes (e.g. via the right-click Writing Direction context menu).
   updateDirection() {
-    this.isRtl_ = window.getComputedStyle(this).direction === 'rtl';
+    const input = this.shadowRoot.querySelector<HTMLElement>('#input');
+    const inputWrapper =
+        this.shadowRoot.querySelector<HTMLElement>('#inputWrapper');
+    if (input && inputWrapper) {
+      if (input.hasAttribute('dir')) {
+        inputWrapper.setAttribute('dir', input.getAttribute('dir')!);
+      } else {
+        inputWrapper.removeAttribute('dir');
+      }
+    }
+    this.isRtl_ = window.getComputedStyle(input ?? this).direction === 'rtl';
+    if (input && !this.disableCaretColorAnimation) {
+      this.updateCaret_();
+    }
   }
 
   insertSkillChip(chip: ComposeboxChip) {

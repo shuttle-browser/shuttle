@@ -125,7 +125,7 @@ views::Widget* MediaDialogView::ShowDialog(
     Profile* profile,
     content::WebContents* contents,
     global_media_controls::GlobalMediaControlsEntryPoint entry_point) {
-  DCHECK(service);
+  CHECK(service, base::NotFatalUntil::M162);
   // Hide the previous instance if it exists, since there can only be one dialog
   // instance at a time.
   HideDialog();
@@ -457,7 +457,7 @@ void MediaDialogView::OnSettingsButtonPressed() {
                                  GURL(captions::GetCaptionSettingsUrl()),
                                  ui::PAGE_TRANSITION_LINK);
   navigate_params.window_action = NavigateParams::WindowAction::kShowWindow;
-  navigate_params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
+  navigate_params.disposition = WindowOpenDisposition::kNewForegroundTab;
   Navigate(&navigate_params);
 }
 

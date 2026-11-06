@@ -42,9 +42,10 @@
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/base_window.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/views/background.h"
+#include "ui/views/controls/webview/web_contents_delegate_views.h"
 #include "ui/views/controls/webview/web_contents_set_background_color.h"
 #include "ui/views/layout/box_layout.h"
 #include "ui/views/layout/fill_layout.h"
@@ -91,6 +92,8 @@ ContextualTasksWebView::ContextualTasksWebView(
       owns_ghost_loader_web_contents_(ghost_loader_web_contents == nullptr) {
   SetProperty(views::kElementIdentifierKey,
               kContextualTasksSidePanelWebViewElementId);
+
+  SetAcceleratorHandling(views::WebContentsAcceleratorHandling::kEnabled);
 
   if (IsContextualTasksSidePanelRearchitectureEnabled()) {
     const bool is_dark_mode =
@@ -143,8 +146,8 @@ ContextualTasksWebView::ContextualTasksWebView(
     webui::SetBrowserWindowInterface(ghost_loader_view_->GetWebContents(),
                                      browser_window);
 
-    auto* container_ptr = AddChildView(std::move(content_container));
-    layout->SetFlexForView(container_ptr, 1);
+    content_container_ = AddChildView(std::move(content_container));
+    layout->SetFlexForView(content_container_, 1);
   } else {
     SetLayoutManager(std::make_unique<views::FillLayout>());
     content_web_view_ = AddChildView(
@@ -254,6 +257,34 @@ void ContextualTasksWebView::SetGhostLoaderVisible(bool visible) {
 
 bool ContextualTasksWebView::IsGhostLoaderVisible() const {
   return ghost_loader_view_ && ghost_loader_view_->GetVisible();
+}
+
+void ContextualTasksWebView::OnThemeChanged() {
+  views::View::OnThemeChanged();
+  if (!IsContextualTasksSidePanelRearchitectureEnabled() || !browser_window_ ||
+      !browser_window_->GetProfile()) {
+    return;
+  }
+
+  Profile* profile = browser_window_->GetProfile();
+  const SkColor background_color = contextual_tasks::ShouldUseDarkMode(profile)
+                                       ? kDarkModeBackgroundColor
+                                       : SK_ColorWHITE;
+  SetBackground(views::CreateSolidBackground(background_color));
+  if (content_container_) {
+    content_container_->SetBackground(
+        views::CreateSolidBackground(background_color));
+  }
+
+  if (toolbar_web_view_) {
+    ConfigureWebContentsBackground(toolbar_web_view_->web_contents(), profile);
+  }
+  if (ghost_loader_view_) {
+    ConfigureWebContentsBackground(ghost_loader_view_->web_contents(), profile);
+  }
+  if (web_contents()) {
+    ConfigureWebContentsBackground(web_contents(), profile);
+  }
 }
 
 void ContextualTasksWebView::DidStartNavigation(
@@ -384,6 +415,7 @@ void ContextualTasksWebView::DidFinishNavigation(
       toolbar_ui->SetThreadTitle(query_value);
     }
   }
+  toolbar_ui->MaybeTriggerPinningPromo();
 
   if (ui_service) {
     const GURL& previous_url =
@@ -441,13 +473,6 @@ void ContextualTasksWebView::RequestMediaAccessPermission(
       web_contents, request, std::move(callback), /*extension=*/nullptr);
 }
 
-bool ContextualTasksWebView::HandleKeyboardEvent(
-    content::WebContents* source,
-    const input::NativeWebKeyboardEvent& event) {
-  return unhandled_keyboard_event_handler_.HandleKeyboardEvent(
-      event, GetFocusManager());
-}
-
 content::WebContents* ContextualTasksWebView::OpenURLFromTab(
     content::WebContents* source,
     const content::OpenURLParams& params,
@@ -459,7 +484,7 @@ content::WebContents* ContextualTasksWebView::OpenURLFromTab(
 
   // Allow the side panel's own WebUI (`chrome://contextual-tasks`) to reload or
   // navigate itself in-place without forwarding to the active browser tab.
-  if (params.disposition == WindowOpenDisposition::CURRENT_TAB &&
+  if (params.disposition == ui::mojom::WindowOpenDisposition::kCurrentTab &&
       ContextualTasksUiService::IsContextualTasksUrl(params.url)) {
     content::NavigationController::LoadURLParams load_url_params(params);
     base::WeakPtr<content::NavigationHandle> navigation_handle =
@@ -518,13 +543,14 @@ content::WebContents* ContextualTasksWebView::OpenURLFromTab(
     }
 
     switch (modified_params.disposition) {
-      case WindowOpenDisposition::NEW_FOREGROUND_TAB:
-      case WindowOpenDisposition::NEW_BACKGROUND_TAB:
-      case WindowOpenDisposition::NEW_POPUP:
-      case WindowOpenDisposition::NEW_WINDOW:
+      case ui::mojom::WindowOpenDisposition::kNewForegroundTab:
+      case ui::mojom::WindowOpenDisposition::kNewBackgroundTab:
+      case ui::mojom::WindowOpenDisposition::kNewPopup:
+      case ui::mojom::WindowOpenDisposition::kNewWindow:
         break;
       default:
-        modified_params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
+        modified_params.disposition =
+            ui::mojom::WindowOpenDisposition::kNewForegroundTab;
         break;
     }
   }

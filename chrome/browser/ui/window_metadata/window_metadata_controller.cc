@@ -14,6 +14,7 @@
 #include "chrome/browser/ui/browser_init_state.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/desktop_browser_window_capabilities.h"
 #include "chrome/browser/ui/tab_contents/core_tab_helper.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
@@ -84,8 +85,7 @@ std::u16string WindowMetadataController::GetWindowTitleForCurrentTab(
   // For document picture-in-picture windows, we use the title from the opener
   // WebContents instead of the picture-in-picture WebContents itself.
   content::WebContents* web_contents_for_title =
-      browser_->GetType() ==
-              BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE
+      DesktopBrowserWindowCapabilities::IsDocumentPictureInPicture(&*browser_)
           ? PictureInPictureWindowManager::GetInstance()->GetWebContents()
           : browser_->tab_strip_model()->GetActiveWebContents();
 
@@ -99,8 +99,8 @@ std::u16string WindowMetadataController::GetWindowTitleForTab(
 
   if (title.empty()) {
     title = tab.Get()->GetContents()->GetTitle();
-    if (browser_->GetType() ==
-        BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE) {
+    if (DesktopBrowserWindowCapabilities::IsDocumentPictureInPicture(
+            &*browser_)) {
       content::WebContents* pip_web_contents =
           PictureInPictureWindowManager::GetInstance()->GetWebContents();
       if (pip_web_contents) {
@@ -112,7 +112,8 @@ std::u16string WindowMetadataController::GetWindowTitleForTab(
 
   if (title.empty() &&
       (browser_->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL ||
-       browser_->GetType() == BrowserWindowInterface::Type::TYPE_POPUP)) {
+       browser_->GetType() == BrowserWindowInterface::Type::TYPE_POPUP ||
+       browser_->GetType() == BrowserWindowInterface::Type::TYPE_FLOATING)) {
     title = CoreTabHelper::GetDefaultTitle();
   }
 
@@ -213,7 +214,8 @@ std::u16string WindowMetadataController::GetWindowTitleFromWebContents(
         captive_portal::CaptivePortalTabHelper::FromWebContents(contents) &&
         captive_portal::CaptivePortalTabHelper::FromWebContents(contents)
             ->is_captive_portal_window()) {
-      DCHECK(browser_->GetType() == BrowserWindowInterface::Type::TYPE_POPUP);
+      CHECK(browser_->GetType() == BrowserWindowInterface::Type::TYPE_POPUP,
+            base::NotFatalUntil::M162);
       return l10n_util::GetStringFUTF16(
           IDS_CAPTIVE_PORTAL_BROWSER_WINDOW_TITLE_FORMAT,
           title.empty() ? CoreTabHelper::GetDefaultTitle() : title);
@@ -278,7 +280,8 @@ void WindowMetadataController::SetWindowUserTitle(
   user_title_ = user_title;
   BrowserWindow::FromBrowser(browser_)->UpdateTitleBar();
   // See comment in Browser::OnTabGroupChanged
-  DCHECK(!IsRelevantToAppSessionService(browser_->GetType()));
+  CHECK(!IsRelevantToAppSessionService(browser_->GetType()),
+        base::NotFatalUntil::M162);
   SessionService* const session_service =
       SessionServiceFactory::GetForProfile(browser_->GetProfile());
   if (session_service) {

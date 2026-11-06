@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import '//resources/cr_components/composebox/composebox_aim_button.js';
 import '//resources/cr_components/composebox/composebox_dropdown.js';
 import '//resources/cr_components/composebox/composebox_file_inputs.js';
 import '//resources/cr_components/composebox/composebox_submit.js';
@@ -66,6 +67,7 @@ export class NtpComposeboxElement extends ComposeboxEmbedderMixin
         reflect: true,
         type: String,
       },
+      focused: {type: Boolean},
       /*
       `expanding_` property is used in composebox.css styles. It is added
       so that the imported styles work well. Remove this property once each
@@ -79,18 +81,30 @@ export class NtpComposeboxElement extends ComposeboxEmbedderMixin
         reflect: true,
         type: Boolean,
       },
+      persistentAimButtonEnabled_: {
+        type: Boolean,
+        reflect: true,
+      },
+      showAimButtonExitIcon_: {type: Boolean},
     };
   }
 
   accessor entrypointName: string = 'Realbox';
   accessor glifAnimationState: GlifAnimationState =
       GlifAnimationState.INELIGIBLE;
+  accessor focused: boolean = true;
   private searchboxCallbackRouter_: SearchboxPageCallbackRouter;
   private pageHandler_: PageHandlerRemote;
   private searchboxHandler_: SearchboxPageHandlerRemote;
   private eventTracker_: EventTracker = new EventTracker();
+  private outsideClickEnabled_: boolean =
+      getLoadTimeBoolean('composeboxRealboxOutsideClick', false);
   protected accessor expanding_: boolean = true;
   protected accessor shouldRemainFolded_: boolean = true;
+  protected accessor persistentAimButtonEnabled_: boolean =
+      getLoadTimeBoolean('composeboxPersistentAimButton', false);
+  protected accessor showAimButtonExitIcon_: boolean =
+      getLoadTimeBoolean('composeboxPersistentAimButtonWithX', false);
 
   override get keepMenuOpenOnTabSelect(): boolean {
     return getLoadTimeBoolean('keepMenuOpenOnTabSelectForRealbox', false);
@@ -153,6 +167,9 @@ export class NtpComposeboxElement extends ComposeboxEmbedderMixin
 
   override willUpdate(changedProperties: PropertyValues<this>) {
     super.willUpdate(changedProperties);
+    if (this.outsideClickEnabled_ && changedProperties.has('focused')) {
+      this.showDropdown = this.computeShowDropdown();
+    }
     this.shouldRemainFolded_ = this.computeShouldRemainFolded();
   }
 
@@ -166,7 +183,14 @@ export class NtpComposeboxElement extends ComposeboxEmbedderMixin
     if (this.inToolMode) {
       return false;
     }
-    if ((this.result?.matches?.length ?? 0) > 0) {
+    if (this.outsideClickEnabled_) {
+      if (this.input) {
+        return false;
+      }
+      if ((this.result?.matches?.length ?? 0) > 0 && this.focused) {
+        return false;
+      }
+    } else if ((this.result?.matches?.length ?? 0) > 0) {
       return false;
     }
     if (this.hasTabs()) {
@@ -209,6 +233,13 @@ export class NtpComposeboxElement extends ComposeboxEmbedderMixin
       });
     }
     await super.handleFuseboxAction(request);
+  }
+
+  override computeShowDropdown(): boolean {
+    if (this.outsideClickEnabled_ && !this.focused) {
+      return false;
+    }
+    return super.computeShowDropdown();
   }
 }
 

@@ -130,7 +130,7 @@ bool ContentRendererClient::AllowPopup() {
 }
 
 bool ContentRendererClient::IsUnboundedElementAllowed(
-    RenderFrame* render_frame) {
+    const blink::WebSecurityOrigin& origin) {
   return false;
 }
 
@@ -199,7 +199,7 @@ std::unique_ptr<media::KeySystemSupportRegistration>
 ContentRendererClient::GetSupportedKeySystems(
     RenderFrame* render_frame,
     media::GetSupportedKeySystemsCB cb) {
-  std::move(cb).Run({});
+  std::move(cb).Run(/*key_systems=*/{}, /*pending_key_systems=*/{});
   return nullptr;
 }
 
@@ -327,5 +327,9 @@ ContentRendererClient::CreateCastStreamingResourceProvider() {
 }
 #endif
 
+bool ContentRendererClient::ShouldUsePerBrowsingInstanceWindowAgent(
+    const url::Origin& origin) {
+  return false;
+}
 
 }  // namespace content

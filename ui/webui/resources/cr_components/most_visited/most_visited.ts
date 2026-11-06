@@ -250,6 +250,7 @@ export class MostVisitedElement extends MostVisitedElementBase {
   protected accessor toastSource_: TileSource = TileSource.CUSTOM_LINKS;
   protected accessor visible_: boolean = false;
   private adding_: boolean = false;
+  private isTileMoveInProgress_: boolean = false;
   private browserProxy_: BrowserProxy;
   private windowProxy_: MostVisitedWindowProxy;
   private actionMenuTargetIndex_: number = -1;
@@ -325,6 +326,8 @@ export class MostVisitedElement extends MostVisitedElementBase {
         this.browserProxy_.handler.updateMostVisitedInfo();
       }
     });
+    this.eventTracker_.add(
+        document, 'click', (e: MouseEvent) => this.onDocumentClick_(e));
     this.browserProxy_.handler.updateMostVisitedInfo();
     FocusOutlineManager.forDocument(document);
   }
@@ -1024,7 +1027,10 @@ export class MostVisitedElement extends MostVisitedElementBase {
     this.inReorderMode_ = true;
     this.reordering_ = true;
     await this.updateComplete;
-    this.tileFocus_(this.actionMenuTargetIndex_);
+    await new Promise(requestAnimationFrame);
+    if (this.inReorderMode_) {
+      this.tileFocus_(this.actionMenuTargetIndex_);
+    }
   }
 
   protected onRestoreDefaultsClick_() {
@@ -1101,6 +1107,10 @@ export class MostVisitedElement extends MostVisitedElementBase {
 
     e.preventDefault();  // Prevents default browser action (navigation).
 
+    if (this.inReorderMode_) {
+      return;
+    }
+
     const index = this.getCurrentTargetIndex_(e);
     const item = this.tiles_[index]!;
     this.browserProxy_.handler.onMostVisitedTileNavigation(
@@ -1113,25 +1123,49 @@ export class MostVisitedElement extends MostVisitedElementBase {
     }
 
     if (this.shortcutsReorderEnabled && this.inReorderMode_) {
+      if (!this.isReorderModeKey_(e.key)) {
+        return;
+      }
+
+      if (e.key === 'Escape' || e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        const targetIndex = this.actionMenuTargetIndex_;
+        await this.exitReorderMode_();
+        this.tileElements_[targetIndex]
+            ?.querySelector<HTMLElement>('#actionMenuButton')
+            ?.focus();
+        return;
+      }
+
+      if (this.isTileMoveInProgress_) {
+        return;
+      }
+
       // Handle reordering key events.
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        this.isTileMoveInProgress_ = true;
         const currentIndex = this.actionMenuTargetIndex_;
-        const direction = e.key === 'ArrowLeft' ? -1 : 1;
-        const newIndex = (currentIndex + direction + this.tiles_.length) %
-            this.tiles_.length;
+        const isForward = e.key === (this.isRtl_ ? 'ArrowLeft' : 'ArrowRight');
+        const direction = isForward ? 1 : -1;
+        const visibleTileCount = this.tileElements_.length;
+        const newIndex =
+            (currentIndex + direction + visibleTileCount) % visibleTileCount;
 
-        const selectedTile = this.tiles_[currentIndex]!;
-        const adjacentTile = this.tiles_[newIndex]!;
-        this.tiles_[currentIndex] = adjacentTile;
-        this.tiles_[newIndex] = selectedTile;
-
+        const [selectedTile] = this.tiles_.splice(currentIndex, 1);
+        assert(selectedTile);
+        this.tiles_.splice(newIndex, 0, selectedTile);
         this.requestUpdate();
+
         this.browserProxy_.handler.reorderMostVisitedTile(
             selectedTile, newIndex);
 
         this.actionMenuTargetIndex_ = newIndex;
         await this.updateComplete;
-        this.tileFocus_(newIndex);
+        if (this.inReorderMode_) {
+          this.tileFocus_(newIndex);
+        }
+        this.isTileMoveInProgress_ = false;
         return;
       }
     }
@@ -1309,6 +1343,28 @@ export class MostVisitedElement extends MostVisitedElementBase {
     // Move focus after the next render so that tileElements_ is updated.
     await this.updateComplete;
     this.tileFocus_(index);
+  }
+
+  private async exitReorderMode_() {
+    this.inReorderMode_ = false;
+    this.reordering_ = false;
+    this.actionMenuTargetIndex_ = -1;
+    await this.updateComplete;
+  }
+
+  private isReorderModeKey_(key: string): boolean {
+    return key === 'Escape' || key === 'Enter' || key === 'ArrowLeft' ||
+        key === 'ArrowRight' || key === 'Tab';
+  }
+
+  private async onDocumentClick_(e: MouseEvent) {
+    if (!this.inReorderMode_) {
+      return;
+    }
+
+    if (!e.composedPath().includes(this.$.container)) {
+      await this.exitReorderMode_();
+    }
   }
 
   protected onTilesRendered_() {

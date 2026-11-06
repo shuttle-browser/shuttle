@@ -6,6 +6,7 @@
 #define CHROME_BROWSER_CONTEXTUAL_TASKS_CONTEXTUAL_TASKS_UTILS_H_
 
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "base/functional/callback.h"
@@ -19,11 +20,17 @@
 #include "mojo/public/cpp/bindings/remote.h"
 #include "third_party/omnibox_proto/model_mode.pb.h"
 #include "third_party/omnibox_proto/tool_mode.pb.h"
+#include "ui/base/window_open_disposition.h"
 
 class Profile;
 class BrowserWindowInterface;
 
+namespace base {
+class Uuid;
+}  // namespace base
+
 namespace content {
+class NavigationHandle;
 class WebContents;
 }  // namespace content
 
@@ -35,6 +42,7 @@ namespace contextual_search {
 enum class ContextualSearchSource;
 class ContextualSearchMetricsRecorder;
 class ContextualSearchSessionHandle;
+struct TabInfo;
 }  // namespace contextual_search
 
 namespace lens {
@@ -47,8 +55,18 @@ class Page;
 }  // namespace mojom
 
 class ContextualTasksUIInterface;
+class ContextualTasksService;
 class AimMessagePoster;
+struct ContextualTaskContext;
 struct SiteExclusionDetail;
+
+// Converts the chrome-tab entries of `context` into submitted
+// `contextual_search::TabInfo` records suitable for
+// `ContextualSearchSessionHandle::SetRestoredTabs()`. Returns an empty vector
+// if `context` is null. Non-webpage / non-tab entries and entries with empty
+// titles or invalid URLs are skipped.
+std::vector<contextual_search::TabInfo> ToRestoredTabInfos(
+    const ContextualTaskContext* context);
 
 // Utility method to create config params for the
 // ContextualSearchContextController.
@@ -72,6 +90,12 @@ void RecordErrorPageShown(contextual_search::ContextualSearchSource source);
 // Records the HTTP response code of the inner frame contents.
 void RecordInnerFrameContentsHttpResponseCode(int http_status_code,
                                               bool is_zero_state);
+
+// Records navigation HTTP response code and net error code metrics for
+// Contextual Tasks side panel navigations.
+void RecordContextualTasksNavigationMetrics(
+    content::NavigationHandle* navigation_handle,
+    bool is_zero_state);
 
 // Returns true if tab sharing and tab input capabilities are supported
 // for the given profile (checking AIM and Fusebox eligibility).
@@ -175,21 +199,22 @@ bool ShouldShowSidePanel();
 // Returns true if running on Android mobile (phone form factor).
 bool IsAndroidMobileFormFactor();
 
-// Returns true if running on a large-screen Android device (tablet or desktop
-// form factor).
-bool IsAndroidLargeFormFactor();
+// Returns true if running on an Android desktop form factor device.
+bool IsAndroidDesktopFormFactor();
 
 // Returns whether the provided URL is to a contextual tasks WebUI page.
 bool IsContextualTasksUrl(const GURL& url);
 
-// Returns the functional URL (usually the inner frame URL) for the given
-// WebContents if it is a Contextual Tasks page; otherwise returns an empty
-// GURL.
-GURL GetContextualTasksFunctionalURL(content::WebContents* web_contents);
+// Returns the AI Mode thread id of `url` (its `mtid` param), or `std::nullopt`
+// if `url` has none.
+std::optional<std::string> GetAiModeThreadId(const GURL& url);
 
-// Returns the pretty display URL (e.g. chrome://google.com/search) for the
-// given WebContents if it is a Contextual Tasks page.
-GURL GetContextualTasksDisplayURL(content::WebContents* web_contents);
+// Adds the AI Mode thread `thread_id` to `task_id`, along with the thread's
+// latest turn (`mstk`) and title (`q`) from `url`, the thread's AI Mode URL.
+void UpdateAiModeThreadForTask(ContextualTasksService& service,
+                               const base::Uuid& task_id,
+                               const std::string& thread_id,
+                               const GURL& url);
 
 // Returns true if the given URL is valid for sharing as tab context with AI
 // Mode (matches the composebox '+' menu tab picker eligibility).
@@ -221,6 +246,69 @@ lens::ClientToAimMessage GetHandshakeMessageProto();
 // Returns the serialized ClientToAimMessage containing the HandshakePing
 // with supported capabilities.
 std::vector<uint8_t> GetSerializedHandshakeMessage();
+
+// LINT.IfChange(ContextualTasksExtensionHandshakeStatus)
+// Terminal outcome of one Contextual Tasks extension Service Worker port
+// handshake with the Search Web page.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class ExtensionHandshakeStatus {
+  kSuccess = 0,
+  kHostOriginRejected = 1,
+  kFrameDetached = 2,
+  kMojoRequestFailed = 3,
+  kInvalidDocumentId = 4,
+  kMaxValue = kInvalidDocumentId,
+};
+// LINT.ThenChange(
+//   //chrome/browser/resources/contextual_tasks/extension/background.ts:ContextualTasksExtensionHandshakeStatus,
+//   //tools/metrics/histograms/metadata/contextual_tasks/enums.xml:ContextualTasksExtensionHandshakeStatus
+// )
+
+// LINT.IfChange(ContextualTasksExtensionPostMessageError)
+// Reason a message between the Contextual Tasks extension and Search Web was
+// dropped.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class ExtensionPostMessageError {
+  kUntrustedOrigin = 0,
+  kUnexpectedDataType = 1,
+  kMessageTooLarge = 2,
+  kInvalidDocumentId = 3,
+  kProtoParseFailed = 4,
+  kMojoPipeClosed = 5,
+  kMaxValue = kMojoPipeClosed,
+};
+// LINT.ThenChange(
+//   //chrome/browser/resources/contextual_tasks/extension/background.ts:ContextualTasksExtensionPostMessageError,
+//   //tools/metrics/histograms/metadata/contextual_tasks/enums.xml:ContextualTasksExtensionPostMessageError
+// )
+
+void RecordExtensionHandshakeStatus(ExtensionHandshakeStatus status);
+void RecordExtensionHandshakeLatency(base::TimeDelta latency);
+void RecordExtensionPostMessageError(ExtensionPostMessageError error);
+void RecordExtensionQueuedSearchMessagesDropped(size_t count);
+
+// The requested open disposition when a user clicks a link in the contextual
+// tasks side panel. Recorded in
+// `ContextualTasks.AiResponse.UserAction.LinkClicked.Panel.OpenDisposition`.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// LINT.IfChange(ContextualTasksLinkOpenDisposition)
+enum class ContextualTasksLinkOpenDisposition {
+  kCurrentTab = 0,
+  kNewForegroundTab = 1,
+  kNewBackgroundTab = 2,
+  kNewWindow = 3,
+  kOffTheRecord = 4,
+  kOther = 5,
+  kMaxValue = kOther,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/contextual_tasks/enums.xml:ContextualTasksLinkOpenDisposition)
+
+// Records side panel link click metrics, including the requested window open
+// disposition.
+void RecordSidePanelLinkClickedMetrics(WindowOpenDisposition disposition);
 
 }  // namespace contextual_tasks
 

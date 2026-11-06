@@ -6530,15 +6530,10 @@ IN_PROC_BROWSER_TEST_P(SitePerProcessBrowserTest,
   EXPECT_TRUE(pending_process->Shutdown(0));
   crash_observer.Wait();
 
-  // The navigation may or may not get canceled, depending on whether the
-  // feature ResumeNavigationWithSpeculativeRFHProcessGone is enabled. However
-  // the navigation will never commit and hence the b.com RVH should not be
-  // active.
+  // Since the navigation above didn't commit, the b.com RenderViewHost in the
+  // main tab should still not be active.
   EXPECT_FALSE(rvh->is_active());
-  if (!base::FeatureList::IsEnabled(
-          features::kResumeNavigationWithSpeculativeRFHProcessGone)) {
-    EXPECT_EQ(net::ERR_ABORTED, handle_observer.net_error_code());
-  }
+  EXPECT_EQ(net::ERR_ABORTED, handle_observer.net_error_code());
 
   // Navigate popup to b.com to recreate the b.com process.  When creating
   // opener proxies, |rvh| should be reused as a swapped out RVH.  In
@@ -11691,8 +11686,11 @@ class GpuInfoUpdateObserver : public GpuDataManagerObserver {
 
 // Checks if RenderInputRouterDelegate mojo connection is reset when GPU process
 // restarts.
+// TODO(crbug.com/439855865, crbug.com/544000851): Re-enable once
+// cc::slim::LayerTreeImpl resets frame_sink_ on GPU process crash so
+// HostFrameSinkManager reconnects on restart.
 IN_PROC_BROWSER_TEST_P(AndroidInputBrowserTest,
-                       RestartingGPUProcessResetsMojoConnection) {
+                       DISABLED_RestartingGPUProcessResetsMojoConnection) {
   // Return early if transferring input to Viz isn't supported.
   if (!input::InputUtils::IsTransferInputToVizSupported()) {
     return;

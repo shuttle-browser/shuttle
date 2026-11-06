@@ -550,4 +550,12 @@ public class Features {
     // Page.snapshotState
     public static final String NAVIGATION_LISTENER_NAVIGATION_STATE =
             "NAVIGATION_LISTENER_NAVIGATION_STATE";
+
+    // WebViewCompat.addHeaderInterceptor
+    // Profile.addHeaderInterceptor
+    public static final String HEADER_INTERCEPTOR = "HEADER_INTERCEPTOR";
+
+    // WebViewCompat.setGoogleAccountsCallback
+    // WebViewCompat.clearGoogleAccountsCallback
+    public static final String GOOGLE_ACCOUNTS_CALLBACK = "GOOGLE_ACCOUNTS_CALLBACK_V1";
 }

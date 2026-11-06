@@ -60,12 +60,13 @@
 #include "ui/views/controls/menu/menu_separator.h"
 #include "ui/views/controls/menu/submenu_view.h"
 #include "ui/views/controls/separator.h"
+#include "ui/views/deprecated_layout_immediately_pass_key.h"
 #include "ui/views/property_effects.h"
 #include "ui/views/style/typography.h"
 #include "ui/views/style/typography_provider.h"
 #include "ui/views/vector_icons.h"
 #include "ui/views/view_class_properties.h"
-#include "ui/views/view_tracker.h"
+#include "ui/views/view_guard.h"
 #include "ui/views/view_utils.h"
 #include "ui/views/widget/widget.h"
 
@@ -132,10 +133,6 @@ MenuItemView::MenuItemView(MenuDelegate* delegate)
                    delegate) {}
 
 MenuItemView::~MenuItemView() {
-  CHECK(!inserting_into_menu_)
-      << "A menu item was synchronously destroyed while being inserted into a "
-         "menu, possibly by some consumer of the accessibility API. This "
-         "should never happen.";
   SetAnchorView(nullptr);
   // Only the root item holds `controller_`, so walk up to the root to also
   // cover destruction of a non-root subtree (e.g. via RemoveMenuItem()). This
@@ -422,7 +419,8 @@ MenuItemView* MenuItemView::AddMenuItemAt(
     ui::MenuSeparatorType separator_style,
     std::optional<ui::ColorId> submenu_background_color,
     std::optional<ui::ColorId> foreground_color,
-    std::optional<ui::ColorId> selected_color_id) {
+    std::optional<ui::ColorId> selected_color_id,
+    std::optional<ui::ColorId> submenu_arrow_color_id) {
   if (type == Type::kSeparator) {
     AddSeparatorAt(index, separator_style);
     return nullptr;
@@ -435,15 +433,18 @@ MenuItemView* MenuItemView::AddMenuItemAt(
   item->SetMinorText(minor_text);
   item->SetMinorIcon(minor_icon);
   item->SetIcon(icon);
-  item->SetForegroundColorId(foreground_color);
-  item->SetSelectedColorId(selected_color_id);
-  return AddMenuItemViewImpl(std::move(item), index, submenu_background_color);
+  return AddMenuItemViewImpl(std::move(item), index, submenu_background_color,
+                             foreground_color, selected_color_id,
+                             submenu_arrow_color_id);
 }
 
 MenuItemView* MenuItemView::AddMenuItemViewImpl(
     std::unique_ptr<MenuItemView> item,
     std::optional<size_t> index,
-    std::optional<ui::ColorId> submenu_background_color) {
+    std::optional<ui::ColorId> submenu_background_color,
+    std::optional<ui::ColorId> foreground_color,
+    std::optional<ui::ColorId> selected_color_id,
+    std::optional<ui::ColorId> submenu_arrow_color_id) {
   CHECK(item);
   const Type type = item->GetType();
   DCHECK_NE(type, Type::kEmpty);
@@ -461,6 +462,10 @@ MenuItemView* MenuItemView::AddMenuItemViewImpl(
   const size_t insert_index = index.value_or(submenu_->children().size());
   DCHECK_LE(insert_index, submenu_->children().size());
 
+  item->SetForegroundColorId(foreground_color);
+  item->SetSelectedColorId(selected_color_id);
+  item->SetSubmenuArrowColorId(submenu_arrow_color_id);
+
   if (type == Type::kSubMenu || type == Type::kActionableSubMenu) {
     item->CreateSubmenu();
   }
@@ -471,7 +476,12 @@ MenuItemView* MenuItemView::AddMenuItemViewImpl(
     item->SetVisible(false);
   }
 
-  base::AutoReset inserting_auto_reset(&item->inserting_into_menu_, true);
+  // There are cases where menu insertions can lead to synchronous accessibility
+  // events, which can in turn lead to a miscalibrated or malicious
+  // accessibility tool attempting to close the menu mid-insertion. Guard
+  // against the item being destroyed while it is being added.
+  ViewGuard item_guard(*item);
+
   auto* added_item = submenu_->AddChildViewAt(std::move(item), insert_index);
 
   added_item->UpdateTooltipText();
@@ -487,16 +497,51 @@ MenuItemView* MenuItemView::AddMenuItemViewImpl(
   return added_item;
 }
 
+void MenuItemView::SetIsPinned(bool is_pinned) {
+  if (is_pinned_ == is_pinned) {
+    return;
+  }
+  is_pinned_ = is_pinned;
+  if (is_pinned_ && parent_menu_item_ && parent_menu_item_->HasSubmenu()) {
+    if (MenuScrollViewContainer* container =
+            parent_menu_item_->GetSubmenu()->scroll_view_container()) {
+      container->UpdatePinnedItems();
+    }
+  }
+}
+
 void MenuItemView::RemoveMenuItem(View* item) {
   DCHECK(item);
   DCHECK(submenu_);
-  DCHECK_EQ(submenu_.get(), item->parent());
+  View* const parent = item->parent();
+  // Pinned items live in the scroll view container's header/footer containers
+  // rather than directly in the SubmenuView.
+  const MenuScrollViewContainer* const container =
+      submenu_->scroll_view_container();
+  DCHECK(parent == submenu_.get() ||
+         (container && (parent == container->header_container() ||
+                        parent == container->footer_container())));
   removed_items_.push_back(item);
-  submenu_->RemoveChildView(item);
+  parent->RemoveChildView(item);
 }
 
 void MenuItemView::RemoveAllMenuItems() {
   DCHECK(submenu_);
+
+  // Pinned items live in the scroll view container's header/footer containers
+  // rather than directly in the SubmenuView.
+  if (const MenuScrollViewContainer* const container =
+          submenu_->scroll_view_container()) {
+    for (const View* pinned_container :
+         {container->header_container(), container->footer_container()}) {
+      if (!pinned_container) {
+        continue;
+      }
+      while (!pinned_container->children().empty()) {
+        RemoveMenuItem(pinned_container->children().front());
+      }
+    }
+  }
 
   removed_items_.insert(removed_items_.end(), submenu_->children().begin(),
                         submenu_->children().end());
@@ -907,9 +952,16 @@ void MenuItemView::ChildrenChanged() {
       // as UpdateSubmenuSelection() looks at bounds. This handles the case of
       // the top level window's size remaining the same, resulting in no change
       // to the submenu's size and no layout.
-      submenu_->DeprecatedLayoutImmediately();
-      submenu_->SchedulePaint();
-      // Update the menu selection after layout.
+      if (MenuScrollViewContainer* const container =
+              submenu_->scroll_view_container()) {
+        container->DeprecatedLayoutImmediately(
+            DeprecatedLayoutImmediatelyPassKey());
+        container->SchedulePaint();
+      } else {
+        submenu_->DeprecatedLayoutImmediately(
+            DeprecatedLayoutImmediatelyPassKey());
+        submenu_->SchedulePaint();
+      }
       controller->UpdateSubmenuSelection(submenu_.get());
     }
   }
@@ -1183,9 +1235,12 @@ void MenuItemView::UpdateEmptyMenusAndMetrics() {
   const Views children = submenu_->children();
   bool has_visible_menu_items = false;
 
-  // Making changes to selection, etc. can cause `this` to be deleted. Track the
-  // continued existence of this object while updating.
-  ViewTracker tracker(this);
+  // Making changes to selection, accessible text, etc. can cause `this` to be
+  // deleted via malicious or poorly-coded accessibility callbacks. Rather than
+  // risk the entire tree being deleted out from under us (and having to check
+  // the validity of all pointers in every call triggered below), just CHECK()
+  // if `this` disappears under us.
+  ViewGuard guard(*this);
 
   for (View* child : children) {
     MenuItemView* const child_menu = AsViewClass<MenuItemView>(child);
@@ -1197,15 +1252,11 @@ void MenuItemView::UpdateEmptyMenusAndMetrics() {
       // Prevent view destruction until selection is updated.
       // We remove the child before updating selection in case of re-entrancy.
       std::unique_ptr<View> removed_child = submenu_->RemoveChildViewT(child);
-      if (tracker && selected) {
+      if (selected) {
         // Update selection to this menu before deleting the currently
         // selected child.
         GetMenuController()->SetSelection(
             this, MenuController::SELECTION_UPDATE_IMMEDIATELY);
-        // This can also delete `this`, so check for that.
-        if (!tracker) {
-          return;
-        }
       }
       // TODO(https://crbug.com/537701460): Remove after SubmenuView gets a
       // proper layout.
@@ -1213,6 +1264,11 @@ void MenuItemView::UpdateEmptyMenusAndMetrics() {
     } else {
       has_visible_menu_items |= child->GetVisible();
     }
+  }
+
+  if (!has_visible_menu_items && submenu_->scroll_view_container()) {
+    has_visible_menu_items =
+        std::ranges::any_of(submenu_->GetMenuItems(), &View::GetVisible);
   }
 
   // Now add back an empty menu item if need be.
@@ -1835,11 +1891,17 @@ void MenuItemView::UpdateSelectionBasedState(bool paint_as_selected) {
   last_paint_as_selected_ = paint_as_selected;
   const Colors colors = CalculateColors(paint_as_selected);
   if (submenu_arrow_image_view_) {
+    const ui::ColorVariant arrow_color =
+        submenu_arrow_color_id_.has_value()
+            ? ui::ColorVariant(GetEnabledInViewsSubtree()
+                                   ? *submenu_arrow_color_id_
+                                   : ui::kColorMenuIconDisabled)
+            : ui::ColorVariant(colors.icon_color);
     submenu_arrow_image_view_->SetImage(ui::ImageModel::FromVectorIcon(
         features::IsRoundedIconsEnabled()
             ? vector_icons::kKeyboardArrowRightFlippableIcon
             : vector_icons::kSubmenuArrowChromeRefreshOldIcon,
-        colors.icon_color));
+        arrow_color));
   }
   MenuDelegate* delegate = GetDelegate();
   if (type_ == Type::kCheckbox && delegate &&

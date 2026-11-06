@@ -23,16 +23,19 @@
 #include "chrome/browser/profiles/profile_avatar_icon_util.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
+#include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_fre_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_prefs.h"
 #include "chrome/browser/ui/omnibox/omnibox_everywhere_service.h"
 #include "chrome/browser/ui/omnibox/omnibox_everywhere_service_factory.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/search/most_visited_metrics_logger.h"
+#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/location_bar/omnibox_popup_file_selector.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_context_menu.h"
 #include "chrome/browser/ui/views/user_education/browser_help_bubble.h"
 #include "chrome/browser/ui/webui/cr_components/most_visited/most_visited_handler.h"
 #include "chrome/browser/ui/webui/cr_components/most_visited/most_visited_pref_observer.h"
+#include "chrome/browser/ui/webui/cr_components/searchbox/plural_string_provider.h"
 #include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_handler.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter_service.h"
@@ -41,7 +44,6 @@
 #include "chrome/browser/ui/webui/omnibox_everywhere/debug/omnibox_everywhere_debug_page_handler.h"
 #include "chrome/browser/ui/webui/omnibox_everywhere/omnibox_everywhere_handler.h"
 #include "chrome/browser/ui/webui/omnibox_everywhere/omnibox_everywhere_page_handler.h"
-#include "chrome/browser/ui/webui/plural_string_handler.h"
 #include "chrome/browser/ui/webui/sanitized_image/sanitized_image_source.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/branded_strings.h"
@@ -159,6 +161,7 @@ void AddMostVisitedSourceStrings(content::WebUIDataSource* source) {
 
   static constexpr webui::LocalizedString kMostVisitedStrings[] = {
       {"addLinkTitle", IDS_NTP_CUSTOM_LINKS_ADD_SHORTCUT_TITLE},
+      {"close", IDS_ACCNAME_CLOSE},
       {"editLinkTitle", IDS_NTP_CUSTOM_LINKS_EDIT_SHORTCUT},
       {"viewLinkTitle", IDS_NTP_CUSTOM_LINKS_SHORTCUT_DETAILS_TITLE},
       {"invalidUrl", IDS_NTP_CUSTOM_LINKS_INVALID_URL},
@@ -309,11 +312,11 @@ OmniboxEverywhereUI::OmniboxEverywhereUI(content::WebUI* web_ui)
   };
   source->AddLocalizedStrings(kStrings);
 
-  bool fre_enabled =
-      base::FeatureList::IsEnabled(omnibox::kOmniboxEverywhereFre);
-  omnibox_everywhere::prefs::FreStage current_stage =
-      fre_enabled ? omnibox_everywhere::prefs::GetCurrentFreStage(profile_)
-                  : omnibox_everywhere::prefs::FreStage::kNone;
+  auto* service = OmniboxEverywhereServiceFactory::GetForProfile(profile_);
+  omnibox_everywhere::FreStage current_stage =
+      (service && service->fre_controller())
+          ? service->fre_controller()->GetCurrentStage()
+          : omnibox_everywhere::FreStage::kNone;
   source->AddInteger("initialFreStage", static_cast<int>(current_stage));
 
   base::ListValue initial_tokens;
@@ -465,12 +468,6 @@ OmniboxEverywhereUI::OmniboxEverywhereUI(content::WebUI* web_ui)
   source->AddBoolean("contextButtonShapeIsOblong",
                      omnibox::kContextButtonShapeIsOblong.Get());
 
-  // Add a handler to provide pluralized strings.
-  auto plural_string_handler = std::make_unique<PluralStringHandler>();
-  plural_string_handler->AddLocalizedString("sharingTabs",
-                                            IDS_COMPOSE_SHARING_TABS);
-  web_ui->AddMessageHandler(std::move(plural_string_handler));
-
   ui::TrackedElementHandlerDocumentSingleton::Register(
       this, {kOmniboxEverywhereLensButtonElementId});
 
@@ -482,6 +479,13 @@ OmniboxEverywhereUI::OmniboxEverywhereUI(content::WebUI* web_ui)
 }
 
 OmniboxEverywhereUI::~OmniboxEverywhereUI() = default;
+
+void OmniboxEverywhereUI::BindInterface(
+    mojo::PendingReceiver<plural_string::mojom::PluralStringProvider>
+        receiver) {
+  PluralStringProvider::Create(std::move(receiver),
+                               GetSearchboxPluralStringIds());
+}
 
 void OmniboxEverywhereUI::BindInterface(
     mojo::PendingReceiver<composebox::mojom::PageHandlerFactory> receiver) {
@@ -619,6 +623,14 @@ bool OmniboxEverywhereUI::CancelChromeDefaultPicker() {
 void OmniboxEverywhereUI::BindInterface(
     mojo::PendingReceiver<omnibox_everywhere_debug::mojom::PageHandlerFactory>
         receiver) {
+  // The debug page is only meant to be opened in a browser tab, never inside
+  // the floating Omnibox Everywhere popup's WebContents.
+  if (!omnibox::IsOmniboxEverywhereEnabled(profile_) ||
+      !web_ui()->GetWebContents() ||
+      !BrowserUserEducationInterface::MaybeGetForWebContentsInTab(
+          web_ui()->GetWebContents())) {
+    return;
+  }
   if (debug_page_factory_receiver_.is_bound()) {
     debug_page_factory_receiver_.reset();
   }
@@ -710,6 +722,15 @@ void OmniboxEverywhereUI::SetIsComposebox(bool is_composebox) {
     is_composebox_mode_ = true;
   } else {
     ClearContextualSessionHandle();
+  }
+}
+
+void OmniboxEverywhereUI::OnDismissMostVisited() {
+  if (profile_ && profile_->GetPrefs()) {
+    profile_->GetPrefs()->SetInteger(
+        omnibox_everywhere::prefs::kOmniboxEverywhereShowShortcuts,
+        static_cast<int>(
+            omnibox_everywhere::prefs::ShowShortcutsPrefValue::kDisabled));
   }
 }
 

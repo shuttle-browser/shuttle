@@ -1438,7 +1438,8 @@ size_t GetOutermostMainFrameCountForFastShutdown(RenderProcessHost* process) {
         RenderFrameHostImpl* const outermost_rfh =
             static_cast<RenderFrameHostImpl*>(rfh)->GetOutermostMainFrame();
         if (outermost_rfh->lifecycle_state() ==
-            RenderFrameHostLifecycleStateImpl::kActive) {
+                RenderFrameHostLifecycleStateImpl::kActive &&
+            !outermost_rfh->document_associated_data().is_discarded()) {
           outermost_main_frames.insert(outermost_rfh);
         }
       });
@@ -1773,7 +1774,7 @@ RenderProcessHostImpl::RenderProcessHostImpl(
 
   widget_helper_ = new RenderWidgetHelper();
 
-  ChildProcessSecurityPolicyImpl::GetInstance()->Add(GetID(), browser_context);
+  ChildProcessSecurityPolicyImpl::GetInstance()->Add(GetID());
 
   CHECK(!BrowserMainRunner::ExitedMainMessageLoop());
   RegisterHost(GetID(), this);
@@ -1980,7 +1981,7 @@ bool RenderProcessHostImpl::Init() {
 
   // Find the renderer before creating the channel so if this fails early we
   // return without creating the channel.
-  base::FilePath renderer_path = ChildProcessHost::GetChildPath(flags);
+  base::FilePath renderer_path = ChildProcessHost::GetChildPath(flags, GetID());
   if (renderer_path.empty())
     return false;
 
@@ -2134,7 +2135,7 @@ bool RenderProcessHostImpl::Init() {
 #if BUILDFLAG(IS_WIN)
     std::unique_ptr<SandboxedProcessLauncherDelegate> sandbox_delegate =
         std::make_unique<RendererSandboxedProcessLauncherDelegateWin>(
-            *cmd_line, IsPdf(), IsJitDisabled());
+            *cmd_line, IsPdf(), IsJitDisabled(), GetID());
 #else
     std::unique_ptr<SandboxedProcessLauncherDelegate> sandbox_delegate =
         std::make_unique<RendererSandboxedProcessLauncherDelegate>();
@@ -4265,9 +4266,6 @@ bool RenderProcessHostImpl::FastShutdownIfPossible(
     bool ignore_keep_alive,
     bool ignore_pending_reuse,
     bool use_outermost_main_frame_check) {
-  base::UmaHistogramBoolean(
-      "BrowserRenderProcessHost.FastShutdownIfPossible.Total", true);
-
   // TODO(crbug.com/463513005): When switching to checking outermost main frame
   // counts by default consider eliminating `pending_views_` - capturing these
   // in the count returned by the function instead (`pending_views_` covers
@@ -4280,7 +4278,7 @@ bool RenderProcessHostImpl::FastShutdownIfPossible(
 
   // Do not shut down the process if there are active or pending views other
   // than the ones we're shutting down.
-  if (page_count &&
+  if ((page_count || use_outermost_main_frame_check) &&
       page_count != (view_or_outermost_frame_count + pending_views_)) {
     LogDelayReasonForFastShutdown(
         DelayShutdownReason::kOtherActiveOrPendingViews);
@@ -5131,6 +5129,15 @@ bool RenderProcessHostImpl::IsSuitableHost(
           !process_lock.IsCompatibleWithWebExposedIsolation(site_info)) {
         TRACE_EVENT_INSTANT("navigation",
                             "NotSuitableHost: WebExposedIsolation diff");
+        return false;
+      }
+
+      // Sites from different shards must never share a process (see
+      // BrowserContext::SetSitesForEmbedderShard()). A used process's shard is
+      // recorded on its ProcessLock (see ProcessLock::shard()), while an unused
+      // process can still be used for any shard.
+      if (!host->IsUnused() && process_lock.shard() != site_info.shard()) {
+        TRACE_EVENT_INSTANT("navigation", "NotSuitableHost: shard diff");
         return false;
       }
 

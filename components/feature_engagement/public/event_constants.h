@@ -472,6 +472,17 @@ extern const char kGeminiSessionTerminated[];
 // Event fired when the omnibox is moved to the bottom position.
 extern const char kIOSBottomOmniboxUsed[];
 
+// Event fired when the Account Switching promo is ignored without an explicit
+// accept or cancel action.
+extern const char kIOSAccountSwitchingPromoIgnored[];
+
+// Event fired when the Account Switching promo is explicitly dismissed via
+// the secondary action button ("Not now").
+extern const char kIOSAccountSwitchingPromoExplicitlyDismissed[];
+
+// Event fired when the user signs into or switches the primary account.
+extern const char kIOSAccountSwitchingPrimaryAccountChanged[];
+
 #endif  // BUILDFLAG(IS_IOS)
 
 // Android.
@@ -483,8 +494,6 @@ extern const char kPwaInstallMenuSelected[];
 // The user clicked on the Send Tab to Self entry point in the omnibox
 // long-press menu.
 extern const char kSendTabToSelfOmniboxUsed[];
-
-extern const char kTabSearchComboButtonUsed[];
 
 }  // namespace events
 

@@ -178,7 +178,6 @@
 #include "third_party/blink/renderer/platform/widget/input/widget_input_handler_manager.h"
 #include "third_party/blink/renderer/platform/widget/widget_base.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/perfetto/include/perfetto/tracing/track.h"
@@ -1106,15 +1105,19 @@ WebInputEventResult WebFrameWidgetImpl::HandleKeyEvent(
     return result;
   }
 
-  const WebInputEvent::Type kContextMenuKeyTriggeringEventType =
-#if BUILDFLAG(IS_WIN)
-      WebInputEvent::Type::kKeyUp;
-#else
-      WebInputEvent::Type::kRawKeyDown;
+  bool is_key_down = event.GetType() == WebInputEvent::Type::kRawKeyDown;
+#if BUILDFLAG(IS_ANDROID)
+  if (base::FeatureList::IsEnabled(features::kAndroidKeyboardContextMenu)) {
+    is_key_down =
+        is_key_down || event.GetType() == WebInputEvent::Type::kKeyDown;
+  }
 #endif
-
-  const WebInputEvent::Type kShiftF10TriggeringEventType =
-      WebInputEvent::Type::kRawKeyDown;
+#if BUILDFLAG(IS_WIN)
+  bool is_context_menu_key_triggering_event =
+      event.GetType() == WebInputEvent::Type::kKeyUp;
+#else
+  bool is_context_menu_key_triggering_event = is_key_down;
+#endif
 
   bool is_unmodified_menu_key =
       !(event.GetModifiers() & WebInputEvent::kInputModifiers) &&
@@ -1127,9 +1130,8 @@ WebInputEventResult WebFrameWidgetImpl::HandleKeyEvent(
                       event.windows_key_code == VKEY_F10;
 #endif
 
-  if ((is_unmodified_menu_key &&
-       event.GetType() == kContextMenuKeyTriggeringEventType) ||
-      (is_shift_f10 && event.GetType() == kShiftF10TriggeringEventType)) {
+  if ((is_unmodified_menu_key && is_context_menu_key_triggering_event) ||
+      (is_shift_f10 && is_key_down)) {
     View()->SendContextMenuEvent();
     return WebInputEventResult::kHandledSystem;
   }
@@ -1955,6 +1957,9 @@ void WebFrameWidgetImpl::UpdateVisualProperties(
   }
 
   bool properties_changed = false;
+  // TODO(crbug.com/567606680): After entering or leaving fullscreen, the
+  // unbounded surface window moves correctly but its content stays offset.
+  // The root cause isn't known yet.
   if (unbounded_surface_state_ && unbounded_surface_state_->host_.is_bound()) {
     CHECK(RuntimeEnabledFeatures::UnboundedElementEnabled());
     bool zoom_changed = (zoom_level_ != visual_properties.zoom_level) ||
@@ -1986,7 +1991,8 @@ void WebFrameWidgetImpl::UpdateVisualProperties(
         visual_properties.max_size_for_auto_resize,
         visual_properties.screen_infos.current().device_scale_factor);
     if (View() && View()->GetPage()) {
-      View()->GetPage()->SetAlwaysOnTop(visual_properties.always_on_top);
+      View()->GetPage()->SetAlwaysOnTopPopup(
+          visual_properties.always_on_top_popup);
     }
   }
 
@@ -2931,9 +2937,11 @@ void WebFrameWidgetImpl::RegisterActiveUnboundedElement(
     ScriptPromiseResolver<IDLUndefined>* resolver) {
   CHECK(RuntimeEnabledFeatures::UnboundedElementEnabled());
   // Dismiss any existing active unbounded element to ensure only one is
-  // active at a time.
+  // active at a time. This must not be cancelable: the new element replaces
+  // the previous one regardless, so letting the page cancel would leave the
+  // previous element active without a surface.
   if (unbounded_surface_state_) {
-    OnDismissed();
+    DismissUnboundedSurfaceState(UnboundedDismissReason::kProgrammatic);
   }
   auto* execution_context = element->GetDocument().GetFrame()
                                 ? element->GetDocument().GetFrame()->DomWindow()
@@ -5339,6 +5347,10 @@ void WebFrameWidgetImpl::SetScreenInfoAndSize(
 
 float WebFrameWidgetImpl::GetCompositingScaleFactor() {
   return compositing_scale_factor_;
+}
+
+float WebFrameWidgetImpl::GetExternalPageScaleFactor() const {
+  return ForTopMostMainFrame() ? 1.0f : page_scale_factor_in_mainframe_;
 }
 
 const cc::LayerTreeDebugState* WebFrameWidgetImpl::GetLayerTreeDebugState() {

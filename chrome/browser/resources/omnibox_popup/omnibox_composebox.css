@@ -40,6 +40,7 @@
    * Make sure it is 100% instead of 337px default width from composebox.css.
    */
   --cr-composebox-width: 100%;
+  --suggestion-activity-height: 18px;
   display: block;
   --color-file-chip-remove-button-fill: var(--color-omnibox-results-icon);
   --cr-composebox-cancel-button-top: 5px;
@@ -100,7 +101,7 @@
   --color-composebox-submit-button-energy: var(--color-omnibox-composebox-submit-button-energy);
   --color-composebox-submit-button-icon: var(--color-omnibox-composebox-submit-button-icon);
   --color-composebox-submit-button-hover: var(--color-omnibox-action-icon-hover);
-  --color-composebox-suggestion-activity: unset; /* No activity suggestion disclaimer. */
+  --color-composebox-suggestion-activity: var(--color-omnibox-text-dimmed);
   --color-composebox-type-ahead: var(--color-omnibox-foreground-disabled);
   --color-composebox-type-ahead-chip: var(--color-omnibox-composebox-chip-background);
   --color-composebox-upload-button: var(--omnibox-results-chip-background);
@@ -110,8 +111,6 @@
   --cr-composebox-outline-hcm: none;
   --cr-composebox-submit-button-margin-inline-start: auto;
   --cr-composebox-submit-container-top: auto;
-  --cr-composebox-suggestion-activity-bottom: 0;
-  --cr-composebox-suggestion-activity-margin-top: 0;
   --cr-composebox-voice-icon-top: auto;
   position: relative;
 }
@@ -129,6 +128,22 @@
   padding-bottom: 10px;
 }
 
+/* The activity link is the last row inside the card. #composebox already
+ * provides the bottom padding. */
+#suggestionActivity {
+  height: var(--suggestion-activity-height);
+  padding-bottom: 0;
+}
+
+/* The mic and submit buttons are anchored to the bottom of #composebox. Lift
+ * them by the link's height so they stay aligned with the context menu row
+ * above the link. With a grid they are anchored to the top instead. */
+:host(:not([has-grid])) #composebox:has(> #suggestionActivity) #voiceSearchButton,
+:host(:not([has-grid])) #composebox:has(> #suggestionActivity)
+    cr-composebox-submit::part(submit) {
+  translate: 0 calc(-1 * var(--suggestion-activity-height));
+}
+
 #inputContainer {
   box-sizing: border-box;
   display: flex;
@@ -140,6 +155,30 @@
 
 #composeboxInput {
   flex-shrink: 0;
+}
+
+:host([is-aim-button-shown_]) {
+  --cr-composebox-text-container-padding-block-start: 4px;
+  --omnibox-voice-icon-inset-end: 8px;
+  --omnibox-voice-icon-margin-end: 0;
+}
+
+:host([is-aim-button-shown_]) #composeboxInput {
+  --cr-composebox-icon-container-height: 40px;
+  --cr-composebox-input-padding-block: 8px;
+  --text-input-inline-end-spacing: 12px;
+  --text-input-inline-start-spacing: 16px;
+}
+
+cr-composebox-aim-button {
+  --cr-button-height: 24px;
+  --cr-composebox-aim-button-icon-gap: 4px;
+  --cr-composebox-aim-button-icon-inset: 6px;
+  --cr-composebox-aim-button-icon-size: 16px;
+  --cr-composebox-aim-button-leading-glyph-size: 16px;
+  font-size: 12px;
+  margin-block-start: 12px;
+  margin-inline-end: 14px;
 }
 
 #context {
@@ -212,18 +251,14 @@ cr-composebox-tool-chip {
 :host(:not([searchbox-next-enabled])) #voiceSearchButton,
 :host([searchbox-layout-mode='TallBottomContext']) #voiceSearchButton {
   bottom: 12px;
-  inset-inline-end: 12px;
+  inset-inline-end: var(--omnibox-voice-icon-inset-end, 12px);
   position: absolute;
 }
 
 :host([submit-enabled][searchbox-layout-mode='TallBottomContext']) #voiceSearchButton {
-  inset-inline-end: calc(var(--cr-composebox-submit-container-size) + 6px);
-  margin-inline-end: 6px;
-}
-
-:host([submit-enabled][searchbox-layout-mode='TallBottomContext'][show-dropdown]) #voiceSearchButton {
-  bottom: unset;
-  top: var(--cr-composebox-voice-icon-top, 60px);
+  inset-inline-end: var(--omnibox-voice-icon-inset-end,
+      calc(var(--cr-composebox-submit-container-size) + 6px));
+  margin-inline-end: var(--omnibox-voice-icon-margin-end, 6px);
 }
 
 :host([searchbox-layout-mode='Compact']) #voiceSearchButton {
@@ -232,7 +267,13 @@ cr-composebox-tool-chip {
   top: 10px;
 }
 
-:host([searchbox-layout-mode='TallBottomContext']) #voiceSearchButton {
+/* TODO(crbug.com/558864651): When cleaning up
+ * ComposeboxPersistentAimButtonOmnibox, replace is-aim-button-shown_ below
+ * with searchbox-layout-mode='TallBottomContext', keeping submit-enabled and
+ * show-dropdown to override composebox.css's bottom reset. */
+:host([searchbox-layout-mode='TallBottomContext']) #voiceSearchButton,
+:host([is-aim-button-shown_][submit-enabled][show-dropdown])
+    #voiceSearchButton {
   bottom: 11px;
 }
 
@@ -240,14 +281,14 @@ cr-composebox-tool-chip {
 :host([energy-effect-enabled][searchbox-layout-mode='TallBottomContext'][show-dropdown]) #voiceSearchButton {
   bottom: 10px;
   top: unset;
-  inset-inline-end: 14px;
+  inset-inline-end: var(--omnibox-voice-icon-inset-end, 14px);
 }
 
 :host([energy-effect-enabled][submit-enabled][searchbox-layout-mode='TallBottomContext']) #voiceSearchButton {
-  inset-inline-end: calc(
-      var(--cr-composebox-submit-width,
-          var(--cr-composebox-submit-container-size)) + 8px);
-  margin-inline-end: 4px;
+  inset-inline-end: var(--omnibox-voice-icon-inset-end,
+      calc(var(--cr-composebox-submit-width,
+          var(--cr-composebox-submit-container-size)) + 8px));
+  margin-inline-end: var(--omnibox-voice-icon-margin-end, 4px);
 }
 
 :host([submit-enabled][searchbox-layout-mode='TallBottomContext'])
@@ -377,7 +418,7 @@ cr-composebox-tool-chip {
   transition-duration: var(--on-press-duration);
 }
 
-#composeboxInput::part(input) {
+:host(:not([is-aim-button-shown_])) #composeboxInput::part(input) {
   min-height: 44px;
 }
 

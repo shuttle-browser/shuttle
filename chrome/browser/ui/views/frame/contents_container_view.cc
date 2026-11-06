@@ -85,9 +85,6 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
   contents_view_ = AddChildView(
       std::make_unique<ContentsWebView>(browser_view->GetProfile()));
   contents_view_->SetID(VIEW_ID_TAB_CONTAINER);
-  contents_view_->set_use_default_deadline_when_animating_bounds(
-      base::FeatureList::IsEnabled(
-          features::kUseDefaultDeadlineWhenAnimatingBounds));
 
   if (base::FeatureList::IsEnabled(ntp_features::kNtpFooter)) {
     new_tab_footer_view_separator_ =
@@ -330,7 +327,8 @@ views::View::Views ContentsContainerView::GetChildrenInZOrder() {
 #if DCHECK_IS_ON()
   auto ordered_children = views::View::GetChildrenInZOrder();
   // |capture_contents_border_view_| should have the highest z-order.
-  DCHECK(ordered_children.back() == capture_contents_border_view_);
+  CHECK(ordered_children.back() == capture_contents_border_view_,
+        base::NotFatalUntil::M162);
   return ordered_children;
 #else
   return views::View::GetChildrenInZOrder();

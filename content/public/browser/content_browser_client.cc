@@ -755,7 +755,7 @@ bool ContentBrowserClient::ShouldDenyRequestOnCertificateError(
 
 base::OnceClosure ContentBrowserClient::SelectClientCertificate(
     BrowserContext* browser_context,
-    int process_id,
+    ChildProcessId process_id,
     WebContents* web_contents,
     net::SSLCertRequestInfo* cert_request_info,
     net::ClientCertIdentityList client_certs,
@@ -816,6 +816,18 @@ bool ContentBrowserClient::IsPopupBypassAllowed(
 
 bool ContentBrowserClient::IsUnboundedElementAllowed(
     RenderFrameHost* render_frame_host) {
+  return false;
+}
+
+bool ContentBrowserClient::IsUnboundedElementEscapingAllowed(
+    RenderFrameHost* subframe,
+    RenderFrameHost* outermost_main_frame) {
+  return false;
+}
+
+bool ContentBrowserClient::IsUnboundedElementAllowedForSubframesOf(
+    const url::Origin& origin) {
+  // TODO(crbug.com/571879162): Remove this temporary allowlist.
   return false;
 }
 
@@ -1000,16 +1012,15 @@ std::unique_ptr<NavigationUIData> ContentBrowserClient::GetNavigationUIData(
 
 #if BUILDFLAG(IS_WIN)
 
-bool ContentBrowserClient::PreSpawnChild(
-    sandbox::TargetConfig* config,
-    sandbox::mojom::Sandbox sandbox_type,
-    ChildSpawnFlags flags,
-    base::optional_ref<const ChildModule> child_module) {
+bool ContentBrowserClient::PreSpawnChild(sandbox::TargetConfig* config,
+                                         sandbox::mojom::Sandbox sandbox_type,
+                                         ChildSpawnFlags flags) {
   return true;
 }
 
-std::optional<ContentBrowserClient::ChildModule>
-ContentBrowserClient::GetChildModule() {
+std::optional<ContentBrowserClient::RendererSandboxPolicyExtension>
+ContentBrowserClient::GetRendererSandboxPolicyExtension(
+    ChildProcessId render_process_id) {
   return std::nullopt;
 }
 
@@ -1304,6 +1315,7 @@ SmartCardDelegate* ContentBrowserClient::GetSmartCardDelegate() {
 bool ContentBrowserClient::ShowPaymentHandlerWindow(
     content::BrowserContext* browser_context,
     const GURL& url,
+    const std::optional<gfx::Size>& preferred_web_contents_size,
     base::OnceCallback<void(bool, int, int)> callback) {
   DCHECK(browser_context);
   return false;
@@ -1432,6 +1444,10 @@ bool ContentBrowserClient::ShouldRunOutOfProcessSystemDnsResolution() {
 #endif
 }
 
+net::InsecureDnsMode ContentBrowserClient::GetInitialInsecureDnsMode() {
+  return net::InsecureDnsMode::kDisabled;
+}
+
 std::string ContentBrowserClient::GetProduct() {
   return std::string();
 }
@@ -1549,6 +1565,11 @@ ContentBrowserClient::MaybeOverrideSourceURLForClipboardAccess(
     const GURL& original_url) {
   DCHECK(render_frame_host);
   return std::nullopt;
+}
+
+BrowserContext* ContentBrowserClient::GetUserBrowserContext(
+    RenderFrameHost& render_frame_host) {
+  return render_frame_host.GetBrowserContext();
 }
 
 bool ContentBrowserClient::IsClipboardPasteAllowed(
@@ -1732,14 +1753,6 @@ bool ContentBrowserClient::ShouldPreconnectNavigation(
   return false;
 }
 
-bool ContentBrowserClient::IsFirstPartySetsEnabled() {
-  return true;
-}
-
-bool ContentBrowserClient::WillProvidePublicFirstPartySets() {
-  return false;
-}
-
 mojom::AlternativeErrorPageOverrideInfoPtr
 ContentBrowserClient::GetAlternativeErrorPageOverrideInfo(
     content::NavigationHandle& navigation_handle,
@@ -1760,7 +1773,17 @@ bool ContentBrowserClient::IsFileSystemURLNavigationAllowed(
   return false;
 }
 
-base::FilePath ContentBrowserClient::GetChildProcessPath(int flags) {
+#if BUILDFLAG(IS_ANDROID)
+bool ContentBrowserClient::IsContentSchemeURLNavigationAllowed(
+    const GURL& url) {
+  return !base::FeatureList::IsEnabled(
+      features::kBlockContentUriNavigationByDefault);
+}
+#endif
+
+base::FilePath ContentBrowserClient::GetChildProcessPath(
+    int flags,
+    ChildProcessId child_process_id) {
   return base::FilePath();
 }
 
@@ -2097,6 +2120,10 @@ bool ContentBrowserClient::ShouldAllowSystemUiPopups(
 
 bool ContentBrowserClient::IsExemptFromWindowSizeCheck(const GURL& url) {
   return url.SchemeIs(kChromeUIScheme) || url.SchemeIs(kChromeDevToolsScheme);
+}
+
+bool ContentBrowserClient::IsNoStatePrefetch(WebContents* web_contents) {
+  return false;
 }
 
 }  // namespace content

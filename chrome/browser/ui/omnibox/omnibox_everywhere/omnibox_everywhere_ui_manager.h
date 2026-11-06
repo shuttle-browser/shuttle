@@ -116,6 +116,13 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
     kSettings = 12,
     kMinimize = 13,
     kClose = 14,
+    kEmoji = 15,
+#if BUILDFLAG(IS_MAC)
+    kWritingDirectionMenu = 16,
+    kWritingDirectionDefault = 17,
+    kWritingDirectionLtr = 18,
+    kWritingDirectionRtl = 19,
+#endif  // BUILDFLAG(IS_MAC)
   };
 
   using ContentsWrapperFactory =
@@ -202,6 +209,8 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
                            const input::NativeWebKeyboardEvent& event) override;
 
   // ui::SimpleMenuModel::Delegate:
+  bool GetAcceleratorForCommandId(int command_id,
+                                  ui::Accelerator* accelerator) const override;
   void ExecuteCommand(int command_id, int event_flags) override;
   bool IsCommandIdEnabled(int command_id) const override;
   bool IsCommandIdChecked(int command_id) const override;
@@ -323,6 +332,11 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
     is_context_menu_open_ = open;
   }
   bool is_dragging_for_testing() const { return is_dragging_; }
+#if defined(USE_AURA)
+  OmniboxEverywhereEventHandlerAura* event_handler_for_testing() {
+    return event_handler_.get();
+  }
+#endif
   bool is_demoted() const { return is_demoted_; }
   void OnContextMenuClosedForTesting() { OnContextMenuClosed(); }
   const ui::SimpleMenuModel* context_menu_model_for_testing() const {
@@ -361,15 +375,28 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
 
   std::unique_ptr<WebUIContentsWrapper> CreateContentsWrapper(Profile* profile);
 
-  void BuildInputContextMenu(const content::ContextMenuParams& params);
+  void ShowContextMenu(const content::ContextMenuParams& params,
+                       std::u16string clipboard_text);
+  void ResetContextMenuModels();
+  void BuildInputContextMenu(const content::ContextMenuParams& params,
+                             const std::u16string& clipboard_text);
   void BuildSelectionContextMenu(const content::ContextMenuParams& params);
   void BuildBackgroundContextMenu(const content::ContextMenuParams& params);
   void AppendSettingsContextMenu();
+  std::u16string GetPasteAndGoMenuLabel(
+      const std::u16string& clipboard_text) const;
 #if BUILDFLAG(IS_WIN)
   void AppendWindowControlsContextMenu();
 #endif  // BUILDFLAG(IS_WIN)
 
-  void CleanUpWidget();
+  // Destroys the widget and the WebContents, and releases keep-alives.
+  void DestroyWidgetAndWebContents();
+
+  // Destroys the widget and the UI it owns (dialogs, menus, overlays) and
+  // resets transient UI state, but keeps the WebContents so the next widget
+  // reuses it. Unlike DestroyWidgetAndWebContents(), safe to call from within a
+  // call on the WebContents.
+  void DestroyWidget();
 
   // Cancels any pending deactivation tasks or deferred-dismissal poll timer.
   void CancelPendingDeactivation();
@@ -436,6 +463,9 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
   std::unique_ptr<views::UnhandledKeyboardEventHandler>
       unhandled_keyboard_event_handler_;
   content::ContextMenuParams last_context_menu_params_;
+#if BUILDFLAG(IS_MAC)
+  std::unique_ptr<ui::SimpleMenuModel> writing_direction_submenu_model_;
+#endif  // BUILDFLAG(IS_MAC)
   std::unique_ptr<ui::SimpleMenuModel> context_menu_model_;
   std::unique_ptr<views::MenuRunner> context_menu_runner_;
 

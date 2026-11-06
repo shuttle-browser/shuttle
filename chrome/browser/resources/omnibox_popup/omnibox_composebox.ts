@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import '//resources/cr_components/composebox/composebox_aim_button.js';
 import '//resources/cr_components/composebox/composebox_dropdown.js';
 import '//resources/cr_components/composebox/composebox_input.js';
 import '//resources/cr_components/composebox/composebox_submit.js';
@@ -16,12 +17,12 @@ import '//resources/cr_elements/cr_icon_button/cr_icon_button.js';
 import '//resources/cr_components/composebox/composebox_lens_search.js';
 import '/strings.m.js';
 
-import {ComposeboxFile, getLoadTimeBoolean, hasOnlyAutoAddedTabAttachments, hasOnlyAutoAddedTabs, mapUploadErrorToProcessFilesError, ProcessFilesError, SingleTabType} from '//resources/cr_components/composebox/common.js';
+import {ComposeboxFile, getLoadTimeBoolean, hasOnlyAutoAddedTabs, mapUploadErrorToProcessFilesError, ProcessFilesError, SingleTabType, SubmitButtonIconType} from '//resources/cr_components/composebox/common.js';
 import type {TabUpload} from '//resources/cr_components/composebox/common.js';
 import type {PageHandlerRemote} from '//resources/cr_components/composebox/composebox.mojom-webui.js';
 import type {ComposeboxDropdownElement} from '//resources/cr_components/composebox/composebox_dropdown.js';
 import type {ComposeboxInputElement} from '//resources/cr_components/composebox/composebox_input.js';
-import {ComposeboxEmbedderMixin, SubmitButtonIconType} from '//resources/cr_components/composebox/composebox_mixin.js';
+import {ComposeboxEmbedderMixin} from '//resources/cr_components/composebox/composebox_mixin.js';
 import {ComposeboxProxyImpl} from '//resources/cr_components/composebox/composebox_proxy.js';
 import type {ContextUploadErrorType} from '//resources/cr_components/composebox/composebox_query.mojom-webui.js';
 import {ContextUploadStatus} from '//resources/cr_components/composebox/composebox_query.mojom-webui.js';
@@ -107,6 +108,11 @@ export class OmniboxComposeboxElement extends ComposeboxEmbedderMixin
       isLensSearchEligible_: {type: Boolean},
       askGComposeboxPlaceholderEnabled_: {type: Boolean},
       baseSearchboxLayoutMode_: {type: String},
+      isAimButtonShown_: {
+        type: Boolean,
+        reflect: true,
+      },
+      showAimButtonExitIcon_: {type: Boolean},
       energyEffectAnimationEnabled_: {
         type: Boolean,
         reflect: true,
@@ -163,6 +169,9 @@ export class OmniboxComposeboxElement extends ComposeboxEmbedderMixin
       getLoadTimeBoolean('askGComposeboxPlaceholderEnabled', false);
   protected accessor baseSearchboxLayoutMode_: string =
       loadTimeData.getString('searchboxLayoutMode');
+  protected accessor isAimButtonShown_: boolean = false;
+  protected accessor showAimButtonExitIcon_: boolean =
+      getLoadTimeBoolean('composeboxPersistentAimButtonWithX', false);
   // The use of energyEffectEnabled to set energyEffectAnimationEnabled_ is
   // intentional. This is to align the gating properties for energy effects
   // across all surfaces (= Nextbox, Omnibox, and Realbox).
@@ -193,11 +202,14 @@ export class OmniboxComposeboxElement extends ComposeboxEmbedderMixin
   private searchboxHandler_: SearchboxPageHandlerRemote;
   private listenerIds_: number[] = [];
   /**
-   * Whether this session opened the composebox without suggestions and is
-   * waiting for contextual ones. Set in `addSearchContext()` and consumed
-   * exactly once, on the `showDropdown` when the results come in.
+   * Whether this session opened the composebox without suggestions and should
+   * animate the contextual suggestions when they arrive. Set in
+   * `addSearchContext()` and consumed exactly once, on the `showDropdown` when
+   * the results come in.
    */
-  private awaitingBlockedZeroStateSuggestions_: boolean = false;
+  private shouldAnimateContextualSuggestions_: boolean = false;
+  private persistentAimButtonEnabled_: boolean =
+      getLoadTimeBoolean('composeboxPersistentAimButton', false);
 
   constructor() {
     super();
@@ -277,6 +289,8 @@ export class OmniboxComposeboxElement extends ComposeboxEmbedderMixin
     if (changedPrivateProperties.has('baseSearchboxLayoutMode_') ||
         changedPrivateProperties.has('hasAllowedInputs')) {
       this.searchboxLayoutMode = this.computeSearchboxLayoutMode_();
+      this.isAimButtonShown_ = this.persistentAimButtonEnabled_ &&
+          this.searchboxLayoutMode === 'TallBottomContext';
     }
   }
 
@@ -313,14 +327,14 @@ export class OmniboxComposeboxElement extends ComposeboxEmbedderMixin
     }
 
     // Animate once, when the contextual suggestions arrive. Consuming
-    // `awaitingBlockedZeroStateSuggestions_` stops later results from
+    // `shouldAnimateContextualSuggestions_` stops later results from
     // retriggering the animation.
     // `lastQueriedInput` is empty only on the zero state path. A typed query
     // can open the dropdown too and we want to make sure we are not animating
     // that.
-    if (this.awaitingBlockedZeroStateSuggestions_ && !this.lastQueriedInput &&
+    if (this.shouldAnimateContextualSuggestions_ && !this.lastQueriedInput &&
         changedPrivateProperties.has('showDropdown') && this.showDropdown) {
-      this.awaitingBlockedZeroStateSuggestions_ = false;
+      this.shouldAnimateContextualSuggestions_ = false;
       this.animateContextualSuggestions_();
     }
   }
@@ -487,18 +501,14 @@ export class OmniboxComposeboxElement extends ComposeboxEmbedderMixin
       }
     }
 
-    const blockZeroState =
-        getLoadTimeBoolean('askGBlockAutoTabZeroStateSuggestions', false);
-    const hasOnlyAutoAdded =
-        context ? hasOnlyAutoAddedTabAttachments(context.attachments) : false;
-    const skipImmediateQuery = blockZeroState && hasOnlyAutoAdded;
+    const hasTab = !!context &&
+        context.attachments.some(attachment => !!attachment.tabAttachment);
 
-    // Query for ZPS even if there's no context.
-    // Skip immediate query if askGBlockAutoTabZeroStateSuggestions is enabled for
-    // auto added tab attachments.
-    // This is to prevent historical suggestions from being shown while waiting
-    // for contextual suggestions from the uploaded tab during zero state.
-    if (this.showZps && !skipImmediateQuery) {
+    // Query for ZPS even if there's no context. Skip it when a tab was just
+    // added: `onContextualInputStatusChanged()` queries once the tab's upload
+    // is ready for suggest, so querying now would only flash non-contextual
+    // suggestions until then.
+    if (this.showZps && !hasTab) {
       // Clear the autocomplete matches here, as failure to do so triggers a
       // DCHECK in `ZpsSection::InitMatches()` whenever the user tries to upload
       // a file after having uploaded an invalid file earlier in the session.
@@ -506,11 +516,9 @@ export class OmniboxComposeboxElement extends ComposeboxEmbedderMixin
     }
 
     // Skipping the query is what makes the composebox open empty and expand
-    // later, so it is the precondition for the animation. This requires both
-    // `askGBlockAutoTabZeroStateSuggestions` to be enabled AND the tab
-    // attachment to be auto-added (context-menu-added tabs query immediately
-    // and do not animate).
-    this.awaitingBlockedZeroStateSuggestions_ = skipImmediateQuery;
+    // later, so it is the precondition for the animation. With input the box
+    // isn't empty, so the typed query must not arm the animation.
+    this.shouldAnimateContextualSuggestions_ = hasTab && !this.input.trim();
   }
 
   playGlowAnimation() {

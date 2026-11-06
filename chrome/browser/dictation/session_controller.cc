@@ -17,7 +17,7 @@
 #include "base/time/time.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/dictation/features.h"
-#include "chrome/browser/dictation/local_hotkey_manager.h"
+#include "chrome/browser/dictation/hotkey_manager.h"
 #include "chrome/browser/dictation/logging.h"
 #include "chrome/browser/dictation/metrics.h"
 #include "chrome/browser/dictation/session_controller_delegate.h"
@@ -30,7 +30,6 @@
 #include "content/public/browser/editable_level.h"
 #include "content/public/browser/focused_node_details.h"
 #include "content/public/browser/global_dom_node_id.h"
-#include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
@@ -39,21 +38,6 @@
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/events/blink/blink_event_util.h"
 #include "ui/events/keycodes/keyboard_codes.h"
-
-namespace content {
-
-// TODO(bokan): Move into global_dom_node_id.h
-std::ostream& operator<<(std::ostream& os,
-                         const content::GlobalDOMNodeId& target_id) {
-  const content::RenderFrameHost* rfh =
-      target_id.document.AsRenderFrameHostIfValid();
-
-  return os << "GlobalDOMNodeId("
-            << (rfh ? rfh->GetGlobalId() : content::GlobalRenderFrameHostId())
-            << ", " << target_id.target_element_dom_id << ")";
-}
-
-}  // namespace content
 
 namespace dictation {
 
@@ -254,6 +238,15 @@ void SessionController::PrimaryPageChanged(content::Page& page) {
 void SessionController::PrimaryMainFrameRenderProcessGone(
     base::TerminationStatus status) {
   // If the page crashes, immediately end the session.
+  if (ui_) {
+    ui_->OnStopped();
+  }
+  EndSessionAsynchronously();
+}
+
+void SessionController::WebContentsDestroyed() {
+  // If the target WebContents is destroyed (e.g. an overlay WebUI is closed
+  // while the host tab remains open), immediately end the session.
   if (ui_) {
     ui_->OnStopped();
   }

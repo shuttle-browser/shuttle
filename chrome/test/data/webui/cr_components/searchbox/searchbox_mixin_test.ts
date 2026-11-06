@@ -144,7 +144,7 @@ function simulateUserTextInput(
 /**
  * Types 'https://local' and responds with deletable matches, the first of which
  * is the default match, like in the interactive
- * `WebUILocationBarInteractiveUiTest.NavigateSuggestionsTab` test.
+ * `WebUILocationBarEagerPopupInteractiveUiTest.NavigateSuggestionsTab` test.
  */
 async function showDeletableMatches(element: TestSearchboxMixinElement):
     Promise<AutocompleteMatch[]> {
@@ -223,7 +223,7 @@ function createCalculatorMatch(modifiers: Partial<AutocompleteMatch> = {}):
 function verifyMatch(match: AutocompleteMatch, matchEl: SearchboxMatchElement) {
   assertEquals('option', matchEl.getAttribute('role'));
   const primaryText = match.suggestTemplate.primaryText.text;
-  const secondaryText = match.suggestTemplate.secondaryText.text;
+  const secondaryText = match.suggestTemplate.secondaryText?.text ?? '';
   const separatorText =
       secondaryText ? loadTimeData.getString('searchboxSeparator') : '';
   const text = matchEl.$.primaryText.textContent +

@@ -25,6 +25,8 @@
 #import "ios/chrome/browser/shared/public/commands/gemini_commands.h"
 #import "ios/chrome/browser/shared/public/commands/settings_commands.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/signin/model/fake_system_identity.h"
+#import "ios/chrome/browser/signin/model/signin_test_util.h"
 #import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
 #import "ios/chrome/test/scoped_key_window.h"
 #import "ios/web/public/test/web_task_environment.h"
@@ -49,12 +51,12 @@ class GeminiContainerCoordinatorTest : public PlatformTest {
     feature_list_.InitWithFeatures(
         {kAssistantContainer, kIOSGeminiBottomSheetMigration}, {});
 
-    TestProfileIOS::Builder builder;
-    builder.SetName("profile1");
-    profile_ = profile_manager_.AddProfileWithBuilder(std::move(builder));
+    personal_profile_ =
+        profile_manager_.AddProfileWithBuilder(TestProfileIOS::Builder());
 
-    browser_ = std::make_unique<TestBrowser>(profile_);
-    BrowserList* browser_list = BrowserListFactory::GetForProfile(profile_);
+    browser_ = std::make_unique<TestBrowser>(personal_profile_);
+    BrowserList* browser_list =
+        BrowserListFactory::GetForProfile(personal_profile_);
     browser_list->AddBrowser(browser_.get());
     GeminiBrowserAgent::CreateForBrowser(browser_.get());
 
@@ -81,7 +83,8 @@ class GeminiContainerCoordinatorTest : public PlatformTest {
     CommandDispatcher* dispatcher = browser_->GetCommandDispatcher();
     [dispatcher stopDispatchingForProtocol:@protocol(GeminiCommands)];
     [dispatcher stopDispatchingForProtocol:@protocol(SettingsCommands)];
-    BrowserList* browser_list = BrowserListFactory::GetForProfile(profile_);
+    BrowserList* browser_list =
+        BrowserListFactory::GetForProfile(personal_profile_);
     browser_list->RemoveBrowser(browser_.get());
   }
 
@@ -99,7 +102,7 @@ class GeminiContainerCoordinatorTest : public PlatformTest {
   base::test::ScopedFeatureList feature_list_;
   IOSChromeScopedTestingLocalState scoped_testing_local_state_;
   TestProfileManagerIOS profile_manager_;
-  raw_ptr<ProfileIOS> profile_ = nullptr;
+  raw_ptr<ProfileIOS> personal_profile_ = nullptr;
   std::unique_ptr<TestBrowser> browser_;
   id mock_gemini_handler_;
   id mock_settings_handler_;
@@ -123,16 +126,14 @@ TEST_F(GeminiContainerCoordinatorTest,
 // Test that `dismissGeminiFromOtherWindowsWithCompletion:` dismisses Gemini in
 // other browsers.
 TEST_F(GeminiContainerCoordinatorTest, TestDismissGeminiFromOtherWindows) {
-  TestProfileIOS::Builder second_profile_builder;
-  second_profile_builder.SetName("profile2");
-  TestProfileIOS* second_profile =
-      profile_manager_.AddProfileWithBuilder(std::move(second_profile_builder));
+  TestProfileIOS* managed_profile = AddManagedProfileWithBuilder(
+      profile_manager_, [FakeSystemIdentity fakeManagedIdentity]);
 
   // Emulate opening a new window.
   std::unique_ptr<TestBrowser> second_browser =
-      std::make_unique<TestBrowser>(second_profile);
+      std::make_unique<TestBrowser>(managed_profile);
   BrowserList* second_browser_list =
-      BrowserListFactory::GetForProfile(second_profile);
+      BrowserListFactory::GetForProfile(managed_profile);
   second_browser_list->AddBrowser(second_browser.get());
 
   id mock_second_handler = OCMProtocolMock(@protocol(GeminiCommands));
@@ -170,15 +171,13 @@ TEST_F(GeminiContainerCoordinatorTest,
       startDispatchingToTarget:mock_container_handler
                    forProtocol:@protocol(AssistantContainerCommands)];
 
-  TestProfileIOS::Builder second_profile_builder;
-  second_profile_builder.SetName("profile2");
-  TestProfileIOS* second_profile =
-      profile_manager_.AddProfileWithBuilder(std::move(second_profile_builder));
+  TestProfileIOS* managed_profile = AddManagedProfileWithBuilder(
+      profile_manager_, [FakeSystemIdentity fakeManagedIdentity]);
 
   std::unique_ptr<TestBrowser> second_browser =
-      std::make_unique<TestBrowser>(second_profile);
+      std::make_unique<TestBrowser>(managed_profile);
   BrowserList* second_browser_list =
-      BrowserListFactory::GetForProfile(second_profile);
+      BrowserListFactory::GetForProfile(managed_profile);
   second_browser_list->AddBrowser(second_browser.get());
 
   id mock_second_gemini_handler = OCMProtocolMock(@protocol(GeminiCommands));

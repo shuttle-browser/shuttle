@@ -26,6 +26,8 @@
 #include "chrome/browser/contextual_tasks/mock_contextual_tasks_ui_service_delegate.h"
 #include "chrome/browser/signin/chrome_signin_client_factory.h"
 #include "chrome/browser/signin/chrome_signin_client_test_util.h"
+#include "chrome/browser/themes/theme_service.h"
+#include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/test/mock_browser_window_interface.h"
 #include "chrome/browser/ui/lens/lens_search_controller.h"
@@ -50,6 +52,9 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/web_preferences/web_preferences.h"
 #include "third_party/blink/public/mojom/choosers/file_chooser.mojom.h"
+#include "third_party/blink/public/mojom/css/preferred_color_scheme.mojom.h"
+#include "third_party/skia/include/core/SkColor.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/unowned_user_data/unowned_user_data_host.h"
 #include "ui/shell_dialogs/fake_select_file_dialog.h"
 #include "ui/shell_dialogs/select_file_dialog.h"
@@ -574,10 +579,11 @@ TEST_F(ContextualTasksWebViewTest, OpenURLFromTab_RejectsNonWebSchemes) {
       GURL("about:blank"),
   };
   for (const GURL& url : kNonWebUrls) {
-    content::OpenURLParams params(url, content::Referrer(),
-                                  WindowOpenDisposition::NEW_FOREGROUND_TAB,
-                                  ui::PAGE_TRANSITION_LINK,
-                                  /*is_renderer_initiated=*/true);
+    content::OpenURLParams params(
+        url, content::Referrer(),
+        ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+        ui::PAGE_TRANSITION_LINK,
+        /*is_renderer_initiated=*/true);
     params.user_gesture = true;
     EXPECT_EQ(nullptr, web_view_->OpenURLFromTab(panel_contents.get(), params,
                                                  base::NullCallback()));
@@ -608,7 +614,7 @@ TEST_F(
 
   const GURL kTargetUrl("https://example.com/target");
   content::OpenURLParams params(kTargetUrl, content::Referrer(),
-                                WindowOpenDisposition::CURRENT_TAB,
+                                ui::mojom::WindowOpenDisposition::kCurrentTab,
                                 ui::PAGE_TRANSITION_LINK,
                                 /*is_renderer_initiated=*/true);
   params.user_gesture = true;
@@ -623,7 +629,7 @@ TEST_F(
                     base::OnceCallback<void(content::NavigationHandle&)>) {
         EXPECT_EQ(kTargetUrl, forwarded_params.url);
         EXPECT_FALSE(forwarded_params.user_gesture);
-        EXPECT_EQ(WindowOpenDisposition::NEW_FOREGROUND_TAB,
+        EXPECT_EQ(ui::mojom::WindowOpenDisposition::kNewForegroundTab,
                   forwarded_params.disposition);
         EXPECT_TRUE(forwarded_params.frame_tree_node_id.is_null());
         return tab_contents.get();
@@ -658,7 +664,8 @@ TEST_F(ContextualTasksWebViewTest,
 
   content::OpenURLParams params(
       GURL("https://example.com/target"), content::Referrer(),
-      WindowOpenDisposition::NEW_BACKGROUND_TAB, ui::PAGE_TRANSITION_LINK,
+      ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
+      ui::PAGE_TRANSITION_LINK,
       /*is_renderer_initiated=*/true);
   params.user_gesture = true;
   params.source_render_process_id = panel_rfh->GetProcess()->GetDeprecatedID();
@@ -669,7 +676,7 @@ TEST_F(ContextualTasksWebViewTest,
                     const content::OpenURLParams& forwarded_params,
                     base::OnceCallback<void(content::NavigationHandle&)>) {
         EXPECT_TRUE(forwarded_params.user_gesture);
-        EXPECT_EQ(WindowOpenDisposition::NEW_BACKGROUND_TAB,
+        EXPECT_EQ(ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
                   forwarded_params.disposition);
         return tab_contents.get();
       });
@@ -706,7 +713,8 @@ TEST_F(ContextualTasksWebViewTest,
 
   content::OpenURLParams params(
       GURL("https://example.com/target"), content::Referrer(),
-      WindowOpenDisposition::NEW_FOREGROUND_TAB, ui::PAGE_TRANSITION_LINK,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+      ui::PAGE_TRANSITION_LINK,
       /*is_renderer_initiated=*/true);
   params.user_gesture = true;
   params.source_render_process_id =
@@ -745,7 +753,7 @@ TEST_F(ContextualTasksWebViewTest,
 
   content::OpenURLParams params(
       GURL("https://example.com/incognito"), content::Referrer(),
-      WindowOpenDisposition::OFF_THE_RECORD, ui::PAGE_TRANSITION_LINK,
+      ui::mojom::WindowOpenDisposition::kOffTheRecord, ui::PAGE_TRANSITION_LINK,
       /*is_renderer_initiated=*/false);
   params.user_gesture = true;
   params.started_from_context_menu = true;
@@ -755,7 +763,7 @@ TEST_F(ContextualTasksWebViewTest,
                     const content::OpenURLParams& forwarded_params,
                     base::OnceCallback<void(content::NavigationHandle&)>) {
         EXPECT_TRUE(forwarded_params.user_gesture);
-        EXPECT_EQ(WindowOpenDisposition::OFF_THE_RECORD,
+        EXPECT_EQ(ui::mojom::WindowOpenDisposition::kOffTheRecord,
                   forwarded_params.disposition);
         return tab_contents.get();
       });
@@ -984,6 +992,81 @@ TEST_F(ContextualTasksWebViewTest,
   EXPECT_EQ(
       dark_web_contents->GetOrCreateWebPreferences().preferred_color_scheme,
       blink::mojom::PreferredColorScheme::kDark);
+}
+
+TEST_F(ContextualTasksWebViewTest,
+       OnThemeChangedUpdatesBackgroundsAndWebContentsColorSchemes) {
+  ThemeService* theme_service = ThemeServiceFactory::GetForProfile(profile_);
+  ASSERT_NE(theme_service, nullptr);
+  theme_service->SetBrowserColorScheme(
+      ThemeService::BrowserColorScheme::kLight);
+
+  web_view_ = std::make_unique<ContextualTasksWebView>(browser_window_.get());
+  std::unique_ptr<content::WebContents> content_wc =
+      content::WebContentsTester::CreateTestWebContents(profile_, nullptr);
+  web_view_->SetWebContents(content_wc.get());
+
+  views::View* content_container = web_view_->content_web_view()->parent();
+  ASSERT_NE(content_container, nullptr);
+  EXPECT_EQ(web_view_->GetBackground()->color(),
+            ui::ColorVariant(SK_ColorWHITE));
+  EXPECT_EQ(content_container->GetBackground()->color(),
+            ui::ColorVariant(SK_ColorWHITE));
+  EXPECT_EQ(web_view_->toolbar_web_view()
+                ->GetWebContents()
+                ->GetOrCreateWebPreferences()
+                .preferred_color_scheme,
+            blink::mojom::PreferredColorScheme::kLight);
+  EXPECT_EQ(web_view_->ghost_loader_view()
+                ->GetWebContents()
+                ->GetOrCreateWebPreferences()
+                .preferred_color_scheme,
+            blink::mojom::PreferredColorScheme::kLight);
+  EXPECT_EQ(content_wc->GetOrCreateWebPreferences().preferred_color_scheme,
+            blink::mojom::PreferredColorScheme::kLight);
+
+  // Switch Chrome appearance to Dark while the side panel view is open.
+  theme_service->SetBrowserColorScheme(ThemeService::BrowserColorScheme::kDark);
+  web_view_->OnThemeChanged();
+
+  EXPECT_EQ(web_view_->GetBackground()->color(),
+            ui::ColorVariant(SkColorSetRGB(34, 36, 43)));
+  EXPECT_EQ(content_container->GetBackground()->color(),
+            ui::ColorVariant(SkColorSetRGB(34, 36, 43)));
+  EXPECT_EQ(web_view_->toolbar_web_view()
+                ->GetWebContents()
+                ->GetOrCreateWebPreferences()
+                .preferred_color_scheme,
+            blink::mojom::PreferredColorScheme::kDark);
+  EXPECT_EQ(web_view_->ghost_loader_view()
+                ->GetWebContents()
+                ->GetOrCreateWebPreferences()
+                .preferred_color_scheme,
+            blink::mojom::PreferredColorScheme::kDark);
+  EXPECT_EQ(content_wc->GetOrCreateWebPreferences().preferred_color_scheme,
+            blink::mojom::PreferredColorScheme::kDark);
+
+  // Switch Chrome appearance back to Light while still open.
+  theme_service->SetBrowserColorScheme(
+      ThemeService::BrowserColorScheme::kLight);
+  web_view_->OnThemeChanged();
+
+  EXPECT_EQ(web_view_->GetBackground()->color(),
+            ui::ColorVariant(SK_ColorWHITE));
+  EXPECT_EQ(content_container->GetBackground()->color(),
+            ui::ColorVariant(SK_ColorWHITE));
+  EXPECT_EQ(web_view_->toolbar_web_view()
+                ->GetWebContents()
+                ->GetOrCreateWebPreferences()
+                .preferred_color_scheme,
+            blink::mojom::PreferredColorScheme::kLight);
+  EXPECT_EQ(web_view_->ghost_loader_view()
+                ->GetWebContents()
+                ->GetOrCreateWebPreferences()
+                .preferred_color_scheme,
+            blink::mojom::PreferredColorScheme::kLight);
+  EXPECT_EQ(content_wc->GetOrCreateWebPreferences().preferred_color_scheme,
+            blink::mojom::PreferredColorScheme::kLight);
 }
 
 }  // namespace

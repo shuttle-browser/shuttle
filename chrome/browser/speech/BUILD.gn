@@ -130,6 +130,7 @@ source_set("impl") {
       "//components/content_settings/core/browser",
       "//components/keyed_service/content",
       "//components/keyed_service/core",
+      "//components/live_caption",
       "//components/live_caption:constants",
       "//components/live_caption:utils",
       "//components/optimization_guide/public/mojom",
@@ -196,7 +197,10 @@ source_set("impl") {
   }
 
   if (is_chromeos) {
-    deps += [ "//ash/constants" ]
+    deps += [
+      "//ash",
+      "//ash/constants",
+    ]
   }
 }
 
@@ -254,6 +258,7 @@ if (!is_android) {
       "//chrome/browser/accessibility/live_caption",
       "//chrome/test:test_support",
       "//chrome/test/base:testing_browser_process",
+      "//components/live_caption",
       "//components/live_caption:constants",
       "//components/soda:test_support",
       "//content/test:test_support",
@@ -370,6 +375,7 @@ if (!is_android) {
         "speech_recognition_recognizer_client_impl_browsertest.cc",
       ]
       deps += [
+        "//ash",
         "//components/soda:constants",
         "//components/soda:utils",
       ]

@@ -116,6 +116,7 @@
 #include "components/user_manager/user_manager.h"
 #else
 #include "chrome/browser/extensions/api/messaging/native_messaging_launch_from_native.h"
+#include "chrome/browser/sessions/profile_diff_after_restart_recorder.h"
 #include "chrome/browser/ui/profiles/profile_picker.h"
 #endif
 
@@ -175,7 +176,8 @@ bool CanOpenProfileOnStartup(StartupProfileInfo profile_info) {
 #if BUILDFLAG(IS_CHROMEOS)
   // On ChromeOS, the user has already chosen and logged into the profile before
   // Chrome starts up.
-  DCHECK_NE(profile_info.mode, StartupProfileMode::kProfilePicker);
+  CHECK_NE(profile_info.mode, StartupProfileMode::kProfilePicker,
+           base::NotFatalUntil::M162);
   return true;
 #else
   // Profile picker startups require explicit user action, profile can't be
@@ -187,7 +189,7 @@ bool CanOpenProfileOnStartup(StartupProfileInfo profile_info) {
   Profile* profile = profile_info.profile;
 
   // System profiles are not available.
-  DCHECK(!profile->IsSystemProfile());
+  CHECK(!profile->IsSystemProfile(), base::NotFatalUntil::M162);
 
   // Profiles that require signin are not available.
   ProfileAttributesEntry* entry =
@@ -749,10 +751,12 @@ void StartupBrowserCreator::LaunchBrowser(
   TRACE_EVENT0("ui", "StartupBrowserCreator::LaunchBrowser");
   SCOPED_UMA_HISTOGRAM_TIMER("Startup.StartupBrowserCreator.LaunchBrowser");
 
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M162);
 #if BUILDFLAG(IS_WIN)
-  DCHECK(!command_line.HasSwitch(credential_provider::kGcpwSigninSwitch));
-  DCHECK(!command_line.HasSwitch(switches::kNotificationLaunchId));
+  CHECK(!command_line.HasSwitch(credential_provider::kGcpwSigninSwitch),
+        base::NotFatalUntil::M162);
+  CHECK(!command_line.HasSwitch(switches::kNotificationLaunchId),
+        base::NotFatalUntil::M162);
 #endif  // BUILDFLAG(IS_WIN)
   in_synchronous_profile_launch_ =
       process_startup == chrome::startup::IsProcessStartup::kYes;
@@ -794,7 +798,20 @@ void StartupBrowserCreator::LaunchBrowserForLastProfiles(
     const Profiles& last_opened_profiles,
     bool restore_tabbed_browser) {
   TRACE_EVENT0("ui", "StartupBrowserCreator::LaunchBrowserForLastProfiles");
-  DCHECK_NE(profile_info.mode, StartupProfileMode::kError);
+#if !BUILDFLAG(IS_CHROMEOS)
+  // Start observing before launching profiles: primary-profile session restore
+  // completes synchronously during launch, so observing any later would miss
+  // its completion notification and record restored profiles as lost.
+  ProfileDiffAfterRestartRecorder& profile_diff_recorder =
+      ProfileDiffAfterRestartRecorder::GetInstance();
+  profile_diff_recorder.OnStartupLaunchesStarting(
+      g_browser_process->local_state(), WasRestarted());
+  base::ScopedClosureRunner on_launches_finished(base::BindOnce(
+      &ProfileDiffAfterRestartRecorder::OnStartupLaunchesFinished,
+      base::Unretained(&profile_diff_recorder)));
+#endif  // !BUILDFLAG(IS_CHROMEOS)
+  CHECK_NE(profile_info.mode, StartupProfileMode::kError,
+           base::NotFatalUntil::M162);
 
   Profile* profile = profile_info.profile;
   // On Windows, when chrome is launched by notification activation where the
@@ -810,6 +827,7 @@ void StartupBrowserCreator::LaunchBrowserForLastProfiles(
 #if BUILDFLAG(IS_CHROMEOS)
     NOTREACHED();
 #else
+    profile_diff_recorder.AbandonRecording();
     if (ShouldForceLaunchIntoNewProfileWithEmail(command_line, profile)) {
       std::string email =
           command_line.GetSwitchValueASCII(switches::kProfileEmail);
@@ -878,6 +896,10 @@ void StartupBrowserCreator::LaunchBrowserForLastProfiles(
 #if BUILDFLAG(IS_CHROMEOS)
     NOTREACHED();
 #else
+    // Reachable on a restart when the profile is locked: no session will be
+    // restored until the user picks a profile, so the pre-restart counts would
+    // be reported as fully lost. Drop them instead.
+    profile_diff_recorder.AbandonRecording();
     ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
         process_startup == chrome::startup::IsProcessStartup::kYes
             ? ProfilePicker::EntryPoint::kOnStartupNoProfile
@@ -926,7 +948,7 @@ bool StartupBrowserCreator::ShouldRestoreLastSession(
 SessionStartupPref StartupBrowserCreator::GetSessionStartupPref(
     const base::CommandLine& command_line,
     const Profile* profile) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M162);
   const PrefService* prefs = profile->GetPrefs();
   SessionStartupPref pref = SessionStartupPref::GetStartupPref(prefs);
 
@@ -1044,8 +1066,9 @@ bool StartupBrowserCreator::ProcessCmdLineImpl(
     chrome::startup::IsProcessStartup process_startup,
     StartupProfileInfo profile_info,
     const Profiles& last_opened_profiles) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  DCHECK_NE(profile_info.mode, StartupProfileMode::kError);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK_NE(profile_info.mode, StartupProfileMode::kError,
+           base::NotFatalUntil::M162);
   TRACE_EVENT0("startup", "StartupBrowserCreator::ProcessCmdLineImpl");
   ComputeAndRecordLaunchMode(command_line);
 
@@ -1331,7 +1354,8 @@ bool StartupBrowserCreator::ProcessCmdLineImpl(
     // Use incognito profile since this is a credential provider logon.
     Profile* incognito_profile =
         privacy_safe_profile->GetPrimaryOTRProfile(/*create_if_needed=*/true);
-    DCHECK(incognito_profile->IsPrimaryOTRProfileWithRegularParent());
+    CHECK(incognito_profile->IsPrimaryOTRProfileWithRegularParent(),
+          base::NotFatalUntil::M162);
     // NOTE: All launch urls are ignored when running with --gcpw-signin since
     // this mode only loads Google's sign in page.
 
@@ -1451,7 +1475,7 @@ void StartupBrowserCreator::ProcessLastOpenedProfiles(
 
   // Launch the profiles in the order they became active.
   for (Profile* profile : last_opened_profiles) {
-    DCHECK(!profile->IsGuestSession());
+    CHECK(!profile->IsGuestSession(), base::NotFatalUntil::M162);
 
 #if !BUILDFLAG(IS_CHROMEOS)
     // Skip any locked profile.
@@ -1497,6 +1521,9 @@ void StartupBrowserCreator::ProcessLastOpenedProfiles(
 // activation this one.
 #if !BUILDFLAG(IS_CHROMEOS)
   if (process_startup == chrome::startup::IsProcessStartup::kYes) {
+    // Every last-opened profile was locked, so no browser was launched and
+    // nothing will be restored.
+    ProfileDiffAfterRestartRecorder::GetInstance().AbandonRecording();
     ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
         ProfilePicker::EntryPoint::kOnStartup));
   } else  // NOLINT
@@ -1547,7 +1574,7 @@ void StartupBrowserCreator::ProcessCommandLineWithProfile(
     const base::FilePath& cur_dir,
     StartupProfileMode mode,
     Profile* profile) {
-  DCHECK_NE(mode, StartupProfileMode::kError);
+  CHECK_NE(mode, StartupProfileMode::kError, base::NotFatalUntil::M162);
   if (mode == StartupProfileMode::kBrowserWindow && !profile) {
     LOG(ERROR) << "Failed to load the profile.";
     return;
@@ -1779,7 +1806,8 @@ StartupProfileInfo GetStartupProfile(const base::FilePath& cur_dir,
   ProfileManager* profile_manager = g_browser_process->profile_manager();
   StartupProfilePathInfo path_info = GetStartupProfilePath(
       cur_dir, command_line, /*ignore_profile_picker=*/false);
-  DCHECK_NE(path_info.mode, StartupProfileMode::kError);
+  CHECK_NE(path_info.mode, StartupProfileMode::kError,
+           base::NotFatalUntil::M162);
   StartupProfileMode mode = path_info.mode;
 
   switch (mode) {

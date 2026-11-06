@@ -26,6 +26,7 @@
 #include "base/android/jni_weak_ref.h"
 #include "base/android/scoped_java_ref.h"
 #include "base/compiler_specific.h"
+#include "base/containers/flat_set.h"
 #include "base/files/file_path.h"
 #include "base/lazy_instance.h"
 #include "base/memory/scoped_refptr.h"
@@ -36,10 +37,12 @@
 #include "components/visitedlink/browser/visitedlink_delegate.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/zoom_level_delegate.h"
+#include "net/base/schemeful_site.h"
 #include "net/http/http_request_headers.h"
 #include "services/cert_verifier/public/mojom/cert_verifier_service_factory.mojom-forward.h"
 #include "services/network/public/mojom/url_loader.mojom.h"
 #include "third_party/blink/public/mojom/permissions/permission_status.mojom-shared.h"
+#include "third_party/jni_zero/jni_raw_ptr.h"
 
 class GURL;
 class PrefService;
@@ -258,6 +261,25 @@ class AwBrowserContext : public content::BrowserContext,
   const std::vector<scoped_refptr<AwOriginMatchedHeader>>&
   GetOriginMatchedHeaders();
 
+  // Returns the `AwHeaderInterceptorStore` associated to this BrowserContext.
+  // This reference is valid for as long as this AwBrowserContext instance is
+  // alive.
+  AwHeaderInterceptorStore& GetHeaderInterceptorStore() {
+    return header_interceptor_store_;
+  }
+  jni_zero::JniRawPtr<AwHeaderInterceptorStore>
+  GetHeaderInterceptorStoreFromJava(JNIEnv* env);
+
+  // Configure sites that require a separate renderer process in this profile.
+  // These sites will be placed into the embedder SiteInstance shard so they run
+  // in a renderer process isolated from other web content, without requiring
+  // isolation from each other, or full Site Isolation. See
+  // content::BrowserContext::SetSitesForEmbedderShard() for details. This may
+  // only be called once, before this profile is used for any navigation, and
+  // is not supported in single-process mode.
+  void SetSitesForEmbedderShard(
+      const base::flat_set<net::SchemefulSite>& sites);
+
   // Adds QUIC hints for the given origins, wildcard suffixes, or enables QUIC
   // by default.
   void AddQuicHints(JNIEnv* env,
@@ -363,6 +385,7 @@ class AwBrowserContext : public content::BrowserContext,
   bool enable_stale_dns_ = false;
 
   std::vector<scoped_refptr<AwOriginMatchedHeader>> origin_matched_headers_;
+  AwHeaderInterceptorStore header_interceptor_store_;
 
   std::unique_ptr<origin_matcher::OriginMatcher>
       cross_origin_allow_list_matcher_;

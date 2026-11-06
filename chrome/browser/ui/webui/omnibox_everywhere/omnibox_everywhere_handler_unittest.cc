@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "base/functional/callback_helpers.h"
 #include "base/i18n/rtl.h"
@@ -24,6 +25,7 @@
 #include "chrome/browser/ui/omnibox/omnibox_everywhere_service_factory.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/webui/omnibox_everywhere/composebox_everywhere_handler.h"
+#include "chrome/browser/ui/webui/omnibox_everywhere/debug/omnibox_everywhere_debug.mojom.h"
 #include "chrome/browser/ui/webui/omnibox_everywhere/mojom/omnibox_everywhere.mojom.h"
 #include "chrome/browser/ui/webui/omnibox_everywhere/omnibox_everywhere_page_handler.h"
 #include "chrome/browser/ui/webui/omnibox_everywhere/omnibox_everywhere_ui.h"
@@ -41,6 +43,8 @@
 #include "components/search_engines/template_url_service.h"
 #include "components/variations/scoped_variations_ids_provider.h"
 #include "content/public/test/test_web_ui.h"
+#include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "mojo/public/cpp/bindings/remote.h"
 #include "net/base/url_util.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -202,6 +206,8 @@ class OmniboxEverywhereHandlerTest
   }
 
  protected:
+  variations::test::ScopedVariationsIdsProvider scoped_variations_ids_provider_{
+      variations::VariationsIdsProvider::Mode::kUseSignedInState};
   base::test::ScopedFeatureList feature_list_;
   content::TestWebUI web_ui_;
   std::unique_ptr<MockOmniboxEverywhereService> mock_service_;
@@ -235,7 +241,7 @@ TEST_F(OmniboxEverywhereHandlerTest,
                         /*shift_key=*/false, /*is_voice_search=*/true);
 
   EXPECT_TRUE(captured_url.is_valid());
-  EXPECT_EQ(WindowOpenDisposition::CURRENT_TAB, captured_disposition);
+  EXPECT_EQ(WindowOpenDisposition::kCurrentTab, captured_disposition);
   EXPECT_TRUE(ui::PageTransitionCoreTypeIs(captured_transition,
                                            ui::PAGE_TRANSITION_GENERATED));
 
@@ -284,7 +290,7 @@ TEST_F(OmniboxEverywhereHandlerTest,
                         /*shift_key=*/false, /*is_voice_search=*/true);
 
   EXPECT_TRUE(captured_url.is_valid());
-  EXPECT_EQ(WindowOpenDisposition::CURRENT_TAB, captured_disposition);
+  EXPECT_EQ(WindowOpenDisposition::kCurrentTab, captured_disposition);
   EXPECT_TRUE(ui::PageTransitionCoreTypeIs(captured_transition,
                                            ui::PAGE_TRANSITION_GENERATED));
 
@@ -344,7 +350,7 @@ TEST_F(OmniboxEverywhereHandlerTest, ActivateKeywordDoesNotCrash) {
 TEST_F(OmniboxEverywhereHandlerTest, OpenUrlForwardsToService) {
   GURL test_url("https://www.google.com");
   EXPECT_CALL(*mock_service_,
-              OpenUrl(test_url, WindowOpenDisposition::CURRENT_TAB, testing::_,
+              OpenUrl(test_url, WindowOpenDisposition::kCurrentTab, testing::_,
                       testing::_))
       .WillOnce(
           [&](const GURL& url, WindowOpenDisposition disposition,
@@ -354,7 +360,7 @@ TEST_F(OmniboxEverywhereHandlerTest, OpenUrlForwardsToService) {
                 transition, ui::PAGE_TRANSITION_GENERATED));
           });
 
-  handler_->OpenUrl(test_url, WindowOpenDisposition::CURRENT_TAB,
+  handler_->OpenUrl(test_url, WindowOpenDisposition::kCurrentTab,
                     base::NullCallback());
 }
 
@@ -615,6 +621,62 @@ TEST_F(OmniboxEverywhereHandlerTest,
   page_handler.SetIsComposebox(false);
 }
 
+TEST_F(OmniboxEverywhereHandlerTest,
+       OnDismissMostVisitedDoesNotCrashWithNullController) {
+  mojo::Remote<omnibox_everywhere::mojom::PageHandler> page_handler_remote;
+  OmniboxEverywherePageHandler page_handler(
+      page_handler_remote.BindNewPipeAndPassReceiver(), mojo::NullRemote(),
+      /*web_ui_controller=*/nullptr);
+
+  page_handler.OnDismissMostVisited();
+}
+
+TEST_F(OmniboxEverywhereHandlerTest,
+       OnDismissMostVisitedUpdatesShowShortcutsPrefToDisabled) {
+  OmniboxEverywhereUI ui(&web_ui_);
+  mojo::Remote<omnibox_everywhere::mojom::PageHandler> page_handler_remote;
+  OmniboxEverywherePageHandler page_handler(
+      page_handler_remote.BindNewPipeAndPassReceiver(), mojo::NullRemote(),
+      &ui);
+
+  EXPECT_EQ(profile()->GetPrefs()->GetInteger(
+                omnibox_everywhere::prefs::kOmniboxEverywhereShowShortcuts),
+            static_cast<int>(
+                omnibox_everywhere::prefs::ShowShortcutsPrefValue::kUnset));
+  EXPECT_TRUE(
+      omnibox_everywhere::prefs::IsOmniboxEverywhereShortcutsVisible(
+          profile()));
+
+  page_handler.OnDismissMostVisited();
+
+  EXPECT_EQ(profile()->GetPrefs()->GetInteger(
+                omnibox_everywhere::prefs::kOmniboxEverywhereShowShortcuts),
+            static_cast<int>(
+                omnibox_everywhere::prefs::ShowShortcutsPrefValue::kDisabled));
+  EXPECT_FALSE(
+      omnibox_everywhere::prefs::IsOmniboxEverywhereShortcutsVisible(
+          profile()));
+}
+
+// Regression test for crbug.com/579037685: `OmniboxEverywhereUI::BindInterface`
+// must reject `omnibox_everywhere_debug::mojom::PageHandlerFactory` bindings
+// when hosted in a standalone non-tab WebContents (such as the floating popup).
+TEST_F(OmniboxEverywhereHandlerTest,
+       BindDebugPageHandlerFactoryRejectedForNonTabWebContents) {
+  OmniboxEverywhereUI ui(&web_ui_);
+  mojo::Remote<omnibox_everywhere_debug::mojom::PageHandlerFactory>
+      factory_remote;
+  mojo::PendingReceiver<omnibox_everywhere_debug::mojom::PageHandlerFactory>
+      factory_receiver = factory_remote.BindNewPipeAndPassReceiver();
+  base::RunLoop disconnect_loop;
+  factory_remote.set_disconnect_handler(disconnect_loop.QuitClosure());
+
+  ui.BindInterface(std::move(factory_receiver));
+  disconnect_loop.Run();
+
+  EXPECT_FALSE(factory_remote.is_connected());
+}
+
 TEST_F(OmniboxEverywhereHandlerTest, CalculateContextMenuAnchorPoint_LTR) {
   base::test::ScopedRestoreICUDefaultLocale locale("en_US");
   ASSERT_FALSE(base::i18n::IsRTL());
@@ -716,11 +778,11 @@ TEST_F(OmniboxEverywhereHandlerTest,
             captured_transition = transition;
           });
 
-  composebox_handler.OpenUrl(kTestUrl, WindowOpenDisposition::CURRENT_TAB,
+  composebox_handler.OpenUrl(kTestUrl, WindowOpenDisposition::kCurrentTab,
                              base::NullCallback());
 
   EXPECT_EQ(kTestUrl, captured_url);
-  EXPECT_EQ(WindowOpenDisposition::CURRENT_TAB, captured_disposition);
+  EXPECT_EQ(WindowOpenDisposition::kCurrentTab, captured_disposition);
   EXPECT_TRUE(ui::PageTransitionCoreTypeIs(captured_transition,
                                            ui::PAGE_TRANSITION_GENERATED));
 }
@@ -763,11 +825,11 @@ TEST_F(OmniboxEverywhereHandlerTest,
               OpenUrlWithInPlaceWindow(testing::_, testing::_, testing::_))
       .Times(0);
   EXPECT_CALL(*factory_service,
-              OpenUrl(kUploadedImageUrl, WindowOpenDisposition::CURRENT_TAB,
+              OpenUrl(kUploadedImageUrl, WindowOpenDisposition::kCurrentTab,
                       testing::_, testing::_))
       .Times(1);
   composebox_handler.ProcessContextAndOpenUrl(
-      kUploadedImageUrl, WindowOpenDisposition::CURRENT_TAB);
+      kUploadedImageUrl, WindowOpenDisposition::kCurrentTab);
   testing::Mock::VerifyAndClearExpectations(factory_service);
 
   // Screenshots (added via AddFileContextToPage) should open with an in-place
@@ -796,7 +858,7 @@ TEST_F(OmniboxEverywhereHandlerTest,
           });
 
   composebox_handler.ProcessContextAndOpenUrl(
-      kScreenshotUrl, WindowOpenDisposition::CURRENT_TAB);
+      kScreenshotUrl, WindowOpenDisposition::kCurrentTab);
 
   EXPECT_EQ(kScreenshotUrl, captured_url);
   EXPECT_TRUE(ui::PageTransitionCoreTypeIs(captured_transition,

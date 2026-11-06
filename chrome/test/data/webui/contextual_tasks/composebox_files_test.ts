@@ -602,9 +602,7 @@ suite('ContextualTasksComposeboxForkFilesTest', () => {
       const dataTransfer = new DataTransfer();
       dataTransfer.items.add(
           new File(['test'], 'test.jpg', {type: 'image/jpeg'}));
-      const composeboxDiv =
-          innerComposebox.shadowRoot.querySelector<HTMLElement>('#composebox');
-      assertTrue(composeboxDiv !== null);
+      const composeboxDiv = innerComposebox.$.composebox;
 
       let pasteEvent = new ClipboardEvent('paste', {
         clipboardData: dataTransfer,
@@ -1031,6 +1029,54 @@ suite('ContextualTasksComposeboxForkAutoTabTest', () => {
       await settle();
       assertTrue(innerComposebox.getHasAutomaticActiveTabChipToken());
     });
+
+    test(
+        'failed add dedupes the same url until a different url arrives',
+        async () => {
+          await mountApp();
+          const {innerComposebox} = parts;
+          await expectAddTabContext(
+              '',
+              () => pushAutoTab(
+                  createTabInfo(1, 'Auto tab', 'https://a.example.com')));
+          await settle();
+
+          const addCallCount =
+              mockSearchboxPageHandler.getCallCount(ADD_TAB_CONTEXT_FN);
+          await pushAutoTab(
+              createTabInfo(1, 'Auto tab', 'https://a.example.com'));
+          await settle();
+          assertEquals(
+              addCallCount,
+              mockSearchboxPageHandler.getCallCount(ADD_TAB_CONTEXT_FN));
+          assertEquals(0, innerComposebox.attachedContext.size);
+
+          await expectAddTabContext(
+              AUTO_TOKEN,
+              () => pushAutoTab(
+                  createTabInfo(3, 'Other tab', 'https://b.example.com')));
+          await settle();
+          assertEquals(1, innerComposebox.attachedContext.size);
+        });
+
+    test(
+        'null update without a chip does not requery or stop autocomplete',
+        async () => {
+          await mountApp();
+          const queryCallCount =
+              mockSearchboxPageHandler.getCallCount(QUERY_AUTOCOMPLETE_FN);
+          const stopCallCount =
+              mockSearchboxPageHandler.getCallCount(STOP_AUTOCOMPLETE_FN);
+          await pushAutoTab(null);
+          await settle();
+
+          assertEquals(
+              queryCallCount,
+              mockSearchboxPageHandler.getCallCount(QUERY_AUTOCOMPLETE_FN));
+          assertEquals(
+              stopCallCount,
+              mockSearchboxPageHandler.getCallCount(STOP_AUTOCOMPLETE_FN));
+        });
   });
 
   suite('DeletionSemantics', () => {
@@ -1155,7 +1201,9 @@ suite('ContextualTasksComposeboxForkAutoTabTest', () => {
           assertEquals(1, innerComposebox.files.size);
           assertTrue(hasFileWithTabId(1));
         });
+  });
 
+  suite('AskGDeletionSemantics', () => {
     test(
         'page action without ask-G in the side panel keeps the default ' +
             'semantics',
@@ -1382,6 +1430,36 @@ suite('ContextualTasksComposeboxForkAutoTabTest', () => {
                   'DeleteAutoSuggestedTab.')));
         });
 
+    test(
+        'deleting a non-tab file keeps the auto chip and does not requery',
+        async () => {
+          await mountApp();
+          const {innerComposebox} = parts;
+          await expectAddTabContext(
+              AUTO_TOKEN,
+              () => pushAutoTab(
+                  createTabInfo(1, 'Auto tab', 'https://a.example.com')));
+          await settle();
+
+          const pdfToken = {high: 0n, low: 5n} as unknown as UnguessableToken;
+          const pdfFile = new ComposeboxFile(
+              pdfToken, 'doc.pdf', 'application/pdf', InputType.kLensFile);
+          innerComposebox.addFileContextForTesting(pdfFile);
+          await settle();
+
+          const queryCallCount =
+              mockSearchboxPageHandler.getCallCount(QUERY_AUTOCOMPLETE_FN);
+          innerComposebox.deleteFile(pdfFile.uuid, /*fromUserAction=*/ true);
+          await settle();
+
+          assertFalse(innerComposebox.attachedContext.has(pdfToken));
+          assertTrue(innerComposebox.getHasAutomaticActiveTabChipToken());
+          assertTrue(hasFileWithTabId(1));
+          assertEquals(
+              queryCallCount,
+              mockSearchboxPageHandler.getCallCount(QUERY_AUTOCOMPLETE_FN));
+        });
+
     test('cancel resets the chip state for a fresh chip', async () => {
       await mountApp();
       const {innerComposebox} = parts;
@@ -1410,6 +1488,28 @@ suite('ContextualTasksComposeboxForkAutoTabTest', () => {
       await settle();
       assertTrue(innerComposebox.getHasAutomaticActiveTabChipToken());
       assertEquals(1, innerComposebox.attachedContext.size);
+    });
+
+    test('clear all resets the guard left by a failed add', async () => {
+      await mountApp();
+      const {innerComposebox} = parts;
+      await expectAddTabContext(
+          '',
+          () => pushAutoTab(
+              createTabInfo(1, 'Auto tab', 'https://a.example.com')));
+      await settle();
+
+      innerComposebox.clearAllInputs(
+          /*querySubmitted=*/ false, /*shouldBlockAutoSuggestedTabs=*/ false);
+      await settle();
+
+      await expectAddTabContext(
+          AUTO_TOKEN,
+          () => pushAutoTab(
+              createTabInfo(1, 'Auto tab', 'https://a.example.com')));
+      await settle();
+      assertEquals(1, innerComposebox.attachedContext.size);
+      assertTrue(innerComposebox.getHasAutomaticActiveTabChipToken());
     });
 
     test(

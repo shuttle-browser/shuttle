@@ -197,7 +197,6 @@ class PaintOpAppendTest : public ::testing::Test {
 
   void CheckInitialState(PaintOpBuffer* buffer, bool expect_empty_buffer) {
     EXPECT_FALSE(buffer->has_draw_ops());
-    EXPECT_FALSE(buffer->has_save_layer_ops());
     EXPECT_EQ(0u, buffer->size());
     EXPECT_EQ(0u, buffer->total_op_count());
     EXPECT_EQ(0u, buffer->next_op_offset());
@@ -4877,14 +4876,16 @@ TEST(IteratorTest, PlaybackFoldingIteratorEmptyDrawRecordInSaveLayerAlpha) {
 
 TEST(PaintOpBufferTest, ContentColorUsageFromImages) {
   PaintOpBuffer buffer;
-  EXPECT_EQ(gfx::ContentColorUsage::kSRGB, buffer.content_color_usage());
+  EXPECT_FALSE(buffer.content_color_volume().is_wide_color_gamut);
+  EXPECT_EQ(0.f, buffer.content_color_volume().hdr_headroom);
 
   // Adding a SRGB image should remain SRGB.
   PaintImage srgb = CreateDiscardablePaintImage(
       gfx::Size(1, 1), gfx::ColorSpace::CreateSRGB().ToSkColorSpace());
   ASSERT_EQ(gfx::ContentColorUsage::kSRGB, srgb.GetContentColorUsage());
   buffer.push<DrawImageOp>(srgb, 0.f, 0.f);
-  EXPECT_EQ(gfx::ContentColorUsage::kSRGB, buffer.content_color_usage());
+  EXPECT_FALSE(buffer.content_color_volume().is_wide_color_gamut);
+  EXPECT_EQ(0.f, buffer.content_color_volume().hdr_headroom);
 
   // Adding a WCG image should switch to WCG.
   PaintImage wcg = CreateDiscardablePaintImage(
@@ -4892,8 +4893,8 @@ TEST(PaintOpBufferTest, ContentColorUsageFromImages) {
   ASSERT_EQ(gfx::ContentColorUsage::kWideColorGamut,
             wcg.GetContentColorUsage());
   buffer.push<DrawImageOp>(wcg, 0.f, 0.f);
-  EXPECT_EQ(gfx::ContentColorUsage::kWideColorGamut,
-            buffer.content_color_usage());
+  EXPECT_TRUE(buffer.content_color_volume().is_wide_color_gamut);
+  EXPECT_EQ(0.f, buffer.content_color_volume().hdr_headroom);
 
   // Adding a HDR image should switch to HDR.
   PaintOpBuffer sub_buffer;
@@ -4903,9 +4904,11 @@ TEST(PaintOpBufferTest, ContentColorUsageFromImages) {
   sub_buffer.push<DrawImageRectOp>(hdr, SkRect::MakeWH(10, 10),
                                    SkRect::MakeWH(20, 20),
                                    SkCanvas::kStrict_SrcRectConstraint);
-  EXPECT_EQ(gfx::ContentColorUsage::kHDR, sub_buffer.content_color_usage());
+  EXPECT_TRUE(sub_buffer.content_color_volume().is_wide_color_gamut);
+  EXPECT_GT(sub_buffer.content_color_volume().hdr_headroom, 0.f);
   buffer.push<DrawRecordOp>(sub_buffer.ReleaseAsRecord());
-  EXPECT_EQ(gfx::ContentColorUsage::kHDR, buffer.content_color_usage());
+  EXPECT_TRUE(buffer.content_color_volume().is_wide_color_gamut);
+  EXPECT_GT(buffer.content_color_volume().hdr_headroom, 0.f);
 }
 
 TEST(PaintOpBufferTest, ContentColorUsageFromShader) {
@@ -4919,8 +4922,8 @@ TEST(PaintOpBufferTest, ContentColorUsageFromShader) {
                                         SkTileMode::kClamp, nullptr);
   flags1.setShader(std::move(shader1));
   buffer1.push<DrawRectOp>(SkRect::MakeWH(10, 20), flags1);
-  EXPECT_EQ(gfx::ContentColorUsage::kWideColorGamut,
-            buffer1.content_color_usage());
+  EXPECT_TRUE(buffer1.content_color_volume().is_wide_color_gamut);
+  EXPECT_EQ(0.f, buffer1.content_color_volume().hdr_headroom);
 
   PaintOpBuffer buffer2;
   PaintFlags flags2;
@@ -4929,8 +4932,8 @@ TEST(PaintOpBufferTest, ContentColorUsageFromShader) {
       SkTileMode::kClamp, nullptr);
   flags2.setShader(std::move(shader2));
   buffer2.push<DrawRectOp>(SkRect::MakeWH(10, 20), flags2);
-  EXPECT_EQ(gfx::ContentColorUsage::kWideColorGamut,
-            buffer2.content_color_usage());
+  EXPECT_TRUE(buffer2.content_color_volume().is_wide_color_gamut);
+  EXPECT_EQ(0.f, buffer2.content_color_volume().hdr_headroom);
 }
 
 TEST(PaintOpBufferTest, ContentColorUsageFromFilter) {
@@ -4945,8 +4948,8 @@ TEST(PaintOpBufferTest, ContentColorUsageFromFilter) {
                                               PaintFlags::FilterQuality::kNone);
   flags1.setImageFilter(std::move(filter1));
   buffer1.push<DrawRectOp>(SkRect::MakeWH(10, 20), flags1);
-  EXPECT_EQ(gfx::ContentColorUsage::kWideColorGamut,
-            buffer1.content_color_usage());
+  EXPECT_TRUE(buffer1.content_color_volume().is_wide_color_gamut);
+  EXPECT_EQ(0.f, buffer1.content_color_volume().hdr_headroom);
 
   PaintOpBuffer buffer2;
   PaintFlags flags2;
@@ -4956,8 +4959,8 @@ TEST(PaintOpBufferTest, ContentColorUsageFromFilter) {
                                     SkRect::MakeWH(5, 5)));
   flags2.setImageFilter(std::move(filter2));
   buffer2.push<DrawRectOp>(SkRect::MakeWH(10, 20), flags2);
-  EXPECT_EQ(gfx::ContentColorUsage::kWideColorGamut,
-            buffer2.content_color_usage());
+  EXPECT_TRUE(buffer2.content_color_volume().is_wide_color_gamut);
+  EXPECT_EQ(0.f, buffer2.content_color_volume().hdr_headroom);
 }
 
 TEST(PaintOpBufferTest, SkSLShaderPrivilegeEnforcement) {

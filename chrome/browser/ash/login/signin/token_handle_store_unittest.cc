@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "chrome/browser/ash/login/signin/token_handle_store.h"
+
 #include <memory>
 #include <optional>
 #include <string>
@@ -19,12 +21,12 @@
 #include "base/test/task_environment.h"
 #include "base/test/test_future.h"
 #include "base/time/time.h"
-#include "chrome/browser/ash/login/signin/token_handle_store_impl.h"
 #include "chrome/browser/ui/webui/signin/ash/signin_helper.h"
 #include "chrome/test/base/testing_browser_process.h"
 #include "chrome/test/base/testing_profile.h"
 #include "chromeos/ash/components/settings/cros_settings.h"
 #include "components/account_id/account_id.h"
+#include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/testing_pref_service.h"
 #include "components/user_manager/fake_user_manager_delegate.h"
@@ -128,7 +130,7 @@ class TokenHandleStoreTest : public ::testing::Test {
             base::OnceCallback<void(std::optional<bool>)> continuation) {
           std::move(continuation).Run(user_has_gaia_password);
         };
-    return std::make_unique<TokenHandleStoreImpl>(
+    return std::make_unique<TokenHandleStore>(
         std::move(known_user),
         base::BindLambdaForTesting(std::move(does_user_have_gaia_password)));
   }
@@ -141,7 +143,7 @@ class TokenHandleStoreTest : public ::testing::Test {
           base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
               FROM_HERE, base::BindOnce(std::move(continuation), true));
         };
-    return std::make_unique<TokenHandleStoreImpl>(
+    return std::make_unique<TokenHandleStore>(
         std::move(known_user),
         base::BindLambdaForTesting(std::move(does_user_have_gaia_password)));
   }
@@ -189,6 +191,22 @@ TEST_F(TokenHandleStoreTest,
   known_user->SetStringPref(account_id, kTokenHandlePref, kFakeToken);
   known_user->SetStringPref(account_id, kTokenHandleStatusPref,
                             kTokenHandleStatusInvalid);
+  std::unique_ptr<TokenHandleStore> token_handle_store =
+      CreateTokenHandleStore(std::move(known_user));
+
+  bool should_obtain_handle =
+      token_handle_store->ShouldObtainHandle(account_id);
+
+  EXPECT_EQ(should_obtain_handle, true);
+}
+
+TEST_F(TokenHandleStoreTest,
+       ShouldObtainHandleReturnsTrueIfTokenExistsAndIsStale) {
+  AccountId account_id = AccountId::FromUserEmail(kFakeEmail);
+  auto known_user = std::make_unique<user_manager::KnownUser>(local_state());
+  known_user->SetStringPref(account_id, kTokenHandlePref, kFakeToken);
+  known_user->SetStringPref(account_id, kTokenHandleStatusPref,
+                            kTokenHandleStatusStale);
   std::unique_ptr<TokenHandleStore> token_handle_store =
       CreateTokenHandleStore(std::move(known_user));
 
@@ -771,7 +789,8 @@ class TokenHandleStoreHistogramTest
  public:
   void SetUp() override {
     TokenHandleStoreMaybeFetchTokenHandleTest::SetUp();
-    account_manager::AccountManager::RegisterPrefs(user_prefs_.registry());
+    user_prefs_.registry()->RegisterBooleanPref(
+        policy::policy_prefs::kSecondaryGoogleAccountSigninAllowed, true);
   }
 
   void CreateAndInitializeAccountManager() {

@@ -211,6 +211,13 @@ constexpr base::FeatureParam<int>
         /*default_value=*/5};
 #endif
 
+BASE_FEATURE(kClientSideDetectionServerModelMultimodal,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+constexpr base::FeatureParam<bool>
+    kClientSideDetectionServerModelMultimodalExcludeLowEndDevices{
+        &kClientSideDetectionServerModelMultimodal, "ExcludeLowEndDevices",
+        /*default_value=*/true};
+
 #if BUILDFLAG(IS_ANDROID)
 BASE_FEATURE(kClientSideDetectionServerModelRolloutAndroid,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -399,10 +406,6 @@ BASE_FEATURE(kLocalListsUseSBv5,
              "SafeBrowsingLocalListsUseSBv5",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kLocalListsUseSBv5WebUI,
-             "SafeBrowsingLocalListsUseSBv5WebUI",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
 #if BUILDFLAG(IS_ANDROID)
 BASE_FEATURE(kMaliciousApkDownloadCheck, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE_PARAM(bool,
@@ -442,12 +445,12 @@ BASE_FEATURE_PARAM(bool,
                    &kMigrateToBlockV8OptimizerOnUnfamiliarSites,
                    false);
 
-BASE_FEATURE(kMovePasswordLeakDetectionToggleIos,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kNoticeQueueForEsb, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kNotificationTelemetry, base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kPrioritizeSafeBrowsingNavigationCallbacks,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kProactivePasswordProtection, base::FEATURE_DISABLED_BY_DEFAULT);
 const base::FeatureParam<double> kCsdProactivePasswordProtectionSampleRate{
@@ -487,6 +490,8 @@ constexpr base::FeatureParam<int> kReportNotificationContentDetectionDataRate{
     "ReportNotificationContentDetectionDataRate",
     /*default_value=*/100};
 
+BASE_FEATURE(kRustPhishingModelSetter, base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kSafeBrowsingDailyPhishingReportsLimit,
              base::FEATURE_ENABLED_BY_DEFAULT);
 constexpr base::FeatureParam<int> kSafeBrowsingDailyPhishingReportsLimitESB{
@@ -497,6 +502,15 @@ BASE_FEATURE(kSafeBrowsingDeleteUnusedStores, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kSafeBrowsingNoProtectionSuppressWarnings,
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kSafeBrowsingNoProtectionTemporary,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+constexpr base::FeatureParam<int>
+    kSafeBrowsingNoProtectionTemporaryDurationInSeconds{
+        &kSafeBrowsingNoProtectionTemporary, "duration_seconds",
+        /*default_value=*/0};
+
+BASE_FEATURE(kSafeBrowsingRustDmgParser, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kSafeBrowsingSkipRealTimeLookupIfOffline,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -514,6 +528,9 @@ BASE_FEATURE(kSavePasswordHashFromProfilePicker,
 
 BASE_FEATURE(kShowManualNotificationRevocationsSafetyHub,
              base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kShowUrlsInV5GetHashLookupsWebUI,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kShowWarningsForSuspiciousNotifications,
 #if BUILDFLAG(IS_ANDROID)
@@ -548,12 +565,22 @@ constexpr base::FeatureParam<std::string>
     kSuspiciousSiteWarningSurveyProceedTriggerId{
         &kSuspiciousSiteWarningSurvey,
         "SuspiciousSiteWarningSurveyProceedTriggerId",
-        /*default_value=*/"HguD8vrc50tK1KeaPYj0R37AzmWa"};
+#if BUILDFLAG(IS_ANDROID)
+        /*default_value=*/"HguD8vrc50tK1KeaPYj0R37AzmWa"
+#else
+        /*default_value=*/"qKoRRzn180ugnJ3q1cK0WX7PXscX"
+#endif
+    };
 constexpr base::FeatureParam<std::string>
     kSuspiciousSiteWarningSurveyHeedTriggerId{
         &kSuspiciousSiteWarningSurvey,
         "SuspiciousSiteWarningSurveyHeedTriggerId",
-        /*default_value=*/"LZD24fmuf0tK1KeaPYj0Z79hw2qC"};
+#if BUILDFLAG(IS_ANDROID)
+        /*default_value=*/"LZD24fmuf0tK1KeaPYj0Z79hw2qC"
+#else
+        /*default_value=*/"BjcqKTVFY0ugnJ3q1cK0VD1dNzUU"
+#endif
+    };
 
 BASE_FEATURE(kSuspiciousSiteWarnings, base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -595,15 +622,18 @@ base::ListValue GetFeatureStatusList() {
       &kExtensionBlocklistSkipNetworkQuery,
       &kHashPrefixRealTimeLookups,
       &kLocalListsUseSBv5,
-      &kLocalListsUseSBv5WebUI,
       &kMigrateEnhancedSbUserToEnhancedBundle,
       &kProactivePasswordProtection,
       &kReportNotificationContentDetectionData,
+      &kRustPhishingModelSetter,
       &kSafeBrowsingDeleteUnusedStores,
       &kSafeBrowsingNoProtectionSuppressWarnings,
+      &kSafeBrowsingNoProtectionTemporary,
+      &kSafeBrowsingRustDmgParser,
       &kSafeBrowsingSkipRealTimeLookupIfOffline,
       &kSafeBrowsingWaitForDnsForRealTimeLookup,
       &kShowManualNotificationRevocationsSafetyHub,
+      &kShowUrlsInV5GetHashLookupsWebUI,
       &kShowWarningsForSuspiciousNotifications,
       &kSuspiciousSiteTriggerQuotaFeature,
       &kTailoredSecurityIntegration,

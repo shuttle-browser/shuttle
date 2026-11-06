@@ -57,7 +57,6 @@
 #import "ios/chrome/app/background_refresh/discover_feed_provider.h"
 #import "ios/chrome/app/background_refresh/test_refresher.h"
 #import "ios/chrome/app/background_task/background_continued_processing_app_agent.h"
-#import "ios/chrome/app/background_task/features.h"
 #import "ios/chrome/app/blocking_scene_commands.h"
 #import "ios/chrome/app/change_profile_animator.h"
 #import "ios/chrome/app/change_profile_commands.h"
@@ -101,6 +100,7 @@
 #import "ios/chrome/browser/device_orientation/ui_bundled/scoped_force_portrait_orientation.h"
 #import "ios/chrome/browser/discover_feed/model/discover_feed_app_agent.h"
 #import "ios/chrome/browser/download/model/download_directory_util.h"
+#import "ios/chrome/browser/enterprise/cloud_content_scanning/model/background_cloud_scanner_manager.h"
 #import "ios/chrome/browser/first_run/model/first_run.h"
 #import "ios/chrome/browser/first_run/public/first_run_util.h"
 #import "ios/chrome/browser/intelligence/features/features.h"
@@ -206,6 +206,9 @@ NSString* const kDeleteChooseFile = @"DeleteChooseFile";
 
 // Constants for deferred deletion of leftover temporary passwords files.
 NSString* const kDeleteTempPasswords = @"DeleteTempPasswords";
+
+// Constants for deferred deletion of leftover temporary enterprise scan files.
+NSString* const kDeleteTempEnterpriseScan = @"DeleteTempEnterpriseScan";
 
 // Constants for deferred UMA logging of existing Siri User shortcuts.
 NSString* const kLogSiriShortcuts = @"LogSiriShortcuts";
@@ -391,6 +394,9 @@ std::string GetProfileNameForChoice(ProfileChoice choice,
 // Schedule the deletion of the temporary passwords files that might
 // be left over from incomplete export operations.
 - (void)scheduleDeleteTempPasswordsDirectory;
+// Schedules the deletion of temporary enterprise scan files that might be
+// left over from the last time Chrome was run.
+- (void)scheduleDeleteTempEnterpriseScanDirectory;
 // Schedule the start of memory experimentation.
 - (void)scheduleMemoryExperimentation;
 // Schedules the removal of files that were scheduled for automatic deletion and
@@ -475,8 +481,9 @@ std::string GetProfileNameForChoice(ProfileChoice choice,
   // determined.
   std::optional<IOSLaunchReason> _launchReason;
 
-  // Duration between process creation and the call to main().
-  base::TimeDelta _preMainDuration;
+  // Duration between process creation and the call to main(), or std::nullopt
+  // if unavailable or invalid.
+  std::optional<base::TimeDelta> _preMainDuration;
 
   // True if the launch metrics have already been recorded.
   BOOL _launchMetricsRecorded;
@@ -516,6 +523,7 @@ std::string GetProfileNameForChoice(ProfileChoice choice,
 @synthesize didFinishLaunchingTime = _didFinishLaunchingTime;
 @synthesize firstSceneConnectionTime = _firstSceneConnectionTime;
 @synthesize coldStartFromMainDuration = _coldStartFromMainDuration;
+@synthesize startupMemoryFootprintBytes = _startupMemoryFootprintBytes;
 
 #pragma mark - Application lifecycle
 
@@ -1032,10 +1040,7 @@ std::string GetProfileNameForChoice(ProfileChoice choice,
 #if BUILDFLAG(IOS_CREDENTIAL_PROVIDER_ENABLED)
   [self.appState addAgent:[[CredentialProviderMigratorAppAgent alloc] init]];
 #endif
-  if (IsBackgroundContinuedProcessingEnabled()) {
-    [self.appState
-        addAgent:[[BackgroundContinuedProcessingAppAgent alloc] init]];
-  }
+  [self.appState addAgent:[[BackgroundContinuedProcessingAppAgent alloc] init]];
   [self.appState addAgent:[[DefaultBrowserBannerPromoAppAgent alloc] init]];
 }
 
@@ -1173,7 +1178,8 @@ std::string GetProfileNameForChoice(ProfileChoice choice,
   // not be possible to determine here whether they will be run (e.g. if
   // the depend on the state of a profile).
   if (_isFirstRun) {
-    _scopedForceOrientation = ForcePortraitOrientationOnIphone(_appState);
+    _scopedForceOrientation =
+        std::make_unique<ScopedForcePortraitOrientation>(_appState);
   }
 
   // Create app state agents.
@@ -1455,6 +1461,7 @@ std::string GetProfileNameForChoice(ProfileChoice choice,
   [self scheduleDeleteTempDownloadsDirectory];
   [self scheduleDeleteTempPasswordsDirectory];
   [self scheduleDeleteTempChooseFileDirectory];
+  [self scheduleDeleteTempEnterpriseScanDirectory];
   [self scheduleLogSiriShortcuts];
   [self scheduleStartupAttemptReset];
   [self startFreeMemoryMonitoring];
@@ -1492,6 +1499,14 @@ std::string GetProfileNameForChoice(ProfileChoice choice,
       enqueueBlockNamed:kDeleteTempPasswords
                   block:^{
                     password_manager::DeletePasswordsDirectory();
+                  }];
+}
+
+- (void)scheduleDeleteTempEnterpriseScanDirectory {
+  [_appState.deferredRunner
+      enqueueBlockNamed:kDeleteTempEnterpriseScan
+                  block:^{
+                    enterprise_connectors::DeleteTempEnterpriseScanDirectory();
                   }];
 }
 
@@ -1853,17 +1868,13 @@ std::string GetProfileNameForChoice(ProfileChoice choice,
   // kLastUsedProfile was sometimes not correctly updated).
   localState->SetString(prefs::kLastUsedProfile, profileName);
 
-  auto iterator = _profileControllers.find(profileName);
-  if (iterator == _profileControllers.end()) {
+  auto [iterator, inserted] = _profileControllers.try_emplace(profileName, nil);
+  if (inserted) {
     ProfileController* controller =
         [[ProfileController alloc] initWithAppState:self.appState
                                     metricsMediator:_metricsMediator];
     [controller.state addObserver:self];
-
-    auto insertion_result =
-        _profileControllers.insert(std::make_pair(profileName, controller));
-    DCHECK(insertion_result.second);
-    iterator = insertion_result.first;
+    iterator->second = controller;
 
     // Start loading the profile.
     [controller loadProfileNamed:profileName usingManager:manager];

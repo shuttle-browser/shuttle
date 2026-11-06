@@ -247,6 +247,10 @@ class Host : public GlicSharingManagerProvider {
   // Signals the glic WebUI that the glic window will be shown soon.
   void NotifyWindowIntentToShow();
 
+  // Waits for the client load to finish, or runs `callback` immediately if
+  // loading has already succeeded or failed.
+  void WaitForLoad(base::OnceCallback<void(bool failed)> callback);
+
   // Signals the glic WebUI to adjust the zoom level of its hosted webview.
   void Zoom(mojom::ZoomAction zoom_action, ZoomSource source);
 
@@ -482,6 +486,8 @@ class Host : public GlicSharingManagerProvider {
   // connectivity, notifying observers if it changed.
   void UpdateClientLoadState();
 
+  void OnActiveWebContentsChanged(content::WebContents* new_contents);
+
   raw_ptr<Profile> profile_;
 
   // The instance that owns this host.
@@ -513,8 +519,6 @@ class Host : public GlicSharingManagerProvider {
   bool drag_resize_enabled_ = false;
 
   Metrics metrics_;
-
-  void OnActiveWebContentsChanged(content::WebContents* new_contents);
 
   std::unique_ptr<GlicWebContentsManager> contents_;
   base::CallbackListSubscription contents_changed_subscription_;

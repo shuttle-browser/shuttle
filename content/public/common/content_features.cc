@@ -84,14 +84,6 @@ BASE_FEATURE(kAndroidRemoveSetLocalFocusWorkaroundOnBaklava,
 // text.
 BASE_FEATURE(kAndroidReplayDelKeyEvent, base::FEATURE_ENABLED_BY_DEFAULT);
 
-// Blocks the misspelling suggestion span in composition mode.
-BASE_FEATURE(kAndroidBlockMisspellingSuggestionSpanInCompositionMode,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-// Blocks the grammar suggestion span in composition mode.
-BASE_FEATURE(kAndroidBlockGrammarSuggestionSpanInCompositionMode,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
 // Warm up a spare renderer after each navigation on Android.
 BASE_FEATURE(kAndroidWarmUpSpareRendererWithTimeout,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -219,6 +211,15 @@ BASE_FEATURE(kBackToAdIntervention, base::FEATURE_DISABLED_BY_DEFAULT);
 // If enabled, makes battery saver request heavy align wake ups.
 BASE_FEATURE(kBatterySaverModeAlignWakeUps, base::FEATURE_DISABLED_BY_DEFAULT);
 
+#if BUILDFLAG(IS_ANDROID)
+// If enabled, the default ContentBrowserClient::
+// IsContentSchemeURLNavigationAllowed() blocks content:// navigations.
+// Embedders that need content:// navigations either override the method or
+// disable this feature.
+BASE_FEATURE(kBlockContentUriNavigationByDefault,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif
+
 // Broker file operations on disk cache in the Network Service.
 // This is no-op if the network service is hosted in the browser process.
 BASE_FEATURE(kBrokerFileOperationsOnDiskCacheInNetworkService,
@@ -233,6 +234,17 @@ BASE_FEATURE(kBypassRedirectChecksPerRequest, base::FEATURE_ENABLED_BY_DEFAULT);
 // restored if cookies change / if HTTPOnly cookies change.
 // TODO(crbug.com/40189625): Remove this feature and clean up.
 BASE_FEATURE(kCacheControlNoStoreEnterBackForwardCache,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// When enabled, download_utils::MustDownload() matches the MHTML MIME types
+// "multipart/related" and "message/rfc822" case-insensitively, so MHTML served
+// with a mixed-case MIME type (e.g. "Multipart/Related") over schemes other
+// than file: and content: is downloaded rather than rendered. When disabled,
+// such responses are rendered, but NavigationRequest still treats them as
+// MHTML and applies the MHTML sandbox. Kill switch for
+// https://crbug.com/574381704.
+// TODO(crbug.com/574381704): Remove once the change has shipped to stable.
+BASE_FEATURE(kCaseInsensitiveMhtmlMustDownload,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables the experimental Rust implementation of ChildProcessSecurityPolicy.
@@ -253,8 +265,6 @@ BASE_FEATURE(kChildProcessSecurityPolicyRustProcessState,
 // swap BrowsingContextGroups(BrowsingInstances).
 BASE_FEATURE(kClearCrossSiteCrossBrowsingContextGroupWindowName,
              base::FEATURE_DISABLED_BY_DEFAULT);
-
-BASE_FEATURE(kCompositeBGColorAnimation, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Defer Session Storage scavenging to avoid LevelDB initialization blocking
 // the critical path of startup.
@@ -286,6 +296,12 @@ const base::FeatureParam<bool> kCreateSpeculativeRFHFilterRestore{
 // RFH instantly.
 const base::FeatureParam<int> kCreateSpeculativeRFHDelayMs{
     &kDeferSpeculativeRFHCreation, "create_speculative_rfh_delay_ms", 0};
+
+// Lets the browser tell each document at commit whether it may bind
+// RestrictedDeviceBoundSessionManager, and bind it for those that may. Also
+// turns on the DeviceBoundSessionJsApi Blink feature, which exposes
+// DeviceBoundSessionRegistrationObserver.
+BASE_FEATURE(kDeviceBoundSessionJsApi, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // When a device bound session
 // (https://github.com/w3c/webappsec-dbsc/blob/main/README.md) is
@@ -676,15 +692,10 @@ BASE_FEATURE(kIsolateOrigins, base::FEATURE_DISABLED_BY_DEFAULT);
 const char kIsolateOriginsFieldTrialParamName[] = "OriginsList";
 
 // Enables process isolation for subframe error pages. See
-// https://crbug.com/40134629.
-// TODO(crbug.com/40134629): Enable by default on Android as well.
-BASE_FEATURE(kIsolateSubframeErrorPages,
-#if BUILDFLAG(IS_ANDROID)
-             base::FEATURE_DISABLED_BY_DEFAULT
-#else
-             base::FEATURE_ENABLED_BY_DEFAULT
-#endif
-);
+// https://crbug.com/40134629. Note that subframe error page isolation is still
+// turned off when partial site isolation is disabled, e.g., on low-memory
+// Android devices; see SiteIsolationPolicy::IsErrorPageIsolationEnabled().
+BASE_FEATURE(kIsolateSubframeErrorPages, base::FEATURE_ENABLED_BY_DEFAULT);
 
 #if BUILDFLAG(IS_ANDROID)
 // Enables the ability to specification a renderer that does not use Java.
@@ -793,6 +804,11 @@ BASE_FEATURE(kOverscrollHistoryNavigation, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Whether web apps can run periodic tasks upon network connectivity.
 BASE_FEATURE(kPeriodicBackgroundSync, base::FEATURE_DISABLED_BY_DEFAULT);
+
+// If enabled, RenderWidgetHostViewAura::InitAsChild() populates screen_infos_
+// from the display for new windows when initialized without a root window.
+BASE_FEATURE(kPopulateUnattachedAuraScreenInfo,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 // If enabled, PreconnectManager bypasses UI-thread host preresolve and connects
 // sockets directly to the network context for single preconnect requests.
@@ -995,6 +1011,10 @@ BASE_FEATURE_PARAM(base::TimeDelta,
 // low priority.
 BASE_FEATURE(kRestrictThreadPoolInBackground,
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+// When the View for a RenderFrameHost is HiddenButPainting, report the
+// RenderFrameHost VisibilityState as Hidden.
+BASE_FEATURE(kRFHHiddenWhenHiddenButPainting, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // When enabled, sends the spare renderer information when setting the
 // priority of renderers. Currently only Android handles the spare renderer
@@ -1382,6 +1402,12 @@ BASE_FEATURE(kWebBluetooth, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kWebBluetoothNewPermissionsBackend,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+#if BUILDFLAG(IS_ANDROID)
+// Enables WebHID support on extension service workers on Desktop Android.
+BASE_FEATURE(kWebHidOnDesktopAndroidServiceWorkers,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_ANDROID)
+
 // Controls which backend is used to retrieve OTP on Android. When disabled
 // we use User Consent API.
 BASE_FEATURE(kWebOtpBackendAuto, base::FEATURE_DISABLED_BY_DEFAULT);
@@ -1455,10 +1481,6 @@ const base::FeatureParam<bool>
 const base::FeatureParam<bool> kAccessibilityDeprecateJavaNodeCacheDisableCache{
     &kAccessibilityDeprecateJavaNodeCache, "disable_cache", false};
 
-// When enabled, extended selections are sent to Android through setSelection
-// API.
-BASE_FEATURE(kAccessibilityExtendedSelection, base::FEATURE_ENABLED_BY_DEFAULT);
-
 // When enabled, syncs accessibility focus when WebView gains focus.
 BASE_FEATURE(kAccessibilitySyncFocusOnViewFocusGain,
              base::FEATURE_ENABLED_BY_DEFAULT);
@@ -1511,11 +1533,6 @@ BASE_FEATURE(kAccessibilityPopulateSupplementalDescriptionApi,
 // Enables the reactive synchronization of accessibility and keyboard focus,
 // relying on new Android framework behavior.
 BASE_FEATURE(kAccessibilitySequentialFocus, base::FEATURE_ENABLED_BY_DEFAULT);
-
-// When enabled, set selectable on all nodes with text, and support
-// ACTION_SET_SELECTION.
-BASE_FEATURE(kAccessibilitySetSelectableOnAllNodesWithText,
-             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables posting registering, unregistering the broadcast receiver to the
 // background thread.

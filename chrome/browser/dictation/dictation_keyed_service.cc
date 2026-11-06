@@ -18,18 +18,23 @@
 #include "chrome/browser/dictation/metrics.h"
 #include "chrome/browser/dictation/onboarding_manager.h"
 #include "chrome/browser/dictation/session_controller.h"
+#include "chrome/browser/dictation/session_state.h"
 #include "chrome/browser/dictation/session_ui_impl.h"
 #include "chrome/browser/dictation/target.h"
 #include "chrome/browser/glic/host/guest_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/common/pref_names.h"
+#include "components/feature_engagement/public/feature_constants.h"
 #include "components/prefs/pref_service.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/common/url_utils.h"
 #include "ui/views/controls/webview/webview.h"
 #include "ui/views/focus/focus_manager.h"
 #include "ui/views/view_utils.h"
@@ -48,14 +53,54 @@ content::WebContents* GetWebContentsForHotkey(
             browser_view->GetFocusManager()) {
       if (auto* const web_view = views::AsViewClass<views::WebView>(
               focus_manager->GetFocusedView())) {
-        if (content::WebContents* const guest_contents =
-                glic::GetGlicGuestWebContents(web_view->web_contents())) {
-          return guest_contents;
+        if (content::WebContents* const web_contents =
+                web_view->web_contents()) {
+          if (content::WebContents* const guest_contents =
+                  glic::GetGlicGuestWebContents(web_contents)) {
+            return guest_contents;
+          }
+          if (webui::GetTabInterface(web_contents) == active_tab) {
+            return web_contents;
+          }
         }
       }
     }
   }
   return active_tab->GetContents();
+}
+
+// Returns the focused editable in `active_tab` (or a focused Glic panel), or
+// nullopt if nothing editable is focused.
+std::optional<TargetDetails> GetFocusedEditableTarget(
+    BrowserWindowInterface* active_browser,
+    tabs::TabInterface* active_tab) {
+  content::WebContents* web_contents =
+      GetWebContentsForHotkey(active_browser, active_tab);
+  if (!web_contents) {
+    return std::nullopt;
+  }
+
+  content::RenderFrameHost* focused_frame = web_contents->GetFocusedFrame();
+  if (!focused_frame) {
+    return std::nullopt;
+  }
+
+  content::EditableLevel editable_level =
+      focused_frame->GetFocusedEditableLevel();
+  if (editable_level == content::EditableLevel::kNotEditable ||
+      focused_frame->IsFocusedElementPasswordLike()) {
+    return std::nullopt;
+  }
+
+  blink::DOMNodeIdType node_id = focused_frame->GetFocusedDOMNodeId();
+  if (node_id.is_null()) {
+    return std::nullopt;
+  }
+
+  content::GlobalDOMNodeId global_id{focused_frame->GetWeakDocumentPtr(),
+                                     node_id};
+  return TargetDetails(
+      global_id, editable_level == content::EditableLevel::kRichlyEditable);
 }
 
 tabs::TabInterface* GetActiveTabFromGlic(content::WebContents* web_contents) {
@@ -91,6 +136,13 @@ tabs::TabInterface* GetTabFromTargetId(
     return tab;
   }
 
+  // Check if `web_contents` is a WebUI embedded in a tab (e.g. Glic selection
+  // overlay).
+  if (tabs::TabInterface* embedding_tab =
+          webui::GetTabInterface(web_contents)) {
+    return embedding_tab;
+  }
+
   // If the Glic side panel is being targeted, then associate the session with
   // the active tab of the window.
   if (tabs::TabInterface* tab = GetActiveTabFromGlic(web_contents)) {
@@ -115,6 +167,10 @@ std::optional<DictationUrlCategory> GetUrlCategoryFromTargetId(
 
   if (glic::IsGlicGuest(web_contents) || glic::IsGlicWebUI(web_contents)) {
     return DictationUrlCategory::kGlic;
+  }
+
+  if (content::HasWebUIScheme(rfh->GetLastCommittedURL())) {
+    return DictationUrlCategory::kWebUI;
   }
 
   return DictationUrlCategory::kWeb;
@@ -162,7 +218,7 @@ void DictationKeyedService::Shutdown() {
   EndSession();
   // Ensure accelerators are unregistered safely before UI objects are
   // destroyed.
-  local_hotkey_manager_.reset();
+  hotkey_manager_.reset();
 }
 
 content::BrowserContext* DictationKeyedService::GetBrowserContext() const {
@@ -227,7 +283,21 @@ void DictationKeyedService::StartSession(tabs::TabInterface& tab,
     RecordDictationSessionUrlCategory(*url_category);
   }
 
+  // The user has found dictation, so the dictation IPH shouldn't show again.
+  if (auto* const user_education =
+          BrowserUserEducationInterface::MaybeGetForWebContentsInTab(
+              tab.GetContents())) {
+    user_education->NotifyFeaturePromoFeatureUsed(
+        feature_engagement::kIPHDictationFeature,
+        FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
+  }
+
   session_.emplace(*this, tab);
+  // Unretained is safe: `this` owns `session_`, which owns the subscription.
+  session_->session_state_subscription_ =
+      session_->controller_.AddSessionStateChangedCallback(
+          base::BindRepeating(&DictationKeyedService::OnSessionStateChanged,
+                              base::Unretained(this)));
   dictation_tab_changed_callbacks_.Notify(&tab);
 
   session_->controller_.ResetUi();
@@ -255,6 +325,9 @@ void DictationKeyedService::StartSessionForTesting(  // IN-TEST
 }
 
 void DictationKeyedService::EndSession() {
+  // `session_state_subscription_` is destroyed with the session, so report the
+  // session as inactive explicitly.
+  OnSessionStateChanged(dictation::SessionState::kInactive);
   session_.reset();
   dictation_tab_changed_callbacks_.Notify(nullptr);
 }
@@ -335,46 +408,28 @@ void DictationKeyedService::ToggleHotkeyHandler() {
     return;
   }
 
-  if (session_) {
-    tabs::TabInterface* old_tab = session_->tab_.get();
-    bool tab_changed = (active_tab != old_tab);
+  std::optional<TargetDetails> target_details =
+      GetFocusedEditableTarget(active_browser, active_tab);
 
-    if (!tab_changed && session_->controller_.attached_stream_provider()) {
+  if (session_ && session_->controller_.attached_stream_provider()) {
+    const bool same_tab = active_tab == session_->tab_.get();
+    // In the tab being dictated into, the hotkey toggles dictation off.
+    // Elsewhere (e.g. another window of this profile), stop dictation in the
+    // original tab if nothing editable is focused. Otherwise, TriggerSession()
+    // below moves dictation to the focused editable, implicitly ending the
+    // current stream.
+    if (same_tab || !target_details) {
       session_->controller_.EndDictationStream(
           DictationStreamEndTrigger::kHotkeyToggle);
       return;
     }
   }
 
-  content::WebContents* web_contents =
-      GetWebContentsForHotkey(active_browser, active_tab);
-  if (!web_contents) {
+  if (!target_details) {
     return;
   }
 
-  content::RenderFrameHost* focused_frame = web_contents->GetFocusedFrame();
-  if (!focused_frame) {
-    return;
-  }
-
-  content::EditableLevel editable_level =
-      focused_frame->GetFocusedEditableLevel();
-  if (editable_level == content::EditableLevel::kNotEditable) {
-    return;
-  }
-
-  blink::DOMNodeIdType node_id = focused_frame->GetFocusedDOMNodeId();
-  if (node_id.is_null()) {
-    return;
-  }
-
-  content::GlobalDOMNodeId global_id{focused_frame->GetWeakDocumentPtr(),
-                                     node_id};
-
-  TargetDetails target_details(
-      global_id, editable_level == content::EditableLevel::kRichlyEditable);
-
-  TriggerSession(target_details, DictationSessionEntryPoint::kHotkeyToggle);
+  TriggerSession(*target_details, DictationSessionEntryPoint::kHotkeyToggle);
 }
 
 bool DictationKeyedService::IsEnabledAndReady() const {
@@ -403,10 +458,19 @@ void DictationKeyedService::UpdateHotkeyManager() {
       prefs::kPrefDictationOnboardingCompleted);
 
   if (!IsEnabledAndReady() || !onboarding_completed) {
-    local_hotkey_manager_.reset();
-  } else if (!local_hotkey_manager_) {
-    local_hotkey_manager_ = std::make_unique<LocalHotkeyManager>(
-        profile_, std::make_unique<ApplicationRegistrationDelegate>());
+    hotkey_manager_.reset();
+  } else if (!hotkey_manager_) {
+    hotkey_manager_ = std::make_unique<HotkeyManager>(
+        profile_, std::make_unique<ApplicationRegistrationDelegate>(),
+        /*is_listening=*/session_ &&
+            IsListeningState(session_->controller_.GetState()));
+  }
+}
+
+void DictationKeyedService::OnSessionStateChanged(
+    dictation::SessionState state) {
+  if (hotkey_manager_) {
+    hotkey_manager_->OnSessionStateChanged(state);
   }
 }
 

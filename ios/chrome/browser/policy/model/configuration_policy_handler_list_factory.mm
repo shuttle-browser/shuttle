@@ -32,7 +32,7 @@
 #import "components/enterprise/device_trust/prefs.h"
 #import "components/enterprise/idle/idle_timeout_policy_handler.h"
 #import "components/enterprise/isolated_mode/prefs.h"
-#import "components/enterprise/net/core/prefs.h"
+#import "components/enterprise/net/core/proxy_provisioning_domains_policy_handler.h"
 #import "components/enterprise/watermarking/watermark_style_policy_handler.h"
 #import "components/history/core/common/pref_names.h"
 #import "components/lens/lens_overlay_permission_utils.h"
@@ -189,6 +189,9 @@ constexpr auto kSimplePolicyMap = std::to_array<PolicyToPreferenceMapEntry>({
     base::Value::Type::INTEGER },
   { policy::key::kGeminiSettings,
     prefs::kGeminiEnabledByPolicy,
+    base::Value::Type::INTEGER },
+  { policy::key::kGeminiActOnWebSettings,
+    prefs::kGeminiActOnWebSettings,
     base::Value::Type::INTEGER },
   { policy::key::kGenAiDefaultSettings,
     prefs::kGenAiEnabledByPolicy,
@@ -432,10 +435,8 @@ std::unique_ptr<policy::ConfigurationPolicyHandlerList> BuildPolicyHandlerList(
           enterprise_connectors::kOnSecurityEventScopePref, chrome_schema));
 
   handlers->AddHandler(
-      std::make_unique<
-          enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
-          policy::key::kProxyProvisioningDomains,
-          enterprise_net::kProxyProvisioningDomains, chrome_schema));
+      std::make_unique<enterprise_net::ProxyProvisioningDomainsPolicyHandler>(
+          chrome_schema));
 
   handlers->AddHandler(std::make_unique<policy::DataRegionPolicyHandler>(
       policy::key::kChromeDataRegionSetting, prefs::kChromeDataRegionSetting));
@@ -463,6 +464,14 @@ std::unique_ptr<policy::ConfigurationPolicyHandlerList> BuildPolicyHandlerList(
   handlers->AddHandler(std::make_unique<policy::URLSchemeListPolicyHandler>(
       policy::key::kSaasUsageReportingDomainUrlsForBrowsers,
       enterprise_reporting::kSaasUsageDomainUrlsForBrowser));
+
+  handlers->AddHandler(std::make_unique<policy::URLSchemeListPolicyHandler>(
+      policy::key::kGeminiActOnWebAllowedForURLs,
+      prefs::kGeminiActOnWebAllowedForURLs));
+
+  handlers->AddHandler(std::make_unique<policy::URLSchemeListPolicyHandler>(
+      policy::key::kGeminiActOnWebBlockedForURLs,
+      prefs::kGeminiActOnWebBlockedForURLs));
 
   return handlers;
 }

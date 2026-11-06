@@ -8,6 +8,7 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/strings/escape.h"
+#include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "chrome/browser/actor/actor_keyed_service.h"
@@ -294,6 +295,19 @@ WaitForClientReadyTask::~WaitForClientReadyTask() = default;
 
 void WaitForClientReadyTask::Start(base::OnceClosure done_callback) {
   done_callback_ = std::move(done_callback);
+  // TODO(b/573171097): Have Invoke send an explicit load request to the
+  // instance/host that is guaranteed to resolve, rather than triggering load
+  // and waiting for load separately.
+  host_->WaitForLoad(
+      base::BindOnce(&WaitForClientReadyTask::OnWaitForLoadComplete,
+                     weak_ptr_factory_.GetWeakPtr()));
+}
+
+void WaitForClientReadyTask::OnWaitForLoadComplete(bool failed) {
+  if (failed) {
+    CheckState(ClientLoadState::kError);
+    return;
+  }
   observation_.Observe(&*host_);
   CheckState(host_->client_load_state());
 }
@@ -504,6 +518,11 @@ ClipboardPolicyTask::ClipboardPolicyTask(
     const GlicInvokeOptions& options,
     base::OnceCallback<void(GlicInvokeError)> error_callback)
     : instance_(instance), error_callback_(std::move(error_callback)) {
+  if (options.RequiresPromptClipboardPolicyCheck()) {
+    source_rfh_id_ = options.prompt_policy->source_rfh_id;
+    text_data_ = base::UTF8ToUTF16(base::JoinString(options.prompts, "\n"));
+    return;
+  }
   if (!options.additional_context.has_value() ||
       !options.additional_context->source_rfh_id) {
     return;

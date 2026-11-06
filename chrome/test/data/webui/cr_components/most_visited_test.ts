@@ -2404,6 +2404,7 @@ suite('ShortcutsReorder', () => {
     tile.querySelector<HTMLElement>('#actionMenuButton')!.click();
     await microtasksFinished();
     $$<HTMLElement>(mostVisited, '#actionMenuReorder').click();
+    await new Promise(requestAnimationFrame);
     await microtasksFinished();
 
     // The aria-label should change when in reorder mode.
@@ -2413,6 +2414,24 @@ suite('ShortcutsReorder', () => {
     assertEquals('', tileLink.getAttribute('href'));
     assertEquals(tileLink, mostVisited.shadowRoot?.activeElement);
   });
+
+  test('container role is application only in reorder mode', async () => {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    await setUpTest({shortcutsReorderEnabled: true});
+    await addTiles(1);
+    const container = $$<HTMLElement>(mostVisited, '#container');
+    assertFalse(container.hasAttribute('role'));
+
+    // Enter reorder mode.
+    const tile = queryTiles()[0]!;
+    tile.querySelector<HTMLElement>('#actionMenuButton')!.click();
+    await microtasksFinished();
+    $$<HTMLElement>(mostVisited, '#actionMenuReorder').click();
+    await microtasksFinished();
+
+    assertEquals('application', container.getAttribute('role'));
+  });
+
   test('tiles reorder correctly with arrow keys', async () => {
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
     await setUpTest({shortcutsReorderEnabled: true});
@@ -2437,6 +2456,152 @@ suite('ShortcutsReorder', () => {
     // second
     assertEquals(secondTitleBefore, tilesAfter[0]!.title);
     assertEquals(firstTitleBefore, tilesAfter[1]!.title);
+  });
+
+  test('tiles reorder wraps only across visible tiles', async () => {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    await setUpTest({
+      shortcutsReorderEnabled: true,
+      expandableTilesEnabled: true,
+      maxTilesInCollapsedState: 2,
+    });
+    await addTiles(3);
+    const tilesBefore = queryTiles();
+    const firstTitle = tilesBefore[0]!.title;
+    const secondTitle = tilesBefore[1]!.title;
+    const hiddenTitle = tilesBefore[2]!.title;
+    assertTrue(tilesBefore[2]!.hidden);
+
+    // Enter reorder mode on the first visible tile.
+    tilesBefore[0]!.querySelector<HTMLElement>('#actionMenuButton')!.click();
+    await microtasksFinished();
+    $$<HTMLElement>(mostVisited, '#actionMenuReorder').click();
+    await microtasksFinished();
+
+    // Press Left arrow to wrap around to the last visible tile,
+    // skipping the hidden tile.
+    tilesBefore[0]!.dispatchEvent(
+        new KeyboardEvent('keydown', {key: 'ArrowLeft', bubbles: true}));
+    await microtasksFinished();
+
+    const tilesAfter = queryTiles();
+    assertEquals(secondTitle, tilesAfter[0]!.title);
+    assertEquals(firstTitle, tilesAfter[1]!.title);
+    assertEquals(hiddenTitle, tilesAfter[2]!.title);
+  });
+
+  ['Escape', 'Enter', 'Tab'].forEach(exitKey => {
+    test(`exits reorder mode when ${exitKey} is pressed`, async () => {
+      document.body.innerHTML = window.trustedTypes!.emptyHTML;
+      await setUpTest({shortcutsReorderEnabled: true});
+      await addTiles(1);
+      const container = $$<HTMLElement>(mostVisited, '#container');
+      const tile = queryTiles()[0]!;
+      const tileLink = tile.querySelector<HTMLAnchorElement>('a')!;
+      const originalTitle = tileLink.getAttribute('aria-label')!;
+      const originalHref = tileLink.getAttribute('href')!;
+
+      // Enter reorder mode.
+      tile.querySelector<HTMLElement>('#actionMenuButton')!.click();
+      await microtasksFinished();
+      $$<HTMLElement>(mostVisited, '#actionMenuReorder').click();
+      await new Promise(requestAnimationFrame);
+      await microtasksFinished();
+
+      // Assert in reorder mode.
+      assertEquals('application', container.getAttribute('role'));
+      assertEquals('', tileLink.getAttribute('href'));
+
+      // Exit reorder mode.
+      const keydownEvent = new KeyboardEvent(
+          'keydown', {key: exitKey, bubbles: true, cancelable: true});
+      tile.dispatchEvent(keydownEvent);
+      await microtasksFinished();
+
+      // Assert that default mode tile properties are restored and focus is set
+      // to the action menu button.
+      assertTrue(keydownEvent.defaultPrevented);
+      assertFalse(container.hasAttribute('role'));
+      assertEquals(originalTitle, tileLink.getAttribute('aria-label'));
+      assertEquals(originalHref, tileLink.getAttribute('href'));
+      assertEquals(
+          tile.querySelector('#actionMenuButton'),
+          mostVisited.shadowRoot?.activeElement);
+    });
+  });
+
+  test('exits reorder mode when clicking outside container', async () => {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    await setUpTest({shortcutsReorderEnabled: true});
+    await addTiles(1);
+    const container = $$<HTMLElement>(mostVisited, '#container');
+    const tile = queryTiles()[0]!;
+    const tileLink = tile.querySelector<HTMLAnchorElement>('a')!;
+    const originalTitle = tileLink.getAttribute('aria-label')!;
+    const originalHref = tileLink.getAttribute('href')!;
+
+    // Enter reorder mode.
+    tile.querySelector<HTMLElement>('#actionMenuButton')!.click();
+    await microtasksFinished();
+    $$<HTMLElement>(mostVisited, '#actionMenuReorder').click();
+    await new Promise(requestAnimationFrame);
+    await microtasksFinished();
+
+    // Clicking outside the container should exit reorder mode.
+    document.body.click();
+    await microtasksFinished();
+    assertFalse(container.hasAttribute('role'));
+    assertEquals(originalTitle, tileLink.getAttribute('aria-label'));
+    assertEquals(originalHref, tileLink.getAttribute('href'));
+  });
+
+  test('disables buttons and ignores tile clicks in reorder mode', async () => {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    await setUpTest({
+      shortcutsReorderEnabled: true,
+      expandableTilesEnabled: true,
+      maxTilesInCollapsedState: 2,
+    });
+    await addTiles(3);
+    const tile = queryTiles()[0]!;
+    const showMoreButton = getShowMoreButton()!;
+    const showLessButton = getShowLessButton()!;
+    const addShortcutButton = $$<CrButtonElement>(mostVisited, '#addShortcut');
+
+    // Enter reorder mode in collapsed state (show more button visible).
+    tile.querySelector<HTMLElement>('#actionMenuButton')!.click();
+    await microtasksFinished();
+    $$<HTMLElement>(mostVisited, '#actionMenuReorder').click();
+    await new Promise(requestAnimationFrame);
+    await microtasksFinished();
+
+    assertTrue(showMoreButton.disabled);
+
+    // Clicking a tile should not trigger navigation.
+    const clickEvent =
+        new MouseEvent('click', {bubbles: true, cancelable: true});
+    tile.dispatchEvent(clickEvent);
+    assertTrue(clickEvent.defaultPrevented);
+    assertEquals(0, handler.getCallCount('onMostVisitedTileNavigation'));
+
+    // Exit reorder mode and verify buttons are re-enabled.
+    tile.dispatchEvent(
+        new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+    await microtasksFinished();
+    assertFalse(showMoreButton.disabled);
+
+    // Make show less and add shortcut buttons visible and re-enter reorder
+    // mode.
+    showMoreButton.click();
+    await microtasksFinished();
+    tile.querySelector<HTMLElement>('#actionMenuButton')!.click();
+    await microtasksFinished();
+    $$<HTMLElement>(mostVisited, '#actionMenuReorder').click();
+    await new Promise(requestAnimationFrame);
+    await microtasksFinished();
+
+    assertTrue(showLessButton.disabled);
+    assertTrue(addShortcutButton.disabled);
   });
 });
 

@@ -4,21 +4,40 @@
 
 import 'chrome://resources/cr_components/composebox/threads_rail.js';
 
+import {COLOR_PROVIDER_CHANGED, ColorChangeUpdater} from 'chrome://resources/cr_components/color_change_listener/colors_css_updater.js';
 import {EventTracker} from 'chrome://resources/js/event_tracker.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
 import {loadTimeData} from './i18n_setup.js';
+import {IframeElement} from './iframe.js';
 import {getCss} from './left_hand_side.css.js';
 import {getHtml} from './left_hand_side.html.js';
+import {strictQuery} from './utils.js';
 import {WindowProxy} from './window_proxy.js';
 
 const DEFAULT_EXPANDED_LHS_WIDTH_PX = 261;
+
+type NtpLhsThemeKey = keyof NtpLhsThemePalette;
+
+interface NtpLhsSetThemeMessage {
+  type: NtpLhsMessageType.NTP_LHS_SET_THEME;
+  theme: NtpLhsThemePalette;
+  isDark?: boolean;
+}
+
+type ChromeToSearchLhsMessage = NtpLhsSetThemeMessage;
+
+const NTP_LHS_THEME_CSS_VARS: Record<NtpLhsThemeKey, string> = {
+  'primaryFont': 'primary-font',
+  'railBackground': 'background',
+};
 
 export enum NtpLhsMessageType {
   NTP_LHS_READY = 'NTP_LHS_READY',
   NTP_LHS_CLOSE = 'NTP_LHS_CLOSE',
   NTP_LHS_NEW_THREAD = 'NTP_LHS_NEW_THREAD',
   NTP_LHS_NAVIGATE = 'NTP_LHS_NAVIGATE',
+  NTP_LHS_SET_THEME = 'NTP_LHS_SET_THEME',
 }
 
 export interface NtpLhsReadyMessage {
@@ -42,6 +61,11 @@ export interface NtpLhsNavigateMessage {
 export type SearchToChromeLhsMessage = NtpLhsReadyMessage|NtpLhsCloseMessage|
     NtpLhsNewThreadMessage|NtpLhsNavigateMessage;
 
+export interface NtpLhsThemePalette {
+  primaryFont?: string;
+  railBackground?: string;
+}
+
 export class LeftHandSideElement extends CrLitElement {
   static get is() {
     return 'cr-left-hand-side';
@@ -60,7 +84,10 @@ export class LeftHandSideElement extends CrLitElement {
       enableThreadsRailHybrid_: {type: Boolean},
       expandedLhsUrl_: {type: String},
       expandedWidth_: {type: Number},
-      isDark: {type: Boolean},
+      isDark: {
+        type: Boolean,
+        reflect: true,
+      },
       isExpanded_: {type: Boolean},
       isExpandedReady_: {type: Boolean},
     };
@@ -82,6 +109,9 @@ export class LeftHandSideElement extends CrLitElement {
       return;
     }
     this.eventTracker_.add(window, 'message', this.onMessage_);
+    this.eventTracker_.add(
+        ColorChangeUpdater.forDocument().eventTarget, COLOR_PROVIDER_CHANGED,
+        this.postThemeColors_);
   }
 
   override disconnectedCallback() {
@@ -96,6 +126,14 @@ export class LeftHandSideElement extends CrLitElement {
     const url = new URL(this.expandedLhsUrl_);
     url.searchParams.set('cs', this.isDark ? '1' : '0');
     return url.toString();
+  }
+
+  protected onFoldedClick_(): void {
+    this.isExpanded_ = true;
+  }
+
+  protected onExpandRail_(): void {
+    this.isExpanded_ = true;
   }
 
   private onMessage_ = (event: MessageEvent) => {
@@ -117,11 +155,11 @@ export class LeftHandSideElement extends CrLitElement {
 
     switch (data.type) {
       case NtpLhsMessageType.NTP_LHS_READY: {
+        this.postThemeColors_();
         this.expandedWidth_ = typeof data.width === 'number' && data.width > 0 ?
             data.width :
             DEFAULT_EXPANDED_LHS_WIDTH_PX;
         this.isExpandedReady_ = true;
-        this.isExpanded_ = true;
         break;
       }
       case NtpLhsMessageType.NTP_LHS_CLOSE: {
@@ -148,6 +186,25 @@ export class LeftHandSideElement extends CrLitElement {
       default:
         break;
     }
+  };
+
+  private postThemeColors_ = () => {
+    const computedStyle = getComputedStyle(this);
+    const theme: NtpLhsThemePalette = {};
+    for (const [key, cssVarSuffix] of Object.entries(NTP_LHS_THEME_CSS_VARS) as
+         Array<[NtpLhsThemeKey, string]>) {
+      theme[key] = computedStyle
+                       .getPropertyValue(
+                           `--color-new-tab-page-threads-rail-${cssVarSuffix}`)
+                       .trim();
+    }
+    const message: ChromeToSearchLhsMessage = {
+      type: NtpLhsMessageType.NTP_LHS_SET_THEME,
+      theme,
+      isDark: this.isDark,
+    };
+    strictQuery(this.shadowRoot, '#expanded', IframeElement)
+        .postMessage(message);
   };
 }
 

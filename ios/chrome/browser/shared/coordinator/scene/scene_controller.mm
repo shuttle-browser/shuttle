@@ -172,7 +172,6 @@
 #import "ios/chrome/browser/window_activities/model/window_activity_helpers.h"
 #import "ios/chrome/common/app_group/app_group_constants.h"
 #import "ios/chrome/common/app_group/app_group_utils.h"
-#import "ios/chrome/common/ui/reauthentication/reauthentication_module.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/components/webui/web_ui_url_constants.h"
 #import "ios/public/provider/chrome/browser/cobalt/cobalt_api.h"
@@ -769,7 +768,7 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
     return;
   }
 
-  if (urlLoadParams.disposition == WindowOpenDisposition::SWITCH_TO_TAB) {
+  if (urlLoadParams.disposition == WindowOpenDisposition::kSwitchToTab) {
     // Check if it's already the displayed tab and no switch is necessary
     if (currentWebState &&
         currentWebState->GetVisibleURL() == urlLoadParams.web_params.url) {
@@ -812,7 +811,7 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
 
   if (shouldOpenNewTab) {
     [targetBVC appendTabAddedCompletion:tabOpenedCompletion];
-    urlLoadParams.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
+    urlLoadParams.disposition = WindowOpenDisposition::kNewForegroundTab;
     urlLoadParams.in_incognito = targetMode == ApplicationMode::INCOGNITO;
     UrlLoadingBrowserAgent::FromBrowser(targetInterface.browser)
         ->Load(urlLoadParams);
@@ -820,7 +819,7 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
   }
 
   // Otherwise, load `urlLoadParams` in the current tab.
-  urlLoadParams.disposition = WindowOpenDisposition::CURRENT_TAB;
+  urlLoadParams.disposition = WindowOpenDisposition::kCurrentTab;
   UrlLoadingBrowserAgent::FromBrowser(targetInterface.browser)
       ->Load(urlLoadParams);
   if (tabOpenedCompletion) {
@@ -1008,7 +1007,7 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
       BOOL isURLEmpty = urlLoadParams.web_params.url.is_empty();
       BOOL isBrowserEmpty = targetInterface.browser->GetWebStateList()->empty();
       BOOL shouldAvoidNewTab =
-          (urlLoadParams.disposition == WindowOpenDisposition::SWITCH_TO_TAB) ||
+          (urlLoadParams.disposition == WindowOpenDisposition::kSwitchToTab) ||
           (self.NTPActionAfterTabSwitcherDismissal == OPEN_LATEST_TAB);
 
       if (isURLEmpty && shouldAvoidNewTab && !isBrowserEmpty) {
@@ -1649,23 +1648,25 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
   // called.
   [self.sceneState.window makeKeyAndVisible];
 
-  // On iPad (iOS 26.4+), observe windowScene Light/Dark trait changes so that
-  // the appearance flip is propagated to any visible popover whose detached
-  // presentation window does not participate in normal trait propagation.
-  // TODO(crbug.com/507265316): Remove once UIKit propagates trait changes to
-  // popover presentation windows (tracked with Apple as FB22646087).
+  // On iPad (iOS 26.4 to < iOS 27), observe windowScene Light/Dark trait
+  // changes so that the appearance flip is propagated to any visible popover
+  // whose detached presentation window does not participate in normal trait
+  // propagation.
+  // TODO(crbug.com/507265316): Remove once the minimum supported version is
+  // iOS 27, where UIKit fixes FB22646087.
   if (@available(iOS 26.4, *)) {
-    if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET) {
+    if (!@available(iOS 27, *)) {
       UIWindowScene* windowScene = self.sceneState.window.windowScene;
-      if (windowScene) {
+      if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET &&
+          windowScene) {
         __weak __typeof(self) weakSelf = self;
+        UITraitChangeHandler handler =
+            ^(id<UITraitEnvironment> env, UITraitCollection* previous) {
+              [weakSelf propagateUserInterfaceStyleToPresentedViewControllers];
+            };
         [windowScene
             registerForTraitChanges:@[ UITraitUserInterfaceStyle.class ]
-                        withHandler:^(id<UITraitEnvironment> env,
-                                      UITraitCollection* previous) {
-                          [weakSelf
-                              propagateUserInterfaceStyleToPresentedViewControllers];
-                        }];
+                        withHandler:handler];
       }
     }
   }
@@ -2099,9 +2100,7 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
 
   [_sceneState addAgent:[[UIBlockerSceneAgent alloc] init]];
   [_sceneState addAgent:[[IncognitoBlockerSceneAgent alloc] init]];
-  [_sceneState
-      addAgent:[[IncognitoReauthSceneAgent alloc]
-                   initWithReauthModule:[[ReauthenticationModule alloc] init]]];
+  [_sceneState addAgent:[[IncognitoReauthSceneAgent alloc] init]];
 
   [_sceneState addAgent:[[SigninAccountCapabilitiesSceneAgent alloc]
                             initWithSceneUIProvider:self]];
@@ -2989,8 +2988,8 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
 // overrideUserInterfaceStyle are touched, so that intentional per-VC
 // overrides (e.g. a sheet that wants to stay light) are preserved.
 //
-// TODO(crbug.com/507265316): Remove once UIKit propagates trait changes to
-// popover presentation windows (tracked with Apple as FB22646087).
+// TODO(crbug.com/507265316): Remove once the minimum supported version is
+// iOS 27, where UIKit fixes FB22646087.
 - (void)propagateUserInterfaceStyleToPresentedViewControllers {
   UIWindow* window = self.sceneState.window;
   UIWindowScene* windowScene = window.windowScene;

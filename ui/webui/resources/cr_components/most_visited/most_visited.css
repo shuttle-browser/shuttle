@@ -99,15 +99,6 @@
   background-color: var(--google-grey-700);
 }
 
-@media (forced-colors: active) {
-  #addShortcutIcon,
-  #showMoreIcon,
-  #showLessIcon,
-  .query-tile-icon {
-    background-color: ButtonText;
-  }
-}
-
 :host([use-white-tile-icon_]) #addShortcutIcon,
 :host([use-white-tile-icon_]) #showMoreIcon,
 :host([use-white-tile-icon_]) #showLessIcon {
@@ -164,22 +155,6 @@
   box-shadow: var(--most-visited-focus-shadow);
 }
 
-@media (forced-colors: active) {
-  :host-context(.focus-outline-visible):host(
-      :not([hide-title]):not([non-editable])) .tile a:focus,
-  :host-context(.focus-outline-visible):host([hide-title])
-      .tile a:focus ~ .tile-icon,
-  :host-context(.focus-outline-visible):host([non-editable])
-      .tile a:focus ~ .tile-icon,
-  :host-context(.focus-outline-visible) #addShortcut:focus,
-  :host-context(.focus-outline-visible) #showMore:focus,
-  :host-context(.focus-outline-visible) #showLess:focus {
-    /* Use outline instead of box-shadow (which does not work) in Windows
-        HCM. */
-    outline: var(--cr-focus-outline-hcm);
-  }
-}
-
 #addShortcut,
 #showMore,
 #showLess {
@@ -197,6 +172,74 @@
 :host(:not([reordering_])) #showLess:hover,
 .force-hover {
   background-color: var(--tile-hover-color);
+}
+
+@media (forced-colors: active) {
+  #addShortcutIcon,
+  #showMoreIcon,
+  #showLessIcon,
+  :host([use-white-tile-icon_]) #addShortcutIcon,
+  :host([use-white-tile-icon_]) #showMoreIcon,
+  :host([use-white-tile-icon_]) #showLessIcon,
+  .query-tile-icon {
+    background-color: ButtonText;
+  }
+
+  :host-context(.focus-outline-visible):host(
+      :not([hide-title]):not([non-editable])) .tile a:focus,
+  :host-context(.focus-outline-visible):host([hide-title])
+      .tile a:focus ~ .tile-icon,
+  :host-context(.focus-outline-visible):host([non-editable])
+      .tile a:focus ~ .tile-icon,
+  :host-context(.focus-outline-visible) #addShortcut:focus,
+  :host-context(.focus-outline-visible) #showMore:focus,
+  :host-context(.focus-outline-visible) #showLess:focus {
+    /* Use outline instead of box-shadow (which does not work) in Windows
+        HCM. */
+    outline: var(--cr-focus-outline-hcm);
+  }
+
+  :host(:not([reordering_])) .tile:hover,
+  :host(:not([reordering_])) #addShortcut:hover,
+  :host(:not([reordering_])) #showMore:hover,
+  :host(:not([reordering_])) #showLess:hover,
+  .force-hover {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+
+  .tile-icon {
+    background-color: Canvas;
+    border: 1px solid CanvasText;
+    box-sizing: border-box;
+  }
+
+  .tile-icon-container {
+    background-color: ButtonFace;
+    border-color: ButtonText;
+  }
+
+  #addShortcut:hover .tile-icon-container,
+  #showMore:hover .tile-icon-container,
+  #showLess:hover .tile-icon-container {
+    background-color: Highlight;
+    border-color: Highlight;
+  }
+
+  #addShortcut:hover #addShortcutIcon,
+  #showMore:hover #showMoreIcon,
+  #showLess:hover #showLessIcon {
+    background-color: HighlightText;
+  }
+
+  .tile-title {
+    color: CanvasText;
+  }
+
+  :host(:not([reordering_])) cr-icon-button:hover {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
 }
 
 .tile-icon {

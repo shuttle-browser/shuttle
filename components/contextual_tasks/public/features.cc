@@ -41,7 +41,13 @@ BASE_FEATURE(kContextualTasksPrivateApiNoAnimation,
 
 // Enables the contextual tasks side panel infrastructure without full product
 // capabilities.
-BASE_FEATURE(kContextualTasksSidePanel, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kContextualTasksSidePanel,
+#if BUILDFLAG(IS_ANDROID)
+             base::FEATURE_DISABLED_BY_DEFAULT
+#else
+             base::FEATURE_ENABLED_BY_DEFAULT
+#endif
+);
 
 // Aligns the contextual tasks side panel to the right hand side by default.
 BASE_FEATURE(kContextualTasksSidePanelDefaultRight,
@@ -70,6 +76,38 @@ BASE_FEATURE(kEnableContextualTasksPinButtonInToolbar,
 BASE_FEATURE(kEnableContextualTasksPinButtonOnSrp,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+// Enables V2 pinning behavior that consolidates the pinning and ephemeral
+// toolbar buttons for the new right-hand Search in Chrome (SiC) side panel.
+BASE_FEATURE(kContextualTasksPinningV2, base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Routes the unpinned Contextual Tasks ephemeral toolbar button through
+// PinnedToolbarActions::ShowActionEphemerallyInToolbar in Pinning V2 instead of
+// the separate ContextualTasksButton view.
+BASE_FEATURE(kContextualTasksEphemeralPinButtonRefactor,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Shows an active indicator (blue icon and underline pill) on the permanent
+// pinned contextual tasks toolbar button when the active tab has an ongoing
+// thread/session.
+BASE_FEATURE(kContextualTasksPinnedButtonActiveIndicator,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+const base::FeatureParam<bool>
+    kContextualTasksPinnedButtonContextMenuCloseSidePanel(
+        &kContextualTasksPinnedButtonActiveIndicator,
+        "ContextualTasksPinnedButtonContextMenuCloseSidePanel",
+        false);
+
+bool ShouldShowCloseSidePanelInPinnedButtonContextMenu() {
+  return IsContextualTasksPinnedButtonActiveIndicatorEnabled() &&
+         kContextualTasksPinnedButtonContextMenuCloseSidePanel.Get();
+}
+
+const base::FeatureParam<bool>
+    kContextualTasksPinnedButtonActiveIndicatorCircleHighlight(
+        &kContextualTasksPinnedButtonActiveIndicator,
+        "ContextualTasksPinnedButtonActiveIndicatorCircleHighlight",
+        false);
 // Keeps the ephemeral contextual tasks button visible even when the permanent
 // button is pinned in the toolbar.
 BASE_FEATURE(kEphemeralPinningVisibleWhenPermanentlyPinned,
@@ -80,9 +118,21 @@ BASE_FEATURE(kEphemeralPinningVisibleWhenPermanentlyPinned,
 BASE_FEATURE(kContextualTasksEphemeralButtonContextMenu,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+const base::FeatureParam<bool>
+    kContextualTasksEphemeralButtonContextMenuCloseSidePanel(
+        &kContextualTasksEphemeralButtonContextMenu,
+        "ContextualTasksEphemeralButtonContextMenuCloseSidePanel",
+        false);
+
+bool ShouldUseCloseSidePanelForEphemeralButtonContextMenu() {
+  return base::FeatureList::IsEnabled(
+             kContextualTasksEphemeralButtonContextMenu) &&
+         kContextualTasksEphemeralButtonContextMenuCloseSidePanel.Get();
+}
+
 // Automatically dismisses the ephemeral contextual tasks toolbar button and
 // disassociates its task after a configurable period of inactivity (in
-// minutes). Defaults to 1440 minutes (24 hours).
+// minutes). Defaults to 120 minutes (2 hours).
 BASE_FEATURE(kContextualTasksEphemeralButtonAutoDismiss,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -90,7 +140,7 @@ const base::FeatureParam<int>
     kContextualTasksEphemeralButtonAutoDismissTimeMinutes(
         &kContextualTasksEphemeralButtonAutoDismiss,
         "ContextualTasksEphemeralButtonAutoDismissTimeMinutes",
-        1440);
+        120);
 
 bool IsContextualTasksEphemeralButtonAutoDismissEnabled() {
   return base::FeatureList::IsEnabled(
@@ -102,6 +152,43 @@ int GetContextualTasksEphemeralButtonAutoDismissTimeMinutes() {
     return 0;
   }
   return kContextualTasksEphemeralButtonAutoDismissTimeMinutes.Get();
+}
+
+// Unifies the logo (Spark, Super G, or Gray Super G) used for both the SIC
+// (Contextual Tasks) permanent toolbar pin button and ephemeral toolbar button.
+BASE_FEATURE(kContextualTasksUnifyPinButtonLogos,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+constexpr base::FeatureParam<UnifyPinButtonLogoOption>::Option
+    kContextualTasksUnifyPinButtonLogoOptions[] = {
+        {UnifyPinButtonLogoOption::kSpark, "spark"},
+        {UnifyPinButtonLogoOption::kSuperG, "super-g"},
+        {UnifyPinButtonLogoOption::kGraySuperG, "gray-super-g"},
+};
+
+const base::FeatureParam<UnifyPinButtonLogoOption>
+    kContextualTasksUnifyPinButtonLogoOption(
+        &kContextualTasksUnifyPinButtonLogos,
+        "ContextualTasksUnifyPinButtonLogo",
+        UnifyPinButtonLogoOption::kSpark,
+        &kContextualTasksUnifyPinButtonLogoOptions);
+
+bool ShouldUseSparkIconForPinButtons() {
+  return base::FeatureList::IsEnabled(kContextualTasksUnifyPinButtonLogos) &&
+         kContextualTasksUnifyPinButtonLogoOption.Get() ==
+             UnifyPinButtonLogoOption::kSpark;
+}
+
+bool ShouldUseSuperGIconForPinButtons() {
+  return base::FeatureList::IsEnabled(kContextualTasksUnifyPinButtonLogos) &&
+         kContextualTasksUnifyPinButtonLogoOption.Get() ==
+             UnifyPinButtonLogoOption::kSuperG;
+}
+
+bool ShouldUseGraySuperGIconForPinButtons() {
+  return base::FeatureList::IsEnabled(kContextualTasksUnifyPinButtonLogos) &&
+         kContextualTasksUnifyPinButtonLogoOption.Get() ==
+             UnifyPinButtonLogoOption::kGraySuperG;
 }
 
 // Enables relevant context determination for contextual tasks.
@@ -242,6 +329,11 @@ const base::FeatureParam<size_t> kABASearchJourneysMinQueryMatchLength(
     "aba_search_journeys_min_query_match_length",
     5);
 
+const base::FeatureParam<bool> kABASearchJourneysAllowIntermediateTabs(
+    &kABASearchJourneys,
+    "aba_search_journeys_allow_intermediate_tabs",
+    false);
+
 bool IsABASearchJourneysEnabled() {
   return base::FeatureList::IsEnabled(kABASearchJourneys);
 }
@@ -267,6 +359,11 @@ size_t GetABASearchJourneysMinQueryMatchLength() {
   return kABASearchJourneysMinQueryMatchLength.Get();
 }
 
+bool ShouldAllowABASearchJourneysIntermediateTabs() {
+  return IsABASearchJourneysEnabled() &&
+         kABASearchJourneysAllowIntermediateTabs.Get();
+}
+
 BASE_FEATURE(kContextualTasksEnableSpatialModelToolbarLayout,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -279,6 +376,9 @@ BASE_FEATURE(kContextualSearchContextualCuesHandleShopping,
 BASE_FEATURE(kContextualTasksRearchitecture, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kContextualTasksSidePanelRearchitecture,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kContextualTasksSidePanelRearchitectureExpandToFullTab,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kContextualTasksEnableStickyConversation,
@@ -298,6 +398,26 @@ const base::FeatureParam<bool> kOpenNewTabOnSidePanelLinkClick(
 bool ShouldOpenNewTabOnSidePanelLinkClick() {
   return base::FeatureList::IsEnabled(kContextualTasksSidePanelTabState) &&
          kOpenNewTabOnSidePanelLinkClick.Get();
+}
+
+const base::FeatureParam<bool> kScopeSidePanelStateToTab(
+    &kContextualTasksSidePanelTabState,
+    "scope_side_panel_state_to_tab",
+    true);
+
+bool ShouldScopeSidePanelStateToTab() {
+  return base::FeatureList::IsEnabled(kContextualTasksSidePanelTabState) &&
+         kScopeSidePanelStateToTab.Get();
+}
+
+const base::FeatureParam<bool> kRestoreSidePanelOnTabRestore(
+    &kContextualTasksSidePanelTabState,
+    "restore_side_panel_on_tab_restore",
+    true);
+
+bool ShouldRestoreSidePanelOnTabRestore() {
+  return base::FeatureList::IsEnabled(kContextualTasksSidePanelTabState) &&
+         kRestoreSidePanelOnTabRestore.Get();
 }
 
 BASE_FEATURE(kContextualTasksTabBasedSuggestions,
@@ -456,6 +576,12 @@ const base::FeatureParam<bool> kContextualTasksContextSmartTabSharing(
     &kContextualTasksContext,
     "ContextualTasksContextSmartTabSharing",
     false);
+
+const base::FeatureParam<bool>
+    kContextualTasksContextSmartTabSharingRearchitecture(
+        &kContextualTasksContext,
+        "ContextualTasksContextSmartTabSharingRearchitecture",
+        false);
 
 const base::FeatureParam<bool> kContextualTasksContextToggleOffAfterSubmit(
     &kContextualTasksContext,
@@ -789,6 +915,26 @@ bool IsContextualTasksPinButtonInToolbarEnabled() {
   return base::FeatureList::IsEnabled(kEnableContextualTasksPinButtonInToolbar);
 }
 
+bool IsContextualTasksPinningV2Enabled() {
+  return base::FeatureList::IsEnabled(kContextualTasksPinningV2);
+}
+
+bool IsContextualTasksEphemeralPinButtonRefactorEnabled() {
+  return IsContextualTasksPinningV2Enabled() &&
+         base::FeatureList::IsEnabled(
+             kContextualTasksEphemeralPinButtonRefactor);
+}
+
+bool IsContextualTasksPinnedButtonActiveIndicatorEnabled() {
+  return base::FeatureList::IsEnabled(
+      kContextualTasksPinnedButtonActiveIndicator);
+}
+
+bool IsContextualTasksPinnedButtonActiveIndicatorCircleHighlightEnabled() {
+  return IsContextualTasksPinnedButtonActiveIndicatorEnabled() &&
+         kContextualTasksPinnedButtonActiveIndicatorCircleHighlight.Get();
+}
+
 bool IsContextualTasksPinButtonOnSrpEnabled() {
   return base::FeatureList::IsEnabled(kEnableContextualTasksPinButtonOnSrp);
 }
@@ -1014,6 +1160,12 @@ bool IsContextualTasksSidePanelRearchitectureEnabled() {
   return base::FeatureList::IsEnabled(kContextualTasksSidePanelRearchitecture);
 }
 
+bool IsContextualTasksSidePanelRearchitectureExpandToFullTabEnabled() {
+  return IsContextualTasksSidePanelRearchitectureEnabled() &&
+         base::FeatureList::IsEnabled(
+             kContextualTasksSidePanelRearchitectureExpandToFullTab);
+}
+
 bool IsContextualTasksClobberActiveTabEnabled() {
   return base::FeatureList::IsEnabled(kContextualTasksClobberActiveTab);
 }
@@ -1039,7 +1191,8 @@ bool IsContextualTasksUnboundedMenuEnabled() {
 bool IsContextualTasksUIEnabled() {
   return base::FeatureList::IsEnabled(kContextualTasksSidePanel) ||
          base::FeatureList::IsEnabled(kContextualTasks) ||
-         base::FeatureList::IsEnabled(kContextualTasksRearchitecture);
+         base::FeatureList::IsEnabled(kContextualTasksRearchitecture) ||
+         base::FeatureList::IsEnabled(kContextualTasksSidePanelRearchitecture);
 }
 
 namespace flag_descriptions {
@@ -1120,6 +1273,24 @@ const char kEnableContextualTasksPinButtonOnSrpDescription[] =
     "Enables the option to pin the contextual tasks shortcut from the side "
     "panel header when viewing the search results page (SRP).";
 
+const char kContextualTasksPinningV2Name[] = "Contextual Tasks Pinning V2";
+const char kContextualTasksPinningV2Description[] =
+    "Consolidates the pinning and ephemeral toolbar buttons for the new "
+    "right-hand Search in Chrome (SiC) side panel.";
+
+const char kContextualTasksEphemeralPinButtonRefactorName[] =
+    "Contextual Tasks Ephemeral Pin Button Refactor";
+const char kContextualTasksEphemeralPinButtonRefactorDescription[] =
+    "Routes the unpinned Contextual Tasks ephemeral toolbar button through "
+    "PinnedToolbarActions in Pinning V2 instead of ContextualTasksButton.";
+
+const char kContextualTasksPinnedButtonActiveIndicatorName[] =
+    "Contextual Tasks Pinned Button Active Indicator";
+const char kContextualTasksPinnedButtonActiveIndicatorDescription[] =
+    "Highlights the permanent pinned contextual tasks toolbar button in blue "
+    "with an underline indicator when the active tab has an ongoing thread or "
+    "session.";
+
 const char kContextualTasksHideMenuOnAiPageName[] =
     "Contextual Tasks Hide Menu On AI Page";
 const char kContextualTasksHideMenuOnAiPageDescription[] =
@@ -1162,6 +1333,13 @@ const char kContextualTasksTabBasedSuggestionsDescription[] =
     "Enables sending attached tab context tokens to Search for tab-based "
     "query suggestions.";
 
+const char kContextualTasksSidePanelTabStateName[] =
+    "Contextual Tasks Side Panel Tab State";
+const char kContextualTasksSidePanelTabStateDescription[] =
+    "Enables tab-specific contextual tasks side panel state. Clicking links in "
+    "the side panel opens a new tab instead of focusing an existing tab with "
+    "the same URL.";
+
 const char kContextualTasksBypassDismissedCapName[] =
     "Contextual Tasks Bypass Dismissed Cap";
 const char kContextualTasksBypassDismissedCapDescription[] =
@@ -1186,6 +1364,13 @@ const char kContextualTasksEphemeralButtonAutoDismissName[] =
 const char kContextualTasksEphemeralButtonAutoDismissDescription[] =
     "Automatically dismisses the ephemeral contextual tasks toolbar button "
     "after a period of inactivity.";
+
+const char kContextualTasksUnifyPinButtonLogosName[] =
+    "Unify SIC Pin Button Logos";
+const char kContextualTasksUnifyPinButtonLogosDescription[] =
+    "Unifies the logo (Spark, Super G, or Gray Super G) used across the "
+    "Contextual Tasks (Search in Chrome) permanent toolbar and ephemeral pin "
+    "buttons.";
 
 const char kABASearchJourneysName[] = "ABA Search Journeys";
 const char kABASearchJourneysDescription[] =

@@ -44,17 +44,14 @@
 }
 
 /**
- * Hide everything that should not display when the composebox is open
- * so they are not tabbable.
+ * Hide everything that should not display while the composebox blocks the
+ * page so they are not tabbable.
  */
-:host([show-composebox_]:not([ntp-realbox-next-enabled_])) cr-most-visited,
-:host([show-composebox_]:not([ntp-realbox-next-enabled_])) ntp-modules,
-:host([show-composebox_]:not([ntp-realbox-next-enabled_]))
-  #backgroundImageAttribution,
-:host([show-composebox_]:not([ntp-realbox-next-enabled_]))
-  ntp-customize-buttons,
-:host([show-composebox_]:not([ntp-realbox-next-enabled_]))
-  setup-list-module-wrapper {
+:host([page-content-hidden_]) cr-most-visited,
+:host([page-content-hidden_]) ntp-modules,
+:host([page-content-hidden_]) #backgroundImageAttribution,
+:host([page-content-hidden_]) ntp-customize-buttons,
+:host([page-content-hidden_]) setup-list-module-wrapper {
   display: none;
 }
 
@@ -327,7 +324,7 @@ ntp-lens-upload-dialog {
   background: var(--color-composebox-scrim-background);
   inset: 0;
   opacity: var(--ntp-scrim-opacity_);
-  position: fixed;
+  position: absolute;
   transition: all 250ms ease;
   z-index: 1;
 }
@@ -536,6 +533,9 @@ ntp-lens-upload-dialog {
 
 #lhsWrapper {
   flex-shrink: 0;
+  /* This is one layer above rhs, so that the tooltips can overflow on top of
+   * rhs. */
+  z-index: 2;
 }
 
 /* The query container for the @container rules above. This can't be
@@ -563,4 +563,8 @@ ntp-lens-upload-dialog {
   padding-top: var(--ntp-one-google-bar-height);
   position: relative;
   z-index: 1;
+}
+
+:host(:not([show-background-image_])) #rhsContent {
+  background-color: var(--color-new-tab-page-background);
 }

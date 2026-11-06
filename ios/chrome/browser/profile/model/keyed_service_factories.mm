@@ -89,6 +89,7 @@
 #import "ios/chrome/browser/enterprise/proxy/model/enterprise_proxy_service_factory_ios.h"
 #import "ios/chrome/browser/enterprise/proxy/model/proxy_service_controller_factory.h"
 #import "ios/chrome/browser/enterprise/signals/model/ios_signals_aggregator_factory.h"
+#import "ios/chrome/browser/enterprise/signals/model/ios_user_permission_service_factory.h"
 #import "ios/chrome/browser/external_files/model/external_file_remover_factory.h"
 #import "ios/chrome/browser/favicon/model/favicon_service_factory.h"
 #import "ios/chrome/browser/favicon/model/ios_chrome_favicon_loader_factory.h"
@@ -158,7 +159,6 @@
 #import "ios/chrome/browser/policy/model/reporting/saas_usage/saas_usage_reporting_controller_factory_ios.h"
 #import "ios/chrome/browser/policy_url_blocking/model/policy_url_blocking_service_factory.h"
 #import "ios/chrome/browser/power_bookmarks/model/power_bookmark_service_factory.h"
-#import "ios/chrome/browser/price_insights/model/price_insights_model_factory.h"
 #import "ios/chrome/browser/private_ai/model/private_ai_service_factory.h"
 #import "ios/chrome/browser/promos_manager/model/promos_manager_factory.h"
 #import "ios/chrome/browser/push_notification/model/provisional_push_notification_service_factory.h"
@@ -425,6 +425,7 @@ void EnsureProfileKeyedServiceFactoriesBuilt() {
   IOSSignalsAggregatorFactory::GetInstance();
   IOSTrustedVaultServiceFactory::GetInstance();
   IOSUserEventServiceFactory::GetInstance();
+  IOSUserPermissionServiceFactory::GetInstance();
   IOSWalletPassAccessManagerFactory::GetInstance();
   JavaScriptConsoleFeatureFactory::GetInstance();
   LanguageDetectionModelLoaderServiceIOSFactory::GetInstance();
@@ -443,7 +444,6 @@ void EnsureProfileKeyedServiceFactoriesBuilt() {
   PhotosServiceFactory::GetInstance();
   PolicyBlocklistServiceFactory::GetInstance();
   PowerBookmarkServiceFactory::GetInstance();
-  PriceInsightsModelFactory::GetInstance();
   PrivateAiServiceFactory::GetInstance();
   PromosManagerFactory::GetInstance();
   ProxyServiceControllerFactory::GetInstance();
@@ -468,7 +468,7 @@ void EnsureProfileKeyedServiceFactoriesBuilt() {
   SigninClientFactory::GetInstance();
   SigninMetricsServiceFactory::GetInstance();
   SigninProfileInfoUpdaterFactory::GetInstance();
-  SupervisedUserMetricsServiceFactory::GetInstance();
+  supervised_user::SupervisedUserMetricsServiceFactory::GetInstance();
   supervised_user::SupervisedUserServiceFactory::GetInstance();
   SubscriptionEligibilityServiceFactory::GetInstance();
   SyncInvalidationsServiceFactory::GetInstance();
