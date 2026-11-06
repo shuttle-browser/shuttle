@@ -47,8 +47,6 @@
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/download/download_prefs.h"
 #include "chrome/browser/download/download_stats.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_clipboard_utils.h"
-#include "chrome/browser/enterprise/isolated_mode/isolated_mode_settings_service_factory.h"
 #include "chrome/browser/language/language_model_manager_factory.h"
 #include "chrome/browser/navigation_predictor/navigation_predictor_features.h"
 #include "chrome/browser/navigation_predictor/navigation_predictor_keyed_service.h"
@@ -3035,12 +3033,9 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
 
     case IDC_CONTENT_CONTEXT_SEARCHLENSFORVIDEOFRAME:
     case IDC_CONTENT_CONTEXT_SEARCHWEBFORVIDEOFRAME:
-      enterprise_data_protection::ShouldAllowSearchWith(
-          GetWebContentsForDataControls(), /*selection_size=*/0,
-          base::BindOnce(&RenderViewContextMenu::ExecSearchForVideoFrame,
-                         weak_pointer_factory_.GetWeakPtr(), event_flags,
-                         /*is_lens_query=*/id ==
-                             IDC_CONTENT_CONTEXT_SEARCHLENSFORVIDEOFRAME));
+      ExecSearchForVideoFrame(
+          event_flags,
+          /*is_lens_query=*/id == IDC_CONTENT_CONTEXT_SEARCHLENSFORVIDEOFRAME);
       break;
 
     case IDC_CONTENT_CONTEXT_GLIC:
@@ -3251,22 +3246,10 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
           /*initiator=*/{}, disposition, ui::PAGE_TRANSITION_LINK,
           /*extra_headers=*/std::string(), /*started_from_context_menu=*/true);
 
-      enterprise_data_protection::ShouldAllowSearchWith(
-          GetWebContentsForDataControls(), params_.selection_text.size(),
-          base::BindOnce(
-              [](base::WeakPtr<content::WebContents> web_contents,
-                 std::u16string selection_text, content::OpenURLParams params) {
-                if (!web_contents) {
-                  return;
-                }
-                web_contents->OpenURL(
-                    params,
-                    page_load_metrics::NavigationInitiatorHolder::
-                        AttacherCallback(
-                            chrome_navigation_initiator::kContextMenuSearch));
-              },
-              source_web_contents_->GetWeakPtr(), params_.selection_text,
-              std::move(open_url_params)));
+      source_web_contents_->OpenURL(
+          open_url_params,
+          page_load_metrics::NavigationInitiatorHolder::AttacherCallback(
+              chrome_navigation_initiator::kContextMenuSearch));
       break;
     }
     case IDC_CONTENT_CONTEXT_GOTOURL: {
@@ -3450,8 +3433,7 @@ bool RenderViewContextMenu::IsSaveAsItemAllowedByPolicy(
 }
 
 bool RenderViewContextMenu::IsSearchAllowedByPolicy() const {
-  return enterprise_data_protection::IsSearchWithAllowed(
-      GetWebContentsForDataControls());
+  return true;
 }
 
 bool RenderViewContextMenu::ShouldOpenTextQueryInLens() const {
@@ -3858,9 +3840,7 @@ void RenderViewContextMenu::ExecCopyImageAt() {
   frame_host->CopyImageAt(params_.x, params_.y);
 
 #if !BUILDFLAG(IS_ANDROID)
-  if (enterprise_data_protection::IsClipboardCopyAllowedByPolicyForUI(
-          GetWebContentsForDataControls()) &&
-      toast_features::IsEnabled(toast_features::kImageCopiedToast)) {
+  if (toast_features::IsEnabled(toast_features::kImageCopiedToast)) {
     auto* const toast_controller = GetToastController();
     if (toast_controller) {
       toast_controller->MaybeShowToast(ToastParams(ToastId::kImageCopied));
@@ -3929,9 +3909,7 @@ void RenderViewContextMenu::ExecCopyVideoFrame() {
       blink::mojom::MediaPlayerActionType::kCopyVideoFrame,
       /*enable=*/true));
 #if !BUILDFLAG(IS_ANDROID)
-  if (enterprise_data_protection::IsClipboardCopyAllowedByPolicyForUI(
-          GetWebContentsForDataControls()) &&
-      toast_features::IsEnabled(toast_features::kVideoFrameCopiedToast)) {
+  if (toast_features::IsEnabled(toast_features::kVideoFrameCopiedToast)) {
     auto* const toast_controller = GetToastController();
     if (toast_controller) {
       toast_controller->MaybeShowToast(ToastParams(ToastId::kVideoFrameCopied));

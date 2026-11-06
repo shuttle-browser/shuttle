@@ -35,7 +35,6 @@
 #include "base/version.h"
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
-#include "components/enterprise/browser/groups/groups_prefs.h"
 #include "components/language/core/browser/locale_util.h"
 #include "components/metrics/field_trials_provider.h"
 #include "components/metrics/metrics_features.h"
@@ -192,17 +191,6 @@ Study::Channel ConvertProductChannelToStudyChannel(
       return Study::UNKNOWN;
   }
   NOTREACHED();
-}
-
-void AddGroupsFromList(const base::ListValue& input_groups,
-                       base::flat_set<std::string>& output_groups) {
-  for (const auto& group_value : input_groups) {
-    const std::string* group = group_value.GetIfString();
-    if (!group || group->empty()) {
-      continue;
-    }
-    output_groups.insert(*group);
-  }
 }
 
 // No-op feature used to test sticky activation functionality.
@@ -655,24 +643,8 @@ bool VariationsFieldTrialCreator::IsSeedForFutureMilestone(bool is_safe_seed) {
 
 base::flat_set<std::string>
 VariationsFieldTrialCreator::GetEnterpriseGroupsFromPrefs() {
-  base::flat_set<std::string> groups;
-  if (!client_->IsChromeEnterpriseCoreSupported()) {
-    return groups;
-  }
-
-  RemovePrefsForDeletedProfiles(
-      enterprise_groups::kEnterpriseGroupsProfilePref);
-
-  AddGroupsFromList(
-      local_state()->GetList(enterprise_groups::kEnterpriseGroupsBrowserPref),
-      groups);
-
-  const base::DictValue& profiles_dict =
-      local_state()->GetDict(enterprise_groups::kEnterpriseGroupsProfilePref);
-  for (const auto profile : profiles_dict) {
-    AddGroupsFromList(profile.second.GetList(), groups);
-  }
-  return groups;
+  // Enterprise groups were removed (Shuttle): never a member of any group.
+  return {};
 }
 
 base::flat_set<uint64_t>

@@ -232,10 +232,6 @@ inline constexpr char kChromeUISessionServiceInternalsPath[] =
     "session-service";
 #endif
 
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-inline constexpr char kChromeUIWatermarkHost[] = "watermark";
-#endif
-
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)
 inline constexpr char kChromeUITabStripInternalsHost[] = "tab-strip-internals";
 #endif

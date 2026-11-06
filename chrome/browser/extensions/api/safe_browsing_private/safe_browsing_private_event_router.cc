@@ -12,12 +12,13 @@
 #include "base/files/file_path.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
-#include "chrome/browser/enterprise/connectors/common.h"
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/common/extensions/api/safe_browsing_private.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/url_matcher/url_matcher.h"
 #include "components/url_matcher/url_util.h"
 #include "content/public/browser/browser_context.h"
@@ -33,6 +34,24 @@
 #endif
 
 namespace extensions {
+
+namespace {
+
+// Returns the signed-in email of `profile`, or an empty string.
+std::string GetProfileEmail(Profile* profile) {
+  if (!profile) {
+    return std::string();
+  }
+  signin::IdentityManager* identity_manager =
+      IdentityManagerFactory::GetForProfile(profile);
+  return identity_manager
+             ? identity_manager
+                   ->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin)
+                   .email
+             : std::string();
+}
+
+}  // namespace
 
 SafeBrowsingPrivateEventRouter::SafeBrowsingPrivateEventRouter(
     content::BrowserContext* context)
@@ -95,7 +114,7 @@ void SafeBrowsingPrivateEventRouter::OnDangerousDownloadOpened(
   params.url = url.spec();
   params.file_name = file_name;
   params.download_digest_sha256 = download_digest_sha256;
-  params.user_name = enterprise_connectors::GetProfileEmail(
+  params.user_name = GetProfileEmail(
       Profile::FromBrowserContext(context_));
 
   // |event_router_| can be null in tests.
@@ -121,7 +140,7 @@ void SafeBrowsingPrivateEventRouter::OnSecurityInterstitialShown(
   if (net_error_code < 0) {
     params.net_error_code = base::NumberToString(net_error_code);
   }
-  params.user_name = enterprise_connectors::GetProfileEmail(
+  params.user_name = GetProfileEmail(
       Profile::FromBrowserContext(context_));
 
   // |event_router_| can be null in tests.
@@ -147,7 +166,7 @@ void SafeBrowsingPrivateEventRouter::OnSecurityInterstitialProceeded(
   if (net_error_code < 0) {
     params.net_error_code = base::NumberToString(net_error_code);
   }
-  params.user_name = enterprise_connectors::GetProfileEmail(
+  params.user_name = GetProfileEmail(
       Profile::FromBrowserContext(context_));
 
   // |event_router_| can be null in tests.

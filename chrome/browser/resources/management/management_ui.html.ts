@@ -26,10 +26,6 @@ export function getHtml(this: ManagementUiElement) {
 </if>
         <h2 class="cr-title-text">${this.subtitle_}</h2>
       </section>
-      ${this.shouldShowPromotion_ ? html`
-        <promotion-banner @promotion-dismissed="${this.onPromotionDismissed_}">
-        </promotion-banner>
-      ` : ''}
 <if expr="is_chromeos">
       <section class="eol-section" ?hidden="${!this.eolMessage_}">
         <div class="eol-warning-icon">
@@ -62,58 +58,6 @@ export function getHtml(this: ManagementUiElement) {
         </div>
       </section>
 </if>
-
-      ${this.showThreatProtectionInfo_() ? html`
-        <section>
-          <h3 class="cr-title-text">$i18n{threatProtectionTitle}</h3>
-          <div class="subtitle">${this.threatProtectionInfo_!.description}</div>
-          ${this.threatProtectionInfo_!.showSecureGatewayDisclosure ? html`
-            <div class="subtitle">
-              <div class="secure-gateway-title">
-                $i18n{secureGatewayTitle}
-              </div>
-              <div class="secure-gateway-description">
-                $i18n{secureGatewayDisclosure}
-              </div>
-            </div>
-          ` : ''}
-          <!-- Wide Screen View: Semantic Table -->
-          <table class="content-indented wide-screen-only"
-              ?hidden="${!this.threatProtectionInfo_!.info.length}">
-            <tr>
-              <th class="protection-name">$i18n{connectorEvent}</th>
-              <th class="protection-permissions">
-                $i18n{connectorVisibleData}
-              </th>
-            </tr>
-            ${this.threatProtectionInfo_!.info.map(item => html`
-              <tr>
-                <td class="protection-name">${this.i18n(item.title)}</td>
-                <td class="protection-permissions">
-                  ${this.i18n(item.permission)}
-                </td>
-              </tr>
-            `)}
-          </table>
-
-          <!-- Small Screen View: Semantic Stacked List -->
-          <ul class="content-indented small-screen-only" role="list"
-              ?hidden="${!this.threatProtectionInfo_!.info.length}">
-            ${this.threatProtectionInfo_!.info.map(item => html`
-              <li class="connector-item" role="listitem">
-                <div class="connector-item-title">
-                  <strong>$i18n{connectorEvent}:</strong>
-                  ${this.i18n(item.title)}
-                </div>
-                <div class="connector-item-value">
-                  <strong>$i18n{connectorVisibleData}:</strong>
-                  ${this.i18n(item.permission)}
-                </div>
-              </li>
-            `)}
-          </ul>
-        </section>
-      ` : ''}
 
 <if expr="is_chromeos">
       <div ?hidden="${!this.localTrustRoots_}">
@@ -197,22 +141,6 @@ export function getHtml(this: ManagementUiElement) {
         </section>
       ` : ''}
 
-      ${this.showProfileReportingInfo_() ? html`
-        <section>
-          <h3 class="cr-title-text">$i18n{browserReporting}</h3>
-          <div class="subtitle">$i18n{profileReportingExplanation}</div>
-          <div>
-            <div class="report">
-              <ul class="profile">
-                ${this.profileReportingInfo_!.map(item => html`
-                  <li .innerHTML="${this.i18nAdvanced(item.messageIds[0]!)}">
-                  </li>
-                `)}
-              </ul>
-            </div>
-          </div>
-        </section>
-      ` : ''}
 </if>
       ${this.showExtensionReportingInfo_() ? html`
         <section class="extension-reporting">

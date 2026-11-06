@@ -154,9 +154,6 @@ if (enable_extensions) {
   }
 }
 
-if (enable_extensions) {
-}
-
 source_set("policy") {
   public = [
     "browsing_history_policy_handler.h",
@@ -168,38 +165,17 @@ source_set("policy") {
     "developer_tools_policy_checker.h",
     "developer_tools_policy_checker_factory.h",
     "developer_tools_policy_handler.h",
-    "device_management_service_configuration.h",
-    "dm_token_utils.h",
     "homepage_location_policy_handler.h",
     "isolate_origins_policy_handler.h",
     "javascript_policy_handler.h",
     "local_network_access_ip_address_space_overrides_policy_handler.h",
-    "messaging_layer/public/report_client.h",
-    "messaging_layer/upload/configuration_file_controller.h",
-    "messaging_layer/upload/encrypted_reporting_client.h",
-    "messaging_layer/upload/event_upload_size_controller.h",
-    "messaging_layer/upload/file_upload_job.h",
-    "messaging_layer/upload/network_condition_service.h",
-    "messaging_layer/upload/record_handler_impl.h",
-    "messaging_layer/upload/record_upload_request_builder.h",
-    "messaging_layer/upload/server_uploader.h",
-    "messaging_layer/upload/upload_client.h",
-    "messaging_layer/upload/upload_provider.h",
-    "messaging_layer/util/dm_token_retriever_provider.h",
-    "messaging_layer/util/report_queue_manual_test_context.h",
-    "messaging_layer/util/reporting_server_connector.h",
-    "messaging_layer/util/upload_declarations.h",
-    "messaging_layer/util/upload_response_parser.h",
-    "messaging_layer/util/user_dm_token_retriever.h",
     "policy_ui_utils.h",
     "policy_value_and_status_aggregator.h",
     "profile_policy_connector.h",
     "profile_policy_connector_builder.h",
     "schema_registry_service.h",
     "schema_registry_service_builder.h",
-    "status_provider/cloud_policy_core_status_provider.h",
     "status_provider/status_provider_util.h",
-    "status_provider/user_cloud_policy_status_provider.h",
     "value_provider/chrome_policies_value_provider.h",
     "value_provider/policy_value_provider.h",
     "value_provider/value_provider_util.h",
@@ -210,27 +186,16 @@ source_set("policy") {
   public_deps = [
     "//base",
     "//chrome/browser/enterprise",
-    "//chrome/browser/policy/messaging_layer/proto:log_upload_event_proto",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/profiles:profile_util",
     "//chrome/common:constants",
     "//components/enterprise",
-    "//components/enterprise/client_certificates/core",
     "//components/keyed_service/core",
     "//components/policy/core/browser",
     "//components/policy/core/common",
     "//components/policy/resources/webui/mojom:mojo_bindings",
     "//components/prefs",
-    "//components/reporting/client:report_queue",
-    "//components/reporting/client:report_queue_configuration",
-    "//components/reporting/client:report_queue_provider",
-    "//components/reporting/encryption:verification",
-    "//components/reporting/proto:configuration_file_proto",
-    "//components/reporting/proto:upload_tracker_proto",
-    "//components/reporting/resources:resource_manager",
-    "//components/reporting/util:status",
     "//components/omnibox/browser",
-    "//components/reporting/util:task_runner_context",
     "//components/signin/public/identity_manager",
     "//google_apis",
     "//net",
@@ -240,8 +205,6 @@ source_set("policy") {
 
   if (enable_extensions_core) {
     public += [
-      "cloud/extension_install_policy_service.h",
-      "cloud/extension_install_policy_service_factory.h",
       "extension_developer_mode_policy_handler.h",
     ]
     public_deps += [
@@ -260,28 +223,17 @@ source_set("policy") {
       "browser_dm_token_storage_android.h",
       "chrome_browser_cloud_management_controller_android.h",
       "client_data_delegate_android.h",
-      "cloud/user_policy_signin_service_mobile.h",
     ]
     public_deps += [
       "//chrome/browser/ui/android/tab_model",
-      "//components/enterprise/browser/promotion",
     ]
   }
 
   if (!is_android) {
     public += [
-      "device_account_initializer.h",
       "managed_account_policy_handler.h",
     ]
     public_deps += [ "//chrome/browser/ui/tabs:tab_strip_model_observer" ]
-
-    if (!is_chromeos) {
-      public += [
-        "chrome_browser_cloud_management_controller_desktop.h",
-        "client_data_delegate_desktop.h",
-        "cloud/user_policy_signin_service.h",
-      ]
-    }
   }
 
   if (is_chromeos) {
@@ -291,7 +243,6 @@ source_set("policy") {
       "annotations/blocklist_handler.h",
       "default_geolocation_policy_handler.h",
       "device_login_screen_geolocation_access_level_policy_handler.h",
-      "messaging_layer/upload/file_upload_impl.h",
       "os_color_mode_policy_handler.h",
       "restricted_mgs_policy_provider.h",
       "status_provider/device_cloud_policy_status_provider_chromeos.h",
@@ -302,8 +253,6 @@ source_set("policy") {
   if (!is_chromeos) {
     public += [
       "browser_signin_policy_handler.h",
-      "cloud/user_policy_signin_service_factory.h",
-      "cloud/user_policy_signin_service_util.h",
       "file_selection_dialogs_policy_handler.h",
     ]
   }
@@ -312,24 +261,8 @@ source_set("policy") {
     public += [ "browser_dm_token_storage_win.h" ]
   }
 
-  if (is_mac) {
-    public += [ "browser_dm_token_storage_mac.h" ]
-  }
-
   if (is_linux || is_win || is_mac || is_chromeos) {
     public += [ "battery_saver_policy_handler.h" ]
-  }
-
-  if (is_linux || is_win || is_mac) {
-    public += []
-  }
-
-  if (is_linux || is_chromeos) {
-    public += [ "browser_dm_token_storage_linux.h" ]
-  }
-
-  if (is_win || is_linux || is_chromeos) {
-    public += []
   }
 
   if (enable_printing) {
@@ -339,7 +272,6 @@ source_set("policy") {
 
   if (enable_extensions_core) {
     public += [
-      "value_provider/extension_install_policies_value_provider.h",
       "value_provider/extension_policies_value_provider.h",
     ]
   }
@@ -356,37 +288,17 @@ source_set("impl") {
     "developer_tools_policy_checker.cc",
     "developer_tools_policy_checker_factory.cc",
     "developer_tools_policy_handler.cc",
-    "device_management_service_configuration.cc",
-    "dm_token_utils.cc",
     "homepage_location_policy_handler.cc",
     "isolate_origins_policy_handler.cc",
     "javascript_policy_handler.cc",
     "local_network_access_ip_address_space_overrides_policy_handler.cc",
-    "messaging_layer/public/report_client.cc",
-    "messaging_layer/upload/configuration_file_controller.cc",
-    "messaging_layer/upload/encrypted_reporting_client.cc",
-    "messaging_layer/upload/event_upload_size_controller.cc",
-    "messaging_layer/upload/file_upload_job.cc",
-    "messaging_layer/upload/network_condition_service.cc",
-    "messaging_layer/upload/record_handler_impl.cc",
-    "messaging_layer/upload/record_upload_request_builder.cc",
-    "messaging_layer/upload/server_uploader.cc",
-    "messaging_layer/upload/upload_client.cc",
-    "messaging_layer/upload/upload_provider.cc",
-    "messaging_layer/util/dm_token_retriever_provider.cc",
-    "messaging_layer/util/report_queue_manual_test_context.cc",
-    "messaging_layer/util/reporting_server_connector.cc",
-    "messaging_layer/util/upload_response_parser.cc",
-    "messaging_layer/util/user_dm_token_retriever.cc",
     "policy_ui_utils.cc",
     "policy_value_and_status_aggregator.cc",
     "profile_policy_connector.cc",
     "profile_policy_connector_builder.cc",
     "schema_registry_service.cc",
     "schema_registry_service_builder.cc",
-    "status_provider/cloud_policy_core_status_provider.cc",
     "status_provider/status_provider_util.cc",
-    "status_provider/user_cloud_policy_status_provider.cc",
     "value_provider/chrome_policies_value_provider.cc",
     "value_provider/policy_value_provider.cc",
     "value_provider/value_provider_util.cc",
@@ -410,7 +322,6 @@ source_set("impl") {
     "//chrome/browser/lifetime",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/net",
-    "//chrome/browser/policy/messaging_layer/storage_selector",
     "//chrome/browser/prefetch",
     "//chrome/browser/privacy_sandbox:headers",
     "//chrome/browser/profiles",
@@ -429,9 +340,7 @@ source_set("impl") {
     "//components/domain_reliability:prefs",
     "//components/embedder_support",
     "//components/embedder_support:user_agent",
-    "//components/enterprise/browser/data_region",
     "//components/enterprise/buildflags",
-    "//components/enterprise/network_header_injection/core:policy",
     "//components/history/core/common",
     "//components/infobars/content",
     "//components/language/core/browser",
@@ -440,15 +349,6 @@ source_set("impl") {
     "//components/on_device_translation/buildflags",
     "//components/pref_registry",
     "//components/proxy_config",
-    "//components/reporting/encryption:primitives",
-    "//components/reporting/proto:record_proto",
-    "//components/reporting/proto:upload_tracker_proto",
-    "//components/reporting/resources:resource_manager",
-    "//components/reporting/storage:storage_module_interface",
-    "//components/reporting/util:backoff_settings",
-    "//components/reporting/util:status",
-    "//components/reporting/util:status_macros",
-    "//components/reporting/util:task_runner_context",
     "//components/safe_browsing/core/common:safe_browsing_policy_handler",
     "//components/site_isolation",
     "//components/spellcheck:buildflags",
@@ -461,8 +361,6 @@ source_set("impl") {
 
   if (enable_extensions_core) {
     sources += [
-      "cloud/extension_install_policy_service.cc",
-      "cloud/extension_install_policy_service_factory.cc",
       "extension_developer_mode_policy_handler.cc",
     ]
     deps += [
@@ -473,22 +371,9 @@ source_set("impl") {
     ]
   }
 
-  if (enterprise_watermark) {
-    deps += [ "//components/enterprise/watermarking:watermarking_handler" ]
-  }
-
   # These targets back browser (machine) scope provisioning via Chrome Browser
   # Cloud Management (BrowserDMTokenStorage / BrowserCloudManagementDelegate),
   # which does not exist on ChromeOS.
-  if (!is_chromeos) {
-    deps += [
-      "//chrome/browser/enterprise/connectors/device_trust/key_management/browser",
-      "//components/enterprise/client_certificates/core:management_delegate",
-    ]
-  }
-
-  if (enable_on_device_translation) {
-  }
 
   if (enable_pdf) {
     deps += [ "//chrome/browser/pdf:pdf_pref_names" ]
@@ -508,21 +393,18 @@ source_set("impl") {
       "browser_dm_token_storage_android.cc",
       "chrome_browser_cloud_management_controller_android.cc",
       "client_data_delegate_android.cc",
-      "cloud/user_policy_signin_service_mobile.cc",
       "policy_service_factory_android.cc",
     ]
     deps += [
       "//chrome/browser/policy/android",
       "//chrome/browser/policy/android:jni_headers",
       "//chrome/browser/ui/android/tab_model",
-      "//components/enterprise/device_trust",
       "//components/performance_manager",
     ]
   }
 
   if (!is_android) {
     sources += [
-      "device_account_initializer.cc",
       "managed_account_policy_handler.cc",
     ]
     deps += [
@@ -535,16 +417,7 @@ source_set("impl") {
     ]
 
     if (!is_chromeos) {
-      sources += [
-        "chrome_browser_cloud_management_controller_desktop.cc",
-        "chrome_browser_cloud_management_register_watcher.cc",
-        "chrome_browser_cloud_management_register_watcher.h",
-        "client_data_delegate_desktop.cc",
-        "cloud/user_policy_signin_service.cc",
-      ]
       deps += [
-        "//chrome/browser/enterprise:browser_launch_reporting",
-        "//chrome/browser/ui:enterprise_startup_dialog",
       ]
     }
   }
@@ -556,7 +429,6 @@ source_set("impl") {
       "annotations/blocklist_handler.cc",
       "default_geolocation_policy_handler.cc",
       "device_login_screen_geolocation_access_level_policy_handler.cc",
-      "messaging_layer/upload/file_upload_impl.cc",
       "os_color_mode_policy_handler.cc",
       "restricted_mgs_policy_provider.cc",
       "status_provider/device_cloud_policy_status_provider_chromeos.cc",
@@ -608,8 +480,6 @@ source_set("impl") {
   if (!is_chromeos) {
     sources += [
       "browser_signin_policy_handler.cc",
-      "cloud/user_policy_signin_service_factory.cc",
-      "cloud/user_policy_signin_service_util.cc",
       "file_selection_dialogs_policy_handler.cc",
     ]
   }
@@ -623,7 +493,6 @@ source_set("impl") {
   }
 
   if (is_mac) {
-    sources += [ "browser_dm_token_storage_mac.mm" ]
     deps += [ "//chrome/browser:app_controller_mac" ]
   }
 
@@ -649,19 +518,10 @@ source_set("impl") {
   }
 
   if (is_linux || is_win || is_mac) {
-    sources += []
     deps += [
       "//chrome/browser/browser_switcher",
       "//components/themes:policy",
     ]
-  }
-
-  if (is_linux || is_chromeos) {
-    sources += [ "browser_dm_token_storage_linux.cc" ]
-  }
-
-  if (is_win || is_linux || is_chromeos) {
-    sources += []
   }
 
   if (enable_printing) {
@@ -670,7 +530,6 @@ source_set("impl") {
 
   if (enable_extensions_core) {
     sources += [
-      "value_provider/extension_install_policies_value_provider.cc",
       "value_provider/extension_policies_value_provider.cc",
     ]
   }

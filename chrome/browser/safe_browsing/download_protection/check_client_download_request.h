@@ -16,11 +16,9 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "chrome/browser/enterprise/connectors/common.h"
 #include "chrome/browser/safe_browsing/download_protection/check_client_download_request_base.h"
 #include "chrome/browser/safe_browsing/download_protection/download_protection_util.h"
 #include "components/download/public/common/download_item.h"
-#include "components/enterprise/connectors/core/cloud_content_scanning/binary_upload_service.h"
 #include "components/safe_browsing/core/browser/download_check_result.h"
 #include "content/public/browser/browser_thread.h"
 
@@ -47,7 +45,6 @@ class CheckClientDownloadRequest : public CheckClientDownloadRequestBase,
 
   // download::DownloadItem::Observer:
   void OnDownloadDestroyed(download::DownloadItem* download) override;
-  void OnDownloadUpdated(download::DownloadItem* download) override;
 
   // Returns enum value indicating whether `item` is eligible for
   // CheckClientDownloadRequest. If return value is not kMayCheckDownload, then
@@ -80,23 +77,10 @@ class CheckClientDownloadRequest : public CheckClientDownloadRequestBase,
                                      const std::string& request_data,
                                      const std::string& response_body) override;
 #endif
-  bool ShouldImmediatelyDeepScan(bool server_requests_prompt) const override;
-  bool ShouldPromptForDeepScanning(bool server_requests_prompt) const override;
   bool ShouldPromptForLocalDecryption(
       bool server_requests_prompt) const override;
   bool ShouldPromptForIncorrectPassword() const override;
   bool ShouldShowScanFailure() const override;
-  void LogDeepScanningPrompt(bool did_prompt) const override;
-
-  // Uploads the binary for deep scanning if the reason and policies indicate
-  // it should be. ShouldUploadBinary will returns the settings to apply for
-  // deep scanning if it should occur, or std::nullopt if no scan should be
-  // done.
-  std::optional<enterprise_connectors::AnalysisSettings> ShouldUploadBinary(
-      DownloadCheckResultReason reason) override;
-  void UploadBinary(DownloadCheckResult result,
-                    DownloadCheckResultReason reason,
-                    enterprise_connectors::AnalysisSettings settings) override;
 
   // Called when this request is completed.
   void NotifyRequestFinished(DownloadCheckResult result,
@@ -105,16 +89,11 @@ class CheckClientDownloadRequest : public CheckClientDownloadRequestBase,
 
   bool IsAllowlistedByPolicy() const override;
 
-  bool IsUnderAdvancedProtection(Profile* profile) const;
-
   // The DownloadItem we are checking. Will be NULL if the request has been
   // canceled. Must be accessed only on UI thread.
   raw_ptr<download::DownloadItem> item_;
   std::optional<std::string> password_;
   CheckDownloadRepeatingCallback callback_;
-
-  // Upload start time used for UMA duration histograms.
-  base::TimeTicks upload_start_time_;
 
   base::WeakPtrFactory<CheckClientDownloadRequest> weakptr_factory_{this};
 };

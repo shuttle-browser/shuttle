@@ -16,10 +16,6 @@
 #include "ui/color/color_id.h"
 #include "ui/views/vector_icons.h"
 
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-#include "chrome/browser/enterprise/connectors/common.h"
-#endif
-
 using download::DownloadItem;
 using TailoredWarningType = DownloadUIModel::TailoredWarningType;
 
@@ -62,15 +58,6 @@ IconAndColor IconAndColorForInterrupted(const DownloadUIModel& model) {
     case download::DOWNLOAD_DANGER_TYPE_FORCE_SAVE_TO_GDRIVE:
     case download::DOWNLOAD_DANGER_TYPE_FORCE_SAVE_TO_ONEDRIVE:
     case download::DOWNLOAD_DANGER_TYPE_SENSITIVE_CONTENT_BLOCK: {
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-      if (enterprise_connectors::ShouldPromptReviewForDownload(
-              model.profile(), model.GetDownloadItem())) {
-        return IconAndColor{
-            &(features::IsRoundedIconsEnabled() ? kWarningFilledIcon
-                                                : kDownloadWarningOldIcon),
-            kColorDownloadItemIconDangerous};
-      }
-#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
       return IconAndColor{&(features::IsRoundedIconsEnabled()
                                 ? views::kInfoIcon
                                 : views::kInfoChromeRefreshOldIcon),
@@ -140,32 +127,6 @@ IconAndColor IconAndColorForInProgressOrComplete(const DownloadUIModel& model) {
     case download::DownloadItem::InsecureDownloadStatus::SILENT_BLOCK:
       break;
   }
-
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-  if (enterprise_connectors::ShouldPromptReviewForDownload(
-          model.profile(), model.GetDownloadItem())) {
-    switch (model.GetDangerType()) {
-      case download::DOWNLOAD_DANGER_TYPE_DANGEROUS_CONTENT:
-        return IconAndColor{
-            &(features::IsRoundedIconsEnabled()
-                  ? vector_icons::kDangerousFilledIcon
-                  : vector_icons::kDangerousChromeRefreshOldIcon),
-            kColorDownloadItemIconDangerous};
-      case download::DOWNLOAD_DANGER_TYPE_POTENTIALLY_UNWANTED:
-        return IconAndColor{
-            &(features::IsRoundedIconsEnabled() ? kWarningFilledIcon
-                                                : kDownloadWarningOldIcon),
-            kColorDownloadItemIconWarning};
-      case download::DOWNLOAD_DANGER_TYPE_SENSITIVE_CONTENT_WARNING:
-        return IconAndColor{&(features::IsRoundedIconsEnabled()
-                                  ? views::kInfoIcon
-                                  : views::kInfoChromeRefreshOldIcon),
-                            kColorDownloadItemIconWarning};
-      default:
-        break;
-    }
-  }
-#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
 
   if (DownloadUIModel::TailoredWarningType type =
           model.GetTailoredWarningType();
@@ -286,20 +247,6 @@ std::vector<DownloadBubbleQuickAction> QuickActionsForDownload(
       break;
   }
 
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-  if (enterprise_connectors::ShouldPromptReviewForDownload(
-          model.profile(), model.GetDownloadItem())) {
-    switch (model.GetDangerType()) {
-      case download::DOWNLOAD_DANGER_TYPE_DANGEROUS_CONTENT:
-      case download::DOWNLOAD_DANGER_TYPE_POTENTIALLY_UNWANTED:
-      case download::DOWNLOAD_DANGER_TYPE_SENSITIVE_CONTENT_WARNING:
-        return {};
-      default:
-        break;
-    }
-  }
-#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-
   if (model.GetTailoredWarningType() !=
       TailoredWarningType::kNoTailoredWarning) {
     return {};
@@ -400,20 +347,6 @@ DownloadBubbleProgressBar ProgressBarForDownload(const DownloadUIModel& model) {
     case DownloadItem::InsecureDownloadStatus::SILENT_BLOCK:
       break;
   }
-
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-  if (enterprise_connectors::ShouldPromptReviewForDownload(
-          model.profile(), model.GetDownloadItem())) {
-    switch (model.GetDangerType()) {
-      case download::DOWNLOAD_DANGER_TYPE_DANGEROUS_CONTENT:
-      case download::DOWNLOAD_DANGER_TYPE_POTENTIALLY_UNWANTED:
-      case download::DOWNLOAD_DANGER_TYPE_SENSITIVE_CONTENT_WARNING:
-        return DownloadBubbleProgressBar::NoProgressBar();
-      default:
-        break;
-    }
-  }
-#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
 
   if (model.GetTailoredWarningType() !=
       TailoredWarningType::kNoTailoredWarning) {

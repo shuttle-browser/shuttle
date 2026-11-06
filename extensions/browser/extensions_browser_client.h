@@ -700,13 +700,6 @@ class ExtensionsBrowserClient {
   // extensions.
   virtual bool CanUseNonComponentExtensions(content::BrowserContext* context);
 
-  // Checks whether the extension can be installed based on policy.
-  virtual void CanInstallExtensionByPolicy(
-      content::BrowserContext* context,
-      const ExtensionId& extension_id,
-      const base::Version& extension_version,
-      base::OnceCallback<void(bool, std::u16string)> callback);
-
   // Creates install prompt UI.
   virtual std::unique_ptr<ExtensionInstallPromptClient> CreateInstallPrompt(
       content::WebContents* web_contents,

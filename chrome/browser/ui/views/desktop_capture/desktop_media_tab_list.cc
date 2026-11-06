@@ -7,7 +7,6 @@
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/task/sequenced_task_runner.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_features.h"
 #include "chrome/browser/media/webrtc/desktop_media_list_layout_config.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/enterprise/buildflags/buildflags.h"
@@ -120,32 +119,11 @@ ui::ImageModel TabListModel::GetIcon(size_t row) const {
   if (!controller_) {
     return ui::ImageModel();
   }
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection) &&
-      controller_->GetSource(row).is_sharing_blocked) {
-    return ui::ImageModel::FromVectorIcon(
-        features::IsRoundedIconsEnabled() ? vector_icons::kDomainIcon
-                                          : vector_icons::kBusinessOldIcon,
-        ui::kColorIcon, ui::TableModel::kIconSize);
-  }
-#endif
   return ui::ImageModel::FromImageSkia(controller_->GetSource(row).thumbnail);
 }
 
 std::u16string TabListModel::GetTooltip(size_t row) const {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (controller_ &&
-      base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection)) {
-    const DesktopMediaList::Source& source = controller_->GetSource(row);
-    if (source.is_sharing_blocked) {
-      return l10n_util::GetStringUTF16(
-          IDS_POLICY_DLP_SCREEN_SHARE_BLOCKED_TITLE);
-    }
-  }
-#endif
   return std::u16string();
 }
 
@@ -155,17 +133,6 @@ std::u16string TabListModel::GetAXNameForRow(
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   std::u16string ax_name =
       ui::TableModel::GetAXNameForRow(row, visible_column_ids);
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (controller_ &&
-      base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection)) {
-    const DesktopMediaList::Source& source = controller_->GetSource(row);
-    if (source.is_sharing_blocked) {
-      ax_name += u", " + l10n_util::GetStringUTF16(
-                             IDS_POLICY_DLP_SCREEN_SHARE_BLOCKED_TITLE);
-    }
-  }
-#endif
   return ax_name;
 }
 
@@ -438,18 +405,6 @@ void DesktopMediaTabList::ClearPreview() {
   empty_preview_label_->SetVisible(true);
 }
 
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-void DesktopMediaTabList::ShowBlockedPreview(
-    const DesktopMediaList::Source& source) {
-  preview_->SetImage(ui::ImageModel());
-  preview_->SetVisible(false);
-  empty_preview_label_->SetText(
-      l10n_util::GetStringUTF16(IDS_DESKTOP_MEDIA_PICKER_BLOCKED_PREVIEW));
-  empty_preview_label_->SetVisible(true);
-  preview_label_->SetText(source.name.substr(0, kMaxPreviewTitleLength));
-}
-#endif
-
 void DesktopMediaTabList::OnSelectionChanged() {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
@@ -494,14 +449,6 @@ void DesktopMediaTabList::OnPreviewUpdated(size_t index) {
   }
 
   const DesktopMediaList::Source& source = controller_->GetSource(index);
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection) &&
-      source.is_sharing_blocked) {
-    ShowBlockedPreview(source);
-    return;
-  }
-#endif
 
   empty_preview_label_->SetText(
       l10n_util::GetStringUTF16(IDS_DESKTOP_MEDIA_PICKER_EMPTY_PREVIEW));

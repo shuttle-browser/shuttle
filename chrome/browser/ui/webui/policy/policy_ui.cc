@@ -51,7 +51,6 @@
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
 #include "base/command_line.h"
-#include "chrome/browser/enterprise/reporting/browser_launch/scoped_initial_command_line.h"
 #include "chrome/common/chrome_switches.h"
 #endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
 
@@ -298,11 +297,12 @@ void CreateAndAddPolicyUIHtmlSource(Profile* profile) {
       "policyPageMojoMigrationEnabled",
       base::FeatureList::IsEnabled(policy::features::kPolicyPageMojoMigration));
 
-  source->AddBoolean("hideUploadReportButton", profile->IsOffTheRecord());
+  // Shuttle: cloud reporting is removed; there is no report to upload.
+  source->AddBoolean("hideUploadReportButton", true);
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
   std::string custom_arguments =
-      GetCustomCommandLineArguments(GetInitialBrowserCommandLine());
+      GetCustomCommandLineArguments(*base::CommandLine::ForCurrentProcess());
   source->AddBoolean(policy::kHasCustomCommandLineArguments,
                      !custom_arguments.empty());
   source->AddString(policy::kCustomCommandLineArguments, custom_arguments);

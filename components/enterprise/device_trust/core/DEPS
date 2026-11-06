@@ -1,5 +1,0 @@
-include_rules = [
-  "+components/sync_preferences",
-  "+components/url_matcher",
-  "-content",
-]

@@ -20,12 +20,10 @@
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/download/download_item_warning_data.h"
-#include "chrome/browser/policy/dm_token_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager.h"
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager_factory.h"
 #include "chrome/browser/safe_browsing/download_protection/check_client_download_request_base.h"
-#include "chrome/browser/safe_browsing/download_protection/download_item_metadata.h"
 #include "chrome/browser/safe_browsing/download_protection/download_protection_service.h"
 #include "chrome/browser/safe_browsing/download_protection/download_protection_util.h"
 #include "chrome/common/pref_names.h"
@@ -47,8 +45,6 @@
 #else
 #include "chrome/browser/safe_browsing/download_protection/download_feedback.h"
 #include "chrome/browser/safe_browsing/download_protection/download_feedback_service.h"
-#include "components/enterprise/connectors/core/cloud_content_scanning/binary_upload_service.h"
-#include "components/enterprise/connectors/core/cloud_content_scanning/deep_scanning_utils.h"
 #endif
 
 namespace safe_browsing {
@@ -120,31 +116,6 @@ CheckClientDownloadRequest::CheckClientDownloadRequest(
 void CheckClientDownloadRequest::OnDownloadDestroyed(
     download::DownloadItem* download) {
   FinishRequest(DownloadCheckResult::UNKNOWN, REASON_DOWNLOAD_DESTROYED);
-}
-
-void CheckClientDownloadRequest::OnDownloadUpdated(
-    download::DownloadItem* download) {
-  // Consider the scan bypassed if the user clicked "Open now" or "Cancel"
-  // before scanning is done.
-  if (download->GetDangerType() ==
-          download::DOWNLOAD_DANGER_TYPE_ASYNC_SCANNING &&
-      (download->GetState() == download::DownloadItem::COMPLETE ||
-       download->GetState() == download::DownloadItem::CANCELLED)) {
-    auto settings = ShouldUploadBinaryForDeepScanning(item_);
-#if !BUILDFLAG(IS_ANDROID)
-    if (settings.has_value()) {
-      enterprise_connectors::RecordDeepScanMetrics(
-          settings->cloud_or_local_settings.is_cloud_analysis(),
-          /*access_point=*/enterprise_connectors::DeepScanAccessPoint::DOWNLOAD,
-          /*duration=*/base::TimeTicks::Now() - upload_start_time_,
-          /*total_size=*/item_->GetTotalBytes(),
-          /*result=*/"BypassedByUser",
-          /*failure=*/true);
-    }
-#else
-    CHECK(!settings.has_value());
-#endif
-  }
 }
 
 // static
@@ -256,73 +227,6 @@ void CheckClientDownloadRequest::MaybeBeginFeedbackForDownload(
 }
 #endif
 
-void CheckClientDownloadRequest::LogDeepScanningPrompt(bool did_prompt) const {
-  if (did_prompt) {
-    LogDeepScanEvent(item_, DeepScanEvent::kPromptShown);
-  }
-
-  base::UmaHistogramBoolean("SBClientDownload.ServerRequestsDeepScanningPrompt",
-                            did_prompt);
-  if (DownloadItemWarningData::IsTopLevelEncryptedArchive(item_)) {
-    base::UmaHistogramBoolean(
-        "SBClientDownload.ServerRequestsDeepScanningPromptPasswordProtected",
-        did_prompt);
-  }
-}
-
-std::optional<enterprise_connectors::AnalysisSettings>
-CheckClientDownloadRequest::ShouldUploadBinary(
-    DownloadCheckResultReason reason) {
-  // If the download was destroyed, we can't upload it.
-  if (reason == REASON_DOWNLOAD_DESTROYED) {
-    return std::nullopt;
-  }
-
-  // If the download already has a scanning response attached, there is no need
-  // to try and upload it again.
-  if (item_->GetUserData(enterprise_connectors::ScanResult::kKey)) {
-    return std::nullopt;
-  }
-
-  // If the download is considered dangerous, don't upload the binary to show
-  // a warning to the user ASAP.
-  if (reason == REASON_DOWNLOAD_DANGEROUS ||
-      reason == REASON_DOWNLOAD_DANGEROUS_HOST ||
-      reason == REASON_DOWNLOAD_DANGEROUS_ACCOUNT_COMPROMISE) {
-    return std::nullopt;
-  }
-
-  auto settings = ShouldUploadBinaryForDeepScanning(item_);
-
-  // Malware scanning is redundant if the URL is allowlisted, but DLP scanning
-  // might still need to happen.
-  if (settings && reason == REASON_ALLOWLISTED_URL) {
-    settings->tags.erase("malware");
-    if (settings->tags.empty()) {
-      return std::nullopt;
-    }
-  }
-
-  return settings;
-}
-
-void CheckClientDownloadRequest::UploadBinary(
-    DownloadCheckResult result,
-    DownloadCheckResultReason reason,
-    enterprise_connectors::AnalysisSettings settings) {
-  auto metadata = std::make_unique<DownloadItemMetadata>(item_);
-  metadata->SetCallback(callback_);
-  auto weak_metadata = metadata->GetWeakPtr();
-
-  service()->UploadForDeepScanning(
-      std::move(metadata),
-      base::BindRepeating(&DownloadItemMetadata::ProcessScanResult,
-                          weak_metadata, reason),
-      DownloadItemWarningData::DeepScanTrigger::TRIGGER_POLICY, result,
-      std::move(settings),
-      /*password=*/std::nullopt);
-}
-
 void CheckClientDownloadRequest::NotifyRequestFinished(
     DownloadCheckResult result,
     DownloadCheckResultReason reason) {
@@ -337,76 +241,6 @@ void CheckClientDownloadRequest::NotifyRequestFinished(
 #endif
 
   item_->RemoveObserver(this);
-}
-
-bool CheckClientDownloadRequest::IsUnderAdvancedProtection(
-    Profile* profile) const {
-  if (!profile) {
-    return false;
-  }
-  AdvancedProtectionStatusManager* advanced_protection_status_manager =
-      AdvancedProtectionStatusManagerFactory::GetForProfile(profile);
-  if (!advanced_protection_status_manager) {
-    return false;
-  }
-  return advanced_protection_status_manager->IsUnderAdvancedProtection();
-}
-
-bool CheckClientDownloadRequest::ShouldImmediatelyDeepScan(
-    bool server_requests_prompt) const {
-  if (!ShouldPromptForDeepScanning(server_requests_prompt)) {
-    return false;
-  }
-
-  Profile* profile = Profile::FromBrowserContext(GetBrowserContext());
-  if (!profile) {
-    return false;
-  }
-
-  if (!IsEnhancedProtectionEnabled(*profile->GetPrefs())) {
-    return false;
-  }
-
-  if (DownloadItemWarningData::IsTopLevelEncryptedArchive(item_)) {
-    return false;
-  }
-
-  return true;
-}
-
-bool CheckClientDownloadRequest::ShouldPromptForDeepScanning(
-    bool server_requests_prompt) const {
-  if (!server_requests_prompt) {
-    return false;
-  }
-
-#if !BUILDFLAG(IS_ANDROID)
-  // Too large uploads would fail immediately, so don't prompt in this case.
-  if (static_cast<size_t>(item_->GetTotalBytes()) >=
-      enterprise_connectors::BinaryUploadService::kMaxUploadSizeBytes) {
-    return false;
-  }
-
-  Profile* profile = Profile::FromBrowserContext(GetBrowserContext());
-  if (!profile) {
-    return false;
-  }
-
-  if (!AreDeepScansAllowedByPolicy(*profile->GetPrefs())) {
-    return false;
-  }
-
-  if (profile->IsOffTheRecord()) {
-    return false;
-  }
-
-  if (IsUnderAdvancedProtection(profile) ||
-      IsEnhancedProtectionEnabled(*profile->GetPrefs())) {
-    return true;
-  }
-#endif
-
-  return false;
 }
 
 bool CheckClientDownloadRequest::ShouldPromptForLocalDecryption(

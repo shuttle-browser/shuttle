@@ -77,7 +77,6 @@ source_set("impl") {
     "//chrome/browser:command_updater_impl",
     "//chrome/browser:defaults",
     "//chrome/browser:global_features",
-    "//chrome/browser/enterprise/isolated_mode",
     "//chrome/browser/favicon",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/profiles:profile_manager",

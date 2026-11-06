@@ -26,13 +26,11 @@
 #include "ui/accessibility/accessibility_features.h"
 
 #if BUILDFLAG(IS_WIN)
-#include "chrome/services/system_signals/win/win_system_signals_service.h"
 #include "chrome/services/util_win/processor_metrics.h"
 #include "chrome/services/util_win/public/mojom/util_read_icon.mojom.h"
 #include "chrome/services/util_win/public/mojom/util_win.mojom.h"
 #include "chrome/services/util_win/util_read_icon.h"
 #include "chrome/services/util_win/util_win_impl.h"
-#include "components/device_signals/core/common/mojom/system_signals.mojom.h"  // nogncheck
 #include "components/services/quarantine/public/mojom/quarantine.mojom.h"  // nogncheck
 #include "components/services/quarantine/quarantine_impl.h"  // nogncheck
 #include "services/proxy_resolver/public/mojom/system_proxy_resolver.mojom.h"
@@ -41,14 +39,9 @@
 
 #if BUILDFLAG(IS_MAC)
 #include "chrome/services/mac_notifications/mac_notification_provider_impl.h"
-#include "chrome/services/system_signals/mac/mac_system_signals_service.h"
 #include "services/proxy_resolver/public/mojom/system_proxy_resolver.mojom.h"
 #include "services/proxy_resolver_mac/mac_system_proxy_resolver_impl.h"
 #endif  // BUILDFLAG(IS_MAC)
-
-#if BUILDFLAG(IS_LINUX)
-#include "chrome/services/system_signals/linux/linux_system_signals_service.h"
-#endif  // BUILDFLAG(IS_LINUX)
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "components/mirroring/service/mirroring_service.h"
@@ -182,23 +175,6 @@ auto RunMacSystemProxyResolver(
       std::move(receiver));
 }
 #endif  // BUILDFLAG(IS_MAC)
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-auto RunSystemSignalsService(
-    mojo::PendingReceiver<device_signals::mojom::SystemSignalsService>
-        receiver) {
-#if BUILDFLAG(IS_WIN)
-  return std::make_unique<system_signals::WinSystemSignalsService>(
-      std::move(receiver));
-#elif BUILDFLAG(IS_MAC)
-  return std::make_unique<system_signals::MacSystemSignalsService>(
-      std::move(receiver));
-#else
-  return std::make_unique<system_signals::LinuxSystemSignalsService>(
-      std::move(receiver));
-#endif  // BUILDFLAG(IS_WIN)
-}
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
 #if !BUILDFLAG(IS_ANDROID)
 auto RunProxyResolver(
@@ -411,10 +387,6 @@ void RegisterMainThreadServices(mojo::ServiceFactory& services) {
   services.Add(RunWindowsUtility);
   services.Add(RunWindowsIconReader);
 #endif  // BUILDFLAG(IS_WIN)
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  services.Add(RunSystemSignalsService);
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
 #if BUILDFLAG(IS_MAC)
   services.Add(RunMacNotificationService);

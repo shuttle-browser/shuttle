@@ -24,10 +24,6 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/ui_base_features.h"
 
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-#include "chrome/browser/enterprise/connectors/common.h"
-#endif
-
 using download::DownloadItem;
 using TailoredWarningType = DownloadUIModel::TailoredWarningType;
 using offline_items_collection::FailState;
@@ -182,12 +178,6 @@ void DownloadBubbleSecurityViewInfo::PopulateForInterrupted(
     case download::DOWNLOAD_DANGER_TYPE_FORCE_SAVE_TO_GDRIVE:
     case download::DOWNLOAD_DANGER_TYPE_FORCE_SAVE_TO_ONEDRIVE:
     case download::DOWNLOAD_DANGER_TYPE_SENSITIVE_CONTENT_BLOCK: {
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-      if (enterprise_connectors::ShouldPromptReviewForDownload(
-              model.profile(), model.GetDownloadItem())) {
-        return;
-      }
-#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
       warning_summary_ = l10n_util::GetStringUTF16(
           IDS_DOWNLOAD_BUBBLE_SUBPAGE_SUMMARY_SENSITIVE_CONTENT_BLOCK);
       return;
@@ -300,20 +290,6 @@ void DownloadBubbleSecurityViewInfo::PopulateForInProgressOrComplete(
     case download::DownloadItem::InsecureDownloadStatus::SILENT_BLOCK:
       break;
   }
-
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-  if (enterprise_connectors::ShouldPromptReviewForDownload(
-          model.profile(), model.GetDownloadItem())) {
-    switch (model.GetDangerType()) {
-      case download::DOWNLOAD_DANGER_TYPE_DANGEROUS_CONTENT:
-      case download::DOWNLOAD_DANGER_TYPE_POTENTIALLY_UNWANTED:
-      case download::DOWNLOAD_DANGER_TYPE_SENSITIVE_CONTENT_WARNING:
-        return;
-      default:
-        break;
-    }
-  }
-#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
 
   if (TailoredWarningType type = model.GetTailoredWarningType();
       type != TailoredWarningType::kNoTailoredWarning) {

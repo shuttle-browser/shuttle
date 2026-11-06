@@ -61,9 +61,6 @@ class DesktopMediaTabList : public DesktopMediaListController::ListView {
   void OnSelectionChanged();
   void ClearPreview();
   void ClearPreviewImageIfUnchanged(size_t previous_preview_set_count);
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  void ShowBlockedPreview(const DesktopMediaList::Source& source);
-#endif
 
   // Helper for UMA-tracking of how often a user highlights a discarded tab.
   // (When that happens, the user will not see a tab preview.)

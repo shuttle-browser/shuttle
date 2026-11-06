@@ -308,21 +308,6 @@ void WebUIInfoSingleton::NotifyLogMessageListeners(const base::Time& timestamp,
   }
 }
 
-void WebUIInfoSingleton::AddToReportingEvents(
-    const ::chrome::cros::reporting::proto::UploadEventsRequest& event,
-    const base::DictValue& result) {
-  if (!HasListener()) {
-    return;
-  }
-
-  for (safe_browsing::WebUIInfoSingletonEventObserver* webui_listener :
-       webui_instances_) {
-    webui_listener->NotifyReportingEventJsListener(event, result);
-  }
-
-  upload_event_requests_.emplace_back(std::move(event), result.Clone());
-}
-
 // TODO(crbug.com/443997643): Delete when
 // UploadRealtimeReportingEventsUsingProto is cleaned up.
 void WebUIInfoSingleton::AddToReportingEvents(const base::DictValue& event) {
@@ -340,9 +325,6 @@ void WebUIInfoSingleton::AddToReportingEvents(const base::DictValue& event) {
 
 void WebUIInfoSingleton::ClearReportingEvents() {
   std::vector<base::DictValue>().swap(reporting_events_);
-  std::vector<std::pair<::chrome::cros::reporting::proto::UploadEventsRequest,
-                        base::DictValue>>()
-      .swap(upload_event_requests_);
 }
 
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)

@@ -11,15 +11,10 @@
 #include "build/build_config.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/policy/core/browser/webui/policy_status_provider.h"
-#include "components/policy/core/common/cloud/cloud_policy_store.h"
 #include "components/policy/core/common/management/management_service.h"
 #include "components/policy/policy_export.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "ui/base/models/image_model.h"
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-#include "chrome/browser/policy/status_provider/user_cloud_policy_status_provider.h"  // nogncheck crbug.com/40147906
-#endif
 
 class Profile;
 
@@ -69,13 +64,10 @@ class BrowserManagementService : public ManagementService,
   // observers of the change.
   void UpdateEnterpriseLabelForProfile(Profile* profile);
 
-  std::unique_ptr<UserCloudPolicyStatusProvider> provider_;
   PrefChangeRegistrar pref_change_registrar_;
   PrefChangeRegistrar local_state_pref_change_registrar_;
   ui::ImageModel management_icon_for_profile_;
   gfx::Image management_icon_for_browser_;
-  base::ScopedObservation<PolicyStatusProvider, PolicyStatusProvider::Observer>
-      policy_status_provider_observations_{this};
   base::WeakPtrFactory<BrowserManagementService> weak_ptr_factory_{this};
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 };

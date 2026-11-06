@@ -20,7 +20,6 @@ assert(!is_fuchsia, "Fuchsia shouldn't use anything in //chrome")
 
 group("resources") {
   public_deps = [
-    "//components/enterprise/connectors/resources",
   ]
 
   if (enable_webui_ntp) {
@@ -150,10 +149,6 @@ group("resources") {
   }
 
   if (enable_compose) {
-  }
-
-  if (enterprise_watermark) {
-    public_deps += [ "watermark:resources" ]
   }
 
   if (safe_browsing_mode == 1) {
@@ -307,7 +302,6 @@ group("dev_ui_resources") {
     "suggest_internals:resources",
     "usb_internals:resources",
     "//components/download/resources/download_internals:resources",
-    "//components/enterprise/connectors/resources",
     "//components/metrics/debug:resources",
     "//components/net_log/resources",
     "//components/policy/resources/webui:resources",
@@ -374,7 +368,6 @@ repack("dev_ui_paks") {
     "$root_gen_dir/chrome/subresource_filter_internals_resources.pak",
     "$root_gen_dir/chrome/suggest_internals_resources.pak",
     "$root_gen_dir/chrome/usb_internals_resources.pak",
-    "$root_gen_dir/components/connectors_internals_resources.pak",
     "$root_gen_dir/components/dev_ui_components_resources.pak",
     "$root_gen_dir/components/download_internals_resources.pak",
     "$root_gen_dir/components/metrics_internals_resources.pak",

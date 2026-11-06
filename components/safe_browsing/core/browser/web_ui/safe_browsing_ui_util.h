@@ -8,7 +8,6 @@
 #include "base/time/time.h"
 #include "base/values.h"
 #include "build/build_config.h"
-#include "components/enterprise/common/proto/upload_request_response.pb.h"
 #include "components/safe_browsing/buildflags.h"
 #include "components/safe_browsing/core/browser/db/v5_get_hash_protocol_manager.h"
 #include "components/safe_browsing/core/browser/download_check_result.h"
@@ -166,10 +165,6 @@ base::DictValue SerializeLogMessage(base::Time timestamp,
 base::DictValue SerializeReportingEvent(const base::DictValue& event);
 base::DictValue SerializeV5GetHashLookup(
     const V5GetHashProtocolManager::V5GetHashLookup& lookup);
-base::DictValue SerializeUploadEventsRequest(
-    const ::chrome::cros::reporting::proto::UploadEventsRequest&
-        upload_events_request,
-    const base::DictValue& result);
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
 std::string SerializeRequestHeaders(const net::HttpRequestHeaders& headers);
 std::string SerializeContentAnalysisRequest(

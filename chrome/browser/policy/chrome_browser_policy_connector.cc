@@ -19,15 +19,10 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
 #include "chrome/browser/policy/configuration_policy_handler_list_factory.h"
-#include "chrome/browser/policy/device_management_service_configuration.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome_browser_policy_connector.h"
 #include "components/policy/core/common/async_policy_provider.h"
-#include "components/policy/core/common/cloud/cloud_external_data_manager.h"
-#include "components/policy/core/common/cloud/cloud_policy_client_registration_helper.h"
-#include "components/policy/core/common/cloud/device_management_service.h"
-#include "components/policy/core/common/cloud/user_cloud_policy_manager.h"
 #include "components/policy/core/common/command_line_policy_provider.h"
 #include "components/policy/core/common/configuration_policy_provider.h"
 #include "components/policy/core/common/local_test_policy_provider.h"
@@ -35,7 +30,6 @@
 #include "components/policy/core/common/policy_map.h"
 #include "components/policy/core/common/policy_namespace.h"
 #include "components/policy/core/common/policy_pref_names.h"
-#include "components/policy/core/common/policy_proto_decoders.h"
 #include "components/policy/core/common/policy_types.h"
 #include "components/policy/policy_constants.h"
 #include "components/prefs/pref_service.h"
@@ -55,17 +49,9 @@
 #include "components/policy/core/common/policy_loader_mac.h"
 #include "components/policy/core/common/preferences_mac.h"
 #elif BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/policy/chrome_browser_cloud_management_controller_android.h"
 #include "components/policy/core/common/android/android_combined_policy_provider.h"
 #elif BUILDFLAG(IS_POSIX)
 #include "components/policy/core/common/config_dir_policy_loader.h"
-#endif
-
-#if !BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/policy/chrome_browser_cloud_management_controller_desktop.h"
-#include "components/enterprise/browser/controller/chrome_browser_cloud_management_controller.h"
-#include "components/policy/core/common/cloud/machine_level_user_cloud_policy_manager.h"
-#include "components/policy/core/common/proxy_policy_provider.h"
 #endif
 
 namespace policy {
@@ -74,20 +60,7 @@ bool g_command_line_enabled_for_testing = false;
 }  // namespace
 
 ChromeBrowserPolicyConnector::ChromeBrowserPolicyConnector()
-    : BrowserPolicyConnector(base::BindRepeating(&BuildHandlerList)) {
-#if !BUILDFLAG(IS_CHROMEOS)
-  std::unique_ptr<ChromeBrowserCloudManagementController::Delegate> delegate =
-#if BUILDFLAG(IS_ANDROID)
-      std::make_unique<ChromeBrowserCloudManagementControllerAndroid>();
-#else
-      std::make_unique<ChromeBrowserCloudManagementControllerDesktop>();
-#endif
-
-  chrome_browser_cloud_management_controller_ =
-      std::make_unique<ChromeBrowserCloudManagementController>(
-          std::move(delegate));
-#endif
-}
+    : BrowserPolicyConnector(base::BindRepeating(&BuildHandlerList)) {}
 
 ChromeBrowserPolicyConnector::~ChromeBrowserPolicyConnector() {
   if (local_test_provider_) {
@@ -102,14 +75,6 @@ void ChromeBrowserPolicyConnector::OnResourceBundleCreated() {
 void ChromeBrowserPolicyConnector::Init(
     PrefService* local_state,
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory) {
-  auto configuration = std::make_unique<DeviceManagementServiceConfiguration>(
-      GetDeviceManagementUrl(), GetRealtimeReportingUrl(),
-      GetEncryptedReportingUrl());
-  auto device_management_service =
-      std::make_unique<DeviceManagementService>(std::move(configuration));
-  device_management_service->ScheduleInitialization(
-      kServiceInitializationStartupDelay);
-
 #if BUILDFLAG(IS_ANDROID)
   policy_cache_updater_ = std::make_unique<android::PolicyCacheUpdater>(
       GetPolicyService(), GetHandlerList());
@@ -120,7 +85,7 @@ void ChromeBrowserPolicyConnector::Init(
           {base::TaskPriority::USER_VISIBLE,
            base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN}));
 
-  InitInternal(local_state, std::move(device_management_service));
+  InitInternal(local_state);
 }
 
 void ChromeBrowserPolicyConnector::OnBrowserStarted() {}
@@ -133,11 +98,6 @@ bool ChromeBrowserPolicyConnector::HasMachineLevelPolicies() {
   if (ProviderHasPolicies(GetPlatformProvider())) {
     return true;
   }
-#if !BUILDFLAG(IS_CHROMEOS)
-  if (ProviderHasPolicies(machine_level_user_cloud_policy_manager())) {
-    return true;
-  }
-#endif  // !BUILDFLAG(IS_CHROMEOS)
   if (ProviderHasPolicies(command_line_provider_)) {
     return true;
   }
@@ -146,15 +106,6 @@ bool ChromeBrowserPolicyConnector::HasMachineLevelPolicies() {
 
 void ChromeBrowserPolicyConnector::Shutdown() {
 #if !BUILDFLAG(IS_CHROMEOS)
-  // Reset the controller before calling base class so that
-  // shutdown occurs in correct sequence.
-  chrome_browser_cloud_management_controller_.reset();
-
-  if (machine_level_user_cloud_policy_manager_) {
-    machine_level_user_cloud_policy_manager_->Shutdown();
-    machine_level_user_cloud_policy_manager_ = nullptr;
-  }
-
   if (HasPolicyService()) {
     GetPolicyService()->UseLocalTestPolicyProvider(nullptr);
   }
@@ -222,26 +173,6 @@ void ChromeBrowserPolicyConnector::MaybeApplyLocalTestPolicies(
   local_state->ClearPref(policy_prefs::kLocalTestPoliciesForNextStartup);
 }
 
-#if !BUILDFLAG(IS_CHROMEOS)
-void ChromeBrowserPolicyConnector::InitCloudManagementController(
-    PrefService* local_state,
-    scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory) {
-  chrome_browser_cloud_management_controller()->MaybeInit(local_state,
-                                                          url_loader_factory);
-}
-
-void ChromeBrowserPolicyConnector::
-    SetMachineLevelUserCloudPolicyManagerForTesting(
-        MachineLevelUserCloudPolicyManager* manager) {
-  machine_level_user_cloud_policy_manager_ = manager;
-}
-
-void ChromeBrowserPolicyConnector::SetProxyPolicyProviderForTesting(
-    ProxyPolicyProvider* proxy_policy_provider) {
-  proxy_policy_provider_ = proxy_policy_provider;
-}
-#endif  // !BUILDFLAG(IS_CHROMEOS)
-
 bool ChromeBrowserPolicyConnector::IsCommandLineSwitchSupported() const {
   if (g_command_line_enabled_for_testing) {
     return true;
@@ -262,22 +193,8 @@ ChromeBrowserPolicyConnector::device_affiliation_ids() const {
   if (!device_affiliation_ids_for_testing_.empty()) {
     return device_affiliation_ids_for_testing_;
   }
-#if !BUILDFLAG(IS_CHROMEOS)
-  if (!machine_level_user_cloud_policy_manager_ ||
-      !machine_level_user_cloud_policy_manager_->IsClientRegistered() ||
-      !machine_level_user_cloud_policy_manager_->core() ||
-      !machine_level_user_cloud_policy_manager_->core()->store() ||
-      !machine_level_user_cloud_policy_manager_->core()->store()->policy()) {
-    return {};
-  }
-  const auto& ids = machine_level_user_cloud_policy_manager_->core()
-                        ->store()
-                        ->policy()
-                        ->device_affiliation_ids();
-  return {ids.begin(), ids.end()};
-#else
+  // Not cloud managed (Shuttle): no device affiliation ids.
   return {};
-#endif  // !BUILDFLAG(IS_CHROMEOS)
 }
 
 void ChromeBrowserPolicyConnector::SetDeviceAffiliatedIdsForTesting(
@@ -295,10 +212,6 @@ ChromeBrowserPolicyConnector::CreatePolicyProviders() {
     // PlatformProvider should be before all other providers (highest priority).
     providers.insert(providers.begin(), std::move(platform_provider));
   }
-
-#if !BUILDFLAG(IS_CHROMEOS)
-  MaybeCreateCloudPolicyManager(&providers);
-#endif  // !BUILDFLAG(IS_CHROMEOS)
 
   std::unique_ptr<CommandLinePolicyProvider> command_line_provider =
       CommandLinePolicyProvider::CreateIfAllowed(
@@ -366,42 +279,5 @@ ChromeBrowserPolicyConnector::CreatePlatformProvider() {
   return nullptr;
 #endif
 }
-
-#if !BUILDFLAG(IS_CHROMEOS)
-void ChromeBrowserPolicyConnector::MaybeCreateCloudPolicyManager(
-    std::vector<std::unique_ptr<ConfigurationPolicyProvider>>* providers) {
-  if (!chrome_browser_cloud_management_controller_->IsEnabled()) {
-    return;
-  }
-
-  std::unique_ptr<ProxyPolicyProvider> proxy_policy_provider =
-      std::make_unique<ProxyPolicyProvider>();
-  proxy_policy_provider_ = proxy_policy_provider.get();
-  providers->push_back(std::move(proxy_policy_provider));
-
-  chrome_browser_cloud_management_controller_->DeferrableCreatePolicyManager(
-      platform_provider_,
-      base::BindOnce(&ChromeBrowserPolicyConnector::
-                         OnMachineLevelCloudPolicyManagerCreated,
-                     weak_factory_.GetWeakPtr()));
-}
-
-void ChromeBrowserPolicyConnector::OnMachineLevelCloudPolicyManagerCreated(
-    std::unique_ptr<MachineLevelUserCloudPolicyManager>
-        machine_level_user_cloud_policy_manager) {
-  machine_level_user_cloud_policy_manager_ =
-      machine_level_user_cloud_policy_manager.get();
-  if (machine_level_user_cloud_policy_manager_) {
-    machine_level_user_cloud_policy_manager_->Init(GetSchemaRegistry());
-    proxy_policy_provider_->SetOwnedDelegate(
-        std::move(machine_level_user_cloud_policy_manager));
-  } else {
-    // Explicitly transition out of ProxyPolicyProvider's Unspecified state
-    // when no manager is created to unblock IsFirstPolicyLoadComplete() and
-    // the startup policy snapshot.
-    proxy_policy_provider_->SetUnownedDelegate(nullptr);
-  }
-}
-#endif  // !BUILDFLAG(IS_CHROMEOS)
 
 }  // namespace policy

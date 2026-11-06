@@ -115,8 +115,6 @@ static_library("host_event_reporter_impl") {
   ]
   public_deps = [
     "//base",
-    "//chrome/browser/policy/messaging_layer/proto:crd_event_proto",
-    "//components/reporting/proto:record_constants",
     "//remoting/host:common",
     "//remoting/protocol",
   ]

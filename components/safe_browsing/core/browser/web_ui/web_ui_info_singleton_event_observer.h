@@ -9,7 +9,6 @@
 
 #include "base/time/time.h"
 #include "base/values.h"
-#include "components/enterprise/common/proto/upload_request_response.pb.h"
 #include "components/safe_browsing/buildflags.h"
 #include "components/safe_browsing/core/browser/db/v5_get_hash_protocol_manager.h"
 #include "components/safe_browsing/core/browser/download_check_result.h"
@@ -124,9 +123,6 @@ class WebUIInfoSingletonEventObserver {
   // Called when any new reporting events are sent while one or more WebUI tabs
   // are open.
   virtual void NotifyReportingEventJsListener(const base::DictValue& event) = 0;
-  virtual void NotifyReportingEventJsListener(
-      const ::chrome::cros::reporting::proto::UploadEventsRequest& event,
-      const base::DictValue& result) = 0;
 
   // Called when a new V5 get-hash lookup completes while one or more WebUI tabs
   // are open.

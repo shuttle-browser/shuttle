@@ -9,6 +9,7 @@
 #include "base/check_is_test.h"
 #include "base/logging.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/sequenced_task_runner.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/enterprise/browser_management/browser_management_status_provider.h"
@@ -19,7 +20,6 @@
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/common/pref_names.h"
 #include "components/image_fetcher/core/request_metadata.h"
-#include "components/policy/core/common/cloud/user_cloud_policy_manager.h"
 #include "components/prefs/pref_service.h"
 #include "ui/gfx/image/image.h"
 
@@ -31,13 +31,9 @@ std::vector<std::unique_ptr<ManagementStatusProvider>>
 GetManagementStatusProviders(Profile* profile) {
   std::vector<std::unique_ptr<ManagementStatusProvider>> providers;
   providers.emplace_back(
-      std::make_unique<BrowserCloudManagementStatusProvider>());
-  providers.emplace_back(
       std::make_unique<LocalBrowserManagementStatusProvider>());
   providers.emplace_back(
       std::make_unique<LocalDomainBrowserManagementStatusProvider>());
-  providers.emplace_back(
-      std::make_unique<ProfileCloudManagementStatusProvider>(profile));
   providers.emplace_back(
       std::make_unique<LocalTestPolicyUserManagementProvider>(profile));
   providers.emplace_back(
@@ -72,15 +68,6 @@ BrowserManagementService::BrowserManagementService(Profile* profile)
                      weak_ptr_factory_.GetWeakPtr(), profile));
   UpdateEnterpriseLabelForProfile(profile);
   StartListeningToPrefChanges(profile);
-
-  policy::CloudPolicyManager* cloud_policy_manager =
-      profile->GetCloudPolicyManager();
-  if (cloud_policy_manager) {
-    provider_ = std::make_unique<UserCloudPolicyStatusProvider>(
-        cloud_policy_manager, profile);
-    policy_status_provider_observations_.Observe(provider_.get());
-  }
-
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 }
 

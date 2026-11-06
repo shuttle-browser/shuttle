@@ -26,7 +26,6 @@
 #include "third_party/skia/include/core/SkBitmap.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "components/enterprise/browser/promotion/promotion_eligibility_checker.h"  // nogncheck
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
@@ -402,21 +401,10 @@ class WebstorePrivateShouldShowEnterprisePromotionBannerFunction
       const WebstorePrivateShouldShowEnterprisePromotionBannerFunction&) =
       delete;
 
-  void SetFakePromotionEligibilityCheckerForTesting(
-      std::unique_ptr<enterprise_promotion::PromotionEligibilityChecker>
-          checker);
-
  protected:
   ~WebstorePrivateShouldShowEnterprisePromotionBannerFunction() override;
 
   ResponseAction Run() override;
-
-  void OnPromotionEligibilityDetermined(
-      enterprise_management::GetUserEligiblePromotionsResponse response);
-
- private:
-  std::unique_ptr<enterprise_promotion::PromotionEligibilityChecker>
-      promotion_eligibility_checker_;
 };
 
 class WebstorePrivateLogEnterprisePromoShownFunction

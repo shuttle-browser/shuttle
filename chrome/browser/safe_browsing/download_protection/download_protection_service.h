@@ -27,8 +27,6 @@
 #include "base/supports_user_data.h"
 #include "base/types/optional_ref.h"
 #include "chrome/browser/download/download_commands.h"
-#include "chrome/browser/enterprise/connectors/common.h"
-#include "chrome/browser/safe_browsing/download_protection/deep_scanning_request.h"
 #include "chrome/browser/safe_browsing/download_protection/download_protection_delegate.h"
 #include "chrome/browser/safe_browsing/download_protection/download_protection_observer.h"
 #include "chrome/browser/safe_browsing/download_protection/download_protection_util.h"
@@ -60,7 +58,6 @@ class CheckClientDownloadRequest;
 class CheckClientDownloadRequestBase;
 class CheckFileSystemAccessWriteRequest;
 class ClientDownloadRequest;
-class DeepScanningRequest;
 class DownloadRequestMaker;
 class SafeBrowsingUIManager;
 
@@ -230,40 +227,10 @@ class DownloadProtectionService {
   void ReportDelayedBypassEvent(download::DownloadItem* download,
                                 download::DownloadDangerType danger_type);
 
-  // Uploads `metadata` to Safe Browsing for deep scanning, using the upload
-  // service attached to the profile `item` was downloaded in. This is
-  // non-blocking, and the result we be provided through `callback`. `trigger`
-  // is used to identify the reason for deep scanning, aka enterprise policy or
-  // APP. `download_check_result` indicates the previously known SB verdict to
-  // apply to the download should deep scanning fail. `analysis_settings`
-  // contains settings to apply throughout scanning (types of scans to do,
-  // whether to block/allow large files, etc). This must be called on the UI
-  // thread.
-  void UploadForDeepScanning(
-      std::unique_ptr<DeepScanningMetadata> metadata,
-      CheckDownloadRepeatingCallback callback,
-      DownloadItemWarningData::DeepScanTrigger trigger,
-      DownloadCheckResult download_check_result,
-      enterprise_connectors::AnalysisSettings analysis_settings,
-      base::optional_ref<const std::string> password);
-
-  // Helper functions for encrypted archive scans.
-  static void UploadForConsumerDeepScanning(
-      download::DownloadItem* item,
-      DownloadItemWarningData::DeepScanTrigger trigger,
-      base::optional_ref<const std::string> password);
+  // Helper function for encrypted archive scans.
   static void CheckDownloadWithLocalDecryption(
       download::DownloadItem* item,
       base::optional_ref<const std::string> password);
-
-  // Uploads a save package `item` for deep scanning. `save_package_file`
-  // contains a mapping of on-disk files part of that save package to their
-  // final paths.
-  virtual void UploadSavePackageForDeepScanning(
-      download::DownloadItem* item,
-      base::flat_map<base::FilePath, base::FilePath> save_package_files,
-      CheckDownloadRepeatingCallback callback,
-      enterprise_connectors::AnalysisSettings analysis_settings);
 
   virtual scoped_refptr<network::SharedURLLoaderFactory> GetURLLoaderFactory(
       content::BrowserContext* browser_context);
@@ -287,7 +254,6 @@ class DownloadProtectionService {
   friend class CheckClientDownloadRequest;
   friend class CheckFileSystemAccessWriteRequest;
   friend class DownloadRequestMaker;
-  friend class DeepScanningRequest;
 
   FRIEND_TEST_ALL_PREFIXES(DownloadProtectionServiceMockTimeTest,
                            TestDownloadRequestTimeout);
@@ -337,61 +303,15 @@ class DownloadProtectionService {
                        content::BrowserContext* browser_context,
                        DownloadCheckResult result);
 
-  // Called by a DeepScanningRequest when it finishes, to remove it from
-  // |deep_scanning_requests_|.
-  virtual void RequestFinished(DeepScanningRequest* request);
-
-  // Routes the dangerous download opened reports to `SafeBrowsingEventRouter`
-  // and `ReportingEventRouter`, if available.
+  // Routes the dangerous download opened reports to `SafeBrowsingEventRouter`,
+  // if available.
   void OnDangerousDownloadOpened(download::DownloadItem* item,
                                  Profile* profile);
-
-  // Sends sensitive file bypassed event via `ReportingEventRouter`.
-  void ReportSensitiveFileBypassEnterpriseEvent(
-      download::DownloadItem* item,
-      Profile* profile,
-      const enterprise_connectors::FileMetadata& metadata,
-      const enterprise_connectors::ContentAnalysisResponse::Result& result,
-      const google::protobuf::RepeatedPtrField<ReferrerChainEntry>&
-          referrer_chain,
-      const google::protobuf::RepeatedPtrField<std::string>& frame_urls);
-
-  // Sends dangerous download opened event via `ReportingEventRouter`.
-  void ReportDangerousDownloadOpenedEnterpriseEvent(
-      download::DownloadItem* item,
-      Profile* profile,
-      const enterprise_connectors::FileMetadata& metadata,
-      const google::protobuf::RepeatedPtrField<ReferrerChainEntry>&
-          referrer_chain,
-      const google::protobuf::RepeatedPtrField<std::string>& frame_urls);
-  void ReportDangerousDownloadOpenedEnterpriseEvent(
-      download::DownloadItem* item,
-      Profile* profile,
-      const google::protobuf::RepeatedPtrField<ReferrerChainEntry>&
-          referrer_chain,
-      const google::protobuf::RepeatedPtrField<std::string>& frame_urls);
 
   // Sends dangerous download opened event via `SafeBrowsingPrivateEventRouter`.
   void ReportDangerousDownloadOpenedSafeBrowsingEvent(
       download::DownloadItem* item,
-      Profile* profile,
-      const enterprise_connectors::FileMetadata& metadata);
-  void ReportDangerousDownloadOpenedSafeBrowsingEvent(
-      download::DownloadItem* item,
       Profile* profile);
-
-  // Get the BinaryUploadService for the given |profile|. Virtual so it can be
-  // overridden in tests.
-  virtual enterprise_connectors::BinaryUploadService* GetBinaryUploadService(
-      Profile* profile,
-      const enterprise_connectors::AnalysisSettings& settings);
-
-  // Callback when deep scanning has finished, but we may want to do the
-  // metadata check anyway.
-  void MaybeCheckMetadataAfterDeepScanning(
-      download::DownloadItem* item,
-      CheckDownloadRepeatingCallback callback,
-      DownloadCheckResult result);
 
   raw_ptr<SafeBrowsingServiceImpl> sb_service_ = nullptr;
   // Delegate providing platform-specific logic. Never null.
@@ -406,9 +326,6 @@ class DownloadProtectionService {
       base::flat_map<CheckClientDownloadRequestBase*,
                      std::unique_ptr<CheckClientDownloadRequestBase>>>
       context_download_requests_;
-
-  // Set of pending server requests for deep scanning.
-  base::flat_set<std::unique_ptr<DeepScanningRequest>> deep_scanning_requests_;
 
   // Keeps track of the state of the service.
   bool enabled_ = false;

@@ -632,10 +632,6 @@ class BrowserView : public BrowserWindow,
   // ThemedBackground::PaintThemeCustomImage for details.
   gfx::Point GetThemeOffsetFromBrowserView() const;
 
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  void ApplyScreenshotSettings(bool allow);
-#endif
-
   // Clipboard commands.
   void Cut();
   void Copy();
@@ -983,7 +979,6 @@ class BrowserView : public BrowserWindow,
 
   // The view responsible for housing the contents of the organizer panel.
   raw_ptr<OrganizerTrayView> organizer_tray_ = nullptr;
-
 
   // The scrim view that covers the browser window when a window-modal dialog is
   // showing.

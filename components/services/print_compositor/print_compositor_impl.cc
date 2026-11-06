@@ -39,9 +39,6 @@
 #include "third_party/blink/public/platform/platform.h"
 #endif
 
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-#include "components/services/print_compositor/print_watermark.h"
-#endif
 
 using MojoDiscardableSharedMemoryManager =
     discardable_memory::mojom::DiscardableSharedMemoryManager;
@@ -584,20 +581,5 @@ void PrintCompositorImpl::SetTitle(const std::string& title) {
   title_ = title;
 }
 
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-void PrintCompositorImpl::SetWatermarkBlock(
-    watermark::mojom::WatermarkBlockPtr watermark_block) {
-  if (watermark_block) {
-    auto watermark = PrintWatermark::Create(std::move(watermark_block));
-    watermark_for_testing_ = watermark.get();
-    addon_ = std::move(watermark);
-    addon_init_failed_ = !addon_;
-  } else {
-    watermark_for_testing_ = nullptr;
-    addon_.reset();
-    addon_init_failed_ = false;
-  }
-}
-#endif
 
 }  // namespace printing

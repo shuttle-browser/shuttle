@@ -105,8 +105,7 @@ std::unique_ptr<DownloadRequestMaker>
 DownloadRequestMaker::CreateFromDownloadItem(
     scoped_refptr<BinaryFeatureExtractor> binary_feature_extractor,
     download::DownloadItem* item,
-    base::optional_ref<const std::string> password,
-    bool is_obfuscated) {
+    base::optional_ref<const std::string> password) {
   std::vector<ClientDownloadRequest::Resource> resources;
   for (size_t i = 0; i < item->GetUrlChain().size(); ++i) {
     ClientDownloadRequest::Resource resource;
@@ -147,16 +146,14 @@ DownloadRequestMaker::CreateFromDownloadItem(
       // owned by the CheckClientDownloadRequest, which observes for `item`
       // being destroyed, and deletes this if it is.
       base::BindOnce(&SetDownloadItemWarningData, item,
-                     password.CopyAsOptional()),
-      is_obfuscated);
+                     password.CopyAsOptional()));
 }
 
 // static
 std::unique_ptr<DownloadRequestMaker>
 DownloadRequestMaker::CreateFromFileSystemAccess(
     scoped_refptr<BinaryFeatureExtractor> binary_feature_extractor,
-    const content::FileSystemAccessWriteItem& item,
-    bool is_obfuscated) {
+    const content::FileSystemAccessWriteItem& item) {
   ClientDownloadRequest::Resource resource;
   resource.set_url(
       ShortURLForReporting(GetFileSystemAccessDownloadUrl(item.frame_url)));
@@ -176,7 +173,7 @@ DownloadRequestMaker::CreateFromFileSystemAccess(
       item.sha256_hash, item.size,
       std::vector<ClientDownloadRequest::Resource>{resource},
       item.has_user_gesture, referrer_chain_data.get(), std::nullopt,
-      /*previous_token=*/"", base::DoNothing(), is_obfuscated);
+      /*previous_token=*/"", base::DoNothing());
 }
 
 DownloadRequestMaker::DownloadRequestMaker(
@@ -193,13 +190,11 @@ DownloadRequestMaker::DownloadRequestMaker(
     ReferrerChainData* referrer_chain_data,
     base::optional_ref<const std::string> password,
     const std::string& previous_token,
-    base::OnceCallback<void(const FileAnalyzer::Results&)> on_results_callback,
-    bool is_obfuscated)
+    base::OnceCallback<void(const FileAnalyzer::Results&)> on_results_callback)
     : browser_context_(browser_context),
       request_(std::make_unique<ClientDownloadRequest>()),
       binary_feature_extractor_(binary_feature_extractor),
-      file_analyzer_(std::make_unique<FileAnalyzer>(binary_feature_extractor_,
-                                                    is_obfuscated)),
+      file_analyzer_(std::make_unique<FileAnalyzer>(binary_feature_extractor_)),
       tab_urls_(tab_urls),
       target_file_name_(target_file_name),
       full_path_(full_path),

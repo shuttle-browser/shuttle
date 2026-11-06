@@ -49,17 +49,6 @@ interface ManagedDataResponse {
   showCookiesNoticeForDeskSync: boolean;
 }
 
-interface ThreatProtectionPermission {
-  title: string;
-  permission: string;
-}
-
-export interface ThreatProtectionInfo {
-  info: ThreatProtectionPermission[];
-  description: string;
-  showSecureGatewayDisclosure?: boolean;
-}
-
 // <if expr="is_chromeos">
 /**
  * @enum {string} Look at ToJSDeviceReportingType usage in
@@ -125,26 +114,10 @@ export interface ManagementBrowserProxy {
 
   getContextualManagedData(): Promise<ManagedDataResponse>;
 
-  getThreatProtectionInfo(): Promise<ThreatProtectionInfo>;
-
   /**
    * @return The list of browser reporting info messages.
    */
   initBrowserReportingInfo(): Promise<BrowserReportingResponse[]>;
-
-  /**
-   * @return The list of profile reporting info messages.
-   */
-  initProfileReportingInfo(): Promise<BrowserReportingResponse[]>;
-
-  /**
-   * @return Whether the promotion banner should be shown.
-   */
-  shouldShowPromotion(): Promise<boolean>;
-
-  setBannerDismissed(): Promise<void>;
-
-  recordBannerRedirected(): Promise<void>;
 }
 
 export class ManagementBrowserProxyImpl implements ManagementBrowserProxy {
@@ -179,30 +152,9 @@ export class ManagementBrowserProxyImpl implements ManagementBrowserProxy {
     return sendWithPromise<ManagedDataResponse>('getContextualManagedData');
   }
 
-  getThreatProtectionInfo() {
-    return sendWithPromise<ThreatProtectionInfo>('getThreatProtectionInfo');
-  }
-
   initBrowserReportingInfo() {
     return sendWithPromise<BrowserReportingResponse[]>(
         'initBrowserReportingInfo');
-  }
-
-  initProfileReportingInfo() {
-    return sendWithPromise<BrowserReportingResponse[]>(
-        'initProfileReportingInfo');
-  }
-
-  shouldShowPromotion() {
-    return sendWithPromise<boolean>('shouldShowPromotion');
-  }
-
-  setBannerDismissed() {
-    return sendWithPromise<void>('setBannerDismissed');
-  }
-
-  recordBannerRedirected() {
-    return sendWithPromise<void>('recordBannerRedirected');
   }
 
   static getInstance(): ManagementBrowserProxy {

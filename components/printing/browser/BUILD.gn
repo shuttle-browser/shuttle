@@ -33,8 +33,4 @@ static_library("browser") {
     "//ui/base",
     "//ui/gfx/geometry",
   ]
-
-  if (enterprise_watermark) {
-    deps += [ "//components/enterprise/watermarking/content" ]
-  }
 }

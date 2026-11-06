@@ -321,11 +321,6 @@ class ChromeExtensionsBrowserClient : public ExtensionsBrowserClient {
       const download::DownloadItem& download) override;
   std::unique_ptr<image_fetcher::ImageDecoder> CreateImageDecoder() override;
   bool CanUseNonComponentExtensions(content::BrowserContext* context) override;
-  void CanInstallExtensionByPolicy(
-      content::BrowserContext* context,
-      const ExtensionId& extension_id,
-      const base::Version& extension_version,
-      base::OnceCallback<void(bool, std::u16string)> callback) override;
   std::unique_ptr<ExtensionInstallPromptClient> CreateInstallPrompt(
       content::WebContents* web_contents,
       std::unique_ptr<InstallPromptData> prompt) override;

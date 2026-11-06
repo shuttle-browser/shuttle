@@ -132,9 +132,7 @@
 #include "components/metrics/metrics_service.h"
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/permissions/permission_manager.h"
-#include "components/policy/core/common/cloud/cloud_policy_manager.h"
-#include "components/policy/core/common/cloud/profile_cloud_policy_manager.h"
-#include "components/policy/core/common/cloud/user_cloud_policy_manager.h"
+#include "components/policy/core/common/configuration_policy_provider.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
@@ -323,13 +321,6 @@ bool LocaleNotChanged(const std::string& pref_locale,
 }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-#if !BUILDFLAG(IS_CHROMEOS)
-ProfileImpl::CloudPolicyManagerTestFactory&
-GetTestingCloudPolicyManagerFactory() {
-  static base::NoDestructor<ProfileImpl::CloudPolicyManagerTestFactory> factory;
-  return *factory;
-}
-#endif
 
 }  // namespace
 
@@ -437,13 +428,6 @@ void ProfileImpl::RegisterProfilePrefs(
   registry->RegisterUint64Pref(prefs::kLomProfileId, 0u);
 }
 
-#if !BUILDFLAG(IS_CHROMEOS)
-// static
-void ProfileImpl::SetCloudPolicyManagerFactoryForTesting(
-    CloudPolicyManagerTestFactory factory) {
-  GetTestingCloudPolicyManagerFactory() = std::move(factory);
-}
-#endif
 
 ProfileImpl::ProfileImpl(
     const base::FilePath& path,
@@ -540,7 +524,6 @@ void ProfileImpl::TakePrefsFromStartupData() {
   key_ = startup_data->TakeProfileKey();
   prefs_ = startup_data->TakeProfilePrefService();
   schema_registry_service_ = startup_data->TakeSchemaRegistryService();
-  user_cloud_policy_manager_ = startup_data->TakeUserCloudPolicyManager();
   profile_policy_connector_ = startup_data->TakeProfilePolicyConnector();
   pref_registry_ = startup_data->TakePrefRegistrySyncable();
 
@@ -568,7 +551,8 @@ void ProfileImpl::LoadPrefsForNormalStartup(bool async_prefs) {
   // policy data immediately.
   bool force_immediate_policy_load = !async_prefs;
 
-  policy::CloudPolicyManager* cloud_policy_manager = nullptr;
+  // No user/profile cloud policy (Shuttle): the profile's policy service only
+  // has the platform (local) providers.
   policy::ConfigurationPolicyProvider* policy_provider = nullptr;
 #if BUILDFLAG(IS_CHROMEOS)
   if (force_immediate_policy_load)
@@ -582,64 +566,12 @@ void ProfileImpl::LoadPrefsForNormalStartup(bool async_prefs) {
       g_browser_process->platform_part()->browser_policy_connector_ash(), this,
       force_immediate_policy_load, io_task_runner_);
 
-  cloud_policy_manager = nullptr;
   policy_provider = GetUserCloudPolicyManagerAsh();
-#else  // !BUILDFLAG(IS_CHROMEOS)
-  {
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-    if (GetTestingCloudPolicyManagerFactory()) {
-      auto result = GetTestingCloudPolicyManagerFactory().Run(this);
-      if (std::holds_alternative<
-              std::unique_ptr<policy::ProfileCloudPolicyManager>>(result)) {
-        profile_cloud_policy_manager_ = std::move(
-            std::get<std::unique_ptr<policy::ProfileCloudPolicyManager>>(
-                result));
-        cloud_policy_manager = profile_cloud_policy_manager_.get();
-      } else if (std::holds_alternative<
-                     std::unique_ptr<policy::UserCloudPolicyManager>>(result)) {
-        user_cloud_policy_manager_ = std::move(
-            std::get<std::unique_ptr<policy::UserCloudPolicyManager>>(result));
-        cloud_policy_manager = user_cloud_policy_manager_.get();
-      }
-    }
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-
-    if (!cloud_policy_manager) {
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-      ProfileAttributesEntry* entry = nullptr;
-      if (g_browser_process->profile_manager()) {
-        entry = g_browser_process->profile_manager()
-                    ->GetProfileAttributesStorage()
-                    .GetProfileAttributesWithPath(GetPath());
-      }
-
-      if (entry && (!entry->GetProfileManagementEnrollmentToken().empty() ||
-                    entry->IsDasherlessManagement())) {
-        profile_cloud_policy_manager_ =
-            policy::ProfileCloudPolicyManager::Create(
-                GetPath(), GetPolicySchemaRegistryService()->registry(),
-                force_immediate_policy_load, io_task_runner_,
-                base::BindRepeating(&content::GetNetworkConnectionTracker),
-                entry->IsDasherlessManagement());
-        cloud_policy_manager = profile_cloud_policy_manager_.get();
-      } else {
-#else
-      {
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-        user_cloud_policy_manager_ = policy::UserCloudPolicyManager::Create(
-            GetPath(), GetPolicySchemaRegistryService()->registry(),
-            force_immediate_policy_load, io_task_runner_,
-            base::BindRepeating(&content::GetNetworkConnectionTracker));
-        cloud_policy_manager = user_cloud_policy_manager_.get();
-      }
-    }
-    policy_provider = cloud_policy_manager;
-  }
 #endif
   profile_policy_connector_ =
       policy::CreateProfilePolicyConnectorForBrowserContext(
-          schema_registry_service_->registry(), cloud_policy_manager,
-          policy_provider, g_browser_process->browser_policy_connector(),
+          schema_registry_service_->registry(), policy_provider,
+          g_browser_process->browser_policy_connector(),
           force_immediate_policy_load, this);
 
   bool is_signin_profile = false;
@@ -1139,29 +1071,7 @@ policy::SchemaRegistryService* ProfileImpl::GetPolicySchemaRegistryService() {
 policy::UserCloudPolicyManagerAsh* ProfileImpl::GetUserCloudPolicyManagerAsh() {
   return user_cloud_policy_manager_ash_.get();
 }
-#else
-policy::UserCloudPolicyManager* ProfileImpl::GetUserCloudPolicyManager() {
-  return user_cloud_policy_manager_.get();
-}
-
-policy::ProfileCloudPolicyManager* ProfileImpl::GetProfileCloudPolicyManager() {
-  return profile_cloud_policy_manager_.get();
-}
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-policy::CloudPolicyManager* ProfileImpl::GetCloudPolicyManager() {
-#if BUILDFLAG(IS_CHROMEOS)
-  return GetUserCloudPolicyManagerAsh();
-#else
-  if (user_cloud_policy_manager_) {
-    return GetUserCloudPolicyManager();
-  }
-  if (profile_cloud_policy_manager_) {
-    return GetProfileCloudPolicyManager();
-  }
-  return nullptr;
-#endif  // BUILDFLAG(IS_CHROMEOS)
-}
 
 policy::ConfigurationPolicyProvider*
 ProfileImpl::configuration_policy_provider() {
@@ -1170,11 +1080,7 @@ ProfileImpl::configuration_policy_provider() {
     return user_cloud_policy_manager_ash_.get();
   return nullptr;
 #else  // !BUILDFLAG(IS_CHROMEOS)
-  if (user_cloud_policy_manager_.get()) {
-    return user_cloud_policy_manager_.get();
-  } else {
-    return profile_cloud_policy_manager_.get();
-  }
+  return nullptr;
 #endif
 }
 

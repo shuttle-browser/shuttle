@@ -307,28 +307,6 @@
     "dependencies": ["permission:enterprise.platformKeysPrivate"],
     "contexts": ["privileged_extension"]
   },
-  "enterprise.reportingPrivate": {
-    "dependencies": ["permission:enterprise.reportingPrivate"],
-    "contexts": ["privileged_extension"]
-  },
-  "enterprise.reportingPrivate.getFileSystemInfo": {
-    "platforms": ["win", "mac", "linux"]
-  },
-  "enterprise.reportingPrivate.getSettings": {
-    "platforms": ["win", "mac"]
-  },
-  "enterprise.reportingPrivate.getAvInfo": {
-    "platforms": ["win"]
-  },
-  "enterprise.reportingPrivate.getHotfixes": {
-    "platforms": ["win"]
-  },
-  "enterprise.reportingPrivate.onDataMaskingRulesTriggered": {
-    "feature_flag": "ApiEnterpriseReportingPrivateOnDataMaskingRulesTriggered"
-  },
-  "enterprise.reportingPrivate.reportForceSaveToCloudEventHandled": {
-    "feature_flag": "ApiEnterpriseReportingPrivateReportForceSaveToCloudEventHandled"
-  },
   "proxyOverrideRulesPrivate": {
     "dependencies": ["permission:proxyOverrideRulesPrivate"],
     "contexts": ["privileged_extension"],

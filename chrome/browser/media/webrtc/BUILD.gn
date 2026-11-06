@@ -197,18 +197,6 @@ source_set("webrtc") {
     "//ui/snapshot",
   ]
 
-  if (enterprise_screenshot_protection) {
-    sources += [
-      "data_protection_tab_capture_handler.cc",
-      "data_protection_tab_capture_handler.h",
-    ]
-    deps += [
-      "//chrome/browser/enterprise",
-      "//chrome/browser/ui/tabs:tabs_public",
-      "//components/tabs:public",
-    ]
-  }
-
   if (enable_extensions_core) {
     sources += [
       "desktop_capture_access_handler.cc",

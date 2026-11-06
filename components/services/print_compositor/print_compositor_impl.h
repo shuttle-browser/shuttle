@@ -43,9 +43,6 @@ class ClientDiscardableSharedMemoryManager;
 
 namespace printing {
 
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-class PrintWatermark;
-#endif
 
 class PrintCompositorImpl : public mojom::PrintCompositor {
  public:
@@ -85,9 +82,6 @@ class PrintCompositorImpl : public mojom::PrintCompositor {
 
   void SetAddonForTesting(std::unique_ptr<Addon> addon);
 
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-  PrintWatermark* watermark_for_testing() { return watermark_for_testing_; }
-#endif
 
   // mojom::PrintCompositor
   void NotifyUnavailableSubframe(uint64_t frame_guid) override;
@@ -120,10 +114,6 @@ class PrintCompositorImpl : public mojom::PrintCompositor {
   void SetGenerateDocumentOutline(
       mojom::GenerateDocumentOutline generate_document_outline) override;
   void SetTitle(const std::string& title) override;
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-  void SetWatermarkBlock(
-      watermark::mojom::WatermarkBlockPtr watermark_block) override;
-#endif
 
  protected:
   // This is the uniform underlying type for both
@@ -322,10 +312,6 @@ class PrintCompositorImpl : public mojom::PrintCompositor {
   // closed.
   bool addon_init_failed_ = false;
 
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-  // Points at `addon_` if `addon_` is a PrintWatermark.
-  raw_ptr<PrintWatermark> watermark_for_testing_ = nullptr;
-#endif
 };
 
 }  // namespace printing

@@ -39,10 +39,6 @@
 #include "ui/menus/simple_menu_model.h"
 #include "ui/strings/grit/ui_strings.h"
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-#include "chrome/browser/enterprise/connectors/analysis/copy_warning_delegate_tracker.h"
-#endif  // BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-
 DEFINE_USER_DATA(ToastService);
 
 // static
@@ -279,39 +275,4 @@ void ToastService::RegisterToasts() {
           .AddGlobalScoped()
           .Build());
 
-
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  toast_registry_->RegisterToast(
-      ToastId::kEnterpriseCopyAudit,
-      ToastSpecification::Builder(vector_icons::kDomainIcon,
-                                  IDS_ENTERPRISE_COPY_MONITORED_TOAST_BODY)
-          .Build());
-  toast_registry_->RegisterToast(
-      ToastId::kEnterpriseCopyKeptInManagedChrome,
-      ToastSpecification::Builder(vector_icons::kDomainIcon,
-                                  IDS_ENTERPRISE_COPY_MONITORED_TOAST_BODY)
-          .Build());
-
-  toast_registry_->RegisterToast(
-      ToastId::kEnterpriseCopyWarning,
-      ToastSpecification::Builder(vector_icons::kDomainIcon,
-                                  IDS_ENTERPRISE_COPY_WARNING_TOAST_BODY)
-          .AddCloseButton()
-          .AddActionButton(
-              IDS_ENTERPRISE_COPY_WARNING_TOAST_BUTTON,
-              base::BindRepeating([](BrowserWindowInterface* window) {
-                if (auto* tab = window->GetActiveTabInterface()) {
-                  if (auto* web_contents = tab->GetContents()) {
-                    enterprise_connectors::CopyWarningDelegateTracker::
-                        BypassAndClear(web_contents);
-                  }
-                }
-              }))
-          .Build());
-  toast_registry_->RegisterToast(
-      ToastId::kEnterpriseCopyBlocked,
-      ToastSpecification::Builder(vector_icons::kDomainIcon,
-                                  IDS_ENTERPRISE_COPY_BLOCKED_TOAST_BODY)
-          .Build());
-#endif
 }  // RegisterToasts() end.

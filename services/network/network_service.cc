@@ -115,10 +115,6 @@
 #include "net/android/http_auth_negotiate_android.h"
 #endif
 
-#if BUILDFLAG(IS_MAC)
-#include "components/enterprise/platform_auth/url_session_url_loader_bridge.h"
-#endif
-
 #if BUILDFLAG(IS_CT_SUPPORTED)
 #include "net/http/transport_security_state.h"
 #include "services/network/sct_auditing/sct_auditing_cache.h"
@@ -1322,14 +1318,9 @@ void NetworkService::CreateURLSessionURLLoaderAndStart(
     const ResourceRequest& request,
     mojo::PendingReceiver<mojom::URLLoader> loader_receiver,
     mojo::PendingRemote<mojom::URLLoaderClient> client_remote) {
-  if (use_mock_url_session_url_loader_for_testing_) {
-    CHECK_IS_TEST();
-    enterprise_auth::CreateURLSessionURLLoaderAndStartForTesting(  // IN-TEST
-        request, std::move(loader_receiver), std::move(client_remote));
-  } else {
-    enterprise_auth::CreateURLSessionURLLoaderAndStart(
-        request, std::move(loader_receiver), std::move(client_remote));
-  }
+  // Shuttle: the platform SSO (URLSession) loader was removed with enterprise
+  // platform auth and nothing calls this anymore. Dropping the pipes
+  // disconnects the client.
 }
 #endif
 

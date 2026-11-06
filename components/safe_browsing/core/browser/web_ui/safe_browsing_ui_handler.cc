@@ -374,12 +374,6 @@ void SafeBrowsingUIHandler::GetReportingEvents(const base::ListValue& args) {
     reporting_events.Append(reporting_event.Clone());
   }
 
-  for (const auto& request_result_pair :
-       web_ui_info_singleton()->upload_event_requests()) {
-    reporting_events.Append(web_ui::SerializeUploadEventsRequest(
-        request_result_pair.first, request_result_pair.second));
-  }
-
   DCHECK(!args.empty());
   const std::string& callback_id = args[0].GetString();
   ResolveCallback(callback_id, reporting_events);

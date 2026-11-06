@@ -67,7 +67,6 @@
 #include "components/embedder_support/pref_names.h"
 #include "components/embedder_support/switches.h"
 #include "components/enterprise/buildflags/buildflags.h"
-#include "components/enterprise/connectors/core/connectors_prefs.h"
 #include "components/language/core/browser/language_prefs.h"
 #include "components/language/core/browser/pref_names.h"
 #include "components/metrics/metrics_pref_names.h"
@@ -143,26 +142,11 @@
 #include "extensions/common/constants.h"
 #endif
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/enterprise/client_certificates/certificate_provisioning_service_factory.h"
-#include "chrome/browser/policy/chrome_browser_policy_connector.h"
-#include "components/enterprise/browser/controller/chrome_browser_cloud_management_controller.h"
-#include "components/enterprise/client_certificates/core/certificate_provisioning_service.h"
-#include "components/enterprise/client_certificates/core/client_certificates_service.h"
-#include "components/enterprise/client_certificates/core/features.h"
-#include "components/policy/core/browser/browser_policy_connector.h"
-#endif
-
 #if BUILDFLAG(CHROME_ROOT_STORE_CERT_MANAGEMENT_UI)
 #include "chrome/browser/net/server_certificate_database_service_factory.h"  // nogncheck
 #include "components/server_certificate_database/server_certificate_database.h"  // nogncheck
 #include "components/server_certificate_database/server_certificate_database.pb.h"  // nogncheck
 #include "components/server_certificate_database/server_certificate_database_service.h"  // nogncheck
-#endif
-
-#if BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
-#include "components/enterprise/encryption/cache/utils.h"
 #endif
 
 #if BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
@@ -281,34 +265,6 @@ void UpdateCookieSettings(Profile* profile, ContentSettingsType type) {
       });
 }
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_ANDROID)
-std::unique_ptr<net::ClientCertStore> GetWrappedCertStore(
-    Profile* profile,
-    std::unique_ptr<net::ClientCertStore> platform_store) {
-  client_certificates::CertificateProvisioningService*
-      profile_provisioning_service = nullptr;
-  if (profile) {
-    profile_provisioning_service = client_certificates::
-        CertificateProvisioningServiceFactory::GetForProfile(profile);
-  }
-
-  client_certificates::CertificateProvisioningService*
-      browser_provisioning_service =
-          g_browser_process->browser_policy_connector()
-              ->chrome_browser_cloud_management_controller()
-              ->GetCertificateProvisioningService();
-
-  if (!browser_provisioning_service && !profile_provisioning_service) {
-    return platform_store;
-  }
-
-  return client_certificates::ClientCertificatesService::Create(
-      profile_provisioning_service, browser_provisioning_service,
-      std::move(platform_store));
-}
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
-        // BUILDFLAG(IS_ANDROID)
 
 bool IsValidDNSConstraint(std::string_view possible_dns_constraint) {
   return base::IsStringASCII(possible_dns_constraint) &&
@@ -1241,17 +1197,11 @@ ProfileNetworkContextService::CreateClientCertStore() {
       std::make_unique<net::ClientCertStoreNSS>(
           base::BindRepeating(&CreateCryptoModuleBlockingPasswordDelegate,
                               kCryptoModulePasswordClientAuth));
-#if BUILDFLAG(IS_LINUX)
-  return GetWrappedCertStore(profile_, std::move(store));
-#else
   return store;
-#endif  // BUILDFLAG(IS_LINUX)
 #elif BUILDFLAG(IS_WIN)
-  return GetWrappedCertStore(profile_,
-                             std::make_unique<net::ClientCertStoreWin>());
+  return std::make_unique<net::ClientCertStoreWin>();
 #elif BUILDFLAG(IS_MAC)
-  return GetWrappedCertStore(profile_,
-                             std::make_unique<net::ClientCertStoreMac>());
+  return std::make_unique<net::ClientCertStoreMac>();
 #elif BUILDFLAG(IS_ANDROID)
   // On Android client we don't use a platform client cert store, but we still
   // need to use Chrome profile and browser level stores, so we wrap the empty
@@ -1259,31 +1209,12 @@ ProfileNetworkContextService::CreateClientCertStore() {
   // The certificate matching for android will first try to find a matching cert
   // in the profile/browser stores, and if none is found, it will proceed with
   // the OS as part of the call to show the cert selection dialog.
-  return GetWrappedCertStore(profile_,
-                             std::make_unique<net::ClientCertStoreEmpty>());
+  return std::make_unique<net::ClientCertStoreEmpty>();
 #else
 #error Unknown platform.
 #endif
 }
 
-#if BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
-void ProfileNetworkContextService::SaveEncryptedCachePrimaryKey(
-    const std::vector<uint8_t>& encrypted_primary_key) {
-  if (profile_) {
-    profile_->GetPrefs()->SetString(
-        enterprise_connectors::kEncryptedCachePrimaryKey,
-        base::Base64Encode(encrypted_primary_key));
-  }
-}
-
-std::vector<uint8_t>
-ProfileNetworkContextService::GetEncryptedCachePrimaryKey() {
-  std::string encoded_encrypted_primary_key = profile_->GetPrefs()->GetString(
-      enterprise_connectors::kEncryptedCachePrimaryKey);
-  return base::Base64Decode(encoded_encrypted_primary_key).value_or({});
-}
-
-#endif  // BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
 
 void ProfileNetworkContextService::ConfigureNetworkContextParamsInternal(
     bool in_memory,
@@ -1366,24 +1297,6 @@ void ProfileNetworkContextService::ConfigureNetworkContextParamsInternal(
         ->AddCookieEncryptionManagerToNetworkContextParams(
             network_context_params);
 
-#if BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
-    if (enterprise_encryption::ShouldEncryptHttpCache(profile_->GetPrefs())) {
-      if (!cache_encryption_provider_) {
-        cache_encryption_provider_ = std::make_unique<
-            enterprise_encryption::CacheEncryptionProviderImpl>(
-            g_browser_process->os_crypt_async(), GetEncryptedCachePrimaryKey(),
-            base::BindRepeating(
-                &ProfileNetworkContextService::SaveEncryptedCachePrimaryKey,
-                weak_factory_.GetWeakPtr()));
-      }
-      mojo::PendingRemote<network::mojom::CacheEncryptionProvider>
-          cache_encryption_provider_remote =
-              cache_encryption_provider_->BindNewRemote();
-
-      network_context_params->encryption_provider =
-          std::move(cache_encryption_provider_remote);
-    }
-#endif  // BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
 
     network_context_params->file_paths->trust_token_database_name =
         base::FilePath(chrome::kTrustTokenFilename);
@@ -1505,11 +1418,6 @@ void ProfileNetworkContextService::ConfigureNetworkContextParamsInternal(
   network_context_params->reset_http_cache_backend =
       GetHttpCacheBackendResetParam(profile_, relative_partition_path);
 
-#if BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
-  // Enable encrypted HTTP cache if the enterprise policy is set.
-  network_context_params->enable_encrypted_http_cache =
-      enterprise_encryption::ShouldEncryptHttpCache(profile_->GetPrefs());
-#endif  // BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
 
   network_context_params->split_auth_cache_by_network_anonymization_key =
       ShouldSplitAuthCacheByNetworkIsolationKey();

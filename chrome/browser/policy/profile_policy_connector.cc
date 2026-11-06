@@ -36,10 +36,6 @@
 #include "components/infobars/core/infobar.h"
 #include "components/infobars/core/infobar_delegate.h"
 #include "components/policy/core/browser/browser_policy_connector.h"
-#include "components/policy/core/common/cloud/cloud_policy_core.h"
-#include "components/policy/core/common/cloud/cloud_policy_manager.h"
-#include "components/policy/core/common/cloud/cloud_policy_store.h"
-#include "components/policy/core/common/cloud/machine_level_user_cloud_policy_manager.h"
 #include "components/policy/core/common/configuration_policy_provider.h"
 #include "components/policy/core/common/local_test_policy_provider.h"
 #include "components/policy/core/common/policy_bundle.h"
@@ -373,107 +369,6 @@ ProxyPolicyProvider* GetProxyPolicyProvider() {
   return browser_policy_connector->GetGlobalUserCloudPolicyProvider();
 }
 
-// Returns the hash to identify the caller for investigation.
-// To stabilize against unrelated line edits in the file, we drop line number
-// from the source of the hash.
-uint32_t LocationHash(const base::Location& location) {
-  if (!location.has_source_info()) {
-    // Use 0 to indicate "missing source info" error.
-    return 0;
-  }
-  return base::PersistentHash(
-      base::StrCat({location.function_name(), location.file_name()}));
-}
-
-// ProfilePolicyConnector::IsManaged() is equivalent to
-// user_manager::User::is_managed().value_or(false) for most cases. This
-// function records UMA metrics on other unexpected situations.
-void RecordIsManagedCallerForChromeOS(
-    const user_manager::User* user,
-    const CloudPolicyStore* actual_policy_store,
-    base::Location original_caller) {
-  if (!user) {
-    // This case cannot be replaced with user_->is_managed() and we need to
-    // address case-by-case.
-    base::UmaHistogramSparse(
-        "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged.NonUserProfile",
-        LocationHash(original_caller));
-    return;
-  }
-
-  if (user->IsDeviceLocalAccount()) {
-    CHECK(user->is_managed().has_value() && user->is_managed().value());
-
-    // `actual_policy_store` should be non-null.
-    // TODO(crbug.com/489635809): Put CHECK(actual_policy_store).
-    if (!actual_policy_store || !actual_policy_store->is_managed()) {
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged."
-          "DeviceLocalAccountUnexpected",
-          LocationHash(original_caller));
-    } else {
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged.Consistent",
-          LocationHash(original_caller));
-    }
-    return;
-  }
-
-  // Regular users (UserType::kRegular or UserType::kChild)
-
-  if (!user->is_managed().has_value()) {
-    if (!actual_policy_store) {
-      // Null actual_policy_store means, the user should be unmanaged and
-      // user->is_managed() should have false, which is set on OnProfileAdded().
-      // !has_value() means that the call is too early, i.e. before
-      // ProfileManagerObserver::OnProfileAdedd().
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged."
-          "RegularUserEarlyCallUnmanaged",
-          LocationHash(original_caller));
-    } else if (actual_policy_store->is_managed()) {
-      // User should be managed, but User::is_managed_ has not been updated yet.
-      // !has_value() means that the call is in between when the policy is set
-      // and when UserManager::SetUserPolicyStatus() is called.
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged."
-          "RegularUserEarlyCallManaged",
-          LocationHash(original_caller));
-    } else {
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged.Consistent",
-          LocationHash(original_caller));
-    }
-    return;
-  }
-
-  if (user->is_managed().value()) {
-    // `actual_policy_store` should be non-null.
-    // TODO(crbug.com/489635809): Put CHECK(actual_policy_store).
-    if (!actual_policy_store || !actual_policy_store->is_managed()) {
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged."
-          "RegularUserUnexpectedUserIsManaged",
-          LocationHash(original_caller));
-    } else {
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged.Consistent",
-          LocationHash(original_caller));
-    }
-  } else {
-    if (actual_policy_store && actual_policy_store->is_managed()) {
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged."
-          "RegularUserUnexpectedProfileIsManaged",
-          LocationHash(original_caller));
-    } else {
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged.Consistent",
-          LocationHash(original_caller));
-    }
-  }
-}
-
 }  // namespace
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
@@ -490,15 +385,12 @@ void ProfilePolicyConnector::Init(
     const user_manager::User* user,
     SchemaRegistry* schema_registry,
     ConfigurationPolicyProvider* configuration_policy_provider,
-    const CloudPolicyStore* policy_store,
     policy::ChromeBrowserPolicyConnector* connector,
     bool force_immediate_load) {
   DCHECK(!configuration_policy_provider_);
-  DCHECK(!policy_store_);
   DCHECK(!policy_service_);
 
   configuration_policy_provider_ = configuration_policy_provider;
-  policy_store_ = policy_store;
   local_test_infobar_visibility_manager_ =
       std::make_unique<internal::LocalTestInfoBarVisibilityManager>();
 
@@ -522,12 +414,6 @@ void ProfilePolicyConnector::Init(
         browser_policy_connector->GetDeviceCloudPolicyManager());
   }
 #else
-  ConfigurationPolicyProvider* machine_level_user_cloud_policy_provider =
-      connector->proxy_policy_provider();
-  if (machine_level_user_cloud_policy_provider) {
-    policy_providers_.push_back(machine_level_user_cloud_policy_provider);
-  }
-
   if (connector->command_line_policy_provider()) {
     policy_providers_.push_back(connector->command_line_policy_provider());
   }
@@ -666,13 +552,7 @@ bool ProfilePolicyConnector::IsManaged(
 ) const {
   if (is_managed_override_)
     return *is_managed_override_;
-  const CloudPolicyStore* actual_policy_store = GetActualPolicyStore();
-#if BUILDFLAG(IS_CHROMEOS)
-  RecordIsManagedCallerForChromeOS(user_.get(), actual_policy_store,
-                                   caller_location);
-#endif  // BUILDFLAG(IS_CHROMEOS)
-  if (actual_policy_store)
-    return actual_policy_store->is_managed();
+  // No cloud policy store (Shuttle): a profile is never cloud managed.
   return false;
 }
 
@@ -694,11 +574,8 @@ base::flat_set<std::string> ProfilePolicyConnector::user_affiliation_ids()
   if (!user_affiliation_ids_for_testing_.empty()) {
     return user_affiliation_ids_for_testing_;
   }
-  auto* store = GetActualPolicyStore();
-  if (!store || !store->has_policy())
-    return {};
-  const auto& ids = store->policy()->user_affiliation_ids();
-  return {ids.begin(), ids.end()};
+  // No cloud policy (Shuttle): no affiliation ids.
+  return {};
 }
 
 void ProfilePolicyConnector::SetUserAffiliationIdsForTesting(
@@ -714,25 +591,6 @@ void ProfilePolicyConnector::OnPolicyServiceInitialized(PolicyDomain domain) {
 void ProfilePolicyConnector::DoPostInit() {
   DCHECK(policy_service_);
   policy_service_->AddObserver(POLICY_DOMAIN_CHROME, this);
-}
-
-const CloudPolicyStore* ProfilePolicyConnector::GetActualPolicyStore() const {
-  if (policy_store_)
-    return policy_store_;
-#if BUILDFLAG(IS_CHROMEOS)
-  if (special_user_policy_provider_) {
-    // |special_user_policy_provider_| is non-null for device-local accounts,
-    // for the login profile, and the lock screen app profile.
-    const DeviceCloudPolicyManagerAsh* const device_cloud_policy_manager =
-        g_browser_process->platform_part()
-            ->browser_policy_connector_ash()
-            ->GetDeviceCloudPolicyManager();
-    // The device_cloud_policy_manager can be a nullptr in unit tests.
-    if (device_cloud_policy_manager)
-      return device_cloud_policy_manager->core()->store();
-  }
-#endif
-  return nullptr;
 }
 
 const ConfigurationPolicyProvider*

@@ -12,7 +12,6 @@
 #include "chrome/browser/ui/webui/bluetooth_internals/bluetooth_internals_ui.h"
 #include "chrome/browser/ui/webui/chrome_urls/chrome_urls_ui.h"
 #include "chrome/browser/ui/webui/components/components_ui.h"
-#include "chrome/browser/ui/webui/connectors_internals/connectors_internals_ui.h"
 #include "chrome/browser/ui/webui/constrained_web_dialog_ui.h"
 #include "chrome/browser/ui/webui/content_settings/content_settings_ui.h"
 #include "chrome/browser/ui/webui/device_log/device_log_ui.h"
@@ -57,7 +56,6 @@
 #if BUILDFLAG(ENABLE_WEBUI_CERTIFICATE_VIEWER)
 #include "chrome/browser/ui/webui/certificate_viewer/certificate_viewer_ui.h"
 #endif
-
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/webui/agents/agents_ui.h"
@@ -158,10 +156,6 @@
 #include "chrome/browser/ui/webui/safe_browsing/chrome_safe_browsing_ui.h"
 #endif
 
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-#include "chrome/browser/ui/webui/watermark/watermark_ui.h"
-#endif
-
 #if BUILDFLAG(IS_MAC)
 #include "chrome/browser/ui/webui/unexportable_keys_internals/unexportable_keys_internals_ui.h"
 #endif  // BUILDFLAG(IS_MAC)
@@ -196,8 +190,6 @@ void RegisterChromeWebUIConfigs() {
   map.AddWebUIConfig(std::make_unique<ComponentsUIConfig>());
   map.AddWebUIConfig(
       std::make_unique<security_interstitials::ConnectionHelpUIConfig>());
-  map.AddWebUIConfig(
-      std::make_unique<enterprise_connectors::ConnectorsInternalsUIConfig>());
   map.AddWebUIConfig(
       std::make_unique<content_settings_internals::ContentSettingsUIConfig>());
   map.AddWebUIConfig(std::make_unique<ConstrainedWebDialogUIConfig>());
@@ -340,10 +332,6 @@ void RegisterChromeWebUIConfigs() {
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
   map.AddWebUIConfig(
       std::make_unique<safe_browsing::ChromeSafeBrowsingUIConfig>());
-#endif
-
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-  map.AddWebUIConfig(std::make_unique<WatermarkUIConfig>());
 #endif
 
 #if BUILDFLAG(IS_MAC)

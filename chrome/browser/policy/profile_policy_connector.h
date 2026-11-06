@@ -40,7 +40,6 @@ class ProxiedPoliciesPropagatedWatcher;
 class LocalTestInfoBarVisibilityManager;
 }  // namespace internal
 
-class CloudPolicyStore;
 class ConfigurationPolicyProvider;
 class PolicyMigrator;
 class PolicyServiceImpl;
@@ -59,14 +58,13 @@ class ProfilePolicyConnector final : public PolicyService::Observer {
   ~ProfilePolicyConnector() override;
 
   // |user| is only used in Chrome OS builds and should be set to nullptr
-  // otherwise.  |configuration_policy_provider| and |policy_store| are nullptr
-  // for non-regular users.
+  // otherwise.  |configuration_policy_provider| is nullptr for non-regular
+  // users.
   // If |force_immediate_load| is true, DeviceLocalAccountPolicy is loaded
   // synchronously.
   void Init(const user_manager::User* user,
             SchemaRegistry* schema_registry,
             ConfigurationPolicyProvider* configuration_policy_provider,
-            const CloudPolicyStore* policy_store,
             policy::ChromeBrowserPolicyConnector* browser_policy_connector,
             bool force_immediate_load);
 
@@ -123,9 +121,6 @@ class ProfilePolicyConnector final : public PolicyService::Observer {
 
  private:
   void DoPostInit();
-
-  // Returns the policy store which is actually used.
-  const CloudPolicyStore* GetActualPolicyStore() const;
 
   // Find the policy provider that provides the |policy_key| policy, if any. In
   // case of multiple providers sharing the same policy, the one with the
@@ -206,7 +201,6 @@ class ProfilePolicyConnector final : public PolicyService::Observer {
 
   raw_ptr<const ConfigurationPolicyProvider> configuration_policy_provider_ =
       nullptr;
-  raw_ptr<const CloudPolicyStore> policy_store_ = nullptr;
 
 #if BUILDFLAG(IS_CHROMEOS)
   std::unique_ptr<ConfigurationPolicyProvider> restricted_mgs_policy_provider;

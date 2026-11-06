@@ -20,8 +20,6 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "build/branding_buildflags.h"
-#include "components/policy/core/common/cloud/cloud_policy_refresh_scheduler.h"
-#include "components/policy/core/common/cloud/device_management_service.h"
 #include "components/policy/core/common/configuration_policy_provider.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/policy/core/common/policy_statistics_collector.h"
@@ -32,43 +30,13 @@
 
 namespace policy {
 
-namespace {
-
-#if !BUILDFLAG(GOOGLE_CHROME_BRANDING)
-const char kDefaultFakeDmserverUrl[] =
-    "http://127.0.0.1:6112/device_management";
-#endif
-
-// The URL for the device management server.
-const char kDefaultDeviceManagementServerUrl[] =
-    "https://m.google.com/devicemanagement/data/api";
-
-const char kDefaultEncryptedReportingServerUrl[] =
-    "https://chromereporting-pa.googleapis.com/v1/record";
-
-// The URL for the realtime reporting server.
-const char kDefaultRealtimeReportingServerUrl[] =
-    "https://chromereporting-pa.googleapis.com/v1/events";
-
-// The URL suffix for the File Storage Server endpoint in DMServer. File Storage
-// Server receives the requests on this URL.
-const char kFileStorageServerUploadUrlSuffixForDMServer[] = "/upload";
-
-DeviceManagementService* g_device_management_service_for_testing = nullptr;
-
-}  // namespace
-
 BrowserPolicyConnector::BrowserPolicyConnector(
     const HandlerListFactory& handler_list_factory)
     : BrowserPolicyConnectorBase(handler_list_factory) {}
 
 BrowserPolicyConnector::~BrowserPolicyConnector() = default;
 
-void BrowserPolicyConnector::InitInternal(
-    PrefService* local_state,
-    std::unique_ptr<DeviceManagementService> device_management_service) {
-  device_management_service_ = std::move(device_management_service);
-
+void BrowserPolicyConnector::InitInternal(PrefService* local_state) {
   policy_statistics_collector_ =
       std::make_unique<policy::PolicyStatisticsCollector>(
           base::BindRepeating(&GetChromePolicyDetails), GetChromeSchema(),
@@ -79,19 +47,7 @@ void BrowserPolicyConnector::InitInternal(
 
 void BrowserPolicyConnector::Shutdown() {
   BrowserPolicyConnectorBase::Shutdown();
-  device_management_service_.reset();
   policy_statistics_collector_.reset();
-}
-
-void BrowserPolicyConnector::ScheduleServiceInitialization(
-    int64_t delay_milliseconds) {
-  // Skip device initialization if the BrowserPolicyConnector was never
-  // initialized (unit tests).
-  if (device_management_service_) {
-    device_management_service_->ScheduleInitialization(delay_milliseconds);
-  } else {
-    CHECK_IS_TEST();
-  }
 }
 
 bool BrowserPolicyConnector::ProviderHasPolicies(
@@ -105,71 +61,6 @@ bool BrowserPolicyConnector::ProviderHasPolicies(
     }
   }
   return false;
-}
-
-std::string BrowserPolicyConnector::GetDeviceManagementUrl() const {
-#if !BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kUseFakeDmserver)) {
-    return GetUrlOverride(switches::kDeviceManagementUrl,
-                          kDefaultFakeDmserverUrl);
-  }
-#endif
-  return GetUrlOverride(switches::kDeviceManagementUrl,
-                        kDefaultDeviceManagementServerUrl);
-}
-
-std::string BrowserPolicyConnector::GetRealtimeReportingUrl() const {
-  return GetUrlOverride(switches::kRealtimeReportingUrl,
-                        kDefaultRealtimeReportingServerUrl);
-}
-
-std::string BrowserPolicyConnector::GetEncryptedReportingUrl() const {
-  return GetUrlOverride(switches::kEncryptedReportingUrl,
-                        kDefaultEncryptedReportingServerUrl);
-}
-
-std::string BrowserPolicyConnector::GetFileStorageServerUploadUrl() const {
-  return GetUrlOverride(
-      switches::kFileStorageServerUploadUrl,
-      // The default URL for File Storage Server upload endpoint is
-      // extension of the DMServer URL.
-      base::StrCat({GetDeviceManagementUrl(),
-                    kFileStorageServerUploadUrlSuffixForDMServer}));
-}
-
-std::string BrowserPolicyConnector::GetUrlOverride(
-    const char* flag,
-    std::string_view default_value) const {
-  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
-  if (command_line->HasSwitch(flag)) {
-    if (IsCommandLineSwitchSupported()) {
-      return command_line->GetSwitchValueASCII(flag);
-    } else {
-      LOG(WARNING) << flag << " not supported on this channel";
-    }
-  }
-  return std::string(default_value);
-}
-
-DeviceManagementService*
-BrowserPolicyConnector::GetTestDeviceManagementService() {
-  return g_device_management_service_for_testing;
-}
-
-// static
-void BrowserPolicyConnector::SetDeviceManagementServiceForTesting(
-    DeviceManagementService* device_management_service) {
-  g_device_management_service_for_testing = device_management_service;
-}
-
-// static
-void BrowserPolicyConnector::RegisterPrefs(PrefRegistrySimple* registry) {
-  registry->RegisterIntegerPref(
-      policy_prefs::kUserPolicyRefreshRate,
-      CloudPolicyRefreshScheduler::kDefaultRefreshDelayMs);
-  registry->RegisterBooleanPref(
-      policy_prefs::kCloudManagementEnrollmentMandatory, false);
 }
 
 }  // namespace policy

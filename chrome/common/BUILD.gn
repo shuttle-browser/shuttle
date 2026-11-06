@@ -177,7 +177,6 @@ static_library("common_lib") {
     "//components/component_updater",
     "//components/content_settings/core/common",
     "//components/crash/core/common",
-    "//components/device_signals/core/common:features",
     "//components/dom_distiller/core",
     "//components/embedder_support/origin_trials",
     "//components/error_page/common",
@@ -245,9 +244,6 @@ static_library("common_lib") {
     "//components/pdf/common:constants",
     "//components/pdf/common:util",
   ]
-
-  if (is_mac || is_win || is_linux || is_chromeos) {
-  }
 
   if (is_android || enable_library_cdms || enable_playready) {
     public_deps += [ "//components/cdm/common" ]
@@ -326,7 +322,6 @@ static_library("common_lib") {
     ]
   } else {
     # Non-Android.
-    sources += []
   }
 
   if (is_win) {
@@ -634,9 +629,6 @@ mojom("mojo_bindings") {
     ]
   }
 
-  if (!is_android) {
-  }
-
   if (safe_browsing_mode == 1) {
     public_deps += [ "//chrome/services/file_util/public/mojom" ]
   }
@@ -683,5 +675,3 @@ mojom("offline_page_auto_fetcher_mojom") {
   public_deps = [ "//url/mojom:url_mojom_gurl" ]
 }
 
-if (!is_android) {
-}

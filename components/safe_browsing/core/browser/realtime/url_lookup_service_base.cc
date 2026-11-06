@@ -19,8 +19,6 @@
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "components/enterprise/common/proto/connectors.pb.h"
-#include "components/enterprise/connectors/core/reporting_utils.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/core/browser/referrer_chain_provider.h"
 #include "components/safe_browsing/core/browser/verdict_cache_manager.h"
@@ -702,18 +700,6 @@ void RealTimeUrlLookupServiceBase::StartFillingRequestProto(
   *request->mutable_llama_forced_trigger_capability() =
       MaybeGetLlamaForcedTriggerCapability();
 
-  std::string browser_dm_token = GetBrowserDMTokenString();
-  if (!browser_dm_token.empty()) {
-    request->set_browser_dm_token(std::move(browser_dm_token));
-  }
-
-  std::unique_ptr<enterprise_connectors::ClientMetadata> client_metadata =
-      GetClientMetadata();
-
-  if (client_metadata) {
-    *request->mutable_client_reporting_metadata() = std::move(*client_metadata);
-  }
-
   std::string content_area_account_email = GetContentAreaAccountEmail(url);
   if (!content_area_account_email.empty()) {
     request->set_content_area_account_email(
@@ -751,26 +737,6 @@ void RealTimeUrlLookupServiceBase::StartFillingRequestProto(
         &token);
   }
 
-  std::optional<std::string> dm_token_string = GetDMTokenString();
-  if (dm_token_string.has_value()) {
-    request->set_dm_token(dm_token_string.value());
-
-    std::string email = GetUserEmail();
-    if (!email.empty()) {
-      request->set_email(std::move(email));
-    }
-
-    // Check for the profile token here because we want to avoid cases where the
-    // value is populated in the non-enterprise case.
-    std::string profile_dm_token = GetProfileDMTokenString();
-    if (!profile_dm_token.empty()) {
-      request->set_profile_dm_token(std::move(profile_dm_token));
-    }
-  }
-
-  // Local IP addresses are only needed for enterprise requests.
-  bool should_fetch_local_ips = dm_token_string.has_value();
-
   network::mojom::NetworkContext* network_context =
       network_context_getter_.is_null() ? nullptr
                                         : network_context_getter_.Run();
@@ -780,8 +746,7 @@ void RealTimeUrlLookupServiceBase::StartFillingRequestProto(
       network_context && url.is_valid() && request->referrer_chain_size() > 0 &&
       request->referrer_chain(0).ip_addresses_size() == 0;
 
-  int num_tasks =
-      (should_fetch_local_ips ? 1 : 0) + (should_resolve_dns ? 1 : 0);
+  int num_tasks = should_resolve_dns ? 1 : 0;
 
   base::UmaHistogramBoolean("SafeBrowsing.RT.DnsResolution.Attempted",
                             should_resolve_dns);
@@ -799,14 +764,6 @@ void RealTimeUrlLookupServiceBase::StartFillingRequestProto(
       base::BindOnce(
           &RealTimeUrlLookupServiceBase::OnAllRequestProtoFieldsPopulated,
           GetWeakPtr(), url));
-
-  if (should_fetch_local_ips) {
-    base::ThreadPool::PostTaskAndReplyWithResult(
-        FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
-        base::BindOnce(&enterprise_connectors::GetLocalIpAddresses),
-        base::BindOnce(&RealTimeUrlLookupServiceBase::OnLocalIpsFetched,
-                       GetWeakPtr(), url, barrier_closure));
-  }
 
   if (should_resolve_dns) {
     pending_state->dns_start_time = base::TimeTicks::Now();
@@ -837,22 +794,6 @@ void RealTimeUrlLookupServiceBase::StartFillingRequestProto(
   PendingRTLookupRequests::iterator it = pending_requests_.find(url);
   CHECK(it != pending_requests_.end());
   it->second.SetRequestPopulatorState(std::move(pending_state));
-}
-
-void RealTimeUrlLookupServiceBase::OnLocalIpsFetched(
-    const GURL& url,
-    base::RepeatingClosure barrier_closure,
-    std::vector<std::string> ip_addresses) {
-  PendingRTLookupRequests::iterator it = pending_requests_.find(url);
-  if (it == pending_requests_.end() || !it->second.request_populator_state()) {
-    return;
-  }
-  RequestProtoPopulatorState* pending_state =
-      it->second.request_populator_state();
-  for (const std::string& ip_address : ip_addresses) {
-    pending_state->request->add_local_ips(ip_address);
-  }
-  barrier_closure.Run();
 }
 
 void RealTimeUrlLookupServiceBase::OnDnsResolved(

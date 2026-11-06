@@ -464,7 +464,6 @@ source_set("extensions") {
     "//chrome/browser/devtools",
     "//chrome/browser/download",
     "//chrome/browser/enterprise",
-    "//chrome/browser/enterprise/connectors/reporting",
     "//chrome/browser/extensions:external_loader",
     "//chrome/browser/extensions/api:api_registration",
     "//chrome/browser/favicon",
@@ -524,7 +523,6 @@ source_set("extensions") {
     "//components/embedder_support",
     "//components/enterprise",
     "//components/enterprise/browser/identifiers",
-    "//components/enterprise/browser/promotion",
     "//components/favicon/content",
     "//components/guest_view/buildflags",
     "//components/guest_view/common",
@@ -703,12 +701,6 @@ source_set("extensions") {
       "api/automation_internal/chrome_automation_internal_api_delegate.cc",
       "api/automation_internal/chrome_automation_internal_api_delegate.h",
       "api/chrome_device_permissions_prompt.h",
-      "api/enterprise_reporting_private/conversion_utils.cc",
-      "api/enterprise_reporting_private/conversion_utils.h",
-      "api/enterprise_reporting_private/enterprise_reporting_private_api.cc",
-      "api/enterprise_reporting_private/enterprise_reporting_private_api.h",
-      "api/enterprise_reporting_private/enterprise_reporting_private_event_router.cc",
-      "api/enterprise_reporting_private/enterprise_reporting_private_event_router.h",
       "api/image_writer_private/destroy_partitions_operation.cc",
       "api/image_writer_private/destroy_partitions_operation.h",
       "api/image_writer_private/error_constants.cc",
@@ -892,14 +884,11 @@ source_set("extensions") {
       "//components/back_forward_cache",
       "//components/browsing_data/content",
       "//components/browsing_data/core",
-      "//components/device_signals/core/browser",
-      "//components/device_signals/core/common",
       "//components/dom_distiller/core",
       "//components/download/public/common:public",
       "//components/drive",
       "//components/embedder_support:user_agent",
       "//components/enterprise/buildflags",
-      "//components/enterprise/connectors/core",
       "//components/favicon/content",
       "//components/gcm_driver",
       "//components/history/core/browser",
@@ -986,8 +975,6 @@ source_set("extensions") {
 
     if (!is_chromeos) {
       sources += [
-        "api/enterprise_reporting_private/chrome_desktop_report_request_helper.cc",
-        "api/enterprise_reporting_private/chrome_desktop_report_request_helper.h",
         "api/image_writer_private/operation_nonchromeos.cc",
       ]
       deps += [
@@ -1001,8 +988,6 @@ source_set("extensions") {
 
     if (is_mac) {
       sources += [
-        "api/enterprise_reporting_private/keychain_data_helper_mac.cc",
-        "api/enterprise_reporting_private/keychain_data_helper_mac.h",
         "api/image_writer_private/removable_storage_provider_mac.cc",
         "system_display/display_info_provider_mac.cc",
         "system_display/display_info_provider_mac.h",
@@ -1035,7 +1020,6 @@ source_set("extensions") {
       ]
       deps += [
         "//components/app_launch_prefetch",
-        "//components/device_signals/core/common/win",
         "//third_party/iaccessible2",
         "//third_party/isimpledom",
       ]
@@ -1089,7 +1073,6 @@ source_set("extensions") {
     if (enterprise_data_controls) {
       deps += [
         "//components/enterprise/buildflags",
-        "//components/enterprise/data_controls/core/browser",
       ]
     }
 

@@ -87,9 +87,6 @@
 #include "chrome/browser/download/chrome_download_manager_delegate.h"
 #include "chrome/browser/download/download_prefs.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
-#include "chrome/browser/enterprise/network_header_injection/http_header_injection_proxying_url_loader_factory.h"
-#include "chrome/browser/enterprise/network_header_injection/http_header_injection_utils.h"
-#include "chrome/browser/enterprise/reporting/legacy_tech/legacy_tech_service.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
 #include "chrome/browser/external_protocol/external_protocol_handler.h"
 #include "chrome/browser/favicon/favicon_utils.h"
@@ -233,14 +230,8 @@
 #include "components/embedder_support/origin_trials/origin_trials_settings_storage.h"
 #include "components/embedder_support/switches.h"
 #include "components/embedder_support/user_agent_utils.h"
-#include "components/enterprise/browser/reporting/prefs.h"
 #include "components/enterprise/buildflags/buildflags.h"
 #include "components/enterprise/common/proto/connectors.pb.h"
-#include "components/enterprise/content/clipboard_restriction_service.h"
-#include "components/enterprise/content/pref_names.h"
-#include "components/enterprise/data_controls/content/browser/last_replaced_clipboard_data.h"
-#include "components/enterprise/network_header_injection/core/features.h"
-#include "components/enterprise/network_header_injection/core/http_header_injection_service.h"
 #include "components/error_page/common/error.h"
 #include "components/error_page/common/error_page_switches.h"
 #include "components/error_page/common/localized_error.h"
@@ -382,6 +373,7 @@
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/self_deleting_url_loader_factory.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
+#include "services/network/public/cpp/url_loader_factory_builder.h"
 #include "services/network/public/cpp/web_sandbox_flags.h"
 #include "services/network/public/mojom/fetch_api.mojom.h"
 #include "services/network/public/mojom/network_service.mojom.h"
@@ -438,9 +430,7 @@
 #elif BUILDFLAG(IS_MAC)
 #include "base/apple/foundation_util.h"
 #include "chrome/browser/browser_process_platform_part_mac.h"
-#include "chrome/browser/enterprise/platform_auth/platform_auth_proxying_url_loader_factory.h"
 #include "chrome/common/chrome_version.h"
-#include "components/enterprise/platform_auth/platform_auth_features.h"
 #include "components/soda/constants.h"
 #include "sandbox/mac/sandbox_serializer.h"
 #include "sandbox/policy/mac/params.h"
@@ -584,10 +574,6 @@
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS)
 
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-#include "chrome/browser/enterprise/connectors/analysis/network_request_proxying_url_loader_factory.h"
-#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-
 #if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
 #include "components/captive_portal/content/captive_portal_tab_helper.h"
 #include "components/captive_portal/content/captive_portal_url_loader_throttle.h"
@@ -670,24 +656,16 @@
 #endif  // BUILDFLAG(ENABLE_MEDIA_REMOTING)
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-#include "chrome/browser/enterprise/connectors/connectors_service.h"
-#include "chrome/browser/safe_browsing/chrome_enterprise_url_lookup_service_factory.h"
 #include "chrome/browser/safe_browsing/chrome_ping_manager_factory.h"
-#include "chrome/browser/safe_browsing/cloud_content_scanning/deep_scanning_utils.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #include "chrome/browser/safe_browsing/url_lookup_service_factory.h"
 #include "chrome/browser/safe_browsing/v5_get_hash_protocol_manager_factory.h"
 #include "components/safe_browsing/core/browser/db/v5_get_hash_protocol_manager.h"
-#include "components/safe_browsing/core/browser/realtime/chrome_enterprise_url_lookup_service.h"
 #endif
 
 #if BUILDFLAG(ENABLE_OFFLINE_PAGES)
 #include "chrome/browser/offline_pages/offline_page_tab_helper.h"
 #include "chrome/browser/offline_pages/offline_page_url_loader_request_interceptor.h"
-#endif
-
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-#include "chrome/browser/enterprise/connectors/analysis/content_analysis_delegate.h"
 #endif
 
 #if BUILDFLAG(USE_MINIKIN_HYPHENATION) && !BUILDFLAG(IS_ANDROID)
@@ -701,14 +679,6 @@
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 #include "chrome/common/bound_session_request_throttled_handler.h"
 #endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-
-#if BUILDFLAG(ENTERPRISE_DATA_CONTROLS) && !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/enterprise/data_protection/paste_allowed_request.h"
-#endif  // BUILDFLAG(ENTERPRISE_DATA_CONTROLS) && !BUILDFLAG(IS_ANDROID)
-
-#if BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
-#include "chrome/browser/enterprise/data_protection/data_protection_clipboard_utils.h"
-#endif  // BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
 
 #if BUILDFLAG(OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED)
 #include "services/device/public/cpp/geolocation/geolocation_system_permission_manager.h"
@@ -1449,8 +1419,6 @@ void ChromeContentBrowserClient::RegisterProfilePrefs(
   registry->RegisterBooleanPref(prefs::kCorsNonWildcardRequestHeadersSupport,
                                 true);
   registry->RegisterBooleanPref(prefs::kIPv6ReachabilityOverrideEnabled, false);
-  registry->RegisterDictionaryPref(
-      enterprise::content::kCopyPreventionSettings);
   registry->RegisterBooleanPref(prefs::kOriginAgentClusterDefaultEnabled, true);
 
   registry->RegisterBooleanPref(
@@ -2528,11 +2496,6 @@ void AppendExtraCommandLineSwitchesFromPrefs(base::CommandLine* command_line,
   if (prefs->HasPrefPath(prefs::kScrollToTextFragmentEnabled) &&
       !prefs->GetBoolean(prefs::kScrollToTextFragmentEnabled)) {
     command_line->AppendSwitch(switches::kDisableScrollToTextFragment);
-  }
-
-  if (!prefs->GetList(enterprise_reporting::kCloudLegacyTechReportAllowlist)
-           .empty()) {
-    command_line->AppendSwitch(blink::switches::kLegacyTechReportPolicyEnabled);
   }
 
   // The IntensiveWakeUpThrottling feature is typically managed via a
@@ -5192,28 +5155,8 @@ ChromeContentBrowserClient::MaybeCreateSafeBrowsingURLLoaderThrottle(
     // Don't run checks if it matches the enterprise allowlist.
     return nullptr;
   }
-  bool has_valid_dm_token = false;
-  auto* connectors_service =
-      enterprise_connectors::ConnectorsServiceFactory::GetForBrowserContext(
-          browser_context);
-  if (connectors_service) {
-    base::expected<std::string, enterprise_connectors::ConnectorsServiceBase::
-                                    NoDMTokenForRealTimeUrlCheckReason>
-        dm_token = connectors_service->GetDMTokenForRealTimeUrlCheck();
-    has_valid_dm_token = dm_token.has_value();
-    if (dm_token.has_value()) {
-      base::UmaHistogramBoolean(
-          "SafeBrowsing.RT.EnterpriseRealTimePolicyEnabled.HasDmToken", true);
-    } else if (dm_token.error() ==
-               enterprise_connectors::ConnectorsServiceBase::
-                   NoDMTokenForRealTimeUrlCheckReason::kNoDmToken) {
-      base::UmaHistogramBoolean(
-          "SafeBrowsing.RT.EnterpriseRealTimePolicyEnabled.HasDmToken", false);
-    }
-  }
-  bool is_enterprise_lookup_enabled =
-      safe_browsing::RealTimePolicyEngine::CanPerformEnterpriseFullURLLookup(
-          profile->GetPrefs(), has_valid_dm_token, profile->IsOffTheRecord());
+  // Enterprise real-time URL lookup (DM token based) was removed (Shuttle).
+  const bool is_enterprise_lookup_enabled = false;
   bool is_consumer_lookup_enabled =
       safe_browsing::RealTimePolicyEngine::CanPerformFullURLLookup(
           profile->GetPrefs(), profile->IsOffTheRecord(),
@@ -5901,10 +5844,6 @@ void ChromeContentBrowserClient::WillCreateURLLoaderFactory(
   }
 #endif
 
-  // Install the HTTP Header Injection proxying factory.
-  enterprise_custom_headers::HttpHeaderInjectionProxyingURLLoaderFactory::
-      MaybeProxyRequest(browser_context, factory_builder);
-
 #if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
   if (disable_secure_dns) {
     WebContents* web_contents = WebContents::FromRenderFrameHost(frame);
@@ -5913,15 +5852,6 @@ void ChromeContentBrowserClient::WillCreateURLLoaderFactory(
         captive_portal::CaptivePortalTabHelper::FromWebContents(web_contents) &&
         captive_portal::CaptivePortalTabHelper::FromWebContents(web_contents)
             ->is_captive_portal_window();
-  }
-#endif
-
-#if BUILDFLAG(IS_MAC)
-  if (base::FeatureList::IsEnabled(enterprise_auth::kOktaSSO)) {
-    // WARNING: This factory blocks certain requests from going out via the
-    // final network bound factory.
-    enterprise_auth::ProxyingURLLoaderFactory::MaybeProxyRequest(
-        request_initiator, type, browser_context, factory_builder);
   }
 #endif
 
@@ -5934,14 +5864,6 @@ void ChromeContentBrowserClient::WillCreateURLLoaderFactory(
 
   MaybeSetTargetNetwork(GetBoundNetworkFromRenderFrameHost(frame),
                         factory_builder, is_for_network_service);
-
-  // WARNING: This must be the last wrapper in the chain for
-  // TrustedURLLoaderHeaderClient. This ensures that our client is the outermost
-  // wrapper of `header_client`, allowing us to apply enterprise headers AFTER
-  // any extensions or other handlers have made their modifications,
-  // guaranteeing enterprise header injection precedence over extensions.
-  enterprise_custom_headers::MaybeWrapTrustedURLLoaderHeaderClient(
-      browser_context, header_client);
 }
 
 std::vector<std::unique_ptr<content::URLLoaderRequestInterceptor>>
@@ -6044,11 +5966,6 @@ ChromeContentBrowserClient::GetWebSocketOptions(
     content::RenderFrameHost* frame) {
   content::ContentBrowserClient::WebSocketOptions options;
   options.options = network::mojom::kWebSocketOptionNone;
-
-  if (frame) {
-    enterprise_custom_headers::MaybeCreateWebSocketHeaderClient(
-        frame->GetBrowserContext(), &options.header_client);
-  }
   return options;
 }
 
@@ -6715,10 +6632,8 @@ ChromeContentBrowserClient::GetUrlLookupService(
     return nullptr;
   }
   Profile* profile = Profile::FromBrowserContext(browser_context);
-  if (is_enterprise_lookup_enabled) {
-    return safe_browsing::ChromeEnterpriseRealTimeUrlLookupServiceFactory::
-        GetForProfile(profile);
-  }
+  // No enterprise lookup service anymore (Shuttle); the flag is always false.
+  CHECK(!is_enterprise_lookup_enabled);
   if (is_consumer_lookup_enabled) {
     return safe_browsing::RealTimeUrlLookupServiceFactory::GetForProfile(
         profile);
@@ -6763,32 +6678,6 @@ ChromeContentBrowserClient::GetAsyncCheckTracker(
 #else
   return nullptr;
 #endif
-}
-
-void ChromeContentBrowserClient::ReportLegacyTechEvent(
-    content::RenderFrameHost* render_frame_host,
-    const std::string& type,
-    const GURL& url,
-    const GURL& frame_url,
-    const std::string& filename,
-    uint64_t line,
-    uint64_t column,
-    std::optional<content::LegacyTechCookieIssueDetails> cookie_issue_details) {
-  WebContents* web_contents =
-      WebContents::FromRenderFrameHost(render_frame_host);
-  DCHECK(web_contents);
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
-  if (!profile) {
-    return;
-  }
-  enterprise_reporting::LegacyTechService* service =
-      enterprise_reporting::LegacyTechServiceFactory::GetForProfile(profile);
-  if (!service) {
-    return;
-  }
-  service->ReportEvent(type, url, frame_url, filename, line, column,
-                       cookie_issue_details);
 }
 
 bool ChromeContentBrowserClient::CanAcceptUntrustedExchangesIfNeeded() {
@@ -7019,12 +6908,7 @@ std::optional<GURL>
 ChromeContentBrowserClient::MaybeOverrideSourceURLForClipboardAccess(
     content::RenderFrameHost* render_frame_host,
     const GURL& original_url) {
-#if BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
-  return enterprise_data_protection::MaybeOverrideSourceURLForClipboardAccess(
-      render_frame_host, original_url);
-#else
   return std::nullopt;
-#endif  // BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
 }
 
 bool ChromeContentBrowserClient::IsClipboardPasteAllowed(
@@ -7119,21 +7003,8 @@ void ChromeContentBrowserClient::IsClipboardPasteAllowedByPolicy(
     const ui::ClipboardMetadata& metadata,
     ClipboardPasteData clipboard_paste_data,
     IsClipboardPasteAllowedCallback callback) {
-// TODO(b/352728209): Add Android-specific hook for Data Controls.
-#if BUILDFLAG(ENTERPRISE_DATA_CONTROLS) && !BUILDFLAG(IS_ANDROID)
-  enterprise_data_protection::PasteAllowedRequest::StartPasteAllowedRequest(
-      source, destination, metadata, std::move(clipboard_paste_data),
-      std::move(callback));
-#elif BUILDFLAG(IS_ANDROID)
-  // PasteAllowedRequest::StartPasteAllowedRequest triggers logic for policies
-  // that aren't supported on Clank. Thus, PasteIfAllowedByPolicy is instead
-  // called directly.
-  enterprise_data_protection::PasteIfAllowedByPolicy(
-      source, destination, metadata, std::move(clipboard_paste_data),
-      std::move(callback));
-#else
+  // No data controls (Shuttle): pasting is always allowed.
   std::move(callback).Run(std::move(clipboard_paste_data));
-#endif  // BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
 }
 
 void ChromeContentBrowserClient::IsClipboardCopyAllowedByPolicy(
@@ -7141,37 +7012,15 @@ void ChromeContentBrowserClient::IsClipboardCopyAllowedByPolicy(
     const ui::ClipboardMetadata& metadata,
     const ClipboardPasteData& data,
     IsClipboardCopyAllowedCallback callback) {
-#if BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
-  enterprise_data_protection::IsClipboardCopyAllowedByPolicy(
-      source, metadata, data, std::move(callback));
-#else
-  std::u16string replacement_data;
-  ClipboardRestrictionService* service =
-      ClipboardRestrictionServiceFactory::GetInstance()->GetForBrowserContext(
-          source.browser_context());
-  GURL url = source.data_transfer_endpoint() &&
-                     source.data_transfer_endpoint()->IsUrlType() &&
-                     source.data_transfer_endpoint()->GetURL()
-                 ? *source.data_transfer_endpoint()->GetURL()
-                 : GURL();
-  if (service->IsUrlAllowedToCopy(std::move(url), metadata.size.value_or(0),
-                                  &replacement_data)) {
-    std::move(callback).Run(metadata.format_type, data, std::nullopt);
-  } else {
-    std::move(callback).Run(metadata.format_type, data,
-                            std::move(replacement_data));
-  }
-#endif  // BUILDFLAG(ENTERPRISE_DATA_CONTROLS) && !BUILDFLAG(IS_ANDROID)
+  // No data controls or copy prevention (Shuttle): copying is always allowed
+  // and the data is never replaced.
+  std::move(callback).Run(metadata.format_type, data, std::nullopt);
 }
 
 bool ChromeContentBrowserClient::IsDragAllowedByPolicy(
     const content::ClipboardEndpoint& source,
     const content::DropData& drop_data) {
-#if BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
-  return enterprise_data_protection::IsDragAllowedByPolicy(source, drop_data);
-#else
   return true;
-#endif  // BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
 }
 
 bool ChromeContentBrowserClient::
@@ -8384,13 +8233,7 @@ ChromeContentBrowserClient::MaybeCreateKeepAliveRequestTracker(
 std::optional<std::vector<std::u16string>>
 ChromeContentBrowserClient::GetClipboardTypesIfPolicyApplied(
     const ui::ClipboardSequenceNumberToken& seqno) {
-  const data_controls::LastReplacedClipboardData& last_replaced_data =
-      data_controls::GetLastReplacedClipboardData();
-
-  if (last_replaced_data.seqno == seqno) {
-    return last_replaced_data.GetAvailableTypes();
-  }
-
+  // No data controls (Shuttle): clipboard data is never replaced by policy.
   return std::nullopt;
 }
 

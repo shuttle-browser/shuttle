@@ -1233,16 +1233,6 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
 
   // Try to upload an enterprise legacy tech event to the enterprise management
   // server for admins.
-  void ReportLegacyTechEvent(
-      content::RenderFrameHost* render_frame_host,
-      const std::string& type,
-      const GURL& url,
-      const GURL& frame_url,
-      const std::string& filename,
-      uint64_t line,
-      uint64_t column,
-      std::optional<content::LegacyTechCookieIssueDetails> cookie_issue_details)
-      override;
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
   std::unique_ptr<blink::URLLoaderThrottle>

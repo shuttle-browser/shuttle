@@ -435,13 +435,6 @@ component("network_service") {
     deps += [ "//third_party/boringssl" ]
   }
 
-  if (is_win) {
-  }
-
-  if (is_mac) {
-    deps += [ "//components/enterprise/platform_auth:enterprise_platform_auth" ]
-  }
-
   if (enable_vrp_flags) {
     deps += [ "//components/vrp_flags" ]
   }
@@ -525,11 +518,6 @@ source_set("test_support") {
     "test/url_loader_context_for_tests.cc",
     "test/url_loader_context_for_tests.h",
   ]
-
-  if (is_chromeos) {
-    sources += [
-    ]
-  }
 
   public_deps = [
     "//components/vrp_flags:buildflags",

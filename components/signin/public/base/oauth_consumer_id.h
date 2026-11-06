@@ -62,8 +62,8 @@ enum class OAuthConsumerId {
   kDocumentSuggestionsService = 34,
   kEnterpriseSearchAggregator = 35,
   kParentPermissionDialog = 36,
-  kUserCloudSigninRestrictionPolicyFetcher = 37,
-  kCloudPolicyClientRegistration = 38,
+  // 37 (kUserCloudSigninRestrictionPolicyFetcher) and 38
+  // (kCloudPolicyClientRegistration) were removed with cloud policy (Shuttle).
   kSafeBrowsing = 39,
   kTailoredSecurityService = 40,
   kLensOverlayQueryController = 41,

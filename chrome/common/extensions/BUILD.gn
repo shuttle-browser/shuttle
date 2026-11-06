@@ -72,7 +72,6 @@ source_set("extensions") {
     "//chrome/common/extensions/api",
     "//chrome/common/extensions/api:extensions_features",
     "//components/app_constants",
-    "//components/device_signals/core/common:features",
     "//components/policy/core/common",
     "//components/url_formatter",
     "//components/version_info",

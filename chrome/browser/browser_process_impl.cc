@@ -249,7 +249,6 @@ void OnLocalStatePrefsLoaded();
 #elif !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/hid/hid_status_icon.h"
 #include "chrome/browser/usb/usb_status_icon.h"
-#include "components/enterprise/browser/controller/chrome_browser_cloud_management_controller.h"
 #endif
 
 #if BUILDFLAG(IS_LINUX) && BUILDFLAG(USE_DBUS)
@@ -556,17 +555,6 @@ void BrowserProcessImpl::StartTearDown() {
   }
 #endif
   network_time_tracker_.reset();
-
-#if !BUILDFLAG(IS_CHROMEOS)
-  // Initial cleanup for ChromeBrowserCloudManagement, shutdown components that
-  // depend on profile and notification system. For example, ProfileManager
-  // observer and KeyServices observer need to be removed before profiles.
-  auto* cloud_management_controller =
-      browser_policy_connector_->chrome_browser_cloud_management_controller();
-  if (cloud_management_controller) {
-    cloud_management_controller->ShutDown();
-  }
-#endif  // !BUILDFLAG(IS_CHROMEOS)
 
   // `hid_system_tray_icon_` and `usb_system_tray_icon_` must be destroyed
   // before `system_notification_helper_` for ChromeOS and `status_tray_` for

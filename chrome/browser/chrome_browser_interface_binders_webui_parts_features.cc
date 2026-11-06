@@ -32,10 +32,6 @@
 #include "chrome/browser/ui/webui/tab_strip_internals/tab_strip_internals_ui.h"
 #endif
 
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-#include "chrome/browser/ui/webui/watermark/watermark_ui.h"
-#endif
-
 #if BUILDFLAG(FULL_SAFE_BROWSING)
 #endif  // BUILDFLAG(FULL_SAFE_BROWSING)
 
@@ -57,10 +53,6 @@ void PopulateChromeWebUIFrameBindersPartsFeatures(
       tab_strip_internals::mojom::PageHandlerFactory, TabStripInternalsUI>(map);
 #endif
 
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-  RegisterWebUIControllerInterfaceBinder<watermark::mojom::PageHandlerFactory,
-                                         WatermarkUI>(map);
-#endif
 }
 
 void PopulateChromeWebUIFrameInterfaceBrokersUntrustedPartsFeatures(

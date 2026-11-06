@@ -29,10 +29,6 @@
 #include "chrome/browser/net/server_certificate_database_service_factory.h"  // nogncheck
 #endif
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-#include "chrome/browser/enterprise/client_certificates/certificate_provisioning_service_factory.h"
-#endif
-
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 #include "chrome/browser/signin/bound_session_credentials/unexportable_key_service_factory.h"
 #endif
@@ -80,10 +76,6 @@ ProfileNetworkContextServiceFactory::ProfileNetworkContextServiceFactory()
 #endif
 #if BUILDFLAG(CHROME_ROOT_STORE_CERT_MANAGEMENT_UI)
   DependsOn(net::ServerCertificateDatabaseServiceFactory::GetInstance());
-#endif
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  DependsOn(client_certificates::CertificateProvisioningServiceFactory::
-                GetInstance());
 #endif
   DependsOn(CookieSettingsFactory::GetInstance());
   DependsOn(HostContentSettingsMapFactory::GetInstance());

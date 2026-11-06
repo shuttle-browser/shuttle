@@ -193,10 +193,8 @@ void DownloadBubbleContentsView::ProcessDeepScanPress(
         model->GetDownloadItem(),
         DownloadItemWarningData::WarningSurface::BUBBLE_SUBPAGE,
         DownloadItemWarningData::WarningAction::ACCEPT_DEEP_SCAN);
-#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-    safe_browsing::DownloadProtectionService::UploadForConsumerDeepScanning(
-        model->GetDownloadItem(), trigger, password);
-#endif
+    // Shuttle: cloud deep scanning is removed (m157 batch 2); the prompt is
+    // never offered, so there is nothing to upload.
   }
 }
 

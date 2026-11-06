@@ -20,7 +20,6 @@
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
-#include "components/enterprise/connectors/core/common.h"
 #include "components/prefs/pref_service.h"
 #include "components/spellcheck/browser/pref_names.h"
 #include "components/spellcheck/common/spellcheck_common.h"
@@ -52,23 +51,6 @@ const char kErrorPath[] = "error";
 
 // Languages currently supported by SPELLCHECK.
 const char* const kValidLanguages[] = {"en", "es", "fi", "da"};
-
-GURL GetRegionalizedEndpoint(enterprise_connectors::DataRegion data_region,
-                             int version) {
-  const char* key = google_apis::GetAPIKey().c_str();
-  switch (data_region) {
-    case enterprise_connectors::DataRegion::NO_PREFERENCE:
-      return GURL(
-          base::StringPrintf(kSpellingServiceRestURL, "www", version, key));
-    case enterprise_connectors::DataRegion::UNITED_STATES:
-      return GURL(
-          base::StringPrintf(kSpellingServiceRestURL, "spelling-us", 2, key));
-    case enterprise_connectors::DataRegion::EUROPE:
-      return GURL(
-          base::StringPrintf(kSpellingServiceRestURL, "spelling-eu", 2, key));
-  }
-  NOTREACHED();
-}
 
 }  // namespace
 
@@ -225,18 +207,10 @@ void SpellingServiceClient::SetURLLoaderFactoryForTesting(
 
 GURL SpellingServiceClient::BuildEndpointUrl(content::BrowserContext* context,
                                              ServiceType type) {
-  if (!base::FeatureList::IsEnabled(
-          spellcheck::kEnableSpellcheckRegionalSignal)) {
-    return GURL(base::StringPrintf(kSpellingServiceRestURL, "www", type,
-                                   google_apis::GetAPIKey().c_str()));
-  }
-
-  const PrefService* pref = user_prefs::UserPrefs::Get(context);
-  const int region_setting =
-      pref->GetInteger(spellcheck::prefs::kChromeDataRegionSetting);
-  enterprise_connectors::DataRegion region =
-      enterprise_connectors::ChromeDataRegionSettingToEnum(region_setting);
-  return GetRegionalizedEndpoint(region, type);
+  // Shuttle: the enterprise ChromeDataRegionSetting is gone, so always use the
+  // default ("no preference") endpoint.
+  return GURL(base::StringPrintf(kSpellingServiceRestURL, "www", type,
+                                 google_apis::GetAPIKey().c_str()));
 }
 
 bool SpellingServiceClient::ParseResponse(

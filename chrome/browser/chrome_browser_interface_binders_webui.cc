@@ -11,7 +11,6 @@
 #include "chrome/browser/ui/webui/bluetooth_internals/bluetooth_internals.mojom.h"
 #include "chrome/browser/ui/webui/bluetooth_internals/bluetooth_internals_ui.h"
 #include "chrome/browser/ui/webui/chrome_urls/chrome_urls_ui.h"
-#include "chrome/browser/ui/webui/connectors_internals/connectors_internals_ui.h"
 #include "chrome/browser/ui/webui/content_settings/content_settings_internals.mojom.h"
 #include "chrome/browser/ui/webui/content_settings/content_settings_ui.h"
 #include "chrome/browser/ui/webui/engagement/site_engagement_ui.h"
@@ -27,7 +26,6 @@
 #include "chrome/browser/ui/webui/usb_internals/usb_internals.mojom.h"
 #include "chrome/browser/ui/webui/usb_internals/usb_internals_ui.h"
 #include "chrome/common/webui_url_constants.h"
-#include "components/enterprise/connectors/connectors_internals.mojom.h"
 #include "components/policy/core/common/features.h"
 #include "components/site_engagement/core/mojom/site_engagement_details.mojom.h"
 #include "content/public/browser/navigation_controller.h"
@@ -149,10 +147,6 @@ void PopulateChromeWebUIFrameBindersPartsAllPlatforms(
 
   RegisterWebUIControllerInterfaceBinder<chrome_urls::mojom::PageHandlerFactory,
                                          chrome_urls::ChromeUrlsUI>(map);
-
-  RegisterWebUIControllerInterfaceBinder<
-      connectors_internals::mojom::PageHandler,
-      enterprise_connectors::ConnectorsInternalsUI>(map);
 
   RegisterWebUIControllerInterfaceBinder<::mojom::LocationInternalsHandler,
                                          LocationInternalsUI>(map);

@@ -8,8 +8,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "components/crx_file/id_util.h"
-#include "components/enterprise/browser/reporting/common_pref_names.h"
-#include "components/policy/core/common/cloud/cloud_policy_client_types.h"
 #include "components/prefs/pref_service.h"
 #include "components/user_prefs/user_prefs.h"
 #include "content/public/browser/browser_context.h"
@@ -105,7 +103,6 @@ ExtensionInstallStatus PerformSynchronousChecks(
   }
 
   ExtensionRegistry* registry = ExtensionRegistry::Get(browser_context);
-  PrefService* prefs = user_prefs::UserPrefs::Get(browser_context);
 
   // Check if parent approval is needed for a supervised user to enable
   // an existing extension which is missing parental approval.
@@ -133,21 +130,10 @@ ExtensionInstallStatus PerformSynchronousChecks(
       extension_management_client, mode, extension_id, update_url.spec(),
       manifest_type, required_permission_set);
 
-  // Check if it's possible for the extension to be requested.
+  // Extension install requests (cloud extension request) are removed, so a
+  // policy-blocked extension can never be requested.
   if (is_blocked_by_policy) {
-    // The ability to request extension installs is not available if the
-    // extension request policy is disabled.
-    if (!prefs->GetBoolean(
-            enterprise_reporting::kCloudExtensionRequestEnabled)) {
-      return kBlockedByPolicy;
-    }
-
-    // An extension which is explicitly blocked by enterprise policy can't be
-    // requested anymore.
-    if (extension_management_client->IsInstallationExplicitlyBlocked(
-            extension_id)) {
-      return kBlockedByPolicy;
-    }
+    return kBlockedByPolicy;
   }
 
   // Check if the extension is using an unsupported manifest version.
@@ -164,19 +150,6 @@ ExtensionInstallStatus PerformSynchronousChecks(
     return kDeprecatedManifestVersion;
   }
 
-  // If an installed extension is disabled due to policy, return kCanRequest or
-  // kRequestPending instead of kDisabled.
-  // By doing so, user can still request an installed and policy blocked
-  // extension.
-  if (is_blocked_by_policy) {
-    if (prefs->GetDict(enterprise_reporting::kCloudExtensionRequestIds)
-            .Find(extension_id)) {
-      return kRequestPending;
-    }
-
-    return kCanRequest;
-  }
-
   if (registry->disabled_extensions().Contains(extension_id)) {
     bool is_corrupted =
         ExtensionPrefs::Get(browser_context)
@@ -185,14 +158,6 @@ ExtensionInstallStatus PerformSynchronousChecks(
   }
 
   return kInstallable;
-}
-
-void OnCloudPolicyCheckDone(
-    base::OnceCallback<void(ExtensionInstallStatus, std::u16string)> callback,
-    bool can_install,
-    std::u16string blocked_message) {
-  std::move(callback).Run(can_install ? kInstallable : kBlockedByPolicy,
-                          blocked_message);
 }
 
 std::u16string GetBlockedErrorMessage(
@@ -217,8 +182,6 @@ std::u16string GetBlockedErrorMessage(
 ExtensionInstallStatus GetWebstoreExtensionInstallStatus(
     const ExtensionId& extension_id,
     content::BrowserContext* browser_context) {
-  // We don't know the extension's version, so we can't check
-  // ExtensionInstallPolicyService. Only perform the other checks.
   return PerformSynchronousChecks(extension_id, browser_context,
                                   Manifest::Type::kUnknown, PermissionSet(),
                                   /*manifest_version=*/3);
@@ -243,19 +206,7 @@ void GetWebstoreExtensionInstallStatus(
     return;
   }
 
-  if (status != kInstallable) {
-    std::move(callback).Run(status, std::u16string());
-    return;
-  }
-
-  if (extension_version.IsValid()) {
-    ExtensionsBrowserClient::Get()->CanInstallExtensionByPolicy(
-        browser_context, extension_id, extension_version,
-        base::BindOnce(&OnCloudPolicyCheckDone, std::move(callback)));
-    return;
-  }
-
-  std::move(callback).Run(kInstallable, std::u16string());
+  std::move(callback).Run(status, std::u16string());
 }
 
 }  // namespace extensions

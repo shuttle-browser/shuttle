@@ -839,10 +839,6 @@
     "META": {"sizes": {"includes": [10]}},
     "includes": [5220],
   },
-  "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/watermark/resources.grd": {
-    "META": {"sizes": {"includes": [10]}},
-    "includes": [5230],
-  },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/notifications_internals/resources.grd": {
     "META": {"sizes": {"includes": [5]}},
     "includes": [5270],

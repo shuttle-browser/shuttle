@@ -208,8 +208,6 @@ source_set("impl") {
     "//components/background_fetch",
     "//components/download/content/factory",
     "//components/enterprise/common/proto:connectors_proto_gen",
-    "//components/enterprise/connectors/core",
-    "//components/enterprise/obfuscation/core:enterprise_obfuscation",
     "//components/history/content/browser",
     "//components/infobars/content",
     "//components/pdf/common:constants",
@@ -318,7 +316,6 @@ source_set("impl") {
       "//chrome/browser/ash/policy/skyvault",
       "//chrome/browser/chromeos/policy/dlp",
       "//chrome/browser/content_index",
-      "//chrome/browser/enterprise/connectors/analysis:obfuscation_rename_handler",
       "//chrome/browser/ui/ash/system_web_apps",
       "//chrome/browser/ui/webui/ash/cloud_upload",
       "//chromeos/ash/components/browser_context_helper",
@@ -372,17 +369,6 @@ source_set("impl") {
 
   if (enable_offline_pages) {
     deps += [ "//components/offline_pages/core" ]
-  }
-
-  if (enterprise_content_analysis || is_android) {
-    deps += [
-      "//components/enterprise/connectors/core:cloud_content_scanning",
-      "//components/enterprise/obfuscation/core:enterprise_obfuscation",
-    ]
-  }
-
-  if (safe_browsing_mode != 0 && enterprise_cloud_content_analysis) {
-    deps += [ "//chrome/browser/enterprise/connectors/reporting" ]
   }
 }
 

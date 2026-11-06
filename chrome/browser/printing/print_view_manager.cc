@@ -51,9 +51,6 @@
 #include "chrome/browser/chromeos/policy/dlp/dlp_content_manager.h"
 #endif
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-#include "chrome/browser/enterprise/data_protection/print_utils.h"
-#endif
 
 using content::BrowserThread;
 
@@ -532,9 +529,6 @@ void PrintViewManager::ShowScriptedPrintPreview() {
     return;
   }
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  set_analyzing_content(/*analyzing=*/true);
-#endif
   RejectPrintPreviewRequestIfRestricted(
       print_preview_rfh_->GetGlobalId(),
       base::BindOnce(&PrintViewManager::OnScriptedPrintPreviewCallback,
@@ -545,9 +539,6 @@ void PrintViewManager::ShowScriptedPrintPreview() {
 void PrintViewManager::OnScriptedPrintPreviewCallback(
     content::GlobalRenderFrameHostId rfh_id,
     bool should_proceed) {
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  set_analyzing_content(/*analyzing=*/false);
-#endif
   if (!should_proceed) {
     OnPrintPreviewRequestRejected(rfh_id);
     return;
@@ -594,9 +585,6 @@ void PrintViewManager::RequestPrintPreview(
     return;
   }
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  set_analyzing_content(/*analyzing=*/true);
-#endif
   content::GlobalRenderFrameHostId id = rfh.GetGlobalId();
   RejectPrintPreviewRequestIfRestricted(
       id, base::BindOnce(&PrintViewManager::OnRequestPrintPreviewCallback,
@@ -607,9 +595,6 @@ void PrintViewManager::OnRequestPrintPreviewCallback(
     mojom::RequestPrintPreviewParamsPtr params,
     content::GlobalRenderFrameHostId rfh_id,
     bool should_proceed) {
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  set_analyzing_content(/*analyzing=*/false);
-#endif
   if (!should_proceed) {
     OnPrintPreviewRequestRejected(rfh_id);
     return;

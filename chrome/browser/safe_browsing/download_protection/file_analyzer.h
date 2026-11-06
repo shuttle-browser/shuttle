@@ -88,8 +88,7 @@ class FileAnalyzer {
   };
 
   explicit FileAnalyzer(
-      scoped_refptr<BinaryFeatureExtractor> binary_feature_extractor,
-      bool is_obfuscated = false);
+      scoped_refptr<BinaryFeatureExtractor> binary_feature_extractor);
   ~FileAnalyzer();
   void Start(const base::FilePath& target_file_name,
              const base::FilePath& tmp_path,
@@ -143,8 +142,6 @@ class FileAnalyzer {
 
   std::unique_ptr<SandboxedRarAnalyzer, base::OnTaskRunnerDeleter>
       rar_analyzer_{nullptr, base::OnTaskRunnerDeleter(nullptr)};
-
-  bool is_obfuscated_ = false;
 #endif
 
 #if BUILDFLAG(IS_MAC)

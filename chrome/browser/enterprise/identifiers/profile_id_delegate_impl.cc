@@ -17,7 +17,7 @@
 #if BUILDFLAG(IS_CHROMEOS)
 #include "components/policy/core/common/cloud/cloud_policy_util.h"
 #else
-#include "components/enterprise/browser/controller/browser_dm_token_storage.h"
+#include "chrome/browser/enterprise/identifiers/device_client_id.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_WIN)
@@ -100,9 +100,8 @@ std::string ProfileIdDelegateImpl::GetId() {
   // Gets the device ID from cloud policy.
   return policy::GetDeviceName();
 #else
-  // Gets the device ID from the BrowserDMTokenStorage.
-  std::string device_id =
-      policy::BrowserDMTokenStorage::Get()->RetrieveClientId();
+  // Same value BrowserDMTokenStorage::RetrieveClientId() returned.
+  std::string device_id = GetDeviceClientId();
 
 #if BUILDFLAG(IS_WIN)
   // On Windows, the combination of the client ID and device serial

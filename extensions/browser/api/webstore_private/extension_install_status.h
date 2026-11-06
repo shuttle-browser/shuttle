@@ -65,12 +65,8 @@ ExtensionInstallStatus GetWebstoreExtensionInstallStatus(
 // extension with `extension_id` in `browser_context`. Also checks if
 // `manifest_type`, any permission in `required_permission_set` is blocked by
 // enterprise policy or `manifest_version` is allowed. `manifest_version` is
-// only valid for TYPE_EXTENSION.
-//
-// If `extension_version` is valid, and the
-// ExtensionInstallCloudPolicyChecksEnabled policy is enabled, this uses
-// ExtensionInstallPolicyService to perform cloud-based policy checks
-// asynchronously.
+// only valid for TYPE_EXTENSION. `extension_version` is unused (the cloud
+// policy check is removed in Shuttle).
 void GetWebstoreExtensionInstallStatus(
     const ExtensionId& extension_id,
     content::BrowserContext* browser_context,

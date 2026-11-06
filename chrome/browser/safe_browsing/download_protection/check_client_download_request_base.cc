@@ -136,14 +136,9 @@ void CheckClientDownloadRequestBase::FinishRequest(
     DownloadCheckResultReason reason) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
-  auto settings = ShouldUploadBinary(reason);
-  if (settings.has_value()) {
-    UploadBinary(result, reason, std::move(settings.value()));
-  } else {
-    // Post a task to avoid reentrance issue. http://crbug.com//1152451.
-    content::GetUIThreadTaskRunner({})->PostTask(
-        FROM_HERE, base::BindOnce(std::move(callback_), result));
-  }
+  // Post a task to avoid reentrance issue. http://crbug.com//1152451.
+  content::GetUIThreadTaskRunner({})->PostTask(
+      FROM_HERE, base::BindOnce(std::move(callback_), result));
 
   base::UmaHistogramEnumeration("SBClientDownload.CheckDownloadStats", reason,
                                 REASON_MAX);
@@ -280,42 +275,6 @@ void CheckClientDownloadRequestBase::GetAdditionalPromptResult(
     base::UmaHistogramBoolean(
         "SBClientDownload.ServerRequestsLocalDecryptionPrompt",
         local_decryption_prompt);
-  }
-
-  bool deep_scanning_prompt =
-      ShouldPromptForDeepScanning(response.request_deep_scan());
-  if (deep_scanning_prompt) {
-    *result = DownloadCheckResult::PROMPT_FOR_SCANNING;
-    *reason = DownloadCheckResultReason::REASON_DEEP_SCAN_PROMPT;
-    // Always set the token if Chrome should prompt for deep scanning.
-    // Otherwise, client Safe Browsing reports may be missed when the
-    // verdict is SAFE. See https://crbug.com/40933155.
-    *token = response.token();
-  }
-
-  // Only record the UMA metric if we're in a population that potentially
-  // could prompt for deep scanning.
-  if (ShouldPromptForDeepScanning(/*server_requests_prompt=*/true)) {
-    LogDeepScanningPrompt(deep_scanning_prompt);
-  }
-
-  bool immediate_deep_scan_prompt =
-      ShouldImmediatelyDeepScan(response.request_deep_scan());
-  if (immediate_deep_scan_prompt) {
-    *result = DownloadCheckResult::IMMEDIATE_DEEP_SCAN;
-    *reason = DownloadCheckResultReason::REASON_IMMEDIATE_DEEP_SCAN;
-    // Always set the token if Chrome should prompt for deep scanning.
-    // Otherwise, client Safe Browsing reports may be missed when the
-    // verdict is SAFE. See https://crbug.com/40933155.
-    *token = response.token();
-  }
-
-  // Only record the UMA metric if we're in a population that potentially
-  // could prompt for deep scanning.
-  if (ShouldImmediatelyDeepScan(/*server_requests_prompt=*/true)) {
-    base::UmaHistogramBoolean(
-        "SBClientDownload.ServerRequestsImmediateDeepScan2",
-        immediate_deep_scan_prompt);
   }
 }
 

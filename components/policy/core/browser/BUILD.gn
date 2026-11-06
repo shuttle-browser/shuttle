@@ -19,8 +19,6 @@ source_set("internal") {
     "browser_policy_connector.h",
     "browser_policy_connector_base.cc",
     "browser_policy_connector_base.h",
-    "cloud/message_util.cc",
-    "cloud/message_util.h",
     "configuration_policy_handler.cc",
     "configuration_policy_handler.h",
     "configuration_policy_handler_list.cc",
@@ -34,14 +32,8 @@ source_set("internal") {
     "policy_conversions.h",
     "policy_conversions_client.cc",
     "policy_conversions_client.h",
-    "policy_data_utils.cc",
-    "policy_data_utils.h",
     "policy_error_map.cc",
     "policy_error_map.h",
-    "signin/profile_separation_policies.cc",
-    "signin/profile_separation_policies.h",
-    "signin/user_cloud_signin_restriction_policy_fetcher.cc",
-    "signin/user_cloud_signin_restriction_policy_fetcher.h",
     "url_list/policy_blocklist_service.cc",
     "url_list/policy_blocklist_service.h",
     "url_list/url_allowlist_policy_handler.cc",
@@ -55,8 +47,6 @@ source_set("internal") {
     "url_list/url_scheme_list_policy_handler.h",
     "webui/json_generation.cc",
     "webui/json_generation.h",
-    "webui/machine_level_user_cloud_policy_status_provider.cc",
-    "webui/machine_level_user_cloud_policy_status_provider.h",
     "webui/policy_status_provider.cc",
     "webui/policy_status_provider.h",
     "webui/policy_webui_constants.cc",
@@ -65,26 +55,8 @@ source_set("internal") {
     "webui/statistics_collector.h",
   ]
 
-  if (!is_chromeos) {
-    sources += [
-      "cloud/user_policy_signin_service_base.cc",
-      "cloud/user_policy_signin_service_base.h",
-      "cloud/user_policy_signin_service_util.cc",
-      "cloud/user_policy_signin_service_util.h",
-    ]
-  }
 
-  if (!is_fuchsia) {
-    sources += [
-    ]
-  }
 
-  if (!is_android && !is_fuchsia) {
-    sources += [
-      "cloud/user_cloud_management_status_fetcher.cc",
-      "cloud/user_cloud_management_status_fetcher.h",
-    ]
-  }
 
   configs += [ "//components/policy:component_implementation" ]
 
@@ -97,7 +69,6 @@ source_set("internal") {
     "//components/policy/resources/webui/mojom:mojo_bindings",
     "//components/pref_registry",
     "//components/prefs",
-    "//components/reporting/proto:record_proto",
     "//components/signin/public/identity_manager",
     "//components/strings",
     "//components/url_formatter",

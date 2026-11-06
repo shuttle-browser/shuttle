@@ -75,11 +75,6 @@
 #include "chrome/browser/chromeos/policy/dlp/dlp_rules_manager_factory.h"
 #endif
 
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-#include "chrome/browser/enterprise/data_protection/data_protection_features.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_navigation_controller.h"
-#endif
-
 #if BUILDFLAG(IS_WIN)
 #include "ui/views/widget/native_widget_aura.h"
 #endif
@@ -166,16 +161,7 @@ TabRole GetTabRole(bool is_capturing_tab, bool is_captured_tab) {
 }
 
 bool IsTabSharingBlockedByEnterprise(content::WebContents* contents) {
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (!contents ||
-      !base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection)) {
-    return false;
-  }
-  return enterprise_data_protection::IsScreenShareBlocked(contents);
-#else
   return false;
-#endif
 }
 
 }  // namespace
@@ -232,10 +218,6 @@ TabSharingUIViews::TabSharingUIViews(
   }
   Observe(shared_tab_);
   shared_tab_name_ = GetSharedTabName(shared_tab_, shared_tab_scheme_display_);
-
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  RegisterScreenshotProtectionObserver(shared_tab_);
-#endif
 
   WebContents* const capturer_wc = WebContentsFromId(capturer_);
   if (capturer_wc) {
@@ -320,9 +302,6 @@ void TabSharingUIViews::StopSharing(std::string_view reason) {
   policy::DlpContentManager::Get()->RemoveObserver(
       this, policy::DlpContentRestriction::kScreenShare);
 #endif
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  screenshot_allowed_subscriptions_.clear();
-#endif
   RemoveInfobarsForAllTabs();
   UpdateTabCaptureData(shared_tab_, TabCaptureUpdate::kCaptureRemoved);
   tab_capture_indicator_ui_.reset();
@@ -359,9 +338,6 @@ void TabSharingUIViews::OnTabStripModelChanged(
   if (change.type() == TabStripModelChange::kRemoved) {
     for (const auto& contents : change.GetRemove()->contents) {
       same_origin_observers_.erase(contents.contents);
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-      screenshot_allowed_subscriptions_.erase(contents.contents);
-#endif
     }
   }
 
@@ -399,9 +375,6 @@ void TabSharingUIViews::OnInfoBarRemoved(infobars::InfoBar* infobar,
 
   content::WebContents* content_for_removed_infobar = infobars_entry->first;
   infobars_.erase(infobars_entry);
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  screenshot_allowed_subscriptions_.erase(content_for_removed_infobar);
-#endif
   if (content_for_removed_infobar == shared_tab_) {
     StopSharing("OnInfoBarRemoved");
   }
@@ -412,17 +385,8 @@ void TabSharingUIViews::PrimaryPageChanged(content::Page& page) {
     return;
   }
   shared_tab_name_ = GetSharedTabName(shared_tab_, shared_tab_scheme_display_);
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  screenshot_allowed_subscriptions_.erase(shared_tab_);
-  RegisterScreenshotProtectionObserver(shared_tab_);
-#endif
   const bool should_recreate_shared_tab =
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-      base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection);
-#else
       false;
-#endif
   RefreshAllTabSharingInfoBars(should_recreate_shared_tab);
 }
 
@@ -550,13 +514,6 @@ void TabSharingUIViews::CreateInfobarForWebContents(WebContents* contents) {
   }
 #endif
 
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (is_sharing_allowed_by_policy &&
-      IsTabSharingBlockedByEnterprise(contents)) {
-    is_sharing_allowed_by_policy = false;
-  }
-#endif
-
   TabSharingInfoBarDelegate::ButtonState share_this_tab_instead_button_state =
       !is_share_instead_button_possible
           ? TabSharingInfoBarDelegate::ButtonState::NOT_SHOWN
@@ -583,15 +540,7 @@ void TabSharingUIViews::CreateInfobarForWebContents(WebContents* contents) {
   if (infobar) {
     infobars_[contents] = infobar;
     infobar_manager->AddObserver(this);
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-    if (!screenshot_allowed_subscriptions_.contains(contents)) {
-      RegisterScreenshotProtectionObserver(contents);
-    }
-#endif
   } else {
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-    screenshot_allowed_subscriptions_.erase(contents);
-#endif
   }
 }
 
@@ -770,9 +719,6 @@ void TabSharingUIViews::RemoveInfobarsForAllTabs() {
 
   infobars_.clear();
   same_origin_observers_.clear();
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  screenshot_allowed_subscriptions_.clear();
-#endif
 }
 
 void TabSharingUIViews::CreateTabCaptureIndicator() {
@@ -902,34 +848,3 @@ bool TabSharingUIViews::IsSharedTabBlocked() const {
   return IsTabSharingBlockedByEnterprise(shared_tab_);
 }
 
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-void TabSharingUIViews::RegisterScreenshotProtectionObserver(
-    content::WebContents* contents) {
-  if (!contents ||
-      !base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection)) {
-    return;
-  }
-  enterprise_data_protection::DataProtectionNavigationController* controller =
-      enterprise_data_protection::DataProtectionNavigationController::
-          FromWebContents(contents);
-  if (!controller) {
-    return;
-  }
-  screenshot_allowed_subscriptions_[contents] =
-      controller->RegisterScreenshotAllowedUpdatedCallback(
-          base::BindRepeating(&TabSharingUIViews::OnScreenshotAllowedUpdated,
-                              weak_factory_.GetWeakPtr(), contents));
-}
-
-void TabSharingUIViews::OnScreenshotAllowedUpdated(
-    content::WebContents* contents,
-    bool allowed) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  if (contents == shared_tab_) {
-    RefreshAllTabSharingInfoBars(/*recreate_shared_tab=*/true);
-  } else {
-    CreateInfobarForWebContents(contents);
-  }
-}
-#endif

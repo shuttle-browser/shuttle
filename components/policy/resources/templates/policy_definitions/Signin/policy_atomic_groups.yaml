@@ -1,6 +1,4 @@
 ProfileSeparation:
   caption: Profile Separation
   policies:
-  - ProfileSeparationSettings
-  - ProfileSeparationDataMigrationSettings
   - ProfileSeparationDomainExceptionList

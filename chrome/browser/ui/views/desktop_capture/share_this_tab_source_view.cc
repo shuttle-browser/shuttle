@@ -8,9 +8,6 @@
 #include "base/feature_list.h"
 #include "base/task/bind_post_task.h"
 #include "base/task/thread_pool.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_features.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_navigation_controller.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_page_user_data.h"
 #include "chrome/browser/favicon/favicon_utils.h"
 #include "chrome/browser/media/webrtc/desktop_media_picker_utils.h"
 #include "chrome/grit/generated_resources.h"
@@ -84,25 +81,6 @@ void HandleCapturedBitmap(
 }
 
 }  // namespace
-
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-// static
-bool ShareThisTabSourceView::IsTabSharingBlocked(
-    content::WebContents* web_contents) {
-  if (!base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection) ||
-      !web_contents) {
-    return false;
-  }
-  if (enterprise_data_protection::IsScreenShareBlocked(web_contents)) {
-    return true;
-  }
-  auto* page_user_data =
-      enterprise_data_protection::DataProtectionPageUserData::GetForPage(
-          web_contents->GetPrimaryPage());
-  return page_user_data && !page_user_data->settings().allow_screenshots;
-}
-#endif
 
 ShareThisTabSourceView::ShareThisTabSourceView(
     base::WeakPtr<content::WebContents> web_contents)
@@ -179,15 +157,6 @@ void ShareThisTabSourceView::UpdateBlockedState() {
     return;
   }
 
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (IsTabSharingBlocked(web_contents_.get())) {
-    StopRefreshing();
-    image_view_->SetVisible(false);
-    blocked_label_->SetVisible(true);
-    return;
-  }
-#endif
-
   blocked_label_->SetVisible(false);
   image_view_->SetVisible(true);
   if (!refreshing_) {
@@ -210,19 +179,6 @@ void ShareThisTabSourceView::UpdateFaviconAndTabTitle() {
     return;
   }
 
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (IsTabSharingBlocked(web_contents_.get())) {
-    favicon_view_->SetImage(ui::ImageModel::FromVectorIcon(
-        features::IsRoundedIconsEnabled() ? vector_icons::kDomainIcon
-                                          : vector_icons::kBusinessOldIcon,
-        ui::kColorIcon, kFaviconWidth));
-    favicon_view_->SetTooltipText(
-        l10n_util::GetStringUTF16(IDS_POLICY_DLP_SCREEN_SHARE_BLOCKED_TITLE));
-    tab_title_label_->SetText(web_contents_->GetTitle());
-    return;
-  }
-#endif
-
   favicon_view_->SetTooltipText(std::u16string());
   const gfx::Image favicon =
       favicon::GetTabFaviconMaybeDesaturatedOnError(web_contents_.get());
@@ -242,12 +198,6 @@ void ShareThisTabSourceView::Refresh() {
   if (!web_contents_) {
     return;
   }
-
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (IsTabSharingBlocked(web_contents_.get())) {
-    return;
-  }
-#endif
 
   content::RenderFrameHost* const host = web_contents_->GetPrimaryMainFrame();
   if (!host) {
@@ -278,12 +228,6 @@ void ShareThisTabSourceView::OnCaptureHandled(
   if (!refreshing_) {
     return;
   }
-
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (IsTabSharingBlocked(web_contents_.get())) {
-    return;
-  }
-#endif
 
   UpdateFaviconAndTabTitle();
 

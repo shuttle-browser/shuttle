@@ -46,7 +46,6 @@
 #include "chrome/browser/command_updater_impl.h"
 #include "chrome/browser/download/download_core_service.h"
 #include "chrome/browser/download/download_core_service_factory.h"
-#include "chrome/browser/enterprise/isolated_mode/isolated_mode_settings_service_factory.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/first_run/first_run.h"
 #include "chrome/browser/global_keyboard_shortcuts_mac.h"
@@ -109,7 +108,6 @@
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/enterprise/browser/controller/chrome_browser_cloud_management_controller.h"
 #include "components/handoff/handoff_manager.h"
 #include "components/handoff/handoff_utility.h"
 #include "components/keep_alive_registry/keep_alive_registry.h"
@@ -1095,14 +1093,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 // This is called after profiles have been loaded and preferences registered.
 // It is safe to access the default profile here.
 - (void)applicationDidFinishLaunching:(NSNotification*)notify {
-  if (g_browser_process->browser_policy_connector()
-          ->chrome_browser_cloud_management_controller()
-          ->IsEnterpriseStartupDialogShowing()) {
-    // As Chrome is not ready when the Enterprise startup dialog is being shown.
-    // Store the notification as it will be reposted when the dialog is closed.
-    return;
-  }
-
   [self setUpdateCheckInterval];
 
   // Dynamically update shortcuts for "Close Window" and "Close Tab" menu items.
@@ -2086,9 +2076,8 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 }
 
 - (BOOL)isProfileReady {
-  return !g_browser_process->browser_policy_connector()
-              ->chrome_browser_cloud_management_controller()
-              ->IsEnterpriseStartupDialogShowing();
+  // No enterprise startup (enrollment) dialog in Shuttle: always ready.
+  return YES;
 }
 
 #pragma mark - HandoffObserverDelegate
@@ -2256,17 +2245,6 @@ namespace app_controller_mac {
 
 bool IsOpeningNewWindow() {
   return g_is_opening_new_window;
-}
-
-void EnterpriseStartupDialogClosed() {
-  CHECK(!g_browser_process->browser_policy_connector()
-             ->chrome_browser_cloud_management_controller()
-             ->IsEnterpriseStartupDialogShowing(),
-        base::NotFatalUntil::M155);
-  NSNotification* notify = [NSNotification
-      notificationWithName:NSApplicationDidFinishLaunchingNotification
-                    object:NSApp];
-  [AppController.sharedController applicationDidFinishLaunching:notify];
 }
 
 void RunInLastProfileSafely(

@@ -961,10 +961,6 @@ if (!is_android) {
   }
 }
 
-source_set("enterprise_startup_dialog") {
-  public = [ "enterprise_startup_dialog.h" ]
-  public_deps = [ "//base" ]
-}
 
 source_set("uninstall_browser_prompt") {
   public = [ "uninstall_browser_prompt.h" ]
@@ -1537,14 +1533,6 @@ if (!is_android) {
     }
   }
 
-  source_set("idle_bubble") {
-    public = [ "idle_bubble.h" ]
-    public_deps = [
-      ":idle_dialog",
-      "//base",
-      "//ui/views",
-    ]
-  }
 
   source_set("chrome_pages") {
     public = [ "chrome_pages.h" ]
@@ -1637,13 +1625,6 @@ static_library("browser_element_identifiers") {
 }
 
 if (toolkit_views) {
-  source_set("idle_dialog") {
-    public = [ "idle_dialog.h" ]
-    public_deps = [
-      "//base",
-      "//ui/gfx",
-    ]
-  }
 
   source_set("toolbar_controller_util") {
     sources = [

@@ -103,18 +103,11 @@
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/pref_names.h"
 #include "components/custom_handlers/protocol_handler_registry.h"
-#include "components/device_signals/core/browser/pref_names.h"  // nogncheck due to crbug.com/40147906
 #include "components/dom_distiller/core/distilled_page_prefs.h"
 #include "components/domain_reliability/domain_reliability_prefs.h"
 #include "components/embedder_support/origin_trials/origin_trial_prefs.h"
-#include "components/enterprise/browser/groups/groups_prefs.h"
 #include "components/enterprise/browser/identifiers/identifiers_prefs.h"
-#include "components/enterprise/browser/promotion/promotion_prefs.h"
-#include "components/enterprise/browser/reporting/prefs.h"
 #include "components/enterprise/buildflags/buildflags.h"
-#include "components/enterprise/connectors/core/connectors_prefs.h"
-#include "components/enterprise/isolated_mode/prefs.h"
-#include "components/enterprise/network_header_injection/core/network_header_injection_prefs.h"
 #include "components/image_fetcher/core/cache/image_cache.h"
 #include "components/language/content/browser/geo_language_provider.h"
 #include "components/language/content/browser/ulp_language_code_locator/ulp_language_code_locator.h"
@@ -443,10 +436,6 @@
 #include "components/os_crypt/async/browser/os_crypt_win.h"
 #endif  // BUILDFLAG(IS_WIN)
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/enterprise/platform_auth/platform_auth_policy_observer.h"
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_ANDROID)
-
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 #include "chrome/browser/browser_switcher/browser_switcher_prefs.h"
 #include "chrome/browser/lifetime/scheduled_restart_manager.h"
@@ -476,10 +465,6 @@
 #include "ui/color/system_theme.h"
 #endif
 
-
-#if BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
-#include "components/enterprise/data_controls/core/browser/prefs.h"
-#endif
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #include "components/safe_browsing/content/common/file_type_policies_prefs.h"
@@ -1575,13 +1560,10 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   chrome_labs_prefs::RegisterLocalStatePrefs(registry);
   chrome_urls::RegisterPrefs(registry);
   ChromeMetricsServiceClient::RegisterPrefs(registry);
-  enterprise_connectors::RegisterLocalStatePrefs(registry);
-  enterprise_groups::RegisterLocalStatePrefs(registry);
   enterprise_util::RegisterLocalStatePrefs(registry);
   component_updater::RegisterPrefs(registry);
   domain_reliability::RegisterPrefs(registry);
   embedder_support::OriginTrialPrefs::RegisterPrefs(registry);
-  enterprise_reporting::RegisterLocalStatePrefs(registry);
 #if BUILDFLAG(IS_ANDROID)
   enterprise_signals_disclaimer::RegisterLocalStatePrefs(registry);
 #endif
@@ -1596,7 +1578,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   metrics::TabStatsTracker::RegisterPrefs(registry);
   network_time::NetworkTimeTracker::RegisterPrefs(registry);
   omnibox::RegisterLocalStatePrefs(registry);
-  policy::BrowserPolicyConnector::RegisterPrefs(registry);
   policy::LocalTestPolicyProvider::RegisterLocalStatePrefs(registry);
   policy::ManagementService::RegisterLocalStatePrefs(registry);
   policy::PolicyStatisticsCollector::RegisterPrefs(registry);
@@ -1798,10 +1779,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
 #endif
 
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_ANDROID)
-  PlatformAuthPolicyObserver::RegisterPrefs(registry);
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_ANDROID)
-
   // Platform-specific and compile-time conditional individual preferences.
   // If you have multiple preferences that should clearly be grouped together,
   // please group them together into a helper function called above. Please
@@ -1830,7 +1807,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
 
   registry->RegisterBooleanPref(prefs::kQRCodeGeneratorEnabled, true);
 
-  registry->RegisterIntegerPref(prefs::kChromeDataRegionSetting, 0);
 
 
   registry->RegisterIntegerPref(prefs::kToastAlertLevel, 0);
@@ -1871,15 +1847,10 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   chrome_prefs::RegisterProfilePrefs(registry);
   registry->RegisterIntegerPref(prefs::kContextualTasksNextPanelOpenCount, 0);
   registry->RegisterBooleanPref(prefs::kCtrlTabMru, false);
-  device_signals::RegisterProfilePrefs(registry);
   enterprise::RegisterIdentifiersProfilePrefs(registry);
-  enterprise_connectors::RegisterProfilePrefs(registry);
-  enterprise_isolated_mode::RegisterProfilePrefs(registry);
 #if BUILDFLAG(ENTERPRISE_PROXY)
   enterprise_net::RegisterProfilePrefs(registry);
 #endif
-  enterprise_promotion::RegisterProfilePrefs(registry);
-  enterprise_reporting::RegisterProfilePrefs(registry);
   dom_distiller::DistilledPagePrefs::RegisterProfilePrefs(registry);
   DownloadPrefs::RegisterProfilePrefs(registry);
   permissions::PermissionHatsTriggerHelper::RegisterProfilePrefs(registry);
@@ -2078,7 +2049,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
 
   ThemeColorPickerHandler::RegisterProfilePrefs(registry);
   ThemeService::RegisterProfilePrefs(registry);
-  ManagementUI::RegisterProfilePrefs(registry);
 
 #if BUILDFLAG(ENABLE_DEVTOOLS_FRONTEND)
   DevToolsWindow::RegisterProfilePrefs(registry);
@@ -2235,8 +2205,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   registry->RegisterListPref(
       webauthn::pref_names::kRemoteDesktopAllowedOrigins);
 
-  enterprise_custom_headers::RegisterProfilePrefs(registry);
-
 #if !BUILDFLAG(IS_ANDROID)
   registry->RegisterBooleanPref(
       webauthn::pref_names::kRemoteProxiedRequestsAllowed, false);
@@ -2276,16 +2244,11 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
                                 false);
 #endif
 
-#if BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
-  data_controls::RegisterProfilePrefs(registry);
-#endif  // BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
-
 #if BUILDFLAG(IS_WIN)
   registry->RegisterBooleanPref(prefs::kNativeHostsExecutablesLaunchDirectly,
                                 false);
 #endif  // BUILDFLAG(IS_WIN)
 
-  registry->RegisterIntegerPref(prefs::kChromeDataRegionSetting, 0);
 
   registry->RegisterIntegerPref(prefs::kLensOverlayStartCount, 0);
 

@@ -14,8 +14,6 @@
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
 #include "chrome/browser/browser_features.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_features.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_page_user_data.h"
 #include "chrome/browser/media/webrtc/desktop_media_list_layout_config.h"
 #include "chrome/browser/media/webrtc/desktop_media_picker_utils.h"
 #include "chrome/browser/profiles/profile_manager.h"
@@ -56,16 +54,6 @@ void HandleCapturedBitmap(
 
   content::GetUIThreadTaskRunner({})->PostTask(
       FROM_HERE, base::BindOnce(std::move(reply), hash, image));
-}
-
-bool IsWebContentsSharingBlocked(content::WebContents* contents) {
-  if (!contents) {
-    return false;
-  }
-  auto* page_user_data =
-      enterprise_data_protection::DataProtectionPageUserData::GetForPage(
-          contents->GetPrimaryPage());
-  return page_user_data && !page_user_data->settings().allow_screenshots;
 }
 
 }  // namespace
@@ -167,30 +155,12 @@ void TabDesktopMediaList::Refresh(bool update_thumbnails) {
                                 main_frame->GetProcess()->GetDeprecatedID(),
                                 main_frame->GetRoutingID()));
 
-    const bool is_sharing_blocked = IsWebContentsSharingBlocked(contents);
-
-    if (previewed_source_ &&
-        previewed_source_->web_contents_id == media_id.web_contents_id) {
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-      if (base::FeatureList::IsEnabled(
-              enterprise_data_protection::kEnableTabSharingProtection)) {
-        if (is_sharing_blocked) {
-          previewed_source_visible_keepalive_.RunAndReset();
-        } else if (!previewed_source_visible_keepalive_) {
-          previewed_source_visible_keepalive_ =
-              contents->IncrementCapturerCount(
-                  gfx::Size(), /*stay_hidden=*/false, /*stay_awake=*/false,
-                  /*is_activity=*/false);
-        }
-      }
-#endif
-    }
-
     // Get tab's last active time stamp.
     const base::TimeTicks t = contents->GetLastActiveTimeTicks();
     tab_map.insert(std::make_pair(
         t,
-        SourceDescription(media_id, contents->GetTitle(), is_sharing_blocked)));
+        SourceDescription(media_id, contents->GetTitle(),
+                          /*is_sharing_blocked=*/false)));
 
     // Get favicon for tab.
     favicon::FaviconDriver* favicon_driver =
@@ -218,26 +188,9 @@ void TabDesktopMediaList::Refresh(bool update_thumbnails) {
   favicon_hashes_ = new_favicon_hashes;
 
   // Sort tab sources by time. Most recent one first.
-  // When tab sharing protection is enabled, blocked tabs are sorted to the
-  // bottom; recency order is preserved within each partition.
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  const bool sort_blocked_tabs_last = base::FeatureList::IsEnabled(
-      enterprise_data_protection::kEnableTabSharingProtection);
-#else
-  const bool sort_blocked_tabs_last = false;
-#endif
-
-  std::vector<SourceDescription> blocked_sources;
   for (const auto& [time, tab_source] : std::views::reverse(tab_map)) {
-    if (sort_blocked_tabs_last && tab_source.is_sharing_blocked) {
-      blocked_sources.push_back(tab_source);
-    } else {
-      sources.push_back(tab_source);
-    }
+    sources.push_back(tab_source);
   }
-  sources.insert(sources.end(),
-                 std::make_move_iterator(blocked_sources.begin()),
-                 std::make_move_iterator(blocked_sources.end()));
 
   UpdateSourcesList(sources);
 
@@ -272,16 +225,6 @@ void TabDesktopMediaList::TriggerScreenshot(
       previewed_source_->web_contents_id.render_process_id,
       previewed_source_->web_contents_id.main_render_frame_id);
 
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection) &&
-      IsWebContentsSharingBlocked(WebContents::FromRenderFrameHost(host))) {
-    if (can_refresh()) {
-      UpdateSourcePreview(previewed_source_.value(), gfx::ImageSkia());
-    }
-    return;
-  }
-#endif
 
   content::RenderWidgetHostView* const view = host ? host->GetView() : nullptr;
   if (!view) {
@@ -381,20 +324,9 @@ void TabDesktopMediaList::SetPreviewedSource(
   // in the background. Pass false to stay_hidden to fully wake the page to not
   // only allow it to load, but also to avoid pages realising they're visible
   // only in the preview and manipulating the user.
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (!base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection) ||
-      !IsWebContentsSharingBlocked(source_contents)) {
-    previewed_source_visible_keepalive_ =
-        source_contents->IncrementCapturerCount(
-            gfx::Size(), /*stay_hidden=*/false, /*stay_awake=*/false,
-            /*is_activity=*/false);
-  }
-#else
   previewed_source_visible_keepalive_ = source_contents->IncrementCapturerCount(
       gfx::Size(), /*stay_hidden=*/false, /*stay_awake=*/false,
       /*is_activity=*/false);
-#endif
 
   // Capture a new previewed image.
   // TODO(crbug.com/40187992): Schedule this delayed if there has been another

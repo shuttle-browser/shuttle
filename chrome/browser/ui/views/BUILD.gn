@@ -1401,22 +1401,6 @@ source_set("find_bar_views") {
   ]
 }
 
-source_set("idle_bubble") {
-  sources = [ "idle_bubble.cc" ]
-  deps = [
-    "//base",
-    "//chrome/app:branded_strings",
-    "//chrome/app:generated_resources",
-    "//chrome/browser:browser_public_dependencies",
-    "//chrome/browser/ui:idle_bubble",
-    "//chrome/browser/ui/browser_window",
-    "//chrome/browser/ui/views/frame:browser_view_header",
-    "//chrome/browser/ui/views/interaction",
-    "//chrome/browser/ui/views/toolbar",
-    "//ui/base",
-    "//ui/views",
-  ]
-}
 
 source_set("constrained_web_dialog_delegate_views") {
   sources = [ "constrained_web_dialog_delegate_views.cc" ]

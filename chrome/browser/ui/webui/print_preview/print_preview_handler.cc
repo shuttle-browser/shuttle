@@ -72,13 +72,6 @@
 #include "third_party/icu/source/i18n/unicode/ulocdata.h"
 #include "ui/shell_dialogs/selected_file_info.h"
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-#include "chrome/browser/enterprise/data_protection/print_utils.h"
-#if BUILDFLAG(IS_MAC)
-#include "chrome/grit/generated_resources.h"
-#include "ui/base/l10n/l10n_util.h"
-#endif  // BUILDFLAG(IS_MAC)
-#endif
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/constants/ash_pref_names.h"
 #include "ash/webui/settings/public/constants/routes.mojom.h"
@@ -689,61 +682,8 @@ void PrintPreviewHandler::HandleDoPrint(const base::ListValue& args) {
   }
   ReportUserActionHistogram(user_action);
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  std::string device_name = *settings.FindString(kSettingDeviceName);
-
-  using enterprise_data_protection::PrintScanningContext;
-  auto scan_context =
-      settings.FindBool(kSettingShowSystemDialog).value_or(false)
-          ? PrintScanningContext::kSystemPrintAfterPreview
-          : PrintScanningContext::kNormalPrintAfterPreview;
-
-#if BUILDFLAG(IS_MAC)
-  if (settings.FindBool(kSettingOpenPDFInPreview).value_or(false)) {
-    // This override only affects reporting of content analysis violations, and
-    // the rest of the printing stack is expected to use the same device name
-    // present in `settings` if content analysis allows printing.
-    device_name =
-        l10n_util::GetStringUTF8(IDS_PRINT_PREVIEW_OPEN_PDF_IN_PREVIEW_APP);
-    scan_context = PrintScanningContext::kOpenPdfInPreview;
-  }
-#endif  // BUILDFLAG(IS_MAC)
-
-  auto on_verdict =
-      base::BindOnce(&PrintPreviewHandler::OnVerdictByEnterprisePolicy,
-                     weak_factory_.GetWeakPtr(), user_action,
-                     std::move(settings), data, callback_id);
-
-  auto hide_preview = base::BindOnce(&PrintPreviewHandler::OnHidePreviewDialog,
-                                     weak_factory_.GetWeakPtr());
-
-  enterprise_data_protection::PrintIfAllowedByPolicy(
-      data, GetInitiator(), std::move(device_name), scan_context,
-      std::move(on_verdict), std::move(hide_preview));
-
-#else
   FinishHandleDoPrint(user_action, std::move(settings), data, callback_id);
-#endif  // BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
 }
-
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-void PrintPreviewHandler::OnVerdictByEnterprisePolicy(
-    UserActionBuckets user_action,
-    base::DictValue settings,
-    scoped_refptr<base::RefCountedMemory> data,
-    const std::string& callback_id,
-    bool allowed) {
-  if (allowed) {
-    FinishHandleDoPrint(user_action, std::move(settings), data, callback_id);
-  } else {
-    OnPrintResult(callback_id, base::Value("NOT_ALLOWED"));
-  }
-}
-
-void PrintPreviewHandler::OnHidePreviewDialog() {
-  print_preview_ui()->OnHidePreviewDialog();
-}
-#endif  // BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
 
 void PrintPreviewHandler::FinishHandleDoPrint(
     UserActionBuckets user_action,

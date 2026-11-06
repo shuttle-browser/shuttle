@@ -16,7 +16,6 @@
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/devtools/devtools_ui_controller.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_ui_controller.h"
 #include "chrome/browser/extensions/browser_extension_window_controller.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sessions/session_service_factory.h"
@@ -438,17 +437,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(
         std::make_unique<ContentsBorderController>(browser_view);
   }
 
-  if (browser_view) {
-    if (browser_->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL ||
-        browser_->GetType() == BrowserWindowInterface::Type::TYPE_POPUP) {
-      data_protection_ui_controller_ =
-          GetUserDataFactory()
-              .CreateInstance<
-                  enterprise_data_protection::DataProtectionUIController>(
-                  *browser_view->browser(), browser_view);
-    }
-  }
-
 #if BUILDFLAG(ENABLE_EXTENSIONS) && (BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC))
   if (browser_view) {
     if (!browser_->GetProfile()->IsOffTheRecord()) {
@@ -663,7 +651,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
 #if BUILDFLAG(ENABLE_EXTENSIONS) && (BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC))
   default_search_extension_controlled_controller_.reset();
 #endif
-  data_protection_ui_controller_.reset();
   contents_border_controller_.reset();
   color_provider_browser_helper_.reset();
   browser_ui_controller_.reset();

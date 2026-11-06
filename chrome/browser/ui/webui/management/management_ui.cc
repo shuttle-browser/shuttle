@@ -327,8 +327,7 @@ ManagementUI::~ManagementUI() = default;
 
 // static
 void ManagementUI::RegisterProfilePrefs(PrefRegistrySimple* registry) {
-  registry->RegisterBooleanPref(
-      policy::policy_prefs::kHasDismissedManagementPagePromotionBanner, false);
+  // Shuttle: the enterprise promotion banner is removed; no prefs.
 }
 
 // Mobile Android is the only platform without extensions support.

@@ -222,12 +222,6 @@ void PrintJobWorker::Cancel() {
   // context we run.
 }
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-void PrintJobWorker::CleanupAfterContentAnalysisDenial() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DVLOG(1) << "Canceling job due to content analysis";
-}
-#endif
 
 bool PrintJobWorker::IsRunning() const {
   return thread_.IsRunning();

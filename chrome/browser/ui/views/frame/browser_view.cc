@@ -44,10 +44,6 @@
 #include "chrome/browser/browsing_data/browsing_data_important_sites_util.h"
 #include "chrome/browser/devtools/devtools_ui_controller.h"
 #include "chrome/browser/devtools/devtools_window.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_navigation_observer.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_overlay_view.h"
-#include "chrome/browser/enterprise/isolated_mode/isolated_mode_settings_service_factory.h"
-#include "chrome/browser/enterprise/watermark/settings.h"
 #include "chrome/browser/extensions/browser_extension_window_controller.h"
 #include "chrome/browser/extensions/extension_util.h"
 #include "chrome/browser/headless/headless_mode_util.h"
@@ -3623,7 +3619,6 @@ bool BrowserView::ShouldDescendIntoChildForEventHandling(
   return true;
 }
 
-
 bool BrowserView::RotatePaneFocusFromView(views::View* focused_view,
                                           bool forward,
                                           bool enable_wrapping) {
@@ -4512,7 +4507,6 @@ void BrowserView::LoadAccelerators() {
       continue;
     }
 
-
     ui::Accelerator accelerator(entry.keycode, entry.modifiers);
     accelerator_table_[accelerator] = entry.command_id;
 
@@ -4737,15 +4731,6 @@ bool BrowserView::FindCommandIdForAccelerator(
     return false;
   }
 
-  // When Enterprise Isolated Mode replaces Incognito, the New Incognito Window
-  // accelerator opens an Isolated window instead. This mirrors macOS, where
-  // AppController moves the key equivalent to the New Isolated Window item.
-  if (*command_id == IDC_NEW_INCOGNITO_WINDOW &&
-      enterprise_isolated_mode::IsolatedModeReplacesIncognito(
-          browser_->GetProfile())) {
-    *command_id = IDC_NEW_ISOLATED_WINDOW;
-  }
-
   return true;
 }
 
@@ -4870,16 +4855,6 @@ void BrowserView::UpdateFullscreenAllowedFromPolicy(
 
 void BrowserView::OnFirstPresentation(
     const viz::FrameTimingDetails& frame_timing_details) {}
-
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-void BrowserView::ApplyScreenshotSettings(bool allow) {
-#if BUILDFLAG(IS_WIN)
-  DCHECK_NE(GetWidget()->GetNativeWindow()->GetHost()->GetAcceleratedWidget(),
-            gfx::kNullAcceleratedWidget);
-#endif  // BUILDFLAG(IS_WIN)
-  GetWidget()->SetAllowScreenshots(allow);
-}
-#endif  // BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
 
 BEGIN_METADATA(BrowserView)
 ADD_READONLY_PROPERTY_METADATA(gfx::Rect, FindBarBoundingBox)

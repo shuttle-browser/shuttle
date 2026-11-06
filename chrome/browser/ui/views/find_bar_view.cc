@@ -13,7 +13,6 @@
 #include "base/strings/string_util.h"
 #include "build/build_config.h"
 #include "chrome/app/vector_icons/vector_icons.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_clipboard_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/themes/theme_properties.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
@@ -552,24 +551,6 @@ void FindBarView::OnAfterPaste() {
   // a paste operation, even if the pasted text is the same as before.
   // See http://crbug.com/40552385
   last_searched_text_.clear();
-}
-
-bool FindBarView::OnBeforeCutOrCopy(views::Textfield* sender,
-                                    std::u16string* copy_contents) {
-  CHECK(copy_contents);
-  CHECK(copy_contents->empty());
-
-  return enterprise_data_protection::ReplaceCopyFromFindBar(
-      sender->GetSelectedText(),
-      find_bar_host_->GetFindBarController()->web_contents(), copy_contents);
-}
-
-void FindBarView::OnBeforePaste(
-    views::Textfield* sender,
-    base::OnceCallback<void(std::optional<std::u16string>)> callback) {
-  enterprise_data_protection::ReplacePasteToFindBar(
-      find_bar_host_->GetFindBarController()->web_contents(),
-      std::move(callback));
 }
 
 std::unique_ptr<ui::ScopedClipboardWriter>

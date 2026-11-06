@@ -31,10 +31,6 @@
 #if !BUILDFLAG(IS_ANDROID)
 #endif
 
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-#include "components/enterprise/common/files_scan_data.h"
-#endif
-
 class HostContentSettingsMap;
 class OneTimePermissionsTracker;
 class FileSystemAccessPageActionController;
@@ -470,14 +466,6 @@ class ChromeFileSystemAccessPermissionContext
   // e.g. by a `remove()` call.
   void MaybeRestoreReadPermission(const url::Origin& origin,
                                   const base::FilePath& path);
-
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-  void OnContentAnalysisComplete(
-      std::vector<content::PathInfo> entries,
-      EntriesAllowedByEnterprisePolicyCallback callback,
-      std::vector<base::FilePath> paths,
-      std::vector<bool> allowed);
-#endif
 
   void CheckShouldBlockAccessToPathAndReply(
       base::FilePath path,

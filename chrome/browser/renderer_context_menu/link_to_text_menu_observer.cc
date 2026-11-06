@@ -16,7 +16,6 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "chrome/app/chrome_command_ids.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_clipboard_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/toasts/api/toast_id.h"
 #include "chrome/browser/ui/toasts/toast_controller.h"
@@ -299,8 +298,6 @@ void LinkToTextMenuObserver::ExecuteCopyLinkToText() {
           kCopiedFromNewGeneration);
 
   if (toast_features::IsEnabled(toast_features::kLinkToHighlightCopiedToast) &&
-      enterprise_data_protection::IsClipboardCopyAllowedByPolicyForUI(
-          proxy_->GetWebContents()) &&
       toast_controller_) {
     toast_controller_->MaybeShowToast(
         ToastParams(ToastId::kLinkToHighlightCopied));
@@ -437,7 +434,13 @@ void LinkToTextMenuObserver::CopyTextToClipboard(const std::string& text) {
   auto* rfh = content::RenderFrameHost::FromID(render_frame_host_id_);
   CHECK(rfh);
 
-  enterprise_data_protection::CopyTextToClipboard(rfh, base::UTF8ToUTF16(text));
+  ui::ScopedClipboardWriter scw(
+      ui::ClipboardBuffer::kCopyPaste,
+      std::make_unique<ui::DataTransferEndpoint>(
+          rfh->GetMainFrame()->GetLastCommittedURL(),
+          ui::DataTransferEndpointOptions{
+              .off_the_record = rfh->GetBrowserContext()->IsOffTheRecord()}));
+  scw.WriteText(base::UTF8ToUTF16(text));
 }
 
 std::u16string LinkToTextMenuObserver::GetCopyLinkToTextLabel() const {

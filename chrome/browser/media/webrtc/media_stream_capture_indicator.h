@@ -122,11 +122,6 @@ class MediaStreamCaptureIndicator
   void AddObserver(Observer* obs) { observers_.AddObserver(obs); }
   void RemoveObserver(Observer* obs) { observers_.RemoveObserver(obs); }
 
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  static bool HasDataProtectionHandlerForTesting(
-      const content::MediaStreamUI* ui,
-      const content::DesktopMediaID& media_id);
-#endif
 
  private:
   class UIDelegate;

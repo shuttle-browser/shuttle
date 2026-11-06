@@ -30,7 +30,6 @@
 #include "components/certificate_matching/certificate_principal_pattern.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/pref_names.h"
-#include "components/device_signals/core/browser/pref_names.h"
 #include "components/image_fetcher/core/image_fetcher.h"
 #include "components/image_fetcher/core/image_fetcher_service.h"
 #include "components/image_fetcher/core/image_fetcher_types.h"
@@ -298,13 +297,6 @@ void SetUserAcceptedAccountManagement(Profile* profile, bool accepted) {
   // Some tests do not have a profile manager.
   if (!g_browser_process->profile_manager())
     return;
-  // The updated consent screen also ask the user for consent to share device
-  // signals.
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-  profile->GetPrefs()->SetBoolean(
-      device_signals::prefs::kDeviceSignalsPermanentConsentReceived, accepted);
-#endif
   ProfileManager* profile_manager = g_browser_process->profile_manager();
   ProfileAttributesEntry* entry =
       profile_manager->GetProfileAttributesStorage()

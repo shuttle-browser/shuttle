@@ -38,7 +38,6 @@
 #include "chrome/browser/chrome_browser_main_extra_parts.h"
 #include "chrome/browser/component_updater/registration.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
-#include "chrome/browser/enterprise/chrome_browser_main_extra_parts_enterprise.h"
 #include "chrome/browser/first_run/first_run_features.h"
 #include "chrome/browser/gpu/chrome_browser_main_extra_parts_gpu.h"
 #include "chrome/browser/language/url_language_histogram_factory.h"
@@ -105,8 +104,6 @@
 #include "components/metrics/metrics_service.h"
 #include "components/metrics/metrics_shutdown.h"
 #include "components/offline_pages/buildflags/buildflags.h"
-#include "components/policy/core/browser/policy_data_utils.h"
-#include "components/policy/core/common/cloud/machine_level_user_cloud_policy_manager.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/sampling_profiler/process_type.h"
@@ -188,7 +185,6 @@
 #include "chrome/browser/extensions/component_loader.h"
 #endif
 #else
-#include "components/enterprise/browser/controller/chrome_browser_cloud_management_controller.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_LINUX)
@@ -336,12 +332,6 @@
 #include "chrome/browser/chrome_browser_main_extra_parts_ozone.h"
 #endif
 
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_WIN)
-#include "chrome/browser/enterprise/platform_auth/platform_auth_policy_observer.h"
-#endif
-#if BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/enterprise/platform_auth/platform_auth_features.h"
-#endif
 
 #if BUILDFLAG(CHROME_FOR_TESTING)
 #include "chrome/browser/chrome_for_testing/chrome_browser_main_extra_parts_cft.h"
@@ -825,10 +815,6 @@ std::unique_ptr<content::BrowserMainParts> ChromeBrowserMainParts::Create(
 
   chrome::AddMetricsExtraParts(main_parts.get());
 
-  main_parts->AddParts(
-      std::make_unique<
-          enterprise_util::ChromeBrowserMainExtraPartsEnterprise>());
-
 #if !BUILDFLAG(IS_ANDROID)
   main_parts->AddParts(
       std::make_unique<headless::ChromeBrowserMainExtraPartsHeadless>());
@@ -1304,16 +1290,6 @@ int ChromeBrowserMainParts::PreCreateThreadsImpl() {
     browser_process_->Init();
   }
 
-#if !BUILDFLAG(IS_CHROMEOS)
-  std::optional<std::string> managed_by =
-      policy::GetManagedBy(browser_process_->browser_policy_connector()
-                               ->machine_level_user_cloud_policy_manager());
-  if (managed_by) {
-    static constexpr std::string_view kEnrollmentDomain = "enrollment-domain";
-    crash_keys::AllocateCrashKeyInBrowserAndChildren(kEnrollmentDomain,
-                                                     managed_by.value());
-  }
-#endif
 
 #if !BUILDFLAG(IS_ANDROID)
   // These members must be initialized before returning from this function.
@@ -1571,23 +1547,6 @@ void ChromeBrowserMainParts::PreProfileInit() {
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   SetChromeAppModalDialogManagerDelegate();
-#endif
-
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  // Start up the platform auth SSO policy observer.
-  if (auto* local_state = g_browser_process->local_state(); local_state) {
-    platform_auth_policy_observer_ =
-        std::make_unique<PlatformAuthPolicyObserver>(local_state);
-  }
-#elif BUILDFLAG(IS_ANDROID)
-  // TODO: b/484014627 - once the feature flag is cleaned-up merge this with the
-  // block above.
-  if (base::FeatureList::IsEnabled(enterprise_auth::kAndroidEntraSSO) &&
-      g_browser_process->local_state()) {
-    platform_auth_policy_observer_ =
-        std::make_unique<PlatformAuthPolicyObserver>(
-            g_browser_process->local_state());
-  }
 #endif
 }
 
@@ -1854,33 +1813,6 @@ int ChromeBrowserMainParts::PreMainMessageLoopRunImpl() {
     }
   }
   downgrade_manager_.UpdateLastVersion(user_data_dir_);
-#endif
-
-#if !BUILDFLAG(IS_CHROMEOS)
-  // Initialize the chrome browser cloud management controller after
-  // the browser process singleton is acquired to remove race conditions where
-  // multiple browser processes start simultaneously.  The main
-  // initialization of browser_policy_connector is performed inside
-  // PreMainMessageLoopRun() so that policies can be applied as soon as
-  // possible.
-  //
-  // Note that this protects against multiple browser process starts in
-  // the same user data dir and not multiple starts across user data dirs.
-  browser_process_->browser_policy_connector()->InitCloudManagementController(
-      browser_process_->local_state(),
-      browser_process_->system_network_context_manager()
-          ->GetSharedURLLoaderFactory());
-#endif
-
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
-  // Wait for the chrome browser cloud management enrollment to finish.
-  // If enrollment is not mandatory, this function returns immediately.
-  // Abort the launch process if required enrollment fails.
-  if (!browser_process_->browser_policy_connector()
-           ->chrome_browser_cloud_management_controller()
-           ->WaitUntilPolicyEnrollmentFinished()) {
-    return CHROME_RESULT_CODE_CLOUD_POLICY_ENROLLMENT_FAILED;
-  }
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -2250,12 +2182,6 @@ void ChromeBrowserMainParts::PostMainMessageLoopRun() {
   restart_mode_ = browser_shutdown::ShutdownPreThreadsStop();
   browser_process_->StartTearDown();
 #endif  // BUILDFLAG(IS_ANDROID)
-
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  // The `ProfileManager` has been destroyed, so no new platform authentication
-  // requests will be created.
-  platform_auth_policy_observer_.reset();
-#endif
 }
 
 void ChromeBrowserMainParts::PostDestroyThreads() {

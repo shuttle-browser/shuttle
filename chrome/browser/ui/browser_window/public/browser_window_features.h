@@ -124,10 +124,6 @@ namespace content_settings {
 class CookieControlsController;
 }  // namespace content_settings
 
-namespace enterprise_data_protection {
-class DataProtectionUIController;
-}  // namespace enterprise_data_protection
-
 namespace extensions {
 class BrowserExtensionWindowController;
 #if BUILDFLAG(ENABLE_EXTENSIONS)
@@ -302,8 +298,6 @@ class BrowserWindowFeatures {
   // Members owned only when a BrowserView is attached.
   std::unique_ptr<ColorProviderBrowserHelper> color_provider_browser_helper_;
   std::unique_ptr<ContentsBorderController> contents_border_controller_;
-  std::unique_ptr<enterprise_data_protection::DataProtectionUIController>
-      data_protection_ui_controller_;
   std::unique_ptr<DevtoolsUIController> devtools_ui_controller_;
 
   // The window-scoped extension side-panel manager. There is a separate

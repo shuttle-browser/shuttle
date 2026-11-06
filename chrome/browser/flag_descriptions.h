@@ -402,17 +402,7 @@ inline constexpr char
         "Search. "
         "Requires #customize-chrome-wallpaper-search to be enabled too.";
 
-inline constexpr char kEnableCancelUploadOnContentAnalysisName[] =
-    "Cancel file uploads on content analysis";
-inline constexpr char kEnableCancelUploadOnContentAnalysisDescription[] =
-    "Allows users to cancel file uploads while content analysis is in "
-    "progress.";
 
-inline constexpr char kDataControlsSearchWithName[] =
-    "Data Controls enforcement for search context menu item";
-inline constexpr char kDataControlsSearchWithDescription[] =
-    "Enables the Enterprise Data Controls for restricting data exfiltration "
-    "with the \"Search with...\" context menu item.";
 
 inline constexpr char kDataSharingName[] = "Data Sharing";
 
@@ -825,11 +815,6 @@ inline constexpr char kSessionEncryptionName[] = "Session Encryption";
 inline constexpr char kSessionEncryptionDescription[] =
     "Enable encryption for sessions";
 
-inline constexpr char kBrowserLaunchMetadataReportingName[] =
-    "Browser launch metadata reporting";
-inline constexpr char kBrowserLaunchMetadataReportingDescription[] =
-    "Enables the collection and reporting of browser launch-related metadata "
-    "for Chrome Enterprise, including CLI switches and launch timestamp";
 
 inline constexpr char kBorealisBigGlName[] = "Borealis Big GL";
 inline constexpr char kBorealisBigGlDescription[] =
@@ -1039,9 +1024,6 @@ inline constexpr char kHttpCacheCustomBackendDescription[] =
     "overridden by the CacheEncryptionEnabled enterprise policy on supported "
     "platforms.";
 
-inline constexpr char kHttpHeadersInjectionName[] = "HTTP Headers Injection";
-inline constexpr char kHttpHeadersInjectionDescription[] =
-    "Enables injection of custom HTTP headers in network requests.";
 
 inline constexpr char kVariableSystemFontSupportOnWindowsName[] =
     "Variable system font support on Windows";
@@ -1354,10 +1336,6 @@ inline constexpr char kEnableAiSubscriptionAvatarRingDescription[] =
     "Enables the AI subscription level decorative ring around the user's "
     "avatar.";
 
-inline constexpr char kEnableContentAnalysisClipboardCopyName[] =
-    "Enable content analysis clipboard copy";
-inline constexpr char kEnableContentAnalysisClipboardCopyDescription[] =
-    "Enables content analysis checks for the clipboard copy action.";
 
 inline constexpr char kEnableExperimentalCookieFeaturesName[] =
     "Enable experimental cookie features";
@@ -1519,10 +1497,6 @@ inline constexpr char kEnableGpuServiceLoggingName[] =
 inline constexpr char kEnableGpuServiceLoggingDescription[] =
     "Enable printing the actual GL driver calls.";
 
-inline constexpr char kEnterpriseIsolatedModeName[] =
-    "Force Enterprise Isolated Mode";
-inline constexpr char kEnterpriseIsolatedModeDescription[] =
-    "Force Enterprise Isolated Mode to replace Incognito mode.";
 
 inline constexpr char kEnableIsolatedWebAppsName[] = "Enable Isolated Web Apps";
 inline constexpr char kEnableIsolatedWebAppsDescription[] =
@@ -2098,10 +2072,6 @@ inline constexpr char kCastEnableStreamingWithHiDPIDescription[] =
     "reduce performance on some platforms and also improve quality of video "
     "frames.";
 
-inline constexpr char kChromeWebStoreNavigationThrottleName[] =
-    "Chrome Web Store navigation throttle";
-inline constexpr char kChromeWebStoreNavigationThrottleDescription[] =
-    "When enabled, passes DM Token to the Chrome Web Store.";
 
 inline constexpr char kChromeDarkNeutrals26Name[] = "Chrome Dark Neutrals 26";
 inline constexpr char kChromeDarkNeutrals26Description[] =
@@ -2975,10 +2945,6 @@ inline constexpr char kProfileDiscOnAllPagesDescription[] =
     "Enables showing the Signin Button Profile Disc in the toolbar on all "
     "pages, rather than solely the NTP.";
 
-inline constexpr char kProfileSignalsReportingEnabledName[] =
-    "Profile Signals Reporting Enabled";
-inline constexpr char kProfileSignalsReportingEnabledDescription[] =
-    "Enables the profile signals reporting flow for Chrome Enterprise.";
 
 inline constexpr char kOrganizerPanelName[] = "Organizer Panel";
 inline constexpr char kOrganizerPanelDescription[] =
@@ -3190,10 +3156,6 @@ inline constexpr char kDynamicSearchUpdateAnimationDescription[] =
     "animations are preempted. Shortened animation durations configurable "
     "(unit: milliseconds).";
 
-inline constexpr char kSaasUsageReportingName[] = "Saas Usage Reporting";
-inline constexpr char kSaasUsageReportingDescription[] =
-    "Enable reporting of SaaS usage. This feature only takes effect if a "
-    "related enterprise policy is also configured by an administrator.";
 
 inline constexpr char kDeferOsClipboardReadCallToGetTypeName[] =
     "Defer OS Clipboard Read Call To GetType";
@@ -4051,12 +4013,6 @@ inline constexpr char kAndroidDocumentPictureInPictureDescription[] =
     "Enables Document Picture-In-Picture API allowing websites to open "
     "new floating always-on-top window with arbitrary HTML content.";
 
-inline constexpr char kAndroidEnterpriseScreenshotProtectionName[] =
-    "Enable unified screenshot protection controller on Android";
-inline constexpr char kAndroidEnterpriseScreenshotProtectionDescription[] =
-    "Enables a new screenshot protection controller that replaces the "
-    "incognito-only controller. Enterprise enrolled devices can also have "
-    "normal pages protected when determined by their admin.";
 
 inline constexpr char kAndroidElegantTextHeightName[] =
     "Android Elegant Text Height";
@@ -5220,12 +5176,6 @@ inline constexpr char kBrowserInitiatedAutomaticPictureInPictureDescription[] =
     "When enabled, allows the browser to automatically enter picture in "
     "picture when a series of conditions are met.";
 
-inline constexpr char kDeviceSignalsBackfillDisclaimerName[] =
-    "Startup Enterprise Signals Disclaimer";
-inline constexpr char kDeviceSignalsBackfillDisclaimerDescription[] =
-    "Enables the Startup Enterprise Signals Disclaimer. The disclaimer will be "
-    "shown to managed users missing the device signals permission on chrome "
-    "startup.";
 
 inline constexpr char kPictureInPictureMuteControlName[] =
     "Picture-in-Picture Mute Control";
@@ -5749,11 +5699,6 @@ inline constexpr char kEnterpriseReportingUIName[] =
 inline constexpr char kEnterpriseReportingUIDescription[] =
     "When enabled, allows for chrome://enterprise-reporting to be visited";
 
-inline constexpr char kEnterpriseTabTitleReportingName[] =
-    "Enterprise Tab Title Reporting";
-inline constexpr char kEnterpriseTabTitleReportingDescription[] =
-    "Enables the reporting of destination tab titles in Chrome Enterprise URL "
-    "navigation logs.";
 
 inline constexpr char kESimEmptyActivationCodeSupportedName[] =
     "Enable support for empty activation codes in eSIM activation dialog";
@@ -6858,11 +6803,6 @@ inline constexpr char
         "Enables including the 'aud' (audience) claim in Device Bound "
         "Session Credentials registration and refresh JWT payloads.";
 
-inline constexpr char kEnableManagementPromotionBannerName[] =
-    "Enable Management Promotion Banner";
-inline constexpr char kEnableManagementPromotionBannerDescription[] =
-    "Enables showing the management promotion banner on chrome://management "
-    "page.";
 
 inline constexpr char kVariationsSeedCorpusName[] = "Variations seed corpus";
 inline constexpr char kVariationsSeedCorpusDescription[] =
@@ -6879,15 +6819,7 @@ inline constexpr char kHandleMdmErrorsForDasherAccountsOnAndroidName[] =
 inline constexpr char kHandleMdmErrorsForDasherAccountsOnAndroidDescription[] =
     "Enables MDM error handling for managed accounts on Android.";
 
-inline constexpr char kEnableOktaSSOName[] =
-    "Enable Okta SSO for enterprise browsers.";
-inline constexpr char kEnableOktaSSODescription[] =
-    "Enables native support for Okta SSO on managed MacOS devices.";
 
-inline constexpr char kEnablePingSSOName[] =
-    "Enable Ping SSO for enterprise browsers.";
-inline constexpr char kEnablePingSSODescription[] =
-    "Enables native support for Ping Identity SSO on managed MacOS devices.";
 
 inline constexpr char kShowFrozenUpdateNotificationName[] =
     "Show Frozen Update Notifications.";

@@ -63,7 +63,6 @@ static_library("service") {
     "//build/config/chromebox_for_meetings:buildflags",
     "//components/country_codes",
     "//components/encrypted_messages",
-    "//components/enterprise/browser/groups:prefs",
     "//components/keyed_service/core",
     "//components/language/core/browser",
     "//components/network_time",

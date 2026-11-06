@@ -32,10 +32,8 @@
 #include "base/version_info/version_info.h"
 #include "build/chromeos_buildflags.h"
 #include "components/crx_file/id_util.h"
-#include "components/enterprise/browser/reporting/common_pref_names.h"
 #include "components/keyed_service/content/browser_context_keyed_service_shutdown_notifier_factory.h"
 #include "components/keyed_service/core/keyed_service_shutdown_notifier.h"
-#include "components/policy/core/common/cloud/cloud_policy_manager.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
 #include "components/safe_browsing/buildflags.h"
@@ -82,7 +80,6 @@
 #include "url/gurl.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "components/enterprise/browser/promotion/promotion_prefs.h"
 #include "components/enterprise/promotion_types.h"
 #endif  //! BUILDFLAG(IS_ANDROID)
 
@@ -332,62 +329,6 @@ ConvertExtensionInstallStatusForAPI(ExtensionInstallStatus status) {
       return api::webstore_private::ExtensionInstallStatus::kCorrupted;
   }
   return api::webstore_private::ExtensionInstallStatus::kNone;
-}
-
-// Requests extension by adding the id into the pending list in Profile Prefs if
-// available. Returns |kRequestPending| if the request has been added
-// successfully. Otherwise, returns the initial extension install status.
-ExtensionInstallStatus AddExtensionToPendingList(
-    const ExtensionId& id,
-    content::BrowserContext* browser_context,
-    const std::string& justification) {
-  // There is no need to check whether the extension's required permissions or
-  // manifest type are blocked  by the enterprise policy because extensions
-  // blocked by those are still requestable.
-  ExtensionInstallStatus status =
-      GetWebstoreExtensionInstallStatus(id, browser_context);
-  // We put the |id| into the pending request list if it can be requested.
-  // Ideally we should not get here if the status is not |kCanRequest|. However
-  // policy might be updated between the client calling |requestExtension| or
-  // |beginInstallWithManifest3| and us checking the status here. Handle
-  // approvals and rejections for this case by adding the |id| into the pending
-  // list. ExtensionRequestObserver will observe this update and show the
-  // notificaion immediately.
-  // Please note that only the |id| that can be requested will be uploaded to
-  // the server and ExtensionRequestObserver will also show notifications once
-  // it's approved or rejected.
-  // |id| will be removed from the pending list once the notification is
-  // confirmed or closed by the user.
-  if (status != kCanRequest && status != kInstallable &&
-      status != kBlockedByPolicy && status != kForceInstalled) {
-    return status;
-  }
-
-  PrefService* prefs = user_prefs::UserPrefs::Get(browser_context);
-  ScopedDictPrefUpdate pending_requests_update(
-      prefs, enterprise_reporting::kCloudExtensionRequestIds);
-  DCHECK(!pending_requests_update->Find(id));
-  base::DictValue request_data;
-  request_data.Set(extension_misc::kExtensionRequestTimestamp,
-                   ::base::TimeToValue(base::Time::Now()));
-  if (!justification.empty()) {
-    request_data.Set(extension_misc::kExtensionWorkflowJustification,
-                     justification);
-  }
-  pending_requests_update->Set(id, std::move(request_data));
-  // Query the new extension install status again. It should be changed from
-  // |kCanRequest| to |kRequestPending| if the id has been added into pending
-  // list successfully. Otherwise, it shouldn't be changed.
-  ExtensionInstallStatus new_status =
-      GetWebstoreExtensionInstallStatus(id, browser_context);
-#if DCHECK_IS_ON()
-  if (status == kCanRequest) {
-    DCHECK_EQ(kRequestPending, new_status);
-  } else {
-    DCHECK_EQ(status, new_status);
-  }
-#endif  // DCHECK_IS_ON()
-  return new_status;
 }
 
 // Creates the URLLoaderFactory for fetching the install-confirmation icon whose
@@ -733,9 +674,7 @@ void WebstorePrivateBeginInstallWithManifest3Function::OnRequestPromptDone(
     ExtensionInstallPromptClient::DoneCallbackPayload payload) {
   switch (payload.result) {
     case ExtensionInstallPromptClient::Result::ACCEPTED:
-      AddExtensionToPendingList(details().id, browser_context_,
-                                payload.justification);
-      break;
+      // Shuttle: cloud extension requests are removed; nothing to record.
     case ExtensionInstallPromptClient::Result::USER_CANCELED:
     case ExtensionInstallPromptClient::Result::ABORTED:
       break;
@@ -1295,88 +1234,13 @@ WebstorePrivateShouldShowEnterprisePromotionBannerFunction::
 WebstorePrivateShouldShowEnterprisePromotionBannerFunction::
     ~WebstorePrivateShouldShowEnterprisePromotionBannerFunction() = default;
 
-void WebstorePrivateShouldShowEnterprisePromotionBannerFunction::
-    SetFakePromotionEligibilityCheckerForTesting(
-        std::unique_ptr<enterprise_promotion::PromotionEligibilityChecker>
-            checker) {
-  promotion_eligibility_checker_ = std::move(checker);
-}
-
 ExtensionFunction::ResponseAction
 WebstorePrivateShouldShowEnterprisePromotionBannerFunction::Run() {
-  PrefService* prefs = user_prefs::UserPrefs::Get(browser_context());
-  // To reduce server requests, use cache result if it is valid.
-  const base::Time expiration_time =
-      prefs->GetTime(pref_names::kEnterprisePromotionExpirationTime);
-  if (!expiration_time.is_null() && base::Time::Now() <= expiration_time) {
-    std::string promotion_type_string =
-        api::webstore_private::ToString(WebstorePromotionBannerPrefToApiResult(
-            static_cast<enterprise::PromotionType>(prefs->GetInteger(
-                enterprise_promotion::kEnterprisePromotionEligibility))));
-    return RespondNow(WithArguments(promotion_type_string));
-  }
-
-  // If multiples tags are opened at the same time without valid cache, only the
-  // first page will be checked and potential get banner.
-  enterprise::PromotionType default_pref =
-      enterprise::PromotionType::kUnspecified;
-  prefs->SetInteger(enterprise_promotion::kEnterprisePromotionEligibility,
-                    static_cast<int>(default_pref));
-  prefs->SetTime(pref_names::kEnterprisePromotionExpirationTime,
-                 base::Time::Now() + base::Days(1));
-
-  // A fake checker may be created ahead of time in test.
-  if (!promotion_eligibility_checker_) {
-    promotion_eligibility_checker_ =
-        ExtensionsAPIClient::Get()
-            ->GetWebstorePrivateAPIDelegate()
-            ->CreatePromotionEligibilityChecker(
-                browser_context(),
-                prefs->GetBoolean(pref_names::kHasDismissedEnterprisePromotion),
-                base::FeatureList::IsEnabled(
-                    extensions_features::kEnableShouldShowPromotion));
-
-    // If checker can't be created, return the default response for the
-    // unspecified.
-    if (!promotion_eligibility_checker_) {
-      return RespondNow(WithArguments(api::webstore_private::ToString(
-          WebstorePromotionBannerPrefToApiResult(default_pref))));
-    }
-  }
-
-  promotion_eligibility_checker_->MaybeCheckPromotionEligibility(base::BindOnce(
-      &WebstorePrivateShouldShowEnterprisePromotionBannerFunction::
-          OnPromotionEligibilityDetermined,
-      this));
-
-  return RespondLater();
-}
-
-void WebstorePrivateShouldShowEnterprisePromotionBannerFunction::
-    OnPromotionEligibilityDetermined(
-        enterprise_management::GetUserEligiblePromotionsResponse response) {
-  enterprise::PromotionType pref_promotion_type;
-
-  switch (response.promotions().cws_privacy_details_promotion()) {
-    case enterprise_management::CHROME_ENTERPRISE_CORE:
-      pref_promotion_type = enterprise::PromotionType::kChromeEnterpriseCore;
-      break;
-    case enterprise_management::CHROME_ENTERPRISE_PREMIUM:
-      pref_promotion_type = enterprise::PromotionType::kChromeEnterprisePremium;
-      break;
-    default:
-      pref_promotion_type = enterprise::PromotionType::kUnspecified;
-      break;
-  }
-
-  PrefService* prefs = user_prefs::UserPrefs::Get(browser_context());
-  prefs->SetInteger(enterprise_promotion::kEnterprisePromotionEligibility,
-                    static_cast<int>(pref_promotion_type));
-  prefs->SetTime(pref_names::kEnterprisePromotionExpirationTime,
-                 base::Time::Now() + base::Days(1));
-
-  Respond(WithArguments(api::webstore_private::ToString(
-      WebstorePromotionBannerPrefToApiResult(pref_promotion_type))));
+  // Shuttle: the enterprise promotion eligibility check (DM server) is
+  // removed; never show the banner.
+  return RespondNow(WithArguments(api::webstore_private::ToString(
+      WebstorePromotionBannerPrefToApiResult(
+          enterprise::PromotionType::kUnspecified))));
 }
 
 WebstorePrivateLogEnterprisePromoShownFunction::
@@ -1398,8 +1262,6 @@ ExtensionFunction::ResponseAction
 WebstorePrivateOnEnterprisePromoClickFunction::Run() {
   PrefService* prefs = user_prefs::UserPrefs::Get(browser_context());
   prefs->SetBoolean(pref_names::kHasDismissedEnterprisePromotion, true);
-  prefs->SetInteger(enterprise_promotion::kEnterprisePromotionEligibility,
-                    static_cast<int>(enterprise::PromotionType::kUnspecified));
 
   base::UmaHistogramEnumeration("Enterprise.CwsPromotionBannerEvent",
                                 enterprise::CwsPromotionBannerEvent::kClicked);

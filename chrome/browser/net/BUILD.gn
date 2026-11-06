@@ -200,9 +200,6 @@ source_set("impl") {
     "//components/embedder_support",
     "//components/embedder_support:user_agent",
     "//components/enterprise",
-    "//components/enterprise/client_certificates/core",
-    "//components/enterprise/connectors/core",
-    "//components/enterprise/encryption/cache",
     "//components/language/core/browser",
     "//components/link_header_util",
     "//chrome/common",
@@ -361,10 +358,5 @@ if (is_android) {
       "//testing/gtest",
     ]
   }
-} else {
-}
-
-if (!is_android) {
-
 }
 

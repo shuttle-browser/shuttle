@@ -63,8 +63,6 @@
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/content_settings/sound_content_setting_observer.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_navigation_controller.h"
-#include "chrome/browser/enterprise/reporting/saas_usage/saas_usage_navigation_observer.h"
 #include "chrome/browser/external_protocol/external_protocol_observer.h"
 #include "chrome/browser/loader/from_gws_navigation_and_keep_alive_request_observer.h"
 #include "chrome/browser/navigation_predictor/navigation_predictor_preconnect_client.h"
@@ -118,7 +116,6 @@
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "components/download/content/factory/navigation_monitor_factory.h"
 #include "components/download/content/public/download_navigation_observer.h"
-#include "components/enterprise/browser/reporting/reporting_features.h"
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 #include "chrome/browser/metrics/desktop_session_duration/desktop_session_duration_observer.h"
 #endif
@@ -176,7 +173,6 @@
 #endif
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-#include "chrome/browser/enterprise/connectors/referrer_cache_utils.h"
 #include "chrome/browser/safe_browsing/chrome_safe_browsing_tab_observer_delegate.h"
 #include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
@@ -276,9 +272,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
   }  // IsInNormalWindow() end.
 
   tab_dialog_manager_ = std::make_unique<TabDialogManager>(&tab);
-
-  data_protection_tab_controller_ = std::make_unique<
-      enterprise_data_protection::DataProtectionNavigationController>(&tab);
 
   // Create the HttpAuthCacheStatus to start observing resource load
   // completions.
@@ -382,15 +375,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
         std::make_unique<back_to_opener::BackToOpenerController>(tab);
   }
 
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
-    BUILDFLAG(IS_CHROMEOS)
-  if (base::FeatureList::IsEnabled(enterprise_reporting::kSaasUsageReporting)) {
-    saas_usage_navigation_observer_ =
-        std::make_unique<enterprise_reporting::SaasUsageNavigationObserver>(
-            tab.GetContents());
-  }
-#endif
-
   uma_browsing_activity_tab_helper_ =
       std::make_unique<UMABrowsingActivityTabHelper>(tab.GetContents());
 
@@ -467,7 +451,7 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
       safe_browsing::SafeBrowsingNavigationObserverManagerFactory::
           GetForBrowserContext(profile),
       profile->GetPrefs(), g_browser_process->safe_browsing_service(),
-      enterprise_connectors::IsReferrerChainNeededForEnterprise(profile));
+      /*is_referrer_chain_needed_for_enterprise=*/false);
   if (g_browser_process->safe_browsing_service()) {
     safe_browsing::AsyncCheckTracker::CreateForWebContents(
         tab.GetContents(),
@@ -787,7 +771,7 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
       safe_browsing::SafeBrowsingNavigationObserverManagerFactory::
           GetForBrowserContext(profile),
       profile->GetPrefs(), g_browser_process->safe_browsing_service(),
-      enterprise_connectors::IsReferrerChainNeededForEnterprise(profile));
+      /*is_referrer_chain_needed_for_enterprise=*/false);
   if (g_browser_process->safe_browsing_service()) {
     safe_browsing::AsyncCheckTracker::CreateForWebContents(
         new_contents, g_browser_process->safe_browsing_service()->ui_manager(),

@@ -20,7 +20,6 @@
 #include "chrome/browser/download/download_ui_safe_browsing_util.h"
 #include "chrome/browser/download/offline_item_utils.h"
 #include "chrome/browser/download/status_text_builder_utils.h"
-#include "chrome/browser/enterprise/connectors/common.h"
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager.h"
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager_factory.h"
 #include "chrome/browser/ui/chrome_pages.h"
@@ -672,11 +671,7 @@ bool DownloadUIModel::IsCommandEnabled(
     case DownloadCommands::CANCEL_DEEP_SCAN:
       return true;
     case DownloadCommands::REVIEW:
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-      return true;
-#else
       return false;
-#endif  // BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
     case DownloadCommands::OPEN_SAFE_BROWSING_SETTING:
       return CanUserTurnOnSafeBrowsing(profile());
   }

@@ -471,11 +471,6 @@ template("chrome_extra_paks") {
     if (enable_compose) {
     }
 
-    if (enterprise_watermark) {
-      sources += [ "$root_gen_dir/chrome/watermark_resources.pak" ]
-      deps += [ "//chrome/browser/resources/watermark:resources" ]
-    }
-
     if (is_win || is_mac || is_linux) {
       sources += [
         "$root_gen_dir/chrome/browser_switch_resources.pak",

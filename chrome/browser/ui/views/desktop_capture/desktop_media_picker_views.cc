@@ -17,7 +17,6 @@
 #include "base/strings/strcat.h"
 #include "base/types/expected.h"
 #include "build/build_config.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_features.h"
 #include "chrome/browser/media/webrtc/desktop_media_list.h"
 #include "chrome/browser/media/webrtc/desktop_media_picker_controller.h"
 #include "chrome/browser/media/webrtc/desktop_media_picker_manager.h"
@@ -1289,13 +1288,6 @@ bool DesktopMediaPickerDialogView::IsDialogButtonEnabled(
   if (!selection.has_value()) {
     return false;
   }
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection) &&
-      controller->IsSourceSharingBlocked(*selection)) {
-    return false;
-  }
-#endif
   return true;
 }
 
@@ -1372,22 +1364,6 @@ void DesktopMediaPickerDialogView::AcceptSource() {
 
 void DesktopMediaPickerDialogView::AcceptSpecificSource(
     const DesktopMediaID& source) {
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection)) {
-    // Only the category matching `source.type` can own `source`; the other
-    // controllers would scan their full source list only to report no match.
-    for (const auto& category : categories_) {
-      if (AsDesktopMediaIdType(category.type) != source.type) {
-        continue;
-      }
-      if (category.controller->IsSourceSharingBlocked(source)) {
-        return;
-      }
-      break;
-    }
-  }
-#endif
   VLOG(1) << "DMPDV::AcceptSpecificSource: source_id = " << source.id;
 
   if (tabbed_pane_) {

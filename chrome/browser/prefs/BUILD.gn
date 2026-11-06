@@ -117,11 +117,7 @@ source_set("impl") {
     "//components/content_settings/core/browser",
     "//components/custom_handlers",
     "//components/domain_reliability:prefs",
-    "//components/enterprise/browser/groups:prefs",
     "//components/enterprise/browser/identifiers",
-    "//components/enterprise/browser/promotion:prefs",
-    "//components/enterprise/connectors/core",
-    "//components/enterprise/network_header_injection/core",
     "//components/image_fetcher/core/cache",
     "//components/language/content/browser",
     "//components/language/content/browser/ulp_language_code_locator",
@@ -260,7 +256,6 @@ source_set("impl") {
       "//chrome/browser/chromeos/reporting",
       "//chrome/browser/chromeos/upload_office_to_cloud",
       "//chrome/browser/extensions/api/document_scan:profile_prefs_registry_util",
-      "//chrome/browser/extensions/api/enterprise_platform_keys:enterprise_platform_keys_registry_util",
       "//chrome/browser/policy:onc",
       "//chrome/browser/policy:system_features_disable_list",
       "//chrome/browser/ui/ash/projector",
@@ -338,9 +333,6 @@ source_set("impl") {
     ]
   }
 
-  if (!is_android || is_desktop_android) {
-  }
-
   if (enable_extensions) {
     deps += [
       "//extensions/browser/api/runtime",
@@ -358,13 +350,6 @@ source_set("impl") {
     ]
   }
 
-  if (enable_on_device_translation) {
-  }
-
-  if (enterprise_data_controls) {
-    deps += [ "//components/enterprise/data_controls/core/browser" ]
-  }
-
   if (enable_pdf) {
     deps += [ "//chrome/browser/pdf:pdf_pref_names" ]
   }
@@ -376,11 +361,6 @@ source_set("impl") {
   if (is_mac) {
     deps += [
       "//chrome/browser/ui/cocoa",
-    ]
-  }
-
-  if (enable_webui_ntp) {
-    deps += [
     ]
   }
 
@@ -447,5 +427,3 @@ source_set("util_impl") {
   }
 }
 
-if (!is_android) {
-}

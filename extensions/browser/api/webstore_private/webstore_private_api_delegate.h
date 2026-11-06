@@ -33,10 +33,6 @@ class SafeBrowsingNavigationObserverManager;
 }  // namespace safe_browsing
 #endif
 
-namespace enterprise_promotion {
-class PromotionEligibilityChecker;
-}  // namespace enterprise_promotion
-
 namespace extensions {
 
 class Extension;
@@ -101,12 +97,6 @@ class WebstorePrivateAPIDelegate {
   GetSafeBrowsingNavigationObserverManager(
       content::BrowserContext* context) = 0;
 #endif
-
-  // Maybe create promotion eligibility checker.
-  virtual std::unique_ptr<enterprise_promotion::PromotionEligibilityChecker>
-  CreatePromotionEligibilityChecker(content::BrowserContext* context,
-                                    bool dismissed_banner_pref,
-                                    bool feature_enabled) = 0;
 };
 
 }  // namespace extensions

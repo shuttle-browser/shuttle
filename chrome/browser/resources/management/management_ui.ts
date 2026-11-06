@@ -10,7 +10,6 @@ import 'chrome://resources/cr_elements/cr_toolbar/cr_toolbar.js';
 import 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
 import 'chrome://resources/cr_elements/icons.html.js';
 import './icons.html.js';
-import './promotion_banner.js';
 import '/strings.m.js';
 
 // <if expr="not is_android">
@@ -25,7 +24,7 @@ import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {sanitizeInnerHtml} from 'chrome://resources/js/parse_html_subset.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
-import type {Application, BrowserReportingResponse, Extension, ManagementBrowserProxy, ThreatProtectionInfo} from './management_browser_proxy.js';
+import type {Application, BrowserReportingResponse, Extension, ManagementBrowserProxy} from './management_browser_proxy.js';
 import { ManagementBrowserProxyImpl, ReportingType} from './management_browser_proxy.js';
 // <if expr="is_chromeos">
 import type {DeviceReportingResponse} from './management_browser_proxy.js';
@@ -74,11 +73,6 @@ export class ManagementUiElement extends ManagementUiElementBase {
       browserReportingInfo_: {type: Array},
 
       /**
-       * List of messages related to profile reporting.
-       */
-      profileReportingInfo_: {type: Array},
-
-      /**
        * List of messages related to extension reporting.
        */
       extensions_: {type: Array},
@@ -94,11 +88,6 @@ export class ManagementUiElement extends ManagementUiElementBase {
       managedWebsites_: {type: Array},
 
       managedWebsitesSubtitle_: {type: String},
-
-      /**
-       * Whether the promotion banner should be shown.
-       */
-      shouldShowPromotion_: {type: Boolean},
 
       // <if expr="is_chromeos">
       /**
@@ -133,17 +122,14 @@ export class ManagementUiElement extends ManagementUiElementBase {
       // </if>
 
       managed_: {type: Boolean},
-      threatProtectionInfo_: {type: Object},
     };
   }
 
   protected accessor applications_: Application[]|null = null;
   protected accessor browserReportingInfo_: BrowserReportingData[]|null = null;
-  protected accessor profileReportingInfo_: BrowserReportingData[]|null = null;
   protected accessor extensions_: Extension[]|null = null;
   protected accessor managedWebsites_: string[]|null = null;
   protected accessor managedWebsitesSubtitle_: string = '';
-  protected accessor shouldShowPromotion_: boolean = false;
 
   // <if expr="is_chromeos">
   protected accessor deviceReportingInfo_: DeviceReportingResponse[]|null =
@@ -169,7 +155,6 @@ export class ManagementUiElement extends ManagementUiElementBase {
   protected accessor managed_: boolean = false;
   protected accessor applicationReportingSubtitle_: string = '';
   protected accessor extensionReportingSubtitle_: string = '';
-  protected accessor threatProtectionInfo_: ThreatProtectionInfo|null = null;
   private browserProxy_: ManagementBrowserProxy =
       ManagementBrowserProxyImpl.getInstance();
 
@@ -180,7 +165,6 @@ export class ManagementUiElement extends ManagementUiElementBase {
     document.documentElement.classList.remove('loading');
     this.updateManagedFields_();
     this.initReportingInfo_();
-    this.getThreatProtectionInfo_();
 
     // <if expr="not is_android">
     const enableWebuiRefresh2026 =
@@ -196,26 +180,13 @@ export class ManagementUiElement extends ManagementUiElementBase {
         (reportingInfo: BrowserReportingResponse[]) =>
             this.onBrowserReportingInfoReceived_(reportingInfo));
 
-    this.addWebUiListener(
-        'profile-reporting-info-updated',
-        (reportingInfo: BrowserReportingResponse[]) =>
-            this.onProfileReportingInfoReceived_(reportingInfo));
-
     this.addWebUiListener('managed_data_changed', () => {
       this.updateManagedFields_();
     });
 
-    this.addWebUiListener(
-        'threat-protection-info-updated',
-        (info: ThreatProtectionInfo) => this.threatProtectionInfo_ = info);
-
     this.getExtensions_();
     this.getManagedWebsites_();
     this.getApplications_();
-    // Assign the promise result directly to the property
-    this.browserProxy_.shouldShowPromotion().then(shouldShowPromotion => {
-      this.shouldShowPromotion_ = shouldShowPromotion;
-    });
     // <if expr="is_chromeos">
     this.getDeviceReportingInfo_();
     this.getLocalTrustRootsInfo_();
@@ -226,8 +197,6 @@ export class ManagementUiElement extends ManagementUiElementBase {
   private initReportingInfo_() {
     this.browserProxy_.initBrowserReportingInfo().then(
         reportingInfo => this.onBrowserReportingInfoReceived_(reportingInfo));
-    this.browserProxy_.initProfileReportingInfo().then(
-        reportingInfo => this.onProfileReportingInfoReceived_(reportingInfo));
   }
 
   private onBrowserReportingInfoReceived_(
@@ -258,14 +227,6 @@ export class ManagementUiElement extends ManagementUiElementBase {
         BrowserReportingData[];
   }
 
-
-  private onProfileReportingInfoReceived_(
-      reportingInfo: BrowserReportingResponse[]) {
-    this.profileReportingInfo_ =
-        reportingInfo.map((info) => ({
-                            messageIds: [info.messageId],
-                          }));
-  }
   private getExtensions_() {
     this.browserProxy_.getExtensions().then(extensions => {
       this.extensions_ = extensions;
@@ -282,21 +243,6 @@ export class ManagementUiElement extends ManagementUiElementBase {
     this.browserProxy_.getApplications().then(applications => {
       this.applications_ = applications;
     });
-  }
-
-  private getThreatProtectionInfo_() {
-    this.browserProxy_.getThreatProtectionInfo().then(info => {
-      this.threatProtectionInfo_ = info;
-    });
-  }
-
-  /**
-   * @return Whether there is threat protection info to show.
-   */
-  protected showThreatProtectionInfo_(): boolean {
-    return !!this.threatProtectionInfo_ &&
-        (this.threatProtectionInfo_.info.length > 0 ||
-         !!this.threatProtectionInfo_.showSecureGatewayDisclosure);
   }
 
   // <if expr="is_chromeos">
@@ -441,15 +387,6 @@ export class ManagementUiElement extends ManagementUiElementBase {
   }
 
   /**
-   * @return Whether there are profile reporting info to show with new format.
-   */
-  protected showProfileReportingInfo_(): boolean {
-    return !!this.profileReportingInfo_ &&
-        this.profileReportingInfo_.length > 0;
-  }
-
-
-  /**
    * @return Whether there are extension reporting info to show.
    */
   protected showExtensionReportingInfo_(): boolean {
@@ -522,10 +459,6 @@ export class ManagementUiElement extends ManagementUiElementBase {
     }
   }
   // </if>
-
-  protected onPromotionDismissed_() {
-    this.shouldShowPromotion_ = false;
-  }
 
   private updateManagedFields_() {
     this.browserProxy_.getContextualManagedData().then(data => {

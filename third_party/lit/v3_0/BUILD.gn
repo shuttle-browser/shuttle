@@ -54,7 +54,6 @@ ts_library("build_ts") {
     "//chrome/browser/resources/tab_group_home:build_ts",
     "//chrome/browser/resources/unexportable_keys_internals:build_ts",
     "//chrome/browser/resources/updater:build_ts",
-    "//chrome/browser/resources/watermark:build_ts",
     "//chrome/browser/resources/webnn_internals:build_ts",
     "//chrome/browser/resources/webui_gallery:build_ts",
     "//chrome/test/data/pdf:build_ts",

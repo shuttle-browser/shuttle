@@ -38,8 +38,6 @@
 #include "chrome/browser/browser_features.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/devtools/features.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_features.h"
-#include "chrome/browser/enterprise/platform_auth/platform_auth_features.h"
 #include "chrome/browser/flag_descriptions.h"
 #include "chrome/browser/infobars/infobar_features.h"
 #include "chrome/browser/login_detection/login_detection_util.h"
@@ -78,17 +76,9 @@
 #include "components/component_updater/component_updater_switches.h"
 #include "components/compose/buildflags.h"
 #include "components/content_settings/core/common/features.h"
-#include "components/device_signals/core/common/signals_features.h"
 #include "components/dom_distiller/core/dom_distiller_features.h"
 #include "components/dom_distiller/core/dom_distiller_switches.h"
 #include "components/download/public/common/download_features.h"
-#include "components/enterprise/browser/reporting/reporting_features.h"
-#include "components/enterprise/client_certificates/core/features.h"
-#include "components/enterprise/connectors/core/features.h"
-#include "components/enterprise/data_controls/core/browser/features.h"
-#include "components/enterprise/data_protection/features.h"
-#include "components/enterprise/isolated_mode/isolated_mode_features.h"
-#include "components/enterprise/network_header_injection/core/features.h"
 #include "components/error_page/common/error_page_switches.h"
 #include "components/heavy_ad_intervention/heavy_ad_features.h"
 #include "components/history/core/browser/features.h"
@@ -281,9 +271,6 @@
 
 #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || \
     BUILDFLAG(IS_WIN)
-#include "chrome/browser/enterprise/data_protection/data_protection_features.h"
-#include "chrome/browser/enterprise/profile_management/profile_management_features.h"
-#include "chrome/browser/enterprise/webstore/features.h"
 #endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) ||
         // BUILDFLAG(IS_WIN)
 
@@ -293,11 +280,9 @@
         // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-#include "components/enterprise/platform_auth/platform_auth_features.h"
 #endif
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-#include "components/enterprise/browser/reporting/reporting_features.h"
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
@@ -2655,8 +2640,6 @@ const FeatureEntry::FeatureVariation kSkiaGraphiteVariations[] = {
     {"dawn debug labels enabled", kSkiaGraphite_DebugLabelsEnabled, nullptr},
 };
 
-#if BUILDFLAG(IS_ANDROID)
-#endif  // BUILDFLAG(IS_ANDROID)
 
         // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
 
@@ -3100,15 +3083,6 @@ const FeatureEntry::FeatureVariation kCrossDeviceSigninFromDesktopVariations[] =
          kCrossDeviceSigninFromDesktopDefaultUrl, nullptr},
 };
 
-const FeatureEntry::FeatureParam
-    kDeviceSignalsBackfillDisclaimer_ClearPermissionOnStartup[] = {
-        {"clear_device_signals_permission_on_startup", "true"}};
-
-const FeatureEntry::FeatureVariation
-    kDeviceSignalsBackfillDisclaimerVariations[] = {
-        {"with clearing permission on startup",
-         kDeviceSignalsBackfillDisclaimer_ClearPermissionOnStartup, nullptr},
-};
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
 #if BUILDFLAG(IS_ANDROID)
@@ -3596,8 +3570,6 @@ const FeatureEntry::FeatureVariation kEnterpriseProxyErrorHandlingVariations[] =
 // enums.xml and don't forget to run AboutFlagsHistogramTest unit test to
 // calculate and verify checksum.
 //
-constexpr char kEnterpriseIsolatedModeInternalName[] =
-    "force-enterprise-isolated-mode";
 
 // When adding a new choice, add it to the end of the list.
 const FeatureEntry kFeatureEntries[] = {
@@ -3728,11 +3700,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(safe_browsing::kSafeBrowsingSyncCheckerCheckAllowlist)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
-    {"enable-content-analysis-clipboard-copy",
-     flag_descriptions::kEnableContentAnalysisClipboardCopyName,
-     flag_descriptions::kEnableContentAnalysisClipboardCopyDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(enterprise_connectors::kContentAnalysisClipboardCopy)},
 
     {"smooth-scrolling", flag_descriptions::kSmoothScrollingName,
      flag_descriptions::kSmoothScrollingDescription,
@@ -4155,11 +4122,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kSubmenusInAppMenuLffDescription, kOsAndroid,
      FEATURE_VALUE_TYPE(chrome::android::kSubmenusInAppMenuLff)},
 #endif  // BUILDFLAG(IS_ANDROID)
-    {"enterprise-tab-title-reporting",
-     flag_descriptions::kEnterpriseTabTitleReportingName,
-     flag_descriptions::kEnterpriseTabTitleReportingDescription, kOsAll,
-     FEATURE_VALUE_TYPE(
-         enterprise_data_protection::kEnterpriseTabTitleReporting)},
 #if BUILDFLAG(IS_CHROMEOS)
     {"enterprise-reporting-ui", flag_descriptions::kEnterpriseReportingUIName,
      flag_descriptions::kEnterpriseReportingUIDescription, kOsCrOS,
@@ -4212,11 +4174,6 @@ const FeatureEntry kFeatureEntries[] = {
      SINGLE_VALUE_TYPE(switches::kSitePerProcess)},
 #endif
 
-    {kEnterpriseIsolatedModeInternalName,
-     flag_descriptions::kEnterpriseIsolatedModeName,
-     flag_descriptions::kEnterpriseIsolatedModeDescription, kOsAll,
-     SINGLE_VALUE_TYPE(enterprise_isolated_mode::switches::
-                           kForceEnterpriseIsolatedModeReplacesIncognito)},
 
 #if !BUILDFLAG(IS_ANDROID)
 #if !BUILDFLAG(IS_CHROMEOS)
@@ -4625,8 +4582,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kWebRtcWgcRequireBorderDescription, kOsWin,
      FEATURE_VALUE_TYPE(features::kWebRtcWgcRequireBorder)},
 #endif  // BUILDFLAG(IS_WIN)
-#if defined(TOOLKIT_VIEWS) || BUILDFLAG(IS_ANDROID)
-#endif  // defined(TOOLKIT_VIEWS) || BUILDFLAG(IS_ANDROID)
     {"force-ui-direction", flag_descriptions::kForceUiDirectionName,
      flag_descriptions::kForceUiDirectionDescription, kOsAll,
      MULTI_VALUE_TYPE(kForceUIDirectionChoices)},
@@ -5403,8 +5358,6 @@ const FeatureEntry kFeatureEntries[] = {
                                     "TabStorageSqlitePrototype")},
 #endif  // BUILDFLAG(IS_ANDROID)
 
-#if !BUILDFLAG(IS_ANDROID)
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_MAC)
     {"ca-display-link-in-browser",
@@ -6555,8 +6508,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kEnableOmniboxClientSearchPrefetchDescription, kOsAll,
      FEATURE_VALUE_TYPE(kSearchNavigationPrefetch)},
 
-#if BUILDFLAG(IS_ANDROID)
-#endif
 
 #if BUILDFLAG(ENABLE_PDF)
     {"pdf-xfa-forms", flag_descriptions::kPdfXfaFormsName,
@@ -6682,8 +6633,6 @@ const FeatureEntry kFeatureEntries[] = {
 #else
 #endif
 
-#if BUILDFLAG(IS_ANDROID)
-#endif
 
     {"bind-cookies-to-port", flag_descriptions::kBindCookiesToPortName,
      flag_descriptions::kBindCookiesToPortDescription, kOsAll,
@@ -6964,11 +6913,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(
          blink::features::kBrowserInitiatedAutomaticPictureInPicture)},
 
-    {"browser-launch-metadata-reporting",
-     flag_descriptions::kBrowserLaunchMetadataReportingName,
-     flag_descriptions::kBrowserLaunchMetadataReportingDescription,
-     kOsLinux | kOsMac | kOsWin,
-     FEATURE_VALUE_TYPE(enterprise_reporting::kBrowserLaunchMetadataReporting)},
 
     {"picture-in-picture-mute-control",
      flag_descriptions::kPictureInPictureMuteControlName,
@@ -7853,8 +7797,6 @@ const FeatureEntry kFeatureEntries[] = {
 
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 
-#if !BUILDFLAG(IS_ANDROID)
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_CHROMEOS)
     {"conch", flag_descriptions::kConchName,
@@ -7959,10 +7901,6 @@ const FeatureEntry kFeatureEntries[] = {
 
 #endif  // BUILDFLAG(IS_ANDROID)
 
-    {"data-controls-search-with",
-     flag_descriptions::kDataControlsSearchWithName,
-     flag_descriptions::kDataControlsSearchWithDescription, kOsAll,
-     FEATURE_VALUE_TYPE(data_controls::kDataControlsSearchWith)},
 
     // LINT.IfChange(DataSharingVersioning)
     {"shared-data-types-kill-switch",
@@ -8127,8 +8065,6 @@ const FeatureEntry kFeatureEntries[] = {
      kOsAndroid,
      FEATURE_VALUE_TYPE(chrome::android::kGlicBackgroundActuationTabGroupSync)},
 #endif  // BUILDFLAG(IS_ANDROID)
-#if BUILDFLAG(IS_ANDROID)
-#endif  // BUILDFLAG(IS_ANDROID)
 
     {"glic-print-menu-item", flag_descriptions::kGlicPrintMenuItemName,
      flag_descriptions::kGlicPrintMenuItemDescription,
@@ -8173,8 +8109,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kGlicCaaGuestErrorDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(features::kGlicCaaGuestError)},
 
-#if !BUILDFLAG(IS_ANDROID)
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_ANDROID)
     {"default-browser-promo-entry-point",
@@ -8197,12 +8131,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kHappyEyeballsV3Description, kOsAll,
      FEATURE_VALUE_TYPE(net::features::kHappyEyeballsV3)},
 
-#if !BUILDFLAG(IS_ANDROID)
-    {"management-promotion-banner-flag",
-     flag_descriptions::kEnableManagementPromotionBannerName,
-     flag_descriptions::kEnableManagementPromotionBannerDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(features::kEnableManagementPromotionBanner)},
-#endif
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 
@@ -8291,8 +8219,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(features::kAutomaticUsbDetach)},
 #endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX)
 
-#if !BUILDFLAG(IS_ANDROID)
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
@@ -8343,14 +8269,6 @@ const FeatureEntry kFeatureEntries[] = {
                                     "AndroidWindowOcclusion")},
 #endif  // BUILDFLAG(IS_ANDROID)
 
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-    {"chrome-web-store-navigation-throttle",
-     flag_descriptions::kChromeWebStoreNavigationThrottleName,
-     flag_descriptions::kChromeWebStoreNavigationThrottleDescription,
-     kOsLinux | kOsMac | kOsWin,
-     FEATURE_VALUE_TYPE(
-         enterprise::webstore::kChromeWebStoreNavigationThrottle)},
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
     {"align-pdf-default-print-settings-with-html",
      flag_descriptions::kAlignPdfDefaultPrintSettingsWithHTMLName,
      flag_descriptions::kAlignPdfDefaultPrintSettingsWithHTMLDescription,
@@ -8689,8 +8607,6 @@ const FeatureEntry kFeatureEntries[] = {
          permissions::features::
              kSafetyHubUnusedPermissionRevocationForAllSurfaces)},
 
-#if BUILDFLAG(IS_ANDROID)
-#endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
     {kWebiumFlag, flag_descriptions::kWebiumName,
@@ -8758,14 +8674,8 @@ const FeatureEntry kFeatureEntries[] = {
      kOsDesktop | kOsAndroid,
      FEATURE_VALUE_TYPE(history::kBrowsingHistorySimilarVisitsGrouping)},
 
-#if BUILDFLAG(IS_ANDROID)
-#endif  // BUILDFLAG(IS_ANDROID)
 
-#if BUILDFLAG(IS_ANDROID)
-#endif  // BUILDFLAG(IS_ANDROID)
 
-#if BUILDFLAG(IS_ANDROID)
-#endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
     {"controlled-frame-web-request-security-info",
@@ -8919,11 +8829,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(switches::kSearchSettingsUpdate)},
 #endif
 
-    {"profile-signals-reporting-enabled",
-     flag_descriptions::kProfileSignalsReportingEnabledName,
-     flag_descriptions::kProfileSignalsReportingEnabledDescription, kOsAll,
-     FEATURE_VALUE_TYPE(
-         enterprise_signals::features::kProfileSignalsReportingEnabled)},
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
@@ -8985,8 +8890,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(unexportable_keys::kUnexportableKeyDeletion)},
 #endif
 
-#if BUILDFLAG(IS_ANDROID)
-#endif
 
     {"dom-storage-sqlite", flag_descriptions::kDomStorageSqliteName,
      flag_descriptions::kDomStorageSqliteDescription, kOsAll,
@@ -9046,17 +8949,7 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(features::kAndroidPkAutocorrectUnderlineV2)},
 #endif
 
-#if BUILDFLAG(IS_MAC)
-    {"mac-enable-okta-sso", flag_descriptions::kEnableOktaSSOName,
-     flag_descriptions::kEnableOktaSSODescription, kOsMac,
-     FEATURE_VALUE_TYPE(enterprise_auth::kOktaSSO)},
-#endif
 
-#if BUILDFLAG(IS_MAC)
-    {"mac-enable-ping-sso", flag_descriptions::kEnablePingSSOName,
-     flag_descriptions::kEnablePingSSODescription, kOsMac,
-     FEATURE_VALUE_TYPE(enterprise_auth::kPingSso)},
-#endif
 
 #if BUILDFLAG(IS_WIN)
     {"enable-arabic-indic-digit-input",
@@ -9074,8 +8967,6 @@ const FeatureEntry kFeatureEntries[] = {
                                     "EnableSwipeToSwitchPane")},
 #endif
 
-#if BUILDFLAG(IS_ANDROID)
-#endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
@@ -9154,9 +9045,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(chrome::android::kAndroidXrImmersivePlayer)},
 #endif
 
-    {"saas-usage-reporting", flag_descriptions::kSaasUsageReportingName,
-     flag_descriptions::kSaasUsageReportingDescription, kOsAll,
-     FEATURE_VALUE_TYPE(enterprise_reporting::kSaasUsageReporting)},
 
     {"web-authentication-ambient-signin",
      flag_descriptions::kWebAuthnAmbientSigninName,
@@ -9181,8 +9069,6 @@ const FeatureEntry kFeatureEntries[] = {
      kOsDesktop,
      FEATURE_VALUE_TYPE(safe_browsing::kBundledSecuritySettingsSecureDnsV2)},
 
-#if !BUILDFLAG(IS_ANDROID)
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
     {"search-engine-explicit-choice-dialog",
@@ -9291,8 +9177,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(media::kFullscreenVideoPictureInPicture)},
 #endif
 
-#if BUILDFLAG(IS_ANDROID)
-#endif
 #if BUILDFLAG(IS_ANDROID)
     {"your-saved-info-settings-page-android",
      flag_descriptions::kYourSavedInfoSettingsPageAndroidName,
@@ -9438,8 +9322,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(chrome::android::kSideUiAllowPause)},
 #endif
 
-#if BUILDFLAG(IS_ANDROID)
-#endif
 
     {"session-encryption", flag_descriptions::kSessionEncryptionName,
      flag_descriptions::kSessionEncryptionDescription, kOsAll,
@@ -9540,12 +9422,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kSendTabToSelfGestureDescription, kOsAndroid,
      MULTI_VALUE_TYPE(kSendTabToSelfGestureChoices)},
 #endif  // BUILDFLAG(IS_ANDROID)
-    {"enable-cancel-upload-on-content-analysis",
-     flag_descriptions::kEnableCancelUploadOnContentAnalysisName,
-     flag_descriptions::kEnableCancelUploadOnContentAnalysisDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(
-         enterprise_connectors::kEnableCancelUploadOnContentAnalysis)},
 
     {"child-process-security-policy-rust",
      flag_descriptions::kChildProcessSecurityPolicyRustName,
@@ -9671,8 +9547,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kPrerenderActivationBeaconDescription, kOsAll,
      FEATURE_VALUE_TYPE(features::kPrerenderActivationBeacon)},
 
-#if BUILDFLAG(IS_ANDROID)
-#endif
 
 #if BUILDFLAG(IS_ANDROID)
     {"allow-multiple-media-notifications",
@@ -9688,10 +9562,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(safe_browsing::kAntivirusTelemetryForDownloads)},
 #endif  // BUILDFLAG(IS_WIN)
 
-    {"enable-http-headers-injection",
-     flag_descriptions::kHttpHeadersInjectionName,
-     flag_descriptions::kHttpHeadersInjectionDescription, kOsAll,
-     FEATURE_VALUE_TYPE(enterprise_custom_headers::kHttpHeadersInjection)},
 
 #if BUILDFLAG(IS_ANDROID)
     {"input-cursor-anchor-info-migration",
@@ -9706,26 +9576,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kLongScreenshotsNoMemoryCheckDescription, kOsAndroid,
      FEATURE_VALUE_TYPE(chrome::android::kLongScreenshotsNoMemoryCheck)},
 #endif
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-    {"device-signals-backfill-disclaimer",
-     flag_descriptions::kDeviceSignalsBackfillDisclaimerName,
-     flag_descriptions::kDeviceSignalsBackfillDisclaimerDescription,
-     kOsWin | kOsMac | kOsLinux,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(
-         policy::features::kDeviceSignalsBackfillDisclaimer,
-         kDeviceSignalsBackfillDisclaimerVariations,
-         "DeviceSignalsBackfillDisclaimer")},
-#endif
-#if BUILDFLAG(IS_ANDROID)
-    {"enable-android-enterprise-screenshot-protection",
-     flag_descriptions::kAndroidEnterpriseScreenshotProtectionName,
-     flag_descriptions::kAndroidEnterpriseScreenshotProtectionDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(enterprise_data_protection::
-                            kEnableAndroidEnterpriseScreenshotProtection)},
-#endif  // BUILDFLAG(IS_ANDROID)
-#if !BUILDFLAG(IS_ANDROID)
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_ANDROID)
     {"ntp-vision", flag_descriptions::kNtpVisionName,
@@ -9871,8 +9721,6 @@ const FeatureEntry kFeatureEntries[] = {
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
 
-#endif
-#if !BUILDFLAG(IS_ANDROID)
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
@@ -10192,8 +10040,8 @@ void GetStorage(Profile* profile, GetStorageCallback callback) {
 
 bool ShouldSkipConditionalFeatureEntry(const flags_ui::FlagsStorage* storage,
                                        const FeatureEntry& entry) {
-  version_info::Channel channel = chrome::GetChannel();
 #if BUILDFLAG(IS_CHROMEOS)
+  version_info::Channel channel = chrome::GetChannel();
   // enable-ui-devtools is only available on for non Stable channels.
   if (std::string_view(ui_devtools::switches::kEnableUiDevTools) ==
           entry.internal_name &&
@@ -10310,14 +10158,6 @@ bool ShouldSkipConditionalFeatureEntry(const flags_ui::FlagsStorage* storage,
            form_factor != ui::DEVICE_FORM_FACTOR_TABLET;
   }
 #endif  // BUILDFLAG(IS_ANDROID)
-  if (std::string_view(kEnterpriseIsolatedModeInternalName) ==
-      entry.internal_name) {
-    return channel != version_info::Channel::BETA &&
-           channel != version_info::Channel::DEV &&
-           channel != version_info::Channel::CANARY &&
-           channel != version_info::Channel::UNKNOWN;
-  }
-
   if (flags::IsFlagExpired(storage, entry.internal_name)) {
     return true;
   }

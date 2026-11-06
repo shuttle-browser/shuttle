@@ -216,14 +216,6 @@ bool ConfigurationPolicyHandlerList::IsCloudOnlyPolicy(
     return false;
   }
 
-  // CloudReportingEnabled was added before the cloud_only tag and historically
-  // never checked the policy source. Skip enforcement for it to avoid breaking
-  // existing setups.
-  // TODO(crbug.com/491119520): Consider removing this exemption in the future.
-  if (entry.first == key::kCloudReportingEnabled) {
-    return true;
-  }
-
   if (entry.second.source == POLICY_SOURCE_MERGED) {
     for (const auto& conflict : entry.second.conflicts) {
       if (!IsCloudOnlyPolicySource(conflict.entry())) {

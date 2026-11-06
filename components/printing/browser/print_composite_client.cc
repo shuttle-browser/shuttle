@@ -27,10 +27,6 @@
 #include "printing/printing_utils.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-#include "components/enterprise/watermarking/content/watermark_text_container.h"  // nogncheck
-#include "components/enterprise/watermarking/mojom/watermark.mojom.h"  // nogncheck
-#endif
 
 namespace printing {
 
@@ -367,14 +363,6 @@ mojom::PrintCompositor* PrintCompositeClient::CreateCompositeRequest(
   compositor_->SetWebContentsURL(web_contents()->GetLastCommittedURL());
   compositor_->SetUserAgent(user_agent_);
 
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-  auto* watermark_text_container =
-      enterprise_watermark::WatermarkTextContainer::FromWebContents(
-          web_contents());
-  if (watermark_text_container) {
-    compositor_->SetWatermarkBlock(watermark_text_container->Serialize());
-  }
-#endif
   return compositor_.get();
 }
 

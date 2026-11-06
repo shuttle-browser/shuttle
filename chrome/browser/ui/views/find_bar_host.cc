@@ -9,7 +9,6 @@
 #include "base/check_is_test.h"
 #include "base/i18n/rtl.h"
 #include "build/build_config.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_clipboard_utils.h"
 #include "chrome/browser/ui/find_bar/find_bar_controller.h"
 #include "chrome/browser/ui/view_ids.h"
 #include "chrome/browser/ui/views/find_bar_view.h"
@@ -436,9 +435,7 @@ void FindBarHost::UpdateFindBarForChangedWebContents() {
 }
 
 bool FindBarHost::CanPopulateFromSelectedText() {
-  return !web_contents() ||
-         enterprise_data_protection::CanPopulateFindBarFromSelection(
-             web_contents());
+  return true;
 }
 
 const FindBarTesting* FindBarHost::GetFindBarTesting() const {

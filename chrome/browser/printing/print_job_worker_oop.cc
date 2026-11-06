@@ -119,12 +119,6 @@ void PrintJobWorkerOop::Cancel() {
   PrintJobWorkerOop::OnCancel();
 }
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-void PrintJobWorkerOop::CleanupAfterContentAnalysisDenial() {
-  PrintJobWorker::CleanupAfterContentAnalysisDenial();
-  UnregisterServiceManagerClient();
-}
-#endif
 
 void PrintJobWorkerOop::OnDidStartPrinting(mojom::ResultCode result,
                                            int job_id) {

@@ -11,7 +11,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/custom_handlers/chrome_protocol_handler_navigation_throttle.h"
 #include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
-#include "chrome/browser/enterprise/data_protection/view_source_navigation_throttle.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/interstitials/enterprise_util.h"
 #include "chrome/browser/lookalikes/lookalike_url_navigation_throttle.h"
@@ -120,9 +119,6 @@
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 #include "chrome/browser/browser_switcher/browser_switcher_navigation_throttle.h"
-#include "chrome/browser/enterprise/connectors/device_trust/navigation_throttle.h"
-#include "chrome/browser/enterprise/webstore/chrome_web_store_navigation_throttle.h"
-#include "chrome/browser/enterprise/webstore/features.h"
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
@@ -140,10 +136,6 @@
 #if BUILDFLAG(ENABLE_OFFLINE_PAGES)
 #include "chrome/browser/offline_pages/offline_page_navigation_throttle.h"
 #endif  // BUILDFLAG(ENABLE_OFFLINE_PAGES)
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/enterprise/platform_auth/platform_auth_navigation_throttle.h"
-#endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 #include "chrome/browser/extensions/chrome_content_browser_client_extensions_part.h"
@@ -393,21 +385,6 @@ void CreateAndAddChromeThrottlesForNavigation(
     TypedNavigationUpgradeThrottle::MaybeCreateAndAdd(registry);
   }
 
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  if (base::FeatureList::IsEnabled(
-          enterprise::webstore::kChromeWebStoreNavigationThrottle)) {
-    registry.AddThrottle(
-        std::make_unique<enterprise_webstore::ChromeWebStoreNavigationThrottle>(
-            registry));
-  }
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  enterprise_connectors::DeviceTrustNavigationThrottle::MaybeCreateAndAdd(
-      registry);
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-
-
 #if BUILDFLAG(ENABLE_DEVTOOLS_FRONTEND)
   DevToolsWindow::MaybeCreateAndAddNavigationThrottle(registry);
 #endif  // BUILDFLAG(ENABLE_DEVTOOLS_FRONTEND)
@@ -430,8 +407,6 @@ void CreateAndAddChromeThrottlesForNavigation(
         std::make_unique<safe_browsing::DelayedWarningNavigationThrottle>(
             registry));
   }
-  enterprise_data_protection::ViewSourceNavigationThrottle::MaybeCreateAndAdd(
-      registry, ui_manager);
 #endif  // BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
@@ -471,14 +446,6 @@ void CreateAndAddChromeThrottlesForNavigation(
         registry, std::make_unique<ChromeSecurityBlockingPageFactory>(),
         profile);
   }
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_ANDROID)
-  // Don't perform platform authentication in incognito and guest profiles.
-  if (profile && !profile->IsOffTheRecord()) {
-    enterprise_auth::PlatformAuthNavigationThrottle::MaybeCreateAndAdd(
-        registry);
-  }
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_CHROMEOS)
   // TODO(b:296844164) Handle captive portal signin properly.

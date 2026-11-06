@@ -54,7 +54,7 @@ policies:
   53: DefaultNotificationsSetting
   54: DefaultGeolocationSetting
   55: Disable3DAPIs
-  56: PolicyRefreshRate
+  56: ''
   57: ''
   58: ''
   59: ''
@@ -226,7 +226,7 @@ policies:
   225: ''
   226: ''
   227: ''
-  228: MaxInvalidationFetchDelay
+  228: ''
   229: DefaultSearchProviderImageURL
   230: DefaultSearchProviderSearchURLPostParams
   231: DefaultSearchProviderSuggestURLPostParams
@@ -426,7 +426,7 @@ policies:
   425: ''
   426: ''
   427: ''
-  428: MachineLevelUserCloudPolicyEnrollmentToken
+  428: ''
   429: SafeBrowsingExtendedReportingEnabled
   430: AutoplayAllowed
   431: ''
@@ -468,10 +468,10 @@ policies:
   467: ''
   468: WebAppInstallForceList
   469: ''
-  470: ReportVersionData
-  471: ReportPolicyData
-  472: ReportMachineIDData
-  473: ReportUserIDData
+  470: ''
+  471: ''
+  472: ''
+  473: ''
   474: ''
   475: ''
   476: ''
@@ -491,24 +491,24 @@ policies:
   490: ''
   491: ''
   492: ''
-  493: CloudReportingEnabled
+  493: ''
   494: AlternativeBrowserPath
   495: AlternativeBrowserParameters
   496: BrowserSwitcherUrlList
   497: BrowserSwitcherUrlGreylist
   498: ''
-  499: ReportExtensionsAndPluginsData
+  499: ''
   500: ''
   501: ''
   502: ''
   503: ''
   504: ''
-  505: CloudManagementEnrollmentMandatory
+  505: ''
   506: ''
   507: ''
   508: ''
   509: ''
-  510: CloudManagementEnrollmentToken
+  510: ''
   511: BrowserSwitcherExternalSitelistUrl
   512: ''
   513: ''
@@ -606,7 +606,7 @@ policies:
   605: ''
   606: ''
   607: ''
-  608: CloudExtensionRequestEnabled
+  608: ''
   609: ''
   610: ''
   611: ''
@@ -691,13 +691,13 @@ policies:
   690: ''
   691: ''
   692: ''
-  693: OnFileAttachedEnterpriseConnector
+  693: ''
   694: ''
   695: ''
-  696: OnFileDownloadedEnterpriseConnector
-  697: OnBulkDataEntryEnterpriseConnector
+  696: ''
+  697: ''
   698: ''
-  699: OnSecurityEventEnterpriseConnector
+  699: ''
   700: AutoOpenFileTypes
   701: ''
   702: ''
@@ -726,7 +726,7 @@ policies:
   725: ''
   726: ''
   727: ''
-  728: EnterpriseRealTimeUrlCheckMode
+  728: ''
   729: ''
   730: ''
   731: ''
@@ -926,10 +926,10 @@ policies:
   925: ''
   926: HistoryClustersVisible
   927: ''
-  928: CopyPreventionSettings
+  928: ''
   929: ''
   930: ''
-  931: OnPrintEnterpriseConnector
+  931: ''
   932: ''
   933: OriginAgentClusterDefaultEnabled
   934: ''
@@ -940,7 +940,7 @@ policies:
   939: ''
   940: ''
   941: ''
-  942: CloudProfileReportingEnabled
+  942: ''
   943: DefaultWebHidGuardSetting
   944: WebHidAskForUrls
   945: WebHidBlockedForUrls
@@ -960,7 +960,7 @@ policies:
   959: ''
   960: WindowPlacementAllowedForUrls
   961: WindowPlacementBlockedForUrls
-  962: CloudReportingUploadFrequency
+  962: ''
   963: ''
   964: ''
   965: WebAuthenticationRemoteProxiedRequestsAllowed
@@ -992,14 +992,14 @@ policies:
   991: ''
   992: ''
   993: ''
-  994: IdleTimeout
+  994: ''
   995: ''
   996: EncryptedClientHelloEnabled
   997: ''
   998: EnterpriseProfileCreationKeepBrowsingData
   999: ''
   1000: ''
-  1001: UnmanagedDeviceSignalsConsentFlowEnabled
+  1001: ''
   1002: ''
   1003: ''
   1004: ''
@@ -1034,7 +1034,7 @@ policies:
   1033: ''
   1034: ''
   1035: ''
-  1036: IdleTimeoutActions
+  1036: ''
   1037: ''
   1038: PdfLocalFileAccessAllowedForDomains
   1039: ''
@@ -1099,12 +1099,12 @@ policies:
   1098: ''
   1099: ''
   1100: ''
-  1101: LegacyTechReportAllowlist
+  1101: ''
   1102: ''
   1103: ''
   1104: ''
-  1105: BrowserContextAwareAccessSignalsAllowlist
-  1106: UserContextAwareAccessSignalsAllowlist
+  1105: ''
+  1106: ''
   1107: ''
   1108: PdfUseSkiaRendererEnabled
   1109: DataUrlInSvgUseEnabled
@@ -1150,8 +1150,8 @@ policies:
   1149: ''
   1150: CreatePasskeysInICloudKeychain
   1151: ''
-  1152: ProfileSeparationSettings
-  1153: ProfileSeparationDataMigrationSettings
+  1152: ''
+  1153: ''
   1154: ProfileSeparationDomainExceptionList
   1155: ''
   1156: ''
@@ -1159,7 +1159,7 @@ policies:
   1158: ''
   1159: ''
   1160: ''
-  1161: DataControlsRules
+  1161: ''
   1162: ''
   1163: ''
   1164: ''
@@ -1213,7 +1213,7 @@ policies:
   1212: AllowedDomainsForAppsList
   1213: ChromeForTestingAllowed
   1214: ''
-  1215: ProvisionManagedClientCertificateForUser
+  1215: ''
   1216: ''
   1217: ''
   1218: ''
@@ -1251,13 +1251,13 @@ policies:
   1250: ''
   1251: GenAILocalFoundationalModelSettings
   1252: ''
-  1253: ChromeDataRegionSetting
+  1253: ''
   1254: ''
   1255: ''
   1256: PdfViewerOutOfProcessIframeEnabled
   1257: ''
   1258: ''
-  1259: ExtensibleEnterpriseSSOBlocklist
+  1259: ''
   1260: ''
   1261: MemorySaverModeSavings
   1262: ''
@@ -1332,7 +1332,7 @@ policies:
   1331: ''
   1332: WebAuthenticationRemoteDesktopAllowedOrigins
   1333: ServiceWorkerToControlSrcdocIframeEnabled
-  1334: ProvisionManagedClientCertificateForBrowser
+  1334: ''
   1335: GeminiSettings
   1336: ''
   1337: ''
@@ -1345,8 +1345,8 @@ policies:
   1344: ''
   1345: ReduceAcceptLanguageEnabled
   1346: ''
-  1347: UserSecuritySignalsReporting
-  1348: UserSecurityAuthenticatedReporting
+  1347: ''
+  1348: ''
   1349: HappyEyeballsV3Enabled
   1350: ''
   1351: ''
@@ -1366,7 +1366,7 @@ policies:
   1365: PrefetchWithServiceWorkerEnabled
   1366: ''
   1367: AIModeSettings
-  1368: WatermarkStyle
+  1368: ''
   1369: ''
   1370: EnableUnsafeSwiftShader
   1371: LocalNetworkAccessAllowedForUrls
@@ -1388,13 +1388,13 @@ policies:
   1387: OriginKeyedProcessesEnabled
   1388: NTPShortcuts
   1389: ''
-  1390: ExtensionInstallCloudPolicyChecksEnabled
+  1390: ''
   1391: DevToolsGoogleDeveloperProgramProfileAvailability
   1392: ''
   1393: ''
   1394: PreferSlowKexAlgorithms
   1395: ''
-  1396: CacheEncryptionEnabled
+  1396: ''
   1397: SilentPrintingEnabled
   1398: PreferSlowCiphers
   1399: DeveloperToolsAvailabilityAllowlist
@@ -1416,8 +1416,8 @@ policies:
   1415: ''
   1416: ''
   1417: StaticStorageQuotaEnabled
-  1418: SaasUsageReportingDomainUrlsForBrowsers
-  1419: SaasUsageReportingDomainUrlsForProfiles
+  1418: ''
+  1419: ''
   1420: ''
   1421: ''
   1422: ''
@@ -1432,7 +1432,7 @@ policies:
   1431: ForceForegroundPriorityForAllTabs
   1432: WebRtcDiagnosticLogCollectionAllowedForOrigins
   1433: ''
-  1434: ExtensionDOMActivityLoggingEnabled
+  1434: ''
   1435: SharedWorkerExtendedLifetimeEnabled
   1436: MaxConnectionsPerProxyForWebSocket
   1437: ''
@@ -1444,15 +1444,15 @@ policies:
   1443: ForceForegroundPriorityForUrls
   1444: DataUrlInWebWorkerOpaqueOriginEnabled
   1445: ''
-  1446: SecuritySignalsClientCertificatesSelectors
+  1446: ''
   1447: AllowSocketPoolSizeRandomizationForProxies
   1448: DefaultSubAppsWithoutPromptsSetting
   1449: SubAppsWithoutPromptsAllowedForOrigins
   1450: SubAppsWithoutPromptsBlockedForOrigins
-  1451: IsolatedModeSettings
+  1451: ''
   1452: ''
   1453: ''
-  1454: HttpHeaderInjection
+  1454: ''
   1455: ChromeSuggestionsSettings
   1456: RestrictBackgroundFetchFromServiceWorkerEnabled
   1457: GeminiEnterpriseSettings
@@ -1473,9 +1473,9 @@ policies:
   1472: BackForwardCacheForWebSocketsAllowed
   1473: GeminiChromeFileUploadSettings
   1474: AutofillGenAiSettings
-  1475: OnNetworkRequestEnterpriseConnector
+  1475: ''
   1476: EnterprisePublishedSkills
-  1477: OnDataCopiedEnterpriseConnector
+  1477: ''
   1478: ""
   1479: ""
   1480: ""
@@ -1492,8 +1492,8 @@ policies:
   1491: AllHttpAuthSchemesAllowedForProxies
   1492: ClipboardHistoryEnabled
   1493: ExtensionForceInstallWithSearchOrNewTabOverridesEnabled
-  1494: ManagedClientCertificateForBrowserConfig
-  1495: ManagedClientCertificateForUserConfig
+  1494: ''
+  1495: ''
   1496: GeminiEnterpriseUrl
 
 atomic_groups:
@@ -1523,7 +1523,7 @@ atomic_groups:
   24: SafeBrowsing
   25: ''
   26: ''
-  27: CloudReporting
+  27: ''
   28: BrowserSwitcher
   29: ''
   30: ''
@@ -1540,7 +1540,7 @@ atomic_groups:
   41: ScreenCaptureSettings
   42: WindowManagementSettings
   43: LocalFontsSettings
-  44: BrowserIdle
+  44: ''
   45: PrivacySandbox
   46: ''
   47: ThirdPartyStoragePartitioningSettings

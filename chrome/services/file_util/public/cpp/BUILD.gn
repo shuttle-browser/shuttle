@@ -34,7 +34,6 @@ source_set("cpp") {
     }
 
     deps += [
-      "//components/enterprise/obfuscation/core:enterprise_obfuscation",
       "//components/services/filesystem:lib",
       "//content/public/browser",
     ]

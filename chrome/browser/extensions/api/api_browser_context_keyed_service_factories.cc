@@ -28,7 +28,6 @@
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/extensions/api/activity_log_private/activity_log_private_api.h"
 #include "chrome/browser/extensions/api/braille_display_private/braille_display_private_api.h"
-#include "chrome/browser/extensions/api/enterprise_reporting_private/enterprise_reporting_private_event_router.h"
 #include "chrome/browser/extensions/api/image_writer_private/operation_manager.h"
 #include "chrome/browser/extensions/api/language_settings_private/language_settings_private_delegate_factory.h"
 #include "chrome/browser/extensions/api/networking_private/networking_private_ui_delegate_factory_impl.h"
@@ -92,7 +91,6 @@ void EnsureApiBrowserContextKeyedServiceFactoriesBuilt() {
 #if BUILDFLAG(IS_CHROMEOS)
   extensions::DocumentScanAPIHandler::GetFactoryInstance();
 #endif
-  extensions::EnterpriseReportingPrivateEventRouterFactory::GetInstance();
 #if BUILDFLAG(IS_CHROMEOS)
   extensions::InputImeAPI::GetFactoryInstance();
 #endif

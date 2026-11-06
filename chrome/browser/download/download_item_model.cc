@@ -35,7 +35,6 @@
 #include "chrome/browser/download/download_ui_model.h"
 #include "chrome/browser/download/download_ui_safe_browsing_util.h"
 #include "chrome/browser/download/offline_item_utils.h"
-#include "chrome/browser/enterprise/connectors/common.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/grit/generated_resources.h"
@@ -80,11 +79,6 @@
 
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
 #include "chrome/browser/safe_browsing/download_protection/download_feedback_service.h"
-#include "chrome/browser/enterprise/connectors/connectors_manager.h"
-
-#if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/safe_browsing/download_protection/deep_scanning_request.h"
-#endif  // !BUILDFLAG(IS_ANDROID)
 #endif  // BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
@@ -868,16 +862,10 @@ void DownloadItemModel::ExecuteCommand(DownloadCommands* download_commands,
     case DownloadCommands::EDIT_WITH_MEDIA_APP:
       DownloadUIModel::ExecuteCommand(download_commands, command);
       break;
-    case DownloadCommands::DEEP_SCAN: {
-#if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION) && !BUILDFLAG(IS_ANDROID)
-      // Deep scanning is not supported on Android.
-      safe_browsing::DownloadProtectionService::UploadForConsumerDeepScanning(
-          download_,
-          DownloadItemWarningData::DeepScanTrigger::TRIGGER_CONSUMER_PROMPT,
-          /*password=*/std::nullopt);
-#endif
+    case DownloadCommands::DEEP_SCAN:
+      // Shuttle: cloud deep scanning is removed and downloads are never put in
+      // the deep scanning prompt state.
       break;
-    }
     case DownloadCommands::CANCEL_DEEP_SCAN: {
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
       DownloadCoreService* download_core_service =
@@ -1122,7 +1110,6 @@ void DownloadItemModel::CompleteSafeBrowsingScan() {
   if (download_->IsSavePackageDownload()) {
     download_->OnAsyncScanningCompleted(
         download::DOWNLOAD_DANGER_TYPE_USER_VALIDATED);
-    enterprise_connectors::RunSavePackageScanningCallback(download_, true);
   } else {
     ChromeDownloadManagerDelegate::SafeBrowsingState* state =
         static_cast<ChromeDownloadManagerDelegate::SafeBrowsingState*>(
@@ -1135,25 +1122,7 @@ void DownloadItemModel::CompleteSafeBrowsingScan() {
 
 void DownloadItemModel::ReviewScanningVerdict(
     content::WebContents* web_contents) {
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  auto command_callback =
-      [](std::unique_ptr<DownloadItemModel> model,
-         std::unique_ptr<DownloadCommands> download_commands,
-         DownloadCommands::Command command) {
-        model->ExecuteCommand(download_commands.get(), command);
-      };
-  enterprise_connectors::ShowDownloadReviewDialog(
-      GetFileNameToReportUser().LossyDisplayName(), profile(), download_,
-      web_contents,
-      base::BindOnce(
-          command_callback, std::make_unique<DownloadItemModel>(download_),
-          std::make_unique<DownloadCommands>(DownloadUIModel::GetWeakPtr()),
-          DownloadCommands::KEEP),
-      base::BindOnce(
-          command_callback, std::make_unique<DownloadItemModel>(download_),
-          std::make_unique<DownloadCommands>(DownloadUIModel::GetWeakPtr()),
-          DownloadCommands::DISCARD));
-#endif  // BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
+  // Shuttle: the enterprise download review dialog is removed.
 }
 #endif  // BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
 

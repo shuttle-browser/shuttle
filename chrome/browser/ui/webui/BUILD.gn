@@ -49,7 +49,6 @@ source_set("configs") {
     "//chrome/browser/ui/webui/bluetooth_internals",
     "//chrome/browser/ui/webui/chrome_urls",
     "//chrome/browser/ui/webui/components",
-    "//chrome/browser/ui/webui/connectors_internals",
     "//chrome/browser/ui/webui/content_settings",
     "//chrome/browser/ui/webui/device_log",
     "//chrome/browser/ui/webui/download_internals",
@@ -137,10 +136,6 @@ source_set("configs") {
       "//chrome/browser/ui/webui/ash/dlp_internals",
       "//chromeos/constants",
     ]
-  }
-
-  if (enterprise_watermark) {
-    deps += [ "//chrome/browser/ui/webui/watermark" ]
   }
 
   if (enable_dice_support) {

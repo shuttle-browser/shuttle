@@ -36,8 +36,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/download/download_prefs.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
-#include "chrome/browser/enterprise/reporting/cloud_profile_reporting_service.h"
-#include "chrome/browser/enterprise/reporting/cloud_profile_reporting_service_factory.h"
 #include "chrome/browser/enterprise/util/affiliation.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
@@ -55,17 +53,11 @@
 #include "chrome/common/channel_info.h"
 #include "chrome/grit/branded_strings.h"
 #include "components/crx_file/id_util.h"
-#include "components/enterprise/browser/controller/browser_dm_token_storage.h"
-#include "components/enterprise/browser/controller/chrome_browser_cloud_management_controller.h"
-#include "components/enterprise/browser/reporting/common_pref_names.h"
-#include "components/enterprise/browser/reporting/saas_usage/saas_usage_report_scheduler.h"
 #include "components/policy/core/browser/configuration_policy_handler_list.h"
 #include "components/policy/core/browser/policy_conversions.h"
 #include "components/policy/core/browser/webui/json_generation.h"
 #include "components/policy/core/browser/webui/policy_webui_constants.h"
 #include "components/policy/core/browser/webui/statistics_collector.h"
-#include "components/policy/core/common/cloud/cloud_policy_manager.h"
-#include "components/policy/core/common/cloud/cloud_policy_refresh_scheduler.h"
 #include "components/policy/core/common/cloud/cloud_policy_util.h"
 #include "components/policy/core/common/cloud/enterprise_metrics.h"
 #include "components/policy/core/common/local_test_policy_loader.h"
@@ -76,12 +68,9 @@
 #include "components/policy/core/common/policy_scheduler.h"
 #include "components/policy/core/common/policy_types.h"
 #include "components/policy/core/common/policy_utils.h"
-#include "components/policy/core/common/remote_commands/remote_commands_fetch_reason.h"
-#include "components/policy/core/common/remote_commands/remote_commands_service.h"
 #include "components/policy/core/common/schema.h"
 #include "components/policy/core/common/schema_map.h"
 #include "components/policy/policy_constants.h"
-#include "components/policy/proto/device_management_backend.pb.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/base/signin_pref_names.h"
@@ -108,8 +97,6 @@
 #include "chrome/browser/ash/profiles/profile_helper.h"
 #include "chrome/browser/browser_process_platform_part.h"
 #include "components/user_manager/user_manager.h"
-#else
-#include "components/policy/core/common/cloud/user_cloud_policy_manager.h"
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -136,13 +123,6 @@ PolicyUIHandler::PolicyUIHandler(
     : receiver_(this, std::move(receiver)),
       client_(std::move(client)),
       profile_(*profile) {
-  auto update_callback(base::BindRepeating(&PolicyUIHandler::SendStatus,
-                                           base::Unretained(this)));
-  pref_change_registrar_ = std::make_unique<PrefChangeRegistrar>();
-  pref_change_registrar_->Init(g_browser_process->local_state());
-  pref_change_registrar_->Add(
-      enterprise_reporting::kLastUploadSucceededTimestamp, update_callback);
-
   policy_value_and_status_aggregator_ = policy::PolicyValueAndStatusAggregator::
       CreateDefaultPolicyValueAndStatusAggregator(&profile_.get());
   policy_value_and_status_observation_.Observe(
@@ -478,67 +458,11 @@ void PolicyUIHandler::GetPolicyLogs(GetPolicyLogsCallback callback) {
 
 #if !BUILDFLAG(IS_CHROMEOS)
 void PolicyUIHandler::HandleUploadReport(const base::ListValue& args) {
+  // Shuttle: cloud reporting is removed; nothing to upload. The button is
+  // hidden (see PolicyUI), resolve right away for robustness.
   upload_report_count_ += 1;
   DCHECK_EQ(1u, args.size());
-  const std::string& callback_id = args[0].GetString();
-
-  auto* browser_controller = g_browser_process->browser_policy_connector()
-                                 ->chrome_browser_cloud_management_controller();
-  auto* cloud_profile_reporting_service =
-      enterprise_reporting::CloudProfileReportingServiceFactory::GetForProfile(
-          Profile::FromWebUI(web_ui()));
-
-  // Upload SaaS usage reports.
-  auto* browser_saas_scheduler =
-      browser_controller ? browser_controller->saas_usage_report_scheduler()
-                         : nullptr;
-  auto* profile_saas_scheduler =
-      cloud_profile_reporting_service
-          ? cloud_profile_reporting_service->saas_usage_report_scheduler()
-          : nullptr;
-
-  if (browser_saas_scheduler) {
-    browser_saas_scheduler->TriggerReport();
-  }
-  if (profile_saas_scheduler) {
-    profile_saas_scheduler->TriggerReport();
-  }
-
-  // Upload browser and profile reports.
-  auto* report_scheduler =
-      browser_controller ? browser_controller->report_scheduler() : nullptr;
-  auto* profile_report_scheduler =
-      cloud_profile_reporting_service
-          ? cloud_profile_reporting_service->report_scheduler()
-          : nullptr;
-
-  if (report_scheduler && profile_report_scheduler) {
-    const auto on_report_uploaded = base::BarrierClosure(
-        2, base::BindOnce(&PolicyUIHandler::OnReportUploaded,
-                          weak_factory_.GetWeakPtr(), callback_id));
-    report_scheduler->UploadReport(on_report_uploaded);
-    profile_report_scheduler->UploadReport(on_report_uploaded);
-    return;
-  }
-
-  if (report_scheduler) {
-    report_scheduler->UploadReport(
-        base::BindOnce(&PolicyUIHandler::OnReportUploaded,
-                       weak_factory_.GetWeakPtr(), callback_id));
-    return;
-  }
-
-  if (profile_report_scheduler) {
-    profile_report_scheduler->UploadReport(
-        base::BindOnce(&PolicyUIHandler::OnReportUploaded,
-                       weak_factory_.GetWeakPtr(), callback_id));
-    return;
-  }
-
-  // TODO(335639255): Consider disable the button when neither report
-  // scheduler are ready. On at least show an error message to ask people
-  // to try again.
-  OnReportUploaded(callback_id);
+  OnReportUploaded(args[0].GetString());
 }
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
@@ -591,21 +515,9 @@ void PolicyUIHandler::HandleShouldShowPromotion(const base::ListValue& args) {
 
 void PolicyUIHandler::CheckPromotionEligibility(
     CheckPromotionEligibilityCallback callback) {
-  bool dismissed_banner_pref = profile_->GetPrefs()->GetBoolean(
-      policy::policy_prefs::kHasDismissedPolicyPagePromotionBanner);
-
-  promotion_eligibility_checker_ = policy::CreatePromotionEligibilityChecker(
-      &profile_.get(), dismissed_banner_pref, /*feature_enabled=*/true);
-  if (!promotion_eligibility_checker_) {
-    OnPromotionEligibilityFetched(
-        std::move(callback),
-        enterprise_management::GetUserEligiblePromotionsResponse());
-    return;
-  }
-  promotion_eligibility_checker_->MaybeCheckPromotionEligibility(
-      base::BindOnce(&PolicyUIHandler::OnPromotionEligibilityFetched,
-                     weak_factory_.GetWeakPtr(), std::move(callback)));
-  return;
+  // Shuttle: the enterprise promotion eligibility check (DM server) is
+  // removed; never show the banner.
+  std::move(callback).Run(false);
 }
 
 void PolicyUIHandler::HandleSetBannerDismissed(const base::ListValue& args) {
@@ -642,19 +554,6 @@ void PolicyUIHandler::OnReportUploaded(const std::string& callback_id) {
   SendStatus();
 }
 #endif  // !BUILDFLAG(IS_CHROMEOS)
-
-#if !BUILDFLAG(IS_ANDROID)
-void PolicyUIHandler::OnPromotionEligibilityFetched(
-    CheckPromotionEligibilityCallback callback,
-    enterprise_management::GetUserEligiblePromotionsResponse response) {
-  bool should_show_promotion = response.promotions().policy_page_promotion() ==
-                               enterprise_management::CHROME_ENTERPRISE_CORE;
-  // Log the UMA metric for the promotion banner displayed.
-  base::UmaHistogramBoolean("Enterprise.PolicyPromotionBannerDisplayed",
-                            should_show_promotion);
-  std::move(callback).Run(should_show_promotion);
-}
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 std::string PolicyUIHandler::GetPoliciesJsonImpl(
     policy::mojom::GetPoliciesReason reason) {

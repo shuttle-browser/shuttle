@@ -51,9 +51,6 @@ class WebUIInfoSingletonEventObserverImpl
   void NotifyLogMessageJsListener(const base::Time& timestamp,
                                   const std::string& message) override;
   void NotifyReportingEventJsListener(const base::DictValue& event) override;
-  void NotifyReportingEventJsListener(
-      const ::chrome::cros::reporting::proto::UploadEventsRequest& event,
-      const base::DictValue& result) override;
   void NotifyV5GetHashLookupJsListener(
       const V5GetHashProtocolManager::V5GetHashLookup& lookup) override;
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)

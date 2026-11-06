@@ -32,10 +32,6 @@ namespace views {
 class WebView;
 }  // namespace views
 
-namespace enterprise_data_protection {
-class DataProtectionOverlayView;
-}  // namespace enterprise_data_protection
-
 // ContentsContainerView holds the ContentsWebView and the outlines and
 // minitoolbar when in split view.
 class ContentsContainerView : public views::View,
@@ -73,10 +69,6 @@ class ContentsContainerView : public views::View,
   ContentsCaptureBorderView* capture_contents_border_view() {
     return capture_contents_border_view_;
   }
-  enterprise_data_protection::DataProtectionOverlayView*
-  data_protection_overlay_view() {
-    return data_protection_overlay_view_;
-  }
   const ContentsContainerOutline* contents_outline_view() const {
     return container_outline_;
   }
@@ -90,11 +82,6 @@ class ContentsContainerView : public views::View,
   DevToolsContentsResizingStrategy& contents_resizing_strategy() {
     return strategy_;
   }
-
-  void ApplyWatermarkSettings(const std::string& watermark_text,
-                              SkColor fill_color,
-                              SkColor outline_color,
-                              int font_size);
 
   void UpdateBorderAndOverlay(bool is_in_split,
                               bool is_active,
@@ -162,11 +149,6 @@ class ContentsContainerView : public views::View,
   raw_ptr<ScrimView> devtools_scrim_view_ = nullptr;
   DevToolsDockedPlacement current_devtools_docked_placement_ =
       DevToolsDockedPlacement::kNone;
-
-
-  // The view that overlays the contents container.
-  raw_ptr<enterprise_data_protection::DataProtectionOverlayView>
-      data_protection_overlay_view_ = nullptr;
 
   // The scrim view that covers the content area when a tab-modal dialog is
   // open.
