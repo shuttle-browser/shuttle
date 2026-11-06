@@ -238,6 +238,9 @@ class ClientCertSource : public CertificateManagerPageHandler::CertSource {
   // Refresh list of cached certificates and run `callback` when done.
   void RefreshCachedCertificateList(base::OnceClosure callback) {
     if (!loader_) {
+      // Shuttle: no loader (e.g. the removed client certificate provisioning)
+      // means an empty list; ReplyToGetCertificatesCallback reads `certs_`.
+      certs_ = net::CertificateList();
       std::move(callback).Run();
       return;
     }
