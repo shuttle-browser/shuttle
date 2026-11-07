@@ -5,6 +5,7 @@
 #ifndef CHROME_BROWSER_SHUTTLE_PROFILE_REGISTRY_H_
 #define CHROME_BROWSER_SHUTTLE_PROFILE_REGISTRY_H_
 
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -15,6 +16,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
+#include "chrome/browser/shuttle/agent_partition.h"
 #include "components/tab_groups/tab_group_color.h"
 #include "content/public/browser/storage_partition_config.h"
 
@@ -31,6 +33,12 @@ namespace shuttle {
 // storage, ...). The storage is a fixed StoragePartition of the single Chrome
 // profile, in its own partition domain ("shuttle-<id>") so that it can be wiped on
 // its own.
+//
+// Throwaway agents (create-agent { throwaway: true }) live only in memory: the
+// registry keeps them out of prefs, their storage partition is in-memory, and
+// their ids ("tmp-<random>") are generated here and never reused. They are
+// deleted after `idle_timeout` without activity (ShuttleService) or with the
+// browser.
 class ProfileRegistry {
  public:
   struct Entry {
@@ -49,6 +57,10 @@ class ProfileRegistry {
     // Read when the partition's network context is configured, so a change
     // applies at the next start (shuttle::ShouldPersistSessionCookies).
     bool persist_session_cookies = true;
+    // A throwaway agent (in memory only, deleted when idle).
+    bool throwaway = false;
+    // Throwaway agents: deleted after this long without activity.
+    base::TimeDelta idle_timeout;
   };
 
   // Fields to set; unset fields are left as they are.
@@ -62,7 +74,14 @@ class ProfileRegistry {
     // "" removes the avatar.
     std::optional<std::string> avatar;
     std::optional<bool> persist_session_cookies;
+    // Throwaway agents only.
+    std::optional<base::TimeDelta> idle_timeout;
   };
+
+  // Id prefix reserved for throwaway agents.
+  static constexpr const char* kThrowawayPrefix = kThrowawayAgentIdPrefix;
+  static constexpr base::TimeDelta kDefaultThrowawayIdleTimeout =
+      base::Minutes(15);
 
   explicit ProfileRegistry(Profile* profile);
   ProfileRegistry(const ProfileRegistry&) = delete;
@@ -73,6 +92,8 @@ class ProfileRegistry {
 
   // Kebab-case slug, 1-64 chars: ^[a-z0-9]+(-[a-z0-9]+)*$.
   static bool IsValidId(std::string_view id);
+  // Starts with kThrowawayPrefix (persistent agents can't use it).
+  static bool IsThrowawayId(std::string_view id);
 
   // Returns the profile id for an agent partition config, or "" if `config`
   // is not one.
@@ -94,13 +115,25 @@ class ProfileRegistry {
   // Returns false if the profile already exists. Fields must be valid.
   bool Create(const std::string& id, const Identity& identity);
 
+  // Creates a throwaway agent and returns its generated id. Fields must be
+  // valid (no avatar, no persist_session_cookies).
+  std::string CreateThrowaway(const Identity& identity);
+  bool IsThrowaway(const std::string& id) const;
+  std::vector<std::string> ThrowawayIds() const;
+  // Activity of a throwaway agent outside its sessions (creation, a session
+  // closing). No-op for other ids.
+  void TouchThrowaway(const std::string& id);
+  // The last TouchThrowaway (or creation), or null for other ids.
+  base::TimeTicks ThrowawayLastActive(const std::string& id) const;
+
   // Returns false if the profile doesn't exist. Fields must be valid.
   bool Update(const std::string& id, const Identity& identity);
 
   content::StoragePartitionConfig PartitionConfig(const std::string& id) const;
 
   // Forgets `id` and wipes its storage. Its tabs must be closed already.
-  // `done` runs once the data is cleared.
+  // `done` runs once the data is cleared. A throwaway agent's save-text files
+  // (<profile>/shuttle/secrets/<id>) go too.
   void Delete(const std::string& id, base::OnceClosure done);
 
   // Writes pending cookie changes of `id` (or of every loaded partition) to
@@ -112,11 +145,22 @@ class ProfileRegistry {
   void Obliterate(const std::string& id, base::OnceClosure done);
   void OnObliterated(const std::string& id, base::OnceClosure done);
   void SetPendingDelete(const std::string& id, bool pending);
+  void DeleteThrowaway(const std::string& id, base::OnceClosure done);
+
+  struct Throwaway {
+    Entry entry;
+    base::TimeTicks last_active;
+  };
 
   raw_ptr<Profile> profile_;
   // Ids whose partition was loaded at deletion; their directories go at the
   // next launch.
   std::set<std::string> gc_required_;
+  // Throwaway agents, by id. Never in prefs.
+  std::map<std::string, Throwaway> throwaway_;
+  // Every throwaway id handed out in this run (never reused: a new agent must
+  // not find a deleted one's in-memory partition).
+  std::set<std::string> used_throwaway_ids_;
   base::WeakPtrFactory<ProfileRegistry> weak_factory_{this};
 };
 

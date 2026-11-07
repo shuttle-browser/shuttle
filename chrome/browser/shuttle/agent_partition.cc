@@ -64,10 +64,17 @@ bool IsAgentWebContents(content::WebContents* contents) {
   }
   const content::StoragePartitionConfig& config =
       contents->GetPrimaryMainFrame()->GetStoragePartition()->GetConfig();
-  return !config.is_default() && !config.in_memory() &&
-         config.partition_name().empty() &&
-         base::StartsWith(config.partition_domain(),
-                          kAgentPartitionDomainPrefix);
+  if (config.is_default() || !config.partition_name().empty() ||
+      !base::StartsWith(config.partition_domain(),
+                        kAgentPartitionDomainPrefix)) {
+    return false;
+  }
+  // Throwaway agents ("shuttle-tmp-<id>", ProfileRegistry::kThrowawayPrefix),
+  // and only they, have in-memory storage.
+  const bool throwaway = base::StartsWith(
+      config.partition_domain(),
+      std::string(kAgentPartitionDomainPrefix) + kThrowawayAgentIdPrefix);
+  return config.in_memory() == throwaway;
 }
 
 }  // namespace shuttle

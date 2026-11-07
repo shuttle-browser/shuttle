@@ -39,6 +39,7 @@
 #include "build/build_config.h"
 #include "chrome/browser/shuttle/agent_browser_sidecar.h"
 #include "chrome/browser/shuttle/network_access.h"
+#include "chrome/browser/shuttle/profile_registry.h"
 #include "chrome/browser/shuttle/session_manager.h"
 #include "content/public/browser/web_contents.h"
 #include "crypto/sha2.h"
@@ -587,6 +588,16 @@ void PageToolManager::Call(std::string_view name,
   if (!session || !IsSafeAgentId(session->agent)) {
     std::move(callback).Run(ToolResult::Error(
         "Not a leased tab of an open session: " + *target_id));
+    return;
+  }
+
+  if (const std::string* ab_special =
+          tool->FindDict("ab")->FindString("special");
+      ab_special && *ab_special == "state_path" &&
+      ProfileRegistry::IsThrowawayId(session->agent)) {
+    // A saved state is cookies on disk; throwaway agents keep nothing there.
+    std::move(callback).Run(ToolResult::Error(
+        "state-save / state-load aren't available to throwaway agents"));
     return;
   }
 

@@ -223,6 +223,25 @@ cr-toolbar {
   font-weight: 500;
 }
 
+.temporary {
+  align-items: center;
+  background: var(--cr-hover-background-color);
+  border-radius: 8px;
+  color: var(--cr-secondary-text-color);
+  display: inline-flex;
+  font-size: 85%;
+  font-weight: 400;
+  gap: 2px;
+  margin-inline-start: 6px;
+  padding: 0 6px 0 4px;
+  vertical-align: middle;
+}
+
+.temporary cr-icon {
+  --iron-icon-height: 14px;
+  --iron-icon-width: 14px;
+}
+
 .avatar {
   align-items: center;
   background: var(--group);

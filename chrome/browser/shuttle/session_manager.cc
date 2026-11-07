@@ -375,6 +375,28 @@ std::vector<const Session*> SessionManager::SessionsOf(
   return list;
 }
 
+base::TimeTicks SessionManager::LastActivityOf(
+    const std::string& agent_id) const {
+  base::TimeTicks last;
+  for (const auto& [id, session] : sessions_) {
+    if (session.agent == agent_id) {
+      last = std::max(last, session.last_activity_ticks);
+    }
+  }
+  return last;
+}
+
+bool SessionManager::IsAgentBusy(const std::string& agent_id) const {
+  for (const auto& [id, session] : sessions_) {
+    if (session.agent == agent_id &&
+        (session.pending_calls > 0 ||
+         std::ranges::any_of(TabsOf(id), &IsInFrontOfUser))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void SessionManager::CloseCreatedTabs(
     const std::string& session_id,
     const std::vector<std::string>& target_ids) {
@@ -498,6 +520,8 @@ bool SessionManager::Close(const std::string& session_id) {
   }
   sessions_.erase(session_id);
   UpdateIdleTimer();
+  // A throwaway agent's idle time runs from its last session's end.
+  registry_->TouchThrowaway(agent_id);
   registry_->FlushCookies(agent_id);
   if (session_closed_callback_) {
     session_closed_callback_.Run(session_id);

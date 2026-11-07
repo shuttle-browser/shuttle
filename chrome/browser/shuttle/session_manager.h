@@ -95,6 +95,11 @@ class SessionManager : public TabStripModelObserver {
   void EndWork(const std::string& session_id);
   // Returns false if unknown.
   bool SetIdleTimeout(const std::string& session_id, base::TimeDelta timeout);
+  // Latest activity of any of the agent's sessions; null if it has none.
+  base::TimeTicks LastActivityOf(const std::string& agent_id) const;
+  // One of the agent's sessions runs a tool call, or a person looks at one of
+  // its tabs.
+  bool IsAgentBusy(const std::string& agent_id) const;
   // The agent's open sessions, oldest first.
   std::vector<const Session*> SessionsOf(const std::string& agent_id) const;
   // Closes tabs that a CDP connection created (`target_ids`) and that are

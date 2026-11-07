@@ -6,11 +6,17 @@
 #define CHROME_BROWSER_SHUTTLE_SHUTTLE_SERVICE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "base/functional/callback_forward.h"
+#include "base/memory/weak_ptr.h"
+#include "base/time/time.h"
+#include "base/timer/timer.h"
+#include "base/types/expected.h"
 #include "base/values.h"
+#include "chrome/browser/shuttle/profile_registry.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "content/public/browser/devtools_manager_delegate.h"
 #include "ui/gfx/image/image_skia.h"
@@ -81,6 +87,17 @@ class ShuttleService : public KeyedService {
   // Takes an agent's tab back: it reopens as an ordinary tab.
   void TakeBackTab(content::WebContents* contents);
 
+  // Creates a throwaway agent (see ProfileRegistry). Returns its id, or an
+  // error (the cap of live throwaway agents is reached).
+  base::expected<std::string, std::string> CreateThrowawayAgent(
+      const ProfileRegistry::Identity& identity);
+  // Closes the agent's sessions and deletes it (delete-agent, and throwaway
+  // agents idle past their timeout). `done` runs once its data is gone.
+  void DeleteAgent(const std::string& agent_id, base::OnceClosure done);
+  // When a throwaway agent will be deleted if nothing happens (an estimate:
+  // a busy agent is kept), or nullopt for other agents.
+  std::optional<base::Time> ThrowawayExpiry(const std::string& agent_id) const;
+
   ProfileRegistry& profiles() { return *profiles_; }
   SessionManager& sessions() { return *sessions_; }
 
@@ -92,12 +109,19 @@ class ShuttleService : public KeyedService {
   // (`targetId`) count as the session's activity. Returns the session the
   // call works for (the `sessionId` one first), empty if none.
   std::string TouchSessionOf(const base::DictValue& arguments);
+  // Deletes throwaway agents idle past their timeout; runs while any exist.
+  void CheckThrowaways();
+  void UpdateThrowawayTimer();
+  base::TimeDelta IdleTimeoutOf(const ProfileRegistry::Entry& entry) const;
+  base::TimeTicks LastActivityOf(const std::string& agent_id) const;
 
   std::unique_ptr<ProfileRegistry> profiles_;
   std::unique_ptr<SessionManager> sessions_;
   std::unique_ptr<AvatarCache> avatars_;
   // After sessions_: sidecars die before the sessions they serve.
   std::unique_ptr<PageToolManager> page_tools_;
+  base::RepeatingTimer throwaway_timer_;
+  base::WeakPtrFactory<ShuttleService> weak_factory_{this};
 };
 
 }  // namespace shuttle

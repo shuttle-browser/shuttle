@@ -18,6 +18,13 @@ inline constexpr char kOpenAgentsSwitch[] = "shuttle-open-agents";
 // update-session idleTimeoutMinutes).
 inline constexpr char kSessionIdleTimeoutSwitch[] =
     "shuttle-session-idle-timeout";
+// For probes: idle timeout of every throwaway agent ("<n>s" = seconds, else
+// minutes), instead of its idleMinutes.
+inline constexpr char kThrowawayIdleTimeoutSwitch[] =
+    "shuttle-throwaway-idle-timeout";
+// Most throwaway agents alive at once (default 50; 0 = no throwaway agents).
+inline constexpr char kMaxThrowawayAgentsSwitch[] =
+    "shuttle-max-throwaway-agents";
 
 }  // namespace shuttle
 
