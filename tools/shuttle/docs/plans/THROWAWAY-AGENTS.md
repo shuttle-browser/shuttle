@@ -1,6 +1,6 @@
 # Throwaway agents (design, 2026-11-07)
 
-Status: design agreed (maintainer's answers 2026-11-07), not implemented. Requested by the maintainer on 2026-11-06.
+Status: implemented in fork commit 59 (branch `sh/throwaway-agents`, 2026-11-07). One finding while building: Chromium writes an in-memory partition's GPU shader caches to disk; they are deleted with the agent and at startup. Requested by the maintainer on 2026-11-06.
 
 ## Goal
 
