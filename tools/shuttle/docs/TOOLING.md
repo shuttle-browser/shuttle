@@ -480,6 +480,23 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 
 ## Gotchas
 
+- **Headless smoke on the cloud VM after a rebuild** (2026-11-07): three setup steps or most probes fail.
+  (1) The rebuild replaces `out/LinuxRelease/chrome_sandbox` without its SUID bit ("No usable sandbox!", every launch
+  aborts): install a root-owned copy once, `sudo install -o root -g root -m 4755 out/LinuxRelease/chrome_sandbox
+  /usr/local/sbin/chrome-devel-sandbox`, and export `CHROME_DEVEL_SANDBOX=/usr/local/sbin/chrome-devel-sandbox` (a
+  later build can't clobber it). (2) A non-login ssh shell has no `node` (probes exit 127): put
+  `third_party/node/linux/node-linux-x64/bin` on `PATH`. (3) `tab-guards`' wait-for needs the sidecar next to the
+  binary: `scripts/fetch-agent-browser.sh out/LinuxRelease linux-x64`. Then 15/15.
+- **In-memory storage partitions still write GPU shader caches to disk** (2026-11-07, fork 59): an in-memory
+  `StoragePartition` (throwaway agents) gets `Storage/ext/<domain>/def/{GPUCache,DawnGraphiteCache,DawnWebGPUCache}`
+  (~1.5 MB); no cookies or site data. Delete them with the partition; `smoke-throwaway` allowlists exactly these.
+- **clang-format reflows whole fork files** (2026-11-07): many fork files predate clang-format (include order from
+  rebranding, long lines), so `clang-format -i` on a touched file adds 100+ lines of unrelated noise. Format only the
+  changed lines: `python3 third_party/clang-format/script/git-clang-format --binary "$(command -v clang-format)" --diff
+  HEAD -- <paths>` (and apply the hunks you own). `clang-format -i --assume-filename` ignores the style for files
+  outside the checkout; pipe through stdin instead.
+- **Blogger pages (chromereleases.googleblog.com) render their posts with JS**: a plain fetch returns only the title.
+  Read them in Shuttle (MCP `allocate-tab` + `get-text .post-body`).
 - **Killing a build's shell leaves `out/.<Dir>.build-lock` behind** (2026-11-04): the next build refuses with
   "stale lock (owner N not running)". Remove the lock when no `siso ninja` runs. Stop builds with
   `pkill -INT -f 'siso ninja'` instead: siso exits cleanly and the script removes the lock.
