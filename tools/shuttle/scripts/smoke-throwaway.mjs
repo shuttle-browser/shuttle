@@ -1,6 +1,8 @@
 // Throwaway agents (docs/plans/THROWAWAY-AGENTS.md): node scripts/smoke-throwaway.mjs <port> <userDataDir>
 // Run by scripts/smoke-all.sh on its own launch with --shuttle-throwaway-idle-timeout=6s
 // --shuttle-max-throwaway-agents=4.
+//   0. Startup (profile seeded by smoke-throwaway-seed.mjs): a persistent "tmp-legacy" agent from prefs stays
+//      persistent with its files; a crashed run's throwaway files go; links are removed, their targets kept.
 //   1. create-agent { throwaway: true }: generated tmp- id, throwaway, idleMinutes 15, expiresAt; listed.
 //   2. Refused: id with throwaway, avatar, persistSessionCookies, idleMinutes out of range, a persistent "tmp-" id,
 //      idleMinutes on a persistent agent; update-agent takes name/color/idleMinutes, refuses avatar.
@@ -17,17 +19,24 @@ if (!udd) { console.error('usage: smoke-throwaway.mjs <port> <userDataDir>'); pr
 const IDLE_MS = 6000;      // the launch's --shuttle-throwaway-idle-timeout
 const CHECK_MS = 1500;     // ShuttleService checks every timeout/4 with the override
 const PERSISTENT = 'smoke-ta-persistent';
+const LEGACY = 'tmp-legacy';
 const created = [];
 cleanup(async () => {
   for (const id of created) await mcp('delete-agent', { id }).catch(gone);
   await mcp('delete-agent', { id: PERSISTENT }).catch(gone);
+  await mcp('delete-agent', { id: LEGACY }).catch(gone);
 });
 
 const errorOf = async (name, a) => { try { await mcp(name, a); return ''; } catch (e) { return e.message; } };
 const listed = async (id) => (await mcp('list-agents')).agents.find((a) => a.id === id);
 const tabExists = async (targetId) => (await json('/json/list')).some((t) => t.id === targetId);
 const throwaway = async (extra = {}) => {
-  const agent = await mcp('create-agent', { throwaway: true, ...extra });
+  let agent;
+  // Refused for a moment after startup, until the previous run's files are gone.
+  for (let i = 0; !agent; i++) {
+    try { agent = await mcp('create-agent', { throwaway: true, ...extra }); }
+    catch (e) { if (i >= 20 || !/starting up/.test(e.message)) throw e; await sleep(250); }
+  }
   created.push(agent.id);
   return agent;
 };
@@ -37,8 +46,28 @@ const waitUntil = async (fn, ms) => {
 };
 const profileDir = fs.existsSync(path.join(udd, 'Default')) ? path.join(udd, 'Default') : udd;
 
-// 1. Create.
+// 1. Create (also waits for the startup cleanup).
 const a = await throwaway({ name: 'Smoke throwaway', color: 'cyan' });
+
+// 0. Startup cleanup (done once a throwaway agent could be created).
+const ext = path.join(profileDir, 'Storage', 'ext');
+const secrets = path.join(profileDir, 'shuttle', 'secrets');
+const legacy = await listed(LEGACY);
+check('legacy tmp- agent kept, persistent', legacy && !legacy.throwaway, JSON.stringify(legacy ?? null));
+check('legacy save-text file kept', fs.existsSync(path.join(secrets, LEGACY, 'old.txt')));
+check('legacy partition dir kept', fs.existsSync(path.join(ext, `shuttle-${LEGACY}`, 'def', 'marker')));
+check('stale throwaway secrets removed', !fs.existsSync(path.join(secrets, 'tmp-0000000000aa')));
+check('stale throwaway partition removed', !fs.existsSync(path.join(ext, 'shuttle-tmp-0000000000aa')));
+let linkGone = true;
+try { fs.lstatSync(path.join(ext, 'shuttle-tmp-0000000000bb')); linkGone = false; } catch {}
+check('linked partition dir removed as a link', linkGone);
+check('link targets kept', fs.existsSync(path.join(udd, 'outside', 'keep.txt')) &&
+  fs.existsSync(path.join(udd, 'outside2', 'keep.txt')));
+const ls = await mcp('open-session', { agent: LEGACY, idleTimeoutMinutes: 0 });
+const ltab = await mcp('allocate-tab', { sessionId: ls.sessionId, url: 'data:text/html,legacy' });
+check('legacy agent tab is an agent tab (state-save not refused as throwaway)',
+  !/throwaway/.test(await errorOf('state-save', { targetId: ltab.targetId, name: 'l1' })));
+await mcp('close-session', { sessionId: ls.sessionId });
 check('generated tmp- id', /^tmp-[0-9a-f]{12}$/.test(a.id), a.id);
 check('marked throwaway', a.throwaway === true, JSON.stringify(a.throwaway));
 check('idleMinutes defaults to 15', a.idleMinutes === 15, JSON.stringify(a.idleMinutes));
