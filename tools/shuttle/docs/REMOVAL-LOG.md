@@ -1171,3 +1171,7 @@ decisions 2026-11-07).
 - MCP: `create-agent` / `update-agent` / `list-agents` fields; `state-save` / `state-load` refused for throwaways.
 - `chrome://agents`: "Temporary" chip with the expiry in its tooltip; the edit dialog hides avatar and cookie settings.
 - Probe `smoke-throwaway.mjs` (own launch in `smoke-all`).
+- SH-Review (post-merge, 2026-11-07): one P1 (ids `tmp-*` were valid for persistent agents before: startup cleanup and
+  the in-memory switch hit existing ones) and three P2s (startup cleanup races a new throwaway; partition-dir cleanup
+  follows a symlinked `Storage`/`ext`; a save-text write already posted can recreate `secrets/<id>` after deletion).
+  Open: fixed in a follow-up commit before the 158 release.
