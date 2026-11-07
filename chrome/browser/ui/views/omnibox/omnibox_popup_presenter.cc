@@ -20,10 +20,10 @@ OmniboxPopupPresenter::OmniboxPopupPresenter(
     OmniboxPopupPresenterDelegate& presenter_delegate,
     OmniboxController* controller)
     : OmniboxPopupPresenterBase(location_bar, presenter_delegate, controller) {
-  SetWebUIContent(std::make_unique<OmniboxPopupWebUIContent>(
-      this, this->location_bar(), controller,
-      /*include_location_bar_cutout=*/true,
-      /*wants_focus=*/false));
+  // If the content is not created here, `Show()` creates it on demand.
+  // `OmniboxPopupViewWebUI` reads the content only while the popup is shown.
+  ApplyWebUIContentCreationStrategy(GetWebUIContentCreationStrategy(
+      omnibox::kOmniboxWebUIPopupDeferCreation));
 
   // By initializing `content_height_` to 1, we ensure the widget starts 1px
   // taller than the location bar on first show. This creates a tiny visible
@@ -41,6 +41,14 @@ OmniboxPopupPresenter::OmniboxPopupPresenter(
 }
 
 OmniboxPopupPresenter::~OmniboxPopupPresenter() = default;
+
+std::unique_ptr<OmniboxPopupWebUIBaseContent>
+OmniboxPopupPresenter::CreateWebUIContent() {
+  return std::make_unique<OmniboxPopupWebUIContent>(
+      this, location_bar(), controller(),
+      /*include_location_bar_cutout=*/true,
+      /*wants_focus=*/false, /*set_content_url=*/true);
+}
 
 bool OmniboxPopupPresenter::ShouldHideForInitialLayout() const {
   return base::FeatureList::IsEnabled(

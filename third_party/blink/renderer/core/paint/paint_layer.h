@@ -90,7 +90,6 @@ enum PaintLayerIteration {
       kNegativeZOrderChildren | kNormalFlowChildren | kPositiveZOrderChildren
 };
 
-// TODO(crbug.com/332933527): Support anchors-valid.
 // If the size of this enum changes, make sure to update the bits needed for
 // `invisible_for_position_visibility_`.
 enum class LayerPositionVisibility : uint8_t {
@@ -102,6 +101,8 @@ enum class LayerPositionVisibility : uint8_t {
   kChainedAnchorsVisible = 1 << 2,
   // no-overflow.
   kNoOverflow = 1 << 3,
+  // anchor-valid.
+  kAnchorValid = 1 << 4,
 };
 
 // PaintLayer is an old object that handles lots of unrelated operations.
@@ -210,16 +211,9 @@ class CORE_EXPORT PaintLayer : public GarbageCollected<PaintLayer>,
   bool IsSelfPaintingLayer() const { return is_self_painting_layer_; }
 
   bool IsTransparent() const {
-    return GetLayoutObject().StyleRef().HasOpacity() ||
-           GetLayoutObject().StyleRef().HasBlendMode() ||
+    return GetLayoutObject().Style().HasOpacity() ||
+           GetLayoutObject().Style().HasBlendMode() ||
            GetLayoutObject().HasMask();
-  }
-
-  const PaintLayer* Root() const {
-    const PaintLayer* curr = this;
-    while (curr->Parent())
-      curr = curr->Parent();
-    return curr;
   }
 
   bool IsRootLayer() const { return is_root_layer_; }
@@ -314,10 +308,11 @@ class CORE_EXPORT PaintLayer : public GarbageCollected<PaintLayer>,
 
   // If the input CompositorFilterOperation is not empty, it will be populated
   // only if |filter_on_effect_node_dirty_| is true or the reference box has
-  // changed. Otherwise it will be populated unconditionally.
-  // |filter_on_effect_node_dirty_| will be cleared.
+  // changed. Otherwise it will be populated unconditionally. Does not clear
+  // |filter_on_effect_node_dirty_| so all fragments see it; callers must call
+  // ClearFilterAndBackdropFilterOnEffectNodeDirty() after all fragments update.
   void UpdateCompositorFilterOperationsForFilter(
-      CompositorFilterOperations& operations);
+      CompositorFilterOperations& operations) const;
   void SetFilterOnEffectNodeDirty() { filter_on_effect_node_dirty_ = true; }
 
   // |backdrop_filter_bounds| represents the clipping bounds for the filtered
@@ -325,13 +320,19 @@ class CORE_EXPORT PaintLayer : public GarbageCollected<PaintLayer>,
   // containing EffectPaintPropertyNode. If the input CompositorFilterOperation
   // is not empty, it will be populated only if
   // |backdrop_filter_on_effect_node_dirty_| is true or the reference box has
-  // changed. Otherwise it will be populated unconditionally.
-  // |backdrop_filter_on_effect_node_dirty_| will be cleared.
+  // changed. Otherwise it will be populated unconditionally. Does not clear
+  // |backdrop_filter_on_effect_node_dirty_| so all fragments see it; callers
+  // must call ClearFilterAndBackdropFilterOnEffectNodeDirty() after all
+  // fragments update.
   void UpdateCompositorFilterOperationsForBackdropFilter(
       CompositorFilterOperations& operations,
-      SkPath& backdrop_filter_bounds);
+      SkPath& backdrop_filter_bounds) const;
   void SetBackdropFilterOnEffectNodeDirty() {
     backdrop_filter_on_effect_node_dirty_ = true;
+  }
+  void ClearFilterAndBackdropFilterOnEffectNodeDirty() {
+    filter_on_effect_node_dirty_ = false;
+    backdrop_filter_on_effect_node_dirty_ = false;
   }
 
   void SetIsUnderSVGHiddenContainer(bool value) {
@@ -763,8 +764,8 @@ class CORE_EXPORT PaintLayer : public GarbageCollected<PaintLayer>,
 
   // These are set to true when filter style or filter resource changes,
   // indicating that we need to update the filter (or backdrop_filter) field of
-  // the effect paint property node. They are cleared when the effect paint
-  // property node is updated.
+  // the effect paint property node. They are cleared once all fragments have
+  // updated their paint properties.
   unsigned filter_on_effect_node_dirty_ : 1;
   unsigned backdrop_filter_on_effect_node_dirty_ : 1;
 
@@ -787,7 +788,7 @@ class CORE_EXPORT PaintLayer : public GarbageCollected<PaintLayer>,
   unsigned static_block_edge_ : 2;
   unsigned static_align_self_direction_ : 1;
 
-  unsigned invisible_for_position_visibility_ : 4 = 0;
+  unsigned invisible_for_position_visibility_ : 5 = 0;
   unsigned descendant_needs_check_position_visibility_ : 1 = false;
 
   unsigned has_view_transition_name_ : 1 = false;

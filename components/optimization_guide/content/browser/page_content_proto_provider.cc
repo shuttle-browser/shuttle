@@ -27,6 +27,7 @@
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
 #include "base/timer/elapsed_timer.h"
+#include "base/timer/timer.h"
 #include "base/types/expected.h"
 #include "components/optimization_guide/content/browser/autofill_annotations_provider.h"
 #include "components/optimization_guide/content/browser/media_transcript_provider.h"
@@ -459,17 +460,26 @@ void OnGotAIPageContentOrTimedOutForAllFrames(
   bool on_critical_path = main_frame_options->on_critical_path;
 
   if (main_frame_did_timeout) {
-    std::move(done_callback).Run(base::unexpected("Timeout in Main Frame"));
+    base::UmaHistogramEnumeration(
+        kAIPageContentExtractionStatusHistogram,
+        AIPageContentExtractionStatus::kMainFrameTimeout);
+    std::move(done_callback)
+        .Run(base::unexpected(AIPageContentError{
+            AIPageContentExtractionStatus::kMainFrameTimeout,
+            "Timeout in Main Frame"}));
     return;
   }
 
-  if (auto result = optimization_guide::ConvertAIPageContentToProto(
-          std::move(main_frame_options), main_frame_token,
-          *timeout_helper->raw_page_content_map(),
-          base::BindRepeating(&GetRenderFrameInfo), frame_token_set,
-          page_content);
+  if (base::expected<void, AIPageContentError> result =
+          optimization_guide::ConvertAIPageContentToProto(
+              std::move(main_frame_options), main_frame_token,
+              *timeout_helper->raw_page_content_map(),
+              base::BindRepeating(&GetRenderFrameInfo), frame_token_set,
+              page_content);
       !result.has_value()) {
-    std::move(done_callback).Run(base::unexpected(result.error()));
+    base::UmaHistogramEnumeration(kAIPageContentExtractionStatusHistogram,
+                                  result.error().status);
+    std::move(done_callback).Run(base::unexpected(std::move(result.error())));
     return;
   }
 
@@ -534,6 +544,8 @@ void OnGotAIPageContentOrTimedOutForAllFrames(
       base::BindOnce(RecordPageContentExtractionMetrics,
                      elapsed_timer.Elapsed(), source_id, mode, on_critical_path,
                      page_content.proto));
+  base::UmaHistogramEnumeration(kAIPageContentExtractionStatusHistogram,
+                                AIPageContentExtractionStatus::kSuccess);
   std::move(done_callback).Run(std::move(page_content));
 }
 
@@ -579,7 +591,13 @@ void GetAIPageContent(content::WebContents* web_contents,
   DCHECK(web_contents->GetPrimaryMainFrame());
 
   if (!web_contents->GetPrimaryMainFrame()->IsRenderFrameLive()) {
-    std::move(done_callback).Run(base::unexpected("Main frame not live"));
+    base::UmaHistogramEnumeration(
+        kAIPageContentExtractionStatusHistogram,
+        AIPageContentExtractionStatus::kMainFrameNotLive);
+    std::move(done_callback)
+        .Run(base::unexpected(AIPageContentError{
+            AIPageContentExtractionStatus::kMainFrameNotLive,
+            "Main frame not live"}));
     return;
   }
 

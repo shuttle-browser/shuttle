@@ -20,8 +20,6 @@
 #include "third_party/blink/renderer/modules/file_system_access/file_system_access_file_delegate.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_mojo.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/wtf.h"
 #include "third_party/blink/renderer/platform/wtf/wtf_size_t.h"
@@ -125,7 +123,10 @@ base::FileErrorOr<int> FileSystemAccessIncognitoFileDelegate::Read(
     CHECK_EQ(bytes_read, 0);
   }
 
-  return file_error == base::File::Error::FILE_OK ? bytes_read : file_error;
+  if (file_error != base::File::FILE_OK) {
+    return base::unexpected(file_error);
+  }
+  return bytes_read;
 }
 
 base::FileErrorOr<int> FileSystemAccessIncognitoFileDelegate::Write(
@@ -159,7 +160,10 @@ base::FileErrorOr<int> FileSystemAccessIncognitoFileDelegate::Write(
   mojo_ptr_->Write(offset, std::move(consumer_handle), &file_error,
                    &bytes_written);
 
-  return file_error == base::File::Error::FILE_OK ? bytes_written : file_error;
+  if (file_error != base::File::FILE_OK) {
+    return base::unexpected(file_error);
+  }
+  return bytes_written;
 }
 
 base::FileErrorOr<int64_t> FileSystemAccessIncognitoFileDelegate::GetLength() {
@@ -168,7 +172,10 @@ base::FileErrorOr<int64_t> FileSystemAccessIncognitoFileDelegate::GetLength() {
   int64_t length;
   mojo_ptr_->GetLength(&file_error, &length);
   CHECK_GE(length, 0);
-  return file_error == base::File::Error::FILE_OK ? length : file_error;
+  if (file_error != base::File::FILE_OK) {
+    return base::unexpected(file_error);
+  }
+  return length;
 }
 
 base::FileErrorOr<bool> FileSystemAccessIncognitoFileDelegate::SetLength(
@@ -177,7 +184,10 @@ base::FileErrorOr<bool> FileSystemAccessIncognitoFileDelegate::SetLength(
   CHECK_GE(length, 0);
   base::File::Error file_error;
   mojo_ptr_->SetLength(length, &file_error);
-  return file_error == base::File::Error::FILE_OK ? true : file_error;
+  if (file_error != base::File::FILE_OK) {
+    return base::unexpected(file_error);
+  }
+  return true;
 }
 
 bool FileSystemAccessIncognitoFileDelegate::Flush() {

@@ -67,7 +67,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContextualCueing.GlicSuggestions.MesFetchLatency" units="ms"
-    expires_after="2027-02-07">
+    expires_after="2027-04-11">
   <owner>sophiechang@chromium.org</owner>
   <owner>zekunjiang@google.com</owner>
   <summary>
@@ -79,7 +79,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="ContextualCueing.GlicSuggestions.PageContextFetchlatency.{PageContextType}"
-    units="ms" expires_after="2027-02-07">
+    units="ms" expires_after="2027-04-11">
   <owner>zekunjiang@google.com</owner>
   <owner>rajendrant@google.com</owner>
   <owner>sophiechang@chromium.org</owner>
@@ -129,7 +129,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="ContextualCueing.GlicSuggestions.SuggestionsFetchLatency.{ResultType}{EngagementType}"
-    units="ms" expires_after="2027-02-07">
+    units="ms" expires_after="2027-04-11">
   <owner>sophiechang@chromium.org</owner>
   <owner>zekunjiang@google.com</owner>
   <summary>
@@ -152,7 +152,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="ContextualCueing.NudgeDecision.{ContextualCueingOptimizationType}"
-    enum="ContextualCueingNudgeDecision" expires_after="2027-01-31">
+    enum="ContextualCueingNudgeDecision" expires_after="2027-04-04">
   <owner>sophiechang@chromium.org</owner>
   <owner>zekunjiang@google.com</owner>
   <summary>
@@ -164,7 +164,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContextualCueing.NudgeInteraction{CueType}"
-    enum="ContextualCueingNudgeInteraction" expires_after="2027-01-31">
+    enum="ContextualCueingNudgeInteraction" expires_after="2027-04-04">
   <owner>sophiechang@chromium.org</owner>
   <owner>zekunjiang@google.com</owner>
   <summary>
@@ -175,7 +175,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContextualCueing.V2.ChipClicked.CollapsedDuration" units="ms"
-    expires_after="2027-01-24">
+    expires_after="2027-03-28">
   <owner>sophiechang@chromium.org</owner>
   <owner>iwells@chromium.org</owner>
   <summary>
@@ -186,13 +186,28 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContextualCueing.V2.CueFormFactor.Hidden" enum="CueFormFactor"
-    expires_after="2027-02-14">
+    expires_after="2027-04-18">
   <owner>sophiechang@chromium.org</owner>
   <owner>iwells@chromium.org</owner>
   <summary>
     The form factor of a contextual cue that was hidden. Recorded when a cue's
     icon, chip, or anchored message is hidden.
   </summary>
+</histogram>
+
+<histogram name="ContextualCueing.V2.CueFormFactor.Hidden.{FormFactor}"
+    units="hash" expires_after="2027-02-07">
+  <owner>sophiechang@chromium.org</owner>
+  <owner>iwells@chromium.org</owner>
+  <summary>
+    The hashed string of the CUJ for a contextual cue hidden from a specific
+    form factor.
+  </summary>
+  <token key="FormFactor">
+    <variant name="AnchoredMessage"/>
+    <variant name="Chip"/>
+    <variant name="Icon"/>
+  </token>
 </histogram>
 
 <histogram name="ContextualCueing.V2.CueFormFactor.Shown" enum="CueFormFactor"
@@ -205,8 +220,23 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="ContextualCueing.V2.CueFormFactor.Shown.{FormFactor}"
+    units="hash" expires_after="2027-04-18">
+  <owner>sophiechang@chromium.org</owner>
+  <owner>iwells@chromium.org</owner>
+  <summary>
+    The hashed string of the CUJ for a contextual cue shown in a specific form
+    factor.
+  </summary>
+  <token key="FormFactor">
+    <variant name="AnchoredMessage"/>
+    <variant name="Chip"/>
+    <variant name="Icon"/>
+  </token>
+</histogram>
+
 <histogram name="ContextualCueing.V2.CueInteraction"
-    enum="ContextualCueingInteraction" expires_after="2027-01-24">
+    enum="ContextualCueingInteraction" expires_after="2027-03-28">
   <owner>sophiechang@chromium.org</owner>
   <owner>iwells@chromium.org</owner>
   <summary>
@@ -216,7 +246,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContextualCueing.V2.CueInteraction.PageType.Pdf"
-    enum="ContextualCueingInteraction" expires_after="2027-01-24">
+    enum="ContextualCueingInteraction" expires_after="2027-04-04">
   <owner>sophiechang@chromium.org</owner>
   <owner>iwells@chromium.org</owner>
   <owner>xiaochenzh@chromium.org</owner>
@@ -227,7 +257,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContextualCueing.V2.CueInteraction.{InteractionType}"
-    units="hash" expires_after="2027-02-07">
+    units="hash" expires_after="2027-04-11">
   <owner>sophiechang@chromium.org</owner>
   <owner>pulkitaga@google.com</owner>
   <summary>
@@ -246,7 +276,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContextualCueing.V2.CueShown" units="hash"
-    expires_after="2027-02-07">
+    expires_after="2027-04-11">
   <owner>sophiechang@chromium.org</owner>
   <owner>pulkitaga@google.com</owner>
   <summary>
@@ -287,7 +317,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContextualCueing.V2.MissingFaviconCount" units="count"
-    expires_after="2027-02-14">
+    expires_after="2027-04-18">
   <owner>sophiechang@chromium.org</owner>
   <owner>iwells@chromium.org</owner>
   <summary>

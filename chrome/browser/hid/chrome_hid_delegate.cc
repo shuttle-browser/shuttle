@@ -22,19 +22,29 @@
 #include "chrome/browser/ui/hid/hid_chooser_controller.h"
 #include "chrome/common/chrome_features.h"
 #include "components/permissions/object_permission_context_base.h"
+#include "content/public/browser/browser_context.h"
 #include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/security_principal.h"
+#include "content/public/browser/site_instance.h"
+#include "content/public/browser/storage_partition.h"
+#include "content/public/common/content_features.h"
 #include "extensions/buildflags/buildflags.h"
 #include "mojo/public/cpp/bindings/callback_helpers.h"
 #include "services/device/public/mojom/hid.mojom-forward.h"
+#include "third_party/blink/public/common/features.h"
 #include "url/origin.h"
+#include "url/url_constants.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/android/device_dialog/hid_chooser_dialog_android.h"
 #endif  // BUILDFLAG(IS_ANDROID)
 
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+#include "extensions/common/constants.h"
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "extensions/browser/guest_view/web_view/web_view_guest.h"
-#include "extensions/common/constants.h"
 #include "extensions/common/extension_features.h"
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
@@ -190,17 +200,57 @@ ChromeHidDelegate::ChromeHidDelegate() = default;
 
 ChromeHidDelegate::~ChromeHidDelegate() = default;
 
+bool ChromeHidDelegate::IsHidAllowedForFrame(
+    content::RenderFrameHost* render_frame_host) {
+  if (!render_frame_host) {
+    return false;
+  }
+
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+  // ControlledFrame / <webview> with embedder permission gating is allowed.
+  if (base::FeatureList::IsEnabled(
+          extensions_features::kEnableWebHidInWebView) &&
+      extensions::WebViewGuest::FromRenderFrameHost(render_frame_host)) {
+    return true;
+  }
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
+
+  content::RenderFrameHost* main_rfh =
+      render_frame_host->GetOutermostMainFrame();
+
+  // Because permission is scoped to the profile, guest contexts (like
+  // <webview>, <controlledframe>, and SlimWebView), despite having isolated
+  // StoragePartitions, would share HID permissions with the rest of the
+  // profile. Therefore, HID is not allowed in these contexts unless embedder
+  // permission gating is active.
+  if (main_rfh->GetSiteInstance()->GetSecurityPrincipal().IsGuest()) {
+    return false;
+  }
+
+  if (main_rfh->GetStoragePartition() !=
+      main_rfh->GetBrowserContext()->GetDefaultStoragePartition()) {
+    const auto& origin = main_rfh->GetLastCommittedOrigin();
+    if (origin.opaque()) {
+      return false;
+    }
+    return origin.scheme() != url::kHttpScheme &&
+           origin.scheme() != url::kHttpsScheme;
+  }
+
+  return true;
+}
+
 std::unique_ptr<content::HidChooser> ChromeHidDelegate::RunChooser(
     content::RenderFrameHost* render_frame_host,
     std::vector<blink::mojom::HidDeviceFilterPtr> filters,
     std::vector<blink::mojom::HidDeviceFilterPtr> exclusion_filters,
     content::HidChooser::Callback callback) {
-  DCHECK(render_frame_host);
+  CHECK(render_frame_host, base::NotFatalUntil::M161);
   auto* browser_context = render_frame_host->GetBrowserContext();
 
   // Start observing HidChooserContext for permission and device events.
   GetContextObserver(browser_context);
-  DCHECK(observations_.contains(browser_context));
+  CHECK(observations_.contains(browser_context), base::NotFatalUntil::M161);
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   // If it's a webview, request permission to show chooser from the embedder.
@@ -208,6 +258,12 @@ std::unique_ptr<content::HidChooser> ChromeHidDelegate::RunChooser(
           extensions::WebViewGuest::FromRenderFrameHost(render_frame_host);
       web_view && base::FeatureList::IsEnabled(
                       extensions_features::kEnableWebHidInWebView)) {
+    // An unattached guest has no embedder to route the permission request to.
+    content::RenderFrameHost* embedder_rfh = web_view->embedder_rfh();
+    if (!embedder_rfh) {
+      std::move(callback).Run(/*devices=*/{});
+      return nullptr;
+    }
     auto guest_origin =
         render_frame_host->GetMainFrame()->GetLastCommittedOrigin();
     auto device_requested_callback =
@@ -226,7 +282,7 @@ std::unique_ptr<content::HidChooser> ChromeHidDelegate::RunChooser(
         base::BindOnce(
             &ChromeHidDelegate::OnWebViewHidPermissionRequestCompleted,
             base::Unretained(this), chooser->GetWeakPtr(),
-            web_view->embedder_rfh()->GetGlobalId(), std::move(filters),
+            embedder_rfh->GetGlobalId(), std::move(filters),
             std::move(exclusion_filters),
             std::move(device_requested_callback)));
     return chooser;
@@ -297,7 +353,7 @@ void ChromeHidDelegate::RemoveObserver(
   if (!browser_context) {
     return;
   }
-  DCHECK(observations_.contains(browser_context));
+  CHECK(observations_.contains(browser_context), base::NotFatalUntil::M161);
   GetContextObserver(browser_context)->RemoveObserver(observer);
 }
 
@@ -327,19 +383,24 @@ bool ChromeHidDelegate::IsKnownSecurityKey(
 
 bool ChromeHidDelegate::IsServiceWorkerAllowedForOrigin(
     const url::Origin& origin) {
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  // WebHID is only available on extension service workers with feature flag
-  // enabled for now.
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+#if BUILDFLAG(ENABLE_DESKTOP_ANDROID_EXTENSIONS)
+  if (!base::FeatureList::IsEnabled(blink::features::kWebHID) ||
+      !base::FeatureList::IsEnabled(
+          features::kWebHidOnDesktopAndroidServiceWorkers)) {
+    return false;
+  }
+#endif  // BUILDFLAG(ENABLE_DESKTOP_ANDROID_EXTENSIONS)
   if (origin.scheme() == extensions::kExtensionScheme) {
     return true;
   }
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   return false;
 }
 
 ChromeHidDelegate::ContextObservation* ChromeHidDelegate::GetContextObserver(
     content::BrowserContext* browser_context) {
-  DCHECK(browser_context);
+  CHECK(browser_context, base::NotFatalUntil::M161);
   if (!observations_.contains(browser_context)) {
     observations_.emplace(browser_context, std::make_unique<ContextObservation>(
                                                this, browser_context));

@@ -51,27 +51,42 @@ void ResourceMultiBuffer::OnEmpty() {
   url_data_->OnEmpty();
 }
 
+// static
+UrlData::KeyType UrlData::MakeKey(
+    const KURL& url,
+    scoped_refptr<const SecurityOrigin> security_origin,
+    CorsMode cors_mode,
+    media::DataSource::EncodingMode encoding_mode) {
+  return std::make_pair(
+      url, std::make_pair(std::move(security_origin),
+                          std::make_pair(cors_mode, encoding_mode)));
+}
+
 UrlData::UrlData(base::PassKey<UrlIndex>,
                  const KURL& url,
                  CorsMode cors_mode,
+                 CacheMode cache_lookup_mode,
+                 scoped_refptr<const SecurityOrigin> security_origin,
                  media::DataSource::EncodingMode encoding_mode,
                  base::WeakPtr<UrlIndex> url_index,
-                 CacheMode cache_lookup_mode,
                  scoped_refptr<base::SingleThreadTaskRunner> task_runner)
     : UrlData(url,
               cors_mode,
+              cache_lookup_mode,
+              std::move(security_origin),
               encoding_mode,
               url_index,
-              cache_lookup_mode,
               std::move(task_runner)) {}
 
 UrlData::UrlData(const KURL& url,
                  CorsMode cors_mode,
+                 CacheMode cache_lookup_mode,
+                 scoped_refptr<const SecurityOrigin> security_origin,
                  media::DataSource::EncodingMode encoding_mode,
                  base::WeakPtr<UrlIndex> url_index,
-                 CacheMode cache_lookup_mode,
                  scoped_refptr<base::SingleThreadTaskRunner> task_runner)
     : url_(url),
+      security_origin_(std::move(security_origin)),
       cors_mode_(cors_mode),
       has_access_control_(false),
       url_index_(url_index),
@@ -80,13 +95,15 @@ UrlData::UrlData(const KURL& url,
       cacheable_(false),
       cache_lookup_mode_(cache_lookup_mode),
       encoding_mode_(encoding_mode),
-      multibuffer_(this, url_index_->block_shift(), std::move(task_runner)) {}
+      multibuffer_(this, url_index_->block_shift(), std::move(task_runner)) {
+  CHECK(security_origin_);
+}
 
 UrlData::~UrlData() = default;
 
 UrlData::KeyType UrlData::key() const {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  return std::make_pair(url(), std::make_pair(cors_mode(), encoding_mode()));
+  return MakeKey(url(), security_origin(), cors_mode(), encoding_mode());
 }
 
 void UrlData::set_valid_until(base::Time valid_until) {
@@ -94,27 +111,38 @@ void UrlData::set_valid_until(base::Time valid_until) {
   valid_until_ = valid_until;
 }
 
-void UrlData::MergeFrom(const scoped_refptr<UrlData>& other) {
+bool UrlData::MergeFrom(const scoped_refptr<UrlData>& other) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   // We're merging from another UrlData that refers to the *same*
   // resource, so when we merge the metadata, we can use the most
   // optimistic values.
-  if (ValidateDataOrigin(other->data_origin_.value_or(KURL()))) {
-    DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-    valid_until_ = std::max(valid_until_, other->valid_until_);
-    // set_length() will not override the length if already known.
-    set_length(other->length_);
-    cacheable_ |= other->cacheable_;
-    cache_lookup_mode_ = other->cache_lookup_mode_;
-    range_supported_ |= other->range_supported_;
-    if (last_modified_.is_null()) {
-      last_modified_ = other->last_modified_;
-    }
-    bytes_read_from_cache_ += other->bytes_read_from_cache_;
-    // is_cors_corss_origin_ will not relax from true to false.
-    set_is_cors_cross_origin(other->is_cors_cross_origin_);
-    has_access_control_ |= other->has_access_control_;
-    multibuffer()->MergeFrom(other->multibuffer());
+  CHECK(security_origin_->IsSameOriginWith(other->security_origin_.get()));
+  const KURL other_origin = other->data_origin_.value_or(KURL());
+  if (!CanAcceptDataFrom(other_origin, other->is_cors_cross_origin_)) {
+    return false;
   }
+  // Do not merge if either UrlData already has a known length and the other
+  // does not report the same length, to prevent splicing responses from
+  // resources of different sizes onto the same UrlData.
+  if (!HasCompatibleLength(other->length_) ||
+      !other->HasCompatibleLength(length_)) {
+    return false;
+  }
+  SetDataOrigin(other_origin, other->is_cors_cross_origin_);
+
+  valid_until_ = std::max(valid_until_, other->valid_until_);
+  // set_length() will not override the length if already known.
+  set_length(other->length_);
+  cacheable_ |= other->cacheable_;
+  cache_lookup_mode_ = other->cache_lookup_mode_;
+  range_supported_ |= other->range_supported_;
+  if (last_modified_.is_null()) {
+    last_modified_ = other->last_modified_;
+  }
+  bytes_read_from_cache_ += other->bytes_read_from_cache_;
+  has_access_control_ |= other->has_access_control_;
+  multibuffer()->MergeFrom(other->multibuffer());
+  return true;
 }
 
 void UrlData::set_cacheable(bool cacheable) {
@@ -127,6 +155,10 @@ void UrlData::set_length(int64_t length) {
   if (length != kPositionNotSpecified) {
     length_ = length;
   }
+}
+
+bool UrlData::HasCompatibleLength(int64_t length) const {
+  return length_ == kPositionNotSpecified || length_ == length;
 }
 
 void UrlData::set_is_cors_cross_origin(bool is_cors_cross_origin) {
@@ -171,6 +203,12 @@ void UrlData::Fail() {
   }
 }
 
+void UrlData::CrossOriginFail() {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  set_is_cors_cross_origin(true);
+  Fail();
+}
+
 void UrlData::OnRedirect(RedirectCB cb) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   redirect_callbacks_.push_back(std::move(cb));
@@ -181,24 +219,41 @@ void UrlData::Use() {
   last_used_ = base::Time::Now();
 }
 
-bool UrlData::ValidateDataOrigin(const KURL& origin) {
+bool UrlData::CanAcceptDataFrom(const KURL& origin,
+                                bool is_cors_cross_origin) const {
   if (!data_origin_) {
-    data_origin_ = origin;
     return true;
+  }
+
+  // Mixing non-opaque and opaque responses on a resource that has already
+  // received a response is not allowed, as consumers may have already checked
+  // origin tainting based on the earlier response.
+  if (is_cors_cross_origin_ != is_cors_cross_origin &&
+      base::FeatureList::IsEnabled(media::kDisallowMixedOpaqueMediaResponses)) {
+    return false;
   }
 
   if (cors_mode_ == UrlData::CORS_UNSPECIFIED) {
     // If both origins are null return true, otherwise
     // SecurityOrigin::AreSameOrigin will create a unique nonce for each.
-    if (data_origin_->IsNull() && origin.IsNull()) {
-      return true;
+    if (!data_origin_->IsNull() || !origin.IsNull()) {
+      if (!SecurityOrigin::AreSameOrigin(data_origin_.value(), origin)) {
+        return false;
+      }
     }
-    return SecurityOrigin::SecurityOrigin::AreSameOrigin(data_origin_.value(),
-                                                         origin);
   }
 
-  // The actual cors checks is done in the net layer.
   return true;
+}
+
+void UrlData::SetDataOrigin(const KURL& origin, bool is_cors_cross_origin) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  CHECK(CanAcceptDataFrom(origin, is_cors_cross_origin));
+  if (!data_origin_) {
+    data_origin_ = origin;
+  }
+  // The actual cors checks are done in the net layer.
+  set_is_cors_cross_origin(is_cors_cross_origin);
 }
 
 void UrlData::OnEmpty() {
@@ -282,26 +337,30 @@ scoped_refptr<UrlData> UrlIndex::GetByUrl(
     const KURL& url,
     UrlData::CorsMode cors_mode,
     UrlData::CacheMode cache_mode,
+    scoped_refptr<const SecurityOrigin> security_origin,
     media::DataSource::EncodingMode encoding_mode) {
   if (cache_mode == UrlData::kNormal) {
     auto i = indexed_data_.find(
-        std::make_pair(url, std::make_pair(cors_mode, encoding_mode)));
+        UrlData::MakeKey(url, security_origin, cors_mode, encoding_mode));
     if (i != indexed_data_.end() && i->value->Valid()) {
       return i->value;
     }
   }
 
-  return NewUrlData(url, cors_mode, cache_mode, encoding_mode);
+  return NewUrlData(url, cors_mode, cache_mode, std::move(security_origin),
+                    encoding_mode);
 }
 
 scoped_refptr<UrlData> UrlIndex::NewUrlData(
     const KURL& url,
     UrlData::CorsMode cors_mode,
     UrlData::CacheMode cache_lookup_mode,
+    scoped_refptr<const SecurityOrigin> security_origin,
     media::DataSource::EncodingMode encoding_mode) {
   return base::MakeRefCounted<UrlData>(
-      base::PassKey<UrlIndex>(), url, cors_mode, encoding_mode,
-      weak_factory_.GetWeakPtr(), cache_lookup_mode, task_runner_);
+      base::PassKey<UrlIndex>(), url, cors_mode, cache_lookup_mode,
+      std::move(security_origin), encoding_mode, weak_factory_.GetWeakPtr(),
+      task_runner_);
 }
 
 namespace {
@@ -356,13 +415,15 @@ scoped_refptr<UrlData> UrlIndex::TryInsert(
     return url_data;
   }
 
-  if (url_data->Valid()) {
-    if ((!iter->value->Valid() ||
-         url_data->CachedSize() > iter->value->CachedSize())) {
-      iter->value = url_data;
-    } else {
-      iter->value->MergeFrom(url_data);
-    }
+  if (!url_data->Valid()) {
+    return url_data;
+  }
+
+  if (!iter->value->Valid() ||
+      url_data->CachedSize() > iter->value->CachedSize()) {
+    iter->value = url_data;
+  } else if (!iter->value->MergeFrom(url_data)) {
+    return url_data;
   }
   return iter->value;
 }

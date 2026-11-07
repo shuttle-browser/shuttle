@@ -500,6 +500,12 @@ class PageLoadMetricsObserverInterface {
       content::RenderFrameHost* rfh,
       const std::vector<mojom::ResourceDataUpdatePtr>& resources) = 0;
 
+  // Invoked when subresource load metrics are updated for a given
+  // RenderFrameHost.
+  virtual void OnSubresourceLoadMetricsObserved(
+      content::RenderFrameHost* rfh,
+      const blink::SubresourceLoadMetrics& subresource_load_metrics) = 0;
+
   // Invoked when a media element starts playing.
   virtual void MediaStartedPlaying(
       const content::WebContentsObserver::MediaPlayerInfo& video_type,
@@ -636,13 +642,6 @@ class PageLoadMetricsObserverInterface {
   // |navigation_handle| is for the activation navigation.
   virtual void DidActivatePrerenderedPage(
       content::NavigationHandle* navigation_handle) = 0;
-
-  // Called when a `SharedStorageWorkletHost` is created.
-  virtual void OnSharedStorageWorkletHostCreated() = 0;
-
-  // Called when `sharedStorage.selectURL()` is called for some frame on the
-  // page tracked.
-  virtual void OnSharedStorageSelectURLCalled() = 0;
 
   // Called when `performance.mark()` is emitted in the main frame except for
   // the standard UserTiming marks `mark_fully_loaded`, `mark_fully_visible`,

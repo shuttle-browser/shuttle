@@ -6,6 +6,7 @@ import re
 
 import setup_modules  # pylint: disable=unused-import
 
+
 from chromium_src.tools.metrics.histograms import extract_histograms
 from chromium_src.tools.metrics.histograms import histogram_paths
 from chromium_src.tools.metrics.histograms import merge_xml
@@ -462,7 +463,6 @@ _TIME_UNIT_EVENT_METRIC_ALLOWLIST = frozenset(
     ('ServiceWorker.MainResourceLoadCompleted', 'RouterEvaluationTime'),
     ('ServiceWorker.OnLoad', 'TotalCacheLookupTime'),
     ('ServiceWorker.OnLoad', 'TotalRouterEvaluationTime'),
-    ('SharedStorage.Worklet.OnDestroyed', 'AbsoluteUsefulResourceDuration'),
     ('SmartCharging', 'DurationOfLastCharge'),
     ('SmartCharging', 'DurationRecentAudioPlaying'),
     ('SmartCharging', 'DurationRecentVideoPlaying'),

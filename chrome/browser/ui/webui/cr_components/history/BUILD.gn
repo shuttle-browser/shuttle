@@ -5,7 +5,6 @@
 source_set("history") {
   sources = [ "history_util.cc" ]
   public = [ "history_util.h" ]
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
   deps = [
     "//base",
     "//chrome/app:branded_strings",
@@ -16,12 +15,10 @@ source_set("history") {
     "//chrome/browser/signin",
     "//chrome/browser/ui/webui:favicon_source",
     "//chrome/browser/ui/webui:webui_util",
-    "//chrome/browser/ui/webui/cr_components/history_clusters",
     "//components/browsing_data/core",
     "//components/favicon_base",
     "//components/history/core/browser",
     "//components/history/core/common",
-    "//components/history_clusters/core",
     "//components/prefs",
     "//components/signin/public/base",
     "//components/strings:components_strings_grit",

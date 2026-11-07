@@ -26,8 +26,8 @@ BackgroundThumbnailVideoCapturer::BackgroundThumbnailVideoCapturer(
     content::WebContents* contents,
     GotFrameCallback got_frame_callback)
     : contents_(contents), got_frame_callback_(std::move(got_frame_callback)) {
-  DCHECK(contents_);
-  DCHECK(got_frame_callback_);
+  CHECK(contents_, base::NotFatalUntil::M162);
+  CHECK(got_frame_callback_, base::NotFatalUntil::M162);
 }
 
 BackgroundThumbnailVideoCapturer::~BackgroundThumbnailVideoCapturer() {
@@ -70,6 +70,9 @@ void BackgroundThumbnailVideoCapturer::Start(
 
   constexpr int kMaxFrameRate = 2;
   video_capturer_ = source_view->CreateVideoCapturer();
+  // Mark the capture as secure because tab hover card thumbnail previews are a
+  // trusted internal browser UI feature.
+  video_capturer_->SetIsSecure(true);
   video_capturer_->SetResolutionConstraints(capture_info_.target_size,
                                             capture_info_.target_size, false);
   video_capturer_->SetAutoThrottlingEnabled(false);
@@ -116,7 +119,7 @@ void BackgroundThumbnailVideoCapturer::OnFrameCaptured(
   // the same type, with null check being equivalent to IsValid() check. Given
   // the above, we should never be able to receive a read only shmem region that
   // is not valid - mojo will enforce it for us.
-  DCHECK(shmem_region.IsValid());
+  CHECK(shmem_region.IsValid(), base::NotFatalUntil::M162);
 
   // Process captured image.
   base::ReadOnlySharedMemoryMapping mapping = shmem_region.Map();
@@ -140,7 +143,7 @@ void BackgroundThumbnailVideoCapturer::OnFrameCaptured(
 
   // The SkBitmap's pixels will be marked as immutable, but the installPixels()
   // API requires a non-const pointer. So, cast away the const.
-  void* const pixels = const_cast<void*>(mapping.memory());
+  void* const pixels = const_cast<uint8_t*>(mapping.data());
 
   // Call installPixels() with a |releaseProc| that: 1) notifies the capturer
   // that this consumer has finished with the frame, and 2) releases the shared

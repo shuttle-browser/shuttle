@@ -71,8 +71,8 @@ class DOMMatrix;
 class Element;
 class UpdateElementGeometryOptions;
 class ElementImage;
+class ElementImageDefaultSize;
 class GraphicsContext;
-class HTMLCanvasAccessibilityManager;
 class HTMLCanvasElement;
 class ImageBitmapOptions;
 class StaticBitmapImageToVideoFrameCopier;
@@ -123,10 +123,6 @@ class CORE_EXPORT HTMLCanvasElement final
   void setHeight(unsigned, ExceptionState&);
 
   bool IsContentDrawable() const { return is_content_drawable_; }
-  // TODO(crbug.com/561849343): Remove support for layoutsubtree.
-  void setLayoutSubtree(bool);
-  // TODO(crbug.com/561849343): Remove support for layoutsubtree.
-  bool layoutSubtree() const;
   DEFINE_ATTRIBUTE_EVENT_LISTENER(paint, kPaint)
   DEFINE_ATTRIBUTE_EVENT_LISTENER(elementgeometryupdate, kElementgeometryupdate)
   void requestPaint();
@@ -208,9 +204,10 @@ class CORE_EXPORT HTMLCanvasElement final
   void SetNeedsPushProperties();
 
   void DiscardResources() override;
+  void ClearDirtyRect() override;
 
-  std::optional<CanvasChildPaintRecord> GetCanvasChildPaintRecord(
-      DOMNodeId child_id) const override;
+  std::optional<CanvasDrawablePaintRecord> GetCanvasDrawablePaintRecord(
+      DOMNodeId drawable_id) const override;
 
   TextDirection GetTextDirection(const ComputedStyle*) override;
   const LayoutLocale* GetLocale() const override;
@@ -259,11 +256,9 @@ class CORE_EXPORT HTMLCanvasElement final
 
   bool IsPageVisible() const override;
 
-  // CanvasResourceProviderDelegate implementation
+  // CanvasRenderingContextHost implementation
   void NotifyGpuContextLost() override;
   bool IsPrinting() const override;
-
-  // CanvasRenderingContextHost implementation
   bool ShouldAccelerate2dContext() const override;
   bool LowLatencyEnabled() const override;
   UkmParameters GetUkmParameters() override;
@@ -299,7 +294,6 @@ class CORE_EXPORT HTMLCanvasElement final
                           float font_height) override;
   void ClearRenderedText(const gfx::RectF& rect) override;
   void ClearRenderedText() override;
-  void UpdateCaptureRenderedText(bool capture);
   bool ShouldCaptureRenderedText() override;
   String CanvasAnnotation() const;
   bool HasRequestedOCR() const;
@@ -383,12 +377,9 @@ class CORE_EXPORT HTMLCanvasElement final
 
   void ResetLayer();
 
-  // If `element` is drawn into the canvas's coordinate system with
-  // `draw_transform`, this returns the transform that can be applied to
-  // `element` to make its CSS position match the drawn position.
-  DOMMatrix* getElementTransform(const V8UnionElementOrElementImage* element,
-                                 DOMMatrix* draw_transform,
-                                 ExceptionState&);
+  ElementImageDefaultSize* getElementImageDefaultSize(
+      const V8UnionElementOrElementImage* element,
+      ExceptionState&) const;
 
   DOMMatrix* getElementTransform(Element* element, ExceptionState&) const;
 
@@ -461,13 +452,11 @@ class CORE_EXPORT HTMLCanvasElement final
   static std::pair<blink::Image*, float> BrokenCanvas(
       float device_scale_factor);
 
-  bool ChildrenChangedAllChildrenRemovedNeedsList() const final;
   void ChildrenChanged(const ChildrenChange&) override;
-  void ChildElementRemoved(Element&);
 
-  const CanvasChildPaintState* GetCanvasChildPaintState(
-      DOMNodeId child_id) const;
-  const CanvasChildPaintState* GetCanvasChildPaintState(
+  const CanvasDrawablePaintState* GetCanvasDrawablePaintState(
+      DOMNodeId drawable_id) const;
+  const CanvasDrawablePaintState* GetCanvasDrawablePaintState(
       const V8UnionElementOrElementImage* element) const;
 
   FRIEND_TEST_ALL_PREFIXES(HTMLCanvasElementTest, BrokenCanvasHighRes);
@@ -498,6 +487,17 @@ class CORE_EXPORT HTMLCanvasElement final
   bool is_content_drawable_ = false;
 
   Member<HTMLCanvasAccessibilityManager> accessibility_manager_;
+  // Stores the latest ignored state received from the accessibility tree via
+  // OnAxObjectIgnoredStateChanged(). Because ignored canvases do not allocate
+  // an HTMLCanvasAccessibilityManager, this state is retained on the element
+  // to:
+  // 1. Prevent EnsureAccessibilityManager() from speculatively allocating a
+  //    manager when text is drawn on a canvas known to be ignored by AX.
+  // 2. Supply the true AX ignored state to
+  //    GetNeedsAccessibilitySupportHeuristic() when accessibility_manager_ is
+  //    null, preventing it from falling back to the non-AX visibility
+  //    heuristic approximation.
+  std::optional<bool> last_ax_ignored_state_;
 
   // Used for OffscreenCanvas that controls this HTML canvas element
   // and for low latency mode.

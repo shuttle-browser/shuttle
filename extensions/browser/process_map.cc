@@ -42,9 +42,8 @@ namespace {
 bool ProcessHasWebUIBindings(content::ChildProcessId process_id) {
   // TODO(crbug.com/40676401): HasWebUIBindings does not always return true for
   // WebUIs. This should be changed to use something else.
-  // TODO(crbug.com/379869738) Remove GetUnsafeValue.
   return content::ChildProcessSecurityPolicy::GetInstance()->HasWebUIBindings(
-      process_id.GetUnsafeValue());
+      process_id);
 }
 
 // Returns true if `process_id` is associated with a webview owned by the
@@ -103,10 +102,6 @@ bool ProcessMap::Contains(const ExtensionId& extension_id_in,
 
 bool ProcessMap::Contains(content::ChildProcessId process_id) const {
   return items_.contains(process_id);
-}
-
-bool ProcessMap::Contains(int process_id) const {
-  return Contains(content::ChildProcessId::FromUnsafeValue(process_id));
 }
 
 bool ProcessMap::ExtensionHasProcess(const ExtensionId& extension_id) const {

@@ -60,6 +60,17 @@ BASE_FEATURE(kAlwaysTrackNativeWindowOcclusionForTest,
 BASE_FEATURE(kRecalculateNativeWinOcclusionOnWindowDestroy,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+// If enabled, native window occlusion tracking ignores
+// EVENT_OBJECT_LOCATIONCHANGE events that can't change the occlusion state of
+// tracked windows: events for child windows, and events for top-level windows
+// whose ability to occlude other windows and bounds haven't changed since the
+// last occlusion calculation. Layered windows, for example, raise this event
+// every time their contents are updated, even if they don't move. Enabled by
+// default; behind a feature flag so it can be disabled remotely via Finch if a
+// regression is observed.
+BASE_FEATURE(kFilterNativeWinOcclusionLocationChanges,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
 // Field trial param name for `kApplyNativeOcclusionToCompositor`.
 const base::FeatureParam<std::string> kApplyNativeOcclusionToCompositorType{
     &kApplyNativeOcclusionToCompositor, "type", /*default=*/""};
@@ -81,16 +92,23 @@ BASE_FEATURE(kHideCursorWhileTyping, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kOnlyUseWindowResizeHelperOnResize,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Controls replacement of CATransactionCoordinator with a new implementation.
-BASE_FEATURE(kCATransactionV2, base::FEATURE_DISABLED_BY_DEFAULT);
+// Re-create the CAContext on window resize to try to better synchronize the
+// resize.
+BASE_FEATURE(kCAContextFenceOnResize, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Make live-resize of an NSWindow be asynchronous (so it doesn't block the
 // UI thread).
-BASE_FEATURE(kAsyncLiveResize, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kAsyncLiveResize, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Keeps the NSWindow invisible (via its `alphaValue`) until the first
 // compositor frame has been received.
 BASE_FEATURE(kAlphaInsteadOfCATransaction, base::FEATURE_ENABLED_BY_DEFAULT);
+
+// When enabled, uses the window's occlusion state
+// (NSWindowOcclusionStateVisible) in addition to -[NSWindow isOnActiveSpace] to
+// detect when a window becomes visible during space transition gestures before
+// the active space changes.
+BASE_FEATURE(kDetectSpaceChangeViaOcclusion, base::FEATURE_DISABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_MAC)
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -225,7 +243,7 @@ BASE_FEATURE(kDragDropOnlySynthesizeHttpOrHttpsUrlsFromText,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables applying scroll railing in the renderer.
-BASE_FEATURE(kApplyScrollRailingInRenderer, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kApplyScrollRailingInRenderer, base::FEATURE_ENABLED_BY_DEFAULT);
 
 #if BUILDFLAG(IS_CHROMEOS)
 bool IsImprovedKeyboardShortcutsEnabled() {
@@ -289,7 +307,7 @@ bool IsForcedColorsEnabled() {
 // milestones.
 BASE_FEATURE(kEyeDropper,
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
+    BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
              base::FEATURE_ENABLED_BY_DEFAULT
 #else
              base::FEATURE_DISABLED_BY_DEFAULT
@@ -365,27 +383,6 @@ bool IsSwipeToMoveCursorEnabled() {
       IsTouchTextEditingRedesignEnabled();
 #endif
   return enabled;
-}
-
-// Enable raw draw for tiles.
-BASE_FEATURE(kRawDraw, base::FEATURE_DISABLED_BY_DEFAULT);
-
-// Tile size = viewport size * TileSizeFactor
-const base::FeatureParam<double> kRawDrawTileSizeFactor{&kRawDraw,
-                                                        "TileSizeFactor", 1};
-
-const base::FeatureParam<bool> kIsRawDrawUsingMSAA{&kRawDraw, "IsUsingMSAA",
-                                                   false};
-bool IsUsingRawDraw() {
-  return base::FeatureList::IsEnabled(kRawDraw);
-}
-
-double RawDrawTileSizeFactor() {
-  return kRawDrawTileSizeFactor.Get();
-}
-
-bool IsRawDrawUsingMSAA() {
-  return kIsRawDrawUsingMSAA.Get();
 }
 
 BASE_FEATURE(kVariableRefreshRateAvailable, base::FEATURE_DISABLED_BY_DEFAULT);
@@ -502,9 +499,10 @@ BASE_FEATURE(kDesktopGlowUp, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kGlassFrame, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE_PARAM(bool, kGlassExpandOnHoverEnabled, &kGlassFrame, true);
+BASE_FEATURE_PARAM(bool, kGlassFrameEnabledByDefault, &kGlassFrame, true);
 
 BASE_FEATURE(kRoundedIcons, base::FEATURE_DISABLED_BY_DEFAULT);
-BASE_FEATURE(kWebUIRoundedIcons, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kWebUIRoundedIcons, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Updates the default dark neutrals for the theme palette.
 BASE_FEATURE(kChromeDarkNeutrals26, base::FEATURE_DISABLED_BY_DEFAULT);

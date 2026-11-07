@@ -200,7 +200,6 @@ struct GPU_IPC_COMMON_EXPORT StructTraits<gpu::mojom::GpuPreferencesDataView,
     out->disable_gpu_watchdog = prefs.disable_gpu_watchdog();
     out->gpu_sandbox_start_early = prefs.gpu_sandbox_start_early();
     out->enable_low_latency_dxva = prefs.enable_low_latency_dxva();
-    out->enable_zero_copy_dxgi_video = prefs.enable_zero_copy_dxgi_video();
     out->enable_nv12_dxgi_video = prefs.enable_nv12_dxgi_video();
     out->disable_software_rasterizer = prefs.disable_software_rasterizer();
     out->log_gpu_control_list_decisions =
@@ -216,7 +215,6 @@ struct GPU_IPC_COMMON_EXPORT StructTraits<gpu::mojom::GpuPreferencesDataView,
         prefs.enable_gpu_service_logging_gpu();
     out->enable_gpu_driver_debug_logging =
         prefs.enable_gpu_driver_debug_logging();
-    out->disable_gpu_program_cache = prefs.disable_gpu_program_cache();
     out->enforce_gl_minimums = prefs.enforce_gl_minimums();
     out->force_gpu_mem_discardable_limit_bytes =
         prefs.force_gpu_mem_discardable_limit_bytes();
@@ -313,9 +311,6 @@ struct GPU_IPC_COMMON_EXPORT StructTraits<gpu::mojom::GpuPreferencesDataView,
   static bool enable_low_latency_dxva(const gpu::GpuPreferences& prefs) {
     return prefs.enable_low_latency_dxva;
   }
-  static bool enable_zero_copy_dxgi_video(const gpu::GpuPreferences& prefs) {
-    return prefs.enable_zero_copy_dxgi_video;
-  }
   static bool enable_nv12_dxgi_video(const gpu::GpuPreferences& prefs) {
     return prefs.enable_nv12_dxgi_video;
   }
@@ -349,9 +344,6 @@ struct GPU_IPC_COMMON_EXPORT StructTraits<gpu::mojom::GpuPreferencesDataView,
   static bool enable_gpu_driver_debug_logging(
       const gpu::GpuPreferences& prefs) {
     return prefs.enable_gpu_driver_debug_logging;
-  }
-  static bool disable_gpu_program_cache(const gpu::GpuPreferences& prefs) {
-    return prefs.disable_gpu_program_cache;
   }
   static bool enforce_gl_minimums(const gpu::GpuPreferences& prefs) {
     return prefs.enforce_gl_minimums;

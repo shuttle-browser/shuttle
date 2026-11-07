@@ -94,8 +94,6 @@
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_std.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/text/format.h"
 #include "third_party/perfetto/include/perfetto/tracing/track.h"
@@ -514,10 +512,13 @@ bool VerifyCodecSupportStatic(VideoEncoderTraits::ParsedConfig* config,
 
       // Note: This calculation is incorrect for interlaced or MBAFF encoding;
       // but we don't support those and likely never will.
-      gfx::Size coded_size(base::bits::AlignUpDeprecatedDoNotUse(
-                               config->options.frame_size.width(), 16),
-                           base::bits::AlignUpDeprecatedDoNotUse(
-                               config->options.frame_size.height(), 16));
+      gfx::Size coded_size(
+          base::bits::AlignUp(
+              base::checked_cast<uint32_t>(config->options.frame_size.width()),
+              16u),
+          base::bits::AlignUp(
+              base::checked_cast<uint32_t>(config->options.frame_size.height()),
+              16u));
       uint64_t coded_area = coded_size.Area64();
       uint64_t max_coded_area =
           media::H264LevelToMaxFS(config->level) * 16ull * 16ull;
@@ -742,7 +743,7 @@ bool VideoEncoder::VerifyCodecSupport(ParsedConfig* config,
   return VerifyCodecSupportStatic(config, js_error_message);
 }
 
-media::EncoderStatus::Or<std::unique_ptr<media::VideoEncoder>>
+base::expected<std::unique_ptr<media::VideoEncoder>, media::EncoderStatus>
 VideoEncoder::CreateAcceleratedVideoEncoder(
     media::VideoCodecProfile profile,
     const media::VideoEncoder::Options& options,
@@ -752,7 +753,7 @@ VideoEncoder::CreateAcceleratedVideoEncoder(
   if (media::EncoderStatus result = IsAcceleratedConfigurationSupported(
           profile, options, gpu_factories, required_encoder_type);
       !result.is_ok()) {
-    return std::move(result);
+    return base::unexpected(std::move(result));
   }
 
   return std::unique_ptr<media::VideoEncoder>(
@@ -791,13 +792,13 @@ std::unique_ptr<media::VideoEncoder> CreateOpenH264VideoEncoder() {
 
 // This method is static and takes |self| in order to make it possible to use it
 // with a weak |this|. It's needed in to avoid a persistent reference cycle.
-media::EncoderStatus::Or<std::unique_ptr<media::VideoEncoder>>
+base::expected<std::unique_ptr<media::VideoEncoder>, media::EncoderStatus>
 VideoEncoder::CreateSoftwareVideoEncoder(VideoEncoder* self,
                                          bool fallback,
                                          media::VideoCodec codec) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(self->sequence_checker_);
   if (!self)
-    return media::EncoderStatus::Codes::kEncoderIllegalState;
+    return base::unexpected(media::EncoderStatus::Codes::kEncoderIllegalState);
   std::unique_ptr<media::VideoEncoder> result;
   switch (codec) {
     case media::VideoCodec::kAV1:
@@ -814,7 +815,8 @@ VideoEncoder::CreateSoftwareVideoEncoder(VideoEncoder* self,
       break;
   }
   if (!result) {
-    return media::EncoderStatus::Codes::kEncoderUnsupportedCodec;
+    return base::unexpected(
+        media::EncoderStatus::Codes::kEncoderUnsupportedCodec);
   }
   if (fallback) {
     CHECK(self->encoder_metrics_provider_);
@@ -828,7 +830,7 @@ VideoEncoder::CreateSoftwareVideoEncoder(VideoEncoder* self,
       std::make_unique<media::OffloadingVideoEncoder>(std::move(result)));
 }
 
-media::EncoderStatus::Or<std::unique_ptr<media::VideoEncoder>>
+base::expected<std::unique_ptr<media::VideoEncoder>, media::EncoderStatus>
 VideoEncoder::CreateMediaVideoEncoder(
     const ParsedConfig& config,
     media::GpuVideoAcceleratorFactories* gpu_factories,
@@ -1207,10 +1209,9 @@ void VideoEncoder::ProcessEncode(Request* request) {
     frame->set_timestamp(blink_timestamp);
   }
 
-  base::TimeDelta frame_duration;
+  base::TimeDelta frame_duration = media::kNoTimestamp;
   if (frame->metadata().frame_duration &&
-      frame->metadata().frame_duration != media::kInfiniteDuration &&
-      frame->metadata().frame_duration != media::kNoTimestamp) {
+      frame->metadata().frame_duration != media::kInfiniteDuration) {
     frame_duration = *frame->metadata().frame_duration;
   }
 
@@ -1222,8 +1223,9 @@ void VideoEncoder::ProcessEncode(Request* request) {
     frame_transform = *frame->metadata().transformation;
   }
 
-  frame_metadata_[frame->timestamp()] = FrameMetadata{
-      .duration = frame_duration, .transformation = frame_transform};
+  frame_metadata_.push_back(FrameMetadata{.timestamp = frame->timestamp(),
+                                          .duration = frame_duration,
+                                          .transformation = frame_transform});
 
   request->StartTracingVideoEncode(encode_options.key_frame,
                                    frame->timestamp());
@@ -1636,21 +1638,26 @@ void VideoEncoder::CallOutputCallback(
 
   auto buffer = media::DecoderBuffer::FromArray(std::move(output.data));
   buffer->set_timestamp(output.timestamp);
+  buffer->set_duration(media::kNoTimestamp);
   buffer->set_is_key_frame(output.key_frame);
 
   auto output_transform = media::kNoTransformation;
-  const auto it = frame_metadata_.find(output.timestamp);
+  const auto it = std::ranges::find(frame_metadata_, output.timestamp,
+                                    &FrameMetadata::timestamp);
   if (it != frame_metadata_.end()) {
-    if (!it->second.duration.is_zero()) {
-      buffer->set_duration(it->second.duration);
-    }
-    output_transform = it->second.transformation;
+    buffer->set_duration(it->duration);
+    output_transform = it->transformation;
 
-    // While encoding happens in presentation order, outputs may be out of order
-    // for some codec configurations. The maximum number of reordered outputs is
-    // 16, so we can clear everything before that.
-    if (it - frame_metadata_.begin() > 16) {
-      frame_metadata_.erase(frame_metadata_.begin(), it + 1);
+    // Consume the matched entry. While encoding happens in presentation order,
+    // outputs may be out of order for some codec configurations. The maximum
+    // number of reordered outputs is 16, so only evict unmatched older entries
+    // that exceed the maximum reordering window.
+    constexpr ptrdiff_t kMaxReorderedFrames = 16;
+    const ptrdiff_t index = it - frame_metadata_.begin();
+    frame_metadata_.EraseAt(static_cast<wtf_size_t>(index));
+    if (index > kMaxReorderedFrames) {
+      frame_metadata_.EraseAt(
+          0, static_cast<wtf_size_t>(index - kMaxReorderedFrames));
     }
   }
 
@@ -1752,6 +1759,7 @@ void VideoEncoder::CallOutputCallback(
 void VideoEncoder::ResetInternal(DOMException* ex) {
   Base::ResetInternal(ex);
   active_encodes_ = 0;
+  frame_metadata_.clear();
   last_decoder_config_.reset();
 }
 

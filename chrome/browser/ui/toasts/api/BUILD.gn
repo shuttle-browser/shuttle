@@ -18,6 +18,9 @@ source_set("toasts") {
     "//ui/base",
     "//ui/menus",
   ]
-  deps = [ "//components/vector_icons" ]
+  deps = [
+    "//chrome/browser/ui/browser_window",
+    "//components/vector_icons",
+  ]
 }
 

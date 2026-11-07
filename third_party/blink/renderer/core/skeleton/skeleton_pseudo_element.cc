@@ -36,9 +36,10 @@ void SetCanvasAndColorScheme(const Document& document,
   // that the background color here follows that.
   const ui::ColorProvider* color_provider =
       document.GetColorProviderForPainting(color_scheme);
-  Color color = StyleColor::ColorFromKeyword(CSSValueID::kCanvas, color_scheme,
-                                             color_provider,
-                                             /*can_expose_accent_color=*/false);
+  Color color = StyleColor::ColorFromKeyword(
+      CSSValueID::kCanvas,
+      /*theme_info=*/
+      {.color_provider = color_provider, .color_scheme = color_scheme});
   builder.SetDarkColorScheme(color_scheme == mojom::blink::ColorScheme::kDark);
   builder.SetBackgroundColor(StyleColor(color, CSSValueID::kCanvas));
 }
@@ -60,8 +61,8 @@ mojom::blink::ColorScheme SkeletonPseudoElement::SkeletonUsedColorScheme() {
 void SkeletonPseudoElement::DidRecalcStyle(const StyleRecalcChange) {
   if (LayoutObject* layout_object = GetLayoutObject()) {
     mojom::blink::ColorScheme used_color_scheme = SkeletonUsedColorScheme();
-    if (used_color_scheme != layout_object->StyleRef().UsedColorScheme()) {
-      ComputedStyleBuilder builder(layout_object->StyleRef());
+    if (used_color_scheme != layout_object->Style().UsedColorScheme()) {
+      ComputedStyleBuilder builder(layout_object->Style());
       // TODO(crbug.com/513276602): <meta> color-scheme elements do not have
       // an effect as the hosting document's page color-scheme is currently
       // used.

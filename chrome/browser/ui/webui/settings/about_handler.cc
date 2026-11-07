@@ -473,11 +473,11 @@ void AboutHandler::PromoteUpdater(const base::ListValue& args) {
 
 void AboutHandler::HandleOpenFeedbackDialog(const base::ListValue& args) {
   // Feedback is not part of this build.
-  DCHECK(args.empty());
+  CHECK(args.empty(), base::NotFatalUntil::M162);
 }
 
 void AboutHandler::HandleOpenHelpPage(const base::ListValue& args) {
-  DCHECK(args.empty());
+  CHECK(args.empty(), base::NotFatalUntil::M162);
   BrowserWindowInterface* browser =
       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
           web_ui()->GetWebContents());
@@ -486,12 +486,12 @@ void AboutHandler::HandleOpenHelpPage(const base::ListValue& args) {
 
 #if BUILDFLAG(IS_CHROMEOS)
 void AboutHandler::HandleOpenDiagnostics(const base::ListValue& args) {
-  DCHECK(args.empty());
+  CHECK(args.empty(), base::NotFatalUntil::M162);
   ash::ShowDiagnosticsApp(profile_);
 }
 
 void AboutHandler::HandleOpenFirmwareUpdates(const base::ListValue& args) {
-  DCHECK(args.empty());
+  CHECK(args.empty(), base::NotFatalUntil::M162);
   ash::ShowFirmwareUpdatesApp(profile_);
 }
 
@@ -507,7 +507,7 @@ void AboutHandler::HandleCheckInternetConnection(const base::ListValue& args) {
 }
 
 void AboutHandler::HandleLaunchReleaseNotes(const base::ListValue& args) {
-  DCHECK(args.empty());
+  CHECK(args.empty(), base::NotFatalUntil::M162);
   // We can always show the release notes since the Help app caches it, or can
   // show an appropriate error state (e.g. No internet connection).
   base::RecordAction(base::UserMetricsAction("ReleaseNotes.LaunchedAboutPage"));
@@ -515,7 +515,7 @@ void AboutHandler::HandleLaunchReleaseNotes(const base::ListValue& args) {
 }
 
 void AboutHandler::HandleOpenOsHelpPage(const base::ListValue& args) {
-  DCHECK(args.empty());
+  CHECK(args.empty(), base::NotFatalUntil::M162);
   BrowserWindowInterface* browser =
       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
           web_ui()->GetWebContents());
@@ -523,7 +523,7 @@ void AboutHandler::HandleOpenOsHelpPage(const base::ListValue& args) {
 }
 
 void AboutHandler::HandleSetChannel(const base::ListValue& args) {
-  DCHECK_EQ(2U, args.size());
+  CHECK_EQ(2U, args.size(), base::NotFatalUntil::M162);
 
   if (!CanChangeChannel(profile_)) {
     LOG(WARNING) << "Non-owner tried to change release track.";
@@ -574,7 +574,8 @@ void AboutHandler::HandleGetFirmwareUpdateCount(const base::ListValue& args) {
 
   auto* firmware_update_manager = ash::FirmwareUpdateManager::Get();
   update_count = firmware_update_manager->GetUpdateCount();
-  DCHECK_LT(update_count, std::numeric_limits<size_t>::max());
+  CHECK_LT(update_count, std::numeric_limits<size_t>::max(),
+           base::NotFatalUntil::M162);
   ResolveJavascriptCallback(base::Value(callback_id),
                             base::Value(static_cast<int>(update_count)));
 }
@@ -847,7 +848,8 @@ void AboutHandler::SetUpdateStatus(VersionUpdater::Status status,
                                    int64_t size,
                                    const std::u16string& message) {
   // Only UPDATING state should have progress set.
-  DCHECK(status == VersionUpdater::UPDATING || progress == 0);
+  CHECK(status == VersionUpdater::UPDATING || progress == 0,
+        base::NotFatalUntil::M162);
 
   base::DictValue event;
   event.Set("status", UpdateStatusToString(status));

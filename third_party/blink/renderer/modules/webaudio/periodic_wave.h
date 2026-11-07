@@ -29,9 +29,11 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_PERIODIC_WAVE_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_PERIODIC_WAVE_H_
 
+#include "base/memory/scoped_refptr.h"
+#include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/modules/webaudio/periodic_wave_handler.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/member.h"
+#include "third_party/blink/renderer/platform/bindings/v8_external_memory_accounter.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace blink {
@@ -40,7 +42,10 @@ class BaseAudioContext;
 class ExceptionState;
 class PeriodicWaveOptions;
 
-class PeriodicWave final : public ScriptWrappable {
+// PeriodicWave represents a periodic audio waveform defined by its Fourier
+// coefficients, used by OscillatorNode to shape its output. It is a
+// main-thread ScriptWrappable wrapper around PeriodicWaveHandler.
+class MODULES_EXPORT PeriodicWave final : public ScriptWrappable {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
@@ -54,22 +59,29 @@ class PeriodicWave final : public ScriptWrappable {
   static PeriodicWave* Create(BaseAudioContext&,
                               const Vector<float>& real,
                               const Vector<float>& imag,
-                              bool normalize,
+                              bool disable_normalization,
                               ExceptionState&);
 
   static PeriodicWave* Create(BaseAudioContext*,
                               const PeriodicWaveOptions*,
                               ExceptionState&);
 
-  explicit PeriodicWave(float sample_rate);
-  ~PeriodicWave() final = default;
+  explicit PeriodicWave(scoped_refptr<const PeriodicWaveHandler> handler);
+  ~PeriodicWave() final;
 
-  void Trace(Visitor*) const final;
-
-  PeriodicWaveHandler* handler() { return periodic_wave_handler_.Get(); }
+  scoped_refptr<const PeriodicWaveHandler> handler() const {
+    return periodic_wave_handler_;
+  }
 
  private:
-  const Member<PeriodicWaveHandler> periodic_wave_handler_;
+  static PeriodicWave* CreateBasicWaveform(float sample_rate, int shape);
+
+  const scoped_refptr<const PeriodicWaveHandler> periodic_wave_handler_;
+
+  // Held by PeriodicWave rather than PeriodicWaveHandler so that V8 external
+  // memory accounting remains associated with the script wrapper on the main
+  // thread while PeriodicWaveHandler remains a pure audio data structure.
+  V8ExternalMemoryAccounter external_memory_accounter_;
 };
 
 }  // namespace blink

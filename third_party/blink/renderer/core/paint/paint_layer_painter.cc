@@ -19,7 +19,8 @@
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/paint/box_fragment_painter.h"
 #include "third_party/blink/renderer/core/paint/clip_path_clipper.h"
-#include "third_party/blink/renderer/core/paint/fragment_data_iterator.h"
+#include "third_party/blink/renderer/core/paint/embedded_content_painter.h"
+#include "third_party/blink/renderer/core/paint/fragment_data.h"
 #include "third_party/blink/renderer/core/paint/inline_box_fragment_painter.h"
 #include "third_party/blink/renderer/core/paint/object_paint_properties.h"
 #include "third_party/blink/renderer/core/paint/object_painter.h"
@@ -333,7 +334,7 @@ PaintResult PaintLayerPainter::Paint(GraphicsContext& context,
     return kFullyPainted;
 
   IgnorePaintTimingScope ignore_paint_timing;
-  if (object.StyleRef().Opacity() == 0.0f) {
+  if (object.Style().Opacity() == 0.0f) {
     IgnorePaintTimingScope::IncrementIgnoreDepth();
   }
   // Explicitly compute opacity of documentElement, as it is special-cased in
@@ -341,16 +342,23 @@ PaintResult PaintLayerPainter::Paint(GraphicsContext& context,
   IgnorePaintTimingScope::SetIsDocumentElementInvisible(
       paint_timing::IsDocumentElementInvisible(object.GetDocument()));
 
-  // Canvas children need to ensure that a composited cc::Layer exists for
-  // canvas draw element, even if no other content is painted.
-  bool force_chunk_for_canvas_draw_element = false;
+  bool is_canvas_drawable_element = false;
   if (const auto* properties = object.FirstFragment().PaintProperties()) {
     if (const auto* effect = properties->Effect()) {
-      if (effect->HasCanvasChildState()) {
-        force_chunk_for_canvas_draw_element = true;
+      if (effect->HasCanvasDrawableState()) {
+        is_canvas_drawable_element = true;
       }
     }
   }
+
+  const bool is_painting_canvas_subtree =
+      paint_flags & PaintFlag::kReadBackAllowedRendering;
+  const bool is_non_drawable_in_canvas_subtree =
+      is_painting_canvas_subtree && !object.FirstFragment()
+                                         .LocalBorderBoxProperties()
+                                         .Effect()
+                                         .Unalias()
+                                         .IsInDrawableCanvasSubtree();
 
   bool is_self_painting_layer = paint_layer_.IsSelfPaintingLayer();
   bool should_paint_content =
@@ -358,7 +366,8 @@ PaintResult PaintLayerPainter::Paint(GraphicsContext& context,
       // Content under a LayoutSVGHiddenContainer is auxiliary resources for
       // painting. Foreign content should never paint in this situation, as it
       // is primary, not auxiliary.
-      !paint_layer_.IsUnderSVGHiddenContainer() && is_self_painting_layer;
+      !paint_layer_.IsUnderSVGHiddenContainer() && is_self_painting_layer &&
+      !is_non_drawable_in_canvas_subtree;
 
   PaintResult result = kFullyPainted;
   bool is_unbounded_active = object.IsInclusiveDescendantOfUnboundedElement();
@@ -367,8 +376,9 @@ PaintResult PaintLayerPainter::Paint(GraphicsContext& context,
       // regardless of LayoutView's visual rect, so don't check intersection
       // between the visual rect and the cull rect (custom for each page).
       (IsA<LayoutView>(object) && object.GetDocument().Printing()) ||
-      // Canvas children must paint, regardless of intersection.
-      force_chunk_for_canvas_draw_element || is_unbounded_active) {
+      // Drawable elements (even when empty) and their ancestors in the canvas
+      // subtree must not be culled before reaching PaintChildren.
+      is_painting_canvas_subtree || is_unbounded_active) {
     result = kMayBeClippedByCullRect;
   } else {
     gfx::Rect visual_rect = FirstFragmentVisualRect(object);
@@ -421,8 +431,16 @@ PaintResult PaintLayerPainter::Paint(GraphicsContext& context,
   PaintController& controller = context.GetPaintController();
 
   std::optional<ScopedEffectivelyInvisible> effectively_invisible;
-  if (PaintedOutputInvisible(object.StyleRef())) {
-    effectively_invisible.emplace(controller);
+  if (PaintedOutputInvisible(object.Style())) {
+    effectively_invisible.emplace(
+        controller,
+        ScopedEffectivelyInvisible::Visibility::kEffectivelyInvisible);
+  } else if (is_canvas_drawable_element) {
+    // Drawable elements establish an independent paint record for
+    // drawElementImage() and should not inherit effective invisibility from
+    // ancestors (such as opacity: 0 on the canvas or an ancestor).
+    effectively_invisible.emplace(
+        controller, ScopedEffectivelyInvisible::Visibility::kVisible);
   }
 
   std::optional<ScopedPaintChunkProperties> layer_chunk_properties;
@@ -447,7 +465,9 @@ PaintResult PaintLayerPainter::Paint(GraphicsContext& context,
         controller, object.FirstFragment().LocalBorderBoxProperties(),
         paint_layer_, DisplayItem::kLayerChunk);
 
-    bool ensure_chunk = force_chunk_for_canvas_draw_element;
+    // Drawable descendants of canvas need to ensure that a composited cc::Layer
+    // exists for canvas draw element, even if no other content is painted.
+    bool ensure_chunk = is_canvas_drawable_element;
     // When a reference filter applies to the layer, ensure a chunk is
     // generated so that the filter paints even if no other content is painted
     // by the layer (see `SVGContainerPainter::Paint`).
@@ -487,8 +507,9 @@ PaintResult PaintLayerPainter::Paint(GraphicsContext& context,
   }
 
   // Outline always needs to be painted even if we have no visible content.
-  bool should_paint_self_outline =
-      is_self_painting_layer && object.StyleRef().HasOutline();
+  bool should_paint_self_outline = is_self_painting_layer &&
+                                   object.Style().HasOutline() &&
+                                   !is_non_drawable_in_canvas_subtree;
 
   bool is_video = IsA<LayoutVideo>(object);
   if (!is_video && should_paint_self_outline)
@@ -538,6 +559,14 @@ PaintResult PaintLayerPainter::Paint(GraphicsContext& context,
     }
   }
 
+  if (is_canvas_drawable_element &&
+      paint_layer_.SelfOrDescendantNeedsRepaint()) {
+    auto* element = To<Element>(object.GetNode());
+    if (auto* canvas = element->CanvasForDrawing()) {
+      object.GetFrameView()->DidPaintCanvasDrawable(*canvas, *element);
+    }
+  }
+
   paint_layer_.SetPreviousPaintResult(result);
   return result;
 }
@@ -568,7 +597,10 @@ void PaintLayerPainter::PaintTransitionScopeSnapshotIfNeeded(
   PropertyTreeStateOrAlias properties =
       controller.CurrentPaintChunkProperties();
   DCHECK(effect);
-  properties.SetEffect(*effect);
+  // The snapshot may contain cross-origin frames or plugins, so it must not be
+  // painted under SVG reference filters on ancestors of the scope.
+  properties.SetEffect(EmbeddedContentPainter::EffectForViewTransitionContent(
+      *effect, object.GetDocument()));
 
   RecordForeignLayer(context, paint_layer_,
                      DisplayItem::kForeignLayerViewTransitionContent,
@@ -616,20 +648,16 @@ PaintResult PaintLayerPainter::PaintChildren(
     return result;
   }
 
-  bool painting_canvas_child = false;
-  auto* canvas = DynamicTo<HTMLCanvasElement>(layout_object.GetNode());
-  if (canvas) {
+  if (auto* canvas = DynamicTo<HTMLCanvasElement>(layout_object.GetNode())) {
     if (RuntimeEnabledFeatures::CanvasDrawElementEnabled(
             canvas->GetExecutionContext()) &&
         canvas->IsContentDrawable()) {
       // We need to paint the children for later use by drawElementImage, but
-      // make sure we enforce privacy-preserving paint behavior.
-      paint_flags |= PaintFlag::kPrivacyPreserving;
+      // make sure we enforce read-back allowed rendering behavior.
+      paint_flags |= PaintFlag::kReadBackAllowedRendering;
       // TODO(https://crbug.com/480074850): Determine how hit test data works
       // in non-composited subtrees, and test if this is needed.
       paint_flags |= PaintFlag::kOmitCompositingInfo;
-
-      painting_canvas_child = true;
     } else {
       // Prevent canvas fallback content from being rendered.
       return result;
@@ -672,11 +700,6 @@ PaintResult PaintLayerPainter::PaintChildren(
           result = kMayBeClippedByCullRect;
         }
       }
-    }
-
-    if (painting_canvas_child && child->SelfOrDescendantNeedsRepaint()) {
-      auto* child_el = To<Element>(child->GetLayoutObject().GetNode());
-      layout_object.GetFrameView()->DidPaintCanvasChild(*canvas, *child_el);
     }
   }
 
@@ -734,7 +757,7 @@ void PaintLayerPainter::PaintFragmentWithPhase(
     BoxFragmentPainter(*physical_fragment).Paint(paint_info);
   } else if (const auto* layout_inline =
                  DynamicTo<LayoutInline>(&paint_layer_.GetLayoutObject())) {
-    InlineBoxFragmentPainter::PaintAllFragments(*layout_inline, fragment_data,
+    InlineBoxFragmentPainter::PaintAllFragments(*layout_inline,
                                                 fragment_data_idx, paint_info);
   } else {
     // We are about to enter legacy paint code. Set the right FragmentData
@@ -759,7 +782,7 @@ void PaintLayerPainter::PaintWithPhase(PaintPhase phase,
       CanPaintMultipleFragments(paint_layer_.GetLayoutObject());
 
   for (const FragmentData& fragment :
-       FragmentDataIterator(paint_layer_.GetLayoutObject())) {
+       paint_layer_.GetLayoutObject().FragmentList()) {
     const PhysicalBoxFragment* physical_fragment = nullptr;
     if (layout_box_with_fragments) {
       physical_fragment =

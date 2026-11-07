@@ -173,7 +173,7 @@ class CORE_EXPORT WebFrameWidgetImpl
       bool is_for_scalable_page);
   ~WebFrameWidgetImpl() override;
 
-  virtual void Trace(Visitor*) const;
+  void Trace(Visitor*) const override;
 
   // Shutdown the widget.
   void Close(DetachReason detach_reason);
@@ -359,6 +359,7 @@ class CORE_EXPORT WebFrameWidgetImpl
                               int relative_cursor_pos) override;
   void ImeFinishComposingTextForPlugin(bool keep_selection) override;
   float GetCompositingScaleFactor() override;
+  float GetExternalPageScaleFactor() const override;
   const cc::LayerTreeDebugState* GetLayerTreeDebugState() override;
   void SetLayerTreeDebugState(const cc::LayerTreeDebugState& state) override;
   void SetMayThrottleIfUndrawnFrames(

@@ -8,6 +8,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/read_only_shared_memory_region.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/time/time.h"
 #include "cc/paint/paint_flags.h"
 #include "components/viz/common/frame_sinks/begin_frame_args.h"
 #include "components/viz/common/resources/resource_id.h"
@@ -19,6 +20,8 @@
 #include "third_party/blink/renderer/platform/graphics/dom_node_id.h"
 #include "third_party/blink/renderer/platform/graphics/offscreen_canvas_placeholder.h"
 #include "third_party/blink/renderer/platform/graphics/resource_id_traits.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/persistent.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/timer.h"
 #include "ui/gfx/geometry/rect.h"
@@ -28,7 +31,7 @@ namespace blink {
 
 class ExportedCanvasResource;
 
-class CanvasResourceDispatcherClient {
+class CanvasResourceDispatcherClient : public GarbageCollectedMixin {
  public:
   virtual bool BeginFrame() = 0;
   virtual void SetParentVisibility(bool visible) {}
@@ -134,8 +137,9 @@ class PLATFORM_EXPORT CanvasResourceDispatcher
   viz::FrameTokenGenerator next_frame_token_;
 
   viz::BeginFrameAck current_begin_frame_ack_;
+  base::TimeTicks last_begin_frame_time_;
 
-  raw_ptr<CanvasResourceDispatcherClient> client_;
+  WeakPersistent<CanvasResourceDispatcherClient> client_;
 
   TaskRunnerTimer<CanvasResourceDispatcher> fake_frame_timer_;
 };

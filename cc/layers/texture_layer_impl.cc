@@ -217,13 +217,6 @@ void TextureLayerImpl::ReleaseResources() {
   }
 }
 
-gfx::ContentColorUsage TextureLayerImpl::GetContentColorUsage() const {
-  if (transferable_resource_.hdr_metadata.extended_range.has_value()) {
-    return gfx::ContentColorUsage::kHDR;
-  }
-  return transferable_resource_.GetColorSpace().GetContentColorUsage();
-}
-
 void TextureLayerImpl::SetBlendBackgroundColor(bool blend) {
   blend_background_color_ = blend;
 }

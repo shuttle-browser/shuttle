@@ -46,9 +46,9 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
       const BrowserWindowInterface* browser);
 
   // content::WebContentsDelegate:
-  content::PictureInPictureResult EnterPictureInPicture(
-      content::WebContents* web_contents) override;
-  void ExitPictureInPicture() override;
+  // Shuttle has no picture-in-picture UI: video PiP falls back to content's
+  // default (kNotSupported) and Document PiP windows are refused up front.
+  bool IsDocumentPictureInPictureBlockedBySystem() const override;
   content::KeyboardEventProcessingResult PreHandleKeyboardEvent(
       content::WebContents* source,
       const input::NativeWebKeyboardEvent& event) override;
@@ -58,8 +58,6 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
                           bool user_gesture,
                           bool last_unlocked_by_target) override;
   void LostPointerLock() override;
-  bool IsWaitingForPointerLockPrompt(
-      content::WebContents* web_contents) override;
   bool AllowKeyboardLockForInnerContents(
       content::WebContents* web_contents) override;
   void RequestKeyboardLock(content::WebContents* web_contents,
@@ -197,7 +195,7 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
                           scoped_refptr<content::FileSelectListener> listener,
                           const base::FilePath& path) override;
   bool GetCanResize() override;
-  bool GetIsAlwaysOnTop() override;
+  bool GetIsAlwaysOnTopPopup() override;
   bool CanUseWindowingControls(
       content::RenderFrameHost* requesting_frame) override;
   void MinimizeFromWebAPI() override;
@@ -227,12 +225,6 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
                                  const std::string& protocol,
                                  const GURL& url,
                                  bool user_gesture) override;
-  void FindReply(content::WebContents* web_contents,
-                 int request_id,
-                 int number_of_matches,
-                 const gfx::Rect& selection_rect,
-                 int active_match_ordinal,
-                 bool final_update) override;
   void RequestMediaAccessPermission(
       content::WebContents* web_contents,
       const content::MediaStreamRequest& request,
@@ -245,11 +237,6 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
                                   blink::mojom::MediaStreamType type) override;
   std::string GetTitleForMediaControls(
       content::WebContents* web_contents) override;
-  void GetAIPageContent(
-      content::WebContents* web_contents,
-      bool include_actionable_elements,
-      base::OnceCallback<void(base::expected<std::string, std::string>)>
-          callback) override;
   void PrintCrossProcessSubframe(
       content::WebContents* web_contents,
       const gfx::Rect& rect,

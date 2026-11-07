@@ -2,17 +2,16 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import os
-import sys
+import os  # noqa: F401
+import sys  # noqa: F401
+
 
 def _RunPythonUnitTests(input_api, output_api):
   if not input_api.HasAffectedFiles(extensions='.py'):
     return []
   tests = input_api.canned_checks.GetUnitTestsInDirectory(
-      input_api,
-      output_api,
-      directory='.',
-      files_to_check=[r'^.+test\.py$'])
+    input_api, output_api, directory='.', files_to_check=[r'^.+test\.py$']
+  )
   return input_api.RunTests(tests)
 
 

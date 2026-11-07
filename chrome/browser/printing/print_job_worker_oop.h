@@ -53,9 +53,6 @@ class PrintJobWorkerOop : public PrintJobWorker {
   // `PrintJobWorker` overrides.
   void StartPrinting(PrintedDocument* new_document) override;
   void Cancel() override;
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  void CleanupAfterContentAnalysisDenial() override;
-#endif
 
  protected:
   // For testing.

@@ -37,8 +37,6 @@ source_set("content_settings") {
 
   deps = []
 
-  allow_circular_includes_from = []
-
   if (is_android) {
     sources += [
       "javascript_optimizer_provider_android.h",
@@ -64,8 +62,6 @@ source_set("content_settings") {
 }
 
 source_set("impl") {
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
-
   sources = [
     "content_settings_manager_delegate.cc",
     "mixed_content_settings_tab_helper.cc",
@@ -84,20 +80,19 @@ source_set("impl") {
     "//chrome/browser/media/webrtc",
     "//chrome/browser/permissions",
     "//chrome/browser/permissions/system",
-    "//chrome/browser/picture_in_picture",
     "//chrome/browser/profiles",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/search_engines",
     "//chrome/browser/site_protection",
     "//chrome/browser/site_protection:utils",
     "//chrome/browser/ui/tabs:utils",
+    "//chrome/common:constants",
     "//components/content_settings/browser",
     "//components/content_settings/browser/ui",
     "//components/content_settings/core/browser",
     "//components/content_settings/core/browser:cookie_settings",
     "//components/guest_view/buildflags",
     "//components/pref_registry",
-    "//components/supervised_user/core/browser",
     "//pdf:features",
     "//services/metrics/public/cpp:ukm_builders",
     "//ui/webui",
@@ -168,16 +163,12 @@ source_set("content_settings_factory_impl") {
     "//chrome/browser/profiles",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/search_engines",
-    "//chrome/browser/supervised_user",
     "//chrome/browser/webid",
     "//components/content_settings/core/browser",
     "//components/content_settings/core/browser:cookie_settings",
     "//components/permissions:permissions_common",
-    "//components/supervised_user/core/browser",
     "//ui/webui",
   ]
-
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 
   if (enable_extensions_core) {
     deps += [ "//extensions/browser" ]
@@ -208,16 +199,11 @@ source_set("content_settings_util_impl") {
     "//content/public/browser",
   ]
 
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
-
   if (!is_android) {
     deps += [
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui/location_bar",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/views/frame:browser_view_header",
-      "//chrome/browser/ui/views/frame:picture_in_picture_browser_frame_view",
-      "//chrome/browser/ui/views/picture_in_picture",
     ]
   }
 }

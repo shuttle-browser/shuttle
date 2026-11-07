@@ -36,10 +36,6 @@
 #include "components/infobars/core/infobar.h"
 #include "components/infobars/core/infobar_delegate.h"
 #include "components/policy/core/browser/browser_policy_connector.h"
-#include "components/policy/core/common/cloud/cloud_policy_core.h"
-#include "components/policy/core/common/cloud/cloud_policy_manager.h"
-#include "components/policy/core/common/cloud/cloud_policy_store.h"
-#include "components/policy/core/common/cloud/machine_level_user_cloud_policy_manager.h"
 #include "components/policy/core/common/configuration_policy_provider.h"
 #include "components/policy/core/common/local_test_policy_provider.h"
 #include "components/policy/core/common/policy_bundle.h"
@@ -134,7 +130,6 @@ class ProxiedPoliciesPropagatedWatcher : PolicyService::ProviderUpdateObserver {
       return;
     }
 
-    ReportTimeUma();
     std::move(proxied_policies_propagated_callback_).Run();
   }
 
@@ -142,22 +137,15 @@ class ProxiedPoliciesPropagatedWatcher : PolicyService::ProviderUpdateObserver {
     if (!proxied_policies_propagated_callback_)
       return;
     LOG(WARNING) << "Waiting for proxied policies to propagate timed out.";
-    ReportTimeUma();
     std::move(proxied_policies_propagated_callback_).Run();
   }
 
  private:
   static constexpr int kProxiedPoliciesPropagationTimeoutInSeconds = 5;
 
-  void ReportTimeUma() const {
-    UmaHistogramTimes("Enterprise.TimeToUnthrottlePolicyInit",
-                      base::TimeTicks::Now() - construction_time_);
-  }
-
   const raw_ptr<PolicyService> device_wide_policy_service_;
   const raw_ptr<const ProxyPolicyProvider> proxy_policy_provider_;
   const raw_ptr<const ConfigurationPolicyProvider> source_policy_provider_;
-  const base::TimeTicks construction_time_ = base::TimeTicks::Now();
   base::OnceClosure proxied_policies_propagated_callback_;
   base::OneShotTimer timeout_timer_;
 };
@@ -189,7 +177,7 @@ class LocalTestInfoBarVisibilityManager :
 #if BUILDFLAG(IS_ANDROID)
   // TabModelObserver
   void DidAddTab(TabAndroid* tab, TabModel::TabLaunchType type) override {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+    CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
     if (tab && tab->web_contents()) {
       EnsureInfobarForActiveLocalTestPolicies(tab->web_contents());
     }
@@ -197,14 +185,14 @@ class LocalTestInfoBarVisibilityManager :
 
   // TabModelObserver
   void DidSelectTab(TabAndroid* tab) override {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+    CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
     if (tab && tab->web_contents()) {
       EnsureInfobarForActiveLocalTestPolicies(tab->web_contents());
     }
   }
 #else
   void OnBrowserCreated(BrowserWindowInterface* browser) override {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+    CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
     CHECK(browser);
 
     // TODO(crbug.com/452120900): TabStripModel auto-unregistered by dtor
@@ -212,7 +200,7 @@ class LocalTestInfoBarVisibilityManager :
   }
 
   void OnBrowserClosed(BrowserWindowInterface* browser) override {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+    CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
     CHECK(browser);
 
     if (GlobalBrowserCollection::GetInstance()->IsEmpty()) {
@@ -224,7 +212,7 @@ class LocalTestInfoBarVisibilityManager :
       TabStripModel* tab_strip_model,
       const TabStripModelChange& change,
       const TabStripSelectionChange& selection) override {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+    CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
     if (change.type() == TabStripModelChange::kInserted) {
       for (const auto& contents : change.GetInsert()->contents) {
         EnsureInfobarForActiveLocalTestPolicies(contents.contents);
@@ -237,7 +225,7 @@ class LocalTestInfoBarVisibilityManager :
 #endif  // BUILDFLAG(IS_ANDROID)
 
   void AddInfobarsForActiveLocalTestPoliciesAllTabs() {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+    CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 #if BUILDFLAG(IS_ANDROID)
     for (TabModel* model : TabModelList::models()) {
       for (int index = 0; index < model->GetTabCount(); ++index) {
@@ -289,7 +277,7 @@ class LocalTestInfoBarVisibilityManager :
   }
 
   void DismissInfobarsForActiveLocalTestPoliciesAllTabs() {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+    CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 #if BUILDFLAG(IS_ANDROID)
     for (TabModel* model : TabModelList::models()) {
       for (int index = 0; index < model->GetTabCount(); ++index) {
@@ -381,107 +369,6 @@ ProxyPolicyProvider* GetProxyPolicyProvider() {
   return browser_policy_connector->GetGlobalUserCloudPolicyProvider();
 }
 
-// Returns the hash to identify the caller for investigation.
-// To stabilize against unrelated line edits in the file, we drop line number
-// from the source of the hash.
-uint32_t LocationHash(const base::Location& location) {
-  if (!location.has_source_info()) {
-    // Use 0 to indicate "missing source info" error.
-    return 0;
-  }
-  return base::PersistentHash(
-      base::StrCat({location.function_name(), location.file_name()}));
-}
-
-// ProfilePolicyConnector::IsManaged() is equivalent to
-// user_manager::User::is_managed().value_or(false) for most cases. This
-// function records UMA metrics on other unexpected situations.
-void RecordIsManagedCallerForChromeOS(
-    const user_manager::User* user,
-    const CloudPolicyStore* actual_policy_store,
-    base::Location original_caller) {
-  if (!user) {
-    // This case cannot be replaced with user_->is_managed() and we need to
-    // address case-by-case.
-    base::UmaHistogramSparse(
-        "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged.NonUserProfile",
-        LocationHash(original_caller));
-    return;
-  }
-
-  if (user->IsDeviceLocalAccount()) {
-    CHECK(user->is_managed().has_value() && user->is_managed().value());
-
-    // `actual_policy_store` should be non-null.
-    // TODO(crbug.com/489635809): Put CHECK(actual_policy_store).
-    if (!actual_policy_store || !actual_policy_store->is_managed()) {
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged."
-          "DeviceLocalAccountUnexpected",
-          LocationHash(original_caller));
-    } else {
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged.Consistent",
-          LocationHash(original_caller));
-    }
-    return;
-  }
-
-  // Regular users (UserType::kRegular or UserType::kChild)
-
-  if (!user->is_managed().has_value()) {
-    if (!actual_policy_store) {
-      // Null actual_policy_store means, the user should be unmanaged and
-      // user->is_managed() should have false, which is set on OnProfileAdded().
-      // !has_value() means that the call is too early, i.e. before
-      // ProfileManagerObserver::OnProfileAdedd().
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged."
-          "RegularUserEarlyCallUnmanaged",
-          LocationHash(original_caller));
-    } else if (actual_policy_store->is_managed()) {
-      // User should be managed, but User::is_managed_ has not been updated yet.
-      // !has_value() means that the call is in between when the policy is set
-      // and when UserManager::SetUserPolicyStatus() is called.
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged."
-          "RegularUserEarlyCallManaged",
-          LocationHash(original_caller));
-    } else {
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged.Consistent",
-          LocationHash(original_caller));
-    }
-    return;
-  }
-
-  if (user->is_managed().value()) {
-    // `actual_policy_store` should be non-null.
-    // TODO(crbug.com/489635809): Put CHECK(actual_policy_store).
-    if (!actual_policy_store || !actual_policy_store->is_managed()) {
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged."
-          "RegularUserUnexpectedUserIsManaged",
-          LocationHash(original_caller));
-    } else {
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged.Consistent",
-          LocationHash(original_caller));
-    }
-  } else {
-    if (actual_policy_store && actual_policy_store->is_managed()) {
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged."
-          "RegularUserUnexpectedProfileIsManaged",
-          LocationHash(original_caller));
-    } else {
-      base::UmaHistogramSparse(
-          "Ash.RefactoringHint.ProfilePolicyConnectorIsManaged.Consistent",
-          LocationHash(original_caller));
-    }
-  }
-}
-
 }  // namespace
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
@@ -498,15 +385,12 @@ void ProfilePolicyConnector::Init(
     const user_manager::User* user,
     SchemaRegistry* schema_registry,
     ConfigurationPolicyProvider* configuration_policy_provider,
-    const CloudPolicyStore* policy_store,
     policy::ChromeBrowserPolicyConnector* connector,
     bool force_immediate_load) {
-  DCHECK(!configuration_policy_provider_);
-  DCHECK(!policy_store_);
-  DCHECK(!policy_service_);
+  CHECK(!configuration_policy_provider_, base::NotFatalUntil::M162);
+  CHECK(!policy_service_, base::NotFatalUntil::M162);
 
   configuration_policy_provider_ = configuration_policy_provider;
-  policy_store_ = policy_store;
   local_test_infobar_visibility_manager_ =
       std::make_unique<internal::LocalTestInfoBarVisibilityManager>();
 
@@ -515,7 +399,7 @@ void ProfilePolicyConnector::Init(
   auto* browser_policy_connector =
       static_cast<BrowserPolicyConnectorAsh*>(connector);
 #else
-  DCHECK_EQ(nullptr, user);
+  CHECK_EQ(nullptr, user, base::NotFatalUntil::M162);
 #endif
 
   ConfigurationPolicyProvider* platform_provider =
@@ -530,12 +414,6 @@ void ProfilePolicyConnector::Init(
         browser_policy_connector->GetDeviceCloudPolicyManager());
   }
 #else
-  ConfigurationPolicyProvider* machine_level_user_cloud_policy_provider =
-      connector->proxy_policy_provider();
-  if (machine_level_user_cloud_policy_provider) {
-    policy_providers_.push_back(machine_level_user_cloud_policy_provider);
-  }
-
   if (connector->command_line_policy_provider()) {
     policy_providers_.push_back(connector->command_line_policy_provider());
   }
@@ -549,7 +427,7 @@ void ProfilePolicyConnector::Init(
 
 #if BUILDFLAG(IS_CHROMEOS)
   if (!user) {
-    DCHECK(schema_registry);
+    CHECK(schema_registry, base::NotFatalUntil::M162);
     // This case occurs for the signin and the lock screen app profiles.
     special_user_policy_provider_ =
         std::make_unique<LoginProfilePolicyProvider>(
@@ -639,7 +517,7 @@ void ProfilePolicyConnector::Init(
 
 void ProfilePolicyConnector::InitForTesting(
     std::unique_ptr<PolicyService> service) {
-  DCHECK(!policy_service_);
+  CHECK(!policy_service_, base::NotFatalUntil::M162);
   policy_service_ = std::move(service);
   DoPostInit();
 }
@@ -674,13 +552,7 @@ bool ProfilePolicyConnector::IsManaged(
 ) const {
   if (is_managed_override_)
     return *is_managed_override_;
-  const CloudPolicyStore* actual_policy_store = GetActualPolicyStore();
-#if BUILDFLAG(IS_CHROMEOS)
-  RecordIsManagedCallerForChromeOS(user_.get(), actual_policy_store,
-                                   caller_location);
-#endif  // BUILDFLAG(IS_CHROMEOS)
-  if (actual_policy_store)
-    return actual_policy_store->is_managed();
+  // No cloud policy store (Shuttle): a profile is never cloud managed.
   return false;
 }
 
@@ -702,11 +574,8 @@ base::flat_set<std::string> ProfilePolicyConnector::user_affiliation_ids()
   if (!user_affiliation_ids_for_testing_.empty()) {
     return user_affiliation_ids_for_testing_;
   }
-  auto* store = GetActualPolicyStore();
-  if (!store || !store->has_policy())
-    return {};
-  const auto& ids = store->policy()->user_affiliation_ids();
-  return {ids.begin(), ids.end()};
+  // No cloud policy (Shuttle): no affiliation ids.
+  return {};
 }
 
 void ProfilePolicyConnector::SetUserAffiliationIdsForTesting(
@@ -715,32 +584,13 @@ void ProfilePolicyConnector::SetUserAffiliationIdsForTesting(
 }
 
 void ProfilePolicyConnector::OnPolicyServiceInitialized(PolicyDomain domain) {
-  DCHECK_EQ(domain, POLICY_DOMAIN_CHROME);
+  CHECK_EQ(domain, POLICY_DOMAIN_CHROME, base::NotFatalUntil::M162);
   RecordAffiliationMetrics();
 }
 
 void ProfilePolicyConnector::DoPostInit() {
-  DCHECK(policy_service_);
+  CHECK(policy_service_, base::NotFatalUntil::M162);
   policy_service_->AddObserver(POLICY_DOMAIN_CHROME, this);
-}
-
-const CloudPolicyStore* ProfilePolicyConnector::GetActualPolicyStore() const {
-  if (policy_store_)
-    return policy_store_;
-#if BUILDFLAG(IS_CHROMEOS)
-  if (special_user_policy_provider_) {
-    // |special_user_policy_provider_| is non-null for device-local accounts,
-    // for the login profile, and the lock screen app profile.
-    const DeviceCloudPolicyManagerAsh* const device_cloud_policy_manager =
-        g_browser_process->platform_part()
-            ->browser_policy_connector_ash()
-            ->GetDeviceCloudPolicyManager();
-    // The device_cloud_policy_manager can be a nullptr in unit tests.
-    if (device_cloud_policy_manager)
-      return device_cloud_policy_manager->core()->store();
-  }
-#endif
-  return nullptr;
 }
 
 const ConfigurationPolicyProvider*
@@ -779,7 +629,7 @@ std::string ProfilePolicyConnector::GetTimeToFirstPolicyLoadMetricSuffix()
   }
 
 #if BUILDFLAG(IS_CHROMEOS)
-  DCHECK(user_);
+  CHECK(user_, base::NotFatalUntil::M162);
   switch (user_->GetType()) {
     case user_manager::UserType::kRegular:
       if (user_manager::UserManager::Get()->IsUserCryptohomeDataEphemeral(
@@ -897,7 +747,7 @@ ProfilePolicyConnector::CreatePolicyServiceWithInitializationThrottled(
         policy_providers,
     std::vector<std::unique_ptr<PolicyMigrator>> migrators,
     ConfigurationPolicyProvider* user_policy_delegate) {
-  DCHECK(user_policy_delegate);
+  CHECK(user_policy_delegate, base::NotFatalUntil::M162);
 
   auto policy_service = PolicyServiceImpl::CreateWithThrottledInitialization(
       policy_providers, PolicyServiceImpl::ScopeForMetrics::kUser,

@@ -27,7 +27,6 @@
 #include "chrome/browser/download/download_query.h"
 #include "chrome/browser/download/download_stats.h"
 #include "chrome/browser/download/download_ui_safe_browsing_util.h"
-#include "chrome/browser/enterprise/connectors/common.h"
 #include "chrome/browser/extensions/api/downloads/downloads_api.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/webui/downloads/downloads.mojom.h"
@@ -163,8 +162,6 @@ std::string TimeFormatLongDate(const base::Time& time) {
   return base::UTF16ToUTF8(base::i18n::UnicodeStringToString16(date_string));
 }
 
-
-
 // Returns a formatted string representing the initiator origin of the download
 // request. May return empty string if there is no suitable origin to display.
 std::u16string GetFormattedInitiatorOrigin(const download::DownloadItem* item) {
@@ -287,6 +284,8 @@ DownloadManager* DownloadsListTracker::GetOriginalNotifierManager() const {
 
 void DownloadsListTracker::OnDownloadCreated(DownloadManager* manager,
                                              DownloadItem* download_item) {
+  // TODO(crbug.com/576994215): CHECK-exclusion: Convert to a CHECK once we
+  // are confident it won't be triggered.
   DCHECK_EQ(0u, sorted_items_.count(download_item));
   if (should_show_.Run(*download_item)) {
     InsertItem(sorted_items_.insert(download_item).first);
@@ -323,7 +322,7 @@ DownloadsListTracker::DownloadsListTracker(
     : main_notifier_(download_manager, this),
       page_(std::move(page)),
       should_show_(std::move(should_show)) {
-  DCHECK(page_);
+  CHECK(page_, base::NotFatalUntil::M162);
   Init();
 }
 
@@ -455,6 +454,8 @@ downloads::mojom::DataPtr DownloadsListTracker::CreateDownloadData(
       break;
 
     case download::DownloadItem::COMPLETE:
+      // TODO(crbug.com/577213141): CHECK-exclusion: Convert to a CHECK once we
+      // are confident it won't be triggered.
       DCHECK(!download_item->IsDangerous());
       state = downloads::mojom::State::kComplete;
       break;
@@ -473,15 +474,7 @@ downloads::mojom::DataPtr DownloadsListTracker::CreateDownloadData(
   file_value->tailored_warning_type = tailored_warning_type;
   file_value->is_dangerous = download_item->IsDangerous();
   file_value->is_insecure = download_item->IsInsecure();
-  file_value->is_reviewable =
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-      enterprise_connectors::ShouldPromptReviewForDownload(
-          Profile::FromBrowserContext(
-              content::DownloadItemUtils::GetBrowserContext(download_item)),
-          download_item);
-#else
-      false;
-#endif  // BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
+  file_value->is_reviewable = false;
 
   file_value->last_reason_text = base::UTF16ToUTF8(last_reason_text);
   file_value->percent = percent;

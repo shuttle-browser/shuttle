@@ -162,6 +162,12 @@ class RegionalCapabilitiesService : public KeyedService {
 
   bool ShouldRecordSearchEngineChoicesMadeFromSettings();
 
+  // Returns whether the "Linked Google Services" setting may be shown in
+  // Sync/Account personalization settings for the active regional program.
+  // Whether the setting is actually displayed also depends on the account
+  // being signed in and other platform-specific conditions.
+  bool MayShowLinkedGoogleServicesSetting();
+
 #if !BUILDFLAG(IS_ANDROID)
   // Returns the appropriate choice screen design strings for the active
   // program, if one is required. Returns `std::nullopt` if the region does not
@@ -199,6 +205,13 @@ class RegionalCapabilitiesService : public KeyedService {
   // Returns the metrics enum for the active regional program. This is used for
   // logging only.
   ActiveRegionalProgram GetActiveProgramForMetrics();
+
+  // Returns the metrics enum for the regional program that would be active if
+  // the current profile country was used, rather than the one persisted at
+  // profile creation. I.e. what `GetActiveProgramForMetrics()` would return if
+  // the `kDynamicProfileCountry` feature was enabled. This is used for logging
+  // only.
+  ActiveRegionalProgram GetDynamicCountryProgramForMetrics();
 
   // Returns an opaque `int` value representing the program.
   int GetSerializedActiveProgram();
@@ -244,6 +257,9 @@ class RegionalCapabilitiesService : public KeyedService {
   // If the Java-side service has been created, commands it to destroy itself.
   void DestroyJavaObject();
 
+  // See `MayShowLinkedGoogleServicesSetting()`.
+  bool MayShowLinkedGoogleServicesSetting(JNIEnv* env);
+
   // See `IsInEeaCountry()`.
   bool IsInEeaCountry(JNIEnv* env);
 #endif
@@ -271,6 +287,9 @@ class RegionalCapabilitiesService : public KeyedService {
   // though).
   std::optional<country_codes::CountryId> country_id_cache_;
   std::optional<raw_ref<const ProgramSettings>> program_settings_cache_;
+  // Program that would be active if the current country was preferred over
+  // the persisted one. Used for metrics only.
+  std::optional<Program> dynamic_country_program_cache_;
   // -- cache end --
 
 #if BUILDFLAG(IS_ANDROID)

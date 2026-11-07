@@ -4,7 +4,6 @@
 
 import("//build/config/features.gni")
 import("//chrome/common/features.gni")
-import("//components/enterprise/buildflags/buildflags.gni")
 import("//components/offline_pages/buildflags/features.gni")
 import("//crypto/features.gni")
 import("//extensions/buildflags/buildflags.gni")
@@ -34,6 +33,7 @@ source_set("net") {
     "chrome_report_sender.h",
     "convert_explicitly_allowed_network_ports_pref.h",
     "default_dns_over_https_config_source.h",
+    "disk_cache_dir_util.h",
     "dns_over_https_config_source.h",
     "dns_probe_runner.h",
     "dns_probe_service.h",
@@ -82,6 +82,7 @@ source_set("net") {
     "//components/policy/core/browser",
     "//components/prefs",
     "//components/tabs:impl",
+    "//components/tabs:public",
     "//content/public/browser",
     "//extensions/buildflags",
     "//mojo/public/cpp/bindings",
@@ -90,6 +91,8 @@ source_set("net") {
     "//services/network/public/cpp",
     "//services/network/public/mojom",
     "//services/proxy_resolver/public/mojom",
+    "//services/proxy_resolver/public/mojom:system_proxy_resolver",
+    "//ui/base/unowned_user_data",
     "//url",
   ]
 
@@ -110,6 +113,11 @@ source_set("net") {
 
   if (is_mac) {
     public += [ "chrome_mojo_proxy_resolver_mac.h" ]
+  }
+
+  if (is_linux && use_dbus) {
+    public += [ "chrome_mojo_proxy_resolver_linux.h" ]
+    public_deps += [ "//components/dbus" ]
   }
 
   if (use_nss_certs) {
@@ -136,6 +144,7 @@ source_set("impl") {
     "chrome_report_sender.cc",
     "convert_explicitly_allowed_network_ports_pref.cc",
     "default_dns_over_https_config_source.cc",
+    "disk_cache_dir_util.cc",
     "dns_probe_runner.cc",
     "dns_probe_service_factory.cc",
     "explicitly_allowed_network_ports_policy_handler.cc",
@@ -160,14 +169,12 @@ source_set("impl") {
     sources += [ "device_bound_session_prewarmer.cc" ]
   }
 
-  public_deps = [
-    ":net",
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = [ ":net" ]
 
   deps = [
     ":key_pinning_proto",
     "//base:build_time",
+    "//build/config/linux/dbus:buildflags",
     "//chrome/browser:browser_features",
     "//chrome/browser:browser_process",
     "//chrome/browser:browser_process_platform_part",
@@ -184,6 +191,8 @@ source_set("impl") {
     "//chrome/browser/ssl",
     "//chrome/browser/task_manager",
     "//chrome/browser/webid",
+    "//chrome/common",
+    "//chrome/common:channel_info",
     "//chrome/common:version_header",
     "//components/certificate_transparency",
     "//components/content_settings/core/common",
@@ -193,8 +202,6 @@ source_set("impl") {
     "//components/embedder_support",
     "//components/embedder_support:user_agent",
     "//components/enterprise",
-    "//components/enterprise/connectors/core",
-    "//components/enterprise/encryption/cache",
     "//components/language/core/browser",
     "//components/link_header_util",
     "//components/metrics",
@@ -265,7 +272,6 @@ source_set("impl") {
       "service_providers_win.cc",
     ]
     deps += [
-      "//chrome/browser/win",
       "//ui/gfx",
       "//ui/shell_dialogs",
       "//ui/views",
@@ -274,6 +280,11 @@ source_set("impl") {
 
   if (is_mac) {
     sources += [ "chrome_mojo_proxy_resolver_mac.cc" ]
+  }
+
+  if (is_linux && use_dbus) {
+    sources += [ "chrome_mojo_proxy_resolver_linux.cc" ]
+    deps += [ "//dbus" ]
   }
 
   if (chrome_root_store_cert_management_ui) {
@@ -286,10 +297,6 @@ source_set("impl") {
 
   if (enable_offline_pages) {
     deps += [ "//chrome/browser/offline_pages" ]
-  }
-
-  if (enterprise_client_certificates) {
-    deps += [ "//components/enterprise/client_certificates/core" ]
   }
 
   if (use_nss_certs) {
@@ -308,6 +315,7 @@ source_set("impl") {
       deps += [
         "//chromeos/ash/components/dbus",
         "//chromeos/ash/components/dbus/userdataauth",
+        "//chromeos/ash/components/dbus/userdataauth:userdataauth_proto",
         "//chromeos/ash/components/tpm",
         "//chromeos/components/certificate_provider",
       ]
@@ -350,11 +358,14 @@ if (is_android) {
       "//net:test_support",
       "//testing/gtest",
     ]
+    if (enable_reporting) {
+      sources += [ "reporting_browsertest_android.cc" ]
+      deps += [
+        "//chrome/browser/ssl:cert_verifier_test_support",
+        "//content/test:browsertest_support",
+        "//services/network/public/cpp",
+      ]
+    }
   }
-} else {
-}
-
-if (!is_android) {
-
 }
 

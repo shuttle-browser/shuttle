@@ -1067,3 +1067,86 @@ Also: `CheckIdle` skips while the browser quits and looks sessions up with `find
 (`gn check`). Documented, not changed: an expired session leaves its external CDP sockets open (targets detach).
 Probe additions: wait-for longer than the timeout, `beforeunload` on both close paths, headless activated tab; tab
 existence checked on `/json/list`.
+
+## Fork commit 57 (2026-11-04..): Chromium 157 + 158 merge (branch `sh/merge-157`, in progress)
+
+- **57** Merge of Chromium 157.0.8103.39 (log in the private merge notes) plus the m157 prune
+  (`prune/m157.txt`, Toby's calls 2026-11-04..06):
+  - **Wave A** (`5b984cc1ed`): Platform Runtime / request-header-integrity, history clusters leftovers, VR browser
+    side, vertical tabs, picture-in-picture browser UI, site token provider.
+  - **Wave B batch 1** (`0ff02c9d57`): optimization_guide (kept: the CDP `Page.getAnnotatedPageContent` path and the
+    TFLite op resolver), page content annotations, permission prediction (also the crowd-deny / abusive-origin quiet
+    UI), omnibox ML scoring + on-device tail model, multistep filter, page image service, v8 compile hints (chrome
+    side), segmentation platform, visited URL ranking, language-detection model service (blink's LanguageDetector
+    reports "unavailable"), supervised users / Family Link. Behaviour: no client-side phishing model (URL checks stay),
+    heuristic omnibox scoring, local loading predictor, no child accounts, FedCM passive volume default.
+  - **Wave B batch 2** (`ea240ae0b7`): enterprise connectors (content analysis, real-time URL checks, event
+    reporting), enterprise/cloud reporting, device trust + device signals, DLP / data controls / data protection,
+    watermarking, Isolated Mode, client certificate provisioning, platform auth (SSO), idle timeout actions, profile
+    management, network header injection, cache encryption, enterprise groups/webstore, connectors-internals and
+    watermark WebUIs, enterprise extension APIs; cloud policy (CBCM + enrollment dialog, DM server client,
+    user/machine/profile cloud policy, component cloud policy, remote commands, invalidation); `components/reporting`
+    (encrypted reporting); 49 policies (`prune/policies-m157-enterprise.txt`). Kept: local/platform policy,
+    chrome://policy, chrome://management (generic disclosure), ProfileIdService (same device id as before).
+    Behaviour = no admin configured anything: default-allow for clipboard, drag-drop, print, file pickers,
+    screen/tab sharing; downloads get the plain Safe Browsing verdict (**no cloud deep scanning, including the
+    consumer Enhanced Protection "scan this file" prompt; download feedback no longer uploads**); profiles are
+    never cloud managed; cloud-only policies can't be set.
+  - Follow-ups: `cd02980136` restores `color_change_listener/resources.grdp` in `ui/webui/resources:build_grd` (the
+    merge kept the dep but lost the grdp entry when upstream moved it into the `!is_ios` block, so
+    `chrome://resources/cr_components/color_change_listener/colors_css_updater.js` was missing and
+    chrome://management + chrome://certificate-manager rendered blank); `4aa1e3568f` drops 260 `flag-metadata.json`
+    entries (+7 never-expire entries) for flags no longer in `about_flags.cc`.
+
+- **158** (Toby 2026-11-06: straight on, one PR): merge of Chromium 158.0.8127.18 (`7eb0c2ebb4`, V8 15.8.62.9) into
+  this branch; follow-ups: rebrand strings, gn fixes (`51a046a78e`, `d8557d9b2c`), build round 1 (`3b1b352eb9`).
+  Removed with it: upstream's new NTP component extension (`new_tab_page_extension`, the fork has no NTP), the AIM/NTP
+  component-extension installer, views examples, composebox / contextual search / contextual tasks leftovers.
+  Certificate manager: a loader-less client cert source answers an empty list (`bf32255f67`, SH-Review P2).
+  Build to green (`817508f0fe`): upstream 158 code in kept files that called removed features was cut or the fork's
+  pre-merge version restored (web-app app-shim notification permission, device API web-app trust, devtools web-app
+  capture, user-education badges + the tab-group focus IPH controller, HaTS surveys (scheduled restart stubbed,
+  suspicious-site warning), sync / sync_file_system backend, supervised-user download filter, enterprise proxy
+  affiliation helper (inlined into `proxy_override_rules_policy_handler.cc`), Indigo context-menu item, child_module,
+  site token provider metrics, screen_ai PDF OCR, vertical-tab layouts and organizer embedding, NTP instant process /
+  new-tab-page allowlists, initial-WebUI fonts, actor file upload backend, remote-actor credential sharing and
+  autofill OAuth2 flags). Top Chrome WebUI shared profile: `TopChromeWebUIProfileImpl` deleted (an OTR profile
+  without an original profile; the fork has no OTR profiles), `webui::` API stubbed to the user profile, so
+  `kTopChromeWebUISharedRenderer` has no effect. Organizer action keeps the fork's View/Hide Organizer label. Merge
+  damage fixed: nested infobar strings in `generated_resources.grd`, orphan fragments in `flag_descriptions.h`,
+  unbalanced `#if` in `device_service_impl`, TabFeatures lost the session/zoom/infobar helpers (startup crash).
+  Pruned (`67f0f10273`, Toby 2026-11-06): `chrome/browser/text_detection` + `enable-text-detection-api` (needs
+  screen_ai), Settings Search 2026 (`chrome/browser/ui/webui/settings/search` + mojom, search tag strings,
+  `plural_string_provider`), the tabs-from-other-devices side panel (references), `contextual_tasks_private`
+  (references). Kept on purpose: scheduled restart, tab-group focus toasts, history time/device filters,
+  organizer-panel segmentation, window.open split tab, infobar count pill, persistent widget API, page-colors
+  settings. Behaviour (OK'd by Toby): no crowd-deny / abusive-origin quiet permission UI, no consumer cloud deep
+  scanning.
+
+Verified: macOS dev build (158) green, `smoke-all` 14/14; chrome://management, certificate-manager, history,
+settings privacy/security, agents and version render without console errors; Linux `gn gen` +
+`check-ninja-inputs` green (dev and release configs). SH-Review of the 158 merge: no P0-P3 in the highlighted paths
+(broad hunk audit not complete). Open: Linux 158 release build.
+
+## Fork commit 58 (2026-11-06): page tools: snapshot filter, covered-click retry, save-text
+
+- **58** (`2528fcbb8c`, on `sh/merge-157`) Three page-tool improvements from SWP-Lead's Stripe onboarding run
+  (all in `chrome/browser/shuttle/page_tools.cc` + `config/agent-browser-tools.json`):
+  - `snapshot { filter }`: case-insensitive regex; keeps matching lines with their ancestors and children. Searches
+    the full tree (text too) unless `interactive` is set (agent-browser's default snapshot is interactive-only).
+  - `click` / `dblclick` / `hover`: when agent-browser reports the element "is covered by" another, scroll it into
+    view and retry once; the result says "(Was covered: scrolled into view and retried.)".
+  - New tool `save-text { selector, regex?, to: file|clipboard, name? }`: writes an element's text (e.g. a one-time
+    API key) to `<profile>/shuttle/secrets/<agent>/<name>.txt` (dir 0700, file 0600) or the clipboard (marked
+    confidential) and returns only its length and a 12-hex SHA-256, so the secret never enters the agent's context.
+
+Verified: macOS dev build, by hand through MCP (filter on headings and text, a button under a fixed bottom bar, file
+modes, clipboard content, hash), `smoke-all` 14/14. Review: SH-Review 3 P2s (save-text followed links and truncated
+existing files, ignored chmod failures, forwarded sidecar error text) fixed in `8b61c68bd3`: private dirs opened with
+`O_NOFOLLOW` (owner + mode checked), a new `O_EXCL` 0600 file renamed over the destination, any permission failure
+fails the call, errors never carry sidecar text, the clipboard write commits before success. Clipboard
+"confidential" is honoured on macOS only (Linux Ozone ignores it; the tool description says so). Re-review: the
+error-text and permission/inode P2s closed; the ancestor P2 (a pre-placed `<profile>/shuttle` symlink) fixed in
+`34d4ae3d33` (the profile dir is the anchor, `shuttle/` is opened like `secrets/<agent>`), verified by hand on 158
+(symlinked `shuttle/` → error, nothing written through it); SH-Review: all three P2s closed. Follow-up: `open-session` still creates
+`shuttle/states/<agent>` with `base::CreateDirectory` through such a link.

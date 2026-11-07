@@ -50,7 +50,6 @@ class SequencedTaskRunner;
 namespace policy {
 class ConfigurationPolicyProvider;
 class ProfilePolicyConnector;
-class ProfileCloudPolicyManager;
 }  // namespace policy
 
 namespace user_prefs {
@@ -65,15 +64,6 @@ class ProfileImpl : public Profile {
   ~ProfileImpl() override;
 
   static void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry);
-
-#if !BUILDFLAG(IS_CHROMEOS)
-  using CloudPolicyManagerTestFactory = base::RepeatingCallback<std::variant<
-      std::unique_ptr<policy::UserCloudPolicyManager>,
-      std::unique_ptr<policy::ProfileCloudPolicyManager>>(Profile*)>;
-
-  static void SetCloudPolicyManagerFactoryForTesting(
-      CloudPolicyManagerTestFactory factory);
-#endif
 
   // content::BrowserContext implementation:
   std::unique_ptr<content::ZoomLevelDelegate> CreateZoomLevelDelegate(
@@ -129,11 +119,7 @@ class ProfileImpl : public Profile {
   policy::SchemaRegistryService* GetPolicySchemaRegistryService() override;
 #if BUILDFLAG(IS_CHROMEOS)
   policy::UserCloudPolicyManagerAsh* GetUserCloudPolicyManagerAsh() override;
-#else
-  policy::UserCloudPolicyManager* GetUserCloudPolicyManager() override;
-  policy::ProfileCloudPolicyManager* GetProfileCloudPolicyManager() override;
 #endif  // BUILDFLAG(IS_CHROMEOS)
-  policy::CloudPolicyManager* GetCloudPolicyManager() override;
   policy::ProfilePolicyConnector* GetProfilePolicyConnector() override;
   const policy::ProfilePolicyConnector* GetProfilePolicyConnector()
       const override;
@@ -213,7 +199,6 @@ class ProfileImpl : public Profile {
 #endif
 
   // Updates the ProfileAttributesStorage with the data from this profile.
-  void UpdateSupervisedUserIdInStorage();
   void UpdateNameInStorage();
   void UpdateAvatarInStorage();
   void UpdateIsEphemeralInStorage();
@@ -244,8 +229,7 @@ class ProfileImpl : public Profile {
   // - |prefs_| depends on |profile_policy_connector_|
   // - |profile_policy_connector_| depends on configuration_policy_provider(),
   //   which can be:
-  //     - |user_cloud_policy_manager_|;
-  //     - |user_cloud_policy_manager_ash_|;
+  //     - |user_cloud_policy_manager_ash_| (ChromeOS only, else nullptr);
   // - configuration_policy_provider() depends on |schema_registry_service_|
 
 #if BUILDFLAG(IS_WIN)
@@ -261,10 +245,6 @@ class ProfileImpl : public Profile {
 #if BUILDFLAG(IS_CHROMEOS)
   std::unique_ptr<policy::UserCloudPolicyManagerAsh>
       user_cloud_policy_manager_ash_;
-#else
-  std::unique_ptr<policy::UserCloudPolicyManager> user_cloud_policy_manager_;
-  std::unique_ptr<policy::ProfileCloudPolicyManager>
-      profile_cloud_policy_manager_;
 #endif
 
   std::unique_ptr<policy::ProfilePolicyConnector> profile_policy_connector_;

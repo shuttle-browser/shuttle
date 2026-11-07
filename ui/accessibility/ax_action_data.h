@@ -5,9 +5,12 @@
 #ifndef UI_ACCESSIBILITY_AX_ACTION_DATA_H_
 #define UI_ACCESSIBILITY_AX_ACTION_DATA_H_
 
+#include <optional>
 #include <string>
 #include <utility>
 
+#include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "ui/accessibility/ax_attributes.h"
 #include "ui/accessibility/ax_base_export.h"
 #include "ui/accessibility/ax_constants.mojom.h"
@@ -57,7 +60,6 @@ struct AX_BASE_EXPORT AXActionData {
   // The request id of this action tracked by the client.
   int request_id = -1;
 
-
   // For an action that creates a selection, the selection anchor and focus
   // (see ax_tree_data.h for definitions).
   int anchor_node_id = -1;
@@ -77,8 +79,10 @@ struct AX_BASE_EXPORT AXActionData {
   // For custom action.
   AXNodeID custom_action_id = kInvalidAXNodeID;
 
-  // The target rect for the action.
-  gfx::Rect target_rect;
+  // The target rect for the action. For `kScrollToMakeVisible`, this is an
+  // optional node-local subfocus rectangle; when `std::nullopt`, the target
+  // node's full bounding box is scrolled into view.
+  std::optional<gfx::Rect> target_rect;
 
   // The target point for the action in screen coordinates.
   gfx::Point target_point;
@@ -114,8 +118,8 @@ struct AX_BASE_EXPORT AXActionData {
     return intlist_attributes.Has(attribute);
   }
 
-  const std::vector<int32_t>& GetIntListAttribute(
-      ax::mojom::IntListAttribute attribute) const {
+  base::span<const int32_t> GetIntListAttribute(
+      ax::mojom::IntListAttribute attribute) const LIFETIME_BOUND {
     return intlist_attributes.Get(attribute);
   }
 
@@ -134,8 +138,8 @@ struct AX_BASE_EXPORT AXActionData {
     return stringlist_attributes.Has(attribute);
   }
 
-  const std::vector<std::string>& GetStringListAttribute(
-      ax::mojom::StringListAttribute attribute) const {
+  base::span<const std::string> GetStringListAttribute(
+      ax::mojom::StringListAttribute attribute) const LIFETIME_BOUND {
     return stringlist_attributes.Get(attribute);
   }
 

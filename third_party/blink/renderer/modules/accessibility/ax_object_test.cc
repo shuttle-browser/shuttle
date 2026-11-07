@@ -5,13 +5,16 @@
 #include "third_party/blink/renderer/modules/accessibility/ax_object.h"
 
 #include <memory>
+#include <ranges>
 
-#include "base/containers/adapters.h"
+#include "base/containers/span.h"
+#include "base/containers/to_vector.h"
 #include "testing/gmock/include/gmock/gmock-matchers.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/renderer/core/display_lock/display_lock_utilities.h"
 #include "third_party/blink/renderer/core/dom/pseudo_element.h"
 #include "third_party/blink/renderer/core/fullscreen/fullscreen.h"
+#include "third_party/blink/renderer/core/html/forms/html_select_element.h"
 #include "third_party/blink/renderer/core/html/html_dialog_element.h"
 #include "third_party/blink/renderer/core/html/html_element.h"
 #include "third_party/blink/renderer/core/html/media/html_media_element.h"
@@ -1317,8 +1320,8 @@ TEST_F(AccessibilityTest, ComputedDetailsRelationWithDisplayLockedHintPopover) {
     ScopedFreezeAXCache freeze(GetAXObjectCache());
     ui::AXNodeData node_data;
     ax_button->Serialize(&node_data, ui::kAXModeComplete);
-    return node_data.GetIntListAttribute(
-        ax::mojom::IntListAttribute::kDetailsIds);
+    return base::ToVector(node_data.GetIntListAttribute(
+        ax::mojom::IntListAttribute::kDetailsIds));
   };
 
   // popovertarget: the hint is open in the DOM but absent from the AX tree.
@@ -1381,8 +1384,8 @@ TEST_F(AccessibilityTest, ComputedDetailsRelationForPlainContentPopover) {
     ScopedFreezeAXCache freeze(GetAXObjectCache());
     ui::AXNodeData node_data;
     ax_button->Serialize(&node_data, ui::kAXModeComplete);
-    return node_data.GetIntListAttribute(
-        ax::mojom::IntListAttribute::kDetailsIds);
+    return base::ToVector(node_data.GetIntListAttribute(
+        ax::mojom::IntListAttribute::kDetailsIds));
   };
 
   const std::vector<int32_t> manual_popover_ids = {
@@ -1875,6 +1878,258 @@ TEST_F(AccessibilityTest, ScrollMarkerPseudoElement) {
   ASSERT_GT(scroller->scrollTop(), 0);
 }
 
+TEST_F(AccessibilityTest, ScrollToMakeVisible) {
+  SetBodyInnerHTML(R"HTML(
+    <style>
+    #scroller {
+      overflow: auto;
+      height: 300px;
+      width: 300px;
+    }
+    #target {
+      margin-top: 250px;
+      height: 200px;
+      width: 100px;
+      background-color: blue;
+      scroll-margin: 0px;
+    }
+    #inline_container {
+      margin-top: -450px;
+    }
+    .inline_pusher {
+      display: inline-block;
+      width: 100%;
+      height: 800px;
+    }
+    .spacer {
+      height: 1000px;
+    }
+    </style>
+    <div id="scroller">
+      <div id="target"></div>
+      <div id="inline_container">
+        <span class="inline_pusher"></span>
+        <span id="inline_target">Inline target text</span>
+      </div>
+      <div class="spacer"></div>
+    </div>
+  )HTML");
+
+  Element* scroller = GetElementById("scroller");
+  Element* target = GetElementById("target");
+  Element* inline_target = GetElementById("inline_target");
+
+  // 1. `ScrollToMakeVisible()` on a `LayoutBox` (`#target`) whose top edge
+  // (`250px`) is inside the `300px` scroller but whose bottom (`450px`) extends
+  // below the scroller should center `#target` vertically in the scroller
+  // (`scrollTop = 250 + 100 - 150 = 200`), rather than stopping as soon as the
+  // bottom edge enters the scroller (`scrollTop = 450 - 300 = 150`).
+  ASSERT_EQ(scroller->scrollTop(), 0);
+  WebAXObject ax_target = WebAXObject::FromWebNode(target);
+  ax_target.ScrollToMakeVisible();
+  EXPECT_EQ(scroller->scrollTop(), 200);
+
+  // 2. `ScrollToMakeVisible()` on a `LayoutInline` (`#inline_target`) located
+  // 800px down inside `#inline_container` (whose own top-left origin is at y=0)
+  // should scroll `#inline_target` (y=800) into view (`scrollTop > 500`).
+  scroller->setScrollTop(0);
+  ASSERT_EQ(scroller->scrollTop(), 0);
+  WebAXObject ax_inline_target = WebAXObject::FromWebNode(inline_target);
+  ax_inline_target.ScrollToMakeVisible();
+  EXPECT_GT(scroller->scrollTop(), 500);
+}
+
+TEST_F(AccessibilityTest, ScrollToMakeVisibleCentersPartiallyOffscreenTarget) {
+  SetBodyInnerHTML(R"HTML(
+    <style>
+    #scroller {
+      overflow: auto;
+      height: 200px;
+      width: 200px;
+    }
+    #target {
+      margin-top: 180px;
+      height: 60px;
+      width: 100px;
+      scroll-margin: 0px;
+    }
+    .spacer {
+      height: 1000px;
+    }
+    </style>
+    <div id="scroller">
+      <div id="target">Partially offscreen</div>
+      <div class="spacer"></div>
+    </div>
+  )HTML");
+
+  Element* scroller = GetElementById("scroller");
+  Element* target = GetElementById("target");
+  WebAXObject ax_target = WebAXObject::FromWebNode(target);
+
+  // `#target` spans `[180, 240]` in a `200px` viewport (partially visible at
+  // the bottom of the viewport). `ScrollToMakeVisible()` defaults to centering
+  // (`scrollTop = 180 + 30 - 100 = 110`), placing `#target` at `[70, 130]` in
+  // the middle of the viewport rather than stopping at the bottom edge
+  // (`scrollTop = 180 + 60 - 200 = 40`, which would leave `#target` at
+  // `[140, 200]`).
+  ASSERT_EQ(scroller->scrollTop(), 0);
+  ax_target.ScrollToMakeVisible();
+  EXPECT_EQ(scroller->scrollTop(), 110);
+
+  // Explicit `kScrollAlignmentClosestEdge` aligns the bottom edge with the
+  // bottom of the viewport (`scrollTop = 180 + 60 - 200 = 40`).
+  scroller->setScrollTop(0);
+  ASSERT_EQ(scroller->scrollTop(), 0);
+  ax_target.ScrollToMakeVisible(
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentClosestEdge,
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentClosestEdge,
+      ax::mojom::blink::ScrollBehavior::kDoNotScrollIfVisible);
+  EXPECT_EQ(scroller->scrollTop(), 40);
+
+  // Single-axis `kNone` on horizontal with `kScrollAlignmentTop` on vertical
+  // (used by Read Anything) aligns the top edge (`scrollTop = 180`).
+  scroller->setScrollTop(0);
+  ASSERT_EQ(scroller->scrollTop(), 0);
+  ax_target.ScrollToMakeVisible(
+      ax::mojom::blink::ScrollAlignment::kNone,
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentTop,
+      ax::mojom::blink::ScrollBehavior::kDoNotScrollIfVisible);
+  EXPECT_EQ(scroller->scrollTop(), 180);
+
+  // When `#target` (`[180, 240]`) is already fully visible inside `[110, 310]`,
+  // `kDoNotScrollIfVisible` does not scroll, whereas `kScrollIfVisible` scrolls
+  // `#target` to the requested alignment (`scrollTop = 180` for
+  // `kScrollAlignmentTop`).
+  scroller->setScrollTop(110);
+  ASSERT_EQ(scroller->scrollTop(), 110);
+  ax_target.ScrollToMakeVisible(
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentCenter,
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentTop,
+      ax::mojom::blink::ScrollBehavior::kDoNotScrollIfVisible);
+  EXPECT_EQ(scroller->scrollTop(), 110);
+
+  ax_target.ScrollToMakeVisible(
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentCenter,
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentTop,
+      ax::mojom::blink::ScrollBehavior::kScrollIfVisible);
+  EXPECT_EQ(scroller->scrollTop(), 180);
+}
+
+TEST_F(AccessibilityTest, ScrollToMakeVisibleWithSubFocus) {
+  SetBodyInnerHTML(R"HTML(
+    <style>
+    #scroller {
+      overflow: auto;
+      height: 300px;
+      width: 300px;
+    }
+    #target {
+      margin-top: 250px;
+      height: 200px;
+      width: 100px;
+      background-color: blue;
+      scroll-margin: 0px;
+    }
+    #inline_container {
+      margin-top: -450px;
+    }
+    .inline_pusher {
+      display: inline-block;
+      width: 100%;
+      height: 800px;
+    }
+    .spacer {
+      height: 1000px;
+    }
+    </style>
+    <div id="scroller">
+      <div id="target"></div>
+      <div id="inline_container">
+        <span class="inline_pusher"></span>
+        <span id="inline_target">Inline target text</span>
+      </div>
+      <div class="spacer"></div>
+    </div>
+  )HTML");
+
+  Element* scroller = GetElementById("scroller");
+  Element* target = GetElementById("target");
+  Element* inline_target = GetElementById("inline_target");
+  WebAXObject ax_target = WebAXObject::FromWebNode(target);
+  WebAXObject ax_inline_target = WebAXObject::FromWebNode(inline_target);
+
+  // 1. Non-empty `(0, 0, w, h)` subfocus rect on `#inline_target` (simulating
+  // `AXPlatformNodeBase::ScrollToNode`, `AXPlatformNodeWin::ScrollIntoView`,
+  // and `AccessibilityBridgeFuchsiaImpl`, which pass a local bounding box with
+  // origin `(0, 0)`).
+  ASSERT_EQ(scroller->scrollTop(), 0);
+  ax_inline_target.ScrollToMakeVisibleWithSubFocus(gfx::Rect(0, 0, 50, 20));
+  EXPECT_GT(scroller->scrollTop(), 500);
+
+  // 2. A non-empty subfocus rectangle (`(0, 0, 100, 200)`) in local coordinates
+  // on a `LayoutBox` should scroll that sub-region into view.
+  scroller->setScrollTop(0);
+  ASSERT_EQ(scroller->scrollTop(), 0);
+  ax_target.ScrollToMakeVisibleWithSubFocus(gfx::Rect(0, 0, 100, 200));
+  ASSERT_GT(scroller->scrollTop(), 0);
+
+  // 3. Zero-size point/edge subfocus rectangles:
+  // - A `(0, 0, 0, 0)` top-left origin subfocus on `#target` (whose top-left
+  //   origin at `y = 250px` is already inside the `0..300px` visible viewport)
+  //   is already visible when using closest-edge alignment, so it does not
+  //   scroll (contrasting with `ScrollToMakeVisible()`).
+  scroller->setScrollTop(0);
+  ASSERT_EQ(scroller->scrollTop(), 0);
+  ax_target.ScrollToMakeVisibleWithSubFocus(
+      gfx::Rect(0, 0, 0, 0),
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentClosestEdge,
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentClosestEdge,
+      ax::mojom::blink::ScrollBehavior::kDoNotScrollIfVisible);
+  ASSERT_EQ(scroller->scrollTop(), 0);
+
+  // - A `(0, 0, 0, 0)` top-left origin subfocus on `#inline_target` is offset
+  //   by `LocalBoundingBoxRectForAccessibility().origin()` (`y = 800px`, off
+  //   screen) and scrolls `#inline_target` into view.
+  ax_inline_target.ScrollToMakeVisibleWithSubFocus(
+      gfx::Rect(0, 0, 0, 0),
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentClosestEdge,
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentClosestEdge,
+      ax::mojom::blink::ScrollBehavior::kDoNotScrollIfVisible);
+  EXPECT_GT(scroller->scrollTop(), 500);
+
+  // - A subfocus point near the top of `#target` (`(0, 10, 0, 0)`, which maps
+  //   to `y = 260px` inside the `0..300px` visible viewport) is already visible
+  //   when using closest-edge alignment, so it should not scroll.
+  scroller->setScrollTop(0);
+  ASSERT_EQ(scroller->scrollTop(), 0);
+  ax_target.ScrollToMakeVisibleWithSubFocus(
+      gfx::Rect(0, 10, 0, 0),
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentClosestEdge,
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentClosestEdge,
+      ax::mojom::blink::ScrollBehavior::kDoNotScrollIfVisible);
+  ASSERT_EQ(scroller->scrollTop(), 0);
+
+  // - A zero-size bottom-right corner point (`(100, 200, 0, 0)`, which maps to
+  //   `y = 450px` below the `300px` viewport) or bottom-edge segment
+  //   (`(0, 200, 100, 0)`) must preserve its non-zero local offset and scroll
+  //   into view.
+  ax_target.ScrollToMakeVisibleWithSubFocus(
+      gfx::Rect(100, 200, 0, 0),
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentClosestEdge,
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentClosestEdge,
+      ax::mojom::blink::ScrollBehavior::kDoNotScrollIfVisible);
+  ASSERT_GT(scroller->scrollTop(), 0);
+
+  scroller->setScrollTop(0);
+  ASSERT_EQ(scroller->scrollTop(), 0);
+  ax_target.ScrollToMakeVisibleWithSubFocus(
+      gfx::Rect(0, 200, 100, 0),
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentClosestEdge,
+      ax::mojom::blink::ScrollAlignment::kScrollAlignmentClosestEdge,
+      ax::mojom::blink::ScrollBehavior::kDoNotScrollIfVisible);
+  ASSERT_GT(scroller->scrollTop(), 0);
+}
 TEST_F(AccessibilityTest, ScrollToMakeScrollerVisible) {
   SetBodyInnerHTML(R"HTML(
     <style>
@@ -1913,7 +2168,7 @@ TEST_F(AccessibilityTest, ScrollToMakeScrollerVisible) {
   // changes its position on screen. If part of its scrolling content was
   // being targeted, the inner AXObject would be used.
   WebAXObject scrollerAXObject = WebAXObject::FromWebNode(scroller);
-  scrollerAXObject.ScrollToMakeVisibleWithSubFocus(gfx::Rect());
+  scrollerAXObject.ScrollToMakeVisible();
   ASSERT_EQ(scroller->scrollLeft(), 800);
 
   // But it still should have scrolled the ancestor scroller down
@@ -2203,7 +2458,7 @@ class AccessibilityReplaceRangesTest : public AccessibilitySelectionTest {
     // Traversing the selections in reverse order so that we can safely apply
     // the replacement strings without interfering with replacements that appear
     // later in document.
-    for (const AXSelection& selection : base::Reversed(selections)) {
+    for (const AXSelection& selection : std::views::reverse(selections)) {
       const AXPosition anchor = selection.Anchor();
       EXPECT_TRUE(anchor.IsValid());
       EXPECT_TRUE(anchor.IsTextPosition());
@@ -2952,6 +3207,612 @@ TEST_F(AccessibilityTest, AriaActionsEmptyListAndMissingAttribute) {
                   ax::mojom::blink::IntListAttribute::kActionsIds),
               expected_actions_ids);
     EXPECT_TRUE(node_data.HasState(ax::mojom::blink::State::kHasActions));
+  }
+}
+
+TEST_F(AccessibilityTest, InterestForRichHint) {
+  SetBodyInnerHTML(R"HTML(
+      <button id="richButton" interestfor="richPopover">Rich</button>
+      <div>separator</div>
+      <div id="richPopover" popover="manual"><a href="#">Link</a> text</div>
+      <button id="plainButton" interestfor="plainPopover"></button>
+      <div>separator</div>
+      <div id="plainPopover" popover="manual">Plain text</div>
+      )HTML");
+
+  auto serialize = [&](const char* id) {
+    ui::AXNodeData node_data;
+    AXObject* ax_object = GetAXObjectByElementId(id);
+    if (!ax_object) {
+      ADD_FAILURE() << "No AXObject for " << id;
+      return node_data;
+    }
+    ScopedFreezeAXCache freeze(GetAXObjectCache());
+    ax_object->Serialize(&node_data, ui::kAXModeComplete);
+    return node_data;
+  };
+
+  // While the rich hint is hidden, the invoker has the has-interest-for state
+  // and is collapsed, but has no details relation.
+  ui::AXNodeData rich_button = serialize("richButton");
+  EXPECT_TRUE(rich_button.HasState(ax::mojom::blink::State::kHasInterestFor));
+  EXPECT_TRUE(rich_button.HasState(ax::mojom::blink::State::kCollapsed));
+  EXPECT_FALSE(rich_button.HasState(ax::mojom::blink::State::kExpanded));
+  EXPECT_FALSE(rich_button.HasIntListAttribute(
+      ax::mojom::blink::IntListAttribute::kDetailsIds));
+
+  // A plain hint provides the name of the invoker, even while hidden, and none
+  // of the rich hint mappings apply.
+  ui::AXNodeData plain_button = serialize("plainButton");
+  EXPECT_EQ("Plain text", plain_button.GetStringAttribute(
+                              ax::mojom::blink::StringAttribute::kName));
+  EXPECT_FALSE(plain_button.HasState(ax::mojom::blink::State::kHasInterestFor));
+  EXPECT_FALSE(plain_button.HasState(ax::mojom::blink::State::kCollapsed));
+  EXPECT_FALSE(plain_button.HasState(ax::mojom::blink::State::kExpanded));
+
+  To<HTMLElement>(GetElementById("richPopover"))
+      ->showPopover(ASSERT_NO_EXCEPTION);
+  To<HTMLElement>(GetElementById("plainPopover"))
+      ->showPopover(ASSERT_NO_EXCEPTION);
+  GetAXObjectCache().UpdateAXForAllDocuments();
+
+  // The open rich hint has a minimum role of tooltip, and its invoker is
+  // expanded and has a details relation to it.
+  const AXObject* rich_popover = GetAXObjectByElementId("richPopover");
+  ASSERT_NE(nullptr, rich_popover);
+  EXPECT_EQ(ax::mojom::blink::Role::kTooltip,
+            rich_popover->ComputeFinalRoleForSerialization());
+  rich_button = serialize("richButton");
+  EXPECT_TRUE(rich_button.HasState(ax::mojom::blink::State::kHasInterestFor));
+  EXPECT_TRUE(rich_button.HasState(ax::mojom::blink::State::kExpanded));
+  EXPECT_FALSE(rich_button.HasState(ax::mojom::blink::State::kCollapsed));
+  const std::vector<int32_t> rich_popover_ids = {
+      static_cast<int32_t>(rich_popover->AXObjectID())};
+  EXPECT_EQ(rich_popover_ids,
+            rich_button.GetIntListAttribute(
+                ax::mojom::blink::IntListAttribute::kDetailsIds));
+  EXPECT_EQ(ax::mojom::blink::DetailsFrom::kInterestFor,
+            rich_button.GetDetailsFrom());
+
+  // The open plain hint keeps the minimum role of group.
+  const AXObject* plain_popover = GetAXObjectByElementId("plainPopover");
+  ASSERT_NE(nullptr, plain_popover);
+  EXPECT_EQ(ax::mojom::blink::Role::kGroup,
+            plain_popover->ComputeFinalRoleForSerialization());
+  plain_button = serialize("plainButton");
+  EXPECT_FALSE(plain_button.HasState(ax::mojom::blink::State::kHasInterestFor));
+  EXPECT_FALSE(plain_button.HasState(ax::mojom::blink::State::kExpanded));
+  EXPECT_FALSE(plain_button.HasIntListAttribute(
+      ax::mojom::blink::IntListAttribute::kDetailsIds));
+}
+
+TEST_F(AccessibilityTest, InterestForRichHintRenderedButClosed) {
+  SetBodyInnerHTML(R"HTML(
+      <style>#popover { display: block; }</style>
+      <button id="button" interestfor="popover">Button</button>
+      <div>separator</div>
+      <div id="popover" popover="manual"><a href="#">Link</a></div>
+      )HTML");
+
+  // The popover is rendered but not open. It has the minimum role of tooltip,
+  // but, as with popovertarget and commandfor, its invoker is collapsed and has
+  // no details relation.
+  const AXObject* popover = GetAXObjectByElementId("popover");
+  ASSERT_NE(nullptr, popover);
+  EXPECT_EQ(ax::mojom::blink::Role::kTooltip,
+            popover->ComputeFinalRoleForSerialization());
+
+  AXObject* button = GetAXObjectByElementId("button");
+  ASSERT_NE(nullptr, button);
+  ui::AXNodeData node_data;
+  {
+    ScopedFreezeAXCache freeze(GetAXObjectCache());
+    button->Serialize(&node_data, ui::kAXModeComplete);
+  }
+  EXPECT_TRUE(node_data.HasState(ax::mojom::blink::State::kHasInterestFor));
+  EXPECT_TRUE(node_data.HasState(ax::mojom::blink::State::kCollapsed));
+  EXPECT_FALSE(node_data.HasState(ax::mojom::blink::State::kExpanded));
+  EXPECT_FALSE(node_data.HasIntListAttribute(
+      ax::mojom::blink::IntListAttribute::kDetailsIds));
+}
+
+TEST_F(AccessibilityTest, InterestForRichHintDetailsExclusions) {
+  SetBodyInnerHTML(R"HTML(
+      <button id="nextButton" interestfor="nextPopover">Next</button>
+      <div id="nextPopover" popover="manual"><a href="#">Link</a></div>
+      <div id="outerPopover" popover="manual">
+        <button id="innerButton" interestfor="outerPopover">Inner</button>
+      </div>
+      <button id="ariaDetailsButton" interestfor="ariaDetailsPopover"
+              aria-details="otherDetails">Aria details</button>
+      <div id="otherDetails">Other details</div>
+      <div id="ariaDetailsPopover" popover="manual"><a href="#">Link</a></div>
+      )HTML");
+  for (const char* id : {"nextPopover", "outerPopover", "ariaDetailsPopover"}) {
+    To<HTMLElement>(GetElementById(id))->showPopover(ASSERT_NO_EXCEPTION);
+  }
+  GetAXObjectCache().UpdateAXForAllDocuments();
+
+  auto serialize = [&](const char* id) {
+    ui::AXNodeData node_data;
+    AXObject* ax_object = GetAXObjectByElementId(id);
+    if (!ax_object) {
+      ADD_FAILURE() << "No AXObject for " << id;
+      return node_data;
+    }
+    ScopedFreezeAXCache freeze(GetAXObjectCache());
+    ax_object->Serialize(&node_data, ui::kAXModeComplete);
+    return node_data;
+  };
+
+  // The popover is the next element: there is no details relation, but the
+  // other mappings apply.
+  ui::AXNodeData next_button = serialize("nextButton");
+  EXPECT_TRUE(next_button.HasState(ax::mojom::blink::State::kHasInterestFor));
+  EXPECT_TRUE(next_button.HasState(ax::mojom::blink::State::kExpanded));
+  EXPECT_FALSE(next_button.HasIntListAttribute(
+      ax::mojom::blink::IntListAttribute::kDetailsIds));
+
+  // The invoker is inside the popover: there is no details relation, and no
+  // expanded state.
+  ui::AXNodeData inner_button = serialize("innerButton");
+  EXPECT_TRUE(inner_button.HasState(ax::mojom::blink::State::kHasInterestFor));
+  EXPECT_FALSE(inner_button.HasState(ax::mojom::blink::State::kExpanded));
+  EXPECT_FALSE(inner_button.HasState(ax::mojom::blink::State::kCollapsed));
+  EXPECT_FALSE(inner_button.HasIntListAttribute(
+      ax::mojom::blink::IntListAttribute::kDetailsIds));
+
+  // An explicit aria-details is used instead of the details relation to the
+  // popover.
+  const AXObject* other_details = GetAXObjectByElementId("otherDetails");
+  ASSERT_NE(nullptr, other_details);
+  ui::AXNodeData aria_details_button = serialize("ariaDetailsButton");
+  EXPECT_TRUE(
+      aria_details_button.HasState(ax::mojom::blink::State::kHasInterestFor));
+  EXPECT_TRUE(aria_details_button.HasState(ax::mojom::blink::State::kExpanded));
+  const std::vector<int32_t> other_details_ids = {
+      static_cast<int32_t>(other_details->AXObjectID())};
+  EXPECT_EQ(other_details_ids,
+            aria_details_button.GetIntListAttribute(
+                ax::mojom::blink::IntListAttribute::kDetailsIds));
+  EXPECT_EQ(ax::mojom::blink::DetailsFrom::kAriaDetails,
+            aria_details_button.GetDetailsFrom());
+}
+
+TEST_F(AccessibilityTest, InterestForRichHintNotForImplicitMenuItem) {
+  SetBodyInnerHTML(R"HTML(
+      <menubar>
+        <submenu>
+          <menuitem id="menuitem">File</menuitem>
+          <menulist id="menulist">
+            <menuitem>Open</menuitem>
+          </menulist>
+        </submenu>
+      </menubar>
+      )HTML");
+  auto* menulist = To<HTMLElement>(GetElementById("menulist"));
+  // The menuitem is an implicit interest invoker for its submenu.
+  ASSERT_EQ(menulist, GetElementById("menuitem")->InterestForElement());
+  menulist->showPopover(ASSERT_NO_EXCEPTION);
+  GetAXObjectCache().UpdateAXForAllDocuments();
+
+  // The menuitem is exposed as an expanded menu item with a popup, and not as
+  // a rich hint invoker.
+  AXObject* menuitem = GetAXObjectByElementId("menuitem");
+  ASSERT_NE(nullptr, menuitem);
+  ui::AXNodeData node_data;
+  {
+    ScopedFreezeAXCache freeze(GetAXObjectCache());
+    menuitem->Serialize(&node_data, ui::kAXModeComplete);
+  }
+  EXPECT_EQ(ax::mojom::blink::HasPopup::kMenu, node_data.GetHasPopup());
+  EXPECT_TRUE(node_data.HasState(ax::mojom::blink::State::kExpanded));
+  EXPECT_FALSE(node_data.HasState(ax::mojom::blink::State::kHasInterestFor));
+}
+
+TEST_F(AccessibilityTest, InterestForRichHintMinimumRole) {
+  SetBodyInnerHTML(R"HTML(
+      <button interestfor="noRole">A</button>
+      <div id="noRole" popover="manual"><a href="#">Link</a></div>
+      <button interestfor="explicitRole">B</button>
+      <div id="explicitRole" role="dialog" popover="manual">
+        <a href="#">Link</a>
+      </div>
+      <button interestfor="fieldsetPopover">C</button>
+      <fieldset id="fieldsetPopover" popover="manual">
+        <a href="#">Link</a>
+      </fieldset>
+      <div id="noInvoker" popover="manual"><a href="#">Link</a></div>
+      )HTML");
+  for (const char* id :
+       {"noRole", "explicitRole", "fieldsetPopover", "noInvoker"}) {
+    To<HTMLElement>(GetElementById(id))->showPopover(ASSERT_NO_EXCEPTION);
+  }
+  GetAXObjectCache().UpdateAXForAllDocuments();
+
+  auto final_role = [&](const char* id) {
+    const AXObject* ax_object = GetAXObjectByElementId(id);
+    if (!ax_object) {
+      ADD_FAILURE() << "No AXObject for " << id;
+      return ax::mojom::blink::Role::kUnknown;
+    }
+    return ax_object->ComputeFinalRoleForSerialization();
+  };
+
+  // The minimum role only applies to a rich hint with no explicit or implicit
+  // role.
+  EXPECT_EQ(ax::mojom::blink::Role::kTooltip, final_role("noRole"));
+  EXPECT_EQ(ax::mojom::blink::Role::kDialog, final_role("explicitRole"));
+  EXPECT_EQ(ax::mojom::blink::Role::kGroup, final_role("fieldsetPopover"));
+  EXPECT_EQ(ax::mojom::blink::Role::kGroup, final_role("noInvoker"));
+}
+
+TEST_F(AccessibilityTest, InterestForRichHintIncrementalUpdates) {
+  SetBodyInnerHTML(R"HTML(
+      <button id="button">Button</button>
+      <div>separator</div>
+      <div id="popover" popover="manual"><a href="#">Link</a></div>
+      <div id="otherPopover" popover="manual"><a href="#">Link</a></div>
+      )HTML");
+
+  AXObjectCacheImpl& cache = GetAXObjectCache();
+  cache.SetAXMode(ui::kAXModeComplete);
+  std::vector<ui::AXTreeUpdate> updates;
+  // Replaces `updates` with the objects marked dirty since the last call. If
+  // `serialize_root` is true, the root is queued for serialization, so that a
+  // serializer exists and later calls only serialize objects marked dirty.
+  auto serialize_pending_updates = [&](bool serialize_root = false) {
+    UpdateAllLifecyclePhasesForTest();
+    cache.CommitAXUpdates(GetDocument(), /*force=*/true);
+    if (serialize_root) {
+      cache.AddDirtyObjectToSerializationQueue(cache.Root());
+    }
+    updates.clear();
+    if (cache.HasObjectsPendingSerialization()) {
+      std::vector<ui::AXEvent> events;
+      bool had_end_of_test_event = false;
+      bool had_load_complete_messages = false;
+      ScopedFreezeAXCache freeze(cache);
+      cache.GetUpdatesAndEventsForSerialization(
+          updates, events, had_end_of_test_event, had_load_complete_messages);
+    }
+    cache.ClearObjectsPendingSerializationForTesting();
+    cache.ResetLifecycleForTesting();
+  };
+  // Returns the data for the element with `id` in `updates`, or null if it was
+  // not reserialized.
+  auto find_update = [&](const char* id) -> const ui::AXNodeData* {
+    const AXObject* ax_object = GetAXObjectByElementId(id);
+    if (!ax_object) {
+      ADD_FAILURE() << "No AXObject for " << id;
+      return nullptr;
+    }
+    const ui::AXNodeData* result = nullptr;
+    for (const ui::AXTreeUpdate& update : updates) {
+      for (const ui::AXNodeData& node_data : update.nodes) {
+        if (node_data.id == static_cast<int32_t>(ax_object->AXObjectID())) {
+          result = &node_data;
+        }
+      }
+    }
+    return result;
+  };
+
+  serialize_pending_updates(/*serialize_root=*/true);
+
+  // Adding interestfor reserializes the invoker, which now has a rich hint.
+  GetElementById("button")->setAttribute(html_names::kInterestforAttr,
+                                         AtomicString("popover"));
+  serialize_pending_updates();
+  const ui::AXNodeData* button = find_update("button");
+  ASSERT_NE(nullptr, button);
+  EXPECT_TRUE(button->HasState(ax::mojom::blink::State::kHasInterestFor));
+  EXPECT_TRUE(button->HasState(ax::mojom::blink::State::kCollapsed));
+
+  // Showing the rich hint reserializes the invoker and the popover.
+  auto* popover = To<HTMLElement>(GetElementById("popover"));
+  popover->showPopover(ASSERT_NO_EXCEPTION);
+  serialize_pending_updates();
+  button = find_update("button");
+  ASSERT_NE(nullptr, button);
+  EXPECT_TRUE(button->HasState(ax::mojom::blink::State::kExpanded));
+  EXPECT_EQ(ax::mojom::blink::DetailsFrom::kInterestFor,
+            button->GetDetailsFrom());
+  const ui::AXNodeData* ax_popover = find_update("popover");
+  ASSERT_NE(nullptr, ax_popover);
+  EXPECT_EQ(ax::mojom::blink::Role::kTooltip, ax_popover->role);
+
+  // Hiding the rich hint reserializes the invoker.
+  popover->hidePopover(ASSERT_NO_EXCEPTION);
+  serialize_pending_updates();
+  button = find_update("button");
+  ASSERT_NE(nullptr, button);
+  EXPECT_TRUE(button->HasState(ax::mojom::blink::State::kCollapsed));
+  EXPECT_FALSE(button->HasIntListAttribute(
+      ax::mojom::blink::IntListAttribute::kDetailsIds));
+
+  // Changing interestfor to another target reserializes the former target,
+  // whose role reverts to the group minimum role of a popover.
+  popover->showPopover(ASSERT_NO_EXCEPTION);
+  auto* other_popover = To<HTMLElement>(GetElementById("otherPopover"));
+  other_popover->showPopover(ASSERT_NO_EXCEPTION);
+  serialize_pending_updates();
+  GetElementById("button")->setAttribute(html_names::kInterestforAttr,
+                                         AtomicString("otherPopover"));
+  serialize_pending_updates();
+  ax_popover = find_update("popover");
+  ASSERT_NE(nullptr, ax_popover);
+  EXPECT_EQ(ax::mojom::blink::Role::kGroup, ax_popover->role);
+  const ui::AXNodeData* ax_other_popover = find_update("otherPopover");
+  ASSERT_NE(nullptr, ax_other_popover);
+  EXPECT_EQ(ax::mojom::blink::Role::kTooltip, ax_other_popover->role);
+
+  // Removing interestfor reserializes the former target.
+  GetElementById("button")->removeAttribute(html_names::kInterestforAttr);
+  serialize_pending_updates();
+  ax_other_popover = find_update("otherPopover");
+  ASSERT_NE(nullptr, ax_other_popover);
+  EXPECT_EQ(ax::mojom::blink::Role::kGroup, ax_other_popover->role);
+}
+
+TEST_F(AccessibilityTest, ClearChildrenDetachesIncludedAndUnincludedChildren) {
+  SetBodyInnerHTML(R"HTML(
+      <div id="parent" role="group">
+        <span id="unincluded" role="none">
+          <button id="grandchild">Grandchild</button>
+        </span>
+        <button id="included">Included</button>
+      </div>
+      )HTML");
+
+  AXObject* parent = GetAXObjectByElementId("parent");
+  ASSERT_NE(nullptr, parent);
+  AXObject* unincluded = GetAXObjectByElementId("unincluded");
+  ASSERT_NE(nullptr, unincluded);
+  AXObject* included = GetAXObjectByElementId("included");
+  ASSERT_NE(nullptr, included);
+
+  ASSERT_TRUE(parent->IsIncludedInTree());
+  ASSERT_FALSE(unincluded->IsIncludedInTree());
+  ASSERT_TRUE(included->IsIncludedInTree());
+  EXPECT_EQ(parent, unincluded->ParentObjectIfPresent());
+  EXPECT_EQ(parent, included->ParentObjectIfPresent());
+
+  // First `ClearChildren()` detaches both included and unincluded DOM children.
+  parent->ClearChildren();
+  EXPECT_EQ(nullptr, unincluded->ParentObjectIfPresent());
+  EXPECT_EQ(nullptr, included->ParentObjectIfPresent());
+
+  // Calling `ClearChildren()` again when no children are attached is a no-op.
+  parent->ClearChildren();
+  EXPECT_EQ(nullptr, unincluded->ParentObjectIfPresent());
+  EXPECT_EQ(nullptr, included->ParentObjectIfPresent());
+
+  // Re-adding children via `UpdateAXForAllDocuments()` re-attaches existing
+  // child AXObjects via `SetParent()`, and a subsequent `ClearChildren()` must
+  // again detach both included and unincluded DOM children.
+  parent->ChildrenChangedWithCleanLayout();
+  GetAXObjectCache().UpdateAXForAllDocuments();
+  EXPECT_EQ(parent, unincluded->ParentObjectIfPresent());
+  EXPECT_EQ(parent, included->ParentObjectIfPresent());
+
+  parent->ClearChildren();
+  EXPECT_EQ(nullptr, unincluded->ParentObjectIfPresent());
+  EXPECT_EQ(nullptr, included->ParentObjectIfPresent());
+}
+
+TEST_F(AccessibilityTest, SetAncestorsHaveDirtyDescendantsAndDynamicInclusion) {
+  SetBodyInnerHTML(R"HTML(
+      <main id="main">
+        <div id="ignored_included" role="none" lang="en">
+          <span>
+            <button id="leaf_1">One</button>
+            <button id="leaf_2">Two</button>
+          </span>
+        </div>
+        <div role="radiogroup" id="rg">
+          <div role="radio" id="radio_1">Choice 1</div>
+        </div>
+      </main>)HTML");
+
+  auto& cache = GetAXObjectCache();
+  AXObject* root = cache.Root();
+  ASSERT_NE(nullptr, root);
+  AXObject* main = GetAXObjectByElementId("main");
+  ASSERT_NE(nullptr, main);
+  AXObject* ignored_included = cache.Get(GetElementById("ignored_included"));
+  ASSERT_NE(nullptr, ignored_included);
+  ASSERT_TRUE(ignored_included->IsIgnored());
+  ASSERT_TRUE(ignored_included->IsIncludedInTree());
+
+  Element* unincluded_element =
+      GetDocument().QuerySelector(AtomicString("span"));
+  ASSERT_NE(nullptr, unincluded_element);
+  AXObject* unincluded = cache.Get(unincluded_element);
+  ASSERT_NE(nullptr, unincluded);
+  ASSERT_FALSE(unincluded->IsIncludedInTree());
+
+  AXObject* leaf_1 = GetAXObjectByElementId("leaf_1");
+  ASSERT_NE(nullptr, leaf_1);
+  AXObject* leaf_2 = GetAXObjectByElementId("leaf_2");
+  ASSERT_NE(nullptr, leaf_2);
+
+  // 1. Dirtying a leaf propagates `HasDirtyDescendants()` through unincluded
+  // ancestors to all included ancestors up to `Root()`.
+  leaf_1->SetNeedsToUpdateChildren();
+  EXPECT_FALSE(leaf_1->HasDirtyDescendants());
+  EXPECT_FALSE(unincluded->HasDirtyDescendants());
+  EXPECT_TRUE(ignored_included->HasDirtyDescendants());
+  EXPECT_TRUE(main->HasDirtyDescendants());
+  EXPECT_TRUE(root->HasDirtyDescendants());
+
+  // Dirtying a sibling leaf stops at the already-dirty included ancestor while
+  // preserving the upward invariant across the ancestor chain.
+  leaf_2->SetNeedsToUpdateChildren();
+  EXPECT_TRUE(ignored_included->HasDirtyDescendants());
+  EXPECT_TRUE(main->HasDirtyDescendants());
+  EXPECT_TRUE(root->HasDirtyDescendants());
+
+  // 2. When an unincluded node dynamically becomes included in the tree while
+  // its ignored-but-included parent has dirty descendants, it inherits
+  // `HasDirtyDescendants()` during deferred update processing so
+  // `FinalizeTree()` continues down to update `leaf_1` and `leaf_2`.
+  unincluded_element->setAttribute(html_names::kAriaLabelAttr,
+                                   AtomicString("label"));
+  cache.UpdateAXForAllDocuments();
+  EXPECT_TRUE(unincluded->IsIncludedInTree());
+  EXPECT_FALSE(unincluded->HasDirtyDescendants());
+  EXPECT_FALSE(leaf_1->NeedsToUpdateChildren());
+  EXPECT_FALSE(leaf_2->NeedsToUpdateChildren());
+  EXPECT_FALSE(ignored_included->HasDirtyDescendants());
+  EXPECT_FALSE(main->HasDirtyDescendants());
+  EXPECT_FALSE(root->HasDirtyDescendants());
+
+  // 3. If an ancestor already has `NeedsToUpdateChildren()` set before
+  // `MarkDocumentDirty()`, `MarkDocumentDirtyWithCleanLayout()` still sets
+  // `HasDirtyDescendants()` on that ancestor so subsequent dirty-descendant
+  // propagation on deeper nodes does not leave a gap in the ancestor chain.
+  main->SetNeedsToUpdateChildren();
+  ASSERT_TRUE(main->NeedsToUpdateChildren());
+  ASSERT_FALSE(main->HasDirtyDescendants());
+
+  cache.MarkDocumentDirty();
+  cache.UpdateAXForAllDocuments();
+
+  EXPECT_FALSE(main->NeedsToUpdateChildren());
+  EXPECT_FALSE(main->HasDirtyDescendants());
+  EXPECT_FALSE(root->HasDirtyDescendants());
+
+  // 4. When a sibling under `main` is dirtied (marking `main` dirty while
+  // leaving `ignored_included` clean), an unincluded node becoming included
+  // under `ignored_included` must not copy `HasDirtyDescendants()` from `main`
+  // while leaving `ignored_included` clean; otherwise dirtying a descendant
+  // under that node would stop early and skip `ignored_included`.
+  unincluded_element->removeAttribute(html_names::kAriaLabelAttr);
+  cache.UpdateAXForAllDocuments();
+  unincluded = cache.Get(unincluded_element);
+  ASSERT_NE(nullptr, unincluded);
+  ASSERT_FALSE(unincluded->IsIncludedInTree());
+  ASSERT_FALSE(ignored_included->HasDirtyDescendants());
+  ASSERT_FALSE(main->HasDirtyDescendants());
+
+  GetElementById("rg")->setAttribute(html_names::kAriaLabelAttr,
+                                     AtomicString("Updated sibling"));
+  unincluded_element->setAttribute(html_names::kIdAttr,
+                                   AtomicString("wrapper"));
+  GetElementById("leaf_1")->setAttribute(html_names::kAriaLabelAttr,
+                                         AtomicString("Updated descendant"));
+  cache.UpdateAXForAllDocuments();
+
+  unincluded = cache.Get(unincluded_element);
+  ASSERT_NE(nullptr, unincluded);
+  EXPECT_TRUE(unincluded->IsIncludedInTree());
+  EXPECT_FALSE(unincluded->HasDirtyDescendants());
+  EXPECT_FALSE(ignored_included->HasDirtyDescendants());
+  EXPECT_FALSE(main->HasDirtyDescendants());
+  EXPECT_FALSE(root->HasDirtyDescendants());
+}
+
+TEST_F(AccessibilityTest, FilterableSelectControlsAndRole) {
+  ScopedFilterableSelectForTest filterable_select_enabled(true);
+  SetBodyInnerHTML(R"HTML(
+    <input id="input1" filter="select1">
+    <select id="select1" size="4">
+      <option>one</option>
+      <option>two</option>
+    </select>
+
+    <select id="select2" style="appearance: base-select">
+      <input id="input2">
+      <option>one</option>
+      <option>two</option>
+    </select>
+
+    <select id="select3" size="4">
+      <input id="input3">
+      <option>one</option>
+      <option>two</option>
+    </select>
+
+    <input type="checkbox" id="checkbox" filter="select1">
+  )HTML");
+
+  AXObjectCacheImpl& cache = GetAXObjectCache();
+  cache.UpdateAXForAllDocuments();
+
+  // 1. External <input filter="select1"> targeting <select id="select1"
+  // size="4">.
+  AXObject* ax_input1 = GetAXObjectByElementId("input1");
+  AXObject* ax_select1 = GetAXObjectByElementId("select1");
+  ASSERT_NE(nullptr, ax_input1);
+  ASSERT_NE(nullptr, ax_select1);
+  EXPECT_EQ(ax::mojom::blink::Role::kTextField, ax_input1->RoleValue());
+  EXPECT_EQ(ax::mojom::blink::Role::kListBox, ax_select1->RoleValue());
+
+  // 2. Nested <input> inside dropdown <select id="select2">.
+  auto* select2 = To<HTMLSelectElement>(GetElementById("select2"));
+  ASSERT_NE(nullptr, select2->ListBoxForFilter());
+  AXObject* ax_input2 = GetAXObjectByElementId("input2");
+  AXObject* ax_listbox2 = cache.Get(select2->ListBoxForFilter());
+  ASSERT_NE(nullptr, ax_input2);
+  ASSERT_NE(nullptr, ax_listbox2);
+  EXPECT_EQ(ax::mojom::blink::Role::kTextField, ax_input2->RoleValue());
+  EXPECT_EQ(ax::mojom::blink::Role::kListBox, ax_listbox2->RoleValue());
+
+  // 3. Nested <input> inside listbox <select id="select3" size="4">.
+  auto* select3 = To<HTMLSelectElement>(GetElementById("select3"));
+  ASSERT_NE(nullptr, select3->ListBoxForFilter());
+  AXObject* ax_input3 = GetAXObjectByElementId("input3");
+  AXObject* ax_listbox3 = cache.Get(select3->ListBoxForFilter());
+  ASSERT_NE(nullptr, ax_input3);
+  ASSERT_NE(nullptr, ax_listbox3);
+  EXPECT_EQ(ax::mojom::blink::Role::kTextField, ax_input3->RoleValue());
+  EXPECT_EQ(ax::mojom::blink::Role::kListBox, ax_listbox3->RoleValue());
+
+  // 4. Non-textfield <input type="checkbox" filter="select1"> should not get
+  // controlsIds.
+  AXObject* ax_checkbox = GetAXObjectByElementId("checkbox");
+  ASSERT_NE(nullptr, ax_checkbox);
+
+  {
+    ScopedFreezeAXCache freeze(cache);
+
+    ui::AXNodeData node_data1;
+    ax_input1->Serialize(&node_data1, ui::kAXModeComplete);
+    EXPECT_THAT(node_data1.GetIntListAttribute(
+                    ax::mojom::blink::IntListAttribute::kControlsIds),
+                testing::ElementsAre(ax_select1->AXObjectID()));
+
+    ui::AXNodeData node_data2;
+    ax_input2->Serialize(&node_data2, ui::kAXModeComplete);
+    EXPECT_THAT(node_data2.GetIntListAttribute(
+                    ax::mojom::blink::IntListAttribute::kControlsIds),
+                testing::ElementsAre(ax_listbox2->AXObjectID()));
+
+    ui::AXNodeData node_data3;
+    ax_input3->Serialize(&node_data3, ui::kAXModeComplete);
+    EXPECT_THAT(node_data3.GetIntListAttribute(
+                    ax::mojom::blink::IntListAttribute::kControlsIds),
+                testing::ElementsAre(ax_listbox3->AXObjectID()));
+
+    ui::AXNodeData checkbox_data;
+    ax_checkbox->Serialize(&checkbox_data, ui::kAXModeComplete);
+    EXPECT_FALSE(checkbox_data.HasIntListAttribute(
+        ax::mojom::blink::IntListAttribute::kControlsIds));
+  }
+
+  // 5. Updating the filter attribute marks the input dirty and updates
+  // controlsIds.
+  GetElementById("input1")->setAttribute(html_names::kFilterAttr,
+                                         AtomicString("select3"));
+  cache.UpdateAXForAllDocuments();
+  {
+    ScopedFreezeAXCache freeze(cache);
+    ui::AXNodeData node_data1;
+    ax_input1->Serialize(&node_data1, ui::kAXModeComplete);
+    EXPECT_THAT(node_data1.GetIntListAttribute(
+                    ax::mojom::blink::IntListAttribute::kControlsIds),
+                testing::ElementsAre(ax_listbox3->AXObjectID()));
   }
 }
 

@@ -14,35 +14,36 @@
 #include "third_party/blink/renderer/platform/text/emoji_segmentation_category_inline_header.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/text/character_names.h"
+#include "third_party/blink/renderer/platform/wtf/wtf_size_t.h"
 
 namespace blink {
 
-// UTF16RagelIterator is set up on top of a UTF-16 UChar* buffer iterating over
+// Utf16RagelIterator is set up on top of a UTF-16 UChar* buffer iterating over
 // a Blink internal text string and as such is used as an adapter between Blink
 // strings and the Ragel-based emoji scanner. It supports forwarding and
 // reversing using arithmetic operators. Dereferencing the iterator means
 // retrieving a character class as defined in the Ragel grammar of
 // third-party/emoji-segmenter. The dereferenced character category is cached
 // since Ragel dereferences multiple times without moving the iterator's cursor.
-class PLATFORM_EXPORT UTF16RagelIterator {
+class PLATFORM_EXPORT Utf16RagelIterator {
   STACK_ALLOCATED();
 
  public:
-  UTF16RagelIterator() = default;
+  Utf16RagelIterator() = default;
 
-  explicit UTF16RagelIterator(base::span<const UChar> buffer,
-                              unsigned cursor = 0)
+  explicit Utf16RagelIterator(base::span<const UChar> buffer,
+                              wtf_size_t cursor = 0)
       : buffer_(buffer), cursor_(cursor) {}
 
-  UTF16RagelIterator end() {
-    UTF16RagelIterator ret = *this;
-    ret.cursor_ = static_cast<unsigned>(buffer_.size());
+  Utf16RagelIterator end() {
+    Utf16RagelIterator ret = *this;
+    ret.cursor_ = static_cast<wtf_size_t>(buffer_.size());
     return ret;
   }
 
   size_t size() { return buffer_.size(); }
 
-  UTF16RagelIterator& SetCursor(unsigned new_cursor) {
+  Utf16RagelIterator& SetCursor(wtf_size_t new_cursor) {
     DCHECK_GE(new_cursor, 0u);
     DCHECK_LT(new_cursor, buffer_.size());
     cursor_ = new_cursor;
@@ -50,9 +51,9 @@ class PLATFORM_EXPORT UTF16RagelIterator {
     return *this;
   }
 
-  unsigned Cursor() { return cursor_; }
+  wtf_size_t Cursor() { return cursor_; }
 
-  UTF16RagelIterator& operator+=(int v) {
+  Utf16RagelIterator& operator+=(int v) {
     if (v > 0) {
       U16_FWD_N(buffer_, cursor_, buffer_.size(), v);
     } else if (v < 0) {
@@ -62,52 +63,52 @@ class PLATFORM_EXPORT UTF16RagelIterator {
     return *this;
   }
 
-  UTF16RagelIterator& operator-=(int v) { return *this += -v; }
+  Utf16RagelIterator& operator-=(int v) { return *this += -v; }
 
-  UTF16RagelIterator operator+(int v) {
-    UTF16RagelIterator ret = *this;
+  Utf16RagelIterator operator+(int v) {
+    Utf16RagelIterator ret = *this;
     return ret += v;
   }
 
-  UTF16RagelIterator operator-(int v) { return *this + -v; }
+  Utf16RagelIterator operator-(int v) { return *this + -v; }
 
-  int operator-(const UTF16RagelIterator& other) {
+  int operator-(const Utf16RagelIterator& other) {
     DCHECK_EQ(buffer_.data(), other.buffer_.data());
     DCHECK_EQ(buffer_.size(), other.buffer_.size());
     return cursor_ - other.cursor_;
   }
 
-  UTF16RagelIterator& operator++() {
+  Utf16RagelIterator& operator++() {
     DCHECK_LT(cursor_, buffer_.size());
     U16_FWD_1(buffer_, cursor_, buffer_.size());
     InvalidateCache();
     return *this;
   }
 
-  UTF16RagelIterator& operator--() {
+  Utf16RagelIterator& operator--() {
     DCHECK_GT(cursor_, 0u);
     U16_BACK_1(buffer_, 0, cursor_);
     InvalidateCache();
     return *this;
   }
 
-  UTF16RagelIterator operator++(int) {
-    UTF16RagelIterator ret = *this;
+  Utf16RagelIterator operator++(int) {
+    Utf16RagelIterator ret = *this;
     ++(*this);
     return ret;
   }
 
-  UTF16RagelIterator operator--(int) {
-    UTF16RagelIterator ret = *this;
+  Utf16RagelIterator operator--(int) {
+    Utf16RagelIterator ret = *this;
     --(*this);
     return ret;
   }
 
-  UTF16RagelIterator operator=(int v) {
+  Utf16RagelIterator operator=(int v) {
     // We need this integer assignment operator because Ragel has initialization
     // code for assigning 0 to ts, te.
     DCHECK_EQ(v, 0);
-    UTF16RagelIterator ret = *this;
+    Utf16RagelIterator ret = *this;
     ret.cursor_ = v;
     return ret;
   }
@@ -126,7 +127,7 @@ class PLATFORM_EXPORT UTF16RagelIterator {
     cached_category_ = EmojiSegmentationCategory::kInvalidCacheEntry;
   }
 
-  bool operator==(const UTF16RagelIterator& other) const {
+  bool operator==(const Utf16RagelIterator& other) const {
     return buffer_.data() == other.buffer_.data() &&
            buffer_.size() == other.buffer_.size() && cursor_ == other.cursor_;
   }
@@ -143,7 +144,7 @@ class PLATFORM_EXPORT UTF16RagelIterator {
   // the buffer. (Potential issue with InputMethodController, or the tests?).
   UChar32 PeekCodepoint() {
     UChar32 output = uchar::kReplacementCharacter;
-    unsigned temp_cursor = cursor_;
+    wtf_size_t temp_cursor = cursor_;
     U16_FWD_1(buffer_, temp_cursor, buffer_.size());
     if (temp_cursor < buffer_.size()) {
       U16_GET(buffer_, 0, temp_cursor, buffer_.size(), output);
@@ -153,7 +154,7 @@ class PLATFORM_EXPORT UTF16RagelIterator {
 
  private:
   base::span<const UChar> buffer_;
-  unsigned cursor_ = 0;
+  wtf_size_t cursor_ = 0;
   EmojiSegmentationCategory cached_category_ =
       EmojiSegmentationCategory::kInvalidCacheEntry;
 };

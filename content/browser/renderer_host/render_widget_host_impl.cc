@@ -290,8 +290,7 @@ std::vector<DropData::Metadata> DropDataToMetaData(const DropData& drop_data) {
 
   for (const auto& file_system_file : drop_data.file_system_files) {
     if (!file_system_file.url.is_empty()) {
-      metadata.push_back(
-          DropData::Metadata::CreateForFileSystemUrl(file_system_file.url));
+      metadata.push_back(DropData::Metadata::CreateForFileSystemFile());
     }
   }
 
@@ -381,38 +380,6 @@ bool ShouldProcessKeyEventForListeners(
 #endif
 
   return false;
-}
-
-gfx::Rect ClampPopupBoundsToDisplay(const gfx::Rect& bounds,
-                                    RenderWidgetHostViewBase* view) {
-  // More than twice the width of an 8K display, so it never constrains a
-  // real popup, while keeping the area (2^28) well inside int.
-  constexpr int kMaxPopupWidthOrHeight = 16384;
-  static_assert(kMaxPopupWidthOrHeight <= std::numeric_limits<int>::max() / 4 /
-                                              kMaxPopupWidthOrHeight,
-                "kMaxPopupWidthOrHeight squared must stay well inside int");
-
-  // Ozone headless reports a 1x1 display unless --ozone-override-screen-size
-  // overrides it, which describes no real estate to clamp against. Fall back
-  // to a fixed maximum there, and likewise with no screen or an empty work
-  // area.
-  gfx::Size max_size(kMaxPopupWidthOrHeight, kMaxPopupWidthOrHeight);
-  display::Screen* screen = display::Screen::Get();
-  if (screen && !screen->IsHeadless()) {
-    // The view does not exist yet when the popup is first shown, in which
-    // case fall back to whichever display the requested bounds land on.
-    const display::Display display =
-        view ? screen->GetDisplayNearestView(view->GetNativeView())
-             : screen->GetDisplayMatching(bounds);
-    if (!display.work_area().IsEmpty()) {
-      max_size = display.work_area().size();
-    }
-  }
-
-  gfx::Rect clamped(bounds);
-  clamped.set_width(std::clamp(clamped.width(), 0, max_size.width()));
-  clamped.set_height(std::clamp(clamped.height(), 0, max_size.height()));
-  return clamped;
 }
 
 }  // namespace
@@ -1225,7 +1192,7 @@ blink::VisualProperties RenderWidgetHostImpl::GetVisualProperties() {
         delegate_->GetVirtualKeyboardResizeHeight();
     visual_properties.window_show_state = delegate_->GetWindowShowState();
     visual_properties.resizable = delegate_->GetResizable();
-    visual_properties.always_on_top = delegate_->GetIsAlwaysOnTop();
+    visual_properties.always_on_top_popup = delegate_->GetIsAlwaysOnTopPopup();
   } else {
     visual_properties.compositor_viewport_pixel_rect =
         properties_from_parent_local_root_.compositor_viewport;
@@ -1696,8 +1663,10 @@ void RenderWidgetHostImpl::SetNewContentRenderingTimeoutForTesting(
 }
 
 void RenderWidgetHostImpl::ForwardMouseEvent(const WebMouseEvent& mouse_event) {
+  // Detect delegate possibly destroying `this` in `PreHandleMouseEvent()`.
+  const auto weak_this = weak_factory_.GetWeakPtr();
   ForwardMouseEventWithLatencyInfo(mouse_event, ui::LatencyInfo());
-  if (owner_delegate_) {
+  if (weak_this && owner_delegate_) {
     owner_delegate_->RenderWidgetDidForwardMouseEvent(mouse_event);
   }
 }
@@ -1741,6 +1710,13 @@ void RenderWidgetHostImpl::ForwardMouseEventWithLatencyInfo(
         }
       }
     }
+  }
+
+  // Protect against delegate handling possibly destroying `this`.
+  const auto weak_this = weak_factory_.GetWeakPtr();
+  // `!IsIgnoringWebInputEvents()` implies `delegate_` is non-null.
+  if (delegate_->PreHandleMouseEvent(mouse_event) || !weak_this) {
+    return;
   }
 
   auto* touch_emulator = GetTouchEmulator(/*create_if_necessary=*/false);
@@ -2223,9 +2199,6 @@ void RenderWidgetHostImpl::DragSourceEndedAt(const gfx::PointF& client_point,
 }
 
 void RenderWidgetHostImpl::DragSourceSystemDragEnded() {
-  if (delegate_) {
-    delegate_->OnDragSourceEnded();
-  }
   // TODO(crbug.com/40138933): Replace with a for_frame() check.
   if (!blink_frame_widget_) {
     return;
@@ -2424,7 +2397,7 @@ void RenderWidgetHostImpl::OnUpdateDragOperation(
     bool document_is_handling_drag) {
   RenderViewHostDelegateView* view = delegate_->GetDelegateView();
   if (view) {
-    view->UpdateDragOperation(current_op, document_is_handling_drag);
+    view->UpdateDragOperation(current_op, document_is_handling_drag, this);
   }
   std::move(callback).Run(current_op, document_is_handling_drag);
 }
@@ -2468,6 +2441,10 @@ void RenderWidgetHostImpl::RendererExited() {
     view_->RenderProcessGone();
     SetView(nullptr);  // The View should be deleted by RenderProcessGone.
   }
+
+  // Without a view, pending snapshots can never complete: a redraw response
+  // will not arrive from the dead renderer, and in-flight surface copies fail.
+  FailPendingSnapshots();
 }
 
 void RenderWidgetHostImpl::ResetStateForCreatedRenderWidget(
@@ -2843,8 +2820,7 @@ void RenderWidgetHostImpl::SetPopupBounds(const gfx::Rect& bounds,
   if (view_ && !waiting_for_screen_rects_ack_) {
     gfx::Rect constrained_bounds =
         delegate_ ? delegate_->ConstrainPopupBounds(bounds) : bounds;
-    view_->SetBounds(
-        ClampPopupBoundsToDisplay(constrained_bounds, view_.get()));
+    view_->SetBounds(constrained_bounds);
   }
   std::move(callback).Run();
 }
@@ -3027,10 +3003,8 @@ void RenderWidgetHostImpl::ShowPopup(const gfx::Rect& initial_screen_rect,
   // `delegate_` may be null since this message may be received from when
   // the delegate shutdown but this widget is not yet destroyed.
   if (delegate_) {
-    delegate_->ShowCreatedWidget(
-        GetProcess()->GetID(), GetRoutingID(),
-        ClampPopupBoundsToDisplay(initial_screen_rect, view_.get()),
-        anchor_screen_rect);
+    delegate_->ShowCreatedWidget(GetProcess()->GetID(), GetRoutingID(),
+                                 initial_screen_rect, anchor_screen_rect);
   }
   std::move(callback).Run();
 }
@@ -3407,8 +3381,8 @@ bool RenderWidgetHostImpl::StoredVisualPropertiesNeedsUpdate(
              new_visual_properties.root_widget_viewport_segments ||
          old_visual_properties->window_controls_overlay_rect !=
              new_visual_properties.window_controls_overlay_rect ||
-         old_visual_properties->always_on_top !=
-             new_visual_properties.always_on_top;
+         old_visual_properties->always_on_top_popup !=
+             new_visual_properties.always_on_top_popup;
 }
 
 void RenderWidgetHostImpl::UpdateFullscreenGrantCount() {
@@ -4042,7 +4016,9 @@ void RenderWidgetHostImpl::OnSnapshotFromSurfaceReceived(
     int retry_count,
     const content::CopyFromSurfaceResult& result) {
   static constexpr int kMaxRetries = 5;
-  if (!result.has_value() && retry_count < kMaxRetries) {
+  // A copy in flight when the renderer exited fails after the view is gone, so
+  // there is nothing to retry from.
+  if (!result.has_value() && retry_count < kMaxRetries && GetView()) {
     GetView()->CopyFromSurface(
         gfx::Rect(), gfx::Size(), base::TimeDelta(),
         base::BindOnce(&RenderWidgetHostImpl::OnSnapshotFromSurfaceReceived,
@@ -4086,6 +4062,25 @@ void RenderWidgetHostImpl::OnSnapshotReceived(int snapshot_id,
     GetWakeLock()->CancelWakeLock();
   }
 #endif
+}
+
+void RenderWidgetHostImpl::FailPendingSnapshots() {
+  // Take the maps first so callbacks can request new snapshots.
+  PendingSnapshotMap surface_snapshots =
+      std::exchange(pending_surface_browser_snapshots_, {});
+  PendingSnapshotMap window_snapshots =
+      std::exchange(pending_browser_snapshots_, {});
+#if BUILDFLAG(IS_MAC)
+  if (!window_snapshots.empty()) {
+    GetWakeLock()->CancelWakeLock();
+  }
+#endif
+  for (auto& [snapshot_id, callback] : surface_snapshots) {
+    std::move(callback).Run(gfx::Image());
+  }
+  for (auto& [snapshot_id, callback] : window_snapshots) {
+    std::move(callback).Run(gfx::Image());
+  }
 }
 
 ui::BrowserAccessibilityManager*

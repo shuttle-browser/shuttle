@@ -138,7 +138,7 @@ enum class TabGroupFocusEntryPoint {
 // LINT.IfChange(TabGroupFocusExitReason)
 enum class TabGroupFocusExitReason {
   kEditorBubble = 0,
-  kTabStripButton = 1,
+  // kTabStripButton = 1,  // Deprecated, replaced by kHeaderUnfocusButton.
   kGroupClosed = 2,
   kGroupUngrouped = 3,
   kLastTabClosed = 4,
@@ -151,7 +151,9 @@ enum class TabGroupFocusExitReason {
   kBookmarksBarContextMenu = 11,
   kAppMenu = 12,
   kOrganizerPanel = 13,
-  kMaxValue = kOrganizerPanel,
+  kHeaderUnfocusButton = 14,
+  kTabOutsideGroupActivated = 15,
+  kMaxValue = kTabOutsideGroupActivated,
 };
 // LINT.ThenChange(//tools/metrics/histograms/metadata/tab/enums.xml:TabGroupFocusExitReason)
 

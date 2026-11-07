@@ -22,6 +22,7 @@
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/web_encoding_data.h"
 #include "third_party/blink/public/platform/web_navigation_body_loader.h"
+#include "third_party/blink/public/platform/web_policy_container.h"
 #include "third_party/blink/public/platform/web_security_origin.h"
 #include "third_party/blink/public/platform/web_string.h"
 #include "third_party/blink/renderer/core/dom/document.h"
@@ -34,6 +35,7 @@
 #include "third_party/blink/renderer/core/inspector/console_message.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/page/scoped_page_pauser.h"
+#include "third_party/blink/renderer/core/testing/mock_policy_container_host.h"
 #include "third_party/blink/renderer/core/testing/scoped_fake_plugin_registry.h"
 #include "third_party/blink/renderer/core/testing/sim/sim_request.h"
 #include "third_party/blink/renderer/core/testing/sim/sim_test.h"
@@ -379,12 +381,13 @@ class DocumentLoaderSimTest : public SimTest {
         .ToChecked();
   }
 
-  SimRequest* main_resource_for_reenter_ = nullptr;
+  raw_ptr<SimRequest, UnprotectedInRelease | DanglingUntriaged>
+      main_resource_for_reenter_ = nullptr;
   int reenter_call_count_ = 0;
 
  private:
   static void ReenterThunk(const v8::FunctionCallbackInfo<v8::Value>& info) {
-    v8::Local<v8::External> external_that = info.Data().As<v8::External>();
+    v8::Local<v8::External> external_that = info.DataV2().As<v8::External>();
     DocumentLoaderSimTest* that = static_cast<DocumentLoaderSimTest*>(
         external_that->Value(gin::kExternalPointerTypeTagDefaultTag));
     that->Reenter();
@@ -424,10 +427,10 @@ TEST_F(DocumentLoaderSimTest, ProcessDataBuffer_Streaming) {
   LoadURL("https://example.com");
 
   main_resource.Write("<html><body><div id='a'></div>");
-  EXPECT_TRUE(GetDocument().getElementById(AtomicString("a")));
+  EXPECT_TRUE(GetElementById("a"));
 
   main_resource.Write("<div id='b'></div>");
-  EXPECT_TRUE(GetDocument().getElementById(AtomicString("b")));
+  EXPECT_TRUE(GetElementById("b"));
 
   main_resource.Write("</body></html>");
   main_resource.Finish();
@@ -447,21 +450,21 @@ TEST_F(DocumentLoaderSimTest, ProcessDataBuffer_Buffered) {
   main_resource.Finish();
 
   // Chunks should be buffered, not processed yet.
-  EXPECT_FALSE(GetDocument().getElementById(AtomicString("a")));
-  EXPECT_FALSE(GetDocument().getElementById(AtomicString("b")));
+  EXPECT_FALSE(GetElementById("a"));
+  EXPECT_FALSE(GetElementById("b"));
 
   GetDocument().Loader()->ResumeParser();
 
   // All chunks should have been processed now.
-  EXPECT_TRUE(GetDocument().getElementById(AtomicString("a")));
-  EXPECT_TRUE(GetDocument().getElementById(AtomicString("b")));
+  EXPECT_TRUE(GetElementById("a"));
+  EXPECT_TRUE(GetElementById("b"));
 }
 
 // Test reentrancy into DocumentLoader during the initial `CommitData()` call.
 TEST_F(DocumentLoaderSimTest, ProcessDataBuffer_ReentrancyFromInitialCommit) {
   SimRequest main_resource("https://example.com", "text/html");
-  base::AutoReset<SimRequest*> main_resource_reset(&main_resource_for_reenter_,
-                                                   &main_resource);
+  base::AutoReset<raw_ptr<SimRequest, UnprotectedInRelease | DanglingUntriaged>>
+      main_resource_reset(&main_resource_for_reenter_, &main_resource);
   LoadURL("https://example.com");
 
   InstallReenterHelper(MainFrame());
@@ -471,15 +474,15 @@ TEST_F(DocumentLoaderSimTest, ProcessDataBuffer_ReentrancyFromInitialCommit) {
 
   main_resource.Finish();
 
-  EXPECT_TRUE(GetDocument().getElementById(AtomicString("reentered")));
+  EXPECT_TRUE(GetElementById("reentered"));
 }
 
 // Test reentrancy into DocumentLoader from a `CommitData()` call while draining
 // buffered data.
 TEST_F(DocumentLoaderSimTest, ProcessDataBuffer_ReentrancyDuringIteration) {
   SimRequest main_resource("https://example.com", "text/html");
-  base::AutoReset<SimRequest*> main_resource_reset(&main_resource_for_reenter_,
-                                                   &main_resource);
+  base::AutoReset<raw_ptr<SimRequest, UnprotectedInRelease | DanglingUntriaged>>
+      main_resource_reset(&main_resource_for_reenter_, &main_resource);
   LoadURL("https://example.com");
 
   // `BlockParser()` ensures DocumentLoader buffers data, which is necessary to
@@ -506,8 +509,8 @@ TEST_F(DocumentLoaderSimTest, ProcessDataBuffer_ReentrancyDuringIteration) {
   EXPECT_EQ(1, reenter_call_count_);
   main_resource.Finish();
 
-  EXPECT_TRUE(GetDocument().getElementById(AtomicString("chunk2")));
-  EXPECT_TRUE(GetDocument().getElementById(AtomicString("reentered")));
+  EXPECT_TRUE(GetElementById("chunk2"));
+  EXPECT_TRUE(GetElementById("reentered"));
 }
 
 TEST_F(DocumentLoaderSimTest, DocumentOpenUpdatesUrl) {
@@ -537,6 +540,42 @@ TEST_F(DocumentLoaderSimTest, DocumentOpenUpdatesUrl) {
   EXPECT_EQ(KURL("https://example.com"), child_document->Url());
   // Similarly, the URL of the DocumentLoader should also match.
   EXPECT_EQ(KURL("https://example.com"), child_document->Loader()->Url());
+}
+
+// A same-origin commit from an initial empty document keeps the window, so
+// the value must be set on a kept window too.
+TEST_F(DocumentLoaderSimTest, CanUseDeviceBoundSessionJsApiOnReusedWindow) {
+  SimRequest main_resource("https://example.com", "text/html");
+  SimRequest child_resource("https://example.com/child.html", "text/html");
+  LoadURL("https://example.com");
+  main_resource.Complete("<iframe src='child.html'></iframe>");
+
+  LocalFrame* child =
+      To<WebLocalFrameImpl>(MainFrame().FirstChild())->GetFrame();
+  ASSERT_TRUE(child->GetDocument()->IsInitialEmptyDocument());
+  LocalDOMWindow* initial_window = child->DomWindow();
+
+  const KURL url("https://example.com/child.html");
+  std::unique_ptr<WebNavigationParams> params =
+      WebNavigationParams::CreateWithEmptyHTMLForTesting(url);
+  params->storage_key =
+      BlinkStorageKey::CreateFirstParty(SecurityOrigin::Create(url));
+  // A commit that keeps the window expects a policy container, which the
+  // browser always sends.
+  MockPolicyContainerHost mock_policy_container_host;
+  params->policy_container = std::make_unique<WebPolicyContainer>(
+      WebPolicyContainerPolicies(),
+      mock_policy_container_host.BindNewEndpointAndPassDedicatedRemote());
+  params->can_use_device_bound_session_js_api = true;
+  child->Loader().CommitNavigation(std::move(params), nullptr);
+
+  EXPECT_EQ(initial_window, child->DomWindow());
+  EXPECT_TRUE(child->DomWindow()->CanUseDeviceBoundSessionJsApi());
+
+  // The iframe's own navigation to child.html is still queued. Let it commit
+  // and finish, so that `child_resource` is not pending at teardown.
+  test::RunPendingTasks();
+  child_resource.Complete("");
 }
 
 TEST_F(DocumentLoaderSimTest, FramePolicyIntegrityOnNavigationCommit) {
@@ -710,11 +749,28 @@ TEST_P(DocumentLoaderTest, SameOriginNavigation_WithStorageAccess) {
                   ->LastNavigationHadTrustedInitiator());
 
   histogram_tester.ExpectUniqueSample(
-      "API.StorageAccess.DocumentLoadedWithStorageAccess", /*sample=*/true,
-      /*expected_bucket_count=*/1);
-  histogram_tester.ExpectUniqueSample(
       "API.StorageAccess.DocumentInheritedStorageAccess", /*sample=*/true,
       /*expected_bucket_count=*/1);
+}
+
+TEST_P(DocumentLoaderTest, CanUseDeviceBoundSessionJsApiFromCommitParams) {
+  WebViewImpl* web_view_impl =
+      web_view_helper_.InitializeAndLoad("https://example.com/foo.html");
+  LocalFrame* local_frame =
+      To<LocalFrame>(web_view_impl->GetPage()->MainFrame());
+  EXPECT_FALSE(local_frame->DomWindow()->CanUseDeviceBoundSessionJsApi());
+
+  const KURL url(NullUrl(), "https://example.com/bar.html");
+  std::unique_ptr<WebNavigationParams> params =
+      WebNavigationParams::CreateWithEmptyHTMLForTesting(url);
+  params->can_use_device_bound_session_js_api = true;
+  local_frame->Loader().CommitNavigation(std::move(params), nullptr);
+  EXPECT_TRUE(local_frame->DomWindow()->CanUseDeviceBoundSessionJsApi());
+
+  // Each new document gets its own value.
+  local_frame->Loader().CommitNavigation(
+      WebNavigationParams::CreateWithEmptyHTMLForTesting(url), nullptr);
+  EXPECT_FALSE(local_frame->DomWindow()->CanUseDeviceBoundSessionJsApi());
 }
 
 TEST_P(DocumentLoaderTest, CrossOriginNavigation) {
@@ -743,9 +799,6 @@ TEST_P(DocumentLoaderTest, CrossOriginNavigation) {
                    .GetDocumentLoader()
                    ->LastNavigationHadTrustedInitiator());
 
-  histogram_tester.ExpectUniqueSample(
-      "API.StorageAccess.DocumentLoadedWithStorageAccess", /*sample=*/false,
-      /*expected_bucket_count=*/1);
   histogram_tester.ExpectUniqueSample(
       "API.StorageAccess.DocumentInheritedStorageAccess", /*sample=*/false,
       /*expected_bucket_count=*/1);

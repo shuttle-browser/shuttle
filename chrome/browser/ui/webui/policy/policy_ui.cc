@@ -51,7 +51,6 @@
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
 #include "base/command_line.h"
-#include "chrome/browser/enterprise/reporting/browser_launch/scoped_initial_command_line.h"
 #include "chrome/common/chrome_switches.h"
 #endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
 
@@ -298,11 +297,12 @@ void CreateAndAddPolicyUIHtmlSource(Profile* profile) {
       "policyPageMojoMigrationEnabled",
       base::FeatureList::IsEnabled(policy::features::kPolicyPageMojoMigration));
 
-  source->AddBoolean("hideUploadReportButton", profile->IsOffTheRecord());
+  // Shuttle: cloud reporting is removed; there is no report to upload.
+  source->AddBoolean("hideUploadReportButton", true);
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
   std::string custom_arguments =
-      GetCustomCommandLineArguments(GetInitialBrowserCommandLine());
+      GetCustomCommandLineArguments(*base::CommandLine::ForCurrentProcess());
   source->AddBoolean(policy::kHasCustomCommandLineArguments,
                      !custom_arguments.empty());
   source->AddString(policy::kCustomCommandLineArguments, custom_arguments);
@@ -331,6 +331,7 @@ void PolicyUI::CreateHandler(
     mojo::PendingRemote<policy::mojom::PolicyPageClient> client) {
   page_handler_ = std::make_unique<PolicyUIHandler>(
       std::move(handler), std::move(client), Profile::FromWebUI(web_ui()));
+  page_handler_->SendInitialState();
 }
 
 WEB_UI_CONTROLLER_TYPE_IMPL(PolicyUI)
@@ -394,7 +395,8 @@ base::Value PolicyUI::GetSchema(Profile* profile) {
       continue;
     }
     for (const auto& [component_id, schema] : *components) {
-      DCHECK_EQ(schema.type(), base::Value::Type::DICT);
+      CHECK_EQ(schema.type(), base::Value::Type::DICT,
+               base::NotFatalUntil::M162);
       base::ListValue policy_names;
       auto it = schema.GetPropertiesIterator();
       for (; !it.IsAtEnd(); it.Advance()) {

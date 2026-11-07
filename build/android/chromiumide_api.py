@@ -24,10 +24,10 @@ from typing import Iterator, List, Optional, Set, Tuple
 _SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 sys.path.append(os.path.join(_SRC_ROOT, 'build'))
-import gn_helpers
+import gn_helpers  # noqa: E402
 
 sys.path.append(os.path.join(_SRC_ROOT, 'build', 'android', 'gyp'))
-from util import build_utils
+from util import build_utils  # noqa: E402
 
 _DEPOT_TOOLS_PATH = os.path.join(_SRC_ROOT, 'third_party', 'depot_tools')
 
@@ -341,9 +341,7 @@ def _extract_source_jar(source_jar: str) -> str:
     # not very fast, and suffer from GIL on parallelizing.
     subprocess.check_call(
         [
-            os.path.join(
-                _SRC_ROOT, 'third_party', 'jdk', 'current', 'bin', 'jar'
-            ),
+            os.path.join(os.path.abspath(build_utils.JAVA_HOME), 'bin', 'jar'),
             '-x',
             '-f',
             os.path.abspath(source_jar),

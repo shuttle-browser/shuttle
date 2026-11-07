@@ -4,9 +4,9 @@
 
 #include "components/viz/common/quads/compositor_frame.h"
 
+#include <ranges>
 #include <unordered_map>
 
-#include "base/containers/adapters.h"
 #include "base/trace_event/trace_event.h"
 #include "base/trace_event/traced_value.h"
 #include "base/values.h"
@@ -27,7 +27,7 @@ CompositorFrame& CompositorFrame::operator=(CompositorFrame&& other) = default;
 bool CompositorFrame::HasCopyOutputRequests() const {
   // Iterate the RenderPasses back-to-front, because CopyOutputRequests tend to
   // be made on the later passes.
-  for (const auto& pass : base::Reversed(render_pass_list)) {
+  for (const auto& pass : std::views::reverse(render_pass_list)) {
     if (!pass->copy_requests.empty()) {
       return true;
     }
@@ -61,19 +61,6 @@ bool CompositorFrame::HasVisuallyNonEmptyContent() const {
   // unnecessary for empty quad lists or single solid quads, since those quads
   // do not reference resources.
   const auto& root_pass = render_pass_list.back();
-
-  // Filters can paint arbitrary content from a single quad: ALPHA_THRESHOLD
-  // masks the pass to an arbitrary region, and REFERENCE applies an arbitrary
-  // PaintFilter graph. Both are deserialized from untrusted clients. A client
-  // cannot currently get filters on its own root pass rendered, because
-  // SurfaceAggregator drops them when it merges the pass into its embedder and
-  // only the embedder can prevent that merge, so this is defense in depth
-  // against that changing. It costs little in practice: a blank document never
-  // sets filters on its root pass, and legitimate CSS filters render into their
-  // own pass, which the check above already treats as non-empty.
-  if (!root_pass->filters.IsEmpty() || !root_pass->backdrop_filters.IsEmpty()) {
-    return true;
-  }
 
   // A frame that does not damage all of `output_rect` can leave pixels outside
   // `damage_rect` on screen from earlier frames until the display compositor

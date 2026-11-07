@@ -11,16 +11,13 @@
 #include <memory>
 
 #include "base/apple/foundation_util.h"
-#include "base/barrier_callback.h"
 #include "base/command_line.h"
 #include "base/dcheck_is_on.h"
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
-#include "base/functional/callback_helpers.h"
 #include "base/logging.h"
-#include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_macros.h"
@@ -28,13 +25,11 @@
 #include "base/numerics/checked_math.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/sys_string_conversions.h"
-#include "base/synchronization/waitable_event.h"
 #include "base/task/bind_post_task.h"
 #include "base/task/thread_pool.h"
 #include "base/types/expected_macros.h"
 #include "build/build_config.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
-#include "services/webnn/coreml/buffer_content_coreml.h"
 #include "services/webnn/coreml/context_impl_coreml.h"
 #include "services/webnn/coreml/graph_builder_coreml.h"
 #include "services/webnn/coreml/tensor_impl_coreml.h"
@@ -46,8 +41,6 @@
 #include "services/webnn/public/mojom/features.mojom.h"
 #include "services/webnn/public/mojom/webnn_context_provider.mojom.h"
 #include "services/webnn/public/mojom/webnn_error.mojom.h"
-#include "services/webnn/queueable_resource_state_base.h"
-#include "services/webnn/resource_task.h"
 #include "services/webnn/webnn_constant_operand.h"
 #include "services/webnn/webnn_context_impl.h"
 #include "services/webnn/webnn_switches.h"
@@ -80,42 +73,71 @@ namespace webnn::coreml {
 
 namespace {
 
-base::flat_map<std::string,
-               scoped_refptr<QueueableResourceState<BufferContent>>>
-ToNamedBufferStateMap(
-    const base::flat_map<std::string, scoped_refptr<WebNNTensorImpl>>&
-        named_tensors) {
-  base::flat_map<std::string,
-                 scoped_refptr<QueueableResourceState<BufferContent>>>
-      buffer_states;
-  buffer_states.reserve(named_tensors.size());
-
-  for (const auto& [name, tensor] : named_tensors) {
-    auto* coreml_tensor = static_cast<TensorImplCoreml*>(tensor.get());
-    buffer_states.emplace(name, coreml_tensor->GetBufferState());
-  }
-
-  return buffer_states;
-}
-
 base::expected<base::flat_map<std::string, OperandDescriptor>, mojom::ErrorPtr>
 BuildDescriptorsFromMLModel(
     const ContextProperties& context_properties,
     MLModel* ml_model,
-    const base::flat_map<std::string, std::string>& coreml_name_to_operand_name,
+    const base::flat_map<std::string, std::string>& operand_name_to_coreml_name,
     bool is_input) {
   NSDictionary<NSString*, MLFeatureDescription*>* descriptions_by_name =
       is_input ? ml_model.modelDescription.inputDescriptionsByName
                : ml_model.modelDescription.outputDescriptionsByName;
+  if (descriptions_by_name.count == 0) {
+    return base::unexpected(
+        mojom::Error::New(mojom::Error::Code::kUnknownError,
+                          "MLModel feature descriptions cannot be empty."));
+  }
+
+  if (is_input) {
+    NSString* placeholder_name = base::SysUTF8ToNSString(kPlaceholderInputName);
+    if (MLFeatureDescription* placeholder_desc =
+            descriptions_by_name[placeholder_name]) {
+      if (descriptions_by_name.count != 1 ||
+          !operand_name_to_coreml_name.empty()) {
+        return base::unexpected(mojom::Error::New(
+            mojom::Error::Code::kUnknownError,
+            "Placeholder input must be the only input in the MLModel."));
+      }
+      MLMultiArrayConstraint* constraint =
+          placeholder_desc.multiArrayConstraint;
+      if (placeholder_desc.type != MLFeatureType::MLFeatureTypeMultiArray ||
+          !constraint || constraint.dataType != MLMultiArrayDataTypeFloat16 ||
+          constraint.shape.count != 1 ||
+          constraint.shape[0].longLongValue != 1) {
+        return base::unexpected(
+            mojom::Error::New(mojom::Error::Code::kUnknownError,
+                              "Invalid MLModel placeholder input constraint."));
+      }
+      return base::flat_map<std::string, OperandDescriptor>();
+    }
+  }
+
+  if (descriptions_by_name.count != operand_name_to_coreml_name.size()) {
+    return base::unexpected(
+        mojom::Error::New(mojom::Error::Code::kUnknownError,
+                          "Mismatched CoreML binding name count."));
+  }
+
+  // Build a reverse map: coreml_name -> operand_name.
+  std::vector<std::pair<std::string, std::string>> reverse_pairs;
+  reverse_pairs.reserve(operand_name_to_coreml_name.size());
+  for (const auto& [operand_name, coreml_name] : operand_name_to_coreml_name) {
+    reverse_pairs.emplace_back(coreml_name, operand_name);
+  }
+  base::flat_map<std::string, std::string> coreml_name_to_operand_name(
+      std::move(reverse_pairs));
+  if (coreml_name_to_operand_name.size() !=
+      operand_name_to_coreml_name.size()) {
+    return base::unexpected(
+        mojom::Error::New(mojom::Error::Code::kUnknownError,
+                          "Duplicate CoreML binding names in compiled graph."));
+  }
 
   std::vector<std::pair<std::string, OperandDescriptor>> descriptors;
   descriptors.reserve(descriptions_by_name.count);
 
   for (NSString* ns_coreml_name in descriptions_by_name) {
     std::string coreml_name = base::SysNSStringToUTF8(ns_coreml_name);
-    if (is_input && coreml_name == kPlaceholderInputName) {
-      continue;
-    }
     auto it = coreml_name_to_operand_name.find(coreml_name);
     if (it == coreml_name_to_operand_name.end()) {
       return base::unexpected(mojom::Error::New(
@@ -159,7 +181,25 @@ BuildDescriptorsFromMLModel(
     std::vector<uint32_t> shape;
     shape.reserve(constraint.shape.count);
     for (NSNumber* dim in constraint.shape) {
-      shape.push_back(dim.unsignedIntValue);
+      int64_t raw_dim = dim.longLongValue;
+      uint32_t checked_dim = 0;
+      if (raw_dim <= 0 ||
+          !base::CheckedNumeric<uint32_t>(raw_dim).AssignIfValid(
+              &checked_dim)) {
+        return base::unexpected(
+            mojom::Error::New(mojom::Error::Code::kUnknownError,
+                              "Invalid MLModel shape dimension."));
+      }
+      shape.push_back(checked_dim);
+    }
+
+    if (IsScalarCoreMLName(coreml_name)) {
+      if (shape.size() != 1 || shape[0] != 1) {
+        return base::unexpected(mojom::Error::New(
+            mojom::Error::Code::kUnknownError,
+            "Invalid MLModel shape constraint for scalar operand."));
+      }
+      shape.clear();
     }
 
     auto descriptor = OperandDescriptor::Create(context_properties, data_type,
@@ -170,221 +210,36 @@ BuildDescriptorsFromMLModel(
     }
     descriptors.emplace_back(operand_name, descriptor.value());
   }
-  return base::flat_map<std::string, OperandDescriptor>(std::move(descriptors));
+
+  base::flat_map<std::string, OperandDescriptor> result(std::move(descriptors));
+  if (result.size() != descriptions_by_name.count) {
+    return base::unexpected(mojom::Error::New(
+        mojom::Error::Code::kUnknownError,
+        "Duplicate operand names in MLModel feature mapping."));
+  }
+  return result;
 }
 
 }  // namespace
 
-// Represents the collection of resources associated with a particular graph.
-// These resources may outlive their associated `GraphImplCoreml` instance while
-// executing the graph.
-class GraphImplCoreml::ComputeResources
-    : public base::RefCountedThreadSafe<ComputeResources> {
- public:
-  ComputeResources(
-      base::flat_map<std::string, std::string> coreml_name_to_operand_name,
-      MLModel* __strong ml_model)
-      : coreml_name_to_operand_name_(std::move(coreml_name_to_operand_name)),
-        ml_model_(std::move(ml_model)) {
-    CHECK(ml_model_);
-  }
-
-  void DoDispatch(
-      base::flat_map<std::string,
-                     scoped_refptr<QueueableResourceState<BufferContent>>>
-          named_input_buffer_states,
-      base::flat_map<std::string,
-                     scoped_refptr<QueueableResourceState<BufferContent>>>
-          named_output_buffer_states,
-      base::OnceClosure completion_closure,
-      ScopedTrace scoped_trace) const {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
-    scoped_trace.AddStep("Set up prediction");
-    base::ElapsedTimer model_predict_timer;
-
-    NSString* feature_name;
-    NSMutableSet* feature_names = [[NSMutableSet alloc] init];
-    NSMutableDictionary* feature_values = [[NSMutableDictionary alloc] init];
-
-    if (named_input_buffer_states.empty()) {
-      CHECK_EQ(ml_model_.modelDescription.inputDescriptionsByName.count, 1u);
-
-      NSString* placeholder_name =
-          base::SysUTF8ToNSString(kPlaceholderInputName);
-      [feature_names addObject:placeholder_name];
-      NSError* error;
-      MLMultiArray* placeholder_input =
-          [[MLMultiArray alloc] initWithShape:@[ @1 ]
-                                     dataType:MLMultiArrayDataTypeFloat16
-                                        error:&error];
-      placeholder_input[0] = @0;
-      CHECK(!error);
-      feature_values[placeholder_name] =
-          [MLFeatureValue featureValueWithMultiArray:placeholder_input];
-    } else {
-      CHECK_EQ(named_input_buffer_states.size(),
-               ml_model_.modelDescription.inputDescriptionsByName.count);
-
-      // Create an `MLFeatureValue` for each of the inputs.
-      for (feature_name in ml_model_.modelDescription.inputDescriptionsByName) {
-        [feature_names addObject:feature_name];
-
-        MLFeatureDescription* feature_description =
-            ml_model_.modelDescription.inputDescriptionsByName[feature_name];
-        CHECK_EQ(feature_description.type,
-                 MLFeatureType::MLFeatureTypeMultiArray);
-
-        auto operand_name_it = coreml_name_to_operand_name_.find(
-            base::SysNSStringToUTF8(feature_name));
-        CHECK(operand_name_it != coreml_name_to_operand_name_.end());
-
-        auto buffer_state_it =
-            named_input_buffer_states.find(operand_name_it->second);
-        CHECK(buffer_state_it != named_input_buffer_states.end());
-
-        const BufferContent& buffer_content =
-            buffer_state_it->second->GetSharedLockedResource();
-        MLFeatureValue* feature_value = buffer_content.AsFeatureValue();
-        if (!feature_value) {
-          LOG(ERROR) << "Input initialization error";
-          return;
-        }
-
-        // Assert that `feature_value` is compatible with
-        // `feature_description`.
-        CHECK([feature_description isAllowedValue:feature_value]);
-
-        feature_values[feature_name] = feature_value;
-      }
-    }
-
-    // Create an `MLFeatureValue` for each of the outputs.
-    MLPredictionOptions* options = [[MLPredictionOptions alloc] init];
-    NSMutableDictionary* output_backings = [[NSMutableDictionary alloc] init];
-    CHECK_EQ(named_output_buffer_states.size(),
-             ml_model_.modelDescription.outputDescriptionsByName.count);
-    for (feature_name in ml_model_.modelDescription.outputDescriptionsByName) {
-      MLFeatureDescription* feature_description =
-          ml_model_.modelDescription.outputDescriptionsByName[feature_name];
-      CHECK_EQ(feature_description.type,
-               MLFeatureType::MLFeatureTypeMultiArray);
-
-      auto operand_name_it = coreml_name_to_operand_name_.find(
-          base::SysNSStringToUTF8(feature_name));
-      CHECK(operand_name_it != coreml_name_to_operand_name_.end());
-
-      auto buffer_state_it =
-          named_output_buffer_states.find(operand_name_it->second);
-      CHECK(buffer_state_it != named_output_buffer_states.end());
-
-      BufferContent* const buffer_content =
-          buffer_state_it->second->GetExclusivelyLockedResource();
-      MLFeatureValue* feature_value = buffer_content->AsFeatureValue();
-      if (!feature_value) {
-        LOG(ERROR) << "Output initialization error";
-        return;
-      }
-
-      // Assert that `feature_value` is compatible with
-      // `feature_description`.
-      CHECK([feature_description isAllowedValue:feature_value]);
-
-      output_backings[feature_name] = feature_value.multiArrayValue;
-    }
-
-    [options setOutputBackings:output_backings];
-
-    WebNNMLFeatureProvider* feature_provider =
-        [[WebNNMLFeatureProvider alloc] initWithFeatures:feature_names
-                                           featureValues:feature_values];
-
-    // The completion handler may run on another thread, so post a task
-    // back to this sequence to run the closure.
-    auto wrapped_completion_closure =
-        base::BindPostTaskToCurrentDefault(std::move(completion_closure));
-
-    scoped_trace.AddStep("Trigger prediction");
-
-    // Run the MLModel asynchronously.
-    [ml_model_
-        predictionFromFeatures:feature_provider
-                       options:options
-             completionHandler:
-                 base::CallbackToBlock(base::BindOnce(
-                     &GraphImplCoreml::ComputeResources::DidDispatch, this,
-                     std::move(model_predict_timer), std::move(output_backings),
-                     std::move(wrapped_completion_closure),
-                     std::move(scoped_trace)))];
-  }
-
-  void DidDispatch(base::ElapsedTimer model_predict_timer,
-                   NSMutableDictionary* output_backing_buffers,
-                   base::OnceClosure completion_closure,
-                   ScopedTrace scoped_trace,
-                   id<MLFeatureProvider> output_features,
-                   NSError* error) const {
-    scoped_trace.AddStep("Process prediction");
-    DEPRECATED_UMA_HISTOGRAM_MEDIUM_TIMES("WebNN.CoreML.TimingMs."
-                                          "ModelPredictWithDispatch",
-                                          model_predict_timer.Elapsed());
-
-    // Unlock the resources bound to this `ResourceTask`.
-    std::move(completion_closure).Run();
-
-    if (error) {
-      // TODO(crbug.com/41492165): Report this error on the
-      // context.
-      LOG(ERROR) << "[WebNN] PredictionError: " << error;
-      return;
-    }
-
-    // Ensure that the provided backing buffers were in fact
-    // used.
-    //
-    // TODO(crbug.com/333392274): Remove this check,
-    // eventually. The header file for `MLPredictionOptions`
-    // claims CoreML may not use the specified backing
-    // buffers in a handful of scenarios, including the vague
-    // case where "the model doesn't support the user
-    // allocated buffers". We shouldn't ship WebNN to users
-    // with this CHECK enabled, but in the meantime let's see
-    // if this check is ever hit...
-    NSString* output_feature_name;
-    for (output_feature_name in output_features.featureNames) {
-      CHECK_EQ([output_features featureValueForName:output_feature_name]
-                   .multiArrayValue,
-               output_backing_buffers[output_feature_name]);
-    }
-  }
-
- private:
-  friend class base::RefCountedThreadSafe<ComputeResources>;
-
-  ~ComputeResources() = default;
-
-  SEQUENCE_CHECKER(sequence_checker_);
-
-  const base::flat_map<std::string, std::string> coreml_name_to_operand_name_;
-  const MLModel* __strong ml_model_;
-};
-
 // Parameters needed to construct a `GraphImplCoreml`. Used for shuttling
 // these objects between the background thread where the model is compiled and
-// the originating thread.
+// the context sequence where the model is loaded.
 struct GraphImplCoreml::Params {
-  Params(ComputeResourceInfo compute_resource_info,
+  Params(NSURL* compiled_model_url,
+         ScopedModelPath scoped_compiled_model_dir,
          base::flat_map<std::string, std::string> coreml_name_to_operand_name,
-         MLModel* __strong ml_model);
+         std::optional<ComputeResourceInfo> compute_resource_info,
+         base::flat_map<std::string, std::string> input_binding_names = {},
+         base::flat_map<std::string, std::string> output_binding_names = {});
   ~Params();
 
-  ComputeResourceInfo compute_resource_info;
+  NSURL* __strong compiled_model_url;
+  ScopedModelPath scoped_compiled_model_dir;
   base::flat_map<std::string, std::string> coreml_name_to_operand_name;
-
-  // Represents the compiled and configured Core ML model.
-  MLModel* __strong ml_model;
-
-  std::vector<mojom::Device> devices;
+  std::optional<ComputeResourceInfo> compute_resource_info;
+  base::flat_map<std::string, std::string> input_binding_names;
+  base::flat_map<std::string, std::string> output_binding_names;
 };
 
 // static
@@ -416,44 +271,38 @@ void GraphImplCoreml::CreateAndBuild(
 void GraphImplCoreml::CreateAndLoadCompiledModel(
     ContextImplCoreml& context,
     base::ScopedTempDir compiled_model_dir,
-    base::flat_map<std::string, std::string> coreml_name_to_operand_name,
+    base::flat_map<std::string, std::string> input_binding_names,
+    base::flat_map<std::string, std::string> output_binding_names,
     WebNNContextImpl::CreateGraphImplCallback callback) {
-  auto wrapped_callback = base::BindPostTaskToCurrentDefault(base::BindOnce(
-      [](base::WeakPtr<WebNNContextImpl> context,
-         WebNNContextImpl::CreateGraphImplCallback callback,
-         base::expected<std::unique_ptr<Params>, mojom::ErrorPtr> result) {
-        DidCreateAndBuild(std::move(context), std::move(callback),
-                          std::move(result));
-      },
-      context.AsWeakPtr(), std::move(callback)));
-
-  base::ThreadPool::PostTask(
-      FROM_HERE,
-      {base::TaskPriority::USER_BLOCKING,
-       base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN, base::MayBlock()},
-      base::BindOnce(&GraphImplCoreml::LoadCompiledModelOnBackgroundThread,
-                     std::move(compiled_model_dir), context.options().Clone(),
-                     context.properties(),
-                     std::move(coreml_name_to_operand_name),
-                     std::move(wrapped_callback)));
-}
-
-// static
-void GraphImplCoreml::LoadCompiledModelOnBackgroundThread(
-    base::ScopedTempDir compiled_model_dir,
-    mojom::CreateContextOptionsPtr context_options,
-    ContextProperties context_properties,
-    base::flat_map<std::string, std::string> coreml_name_to_operand_name,
-    base::OnceCallback<void(
-        base::expected<std::unique_ptr<Params>, mojom::ErrorPtr>)> callback) {
   NSURL* compiled_model_url = base::apple::FilePathToNSURL(
       compiled_model_dir.GetPath().AppendASCII("model.mlmodelc"));
 
-  LoadModelAndReadComputePlan(
+  // Reconstruct coreml_name_to_operand_name mapping.
+  std::vector<std::pair<std::string, std::string>> pairs;
+  pairs.reserve(input_binding_names.size() + output_binding_names.size());
+  for (const auto& [name, coreml_name] : input_binding_names) {
+    pairs.emplace_back(coreml_name, name);
+  }
+  for (const auto& [name, coreml_name] : output_binding_names) {
+    pairs.emplace_back(coreml_name, name);
+  }
+  base::flat_map<std::string, std::string> coreml_name_to_operand_name(
+      std::move(pairs));
+  if (coreml_name_to_operand_name.size() !=
+      input_binding_names.size() + output_binding_names.size()) {
+    std::move(callback).Run(base::unexpected(mojom::Error::New(
+        mojom::Error::Code::kUnknownError,
+        "Duplicate CoreML binding names in compiled graph.")));
+    return;
+  }
+
+  auto params = std::make_unique<Params>(
       compiled_model_url, ScopedModelPath(std::move(compiled_model_dir)),
-      std::move(context_options), std::move(coreml_name_to_operand_name),
-      std::move(callback), /*compute_resource_info=*/std::nullopt,
-      context_properties);
+      std::move(coreml_name_to_operand_name),
+      /*compute_resource_info=*/std::nullopt, std::move(input_binding_names),
+      std::move(output_binding_names));
+  DidCreateAndBuild(context.AsWeakPtr(), std::move(callback),
+                    std::move(params));
 }
 
 // static
@@ -493,16 +342,20 @@ void GraphImplCoreml::CreateAndBuildOnBackgroundThread(
   std::vector<std::pair<std::string, std::string>> coreml_name_to_operand_name(
       graph_info->input_operands.size() + graph_info->output_operands.size());
   for (auto const& input_id : graph_info->input_operands) {
-    auto& name = graph_info->operands.at(input_id.value())->name;
-    CHECK(name.has_value());
+    const mojom::Operand& operand = *graph_info->operands.at(input_id.value());
+    CHECK(operand.name.has_value());
     coreml_name_to_operand_name.emplace_back(
-        GetCoreMLNameFromInput(name.value(), input_id), name.value());
+        GetCoreMLNameFromInput(operand.name.value(), input_id,
+                               operand.descriptor.Rank() == 0),
+        operand.name.value());
   }
   for (auto const& output_id : graph_info->output_operands) {
-    auto& name = graph_info->operands.at(output_id.value())->name;
-    CHECK(name.has_value());
+    const mojom::Operand& operand = *graph_info->operands.at(output_id.value());
+    CHECK(operand.name.has_value());
     coreml_name_to_operand_name.emplace_back(
-        GetCoreMLNameFromOutput(name.value(), output_id), name.value());
+        GetCoreMLNameFromOutput(operand.name.value(), output_id,
+                                operand.descriptor.Rank() == 0),
+        operand.name.value());
   }
 
   [MLModel
@@ -511,7 +364,6 @@ void GraphImplCoreml::CreateAndBuildOnBackgroundThread(
       completionHandler:base::CallbackToBlock(base::BindOnce(
                             &OnModelCompiledOnBackgroundThread,
                             base::ElapsedTimer(), std::move(model_file_dir),
-                            std::move(context_options),
                             std::move(compute_resource_info),
                             std::move(coreml_name_to_operand_name),
                             std::move(callback)))];
@@ -521,7 +373,6 @@ void GraphImplCoreml::CreateAndBuildOnBackgroundThread(
 void GraphImplCoreml::OnModelCompiledOnBackgroundThread(
     base::ElapsedTimer compilation_timer,
     base::ScopedTempDir mlpackage_dir,
-    mojom::CreateContextOptionsPtr context_options,
     ComputeResourceInfo compute_resource_info,
     base::flat_map<std::string, std::string> coreml_name_to_operand_name,
     base::OnceCallback<void(
@@ -545,24 +396,32 @@ void GraphImplCoreml::OnModelCompiledOnBackgroundThread(
   CHECK(scoped_compiled_model_dir.Set(
       base::apple::NSURLToFilePath(compiled_model_url)));
 
-  LoadModelAndReadComputePlan(
+  auto params = std::make_unique<Params>(
       compiled_model_url, ScopedModelPath(std::move(scoped_compiled_model_dir)),
-      std::move(context_options), std::move(coreml_name_to_operand_name),
-      std::move(callback), std::move(compute_resource_info));
+      std::move(coreml_name_to_operand_name), std::move(compute_resource_info));
+  std::move(callback).Run(std::move(params));
 }
 
 // static
-void GraphImplCoreml::LoadModelAndReadComputePlan(
-    NSURL* compiled_model_url,
-    ScopedModelPath scoped_compiled_model_dir,
-    mojom::CreateContextOptionsPtr context_options,
-    base::flat_map<std::string, std::string> coreml_name_to_operand_name,
-    base::OnceCallback<void(
-        base::expected<std::unique_ptr<Params>, mojom::ErrorPtr>)> callback,
-    std::optional<ComputeResourceInfo> compute_resource_info,
-    std::optional<ContextProperties> context_properties) {
+void GraphImplCoreml::DidCreateAndBuild(
+    base::WeakPtr<WebNNContextImpl> context,
+    WebNNContextImpl::CreateGraphImplCallback callback,
+    base::expected<std::unique_ptr<Params>, mojom::ErrorPtr> result) {
+  if (!result.has_value()) {
+    LOG(ERROR) << "[WebNN] " << result.error()->message;
+    std::move(callback).Run(base::unexpected(std::move(result).error()));
+    return;
+  }
+
+  if (!context) {
+    std::move(callback).Run(base::unexpected(mojom::Error::New(
+        mojom::Error::Code::kUnknownError, "Context was destroyed.")));
+    return;
+  }
+
+  std::unique_ptr<Params> params = *std::move(result);
   MLModelConfiguration* configuration = [[MLModelConfiguration alloc] init];
-  switch (context_options->device) {
+  switch (context->options().device) {
     case mojom::Device::kCpu:
       configuration.computeUnits = MLComputeUnitsCPUOnly;
       break;
@@ -582,61 +441,23 @@ void GraphImplCoreml::LoadModelAndReadComputePlan(
       break;
   }
 
-  base::ElapsedTimer model_load_timer;
-  NSError* model_load_error = nil;
-
-  MLModel* ml_model = [MLModel modelWithContentsOfURL:compiled_model_url
-                                        configuration:configuration
-                                                error:&model_load_error];
-  DEPRECATED_UMA_HISTOGRAM_MEDIUM_TIMES(
-      "WebNN.CoreML.TimingMs.CompiledModelLoad", model_load_timer.Elapsed());
-  if (model_load_error) {
-    LOG(ERROR) << "[WebNN] " << model_load_error;
-    std::move(callback).Run(base::unexpected(mojom::Error::New(
-        mojom::Error::Code::kUnknownError, "Model load error.")));
-    return;
-  }
-
-  if (!compute_resource_info.has_value()) {
-    CHECK(context_properties.has_value());
-    auto input_descriptors = BuildDescriptorsFromMLModel(
-        *context_properties, ml_model, coreml_name_to_operand_name,
-        /*is_input=*/true);
-    auto output_descriptors = BuildDescriptorsFromMLModel(
-        *context_properties, ml_model, coreml_name_to_operand_name,
-        /*is_input=*/false);
-    if (!input_descriptors.has_value() || !output_descriptors.has_value()) {
-      LOG(ERROR)
-          << "Failed to build operand descriptors from MLModel metadata.";
-      std::move(callback).Run(
-          base::unexpected(input_descriptors.has_value()
-                               ? std::move(output_descriptors.error())
-                               : std::move(input_descriptors.error())));
-      return;
-    }
-    compute_resource_info = ComputeResourceInfo(
-        std::move(*input_descriptors), std::move(*output_descriptors),
-        base::PassKey<GraphImplCoreml>());
-  }
-
-  auto params = std::make_unique<Params>(std::move(*compute_resource_info),
-                                         std::move(coreml_name_to_operand_name),
-                                         ml_model);
-
-  [MLComputePlan loadContentsOfURL:compiled_model_url
-                     configuration:configuration
-                 completionHandler:base::CallbackToBlock(base::BindOnce(
-                                       &ReadComputePlan, std::move(params),
-                                       std::move(callback),
-                                       std::move(scoped_compiled_model_dir)))];
+  NSURL* compiled_model_url = params->compiled_model_url;
+  [MLComputePlan
+      loadContentsOfURL:compiled_model_url
+          configuration:configuration
+      completionHandler:base::CallbackToBlock(
+                            base::BindPostTaskToCurrentDefault(base::BindOnce(
+                                &GraphImplCoreml::ReadComputePlan,
+                                std::move(context), std::move(callback),
+                                std::move(params), configuration)))];
 }
 
 // static
 void GraphImplCoreml::ReadComputePlan(
+    base::WeakPtr<WebNNContextImpl> context,
+    WebNNContextImpl::CreateGraphImplCallback callback,
     std::unique_ptr<Params> params,
-    base::OnceCallback<void(
-        base::expected<std::unique_ptr<Params>, mojom::ErrorPtr>)> callback,
-    ScopedModelPath scoped_model_files,
+    MLModelConfiguration* configuration,
     MLComputePlan* compute_plan,
     NSError* compute_plan_error) {
   if (compute_plan_error) {
@@ -646,13 +467,27 @@ void GraphImplCoreml::ReadComputePlan(
                           "Failed to get compiled graph devices.")));
     return;
   }
-  CHECK(compute_plan);
+  if (!compute_plan) {
+    std::move(callback).Run(base::unexpected(
+        mojom::Error::New(mojom::Error::Code::kUnknownError,
+                          "Failed to get compiled graph compute plan.")));
+    return;
+  }
+  if (!context) {
+    std::move(callback).Run(base::unexpected(mojom::Error::New(
+        mojom::Error::Code::kUnknownError, "Context was destroyed.")));
+    return;
+  }
 
   MLModelStructureProgram* program = compute_plan.modelStructure.program;
-  CHECK(program);
-
-  MLModelStructureProgramFunction* main_function = program.functions[@"main"];
-  CHECK(main_function);
+  MLModelStructureProgramFunction* main_function =
+      program ? program.functions[@"main"] : nil;
+  if (!main_function || !main_function.block) {
+    std::move(callback).Run(base::unexpected(
+        mojom::Error::New(mojom::Error::Code::kUnknownError,
+                          "Invalid compiled model program structure.")));
+    return;
+  }
 
   double total_weight = 0;
   NSArray<MLModelStructureProgramOperation*>* operations =
@@ -709,30 +544,70 @@ void GraphImplCoreml::ReadComputePlan(
     DLOG(INFO) << "Operation weight " << estimated_cost.weight;
     total_weight += estimated_cost.weight;
   }
-  params->devices.assign(devices.begin(), devices.end());
   DLOG(INFO) << "Total weight " << total_weight;
-  std::move(callback).Run(std::move(params));
+
+  NSURL* compiled_model_url = params->compiled_model_url;
+  [MLModel
+      loadContentsOfURL:compiled_model_url
+          configuration:configuration
+      completionHandler:base::CallbackToBlock(
+                            base::BindPostTaskToCurrentDefault(base::BindOnce(
+                                &GraphImplCoreml::DidLoadModel,
+                                std::move(context), std::move(callback),
+                                std::move(params),
+                                std::vector<mojom::Device>(devices.begin(),
+                                                           devices.end()),
+                                base::ElapsedTimer())))];
 }
 
 // static
-void GraphImplCoreml::DidCreateAndBuild(
+void GraphImplCoreml::DidLoadModel(
     base::WeakPtr<WebNNContextImpl> context,
     WebNNContextImpl::CreateGraphImplCallback callback,
-    base::expected<std::unique_ptr<Params>, mojom::ErrorPtr> result) {
-  if (!result.has_value()) {
-    LOG(ERROR) << "[WebNN] " << result.error()->message;
-    std::move(callback).Run(base::unexpected(std::move(result).error()));
+    std::unique_ptr<Params> params,
+    std::vector<mojom::Device> devices,
+    base::ElapsedTimer model_load_timer,
+    MLModel* ml_model,
+    NSError* model_load_error) {
+  DEPRECATED_UMA_HISTOGRAM_MEDIUM_TIMES(
+      "WebNN.CoreML.TimingMs.CompiledModelLoad", model_load_timer.Elapsed());
+  if (model_load_error || !ml_model) {
+    LOG(ERROR) << "[WebNN] " << model_load_error;
+    std::move(callback).Run(base::unexpected(mojom::Error::New(
+        mojom::Error::Code::kUnknownError, "Model load error.")));
     return;
   }
-
   if (!context) {
     std::move(callback).Run(base::unexpected(mojom::Error::New(
         mojom::Error::Code::kUnknownError, "Context was destroyed.")));
     return;
   }
 
-  std::move(callback).Run(
-      base::MakeRefCounted<GraphImplCoreml>(*context, *std::move(result)));
+  if (!params->compute_resource_info.has_value()) {
+    auto input_descriptors = BuildDescriptorsFromMLModel(
+        context->properties(), ml_model, params->input_binding_names,
+        /*is_input=*/true);
+    auto output_descriptors = BuildDescriptorsFromMLModel(
+        context->properties(), ml_model, params->output_binding_names,
+        /*is_input=*/false);
+    if (!input_descriptors.has_value() || !output_descriptors.has_value()) {
+      LOG(ERROR)
+          << "Failed to build operand descriptors from MLModel metadata.";
+      std::move(callback).Run(
+          base::unexpected(input_descriptors.has_value()
+                               ? std::move(output_descriptors.error())
+                               : std::move(input_descriptors.error())));
+      return;
+    }
+    params->compute_resource_info.emplace(std::move(*input_descriptors),
+                                          std::move(*output_descriptors),
+                                          base::PassKey<GraphImplCoreml>());
+  }
+
+  std::move(callback).Run(base::MakeRefCounted<GraphImplCoreml>(
+      *context, std::move(*params->compute_resource_info),
+      std::move(params->coreml_name_to_operand_name), ml_model,
+      std::move(devices)));
 }
 
 GraphImplCoreml::ScopedModelPath::ScopedModelPath(base::ScopedTempDir file_dir)
@@ -765,77 +640,182 @@ GraphImplCoreml::ScopedModelPath::~ScopedModelPath() {
   CHECK(file_dir.Delete());
 }
 
-GraphImplCoreml::GraphImplCoreml(WebNNContextImpl& context,
-                                 std::unique_ptr<Params> params)
+GraphImplCoreml::GraphImplCoreml(
+    WebNNContextImpl& context,
+    ComputeResourceInfo compute_resource_info,
+    base::flat_map<std::string, std::string> coreml_name_to_operand_name,
+    MLModel* ml_model,
+    std::vector<mojom::Device> devices)
     : WebNNGraphImpl(context,
-                     std::move(params->compute_resource_info),
-                     std::move(params->devices)),
-      compute_resources_(base::MakeRefCounted<ComputeResources>(
-          std::move(params->coreml_name_to_operand_name),
-          params->ml_model)) {}
+                     std::move(compute_resource_info),
+                     std::move(devices)),
+      coreml_name_to_operand_name_(std::move(coreml_name_to_operand_name)),
+      ml_model_(ml_model) {
+  CHECK(ml_model_);
+}
 
-GraphImplCoreml::~GraphImplCoreml() = default;
+GraphImplCoreml::~GraphImplCoreml() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+}
 
 void GraphImplCoreml::DispatchImpl(
     base::flat_map<std::string, scoped_refptr<WebNNTensorImpl>> named_inputs,
     base::flat_map<std::string, scoped_refptr<WebNNTensorImpl>> named_outputs) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  TRACE_EVENT0("gpu", "webnn::coreml::GraphImplCoreml::DispatchImpl");
 
-  ScopedTrace scoped_trace("GraphImplCoreml::DispatchImpl");
+  @autoreleasepool {
+    ScopedTrace scoped_trace("GraphImplCoreml::DispatchImpl");
+    scoped_trace.AddStep("Set up prediction");
+    base::ElapsedTimer model_predict_timer;
 
-  base::flat_map<std::string,
-                 scoped_refptr<QueueableResourceState<BufferContent>>>
-      named_input_buffer_states = ToNamedBufferStateMap(named_inputs);
-  base::flat_map<std::string,
-                 scoped_refptr<QueueableResourceState<BufferContent>>>
-      named_output_buffer_states = ToNamedBufferStateMap(named_outputs);
+    NSString* feature_name;
+    NSMutableSet* feature_names = [[NSMutableSet alloc] init];
+    NSMutableDictionary* feature_values = [[NSMutableDictionary alloc] init];
 
-  // Input tensors will be read from while the graph is executing, so lock them
-  // them as shared/read-only.
-  std::vector<scoped_refptr<QueueableResourceStateBase>> shared_resources;
-  shared_resources.reserve(named_inputs.size());
-  std::ranges::transform(
-      named_input_buffer_states, std::back_inserter(shared_resources),
-      [](const auto& name_and_state) { return name_and_state.second; });
+    if (named_inputs.empty()) {
+      CHECK_EQ(ml_model_.modelDescription.inputDescriptionsByName.count, 1u);
 
-  // Exclusively reserve all output tensors, which will be written to.
-  std::vector<scoped_refptr<QueueableResourceStateBase>> exclusive_resources;
-  exclusive_resources.reserve(named_outputs.size());
-  std::ranges::transform(
-      named_output_buffer_states, std::back_inserter(exclusive_resources),
-      [](const auto& name_and_state) { return name_and_state.second; });
+      NSString* placeholder_name =
+          base::SysUTF8ToNSString(kPlaceholderInputName);
+      [feature_names addObject:placeholder_name];
+      NSError* error;
+      MLMultiArray* placeholder_input =
+          [[MLMultiArray alloc] initWithShape:@[ @1 ]
+                                     dataType:MLMultiArrayDataTypeFloat16
+                                        error:&error];
+      placeholder_input[0] = @0;
+      CHECK(!error);
+      feature_values[placeholder_name] =
+          [MLFeatureValue featureValueWithMultiArray:placeholder_input];
+    } else {
+      CHECK_EQ(named_inputs.size(),
+               ml_model_.modelDescription.inputDescriptionsByName.count);
 
-  scoped_trace.AddStep("Acquire resources");
-  auto task = base::MakeRefCounted<ResourceTask>(
-      std::move(shared_resources), std::move(exclusive_resources),
-      base::BindOnce(
-          [](scoped_refptr<ComputeResources> compute_resources,
-             base::flat_map<
-                 std::string,
-                 scoped_refptr<QueueableResourceState<BufferContent>>>
-                 named_input_buffer_states,
-             base::flat_map<
-                 std::string,
-                 scoped_refptr<QueueableResourceState<BufferContent>>>
-                 named_output_buffer_states,
-             ScopedTrace scoped_trace, base::OnceClosure completion_closure) {
-            compute_resources->DoDispatch(std::move(named_input_buffer_states),
-                                          std::move(named_output_buffer_states),
-                                          std::move(completion_closure),
-                                          std::move(scoped_trace));
-          },
-          compute_resources_, std::move(named_input_buffer_states),
-          std::move(named_output_buffer_states), std::move(scoped_trace)));
-  task->Enqueue();
+      // Create an `MLFeatureValue` for each of the inputs.
+      for (feature_name in ml_model_.modelDescription.inputDescriptionsByName) {
+        [feature_names addObject:feature_name];
+
+        MLFeatureDescription* feature_description =
+            ml_model_.modelDescription.inputDescriptionsByName[feature_name];
+        CHECK_EQ(feature_description.type,
+                 MLFeatureType::MLFeatureTypeMultiArray);
+
+        auto operand_name_it = coreml_name_to_operand_name_.find(
+            base::SysNSStringToUTF8(feature_name));
+        CHECK(operand_name_it != coreml_name_to_operand_name_.end());
+
+        auto tensor_it = named_inputs.find(operand_name_it->second);
+        CHECK(tensor_it != named_inputs.end());
+
+        const auto& tensor =
+            static_cast<const TensorImplCoreml&>(*tensor_it->second);
+        MLFeatureValue* feature_value = tensor.AsFeatureValue();
+        if (!feature_value) {
+          LOG(ERROR) << "Input initialization error";
+          return;
+        }
+
+        // Assert that `feature_value` is compatible with
+        // `feature_description`.
+        CHECK([feature_description isAllowedValue:feature_value]);
+
+        feature_values[feature_name] = feature_value;
+      }
+    }
+
+    // Create an `MLFeatureValue` for each of the outputs.
+    MLPredictionOptions* options = [[MLPredictionOptions alloc] init];
+    NSMutableDictionary* output_backings = [[NSMutableDictionary alloc] init];
+    CHECK_EQ(named_outputs.size(),
+             ml_model_.modelDescription.outputDescriptionsByName.count);
+    for (feature_name in ml_model_.modelDescription.outputDescriptionsByName) {
+      MLFeatureDescription* feature_description =
+          ml_model_.modelDescription.outputDescriptionsByName[feature_name];
+      CHECK_EQ(feature_description.type,
+               MLFeatureType::MLFeatureTypeMultiArray);
+
+      auto operand_name_it = coreml_name_to_operand_name_.find(
+          base::SysNSStringToUTF8(feature_name));
+      CHECK(operand_name_it != coreml_name_to_operand_name_.end());
+
+      auto tensor_it = named_outputs.find(operand_name_it->second);
+      CHECK(tensor_it != named_outputs.end());
+
+      const auto& tensor =
+          static_cast<const TensorImplCoreml&>(*tensor_it->second);
+      MLFeatureValue* feature_value = tensor.AsFeatureValue();
+      if (!feature_value) {
+        LOG(ERROR) << "Output initialization error";
+        return;
+      }
+
+      // Assert that `feature_value` is compatible with
+      // `feature_description`.
+      CHECK([feature_description isAllowedValue:feature_value]);
+
+      output_backings[feature_name] = feature_value.multiArrayValue;
+    }
+
+    [options setOutputBackings:output_backings];
+
+    WebNNMLFeatureProvider* feature_provider =
+        [[WebNNMLFeatureProvider alloc] initWithFeatures:feature_names
+                                           featureValues:feature_values];
+
+    scoped_trace.AddStep("Trigger prediction");
+
+    NSError* error = nil;
+    id<MLFeatureProvider> output_features =
+        [ml_model_ predictionFromFeatures:feature_provider
+                                  options:options
+                                    error:&error];
+
+    scoped_trace.AddStep("Process prediction");
+    DEPRECATED_UMA_HISTOGRAM_MEDIUM_TIMES(
+        "WebNN.CoreML.TimingMs.ModelPredictWithDispatch",
+        model_predict_timer.Elapsed());
+
+    if (error) {
+      // TODO(crbug.com/41492165): Report this error on the
+      // context.
+      LOG(ERROR) << "[WebNN] PredictionError: " << error;
+      return;
+    }
+
+    // Ensure that the provided backing buffers were in fact
+    // used.
+    //
+    // TODO(crbug.com/333392274): Remove this check,
+    // eventually. The header file for `MLPredictionOptions`
+    // claims CoreML may not use the specified backing
+    // buffers in a handful of scenarios, including the vague
+    // case where "the model doesn't support the user
+    // allocated buffers". We shouldn't ship WebNN to users
+    // with this CHECK enabled, but in the meantime let's see
+    // if this check is ever hit...
+    NSString* output_feature_name;
+    for (output_feature_name in output_features.featureNames) {
+      CHECK_EQ([output_features featureValueForName:output_feature_name]
+                   .multiArrayValue,
+               output_backings[output_feature_name]);
+    }
+  }
 }
 
 GraphImplCoreml::Params::Params(
-    ComputeResourceInfo compute_resource_info,
+    NSURL* compiled_model_url,
+    ScopedModelPath scoped_compiled_model_dir,
     base::flat_map<std::string, std::string> coreml_name_to_operand_name,
-    MLModel* __strong ml_model)
-    : compute_resource_info(std::move(compute_resource_info)),
+    std::optional<ComputeResourceInfo> compute_resource_info,
+    base::flat_map<std::string, std::string> input_binding_names,
+    base::flat_map<std::string, std::string> output_binding_names)
+    : compiled_model_url(compiled_model_url),
+      scoped_compiled_model_dir(std::move(scoped_compiled_model_dir)),
       coreml_name_to_operand_name(std::move(coreml_name_to_operand_name)),
-      ml_model(std::move(ml_model)) {}
+      compute_resource_info(std::move(compute_resource_info)),
+      input_binding_names(std::move(input_binding_names)),
+      output_binding_names(std::move(output_binding_names)) {}
 
 GraphImplCoreml::Params::~Params() = default;
 

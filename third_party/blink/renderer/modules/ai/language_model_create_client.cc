@@ -8,7 +8,6 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
 #include "third_party/blink/public/platform/platform.h"
-#include "third_party/blink/renderer/bindings/modules/v8/v8_create_monitor_callback.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_language_model_message.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_language_model_message_content.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_language_model_message_type.h"
@@ -235,15 +234,8 @@ LanguageModelCreateClient::LanguageModelCreateClient(
   HeapMojoRemote<mojom::blink::AIManager>& ai_manager_remote =
       AIInterfaceProxy::GetAIManagerRemote(GetExecutionContext());
 
-  if (options->hasMonitor()) {
-    monitor_ = MakeGarbageCollected<CreateMonitor>(
-        GetExecutionContext(), options->getSignalOr(nullptr), task_runner_);
-    // If an exception is thrown, don't initiate the model download.
-    // `AICreateMonitorCallback`'s `Invoke` will automatically reject the
-    // promise with the thrown exception.
-    if (options->monitor()->Invoke(nullptr, monitor_).IsNothing()) {
-      return;
-    }
+  if (!InitializeMonitor(options, task_runner_)) {
+    return;
   }
 
   LanguageModel::ExecuteAvailability(
@@ -258,7 +250,6 @@ void LanguageModelCreateClient::Trace(Visitor* visitor) const {
   AIContextObserver::Trace(visitor);
   visitor->Trace(receiver_);
   visitor->Trace(options_);
-  visitor->Trace(monitor_);
 }
 
 void LanguageModelCreateClient::Create(
@@ -293,6 +284,7 @@ void LanguageModelCreateClient::Create(
   // TODO(crbug.com/476192657): Process initialPrompts after getting real info.
   auto info = blink::mojom::blink::AILanguageModelInstanceInfo::New();
   info->input_types = {mojom::blink::AILanguageModelPromptType::kText};
+  info->output_types = {mojom::blink::AILanguageModelPromptType::kText};
   info->sampling_mode = sampling_mode_;
   Vector<mojom::blink::AILanguageModelExpectedPtr> expected_in, expected_out;
   if (options_->hasExpectedInputs()) {
@@ -355,6 +347,9 @@ void LanguageModelCreateClient::Create(
       if (expected->type ==
           mojom::blink::AILanguageModelPromptType::kToolCall) {
         has_tool_call_in_expected_outputs = true;
+      }
+      if (!info->output_types->Contains(expected->type)) {
+        info->output_types->push_back(expected->type);
       }
     }
   }
@@ -429,27 +424,12 @@ void LanguageModelCreateClient::OnResult(
   if (!GetResolver()) {
     return;
   }
-  if (pending_remote && monitor_) {
-    // Ensure that a download completion event is sent.
-    monitor_->OnDownloadProgressUpdate(0, kNormalizedDownloadProgressMax);
-
-    // Abort may have been triggered by `OnDownloadProgressUpdate`.
-    if (!this->GetResolver()) {
-      return;
-    }
-
-    // Ensure that a download completion event is sent.
-    monitor_->OnDownloadProgressUpdate(kNormalizedDownloadProgressMax,
-                                       kNormalizedDownloadProgressMax);
-
-    // Abort may have been triggered by `OnDownloadProgressUpdate`.
-    if (!this->GetResolver()) {
-      return;
-    }
-  }
 
   CHECK(info);
   if (GetExecutionContext() && pending_remote) {
+    if (!CompleteDownloadProgress()) {
+      return;
+    }
     info->sampling_mode = sampling_mode_;
     bool has_context =
         options_->hasInitialPrompts() && !options_->initialPrompts().empty();
@@ -524,7 +504,7 @@ void LanguageModelCreateClient::OnInitialPromptsResolved(
           resolved_sampling_params_.Clone(), std::move(initial_prompts),
           std::move(expected_inputs), std::move(expected_outputs),
           std::move(converted_tools_), sampling_mode_),
-      monitor_ ? monitor_->BindRemote() : mojo::NullRemote());
+      BindMonitorRemote());
 }
 
 void LanguageModelCreateClient::OnInitialPromptsRejected(

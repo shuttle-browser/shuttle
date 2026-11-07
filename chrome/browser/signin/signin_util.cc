@@ -24,7 +24,6 @@
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
 #include "components/google/core/common/google_util.h"
-#include "components/policy/core/browser/signin/profile_separation_policies.h"
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/identity_manager/account_managed_status_finder.h"
@@ -118,57 +117,6 @@ bool IsProfileSeparationEnforcedByProfile(
       profile->GetPrefs()->GetBoolean(
           prefs::kManagedAccountsSigninRestrictionScopeMachine);
   return enforced_by_existing_profile || enforced_at_machine_level;
-}
-
-// Returns true if profile separation is enforced by
-// `intercepted_account_separation_policies`.
-bool IsProfileSeparationEnforcedByPolicies(
-    const policy::ProfileSeparationPolicies&
-        intercepted_account_separation_policies) {
-  if (intercepted_account_separation_policies.profile_separation_settings()
-          .value_or(policy::ProfileSeparationSettings::SUGGESTED) ==
-      policy::ProfileSeparationSettings::ENFORCED) {
-    return true;
-  }
-
-  std::string legacy_policy_for_intercepted_profile =
-      intercepted_account_separation_policies
-          .managed_accounts_signin_restrictions()
-          .value_or(std::string());
-  return base::StartsWith(legacy_policy_for_intercepted_profile,
-                          "primary_account");
-}
-
-bool ProfileSeparationAllowsKeepingUnmanagedBrowsingDataInManagedProfile(
-    Profile* profile,
-    const policy::ProfileSeparationPolicies&
-        intercepted_account_separation_policies) {
-  // We should not move managed data.
-  if (enterprise_util::UserAcceptedAccountManagement(profile)) {
-    return false;
-  }
-
-  std::string legacy_policy_for_intercepted_profile =
-      intercepted_account_separation_policies
-          .managed_accounts_signin_restrictions()
-          .value_or(std::string());
-  std::string legacy_policy_for_current_profile =
-      profile->GetPrefs()->GetString(prefs::kManagedAccountsSigninRestriction);
-  bool allowed_by_existing_profile =
-      legacy_policy_for_current_profile.empty() ||
-      legacy_policy_for_current_profile == "none" ||
-      base::EndsWith(legacy_policy_for_current_profile, "keep_existing_data");
-  bool allowed_by_intercepted_account =
-      intercepted_account_separation_policies
-              .profile_separation_data_migration_settings()
-              .value_or(policy::ProfileSeparationDataMigrationSettings::
-                            USER_OPT_IN) !=
-          policy::ProfileSeparationDataMigrationSettings::ALWAYS_SEPARATE &&
-      (legacy_policy_for_intercepted_profile.empty() ||
-       legacy_policy_for_intercepted_profile == "none" ||
-       base::EndsWith(legacy_policy_for_intercepted_profile,
-                      "keep_existing_data"));
-  return allowed_by_existing_profile && allowed_by_intercepted_account;
 }
 
 bool IsAccountExemptedFromEnterpriseProfileSeparation(Profile* profile,

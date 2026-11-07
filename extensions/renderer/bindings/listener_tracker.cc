@@ -5,6 +5,7 @@
 #include "extensions/renderer/bindings/listener_tracker.h"
 
 #include "base/check.h"
+#include "base/metrics/histogram_functions.h"
 #include "extensions/common/mojom/event_dispatcher.mojom.h"
 #include "extensions/common/value_counter.h"
 
@@ -35,7 +36,7 @@ bool ListenerTracker::RemoveUnfilteredListener(
 std::pair<bool, int> ListenerTracker::AddFilteredListener(
     const std::string& context_owner_id,
     const std::string& event_name,
-    std::unique_ptr<base::DictValue> filter,
+    base::DictValue filter,
     int routing_id) {
   int filter_id = event_filter_.AddEventMatcher(
       event_name,
@@ -51,14 +52,14 @@ std::pair<bool, int> ListenerTracker::AddFilteredListener(
   }
 
   const EventMatcher* matcher = event_filter_.GetEventMatcher(filter_id);
-  bool was_first_of_kind = counts->Add(base::Value(matcher->value()->Clone()));
+  bool was_first_of_kind = counts->Add(base::Value(matcher->value().Clone()));
   return std::make_pair(was_first_of_kind, filter_id);
 }
 
-std::pair<bool, std::unique_ptr<base::DictValue>>
-ListenerTracker::RemoveFilteredListener(const std::string& context_owner_id,
-                                        const std::string& event_name,
-                                        int filter_id) {
+std::pair<bool, base::DictValue> ListenerTracker::RemoveFilteredListener(
+    const std::string& context_owner_id,
+    const std::string& event_name,
+    int filter_id) {
   EventMatcher* matcher = event_filter_.GetEventMatcher(filter_id);
   DCHECK(matcher);
 
@@ -67,7 +68,7 @@ ListenerTracker::RemoveFilteredListener(const std::string& context_owner_id,
 
   bool was_last_of_kind = false;
   CHECK(counts != filtered_listeners_.end());
-  base::Value filter_copy = base::Value(matcher->value()->Clone());
+  base::Value filter_copy = base::Value(matcher->value().Clone());
   if (counts->second->Remove(filter_copy)) {
     if (counts->second->is_empty()) {
       // Clean up if there are no more filters.
@@ -77,9 +78,13 @@ ListenerTracker::RemoveFilteredListener(const std::string& context_owner_id,
   }
 
   event_filter_.RemoveEventMatcher(filter_id, nullptr);
-  return std::make_pair(
-      was_last_of_kind,
-      std::make_unique<base::DictValue>(std::move(filter_copy).TakeDict()));
+  return std::make_pair(was_last_of_kind, std::move(filter_copy).TakeDict());
+}
+
+const base::DictValue& ListenerTracker::GetFilter(int filter_id) {
+  const EventMatcher* matcher = event_filter_.GetEventMatcher(filter_id);
+  CHECK(matcher);
+  return matcher->value();
 }
 
 std::set<int> ListenerTracker::GetMatchingFilteredListeners(
@@ -88,6 +93,18 @@ std::set<int> ListenerTracker::GetMatchingFilteredListeners(
     int routing_id) {
   DCHECK(!filter.is_null());
   return event_filter_.MatchEvent(event_name, *filter, routing_id);
+}
+
+void ListenerTracker::RecordFilteredListenerCounts() const {
+  for (const auto& [key, counts] : filtered_listeners_) {
+    const size_t total = counts->total_count();
+    const size_t deduplicated = total - counts->distinct_count();
+    base::UmaHistogramCounts100(
+        "Extensions.Events.ServiceWorkerStarted.FilteredListenerCount", total);
+    base::UmaHistogramCounts100(
+        "Extensions.Events.ServiceWorkerStarted.DeduplicatedListenerCount",
+        deduplicated);
+  }
 }
 
 }  // namespace extensions

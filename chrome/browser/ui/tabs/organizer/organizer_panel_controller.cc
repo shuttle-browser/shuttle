@@ -9,24 +9,23 @@
 #include "base/callback_list.h"
 #include "base/functional/bind.h"
 #include "base/memory/raw_ref.h"
-#include "base/metrics/histogram_functions.h"
 #include "base/notreached.h"
-#include "base/time/time.h"
+#include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/ui/actions/actions_util.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/animation/browser_animation_controller.h"
 #include "chrome/browser/ui/animation/browser_animation_types.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
+#include "chrome/browser/ui/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/views/animations/organizer_panel_animations.h"
 #include "chrome/browser/ui/views/animations/tab_strip_animations.h"
 #include "chrome/browser/ui/views/tabs/organizer/organizer_panel_host.h"
-#include "chrome/browser/ui/views/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/grit/generated_resources.h"
 #include "extensions/buildflags/buildflags.h"
 #include "ui/actions/actions.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/ui_base_features.h"
 #include "ui/views/view.h"
 #include "ui/views/view_tracker.h"
 #include "ui/views/view_utils.h"
@@ -36,59 +35,14 @@
 #include "extensions/browser/extension_util.h"
 #endif
 
-namespace {
-
-// Respond to vertical tab strip collapse by hiding the panel.
-void OnVerticalTabStripAnimation(
-    OrganizerPanelController* panel_controller,
-    const BrowserAnimationController* animation_controller,
-    BrowserAnimationUpdate update) {
-  if (update != BrowserAnimationUpdate::kStarted) {
-    return;
-  }
-  const auto motion = animation_controller->GetCurrentMotion(
-      TabStripAnimations::kVerticalTabStrip);
-  if (motion == TabStripAnimations::kCollapseOnHover ||
-      motion == TabStripAnimations::kCollapse) {
-    panel_controller->SetOrganizerVisible(false);
-  }
-}
-
-}  // namespace
-
 DEFINE_USER_DATA(OrganizerPanelController);
 
-// Handles the work of moving the panel view around to the correct host based on
-// browser state. This will normally be in the organizer tray view or the
-// vertical tab strip region view.
+// Handles the work of placing the panel view in the correct host based on
+// browser state. This is the organizer tray view.
 class OrganizerPanelController::PanelViewManager {
  public:
-  PanelViewManager(OrganizerPanelController& controller,
-                   BrowserWindowInterface& browser)
-      : controller_(controller), browser_(browser) {
-    if (auto* const state_controller =
-            tabs::VerticalTabStripStateController::From(&*browser_)) {
-      auto callback =
-          base::BindRepeating(&PanelViewManager::OnVerticalTabStripModeChanged,
-                              base::Unretained(this));
-      tab_strip_subscriptions_.emplace_back(
-          state_controller->RegisterOnModeChanged(
-              base::IgnoreArgs<tabs::VerticalTabStripStateController*>(
-                  callback)));
-      tab_strip_subscriptions_.emplace_back(
-          state_controller->RegisterOnCollapseChanged(
-              base::IgnoreArgs<tabs::VerticalTabStripCollapseState>(callback)));
-      tab_strip_subscriptions_.emplace_back(
-          state_controller->RegisterOnExpandOnHoverEnabledChanged(
-              base::IgnoreArgs<bool>(callback)));
-    }
-  }
-
-  void OnVerticalTabStripModeChanged() {
-    if (UpdatePanelViewHost()) {
-      controller_->SetOrganizerVisible(false, /*immediate=*/true);
-    }
-  }
+  explicit PanelViewManager(BrowserWindowInterface& browser)
+      : browser_(browser) {}
 
   std::unique_ptr<views::View> SetPanelView(
       std::unique_ptr<views::View> panel_view) {
@@ -97,43 +51,6 @@ class OrganizerPanelController::PanelViewManager {
       AddPanelView(std::move(panel_view));
     }
     return old_panel;
-  }
-
-  // Maybe moves the panel between hosts if the desired host has changed.
-  // Returns true if changed, false otherwise.
-  bool UpdatePanelViewHost() {
-    if (!panel_view_) {
-      return false;
-    }
-
-    // Determine where the panel should go.
-    const auto new_location =
-        OrganizerPanelHost::GetPreferredLocation(*browser_);
-    CHECK_NE(OrganizerPanelLocation::kNone, new_location)
-        << "No new host to move panel to.";
-    if (current_location_ == new_location) {
-      return false;
-    }
-
-    // Determine where the panel currently is.
-    auto* const current_host = OrganizerPanelHost::FromView(panel_view_.view());
-    CHECK(current_host) << "No current host to move panel from.";
-    DCHECK_EQ(
-        OrganizerPanelHost::GetHostForLocation(*browser_, current_location_),
-        current_host)
-        << "Sanity check failed: Current host is not expected host.";
-
-    // Find the new host.
-    auto* const desired_host =
-        OrganizerPanelHost::GetHostForLocation(*browser_, new_location);
-    CHECK(desired_host) << "Browser has no panel host.";
-    CHECK_NE(desired_host, current_host)
-        << "Location changed but host remained the same.";
-
-    // Move the panel.
-    current_location_ = new_location;
-    desired_host->SetOrganizerPanelView(current_host->TakeOrganizerPanelView());
-    return true;
   }
 
   OrganizerPanelLocation current_location() const { return current_location_; }
@@ -167,9 +84,7 @@ class OrganizerPanelController::PanelViewManager {
     host->SetOrganizerPanelView(std::move(panel_view));
   }
 
-  const raw_ref<OrganizerPanelController> controller_;
   const raw_ref<BrowserWindowInterface> browser_;
-  std::vector<base::CallbackListSubscription> tab_strip_subscriptions_;
   views::ViewTracker panel_view_;
   OrganizerPanelLocation current_location_ = OrganizerPanelLocation::kNone;
 };
@@ -180,16 +95,10 @@ OrganizerPanelController::OrganizerPanelController(
     : browser_window_(browser_window),
       root_action_item_(root_action_item),
       panel_view_manager_(
-          std::make_unique<PanelViewManager>(*this, browser_window)),
+          std::make_unique<PanelViewManager>(browser_window)),
       scoped_unowned_user_data_(browser_window.GetUnownedUserDataHost(),
                                 *this) {
   UpdateOrganizerActionItem();
-
-  vertical_tab_strip_animation_subscription_ =
-      BrowserAnimationController::From(&browser_window)
-          ->Subscribe(TabStripAnimations::kVerticalTabStrip,
-                      base::BindRepeating(&OnVerticalTabStripAnimation,
-                                          base::Unretained(this)));
 }
 
 OrganizerPanelController::~OrganizerPanelController() = default;
@@ -226,15 +135,6 @@ void OrganizerPanelController::SetOrganizerVisible(bool visible,
         ->Start(OrganizerPanelAnimations::kOrganizerPanel,
                 is_visible_ ? OrganizerPanelAnimations::kShow
                             : OrganizerPanelAnimations::kHide);
-  }
-
-  if (is_visible_) {
-    last_opened_time_ = base::TimeTicks::Now();
-  } else {
-    base::TimeDelta open_duration = base::TimeTicks::Now() - last_opened_time_;
-    base::UmaHistogramCustomCounts("Projects.ProjectsPanel.TimeOpen",
-                                   open_duration.InSeconds(), 1,
-                                   base::Minutes(5).InSeconds(), 50);
   }
 
   NotifyStateChanged();
@@ -309,10 +209,19 @@ void OrganizerPanelController::UpdateOrganizerActionItem() {
     return;
   }
 
+  // Shuttle: the fork keeps its View/Hide Organizer label and grid icon
+  // (no vertical tab strip, so upstream's tab-search / close-tab-search
+  // variants are cut).
   const auto& text = IsOrganizerPanelVisible() ? IDS_HIDE_ORGANIZER_PANEL
                                                : IDS_VIEW_ORGANIZER_PANEL;
   const std::u16string title_and_tooltip =
-      chrome::GetCleanTitleAndTooltipText(l10n_util::GetStringUTF16(text));
+      chrome::GetCleanText(l10n_util::GetStringUTF16(text));
   organizer_action->SetText(title_and_tooltip);
   organizer_action->SetTooltipText(title_and_tooltip);
+
+  const gfx::VectorIcon& icon = features::IsRoundedIconsEnabled()
+                                    ? kGridViewIcon
+                                    : kSavedTabGroupBarEverythingOldIcon;
+  organizer_action->SetImage(
+      ui::ImageModel::FromVectorIcon(icon, ui::kColorIcon));
 }

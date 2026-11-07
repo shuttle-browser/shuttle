@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "base/command_line.h"
 #include "build/android_buildflags.h"
 #include "build/build_config.h"
 #include "chrome/browser/chrome_browser_interface_binders_webui_parts.h"
@@ -32,10 +33,6 @@
 #include "chrome/browser/ui/webui/tab_strip_internals/tab_strip_internals_ui.h"
 #endif
 
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-#include "chrome/browser/ui/webui/watermark/watermark_ui.h"
-#endif
-
 #if BUILDFLAG(FULL_SAFE_BROWSING)
 #endif  // BUILDFLAG(FULL_SAFE_BROWSING)
 
@@ -57,10 +54,6 @@ void PopulateChromeWebUIFrameBindersPartsFeatures(
       tab_strip_internals::mojom::PageHandlerFactory, TabStripInternalsUI>(map);
 #endif
 
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-  RegisterWebUIControllerInterfaceBinder<watermark::mojom::PageHandlerFactory,
-                                         WatermarkUI>(map);
-#endif
 }
 
 void PopulateChromeWebUIFrameInterfaceBrokersUntrustedPartsFeatures(

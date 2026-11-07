@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "base/containers/span.h"
+#include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
 
 class PrefService;
@@ -91,6 +92,14 @@ std::unique_ptr<TemplateURLData> GetPrepopulatedEngineFromFullList(
         regional_prepopulated_engines,
     const std::vector<raw_ptr<const PrepopulatedEngine>>& regional_variants,
     std::u16string_view keyword);
+
+// Returns every known prepopulated engine, deduplicated by ID. When several
+// definitions share an ID, the one from `regional_prepopulated_engines` is
+// preferred, matching `GetPrepopulatedEngineFromFullList()`.
+// Returns an empty list while search provider overrides are honored.
+std::vector<raw_ptr<const PrepopulatedEngine>> GetAllPrepopulatedEngines(
+    const std::vector<raw_ptr<const PrepopulatedEngine>>&
+        regional_prepopulated_engines);
 
 // Returns the prepopulated search engine with the given `prepopulated_id`
 // from the full list of known prepopulated search engines, or `nullptr` if

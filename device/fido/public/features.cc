@@ -53,6 +53,11 @@ constexpr base::FeatureParam<PasskeyUnlockErrorUiExperimentArm>
         &kPasskeyUnlockErrorUiExperimentArms};
 #endif
 
+#if BUILDFLAG(IS_MAC)
+// Not yet enabled by default.
+BASE_FEATURE(kPasskeyUnlockICloudRecovery, base::FEATURE_DISABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_MAC)
+
 #if BUILDFLAG(IS_WIN)
 // Permanent flag
 BASE_FEATURE(kWebAuthUseNativeWinApi,
@@ -161,4 +166,32 @@ BASE_FEATURE(kWebAuthnEnclaveUseAuthDataFromEnclave,
 COMPONENT_EXPORT(FIDO_PUBLIC)
 BASE_FEATURE(kWebAuthnModalProviderIcons, base::FEATURE_ENABLED_BY_DEFAULT);
 
+// Enabled by default in M157. Remove in or after M160.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_FEATURE(kWebAuthnSoftwareKeysWhenTpmAbsent,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Enabled by default in M157. Remove in or after M160.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_FEATURE(kWebAuthnU2fFallbackRequiresPreferredEs256,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Enabled by default in M157. Remove in or after M160.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_FEATURE(kWebAuthnFilterAlgorithmsForAuthenticator,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Not yet enabled by default.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_FEATURE(kWebAuthnLocalGpmPasskeys, base::FEATURE_DISABLED_BY_DEFAULT);
+
+constexpr base::FeatureParam<LocalGpmPasskeysMode>::Option
+    kWebAuthnLocalGpmPasskeysModes[] = {
+        {LocalGpmPasskeysMode::kNewUsersOnly, "new_users_only"},
+        {LocalGpmPasskeysMode::kAllUsers, "all_users"},
+};
+constexpr base::FeatureParam<LocalGpmPasskeysMode>
+    kWebAuthnLocalGpmPasskeysMode{&kWebAuthnLocalGpmPasskeys, "mode",
+                                  LocalGpmPasskeysMode::kNewUsersOnly,
+                                  &kWebAuthnLocalGpmPasskeysModes};
 }  // namespace device

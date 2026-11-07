@@ -12,18 +12,15 @@
 #include "media/base/video_frame.h"
 #include "media/base/video_types.h"
 #include "media/base/video_util.h"
+#include "third_party/blink/public/platform/modules/mediastream/web_media_stream_sink.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/renderer/core/imagebitmap/image_bitmap.h"
-#include "third_party/blink/renderer/platform/graphics/canvas_non_2d_resource_provider.h"
-#include "third_party/blink/renderer/platform/graphics/gpu/shared_gpu_context.h"
 #include "third_party/blink/renderer/platform/graphics/video_frame_image_util.h"
 #include "third_party/blink/renderer/platform/heap/cross_thread_handle.h"
 #include "third_party/blink/renderer/platform/mediastream/media_stream_component.h"
 #include "third_party/blink/renderer/platform/mediastream/media_stream_source.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cancellable_task.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_std.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/blink/renderer/platform/wtf/thread_safe_ref_counted.h"
@@ -159,8 +156,8 @@ void ImageCaptureFrameGrabber::GrabFrame(
           std::make_unique<SingleShotFrameHandler>(
               std::move(task_runner), weak_factory_.GetWeakPtr(),
               std::move(scoped_resolver)))),
-      MediaStreamVideoSink::IsSecure::kNo,
-      MediaStreamVideoSink::UsesAlpha::kDefault);
+      WebMediaStreamSink::IsSecure::kNo,
+      WebMediaStreamSink::UsesAlpha::kDefault);
 }
 
 void ImageCaptureFrameGrabber::OnVideoFrame(
@@ -168,20 +165,23 @@ void ImageCaptureFrameGrabber::OnVideoFrame(
     ScriptPromiseResolver<ImageBitmap>* resolver) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
+  // Hold a reference across `OnVideoFrame()` (`WeakPtr` only checks validity at
+  // callback entry). Creating or accessing the GPU context below can
+  // synchronously flush pending GPU channel callbacks, which may allocate on
+  // the Oilpan heap and trigger lazy sweeping of an unreachable `ImageCapture`
+  // owner (`~ImageCapture()`), dropping `ImageCapture::frame_grabber_`.
+  scoped_refptr<ImageCaptureFrameGrabber> keep_alive(this);
+
   auto required_provider_info = CreateSnapshotProviderInfoForVideoFrame(*frame);
 
   if (!cached_draw_info_ ||
       !required_provider_info.Matches(*cached_draw_info_)) {
     cached_draw_info_.reset();
-    snapshot_provider_.reset();
+    snapshot_pool_.reset();
     if (ShouldCreateAcceleratedImages(GetRasterContextProvider().get())) {
-      snapshot_provider_ = CanvasNon2DResourceProvider::Create(
-          required_provider_info.size, required_provider_info.format,
-          required_provider_info.alpha_type, required_provider_info.color_space,
-          required_provider_info.hdr_metadata,
-          SharedGpuContext::ContextProviderWrapper(),
-          gpu::SHARED_IMAGE_USAGE_DISPLAY_READ);
-      if (snapshot_provider_) {
+      snapshot_pool_ =
+          VideoFrameAcceleratedSnapshotPool::Create(required_provider_info);
+      if (snapshot_pool_) {
         cached_draw_info_ = required_provider_info;
       }
     } else {
@@ -192,9 +192,9 @@ void ImageCaptureFrameGrabber::OnVideoFrame(
   scoped_refptr<StaticBitmapImage> image;
 
   if (cached_draw_info_) {
-    if (snapshot_provider_) {
-      image = CreateAcceleratedImageFromVideoFrame(
-          frame, snapshot_provider_.get(), &video_renderer_);
+    if (snapshot_pool_) {
+      image = CreateAcceleratedImageFromVideoFrame(frame, snapshot_pool_.get(),
+                                                   &video_renderer_);
     } else {
       image = CreateUnacceleratedImageFromVideoFrame(
           frame, required_provider_info, &video_renderer_);

@@ -7,14 +7,13 @@
 #include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_occlusion_tracker.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
+#include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
 #include "chrome/browser/ui/views/bubble_anchor_util_views.h"
 #include "chrome/browser/ui/views/chrome_widget_sublevel.h"
 #include "chrome/browser/ui/views/device_chooser_content_view.h"
@@ -89,6 +88,9 @@ class ChooserBubbleUiViewDelegate : public LocationBarBubbleDelegateView,
   views::View* GetInitiallyFocusedView() override;
   bool ShouldAllowKeyEventsDuringInputProtection() const override;
   bool IsDialogButtonEnabled(ui::mojom::DialogButton button) const override;
+
+  // LocationBarBubbleDelegateView:
+  void OnFullscreenStateChanged() override;
 
   // views::TableViewObserver:
   void OnSelectionChanged() override;
@@ -181,6 +183,28 @@ bool ChooserBubbleUiViewDelegate::ShouldAllowKeyEventsDuringInputProtection()
 bool ChooserBubbleUiViewDelegate::IsDialogButtonEnabled(
     ui::mojom::DialogButton button) const {
   return device_chooser_content_view_->IsDialogButtonEnabled(button);
+}
+
+void ChooserBubbleUiViewDelegate::OnFullscreenStateChanged() {
+  // Showing this bubble exits tab fullscreen; keep the bubble open and update
+  // the anchor if that happens, instead of closing the bubble like the base
+  // class handler.
+  tabs::TabInterface* tab =
+      web_contents() ? tabs::TabInterface::MaybeGetFromContents(web_contents())
+                     : nullptr;
+  BrowserWindowInterface* browser =
+      tab ? tab->GetBrowserWindowInterface() : nullptr;
+  if (!browser) {
+    LocationBarBubbleDelegateView::OnFullscreenStateChanged();
+    return;
+  }
+  FullscreenController* fullscreen_controller =
+      ExclusiveAccessManager::From(browser)->fullscreen_controller();
+  if (fullscreen_controller->IsTabFullscreen()) {
+    LocationBarBubbleDelegateView::OnFullscreenStateChanged();
+    return;
+  }
+  UpdateAnchor(browser);
 }
 
 void ChooserBubbleUiViewDelegate::OnSelectionChanged() {
@@ -339,7 +363,7 @@ base::OnceClosure ShowDeviceChooserDialog(
         extensions::ExtensionRegistry::Get(browser_context)
             ->GetExtensionById(origin.host(),
                                extensions::ExtensionRegistry::EVERYTHING);
-    DCHECK(extension);
+    CHECK(extension, base::NotFatalUntil::M162);
     return ShowDeviceChooserDialogForExtension(owner, extension,
                                                std::move(controller));
   }
@@ -363,19 +387,6 @@ base::OnceClosure ShowDeviceChooserDialog(
       views::BubbleDialogDelegateView::CreateBubble(std::move(bubble));
   widget->SetZOrderSublevel(ChromeWidgetSublevel::kSublevelSecurity);
   widget->Show();
-
-  // If we're opening this device chooser dialog on a picture-in-picture window,
-  // then our widget is also always-on-top and needs to be tracked by the
-  // PictureInPictureOcclusionTracker so it can handle our widget occluding
-  // other widgets.
-  if (browser->GetType() ==
-      BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE) {
-    PictureInPictureOcclusionTracker* tracker =
-        PictureInPictureWindowManager::GetInstance()->GetOcclusionTracker();
-    if (tracker) {
-      tracker->OnPictureInPictureWidgetOpened(widget);
-    }
-  }
 
   return close_closure;
 }

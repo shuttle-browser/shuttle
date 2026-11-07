@@ -17,14 +17,11 @@ import xml.etree.ElementTree as ET
 
 import setup_modules  # pylint: disable=unused-import
 
+
 import chromium_src.tools.metrics.common.xml_utils as xml_utils
 
 import chromium_src.tools.metrics.histograms.histogram_paths as histogram_paths
 import chromium_src.tools.metrics.histograms.histogram_utils as histogram_utils
-
-
-def histogram_xml_files():
-  return [open(f, encoding='utf-8') for f in histogram_paths.ALL_XMLS]
 
 
 def get_histogram_diff(revision):
@@ -57,7 +54,7 @@ def get_histogram_diff(revision):
       # Paths might not exist in the provided revision.
       continue
 
-  current_histogram_names = histogram_utils.get_names(histogram_xml_files())
+  current_histogram_names = histogram_utils.get_names(histogram_paths.ALL_XMLS)
   prev_histogram_names = histogram_utils.get_names(prev_files)
 
   added_names = sorted(list(current_histogram_names - prev_histogram_names))
@@ -85,7 +82,7 @@ def main(argv):
   if args.diff is not None:
     _print_diff_names(args.diff)
   else:
-    name_set = histogram_utils.get_names(histogram_xml_files())
+    name_set = histogram_utils.get_names(histogram_paths.ALL_XMLS)
     for name in sorted(list(name_set)):
       print(name)
 

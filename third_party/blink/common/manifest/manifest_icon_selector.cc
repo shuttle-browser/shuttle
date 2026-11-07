@@ -21,7 +21,8 @@ constexpr const char* kLimitedMimeTypes[] = {"image/png", "image/svg+xml",
                                              "image/webp"};
 
 bool IsIconTypeSupported(const Manifest::ImageResource& icon,
-                         bool limited_image_types_for_installable_icon) {
+                         bool limited_image_types_for_installable_icon,
+                         bool allow_icons_with_unknown_type) {
   // The type field is optional. If it isn't present, fall back on checking
   // the src extension.
   std::string mime_type = base::UTF16ToUTF8(icon.type);
@@ -29,7 +30,10 @@ bool IsIconTypeSupported(const Manifest::ImageResource& icon,
     net::GetWellKnownMimeTypeFromFile(
         base::FilePath::FromASCII(icon.src.ExtractFileName()), &mime_type);
     if (mime_type.empty()) {
-      return false;
+      // The type is unknown. Installable icons must have a known type;
+      // otherwise defer validation to the caller if it opted in.
+      return allow_icons_with_unknown_type &&
+             !limited_image_types_for_installable_icon;
     }
   }
 
@@ -47,7 +51,10 @@ bool IsIconTypeSupported(const Manifest::ImageResource& icon,
           blink::IsSupportedNonImageMimeType(mime_type));
 }
 
-bool IsIconSvg(const Manifest::ImageResource& icon) {
+}  // namespace
+
+// static
+bool ManifestIconSelector::IsIconSvg(const Manifest::ImageResource& icon) {
   if (base::EqualsASCII(icon.type, "image/svg+xml")) {
     return true;
   }
@@ -55,8 +62,6 @@ bool IsIconSvg(const Manifest::ImageResource& icon) {
          base::EndsWith(icon.src.ExtractFileName(), ".svg",
                         base::CompareCase::INSENSITIVE_ASCII);
 }
-
-}  // namespace
 
 // static
 std::optional<ManifestIconSelectorResult>
@@ -73,7 +78,8 @@ ManifestIconSelector::FindBestMatchingIcon(
   for (const auto& icon : icons) {
     if (!std::ranges::contains(icon.purpose, params.purpose) ||
         !IsIconTypeSupported(icon,
-                             params.limited_image_types_for_installable_icon)) {
+                             params.limited_image_types_for_installable_icon,
+                             params.allow_icons_with_unknown_type)) {
       continue;
     }
 

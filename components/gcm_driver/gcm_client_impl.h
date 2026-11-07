@@ -21,8 +21,11 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
+#include "components/fcm/engine/checkin_info.h"
+#include "components/fcm/engine/chrome_build_info.h"
+#include "components/fcm/engine/fcm_internals_builder.h"
+#include "components/fcm/engine/fcm_stats_recorder_impl.h"
 #include "components/gcm_driver/gcm_client.h"
-#include "components/gcm_driver/gcm_stats_recorder_impl.h"
 #include "google_apis/gcm/base/mcs_message.h"
 #include "google_apis/gcm/engine/gcm_store.h"
 #include "google_apis/gcm/engine/gservices_settings.h"
@@ -57,32 +60,6 @@ class CheckinRequest;
 class ConnectionFactory;
 class GCMClientImplTest;
 
-// Helper class for building GCM internals. Allows tests to inject fake versions
-// as necessary.
-class GCMInternalsBuilder {
- public:
-  GCMInternalsBuilder();
-  virtual ~GCMInternalsBuilder();
-
-  virtual base::Clock* GetClock();
-  virtual std::unique_ptr<MCSClient> BuildMCSClient(
-      const std::string& version,
-      base::Clock* clock,
-      ConnectionFactory* connection_factory,
-      GCMStore* gcm_store,
-      scoped_refptr<base::SequencedTaskRunner> io_task_runner,
-      GCMStatsRecorder* recorder);
-  virtual std::unique_ptr<ConnectionFactory> BuildConnectionFactory(
-      const std::vector<GURL>& endpoints,
-      const net::BackoffEntry::Policy& backoff_policy,
-      base::RepeatingCallback<void(
-          mojo::PendingReceiver<network::mojom::ProxyResolvingSocketFactory>)>
-          get_socket_factory_callback,
-      scoped_refptr<base::SequencedTaskRunner> io_task_runner,
-      GCMStatsRecorder* recorder,
-      network::NetworkConnectionTracker* network_connection_tracker);
-};
-
 // Implements the GCM Client. It is used to coordinate MCS Client (communication
 // with MCS) and other pieces of GCM infrastructure like Registration and
 // Checkins. It also allows for registering user delegates that host
@@ -110,7 +87,7 @@ class GCMClientImpl
   };
 
   explicit GCMClientImpl(
-      std::unique_ptr<GCMInternalsBuilder> internals_builder);
+      std::unique_ptr<fcm::FcmInternalsBuilder> internals_builder);
 
   GCMClientImpl(const GCMClientImpl&) = delete;
   GCMClientImpl& operator=(const GCMClientImpl&) = delete;
@@ -119,7 +96,7 @@ class GCMClientImpl
 
   // GCMClient implementation.
   void Initialize(
-      const ChromeBuildInfo& chrome_build_info,
+      const fcm::ChromeBuildInfo& chrome_build_info,
       const base::FilePath& store_path,
       const scoped_refptr<base::SequencedTaskRunner>& blocking_task_runner,
       scoped_refptr<base::SequencedTaskRunner> io_task_runner,
@@ -140,15 +117,10 @@ class GCMClientImpl
             const std::string& receiver_id,
             const OutgoingMessage& message) override;
   void RecordDecryptionFailure(const std::string& app_id,
-                               GCMDecryptionResult result) override;
+                               fcm::FcmDecryptionResult result) override;
   void SetRecording(bool recording) override;
   void ClearActivityLogs() override;
   GCMStatistics GetStatistics() const override;
-  void SetAccountTokens(
-      const std::vector<AccountTokenInfo>& account_tokens) override;
-  void UpdateAccountMapping(const AccountMapping& account_mapping) override;
-  void RemoveAccountMapping(const CoreAccountId& account_id) override;
-  void SetLastTokenFetchTime(const base::Time& time) override;
   void UpdateHeartbeatTimer(
       std::unique_ptr<base::RetainingOneShotTimer> timer) override;
   void AddInstanceIDData(const std::string& app_id,
@@ -170,23 +142,6 @@ class GCMClientImpl
   void OnDisconnected() override;
 
  private:
-  // The check-in info for the device.
-  // TODO(fgorski): Convert to a class with explicit getters/setters.
-  struct CheckinInfo {
-    CheckinInfo();
-    ~CheckinInfo();
-    bool IsValid() const { return android_id != 0 && secret != 0; }
-    void Reset();
-
-    // Android ID of the device as assigned by the server.
-    uint64_t android_id;
-    // Security token of the device as assigned by the server.
-    uint64_t secret;
-    // True if accounts were already provided through SetAccountsForCheckin(),
-    // or when |last_checkin_accounts| was loaded as empty.
-    bool accounts_set;
-  };
-
   // Reasons for resetting the GCM Store.
   // Note: this enum is recorded into a histogram. Do not change enum value
   // or order.
@@ -233,20 +188,22 @@ class GCMClientImpl
   // Runs after GCM Store load is done to trigger continuation of the
   // initialization.
   void OnLoadCompleted(std::unique_ptr<GCMStore::LoadResult> result);
+  // Removes deprecated data (such as obsolete registrations) from `result` and
+  // the persistent store.
+  void RemoveDeprecatedData(GCMStore::LoadResult& result);
   // Starts the GCM.
   void StartGCM();
   // Initializes mcs_client_, which handles the connection to MCS.
   void InitializeMCSClient();
   // Complets the first time device checkin.
-  void OnFirstTimeDeviceCheckinCompleted(const CheckinInfo& checkin_info);
+  void OnFirstTimeDeviceCheckinCompleted(const fcm::CheckinInfo& checkin_info);
   // Starts a login on mcs_client_.
   void StartMCSLogin();
   // Resets the GCM store when it is corrupted.
   void ResetStore();
   // Sets state to ready. This will initiate the MCS login and notify the
   // delegates.
-  void OnReady(const std::vector<AccountMapping>& account_mappings,
-               const base::Time& last_token_fetch_time);
+  void OnReady();
 
   // Starts a first time device checkin.
   void StartCheckin();
@@ -273,10 +230,6 @@ class GCMClientImpl
 
   // Callback for persisting registration info in the |gcm_store_|.
   void UpdateRegistrationCallback(bool success);
-
-  // Callback for all store operations that do not try to recover, if write in
-  // |gcm_store_| fails.
-  void DefaultStoreCallback(bool success);
 
   // Callback for store operation where result does not matter.
   void IgnoreWriteResultCallback(const std::string& operation_suffix_for_uma,
@@ -335,10 +288,10 @@ class GCMClientImpl
   void ResetCache();
 
   // Builder for the GCM internals (mcs client, etc.).
-  std::unique_ptr<GCMInternalsBuilder> internals_builder_;
+  std::unique_ptr<fcm::FcmInternalsBuilder> internals_builder_;
 
   // Recorder that logs GCM activities.
-  GCMStatsRecorderImpl recorder_;
+  fcm::FcmStatsRecorderImpl recorder_;
 
   // State of the GCM Client Implementation.
   State state_;
@@ -352,14 +305,14 @@ class GCMClientImpl
   StartMode start_mode_;
 
   // Device checkin info (android ID and security token used by device).
-  CheckinInfo device_checkin_info_;
+  fcm::CheckinInfo device_checkin_info_;
 
   // Clock used for timing of retry logic. Passed in for testing.
   raw_ptr<base::Clock> clock_;
 
   // Information about the chrome build.
   // TODO(fgorski): Check if it can be passed in constructor and made const.
-  ChromeBuildInfo chrome_build_info_;
+  fcm::ChromeBuildInfo chrome_build_info_;
 
   // Persistent data store for keeping device credentials, messages and user to
   // serial number mappings.

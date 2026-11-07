@@ -46,7 +46,6 @@
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
@@ -139,7 +138,11 @@
 using base::UserMetricsAction;
 using content::WebContents;
 
+DEFINE_UI_CLASS_PROPERTY_TYPE(ActionItemEngagedIndicatorStyle)
 DEFINE_UI_CLASS_PROPERTY_KEY(bool, kActionItemUnderlineIndicatorKey, false)
+DEFINE_UI_CLASS_PROPERTY_KEY(ActionItemEngagedIndicatorStyle,
+                             kActionItemEngagedIndicatorStyleKey,
+                             ActionItemEngagedIndicatorStyle::kUnderline)
 
 namespace {
 
@@ -163,38 +166,6 @@ auto& GetViewCommandMap() {
 }
 
 constexpr int kBrowserAppMenuRefreshCollapsedMargin = 2;
-
-// Returns whether `point` should be treated as part of the caption area in
-// `view`. Recursively traverses into icon containers to correctly handle
-// padding between buttons.
-bool IsPositionInWindowCaptionForView(const views::View* view,
-                                      const gfx::Point& point) {
-  for (const views::View* child : view->children()) {
-    if (!child->GetVisible() || !child->bounds().Contains(point)) {
-      continue;
-    }
-    // Recurse into known icon container types to check their children.
-    if (views::IsViewClass<ToolbarIconContainerView>(child) ||
-        views::IsViewClass<page_actions::PageActionContainerView>(child)) {
-      const gfx::Point point_in_child =
-          views::View::ConvertPointToTarget(view, child, point);
-      return IsPositionInWindowCaptionForView(child, point_in_child);
-    }
-    // Separators and dividers are non-interactive and should be treated
-    // as caption area.
-    if (views::IsViewClass<views::Separator>(child) ||
-        views::IsViewClass<ToolbarDivider>(child)) {
-      return true;
-    }
-    // The point hit an interactive control (button, location bar, etc.).
-    return false;
-  }
-  // The point is not in any child's bounds — it's in empty space between
-  // children, padding, or above/below a child. In VTS mode the toolbar is
-  // at the very top of the window, so all non-interactive areas should be
-  // draggable regardless of vertical position.
-  return true;
-}
 
 void SetRefreshMargins(views::View* button, bool expanded) {
   button->SetProperty(
@@ -412,16 +383,6 @@ void ToolbarView::Init() {
     home_->SetVisible(show_home_button_.GetValue());
   }
 
-  auto* vertical_tab_strip_state_controller =
-      tabs::VerticalTabStripStateController::From(browser_view_->browser());
-  if (vertical_tab_strip_state_controller) {
-    vertical_tab_subscription_ =
-        vertical_tab_strip_state_controller->RegisterOnModeChanged(
-            base::BindRepeating(&ToolbarView::OnVerticalTabStripModeChanged,
-                                base::Unretained(this)));
-    should_display_vertical_tabs_ =
-        vertical_tab_strip_state_controller->ShouldDisplayVerticalTabs();
-  }
   InitLayout();
 
   for (auto* button :
@@ -432,15 +393,6 @@ void ToolbarView::Init() {
   }
 
   initialized_ = true;
-}
-
-void ToolbarView::OnVerticalTabStripModeChanged(
-    tabs::VerticalTabStripStateController* controller) {
-  should_display_vertical_tabs_ = controller->ShouldDisplayVerticalTabs();
-  // Invalidate the layout cache so responsive buttons (forward, home, split,
-  // etc) re-evaluate their visibility against the final toolbar width, clearing
-  // out any zeroed out state from intermediate layout passes.
-  InvalidateLayout();
 }
 
 void ToolbarView::AnimationEnded(const gfx::Animation* animation) {
@@ -509,37 +461,14 @@ bool ToolbarView::GetAppMenuFocused() const {
   return app_menu_control && app_menu_control->HasFocus();
 }
 
-bool ToolbarView::IsPositionInWindowCaption(
-    const gfx::Point& test_point) const {
-  return IsPositionInWindowCaptionForView(this, test_point);
-}
-
-void ToolbarView::RecordHitTestMetrics(bool is_caption_area) {
-  const bool is_mouse_down = GetWidget() && GetWidget()->IsMouseButtonDown();
-
-  if (!is_mouse_down) {
-    was_mouse_down_ = false;
-  } else if (!was_mouse_down_) {
-    was_mouse_down_ = true;
-    if (browser_view_->ShouldDrawVerticalTabStrip()) {
-      if (is_caption_area) {
-        base::RecordAction(
-            base::UserMetricsAction("VerticalTabs.Toolbar.CaptionAreaPressed"));
-      } else {
-        base::RecordAction(base::UserMetricsAction(
-            "VerticalTabs.Toolbar.InteractiveAreaPressed"));
-      }
-    }
-  }
-}
-
 views::Button* ToolbarView::GetChromeLabsButton() const {
   ChromeLabsCoordinator* coordinator = ChromeLabsCoordinator::From(browser_);
   return coordinator ? coordinator->GetChromeLabsButton() : nullptr;
 }
 
 ExtensionsToolbarButton* ToolbarView::GetExtensionsButton() const {
-  return extensions_container_->GetExtensionsButton();
+  return extensions_container_ ? extensions_container_->GetExtensionsButton()
+                               : nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -566,7 +495,7 @@ ToolbarView::GetContentSettingBubbleModelDelegate() {
 // ToolbarView, CommandObserver implementation:
 
 void ToolbarView::EnabledStateChangedForCommand(int id, bool enabled) {
-  DCHECK(display_mode_ == DisplayMode::kNormal);
+  CHECK(display_mode_ == DisplayMode::kNormal, base::NotFatalUntil::M162);
 
   const std::array<views::Button*, 4> kButtons{back_, forward_, reload_,
                                                home_};
@@ -824,7 +753,7 @@ void ToolbarView::InitLayout() {
 }
 
 void ToolbarView::LayoutCommon() {
-  DCHECK(display_mode_ == DisplayMode::kNormal);
+  CHECK(display_mode_ == DisplayMode::kNormal, base::NotFatalUntil::M162);
 
   gfx::Insets interior_margin =
       GetLayoutInsets(LayoutInset::TOOLBAR_INTERIOR_MARGIN);
@@ -1056,7 +985,7 @@ void ToolbarView::OnChromeLabsPrefChanged() {
 }
 
 void ToolbarView::LoadImages() {
-  DCHECK_EQ(display_mode_, DisplayMode::kNormal);
+  CHECK_EQ(display_mode_, DisplayMode::kNormal, base::NotFatalUntil::M162);
 
   if (extensions_container_) {
     extensions_container_->UpdateAllIcons();

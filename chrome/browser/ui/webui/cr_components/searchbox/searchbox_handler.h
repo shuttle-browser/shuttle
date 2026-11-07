@@ -46,6 +46,7 @@ namespace searchbox_internal {
 // subclasses.
 extern const char* kSearchSparkIconResourceName;
 extern const char* kReplyRotated180IconResourceName;
+extern const char* kDockToRightIconResourceName;
 }  // namespace searchbox_internal
 
 namespace gfx {
@@ -97,12 +98,52 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
     bool is_lens = false;
   };
 
+  // The options of WebUIDataSourceOptions that
+  // GetProfileIndependentWebUIDataSourceDict() uses.
+  struct ProfileIndependentWebUIDataSourceOptions {
+    bool enable_voice_search = false;
+    bool enable_lens_search = false;
+  };
+
+  // The options of WebUIDataSourceOptions that
+  // GetProfileDependentWebUIDataSourceDict() uses.
+  struct ProfileDependentWebUIDataSourceOptions {
+    bool session_allows_drag_and_drop = false;
+    bool is_lens = false;
+  };
+
+  // Returns the values for the WebUIDataSource of a WebUI that uses the
+  // searchbox, i.e. both GetProfileIndependentWebUIDataSourceDict() and
+  // GetProfileDependentWebUIDataSourceDict().
   static base::DictValue GetWebUIDataSourceDict(Profile* profile);
   static base::DictValue GetWebUIDataSourceDict(Profile* profile,
                                                 WebUIDataSourceOptions options);
 
+  // Returns the values of GetWebUIDataSourceDict() that don't depend on the
+  // profile.
+  static base::DictValue GetProfileIndependentWebUIDataSourceDict(
+      ProfileIndependentWebUIDataSourceOptions options);
+
+  // Returns the values of GetWebUIDataSourceDict() that depend on `profile`,
+  // e.g. on its prefs.
+  static base::DictValue GetProfileDependentWebUIDataSourceDict(
+      Profile* profile,
+      ProfileDependentWebUIDataSourceOptions options);
+
+  // Computes URL emphasis metadata for the given `text`.
+  // Based on `OmniboxView::UpdateTextStyle()` (for URL component parsing and
+  // deemphasis mode determination) and `OmniboxViewViews::UpdateSchemeStyle()`
+  // (for security-related scheme styling when `include_security_style` is
+  // true).
+  static searchbox::mojom::UrlEmphasisPtr ComputeUrlEmphasis(
+      const std::u16string& text,
+      bool text_is_url,
+      bool include_security_style,
+      const OmniboxClient* client);
+
   // Maps all icons returned from either `AutocompleteMatch::GetVectorIcon()` or
   // `OmniboxAction::GetIconImage()` to svg resource strings.
+  static std::string VectorIconToResourceName(const gfx::VectorIcon& icon);
   virtual std::string AutocompleteIconToResourceName(
       const gfx::VectorIcon& icon) const;
 
@@ -153,10 +194,11 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
       const GURL& url,
       omnibox::mojom::NavigationPredictor navigation_predictor) override;
   void DeleteAutocompleteMatch(uint8_t line, const GURL& url) override;
-  void ActivateKeyword(uint8_t line,
-                       const GURL& url,
-                       base::TimeTicks match_selection_timestamp,
-                       bool is_mouse_event) override;
+  void ActivateKeyword(
+      uint8_t line,
+      const GURL& url,
+      base::TimeTicks match_selection_timestamp,
+      searchbox::mojom::KeywordActivationMethod activation_method) override;
   void ExecuteAction(uint8_t line,
                      uint8_t action_index,
                      const GURL& url,

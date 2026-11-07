@@ -177,10 +177,6 @@ namespace app_controller_mac {
 // different models of application lifetime.
 bool IsOpeningNewWindow();
 
-// Called when Enterprise startup dialog is close and repost
-// applicationDidFinished notification.
-void EnterpriseStartupDialogClosed();
-
 // Tells RunInSafeProfile() or RunInSpecificSafeProfile() what to do if the
 // profile cannot be loaded from disk.
 enum ProfileLoadFailureBehavior {

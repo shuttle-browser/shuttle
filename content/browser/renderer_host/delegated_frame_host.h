@@ -141,21 +141,17 @@ class CONTENT_EXPORT DelegatedFrameHost
   void AttachToCompositor(ui::Compositor* compositor);
   void DetachFromCompositor();
 
-  // Copies |src_subrect| from the compositing surface into a bitmap (first
-  // overload) or texture (second overload). |output_size| specifies the size of
-  // the output bitmap or texture.
+  // Copies |src_subrect| from the compositing surface into a bitmap.
+  // |output_size| specifies the size of the output bitmap.
   // Note: |src_subrect| is specified in DIP dimensions while |output_size|
   // expects pixels. If |src_subrect| is empty, the entire surface area is
   // copied.
   void CopyFromCompositingSurface(
       const gfx::Rect& src_subrect,
       const gfx::Size& output_size,
+      bool is_copy_request_secure,
       base::TimeDelta timeout,
       base::OnceCallback<void(const content::CopyFromSurfaceResult&)> callback);
-  void CopyFromCompositingSurfaceAsTexture(
-      const gfx::Rect& src_subrect,
-      const gfx::Size& output_size,
-      viz::CopyOutputRequest::CopyOutputRequestCallback callback);
 
   bool CanCopyFromCompositingSurface() const;
   const viz::FrameSinkId& frame_sink_id() const { return frame_sink_id_; }
@@ -254,12 +250,18 @@ class CONTENT_EXPORT DelegatedFrameHost
 
   SkColor GetGutterColor() const;
 
+  void CopyFromCompositingSurfaceAsTexture(
+      const gfx::Rect& src_subrect,
+      const gfx::Size& output_size,
+      viz::CopyOutputRequest::CopyOutputRequestCallback callback);
+
   void CopyFromCompositingSurfaceInternal(
       const gfx::Rect& src_subrect,
       const gfx::Size& output_size,
       const viz::SurfaceId& surface_id,
       viz::CopyOutputRequest::ResultFormat format,
       viz::CopyOutputRequest::ResultDestination destination,
+      bool is_copy_request_secure,
       base::TimeDelta timeout,
       viz::CopyOutputRequest::CopyOutputRequestCallback callback);
 

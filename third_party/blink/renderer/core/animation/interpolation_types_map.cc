@@ -71,6 +71,7 @@
 #include "third_party/blink/renderer/core/css/parser/css_parser_context.h"
 #include "third_party/blink/renderer/core/css/properties/css_property.h"
 #include "third_party/blink/renderer/core/css/property_registry.h"
+#include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
@@ -147,8 +148,8 @@ const InterpolationTypes* InterpolationTypesMap::Get(
       case CSSPropertyID::kRowRuleInsetJunctionStart:
       case CSSPropertyID::kCx:
       case CSSPropertyID::kCy:
+      case CSSPropertyID::kFitTolerance:
       case CSSPropertyID::kFlexBasis:
-      case CSSPropertyID::kFlowTolerance:
       case CSSPropertyID::kHeight:
       case CSSPropertyID::kLeft:
       case CSSPropertyID::kLetterSpacing:

@@ -5,7 +5,7 @@
 #include "chrome/browser/ui/views/permissions/permission_prompt_quiet_icon.h"
 
 #include "chrome/browser/content_settings/chrome_content_settings_utils.h"
-#include "components/permissions/prediction_service/permission_ui_selector.h"
+#include "components/permissions/permission_ui_selector.h"
 #include "content/public/browser/web_contents.h"
 
 PermissionPromptQuietIcon::PermissionPromptQuietIcon(
@@ -27,4 +27,11 @@ PermissionPromptQuietIcon::GetPromptDisposition() const {
                    LOCATION_BAR_RIGHT_STATIC_ICON
              : permissions::PermissionPromptDisposition::
                    LOCATION_BAR_RIGHT_ANIMATED_ICON;
+}
+
+std::optional<gfx::Rect> PermissionPromptQuietIcon::GetViewBoundsInScreen()
+    const {
+  // The quiet prompt is only an icon in the location bar and does not own a
+  // view that overlays the web contents.
+  return std::nullopt;
 }

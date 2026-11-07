@@ -33,6 +33,11 @@ class ActionAppMenuMetrics {
   // recent tabs, profiles).
   void LogMenuAction(actions::BaseAction* base_action);
 
+  // Records the percentage of device screen height occupied by the menu.
+  void RecordMenuHeightPercentage(int menu_height, int screen_height);
+
+  void SetTimerForTesting(base::ElapsedTimer timer);
+
  private:
   // Records metrics for a menu item with a known ActionId.
   void LogMenuActionWithId(actions::ActionId action_id);

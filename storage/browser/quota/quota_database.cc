@@ -41,9 +41,9 @@ static const int kStaleBucketCutoffInDays = 400;
 
 // Version number of the database schema.
 //
-// We support migrating the database schema from versions that are at most 2
-// years old. Older versions are unsupported, and will cause the database to get
-// razed.
+// There should be at minimum two supported versions to ensure we retain
+// functional migration code, but additional versions more than two years old
+// should be removed and marked as unsupported.
 //
 // Version 1 - 2011-03-17 - http://crrev.com/78521 (unsupported)
 // Version 2 - 2011-04-25 - http://crrev.com/82847 (unsupported)
@@ -72,10 +72,6 @@ const char kBucketsTableBootstrapped[] = "IsBucketsBootstrapped";
 const char kMediaLicenseDatabaseRemoved[] = "IsMediaLicenseDatabaseRemoved";
 
 const int kCommitIntervalMs = 30000;
-
-void RecordDatabaseResetHistogram(const DatabaseResetReason reason) {
-  base::UmaHistogramEnumeration("Quota.QuotaDatabaseReset", reason);
-}
 
 // SQL statement fragment for inserting fields into the buckets table.
 #define BUCKETS_FIELDS_INSERTER                                         \
@@ -195,10 +191,7 @@ QuotaDatabase::QuotaDatabase(const base::FilePath& profile_path)
       db_file_path_(
           profile_path.empty()
               ? base::FilePath()
-              : storage_directory_->path().AppendASCII(kDatabaseName)),
-      legacy_db_file_path_(profile_path.empty()
-                               ? base::FilePath()
-                               : profile_path.AppendASCII(kDatabaseName)) {
+              : storage_directory_->path().AppendASCII(kDatabaseName)) {
   DETACH_FROM_SEQUENCE(sequence_checker_);
 }
 
@@ -590,6 +583,7 @@ QuotaErrorOr<mojom::BucketTableEntryPtr> QuotaDatabase::DeleteBucketData(
   // directory deletion fails. `storage_directory_` may be nullptr for
   // in-memory only.
   if (storage_directory_ && !storage_directory_->DoomBucket(bucket)) {
+    storage_directory_->ClearDoomedBuckets();
     return base::unexpected(QuotaError::kFileOperationError);
   }
 
@@ -600,6 +594,9 @@ QuotaErrorOr<mojom::BucketTableEntryPtr> QuotaDatabase::DeleteBucketData(
   statement.BindInt64(0, bucket.id.value());
 
   if (!statement.Step()) {
+    if (storage_directory_) {
+      storage_directory_->ClearDoomedBuckets();
+    }
     return base::unexpected(QuotaError::kDatabaseError);
   }
 
@@ -974,18 +971,6 @@ QuotaError QuotaDatabase::EnsureOpened() {
   db_->set_error_callback(base::BindRepeating(&QuotaDatabase::OnSqliteError,
                                               base::Unretained(this)));
 
-  // Migrate an existing database from the old path.
-  if (!db_file_path_.empty() && !MoveLegacyDatabase()) {
-    if (ResetStorage()) {
-      // ResetStorage() has succeeded and database is already open.
-      return QuotaError::kNone;
-    }
-    is_disabled_ = true;
-    db_.reset();
-    meta_table_.reset();
-    return QuotaError::kDatabaseError;
-  }
-
   if (!OpenDatabase() || !EnsureDatabaseVersion()) {
     LOG(ERROR) << "Could not open the quota database, resetting.";
     if (!db_file_path_.empty() && ResetStorage()) {
@@ -1025,84 +1010,40 @@ void QuotaDatabase::OnSqliteError(int sqlite_error_code,
   }
 }
 
-bool QuotaDatabase::MoveLegacyDatabase() {
-  // Migration was added on 04/2022 (https://crrev.com/c/3513545).
-  // Cleanup after enough time has passed.
-  if (base::PathExists(db_file_path_) ||
-      !base::PathExists(legacy_db_file_path_)) {
-    return true;
-  }
-
-  if (!base::CreateDirectory(db_file_path_.DirName()) ||
-      !base::CopyFile(legacy_db_file_path_, db_file_path_)) {
-    sql::Database::Delete(db_file_path_);
-    return false;
-  }
-
-  base::FilePath legacy_journal_path =
-      sql::Database::JournalPath(legacy_db_file_path_);
-  if (base::PathExists(legacy_journal_path) &&
-      !base::CopyFile(legacy_journal_path,
-                      sql::Database::JournalPath(db_file_path_))) {
-    sql::Database::Delete(db_file_path_);
-    return false;
-  }
-
-  sql::Database::Delete(legacy_db_file_path_);
-  return true;
-}
-
 bool QuotaDatabase::OpenDatabase() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   // Open in memory database.
   if (db_file_path_.empty()) {
-    if (db_->OpenInMemory()) {
-      return true;
-    }
-    RecordDatabaseResetHistogram(DatabaseResetReason::kOpenInMemoryDatabase);
-    return false;
+    return db_->OpenInMemory();
   }
 
   if (!base::CreateDirectory(db_file_path_.DirName())) {
-    RecordDatabaseResetHistogram(DatabaseResetReason::kCreateDirectory);
     return false;
   }
 
-  if (!db_->Open(db_file_path_)) {
-    RecordDatabaseResetHistogram(DatabaseResetReason::kOpenDatabase);
-    return false;
-  }
-
-  return true;
+  return db_->Open(db_file_path_);
 }
 
 bool QuotaDatabase::EnsureDatabaseVersion() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (!sql::MetaTable::DoesTableExist(db_.get())) {
-    if (CreateSchema()) {
-      return true;
-    }
-    RecordDatabaseResetHistogram(DatabaseResetReason::kCreateSchema);
-    return false;
+    return CreateSchema();
   }
 
   if (!meta_table_->Init(db_.get(), kQuotaDatabaseCurrentSchemaVersion,
                          kQuotaDatabaseCompatibleVersion)) {
-    RecordDatabaseResetHistogram(DatabaseResetReason::kInitMetaTable);
     return false;
   }
 
   if (meta_table_->GetCompatibleVersionNumber() >
       kQuotaDatabaseCurrentSchemaVersion) {
-    RecordDatabaseResetHistogram(DatabaseResetReason::kDatabaseVersionTooNew);
     LOG(WARNING) << "Quota database is too new.";
     return false;
   }
 
   if (meta_table_->GetVersionNumber() < kQuotaDatabaseCurrentSchemaVersion) {
     if (!QuotaDatabaseMigrations::UpgradeSchema(*this)) {
-      RecordDatabaseResetHistogram(DatabaseResetReason::kDatabaseMigration);
       return false;
     }
   }
@@ -1189,13 +1130,10 @@ bool QuotaDatabase::ResetStorage() {
   meta_table_.reset();
   db_.reset();
 
-  sql::Database::Delete(legacy_db_file_path_);
   sql::Database::Delete(db_file_path_);
 
   // Explicit file deletion to try and get consistent deletion across platforms.
-  base::DeleteFile(legacy_db_file_path_);
   base::DeleteFile(db_file_path_);
-  base::DeleteFile(sql::Database::JournalPath(legacy_db_file_path_));
   base::DeleteFile(sql::Database::JournalPath(db_file_path_));
 
   storage_directory_->Doom();

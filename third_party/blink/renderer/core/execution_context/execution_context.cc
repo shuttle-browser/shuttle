@@ -27,6 +27,7 @@
 
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 
+#include "base/auto_reset.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/tracing/protos/chrome_track_event.pbzero.h"
 #include "build/build_config.h"
@@ -125,12 +126,6 @@ CodeCacheHost* ExecutionContext::GetCodeCacheHostFromContext(
   }
 
   DCHECK(execution_context->IsWorkletGlobalScope());
-
-  if (execution_context->IsSharedStorageWorkletGlobalScope()) {
-    auto* global_scope =
-        DynamicTo<WorkerOrWorkletGlobalScope>(execution_context);
-    return global_scope->GetCodeCacheHost();
-  }
 
   return nullptr;
 }
@@ -283,20 +278,31 @@ void ExecutionContext::AddConsoleMessageImpl(
 void ExecutionContext::DispatchErrorEvent(
     ErrorEvent* error_event,
     SanitizeScriptErrors sanitize_script_errors) {
+  if (is_draining_pending_exceptions_) {
+    // Disregard errors reported while draining pending exceptions. This would
+    // help to avoid potential infinite recursion and, given this only
+    // happens with with inspector Runtime domain enabled, somewhat reduces
+    // devtools side effects.
+    return;
+  }
   if (in_dispatch_error_event_) {
-    pending_exceptions_.push_back(error_event);
+    pending_exceptions_.emplace_back(error_event, sanitize_script_errors);
     return;
   }
 
   // First report the original exception and only then all the nested ones.
-  if (!DispatchErrorEventInternal(error_event, sanitize_script_errors))
-    ExceptionThrown(error_event);
+  if (!DispatchErrorEventInternal(error_event, sanitize_script_errors)) {
+    base::AutoReset auto_reset(&is_draining_pending_exceptions_, true);
+    ExceptionThrown(error_event, sanitize_script_errors);
+  }
 
-  if (pending_exceptions_.empty())
-    return;
-  for (ErrorEvent* e : pending_exceptions_)
-    ExceptionThrown(e);
-  pending_exceptions_.clear();
+  base::AutoReset auto_reset(&is_draining_pending_exceptions_, true);
+  auto pending_exceptions = std::move(pending_exceptions_);
+  for (const auto& [pending_event, pending_sanitize] : pending_exceptions) {
+    ExceptionThrown(pending_event, pending_sanitize);
+  }
+  // Assure handling pending exceptions doesn't add more pending exceptions.
+  CHECK(pending_exceptions_.empty());
 }
 
 bool ExecutionContext::DispatchErrorEventInternal(
@@ -307,8 +313,7 @@ bool ExecutionContext::DispatchErrorEventInternal(
     return false;
 
   if (sanitize_script_errors == SanitizeScriptErrors::kSanitize) {
-    error_event = ErrorEvent::CreateSanitizedError(
-        ToScriptState(this, *error_event->World()));
+    error_event = ErrorEvent::CreateSanitizedError(error_event->World());
   }
 
   DCHECK(!in_dispatch_error_event_);
@@ -506,7 +511,8 @@ void ExecutionContext::ParseAndSetReferrerPolicy(
 }
 
 network::mojom::ReferrerPolicy ExecutionContext::GetReferrerPolicy() const {
-  return policy_container_->GetReferrerPolicy();
+  return policy_container_ ? policy_container_->GetReferrerPolicy()
+                           : network::mojom::ReferrerPolicy::kDefault;
 }
 
 void ExecutionContext::SetReferrerPolicy(

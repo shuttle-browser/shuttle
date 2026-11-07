@@ -201,7 +201,7 @@ const std::vector<NSMenuItem*>& GetMenuItemsNotPresentInMainMenu() {
 }
 
 CommandForKeyEventResult CommandForKeyEvent(NSEvent* event) {
-  DCHECK(event);
+  CHECK(event, base::NotFatalUntil::M162);
   if ([event type] != NSEventTypeKeyDown)
     return NoCommand();
 
@@ -220,7 +220,7 @@ CommandForKeyEventResult CommandForKeyEvent(NSEvent* event) {
 }
 
 int DelayedWebContentsCommandForKeyEvent(NSEvent* event) {
-  DCHECK(event);
+  CHECK(event, base::NotFatalUntil::M162);
   if ([event type] != NSEventTypeKeyDown)
     return NO_COMMAND;
 

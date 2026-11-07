@@ -64,9 +64,11 @@
 #include "chrome/browser/ui/webui/settings/settings_secure_dns_handler.h"
 #include "chrome/browser/ui/webui/settings/settings_security_key_handler.h"
 #include "chrome/browser/ui/webui/settings/settings_startup_pages_handler.h"
+#include "chrome/browser/ui/webui/settings/settings_telemetry_handler.h"
 #include "chrome/browser/ui/webui/settings/shared_settings_localized_strings_provider.h"
 #include "chrome/browser/ui/webui/settings/site_settings_handler.h"
 #include "chrome/browser/ui/webui/theme_source.h"
+#include "chrome/browser/universal_optout/universal_optout_service_factory.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
@@ -87,6 +89,7 @@
 #include "components/prefs/pref_service.h"
 #include "components/regional_capabilities/regional_capabilities_service.h"
 #include "components/safe_browsing/core/common/features.h"
+#include "components/search_engines/search_engine_choice/search_engine_choice_switches.h"
 #include "components/search_engines/search_engines_switches.h"
 #include "components/search_engines/template_url_service.h"
 #include "components/signin/public/base/signin_pref_names.h"
@@ -95,6 +98,7 @@
 #include "components/subscription_eligibility/subscription_eligibility_service.h"
 #include "components/universal_optout/features.h"
 #include "components/universal_optout/prefs.h"
+#include "components/universal_optout/universal_optout_service.h"
 #include "content/public/browser/isolated_web_apps_policy.h"
 #include "content/public/browser/url_data_source.h"
 #include "content/public/browser/web_contents.h"
@@ -149,6 +153,7 @@
 #include "chrome/browser/ui/webui/settings/system_handler.h"
 #include "components/language/core/common/language_experiments.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
+
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
 #include "chrome/browser/ui/webui/settings/on_device_ai_settings_handler.h"
 #endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
@@ -164,7 +169,6 @@
 #if BUILDFLAG(ENABLE_VR)
 #include "device/vr/public/cpp/features.h"
 #endif
-
 
 namespace settings {
 
@@ -220,6 +224,7 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   AddSettingsPageUIHandler(std::make_unique<SecureDnsHandler>());
   AddSettingsPageUIHandler(std::make_unique<SiteSettingsHandler>(profile));
   AddSettingsPageUIHandler(std::make_unique<StartupPagesHandler>(web_ui));
+  AddSettingsPageUIHandler(std::make_unique<SettingsTelemetryHandler>());
   AddSettingsPageUIHandler(std::make_unique<SecurityKeysPINHandler>());
   AddSettingsPageUIHandler(std::make_unique<SecurityKeysResetHandler>());
   AddSettingsPageUIHandler(std::make_unique<SecurityKeysCredentialHandler>());
@@ -359,6 +364,9 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   html_source->AddBoolean(
       "searchSettingsUpdate",
       base::FeatureList::IsEnabled(switches::kSearchSettingsUpdate));
+  html_source->AddBoolean(
+      "pickerWithMoreEngines",
+      base::FeatureList::IsEnabled(switches::kSearchSettingsWithMoreEngines));
 
   html_source->AddString(
       "settingsRefresh2026",
@@ -370,6 +378,8 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
       "webuiRefresh2026",
       features::IsWebuiRefresh2026Enabled() ? "webui-refresh-2026" : "");
 
+  universal_optout::UniversalOptOutService* universal_optout_service =
+      universal_optout::UniversalOptOutServiceFactory::GetForProfile(profile);
   html_source->AddBoolean(
       "showUniversalOptOutSettings",
       base::FeatureList::IsEnabled(
@@ -378,8 +388,8 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
               universal_optout::features::kUniversalOptOutSettings) &&
           (profile->GetPrefs()->GetBoolean(
                universal_optout::prefs::kUniversalOptOutEnabled) ||
-           profile->GetPrefs()->GetBoolean(
-               universal_optout::prefs::kUniversalOptOutEligible)));
+           (universal_optout_service &&
+            universal_optout_service->IsEligible())));
 
   ui::TrackedElementHandlerDocumentSingleton::Register(
       this, std::vector<ui::ElementIdentifier>{
@@ -388,6 +398,7 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
                 kInactiveTabSettingElementId,
                 kGlicOsToggleElementId,
                 kGlicOsWidgetKeyboardShortcutElementId,
+                kTabStylingSettingElementId,
             });
 }
 
@@ -403,11 +414,11 @@ void SettingsUI::InitBrowserSettingsWebUIHandlers() {
     auto* account_manager =
         ash::AccountManagerFactory::Get()->GetAccountManager(
             profile->GetPath().value());
-    DCHECK(account_manager);
+    CHECK(account_manager, base::NotFatalUntil::M162);
     auto* account_manager_facade =
         ash::AccountManagerFactory::Get()->GetAccountManagerFacade(
             profile->GetPath().value());
-    DCHECK(account_manager_facade);
+    CHECK(account_manager_facade, base::NotFatalUntil::M162);
 
     web_ui()->AddMessageHandler(
         std::make_unique<ash::settings::AccountManagerUIHandler>(
@@ -451,7 +462,7 @@ void SettingsUI::BindInterface(
 
 void SettingsUI::AddSettingsPageUIHandler(
     std::unique_ptr<content::WebUIMessageHandler> handler) {
-  DCHECK(handler);
+  CHECK(handler, base::NotFatalUntil::M162);
   web_ui()->AddMessageHandler(std::move(handler));
 }
 

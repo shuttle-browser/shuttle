@@ -26,6 +26,7 @@
 #include "ui/views/view.h"
 #include "ui/views/view_class_properties.h"
 #include "ui/views/view_tracker.h"
+#include "ui/views/widget/native_widget_private.h"
 #include "ui/views/widget/root_view.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_delegate.h"
@@ -337,20 +338,20 @@ void FocusManager::SetFocusedViewWithReason(View* view,
   // Change this to DCHECK once it's resolved.
   CHECK(!view || ContainsView(view));
 
-#if !BUILDFLAG(IS_MAC)
-  // TODO(warx): There are some AccessiblePaneViewTest failed on macosx.
-  // crbug.com/650859. Remove !BUILDFLAG(IS_MAC) once that is fixed.
-  //
   // If the widget isn't active store the focused view and then attempt to
   // activate the widget. If activation succeeds |view| will be focused.
   // If activation fails |view| will be focused the next time the widget is
-  // made active.
+  // made active. Platforms may opt out of activating for a given request, in
+  // which case |view| is focused immediately without activating the widget.
   if (view && !widget_->IsActive()) {
-    SetStoredFocusView(view);
-    widget_->Activate();
-    return;
+    const internal::NativeWidgetPrivate* native_widget =
+        widget_->native_widget_private();
+    if (!native_widget || native_widget->ShouldActivateOnFocusRequest()) {
+      SetStoredFocusView(view);
+      widget_->Activate();
+      return;
+    }
   }
-#endif
 
   // Update the reason for the focus change (since this is checked by
   // some listeners), then notify all listeners.
@@ -376,8 +377,9 @@ void FocusManager::SetFocusedViewWithReason(View* view,
   SetStoredFocusView(focused_view_);
   if (focused_view_) {
     // TODO(40763787): Remove this once reentrant callsites have been addressed.
-    CHECK(!view_observation_.IsObserving());
-    view_observation_.Observe(focused_view_);
+    if (!view_observation_.IsObserving()) {
+      view_observation_.Observe(focused_view_);
+    }
     focused_view_->Focus();
   }
 
@@ -414,9 +416,9 @@ void FocusManager::AdvanceFocusIfNecessary() {
 
   // If widget is active and focused view is not focusable, advance focus or,
   // if not possible, clear focus.
-  if (focused_view_ && !IsFocusable(focused_view_)) {
+  if (focused_view_ && !IsFocusableInCurrentMode(focused_view_)) {
     AdvanceFocus(false);
-    if (focused_view_ && !IsFocusable(focused_view_)) {
+    if (focused_view_ && !IsFocusableInCurrentMode(focused_view_)) {
       ClearFocus();
     }
   }
@@ -454,8 +456,7 @@ bool FocusManager::RestoreFocusedView() {
   View* view = GetStoredFocusView();
   if (view) {
     if (ContainsView(view)) {
-      if (!view->IsFocusable() &&
-          view->GetViewAccessibility().IsAccessibilityFocusable()) {
+      if (!view->IsFocusable() && IsFocusableInCurrentMode(view)) {
         // RequestFocus would fail, but we want to restore focus to controls
         // that had focus in accessibility mode.
         SetFocusedViewWithReason(view, FocusChangeReason::kFocusRestore);
@@ -545,6 +546,13 @@ bool FocusManager::ProcessAccelerator(const ui::Accelerator& accelerator) {
 #endif
 }
 
+#if DCHECK_IS_ON()
+size_t FocusManager::GetAcceleratorCountForTarget(
+    ui::AcceleratorTarget* target) const {
+  return accelerator_manager_.GetAcceleratorCountForTarget(target);
+}
+#endif
+
 bool FocusManager::IsAcceleratorRegistered(
     const ui::Accelerator& accelerator) const {
   return accelerator_manager_.IsRegistered(accelerator);
@@ -607,7 +615,7 @@ bool FocusManager::ProcessArrowKeyTraversal(const ui::KeyEvent& event) {
   return true;
 }
 
-bool FocusManager::IsFocusable(View* view) const {
+bool FocusManager::IsFocusableInCurrentMode(View* view) const {
   DCHECK(view);
 
 // |keyboard_accessible_| is only used on Mac.

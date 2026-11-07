@@ -420,7 +420,7 @@ void BackgroundContentsService::RestartForceInstalledExtensionOnCrash(
   //
   // TODO(devlin): This would be unnecessary if we listened to the
   // OnExtensionUnloaded() notification and checked the unload reason.
-  DCHECK_GT(restart_delay, 0);
+  CHECK_GT(restart_delay, 0, base::NotFatalUntil::M161);
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
       FROM_HERE,
       base::BindOnce(&ReloadExtension, extension->id(), profile_->GetWeakPtr()),
@@ -435,7 +435,7 @@ void BackgroundContentsService::LoadBackgroundContentsFromPrefs() {
       prefs_->GetDict(prefs::kRegisteredBackgroundContents);
   extensions::ExtensionRegistry* extension_registry =
       extensions::ExtensionRegistry::Get(profile_);
-  DCHECK(extension_registry);
+  CHECK(extension_registry, base::NotFatalUntil::M161);
   for (const auto [extension_id, _] : contents) {
     // Check to make sure that the parent extension is still enabled.
     const Extension* extension =
@@ -484,7 +484,7 @@ void BackgroundContentsService::LoadBackgroundContentsForExtension(
   const Extension* extension = extensions::ExtensionRegistry::Get(profile_)
                                    ->enabled_extensions()
                                    .GetByID(extension_id);
-  DCHECK(!extension || extension->is_hosted_app());
+  CHECK(!extension || extension->is_hosted_app(), base::NotFatalUntil::M161);
   if (extension && BackgroundInfo::HasBackgroundPage(extension)) {
     LoadBackgroundContents(BackgroundInfo::GetBackgroundURL(extension),
                            "background", extension->id());
@@ -504,7 +504,7 @@ void BackgroundContentsService::LoadBackgroundContentsFromDictionary(
     const base::DictValue& contents) {
   extensions::ExtensionService* extensions_service =
       extensions::ExtensionSystem::Get(profile_)->extension_service();
-  DCHECK(extensions_service);
+  CHECK(extensions_service, base::NotFatalUntil::M161);
 
   const base::DictValue* dict = contents.FindDict(extension_id);
   if (!dict)
@@ -546,9 +546,9 @@ void BackgroundContentsService::LoadBackgroundContents(
   // We are depending on the fact that we will initialize before any user
   // actions or session restore can take place, so no BackgroundContents should
   // be running yet for the passed application_id.
-  DCHECK(!GetAppBackgroundContents(application_id));
-  DCHECK(!application_id.empty());
-  DCHECK(url.is_valid());
+  CHECK(!GetAppBackgroundContents(application_id), base::NotFatalUntil::M161);
+  CHECK(!application_id.empty(), base::NotFatalUntil::M161);
+  CHECK(url.is_valid(), base::NotFatalUntil::M161);
   DVLOG(1) << "Loading background content url: " << url;
 
   BackgroundContents* contents = CreateBackgroundContents(
@@ -593,7 +593,7 @@ void BackgroundContentsService::DeleteBackgroundContents(
 
 void BackgroundContentsService::RegisterBackgroundContents(
     BackgroundContents* background_contents) {
-  DCHECK(IsTracked(background_contents));
+  CHECK(IsTracked(background_contents), base::NotFatalUntil::M161);
   if (!prefs_)
     return;
 
@@ -626,7 +626,7 @@ void BackgroundContentsService::UnregisterBackgroundContents(
     BackgroundContents* background_contents) {
   if (!prefs_)
     return;
-  DCHECK(IsTracked(background_contents));
+  CHECK(IsTracked(background_contents), base::NotFatalUntil::M161);
   const std::string& appid = GetParentApplicationId(background_contents);
   ScopedDictPrefUpdate update(prefs_, prefs::kRegisteredBackgroundContents);
   update->Remove(appid);
@@ -647,7 +647,7 @@ void BackgroundContentsService::AddBackgroundContents(
     const std::string& application_id,
     const std::string& frame_name) {
   // Add the passed object to our list.
-  DCHECK(!application_id.empty());
+  CHECK(!application_id.empty(), base::NotFatalUntil::M161);
   BackgroundContentsInfo& info = contents_map_[application_id];
   info.contents = std::move(contents);
   info.frame_name = frame_name;
@@ -721,7 +721,7 @@ void BackgroundContentsService::AddWebContents(
 
 void BackgroundContentsService::OnBackgroundContentsNavigated(
     BackgroundContents* contents) {
-  DCHECK(IsTracked(contents));
+  CHECK(IsTracked(contents), base::NotFatalUntil::M161);
   // Do not register in the pref if the extension has a manifest-specified
   // background page.
   const std::string& appid = GetParentApplicationId(contents);
@@ -753,7 +753,7 @@ void BackgroundContentsService::OnBackgroundContentsTerminated(
 
 void BackgroundContentsService::OnBackgroundContentsClosed(
     BackgroundContents* contents) {
-  DCHECK(IsTracked(contents));
+  CHECK(IsTracked(contents), base::NotFatalUntil::M161);
   UnregisterBackgroundContents(contents);
   DeleteBackgroundContents(contents);
   for (auto& observer : observers_)

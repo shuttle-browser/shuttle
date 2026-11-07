@@ -4,6 +4,8 @@
 
 #include "third_party/blink/renderer/core/editing/serializers/serialization.h"
 
+#include <string>
+
 #include "testing/gmock/include/gmock/gmock-matchers.h"
 #include "third_party/blink/renderer/core/css/properties/longhands.h"
 #include "third_party/blink/renderer/core/dom/document_fragment.h"
@@ -214,6 +216,74 @@ TEST_F(SerializationTest, StrictlyProcessedMarkupDropsScriptsAndPlugins) {
             StrictlyProcessedMarkup(markup));
 }
 
+class SerializationUnsafeHeadTagTest
+    : public SerializationTest,
+      public testing::WithParamInterface<std::string> {};
+
+// Without stylesheets, remove unsafe tags in ordinary DOM and template contents
+// while preserving other markup, including hidden content and relative URLs.
+TEST_P(SerializationUnsafeHeadTagTest,
+       StrictlyProcessedMarkupDropsUnsafeHeadTagsAndPreservesOtherMarkup) {
+  const String tag_markup = String(GetParam());
+  const String safe_markup =
+      "<span style=\"display: none\">hidden</span>"
+      "<a href=\"relative\">safe</a>";
+  // Repeat the same tag to check that removal doesn't skip adjacent siblings,
+  // nested tags, or tags after preserved content and after the container.
+  const String markup = tag_markup + tag_markup + "<div>" + tag_markup +
+                        safe_markup + tag_markup + "</div>" + tag_markup;
+
+  EXPECT_EQ("<div>" + safe_markup + "</div>", StrictlyProcessedMarkup(markup));
+
+  const String template_markup = "<template>" + tag_markup + "<template>" +
+                                 tag_markup + safe_markup + "</template>" +
+                                 tag_markup + safe_markup + "</template>";
+  const String expected_template_markup = "<template><template>" + safe_markup +
+                                          "</template>" + safe_markup +
+                                          "</template>";
+  EXPECT_EQ(expected_template_markup + "<div>safe</div>",
+            StrictlyProcessedMarkup(template_markup + tag_markup +
+                                    "<div>safe</div>"));
+}
+
+// Inline display overrides must not allow an unsafe tag to survive or force
+// heavyweight serialization of the remaining content.
+TEST_P(SerializationUnsafeHeadTagTest,
+       StrictlyProcessedMarkupDropsUnsafeHeadTagWithInlineStyle) {
+  const String tag_markup = String(GetParam());
+  const String markup = tag_markup.substr(0, tag_markup.length() - 1) +
+                        " style='display: block'><div>safe</div>";
+
+  EXPECT_EQ("<div>safe</div>", StrictlyProcessedMarkup(markup));
+}
+
+// With a stylesheet forcing heavyweight serialization, remove the unsafe tag
+// despite its display override while still converting legitimate styles inline.
+TEST_P(SerializationUnsafeHeadTagTest,
+       StrictlyProcessedMarkupDropsUnsafeHeadTagWithStylesheet) {
+  const String style =
+      "<style>base, link, meta { display: block; }"
+      "div { color: rgb(1, 2, 3); }</style>";
+  const String tag_markup = String(GetParam());
+  const String safe_markup = "<div>safe</div>";
+  const String sanitized_markup =
+      StrictlyProcessedMarkup(style + tag_markup + safe_markup);
+
+  EXPECT_EQ(StrictlyProcessedMarkup(style + safe_markup), sanitized_markup);
+  EXPECT_NE(kNotFound, sanitized_markup.find("safe")) << sanitized_markup;
+  EXPECT_NE(kNotFound, sanitized_markup.find("color: rgb(1, 2, 3)"))
+      << sanitized_markup;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    UnsafeHeadTags,
+    SerializationUnsafeHeadTagTest,
+    testing::Values(
+        "<base href='https://attacker.example/'>",
+        "<link rel='stylesheet' href='https://attacker.example/style.css'>",
+        "<meta http-equiv='refresh' "
+        "content='0; url=https://attacker.example/'>"));
+
 TEST_F(SerializationTest, StrictlyProcessedMarkupStripsScriptingAttributes) {
   const String markup =
       "<a href='javascript:alert(1)' onclick='alert(2)' title='safe'>link</a>"
@@ -251,6 +321,73 @@ TEST_F(SerializationTest,
       GetDocument(), markup, 0, markup.length(), base_url, kIncludeNode,
       ResolveUrls::kAll);
   EXPECT_EQ(kNotFound, final_markup.find("javascript:")) << final_markup;
+}
+
+// Regression test for https://crbug.com/578083806
+TEST_F(SerializationTest,
+       StrictlyProcessedMarkupStripsNestedSvgUseNonLocalHrefs) {
+  const String select_markup =
+      "<select><svg><use href='#safe'>"
+      "<use href='https://example.com/external.svg#payload'></use>"
+      "<use href='http://example.com/external.svg#payload'></use>"
+      "<use xlink:href='https://example.com/external.svg#payload'></use>"
+      "<use href='data:image/svg+xml,<svg id=\"x\"></svg>#x'></use>"
+      "<use href='#also-safe'></use>"
+      "</use></svg></select>";
+  const String sanitized_select = StrictlyProcessedMarkup(select_markup);
+  EXPECT_EQ(kNotFound, sanitized_select.find("external.svg"))
+      << sanitized_select;
+  EXPECT_EQ(kNotFound, sanitized_select.find("data:")) << sanitized_select;
+  EXPECT_NE(kNotFound, sanitized_select.find("href=\"#safe\""))
+      << sanitized_select;
+  EXPECT_NE(kNotFound, sanitized_select.find("href=\"#also-safe\""))
+      << sanitized_select;
+
+  const String plain_nested_markup =
+      "<svg><use href='#safe'>"
+      "<use href='https://example.com/external.svg#payload'></use>"
+      "</use></svg>";
+  const String sanitized_plain_nested =
+      StrictlyProcessedMarkup(plain_nested_markup);
+  EXPECT_EQ(kNotFound, sanitized_plain_nested.find("external.svg"))
+      << sanitized_plain_nested;
+  EXPECT_NE(kNotFound, sanitized_plain_nested.find("href=\"#safe\""))
+      << sanitized_plain_nested;
+
+  const String display_contents_markup =
+      "<svg><use href='#safe' style='display: contents'>"
+      "<use href='https://example.com/external.svg#payload' "
+      "style='display: contents'></use>"
+      "</use></svg>";
+  const String sanitized_display_contents =
+      StrictlyProcessedMarkup(display_contents_markup);
+  EXPECT_EQ(kNotFound, sanitized_display_contents.find("external.svg"))
+      << sanitized_display_contents;
+  EXPECT_NE(kNotFound, sanitized_display_contents.find("href=\"#safe\""))
+      << sanitized_display_contents;
+
+  const String deep_with_style_markup =
+      "<style>div { color: rgb(1, 2, 3); }</style>"
+      "<select><svg><use href='#safe1'><g><use href='#safe2'>"
+      "<use href='https://example.com/external.svg#payload'></use>"
+      "</use></g></use></svg></select>"
+      "<div>safe</div>";
+  const String sanitized_deep = StrictlyProcessedMarkup(deep_with_style_markup);
+  EXPECT_EQ(kNotFound, sanitized_deep.find("external.svg")) << sanitized_deep;
+  EXPECT_NE(kNotFound, sanitized_deep.find("href=\"#safe1\""))
+      << sanitized_deep;
+  EXPECT_NE(kNotFound, sanitized_deep.find("href=\"#safe2\""))
+      << sanitized_deep;
+  EXPECT_NE(kNotFound, sanitized_deep.find("color: rgb(1, 2, 3)"))
+      << sanitized_deep;
+
+  // Keeping only local <use> elements should not force heavyweight style
+  // sanitization.
+  const String local_only_markup =
+      "<div><span style=\"display: none\">hidden</span>"
+      "<svg><defs><rect id=\"r\" width=\"10\" height=\"10\"></rect></defs>"
+      "<use href=\"#r\"><use href=\"#r\"></use></use></svg></div>";
+  EXPECT_EQ(local_only_markup, StrictlyProcessedMarkup(local_only_markup));
 }
 
 // Regression test for https://crbug.com/40840595

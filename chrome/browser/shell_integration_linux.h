@@ -9,8 +9,10 @@
 #include <string>
 #include <vector>
 
+#include "base/callback_list.h"
 #include "base/files/file_path.h"
 #include "base/files/safe_base_name.h"
+#include "base/functional/callback.h"
 #include "build/build_config.h"
 #include "chrome/common/buildflags.h"
 #include "url/gurl.h"
@@ -83,6 +85,45 @@ std::string GetDirectLaunchMimeTypeHandler();
 // them as a separate application.
 std::string GetWMClassFromAppName(std::string app_name);
 
+// Returns the desktop entry ID (the .desktop file basename without the
+// extension) that identifies browser windows of the profile at
+// `profile_path`, e.g. "google-chrome-Profile_1". Returns an empty string for
+// the default profile and for profiles outside the default user data
+// directory; those always use the browser's main desktop entry.
+std::string GetPerProfileDesktopId(const base::FilePath& profile_path);
+
+// Returns the per-profile desktop entry ID for `profile_path` if per-profile
+// window identities are enabled and a desktop entry with that ID is known to be
+// installed. Otherwise returns an empty string, in which case the profile's
+// windows use the browser's main identity. Browser windows with a per-profile
+// ID use it as both the X11 WM_CLASS res_name and the Wayland app_id; the X11
+// res_class is left unchanged so desktop environments that don't know about
+// the per-profile entry still fall back to the main browser entry.
+// Must be called on the UI thread.
+std::string GetInstalledPerProfileDesktopId(const base::FilePath& profile_path);
+
+// Records whether a desktop entry with the per-profile desktop entry ID for
+// `profile_path` is installed. Recording the same state again is a no-op, since
+// detection and desktop entry updates may report a state that is already
+// known. Must be called on the UI thread.
+void SetPerProfileDesktopEntryInstalled(const base::FilePath& profile_path,
+                                        bool installed);
+
+// Registers `callback` to be run with the profile path whenever
+// SetPerProfileDesktopEntryInstalled() changes whether a profile has an
+// installed per-profile desktop entry, so that open browser windows can update
+// their identity. Must be called on the UI thread.
+base::CallbackListSubscription RegisterPerProfileDesktopEntryChangedCallback(
+    base::RepeatingCallback<void(const base::FilePath&)> callback);
+
+// Checks the XDG data directories for installed per-profile desktop entries
+// for each of `profile_paths`, and records the results with
+// SetPerProfileDesktopEntryInstalled(). Does nothing if per-profile window
+// identities are disabled. Blocking; must be called on the UI thread during
+// startup, before any browser windows are created.
+void DetectInstalledPerProfileDesktopEntries(
+    const std::vector<base::FilePath>& profile_paths);
+
 // Helper to launch xdg scripts. We don't want them to ask any questions on the
 // terminal etc. The function returns true if the utility launches and exits
 // cleanly, in which case |exit_code| returns the utility's exit code.
@@ -97,6 +138,9 @@ std::string GetProgramClassName(const base::CommandLine& command_line,
                                 const std::string& desktop_file_name);
 std::string GetProgramClassClass(const base::CommandLine& command_line,
                                  const std::string& desktop_file_name);
+std::string GetPerProfileDesktopId(const base::FilePath& profile_path,
+                                   const base::FilePath& default_user_data_dir,
+                                   const std::string& desktop_file_name);
 
 // Get the value of NoDisplay from the [Desktop Entry] section of a .desktop
 // file, given in |shortcut_contents|. If the key is not found, returns false.

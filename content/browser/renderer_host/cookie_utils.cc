@@ -126,16 +126,6 @@ void PotentiallyRecordCookieOriginMismatch(
   }
 }
 
-void RecordCookiesExemptedByTopLevelStorage(ukm::SourceId source_id,
-                                            int affected_cookies_in_request) {
-  ukm::builders::RequestStorageAccessFor_TopLevelStorageIsExemptionReason(
-      source_id)
-      .SetNumberOfCookies(ukm::GetExponentialBucketMin(
-          affected_cookies_in_request, /*bucket_spacing=*/2.0))
-      .Record(ukm::UkmRecorder::Get());
-}
-
-
 // Records the PartitionedCookiePresentV3 UKM. It ignores prerendering pages.
 void RecordPartitionedCookieUseV3UKM(RenderFrameHost* rfh,
                                      const ukm::SourceId& source_id) {
@@ -300,8 +290,6 @@ void EmitCookieWarningsAndMetrics(
   bool cookie_set_has_empty_name = false;
   bool cookie_set_has_empty_name_and_ambiguous_value = false;
 
-  int cookies_exempted_by_top_level_storage_access = 0;
-
   for (const network::mojom::CookieOrLineWithAccessResultPtr& cookie :
        cookie_details->cookie_list) {
     const net::CookieInclusionStatus& status = cookie->access_result.status;
@@ -390,11 +378,6 @@ void EmitCookieWarningsAndMetrics(
       httponly_cookie_names.insert(cookie->cookie_or_line->get_cookie().Name());
     }
 
-    if (cookie->access_result.status.exemption_reason() ==
-        net::CookieInclusionStatus::ExemptionReason::kTopLevelStorageAccess) {
-      cookies_exempted_by_top_level_storage_access++;
-    }
-
     if (status.HasWarningReason(
             net::CookieInclusionStatus::WarningReason::
                 WARN_CROSS_SITE_REDIRECT_DOWNGRADE_CHANGES_INCLUSION) &&
@@ -405,10 +388,19 @@ void EmitCookieWarningsAndMetrics(
     }
 
     if (cookie->cookie_or_line->is_cookie()) {
+      const net::CanonicalCookie& canonical_cookie =
+          cookie->cookie_or_line->get_cookie();
+      const std::string cookie_value = canonical_cookie.Value();
       PotentiallyRecordNonAsciiCookieNameValue(
-          rfh, cookie_details->type,
-          cookie->cookie_or_line->get_cookie().Name(),
-          cookie->cookie_or_line->get_cookie().Value());
+          rfh, cookie_details->type, canonical_cookie.Name(), cookie_value);
+
+      if (cookie_details->type == CookieAccessDetails::Type::kChange &&
+          canonical_cookie.Name().empty()) {
+        cookie_set_has_empty_name = true;
+        if (cookie_value.contains('=')) {
+          cookie_set_has_empty_name_and_ambiguous_value = true;
+        }
+      }
     }
 
     PotentiallyRecordCookieOriginMismatch(rfh, cookie_details->type, status);
@@ -432,15 +424,6 @@ void EmitCookieWarningsAndMetrics(
           days_since_refresh > 300 && days_since_refresh <= 350;
       cookie_has_not_been_refreshed_in_351_to_400_days |=
           days_since_refresh > 350 && days_since_refresh <= 400;
-    }
-
-    if (cookie_details->type == CookieAccessDetails::Type::kChange &&
-        cookie->cookie_or_line->is_cookie() &&
-        cookie->cookie_or_line->get_cookie().Name().empty()) {
-      cookie_set_has_empty_name = true;
-      if (cookie->cookie_or_line->get_cookie().Value().contains('=')) {
-        cookie_set_has_empty_name_and_ambiguous_value = true;
-      }
     }
   }
 
@@ -532,12 +515,6 @@ void EmitCookieWarningsAndMetrics(
     GetContentClient()->browser()->LogWebFeatureForCurrentPage(
         rfh,
         blink::mojom::WebFeature::kSetCookieWithEmptyNameAndAmbiguousValue);
-  }
-
-  if (cookies_exempted_by_top_level_storage_access) {
-    RecordCookiesExemptedByTopLevelStorage(
-        rfh->GetPageUkmSourceId(),
-        cookies_exempted_by_top_level_storage_access);
   }
 }
 

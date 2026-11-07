@@ -11,7 +11,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/downgrade/snapshot_file_collector.h"
 #include "chrome/common/pref_names.h"
-#include "components/enterprise/browser/controller/browser_dm_token_storage.h"
 #include "components/prefs/pref_service.h"
 
 namespace downgrade {
@@ -22,11 +21,11 @@ int DowngradeManagerDelegateImpl::GetMaxNumberOfSnapshots() const {
 }
 
 bool DowngradeManagerDelegateImpl::UserDataSnapshotEnabled() const {
-  return
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
-      base::IsEnterpriseDevice() ||
+  return base::IsEnterpriseDevice();
+#else
+  return false;
 #endif
-      policy::BrowserDMTokenStorage::Get()->RetrieveDMToken().is_valid();
 }
 
 base::FilePath DowngradeManagerDelegateImpl::GetDiskCacheDir() const {

@@ -11,7 +11,6 @@ if (!is_android) {
       "browser_web_contents_delegate.cc",
       "browser_web_contents_delegate.h",
     ]
-    public_deps = [ "//chrome/browser:browser_public_dependencies" ]
     deps = [
       "//base",
       "//chrome/browser:file_select_helper",
@@ -22,11 +21,11 @@ if (!is_android) {
       "//chrome/browser/custom_handlers",
       "//chrome/browser/devtools",
       "//chrome/browser/headless",
-      "//chrome/browser/picture_in_picture",
       "//chrome/browser/preloading:prefs",
       "//chrome/browser/search",
       "//chrome/browser/ui:browser_command_controller",
       "//chrome/browser/ui:browser_commands",
+      "//chrome/browser/ui:browser_tabstrip",
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui:tab_dialogs",
       "//chrome/browser/ui:tab_modal_confirm_dialog",
@@ -39,6 +38,7 @@ if (!is_android) {
       "//components/find_in_page",
       "//components/headless/console_message_logger",
       "//components/javascript_dialogs",
+      "//components/optimization_guide/content/browser",
       "//components/page_load_metrics/browser",
       "//components/printing/browser",
       "//content/public/browser",

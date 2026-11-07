@@ -33,6 +33,8 @@
 
 #include "third_party/blink/renderer/core/dom/events/event.h"
 #include "third_party/blink/renderer/core/dom/shadow_root.h"
+#include "third_party/blink/renderer/core/editing/frame_selection.h"
+#include "third_party/blink/renderer/core/editing/selection_template.h"
 #include "third_party/blink/renderer/core/events/mouse_event.h"
 #include "third_party/blink/renderer/core/events/touch_event.h"
 #include "third_party/blink/renderer/core/frame/event_handler_registry.h"
@@ -49,6 +51,19 @@
 #include "ui/base/ui_base_features.h"
 
 namespace blink {
+
+namespace {
+
+bool SelectionOverlapsNode(const FrameSelection& selection, const Node& node) {
+  const SelectionInDomTree& dom_selection = selection.GetSelectionInDomTree();
+  if (!dom_selection.IsRange()) {
+    return false;
+  }
+  return dom_selection.ComputeStartPosition() <= Position::AfterNode(node) &&
+         Position::BeforeNode(node) <= dom_selection.ComputeEndPosition();
+}
+
+}  // namespace
 
 SliderThumbElement::SliderThumbElement(Document& document)
     : HTMLDivElement(document), in_drag_mode_(false) {
@@ -104,7 +119,7 @@ void SliderThumbElement::SetPositionFromPoint(const PhysicalOffset& point) {
     return;
 
   PhysicalOffset point_in_track = track_box->AbsoluteToLocalPoint(point);
-  auto writing_direction = thumb_box->StyleRef().GetWritingDirection();
+  auto writing_direction = thumb_box->Style().GetWritingDirection();
   bool is_flipped = writing_direction.IsFlippedInlines();
   const auto* input_box = To<LayoutBox>(input_object);
   const PhysicalOffset thumb_offset =
@@ -160,6 +175,12 @@ void SliderThumbElement::SetPositionFromPoint(const PhysicalOffset& point) {
 
 void SliderThumbElement::StartDragging() {
   if (LocalFrame* frame = GetDocument().GetFrame()) {
+    // A press inside the selection arms a selection drag, which would
+    // swallow the slider drag.
+    const HTMLInputElement* input = HostInput();
+    if (input && SelectionOverlapsNode(frame->Selection(), *input)) {
+      frame->Selection().Clear();
+    }
     // Note that we get to here only we through mouse event path. The touch
     // events are implicitly captured to the starting element and will be
     // handled in handleTouchEvent function.
@@ -274,7 +295,7 @@ const AtomicString& SliderThumbElement::ShadowPseudoId() const {
   if (!input || !input->GetLayoutObject())
     return shadow_element_names::kPseudoSliderThumb;
 
-  const ComputedStyle& slider_style = input->GetLayoutObject()->StyleRef();
+  const ComputedStyle& slider_style = input->GetLayoutObject()->Style();
   switch (slider_style.EffectiveAppearance()) {
     case AppearanceValue::kMediaSlider:
     case AppearanceValue::kMediaSliderThumb:
@@ -399,8 +420,7 @@ bool SliderContainerElement::CanSlide() {
   if (!HostInput() || !HostInput()->GetLayoutObject()) {
     return false;
   }
-  const ComputedStyle& slider_style =
-      HostInput()->GetLayoutObject()->StyleRef();
+  const ComputedStyle& slider_style = HostInput()->GetLayoutObject()->Style();
   const TransformOperations& transforms = slider_style.Transform();
   int transform_size = transforms.size();
   if (transform_size > 0) {
@@ -428,7 +448,7 @@ const AtomicString& SliderContainerElement::ShadowPseudoId() const {
     return shadow_element_names::kPseudoSliderContainer;
 
   const ComputedStyle& slider_style =
-      OwnerShadowHost()->GetLayoutObject()->StyleRef();
+      OwnerShadowHost()->GetLayoutObject()->Style();
   switch (slider_style.EffectiveAppearance()) {
     case AppearanceValue::kMediaSlider:
     case AppearanceValue::kMediaSliderThumb:

@@ -16,7 +16,7 @@
 #include "third_party/blink/public/web/web_document_loader.h"
 #include "third_party/blink/public/web/web_local_frame.h"
 #include "third_party/blink/public/web/web_navigation_type.h"
-#include "third_party/blink/public/web/web_performance_metrics_for_reporting.h"
+#include "third_party/blink/public/web/web_performance_timings.h"
 #include "v8/include/cppgc/allocation.h"
 #include "v8/include/v8-context.h"
 #include "v8/include/v8-function.h"
@@ -87,7 +87,7 @@ void LoadtimesGetter(v8::Local<v8::Name> name,
     frame->UsageCountChromeLoadTimes(blink::WebString::FromUtf8(
         *v8::String::Utf8Value(info.GetIsolate(), name)));
   }
-  info.GetReturnValue().Set(info.Data());
+  info.GetReturnValue().Set(info.DataV2().As<v8::Value>());
 }
 
 void CSIGetter(v8::Local<v8::Name> name,
@@ -97,7 +97,7 @@ void CSIGetter(v8::Local<v8::Name> name,
     frame->UsageCountChromeCSI(blink::WebString::FromUtf8(
         *v8::String::Utf8Value(info.GetIsolate(), name)));
   }
-  info.GetReturnValue().Set(info.Data());
+  info.GetReturnValue().Set(info.DataV2().As<v8::Value>());
 }
 
 }  // namespace
@@ -107,7 +107,8 @@ void LoadTimesBindings::LoadTimesCallback(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   LoadTimesBindings* bindings = nullptr;
-  if (gin::ConvertFromV8(isolate, info.Data(), &bindings) && bindings) {
+  if (gin::ConvertFromV8(isolate, info.DataV2().As<v8::Value>(), &bindings) &&
+      bindings) {
     info.GetReturnValue().Set(bindings->GetLoadTimes(isolate));
   }
 }
@@ -117,7 +118,8 @@ void LoadTimesBindings::CSICallback(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   LoadTimesBindings* bindings = nullptr;
-  if (gin::ConvertFromV8(isolate, info.Data(), &bindings) && bindings) {
+  if (gin::ConvertFromV8(isolate, info.DataV2().As<v8::Value>(), &bindings) &&
+      bindings) {
     info.GetReturnValue().Set(bindings->GetCSI(isolate));
   }
 }
@@ -180,8 +182,7 @@ v8::Local<v8::Value> LoadTimesBindings::GetLoadTimes(v8::Isolate* isolate) {
     return v8::Null(isolate);
   }
   const blink::WebURLResponse& response = document_loader->GetWebResponse();
-  blink::WebPerformanceMetricsForReporting web_performance =
-      frame->PerformanceMetricsForReporting();
+  blink::WebPerformanceTimings timings = frame->PerformanceTimings();
 
   // Though request time now tends to be used to describe the time that the
   // request for the main resource was issued, when chrome.loadTimes() was
@@ -189,7 +190,7 @@ v8::Local<v8::Value> LoadTimesBindings::GetLoadTimes(v8::Isolate* isolate) {
   // received', which is the time now known as navigation start. For backward
   // compatibility, we continue to provide request_time, setting its value to
   // navigation start.
-  double request_time = web_performance.NavigationStart();
+  double request_time = timings.ToEpochTime().InSecondsF();
   // Developers often use start_load_time as the time the navigation was
   // started, so we return navigationStart for this value as well. See
   // https://gist.github.com/search?utf8=%E2%9C%93&q=startLoadTime.
@@ -204,13 +205,17 @@ v8::Local<v8::Value> LoadTimesBindings::GetLoadTimes(v8::Isolate* isolate) {
   // the render process will no longer make sense. Thus, we now report the
   // time for navigationStart, which is a value more consistent with what
   // developers currently use start_load_time for.
-  double start_load_time = web_performance.NavigationStart();
+  double start_load_time = request_time;
   // TODO(bmcquade): Remove this. 'commit' time is a concept internal to
   // chrome that shouldn't be exposed to the web platform.
-  double commit_load_time = web_performance.ResponseStart();
-  double finish_document_load_time = web_performance.DomContentLoadedEventEnd();
-  double finish_load_time = web_performance.LoadEventEnd();
-  double first_paint_time = web_performance.FirstPaint();
+  double commit_load_time =
+      timings.ToEpochTime(timings.response_start).InSecondsF();
+  double finish_document_load_time =
+      timings.ToEpochTime(timings.dom_content_loaded_event_end).InSecondsF();
+  double finish_load_time =
+      timings.ToEpochTime(timings.load_event_end).InSecondsF();
+  double first_paint_time =
+      timings.ToEpochTime(timings.first_paint).InSecondsF();
   // TODO(bmcquade): remove this. It's misleading to track the first paint
   // after the load event, since many pages perform their meaningful paints
   // long before the load event fires. We report a time of zero for the
@@ -283,15 +288,11 @@ v8::Local<v8::Value> LoadTimesBindings::GetCSI(v8::Isolate* isolate) {
   if (!document_loader) {
     return v8::Null(isolate);
   }
-  blink::WebPerformanceMetricsForReporting web_performance =
-      frame->PerformanceMetricsForReporting();
-  base::Time now = base::Time::Now();
-  base::Time start =
-      base::Time::FromSecondsSinceUnixEpoch(web_performance.NavigationStart());
-
-  base::Time dom_content_loaded_end = base::Time::FromSecondsSinceUnixEpoch(
-      web_performance.DomContentLoadedEventEnd());
-  base::TimeDelta page = now - start;
+  blink::WebPerformanceTimings timings = frame->PerformanceTimings();
+  int64_t start = timings.ToEpochTime().InMilliseconds();
+  int64_t dom_content_loaded_end =
+      timings.ToEpochTime(timings.dom_content_loaded_event_end)
+          .InMilliseconds();
   int navigation_type =
       GetCSITransitionType(document_loader->GetNavigationType());
 
@@ -313,14 +314,12 @@ v8::Local<v8::Value> LoadTimesBindings::GetCSI(v8::Isolate* isolate) {
         .FromMaybe(false);
   };
 
-  if (!define_prop("startE", v8_num(start.InMillisecondsSinceUnixEpoch())) ||
+  if (!define_prop("startE", v8_num(start)) ||
       // NOTE: historically, the CSI onload field has reported the time the
       // document finishes parsing, which is DOMContentLoaded. Thus, we continue
       // to report that here, despite the fact that the field is named onloadT.
-      !define_prop(
-          "onloadT",
-          v8_num(dom_content_loaded_end.InMillisecondsSinceUnixEpoch())) ||
-      !define_prop("pageT", v8_num(page.InMillisecondsF())) ||
+      !define_prop("onloadT", v8_num(dom_content_loaded_end)) ||
+      !define_prop("pageT", v8_num(timings.now)) ||
       !define_prop("tran", v8_num(navigation_type))) {
     return v8::Null(isolate);
   }

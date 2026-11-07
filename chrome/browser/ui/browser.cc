@@ -46,7 +46,6 @@
 #include "chrome/browser/extensions/tab_helper.h"
 #include "chrome/browser/first_run/first_run.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/policy/developer_tools_policy_handler.h"
 #include "chrome/browser/printing/background_printing_manager.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
@@ -88,7 +87,6 @@
 #include "chrome/browser/ui/status_bubble.h"
 #include "chrome/browser/ui/tab_contents/core_tab_helper.h"
 #include "chrome/browser/ui/tab_dialogs.h"
-#include "chrome/browser/ui/tab_helpers.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/tab_change_type.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
@@ -354,7 +352,7 @@ Browser::~Browser() {
   //
   // TODO(crbug.com/40887606): This DCHECK doesn't always pass.
   // TODO(crbug.com/40064092): convert this to CHECK.
-  DCHECK(tab_strip_model_->empty());
+  CHECK(tab_strip_model_->empty(), base::NotFatalUntil::M162);
 
   SessionServiceBase* service = GetAppropriateSessionServiceForProfile(this);
 
@@ -516,7 +514,7 @@ WebContents* Browser::OpenURL(
     base::OnceCallback<void(content::NavigationHandle&)>
         navigation_handle_callback) {
 #if DCHECK_IS_ON()
-  DCHECK(params.Valid());
+  CHECK(params.Valid(), base::NotFatalUntil::M162);
 #endif
 
   return BrowserWebContentsDelegate::From(this)->OpenURLFromTab(
@@ -635,8 +633,13 @@ void Browser::OnTabInsertedAt(WebContents* contents, int index) {
   // won't start if the page is loading. Note that we don't want to
   // ScheduleUIUpdate() because the tab may not have been inserted in the UI
   // yet if this function is called before TabStripModel::TabInsertedAt().
-  BrowserUiController::From(this)->UpdateWindowForLoadingStateChanged(contents,
-                                                                      true);
+  // A tab that is not loading cannot change whether the window needs loading
+  // UI, and the check scans every tab, so skip it for such tabs (e.g. the
+  // background tabs of a session restore, which are inserted unloaded).
+  if (contents->ShouldShowLoadingUI()) {
+    BrowserUiController::From(this)->UpdateWindowForLoadingStateChanged(
+        contents, true);
+  }
 }
 
 void Browser::OnTabClosing(tabs::TabInterface* tab,
@@ -788,9 +791,10 @@ void Browser::OnActiveTabChanged(const TabStripModelChange& change,
 
     // Show the loading state (if any).
     if (status_bubble == status_bubbles.front()) {
-      status_bubble->SetStatus(CoreTabHelper::FromWebContents(
-                                   tab_strip_model_->GetActiveWebContents())
-                                   ->GetStatusText());
+      if (auto* core_tab_helper = CoreTabHelper::FromWebContents(
+              tab_strip_model_->GetActiveWebContents())) {
+        status_bubble->SetStatus(core_tab_helper->GetStatusText());
+      }
     }
   }
 
@@ -809,9 +813,17 @@ void Browser::OnTabReplacedAt(WebContents* old_contents,
   if (was_active) {
     did_active_tab_change_callback_list_.Notify(this);
   }
+  // OnTabInsertedAt() refreshes the loading UI only for contents that are
+  // loading, so remember whether the old contents needed it.
+  const bool old_contents_needed_loading_ui =
+      old_contents->ShouldShowLoadingUI();
   TabDetachedAtImpl(old_contents, was_active, DetachType::kReplace);
   ExclusiveAccessManager::From(this)->OnTabClosing(old_contents);
   OnTabInsertedAt(new_contents, index);
+  if (old_contents_needed_loading_ui && !new_contents->ShouldShowLoadingUI()) {
+    BrowserUiController::From(this)->UpdateWindowForLoadingStateChanged(
+        new_contents, true);
+  }
 
   if (!new_contents->GetController().IsInitialBlankNavigation()) {
     // Send out notification so that observers are updated appropriately.

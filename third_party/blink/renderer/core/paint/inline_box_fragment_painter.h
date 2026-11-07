@@ -186,11 +186,7 @@ class InlineBoxFragmentPainter : public InlineBoxFragmentPainterBase {
   // Paint all fragments generated for the inline within the given block
   // container, specified as a fragment data index. The index is relative to the
   // first block fragment where the inline occurs.
-  //
-  // TODO(crbug.com/1478119): If looking up a FragmentData were O(1) instead of
-  // O(n), there should be no need to pass both FragmentData and the index.
   static void PaintAllFragments(const LayoutInline& layout_inline,
-                                const FragmentData& fragment_data,
                                 wtf_size_t fragment_data_idx,
                                 const PaintInfo&);
 
@@ -249,7 +245,7 @@ class LineBoxFragmentPainter : public InlineBoxFragmentPainterBase {
             // is a copy at the time of the last layout to reflect the line
             // direction, and its paint properties may have been changed.
             // TODO(kojii): Reconsider |line_fragment.Style()|.
-            layout_block_flow.StyleRef(),
+            layout_block_flow.Style(),
             layout_block_flow.FirstLineStyleRef(),
             /* inline_context */ nullptr),
         block_fragment_(block_fragment) {

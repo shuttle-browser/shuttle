@@ -18,7 +18,6 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
-#include "components/enterprise/common/proto/connectors.pb.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/safe_browsing/core/browser/db/sb_protocol_manager_util.h"
 #include "components/safe_browsing/core/browser/referring_app_info.h"
@@ -180,27 +179,11 @@ class RealTimeUrlLookupServiceBase : public KeyedService {
   // Checks if a sample ping can be sent to Safe Browsing.
   virtual bool CanSendRTSampleRequest() const = 0;
 
-  // Returns an email address to be attached to lookup requests, or an empty
-  // string if none is available.
-  virtual std::string GetUserEmail() const = 0;
-
-  // Returns DM Token for the managed browser.
-  virtual std::string GetBrowserDMTokenString() const = 0;
-
-  // Returns DM Token for the managed profile.
-  virtual std::string GetProfileDMTokenString() const = 0;
-
-  // Returns the client metadata (browser, profile) information. May be
-  // nullptr if ClientMetadata is unavailable.
-  virtual std::unique_ptr<enterprise_connectors::ClientMetadata>
-  GetClientMetadata() const = 0;
-
   // Returns the content area email address. This is the email address used for
   // active Gaia filtering.
   virtual std::string GetContentAreaAccountEmail(const GURL& tab_url) const = 0;
 
-  // Returns true if `url`'s scheme can be checked, or if it should be checked
-  // anyway because of "EnterpriseRealTimeUrlCheckMode".
+  // Returns true if `url` is eligible for a real-time URL lookup.
   virtual bool CanCheckUrl(const GURL& url) = 0;
 
   // KeyedService:
@@ -210,9 +193,9 @@ class RealTimeUrlLookupServiceBase : public KeyedService {
   // Suffix for logging metrics.
   virtual std::string GetMetricSuffix() const = 0;
 
-  // Overrides safe url check from browser throttle. This is used
-  // to send requests for sites that would usually be safe in case
-  // they are blocked by an enterprise data protection rule.
+  // Returns true if `url` should override the `KnownSafeUrl()` check in
+  // `BrowserURLLoaderThrottle`. Used by enterprise to allow checking
+  // `chrome://` URLs that may be blocked by an enterprise data protection rule.
   virtual bool ShouldOverrideKnownSafeUrlDecision(const GURL& url) const = 0;
 
   // Fragments, usernames and passwords are removed, because fragments are only
@@ -340,9 +323,6 @@ class RealTimeUrlLookupServiceBase : public KeyedService {
       std::optional<internal::ReferringAppInfo> referring_app_info,
       const std::string& access_token);
 
-  // Gets a dm token string to be set in a request proto.
-  virtual std::optional<std::string> GetDMTokenString() const = 0;
-
   // Returns whether real time URL requests should include credentials.
   virtual bool ShouldIncludeCredentials() const = 0;
 
@@ -415,11 +395,6 @@ class RealTimeUrlLookupServiceBase : public KeyedService {
       SessionID tab_id,
       std::optional<internal::ReferringAppInfo> referring_app_info,
       base::OnceCallback<void(std::unique_ptr<RTLookupRequest>)> callback);
-
-  // Called when the IP addresses are fetched and adds them to the request.
-  void OnLocalIpsFetched(const GURL& url,
-                         base::RepeatingClosure barrier_closure,
-                         std::vector<std::string> ip_addresses);
 
   // Callback when DNS resolution completes. Adds the resolved IP to the
   // request.

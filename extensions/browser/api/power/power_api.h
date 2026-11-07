@@ -11,6 +11,7 @@
 
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
+#include "base/scoped_observation.h"
 #include "build/chromeos_buildflags.h"
 #include "extensions/browser/browser_context_keyed_api_factory.h"
 #include "extensions/browser/extension_function.h"
@@ -25,6 +26,8 @@ class BrowserContext;
 }
 
 namespace extensions {
+
+class ExtensionRegistry;
 
 // Implementation of the chrome.power.requestKeepAwake API.
 class PowerRequestKeepAwakeFunction : public ExtensionFunction {
@@ -105,6 +108,10 @@ class PowerAPI : public BrowserContextKeyedAPI,
       ActivateWakeLockFunction activate_function,
       CancelWakeLockFunction cancel_function);
 
+  // Call before querying the wake lock state, as the requests are sent over an
+  // asynchronous Remote.
+  void FlushWakeLockForTesting();
+
   // Overridden from extensions::ExtensionRegistryObserver.
   void OnExtensionUnloaded(content::BrowserContext* browser_context,
                            const Extension* extension,
@@ -152,6 +159,9 @@ class PowerAPI : public BrowserContextKeyedAPI,
 
   // Outstanding requests.
   ExtensionLevelMap extension_levels_;
+
+  base::ScopedObservation<ExtensionRegistry, ExtensionRegistryObserver>
+      extension_registry_observation_{this};
 };
 
 }  // namespace extensions

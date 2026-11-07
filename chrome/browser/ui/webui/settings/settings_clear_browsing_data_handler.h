@@ -85,6 +85,10 @@ class ClearBrowsingDataHandler : public SettingsPageUIHandler,
   // executed and prefs updated.
   void HandleRestartCounters(const base::ListValue& args);
 
+  // Called by WebUI when the user cancels or closes the dialog without
+  // clearing browsing data.
+  void HandleClearBrowsingDataCancelled(const base::ListValue& args);
+
   // Updates the footer of the dialog when the sync state changes.
   virtual void UpdateSyncState();
 

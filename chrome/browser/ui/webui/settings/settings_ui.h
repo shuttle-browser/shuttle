@@ -36,6 +36,7 @@ class ThemeColorPickerHandler;
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
 class CustomizeColorSchemeModeHandler;
+
 namespace settings {
 
 class SettingsUI;

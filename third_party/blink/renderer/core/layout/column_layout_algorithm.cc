@@ -461,7 +461,7 @@ const LayoutResult* ColumnLayoutAlgorithm::Layout() {
 }
 
 MinMaxSizesResult ColumnLayoutAlgorithm::ComputeMinMaxSizes(
-    const MinMaxSizesInput&) {
+    const MinMaxSizesInput& input) {
   const LayoutUnit override_intrinsic_inline_size =
       Node().OverrideIntrinsicContentInlineSize();
   if (override_intrinsic_inline_size != kIndefiniteSize) {
@@ -470,13 +470,22 @@ MinMaxSizesResult ColumnLayoutAlgorithm::ComputeMinMaxSizes(
     return {{size, size}, /* depends_on_block_constraints */ false};
   }
 
+  const int column_count = Style().ColumnCount();
+  DCHECK_GE(column_count, 1);
+  const LayoutUnit column_gap =
+      ResolveColumnGapForMulticol(Style(), LayoutUnit());
+  const LayoutUnit gap_extra = column_gap * (column_count - 1);
+
   // First calculate the min/max sizes of columns.
   ConstraintSpace space = CreateConstraintSpaceForMinMax();
   FragmentGeometry fragment_geometry = CalculateInitialFragmentGeometry(
       space, Node(), /* break_token */ nullptr, /* is_intrinsic */ true);
   BlockLayoutAlgorithm algorithm({Node(), fragment_geometry, space});
-  MinMaxSizesResult result =
-      algorithm.ComputeMinMaxSizes(MinMaxSizesInput::UnconstrainedUntriaged());
+  MinMaxSizesInput column_input = input;
+  column_input.constrained_inline_size =
+      (input.constrained_inline_size - gap_extra).ClampNegativeToZero() /
+      column_count;
+  MinMaxSizesResult result = algorithm.ComputeMinMaxSizes(column_input);
 
   // How column-width affects min/max sizes is currently not defined in any
   // spec, but there used to be a definition, which everyone still follows to
@@ -495,17 +504,24 @@ MinMaxSizesResult ColumnLayoutAlgorithm::ComputeMinMaxSizes(
     // min-content inline-size contribution of its contents."
     const LayoutUnit column_width(Style().ColumnWidth());
     result.sizes.min_size = std::min(result.sizes.min_size, column_width);
-    result.sizes.max_size = std::max(result.sizes.max_size, column_width);
+    if (Style().HasAutoColumnCount() &&
+        RuntimeEnabledFeatures::MulticolColumnWidthMaxContentClampEnabled()) {
+      // This is not currently specified anywhere, but matches the
+      // "Max-content Sizes in Unconstrained-height Multi-column Layout"
+      // section from an old css-sizing-4 draft, which was removed; see
+      // https://github.com/w3c/csswg-drafts/issues/4952. With
+      // column-count:auto the used column count is 1, so the max-content
+      // inline size is just column-width.
+      result.sizes.max_size = column_width;
+    } else {
+      result.sizes.max_size = std::max(result.sizes.max_size, column_width);
+    }
     result.sizes.max_size =
         std::max(result.sizes.max_size, result.sizes.min_size);
   }
 
   // Now convert those column min/max values to multicol container min/max
   // values. We typically have multiple columns and also gaps between them.
-  int column_count = Style().ColumnCount();
-  DCHECK_GE(column_count, 1);
-  LayoutUnit column_gap = ResolveColumnGapForMulticol(Style(), LayoutUnit());
-  LayoutUnit gap_extra = column_gap * (column_count - 1);
 
   // Another peculiarity in the (old and only) spec (see above) is that
   // column-count (and therefore also column-gap) is ignored in intrinsic min
@@ -521,7 +537,7 @@ MinMaxSizesResult ColumnLayoutAlgorithm::ComputeMinMaxSizes(
   // they shouldn't be part of the column-count multiplication above). Calculate
   // min/max inline-size for spanners now.
   if (!Node().ShouldApplyInlineSizeContainment())
-    result.sizes.Encompass(ComputeSpannersMinMaxSizes(Node()).sizes);
+    result.sizes.Encompass(ComputeSpannersMinMaxSizes(Node(), input).sizes);
 
   result.sizes += BorderScrollbarPadding().InlineSum();
   return result;
@@ -543,7 +559,7 @@ const PhysicalBoxFragment& ColumnLayoutAlgorithm::CreateEmptyColumn(
   FragmentGeometry fragment_geometry =
       CalculateInitialFragmentGeometry(child_space, node, break_token);
   LayoutAlgorithmParams params(node, fragment_geometry, child_space);
-  params.break_token = break_token;
+  params.fragmentation.break_token = break_token;
   SimplifiedOofLayoutAlgorithm child_algorithm(params, previous_column);
   child_algorithm.ResumeColumnLayout(break_token);
   return To<PhysicalBoxFragment>(
@@ -551,7 +567,8 @@ const PhysicalBoxFragment& ColumnLayoutAlgorithm::CreateEmptyColumn(
 }
 
 MinMaxSizesResult ColumnLayoutAlgorithm::ComputeSpannersMinMaxSizes(
-    const BlockNode& search_parent) const {
+    const BlockNode& search_parent,
+    const MinMaxSizesInput& input) const {
   MinMaxSizesResult result;
   for (LayoutInputNode child = search_parent.FirstChild(); child;
        child = child.NextSibling()) {
@@ -564,15 +581,14 @@ MinMaxSizesResult ColumnLayoutAlgorithm::ComputeSpannersMinMaxSizes(
       // they need to be in its formatting context.
       if (child_block->CreatesNewFormattingContext())
         continue;
-      child_result = ComputeSpannersMinMaxSizes(*child_block);
+      child_result = ComputeSpannersMinMaxSizes(*child_block, input);
     } else {
       MinMaxConstraintSpaceBuilder builder(GetConstraintSpace(), Style(),
                                            *child_block, /* is_new_fc */ true);
       builder.SetAvailableBlockSize(ChildAvailableSize().block_size);
       const ConstraintSpace child_space = builder.ToConstraintSpace();
-      child_result = ComputeMinAndMaxContentContribution(
-          Style(), *child_block, child_space,
-          MinMaxSizesInput::UnconstrainedUntriaged());
+      child_result = ComputeMinAndMaxContentContribution(Style(), *child_block,
+                                                         child_space, input);
     }
     result.sizes.Encompass(child_result.sizes);
   }
@@ -981,8 +997,8 @@ const LayoutResult* ColumnLayoutAlgorithm::LayoutLine(
           child_space, Node(), GetBreakToken());
 
       LayoutAlgorithmParams params(Node(), fragment_geometry, child_space);
-      params.break_token = column_break_token;
-      params.column_spanner_path = spanner_path_;
+      params.fragmentation.break_token = column_break_token;
+      params.fragmentation.column_spanner_path = spanner_path_;
 
       BlockLayoutAlgorithm child_algorithm(params);
       child_algorithm.SetBoxType(PhysicalFragment::kColumnBox);
@@ -1389,18 +1405,14 @@ BreakStatus ColumnLayoutAlgorithm::LayoutSpanner(
   // of an immediately preceding spanner, if any.
   margin_strut->Append(margins.block_start, /* is_quirky */ false);
 
-  const EarlyBreak* early_break_in_child = nullptr;
-  if (early_break_) [[unlikely]] {
-    early_break_in_child = EnterEarlyBreakInChild(spanner_node, *early_break_);
-  }
-
   LayoutUnit block_offset;
   auto layout = [&]() {
     block_offset = intrinsic_block_size_ + margin_strut->Sum();
     auto spanner_space =
         CreateConstraintSpaceForSpanner(spanner_node, block_offset);
-    return spanner_node.Layout(spanner_space, break_token,
-                               early_break_in_child);
+    FragmentationLayoutInput fragmentation =
+        GetFragmentationLayoutInputForChild(spanner_node, break_token);
+    return spanner_node.Layout(spanner_space, fragmentation);
   };
   const LayoutResult* result = layout();
 
@@ -1676,8 +1688,8 @@ LayoutUnit ColumnLayoutAlgorithm::ResolveColumnAutoBlockSizeInternal(
       /*column_known_to_fit_in_outer_fragmentainer=*/false);
   do {
     LayoutAlgorithmParams params(Node(), fragment_geometry, space);
-    params.break_token = break_token;
-    params.column_spanner_path = spanner_path_;
+    params.fragmentation.break_token = break_token;
+    params.fragmentation.column_spanner_path = spanner_path_;
     BlockLayoutAlgorithm balancing_algorithm(params);
     balancing_algorithm.SetBoxType(PhysicalFragment::kColumnBox);
     const LayoutResult* result = balancing_algorithm.Layout();

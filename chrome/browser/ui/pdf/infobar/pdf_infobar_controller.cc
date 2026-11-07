@@ -196,8 +196,10 @@ void PdfInfoBarController::RegisterInfoBarSpec() {
                         PdfInfoBarUserInteraction::kIgnored);
                     break;
                   case infobars::InfoBarResult::kCancelled:
+                  case infobars::InfoBarResult::kExtraButtonPressed:
                   case infobars::InfoBarResult::kLinkClicked:
-                    // The PDF infobar has no cancel button and no links.
+                    // The PDF infobar has no cancel or extra button and no
+                    // links.
                     break;
                 }
               }))
@@ -279,8 +281,9 @@ void PdfInfoBarController::MaybeShowInfoBar() {
 
 void PdfInfoBarController::MaybeShowInfoBarCallback(
     shell_integration::DefaultWebClientState default_state) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(base::FeatureList::IsEnabled(features::kPdfInfoBar));
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK(base::FeatureList::IsEnabled(features::kPdfInfoBar),
+        base::NotFatalUntil::M162);
 
   // If Chrome is already the default PDF viewer, do nothing.
   if (default_state == shell_integration::DefaultWebClientState::IS_DEFAULT ||

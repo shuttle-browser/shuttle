@@ -109,7 +109,6 @@
 #include "components/prefs/pref_service.h"
 #include "components/regional_capabilities/regional_capabilities_country_id.h"
 #include "components/regional_capabilities/regional_capabilities_service.h"
-#include "components/regional_capabilities/regional_capabilities_switches.h"
 #include "components/safe_browsing/buildflags.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/ukm/field_trials_provider_helper.h"
@@ -172,7 +171,6 @@
 #include "chrome/browser/ui/webui/ash/settings/services/metrics/os_settings_metrics_provider.h"
 #include "chromeos/ash/components/demo_mode/utils/demo_session_utils.h"
 #else
-#include "chrome/browser/metrics/family_link_user_metrics_provider.h"
 #include "chrome/browser/metrics/structured/chrome_structured_metrics_delegate.h"
 #include "chrome/browser/metrics/structured/chrome_structured_metrics_recorder.h"
 #include "chrome/browser/signin/chrome_signin_and_sync_status_metrics_provider.h"
@@ -992,10 +990,6 @@ void ChromeMetricsServiceClient::RegisterMetricsServiceProviders() {
 #if !BUILDFLAG(IS_CHROMEOS)
   metrics_service_->RegisterMetricsProvider(
       std::make_unique<ChromeSigninAndSyncStatusMetricsProvider>());
-  // ChromeOS uses ChromeOSFamilyLinkUserMetricsProvider to categorize the user
-  // based on Family Link user type.
-  metrics_service_->RegisterMetricsProvider(
-      std::make_unique<FamilyLinkUserMetricsProvider>());
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
   metrics_service_->RegisterMetricsProvider(
@@ -1019,14 +1013,9 @@ void ChromeMetricsServiceClient::RegisterMetricsServiceProviders() {
       std::make_unique<UpdateMetricsProvider>());
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || (BUILDFLAG(IS_LINUX)
 
-  // Only register the RegionalCapabilitiesMetricsProvider if the dynamic
-  // profile country feature is enabled. This is because that feature
-  // significantly changes the cases under which the "Mixed" bucket is emitted.
-  if (switches::IsDynamicProfileCountryEnabled()) {
-    metrics_service_->RegisterMetricsProvider(
-        std::make_unique<
-            regional_capabilities::RegionalCapabilitiesMetricsProvider>());
-  }
+  metrics_service_->RegisterMetricsProvider(
+      std::make_unique<
+          regional_capabilities::RegionalCapabilitiesMetricsProvider>());
 
   metrics_service_->RegisterMetricsProvider(
       std::make_unique<
@@ -1103,7 +1092,7 @@ void ChromeMetricsServiceClient::CollectFinalHistograms() {
   // finished, it will call OnMemoryDetailCollectionDone. That will in turn
   // call HistogramSynchronization to collect histograms from all renderers and
   // then call OnHistogramSynchronizationDone to continue processing.
-  DCHECK(!waiting_for_collect_final_metrics_step_);
+  CHECK(!waiting_for_collect_final_metrics_step_, base::NotFatalUntil::M161);
   waiting_for_collect_final_metrics_step_ = true;
 
   base::OnceClosure callback =
@@ -1120,7 +1109,7 @@ void ChromeMetricsServiceClient::OnMemoryDetailCollectionDone() {
 
   // This function should only be called as the callback from an ansynchronous
   // step.
-  DCHECK(waiting_for_collect_final_metrics_step_);
+  CHECK(waiting_for_collect_final_metrics_step_, base::NotFatalUntil::M161);
 
   // Create a callback_task for OnHistogramSynchronizationDone.
   base::RepeatingClosure callback = base::BindRepeating(
@@ -1130,7 +1119,8 @@ void ChromeMetricsServiceClient::OnMemoryDetailCollectionDone() {
   base::TimeDelta timeout =
       base::Milliseconds(kMaxHistogramGatheringWaitDuration);
 
-  DCHECK_EQ(num_async_histogram_fetches_in_progress_, 0);
+  CHECK_EQ(num_async_histogram_fetches_in_progress_, 0,
+           base::NotFatalUntil::M161);
   // `callback` is used 2 times below.
   num_async_histogram_fetches_in_progress_ = 2;
 
@@ -1153,8 +1143,9 @@ void ChromeMetricsServiceClient::OnHistogramSynchronizationDone() {
 
   // This function should only be called as the callback from an ansynchronous
   // step.
-  DCHECK(waiting_for_collect_final_metrics_step_);
-  DCHECK_GT(num_async_histogram_fetches_in_progress_, 0);
+  CHECK(waiting_for_collect_final_metrics_step_, base::NotFatalUntil::M161);
+  CHECK_GT(num_async_histogram_fetches_in_progress_, 0,
+           base::NotFatalUntil::M161);
 
   // Check if all expected requests finished.
   if (--num_async_histogram_fetches_in_progress_ > 0) {
@@ -1197,7 +1188,7 @@ bool ChromeMetricsServiceClient::RegisterForProfileEvents(Profile* profile) {
   // Guest Off the record status are not checked in this method for UKM consent.
   // The equivalent check is done in this method
   // `MetricsServicesManager::UpdateUkmService()`
-  DCHECK(!profile->IsOffTheRecord());
+  CHECK(!profile->IsOffTheRecord(), base::NotFatalUntil::M161);
 
   // Non-Regular Profiles consent information are not expected to be
   // observed or checked, therefore they are whitelisted for the UKM
@@ -1394,7 +1385,7 @@ void ChromeMetricsServiceClient::RenderProcessHostDestroyed(
 
 #if BUILDFLAG(IS_CHROMEOS)
 void ChromeMetricsServiceClient::AsyncInitSystemProfileProvider() {
-  DCHECK(cros_system_profile_provider_);
+  CHECK(cros_system_profile_provider_, base::NotFatalUntil::M161);
   cros_system_profile_provider_->AsyncInit(base::BindOnce([]() {
     // Structured metrics needs to know when the SystemProfile is
     // available since events should have SystemProfile populated.
@@ -1412,10 +1403,10 @@ bool ChromeMetricsServiceClient::IsWebstoreExtension(std::string_view id) {
   // profiles that know the extension say it was from the web-store.
   bool matched = false;
   ProfileManager* profile_manager = g_browser_process->profile_manager();
-  DCHECK(profile_manager);
+  CHECK(profile_manager, base::NotFatalUntil::M161);
   auto profiles = profile_manager->GetLoadedProfiles();
   for (Profile* profile : profiles) {
-    DCHECK(profile);
+    CHECK(profile, base::NotFatalUntil::M161);
     extensions::ExtensionRegistry* registry =
         extensions::ExtensionRegistry::Get(profile);
     if (!registry) {
@@ -1523,10 +1514,11 @@ bool ChromeMetricsServiceClient::ShouldUploadMetricsForUserId(
   // Metrics logs with user ids should be stored in a user cryptohome so this
   // function should only be called after a user logins.
   // |per_user_state_manager_| is initialized before a user can login.
-  DCHECK(per_user_state_manager_);
+  CHECK(per_user_state_manager_, base::NotFatalUntil::M161);
 
   // This function should only be called if reporting is enabled.
-  DCHECK(ChromeMetricsServiceAccessor::IsMetricsAndCrashReportingEnabled());
+  CHECK(ChromeMetricsServiceAccessor::IsMetricsAndCrashReportingEnabled(),
+        base::NotFatalUntil::M161);
 
   auto current_user_id = per_user_state_manager_->GetCurrentUserId();
 
@@ -1547,7 +1539,7 @@ bool ChromeMetricsServiceClient::ShouldUploadMetricsForUserId(
 
 void ChromeMetricsServiceClient::UpdateCurrentUserMetricsChoice(
     bool user_choice) {
-  DCHECK(per_user_state_manager_);
+  CHECK(per_user_state_manager_, base::NotFatalUntil::M161);
   per_user_state_manager_->SetCurrentUserMetricsChoice(user_choice);
 }
 

@@ -16,9 +16,9 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/common/extensions/api/safe_browsing_private.h"
-#include "components/enterprise/connectors/core/common.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/url_matcher/url_matcher.h"
 #include "components/url_matcher/url_util.h"
 #include "content/public/browser/browser_context.h"
@@ -35,12 +35,28 @@
 
 namespace extensions {
 
+namespace {
+
+// Returns the signed-in email of `profile`, or an empty string.
+std::string GetProfileEmail(Profile* profile) {
+  if (!profile) {
+    return std::string();
+  }
+  signin::IdentityManager* identity_manager =
+      IdentityManagerFactory::GetForProfile(profile);
+  return identity_manager
+             ? identity_manager
+                   ->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin)
+                   .email
+             : std::string();
+}
+
+}  // namespace
+
 SafeBrowsingPrivateEventRouter::SafeBrowsingPrivateEventRouter(
     content::BrowserContext* context)
     : context_(context) {
   event_router_ = EventRouter::Get(context_);
-  identity_manager_ = IdentityManagerFactory::GetForProfile(
-      Profile::FromBrowserContext(context_));
 }
 
 SafeBrowsingPrivateEventRouter::~SafeBrowsingPrivateEventRouter() = default;
@@ -57,8 +73,8 @@ void SafeBrowsingPrivateEventRouter::OnPolicySpecifiedPasswordReuseDetected(
 
   // |event_router_| can be null in tests.
   if (event_router_) {
-    base::ListValue event_value;
-    event_value.Append(params.ToValue());
+    auto event_value = base::MakeRefCounted<EventArgs>();
+    event_value->data.Append(params.ToValue());
 
     auto extension_event = std::make_unique<Event>(
         events::
@@ -74,8 +90,8 @@ void SafeBrowsingPrivateEventRouter::OnPolicySpecifiedPasswordChanged(
     std::string_view user_name) {
   // |event_router_| can be null in tests.
   if (event_router_) {
-    base::ListValue event_value;
-    event_value.Append(user_name);
+    auto event_value = base::MakeRefCounted<EventArgs>();
+    event_value->data.Append(user_name);
     auto extension_event = std::make_unique<Event>(
         events::SAFE_BROWSING_PRIVATE_ON_POLICY_SPECIFIED_PASSWORD_CHANGED,
         api::safe_browsing_private::OnPolicySpecifiedPasswordChanged::
@@ -98,12 +114,13 @@ void SafeBrowsingPrivateEventRouter::OnDangerousDownloadOpened(
   params.url = url.spec();
   params.file_name = file_name;
   params.download_digest_sha256 = download_digest_sha256;
-  params.user_name = enterprise_connectors::GetProfileEmail(identity_manager_);
+  params.user_name = GetProfileEmail(
+      Profile::FromBrowserContext(context_));
 
   // |event_router_| can be null in tests.
   if (event_router_) {
-    base::ListValue event_value;
-    event_value.Append(params.ToValue());
+    auto event_value = base::MakeRefCounted<EventArgs>();
+    event_value->data.Append(params.ToValue());
 
     auto extension_event = std::make_unique<Event>(
         events::SAFE_BROWSING_PRIVATE_ON_DANGEROUS_DOWNLOAD_OPENED,
@@ -123,12 +140,13 @@ void SafeBrowsingPrivateEventRouter::OnSecurityInterstitialShown(
   if (net_error_code < 0) {
     params.net_error_code = base::NumberToString(net_error_code);
   }
-  params.user_name = enterprise_connectors::GetProfileEmail(identity_manager_);
+  params.user_name = GetProfileEmail(
+      Profile::FromBrowserContext(context_));
 
   // |event_router_| can be null in tests.
   if (event_router_) {
-    base::ListValue event_value;
-    event_value.Append(params.ToValue());
+    auto event_value = base::MakeRefCounted<EventArgs>();
+    event_value->data.Append(params.ToValue());
 
     auto extension_event = std::make_unique<Event>(
         events::SAFE_BROWSING_PRIVATE_ON_SECURITY_INTERSTITIAL_SHOWN,
@@ -148,12 +166,13 @@ void SafeBrowsingPrivateEventRouter::OnSecurityInterstitialProceeded(
   if (net_error_code < 0) {
     params.net_error_code = base::NumberToString(net_error_code);
   }
-  params.user_name = enterprise_connectors::GetProfileEmail(identity_manager_);
+  params.user_name = GetProfileEmail(
+      Profile::FromBrowserContext(context_));
 
   // |event_router_| can be null in tests.
   if (event_router_) {
-    base::ListValue event_value;
-    event_value.Append(params.ToValue());
+    auto event_value = base::MakeRefCounted<EventArgs>();
+    event_value->data.Append(params.ToValue());
 
     auto extension_event = std::make_unique<Event>(
         events::SAFE_BROWSING_PRIVATE_ON_SECURITY_INTERSTITIAL_PROCEEDED,
@@ -161,11 +180,6 @@ void SafeBrowsingPrivateEventRouter::OnSecurityInterstitialProceeded(
         std::move(event_value));
     event_router_->BroadcastEvent(std::move(extension_event));
   }
-}
-
-void SafeBrowsingPrivateEventRouter::SetIdentityManagerForTesting(
-    signin::IdentityManager* identity_manager) {
-  identity_manager_ = identity_manager;
 }
 
 }  // namespace extensions

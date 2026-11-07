@@ -36,15 +36,13 @@ ts_library("build_ts") {
     "//chrome/browser/resources/discards:build_ts",
     "//chrome/browser/resources/downloads:build_ts",
     "//chrome/browser/resources/extensions:build_ts",
-    "//chrome/browser/resources/family_link_user_internals:build_ts",
     "//chrome/browser/resources/guest_view_shared:build_ts",
     "//chrome/browser/resources/history:build_ts",
     "//chrome/browser/resources/infobar_internals:build_ts",
     "//chrome/browser/resources/iwa_dev:build_ts",
     "//chrome/browser/resources/key_value_pair_viewer_shared:build_ts",
     "//chrome/browser/resources/management:build_ts",
-    "//chrome/browser/resources/multistep_filter_internals:build_ts",
-    "//chrome/browser/resources/omnibox/logging:build_ts",
+    "//chrome/browser/resources/omnibox_internals/logging:build_ts",
     "//chrome/browser/resources/omnibox_popup:build_ts",
     "//chrome/browser/resources/page_action_internals:build_ts",
     "//chrome/browser/resources/pdf:build_ts",
@@ -56,7 +54,6 @@ ts_library("build_ts") {
     "//chrome/browser/resources/tab_group_home:build_ts",
     "//chrome/browser/resources/unexportable_keys_internals:build_ts",
     "//chrome/browser/resources/updater:build_ts",
-    "//chrome/browser/resources/watermark:build_ts",
     "//chrome/browser/resources/webnn_internals:build_ts",
     "//chrome/browser/resources/webui_gallery:build_ts",
     "//chrome/test/data/pdf:build_ts",
@@ -65,7 +62,6 @@ ts_library("build_ts") {
     "//chrome/test/data/webui/cr_components/cr_shortcut_input:build_ts",
     "//chrome/test/data/webui/cr_components/custom_help_bubble:build_ts",
     "//chrome/test/data/webui/cr_components/help_bubble:build_ts",
-    "//chrome/test/data/webui/cr_components/history_clusters:build_ts",
     "//chrome/test/data/webui/cr_components/searchbox:build_ts",
     "//chrome/test/data/webui/cr_elements:build_ts",
     "//chrome/test/data/webui/extensions:build_ts",
@@ -84,7 +80,6 @@ ts_library("build_ts") {
     "//ui/webui/resources/cr_components/cr_lottie:build_ts",
     "//ui/webui/resources/cr_components/cr_shortcut_input:build_ts",
     "//ui/webui/resources/cr_components/customize_color_scheme_mode:build_ts",
-    "//ui/webui/resources/cr_components/history_clusters:build_ts",
     "//ui/webui/resources/cr_components/localized_link:build_ts",
     "//ui/webui/resources/cr_components/managed_dialog:build_ts",
     "//ui/webui/resources/cr_components/managed_footnote:build_ts",
@@ -164,6 +159,9 @@ ts_library("build_ts") {
   ]
 
   path_mappings = [
+    "lit/directives/cache.js|" +
+        rebase_path("${node_modules}/lit/directives/cache.d.ts",
+                    target_gen_dir),
     "lit/directives/repeat.js|" +
         rebase_path("${node_modules}/lit/directives/repeat.d.ts",
                     target_gen_dir),
@@ -171,6 +169,9 @@ ts_library("build_ts") {
         rebase_path("${node_modules}/lit/index.d.ts", target_gen_dir),
     "lit-html/async-directive.js|" +
         rebase_path("${node_modules}/lit-html/async-directive.d.ts",
+                    target_gen_dir),
+    "lit-html/directives/cache.js|" +
+        rebase_path("${node_modules}/lit-html/directives/cache.d.ts",
                     target_gen_dir),
     "lit-html/directives/repeat.js|" +
         rebase_path("${node_modules}/lit-html/directives/repeat.d.ts",

@@ -27,10 +27,6 @@
 #include "base/android/device_info.h"
 #endif
 
-#if !BUILDFLAG(IS_IOS)
-#include "components/history_clusters/core/config.h"  // nogncheck
-#endif
-
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 #include "extensions/common/extension_features.h"  // nogncheck
 #endif
@@ -80,6 +76,10 @@ int AutocompleteClassifier::DefaultOmniboxProviders(bool is_low_memory_device) {
       AutocompleteProvider::Type::kOpenTab |
       // Only enabled for hub search.
       AutocompleteProvider::Type::kTabGroup |
+      // Only enabled for the Tab Search overlay.
+      (base::FeatureList::IsEnabled(omnibox::kAndroidTabSearchRecentTabs)
+           ? AutocompleteProvider::Type::kRecentlyClosedTabs
+           : AutocompleteProvider::Type::kNone) |
       // Keyword search for Android.
       (base::FeatureList::IsEnabled(omnibox::kOmniboxSiteSearch)
            ? AutocompleteProvider::Type::kKeyword |
@@ -87,10 +87,7 @@ int AutocompleteClassifier::DefaultOmniboxProviders(bool is_low_memory_device) {
            : AutocompleteProvider::Type::kNone) |
 #endif
 #if !BUILDFLAG(IS_IOS)
-      (history_clusters::GetConfig().is_journeys_enabled_no_locale_check &&
-               history_clusters::GetConfig().omnibox_history_cluster_provider
-           ? AutocompleteProvider::Type::kHistoryClusterProvider
-           : AutocompleteProvider::Type::kNone) |
+      AutocompleteProvider::Type::kEnterpriseSearchAggregator |
 #endif
       AutocompleteProvider::Type::kZeroSuggest |
       AutocompleteProvider::Type::kZeroSuggestLocalHistory |
@@ -114,7 +111,6 @@ int AutocompleteClassifier::DefaultOmniboxProviders(bool is_low_memory_device) {
       AutocompleteProvider::Type::kShortcuts |
       AutocompleteProvider::Type::kHistoryFuzzy |
       AutocompleteProvider::Type::kCalculator |
-      AutocompleteProvider::Type::kEnterpriseSearchAggregator |
       AutocompleteProvider::Type::kVerbatimMatch |
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)

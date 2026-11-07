@@ -1,0 +1,20 @@
+line-length = 80
+indent-width = 2
+extend-exclude = [
+  "*_pb2.py",
+  "third_party/*",
+  # Legacy Python 2 scripts.
+  "android/tools/proxy_test_cases.py",
+  "data/parse_certificate_unittest/authority_key_identifier/generate.py",
+  "data/parse_certificate_unittest/regenerate_pem_from_ascii.py",
+  "data/ssl/root_stores/update_root_stores.py",
+  "docs/generate-dot-to-png.py",
+]
+
+[lint]
+# Enable the legacy Ruff 0.15 default ruleset.
+select = ["E4", "E7", "E9", "F"]
+unfixable = ["F401"]
+
+[format]
+quote-style = "preserve"

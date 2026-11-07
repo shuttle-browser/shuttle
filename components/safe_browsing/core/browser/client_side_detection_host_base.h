@@ -22,6 +22,7 @@
 #include "components/history/core/browser/history_service_observer.h"
 #include "components/history/core/browser/history_types.h"
 #include "components/safe_browsing/core/browser/credit_card_form_event.h"
+#include "components/safe_browsing/core/browser/db/sb_protocol_manager_util.h"
 #include "components/safe_browsing/core/browser/intelligent_scan_delegate.h"
 #include "components/safe_browsing/core/browser/safe_browsing_token_fetcher.h"
 #include "components/safe_browsing/core/common/client_side_detection_enums.h"
@@ -207,6 +208,14 @@ class ClientSideDetectionHostBase : public history::HistoryServiceObserver {
     probability_for_sending_sample_request_ = sample_ping_rate;
   }
 
+  // Returns the PNG-encoded screenshot bytes passed to the most recent
+  // `StartIntelligentScan` call, used in unit tests to verify multimodal
+  // screenshot capture and encoding.
+  const std::optional<std::string>&
+  last_intelligent_scan_tab_screenshot_for_testing() const {
+    return last_intelligent_scan_tab_screenshot_for_testing_;
+  }
+
  protected:
   base::WeakPtr<ClientSideDetectionServiceBase> GetClientSideDetectionService()
       const;
@@ -218,6 +227,19 @@ class ClientSideDetectionHostBase : public history::HistoryServiceObserver {
 
   static safe_browsing::ThreatSubtype GetThreatSubtype(
       IntelligentScanVerdict intelligent_scan_verdict);
+
+  // Returns the allowlist match result enum based on whether the CSD and
+  // High-Confidence allowlists matched.
+  static ClientSideAllowlistMatchResult GetClientSideAllowlistMatchResult(
+      bool match_csd_allowlist,
+      bool match_hc_allowlist);
+
+  // Returns the SBThreatType to use for the blocking page. Billing scam
+  // verdicts show the billing interstitial, unless the page is also classified
+  // as phishing, in which case the more severe phishing interstitial is shown.
+  static SBThreatType GetBlockingPageThreatType(
+      bool is_phishing,
+      safe_browsing::ThreatSubtype threat_subtype);
 
   // Cancels any pending asynchronous requests bound to this host.
   // Intended to handle the case where the primary page changes while there is
@@ -295,6 +317,29 @@ class ClientSideDetectionHostBase : public history::HistoryServiceObserver {
       bool is_invalid_ip,
       std::string inner_text);
 
+  // Returns true if the feature configuration and device capabilities allow
+  // capturing a screenshot for multimodal intelligent scan.
+  bool ShouldCaptureScreenshotForIntelligentScan() const;
+
+  // Optionally captures a viewport screenshot for multimodal intelligent scan
+  // before starting the scan via `StartIntelligentScan`. By default, invokes
+  // `StartIntelligentScan` immediately without a screenshot.
+  virtual void MaybeCaptureScreenshotAndStartIntelligentScan(
+      std::unique_ptr<ClientPhishingRequest> verdict,
+      std::optional<bool> did_match_high_confidence_allowlist,
+      bool is_invalid_ip,
+      std::string inner_text);
+
+  // Invokes `IntelligentScanDelegate::StartIntelligentScan` and logs the begin
+  // event, or skips the scan if `inner_text` is empty or too short and
+  // `tab_screenshot` is empty.
+  void StartIntelligentScan(
+      std::unique_ptr<ClientPhishingRequest> verdict,
+      std::optional<bool> did_match_high_confidence_allowlist,
+      bool is_invalid_ip,
+      std::string inner_text,
+      std::optional<std::string> tab_screenshot);
+
   // Callback function when StartIntelligentScan from the intelligent scan
   // delegate is completed.
   // TODO: Remove the parameter is_invalid_ip once the feature flag,
@@ -355,6 +400,7 @@ class ClientSideDetectionHostBase : public history::HistoryServiceObserver {
       GURL phishing_url,
       ClientSideDetectionType request_type,
       std::optional<IntelligentScanVerdict> intelligent_scan_verdict,
+      bool is_phishing,
       bool should_show_scam_warning) = 0;
 
   // Subclasses override this to update local feature caches with network
@@ -530,6 +576,10 @@ class ClientSideDetectionHostBase : public history::HistoryServiceObserver {
 
   // The intelligent scan ID for the current intelligent scan request.
   std::optional<base::UnguessableToken> intelligent_scan_id_;
+
+  // Stores the last `tab_screenshot` passed to `StartIntelligentScan` for
+  // testing.
+  std::optional<std::string> last_intelligent_scan_tab_screenshot_for_testing_;
 
   // The last text that was copied to the clipboard.
   std::u16string last_copied_text_;

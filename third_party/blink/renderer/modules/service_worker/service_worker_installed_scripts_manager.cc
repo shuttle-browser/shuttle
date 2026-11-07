@@ -23,11 +23,10 @@
 #include "third_party/blink/renderer/platform/instrumentation/tracing/traced_value.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_mojo.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
+#include "third_party/blink/renderer/platform/wtf/text/strcat.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "third_party/blink/renderer/platform/wtf/wtf.h"
@@ -312,6 +311,11 @@ ServiceWorkerInstalledScriptsManager::GetScriptData(const KURL& script_url) {
 
   Vector<uint8_t> source_text = raw_script_data->TakeScriptText();
   String decoded_source_text = decoder->Decode(base::span(source_text));
+  if (String flushed = decoder->Flush(); !flushed.empty()) {
+    decoded_source_text = decoded_source_text.empty()
+                              ? std::move(flushed)
+                              : StrCat({decoded_source_text, flushed});
+  }
 
   // TODO(crbug.com/946676): Remove the unique_ptr<> wrapper around the Vector
   // as we can just use Vector::IsEmpty() to distinguish missing code cache.
@@ -322,7 +326,7 @@ ServiceWorkerInstalledScriptsManager::GetScriptData(const KURL& script_url) {
 
   return std::make_unique<InstalledScriptsManager::ScriptData>(
       script_url, decoded_source_text, std::move(meta_data),
-      raw_script_data->TakeHeaders());
+      raw_script_data->TakeHeaders(), decoder->Encoding());
 }
 
 std::unique_ptr<RawScriptData>

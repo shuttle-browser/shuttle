@@ -7,8 +7,17 @@
 #include "chrome/browser/file_system_access/chrome_file_system_access_permission_context.h"
 #include "chrome/browser/file_system_access/file_system_access_permission_context_factory.h"
 #include "content/public/browser/navigation_handle.h"
+#include "content/public/browser/web_contents.h"
 
-FileSystemAccessTabHelper::~FileSystemAccessTabHelper() = default;
+FileSystemAccessTabHelper::FileSystemAccessTabHelper(
+    content::WebContents* web_contents)
+    : content::WebContentsObserver(web_contents) {}
+
+FileSystemAccessTabHelper::~FileSystemAccessTabHelper() {
+  if (web_contents()) {
+    WebContentsDestroyed();
+  }
+}
 
 void FileSystemAccessTabHelper::DidFinishNavigation(
     content::NavigationHandle* navigation) {
@@ -43,11 +52,5 @@ void FileSystemAccessTabHelper::WebContentsDestroyed() {
           web_contents()->GetBrowserContext());
   if (context)
     context->NavigatedAwayFromOrigin(src_origin);
+  Observe(nullptr);
 }
-
-FileSystemAccessTabHelper::FileSystemAccessTabHelper(
-    content::WebContents* web_contents)
-    : content::WebContentsObserver(web_contents),
-      content::WebContentsUserData<FileSystemAccessTabHelper>(*web_contents) {}
-
-WEB_CONTENTS_USER_DATA_KEY_IMPL(FileSystemAccessTabHelper);

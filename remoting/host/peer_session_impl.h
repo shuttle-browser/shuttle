@@ -21,6 +21,7 @@
 #include "base/sequence_checker.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
+#include "base/types/expected.h"
 #include "build/build_config.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
@@ -38,6 +39,7 @@
 #include "remoting/host/mojom/remote_url_opener.mojom.h"
 #include "remoting/host/mojom/webauthn_proxy.mojom.h"
 #include "remoting/host/peer_session.h"
+#include "remoting/host/terminal_error.h"
 #include "remoting/proto/action.pb.h"
 #include "remoting/proto/control.pb.h"
 #include "remoting/protocol/audio_sample_info.h"
@@ -50,12 +52,10 @@
 #include "remoting/protocol/errors.h"
 #include "remoting/protocol/host_stub.h"
 #include "remoting/protocol/input_event_timestamps.h"
-#include "remoting/protocol/mouse_cursor_monitor.h"
 #include "remoting/protocol/transport.h"
 #include "remoting/protocol/video_stream.h"
 #include "third_party/webrtc/modules/desktop_capture/desktop_capture_types.h"
 #include "third_party/webrtc/modules/desktop_capture/desktop_geometry.h"
-#include "third_party/webrtc/modules/desktop_capture/mouse_cursor.h"
 #include "ui/events/types/event_type.h"
 
 namespace remoting {
@@ -87,7 +87,6 @@ class PeerSessionImpl : public PeerSession,
                         public ClientSessionEvents,
                         public CursorVisibilityNotifier::EventHandler,
                         public AudioInjector::Delegate,
-                        public protocol::MouseCursorMonitor::Callback,
                         public mojom::ChromotingSessionServices {
  public:
   // Maximum allowed length in bytes for a client pairing name.
@@ -181,11 +180,6 @@ class PeerSessionImpl : public PeerSession,
   // CursorVisibilityNotifier::EventHandler interface
   void OnCursorVisibilityChanged(bool visible) override;
 
-  // MouseCursorMonitor::Callback implementation.
-  void OnMouseCursor(
-      std::unique_ptr<webrtc::MouseCursor> mouse_cursor) override;
-  void OnMouseCursorPosition(const webrtc::DesktopVector& position) override;
-
   // mojom::ChromotingSessionServices implementation.
   void BindWebAuthnProxy(
       mojo::PendingReceiver<mojom::WebAuthnProxy> receiver) override;
@@ -195,6 +189,8 @@ class PeerSessionImpl : public PeerSession,
   void BindSecurityKeyForwarder(
       mojo::PendingReceiver<mojom::SecurityKeyForwarder> receiver) override;
 #endif
+  void SetAgentStatus(const protocol::TerminalControl::AgentInfo& agent_status,
+                      SetAgentStatusCallback callback) override;
 
   protocol::Transport* transport() override;
 
@@ -227,6 +223,9 @@ class PeerSessionImpl : public PeerSession,
 
   void OnDesktopEnvironmentCreated(
       std::unique_ptr<DesktopEnvironment> desktop_environment);
+  void OnAgentIntegrationSupportDetermined(
+      std::unique_ptr<DesktopEnvironment> desktop_environment,
+      bool is_agent_integration_supported);
 
   void CreateAudioInjectorAndBuffer();
 
@@ -257,6 +256,10 @@ class PeerSessionImpl : public PeerSession,
       const std::string& channel_name,
       std::unique_ptr<protocol::MessagePipe> pipe);
 
+  void CreateAgentIntegrationControlMessageHandler(
+      const std::string& channel_name,
+      std::unique_ptr<protocol::MessagePipe> pipe);
+
   void CreateRemoteWebAuthnMessageHandler(
       const std::string& channel_name,
       std::unique_ptr<protocol::MessagePipe> pipe);
@@ -278,11 +281,8 @@ class PeerSessionImpl : public PeerSession,
   // whenever the screen id associated with the active window changes.
   void OnActiveDisplayChanged(webrtc::ScreenId display);
 
-  // Calls SetComposeEnabled() on all video streams. This controls whether the
-  // host's cursor should be composed onto the desktop frame.
-  // TODO: crbug.com/455622961 - Remove this method once the
-  // clientRenderedHostCursor capability is fully rolled out.
-  void SetComposeEnabledOnVideoStreams(bool enabled);
+  // Sends the response to a create-terminal request.
+  void OnTerminalCreated(base::expected<int32_t, TerminalError> result);
 
   void SendTerminalOutput(int32_t terminal_id, const std::string& data);
 
@@ -413,7 +413,6 @@ class PeerSessionImpl : public PeerSession,
 
   SessionPolicies effective_policies_;
 
-  bool host_cursor_rendered_by_client_ = false;
   bool cursor_visible_ = false;
 
   std::unique_ptr<TerminalSessionManager> terminal_session_manager_;

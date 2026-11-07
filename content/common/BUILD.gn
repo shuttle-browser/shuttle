@@ -25,7 +25,6 @@ buildflag_header("buildflags") {
     "ALLOW_CRITICAL_MEMORY_PRESSURE_HANDLING_IN_FOREGROUND=$allow_critical_memory_pressure_handling_in_foreground",
     "MBI_MODE_PER_RENDER_PROCESS_HOST=$_mbi_mode_per_render_process_host",
     "MBI_MODE_PER_SITE_INSTANCE=$_mbi_mode_per_site_instance",
-    "CONTENT_ENABLE_LEGACY_IPC=0",
     "ENABLE_MEMORY_COORDINATOR_INTERNALS=$enable_memory_coordinator_internals",
   ]
 }
@@ -149,13 +148,11 @@ source_set("common") {
     "memory_coordinator/memory_consumer_registry.cc",
     "memory_coordinator/memory_consumer_registry.h",
     "memory_coordinator/memory_coordinator_policy.cc",
-    "memory_coordinator/memory_coordinator_policy.h",
     "memory_coordinator/memory_coordinator_policy_manager.cc",
     "memory_coordinator/memory_coordinator_policy_manager.h",
     "memory_coordinator/memory_pressure_listener_policy.cc",
     "memory_coordinator/memory_pressure_listener_policy.h",
     "memory_coordinator/predicate_memory_coordinator_policy.cc",
-    "memory_coordinator/predicate_memory_coordinator_policy.h",
     "navigation_params_utils.h",
     "origin_util.cc",
     "page_state_mojom_traits.h",
@@ -596,7 +593,6 @@ mojom("mojo_bindings") {
     "//services/viz/public/mojom",
     "//skia/public/mojom",
     "//third_party/blink/public/mojom:mojom_core",
-    "//third_party/blink/public/mojom:mojom_modules",
     "//third_party/blink/public/mojom:web_feature_mojo_bindings",
     "//ui/accessibility:ax_enums_mojo",
     "//ui/accessibility/mojom",
@@ -630,10 +626,7 @@ mojom("mojo_bindings") {
     ]
   }
 
-  overridden_deps = [
-    "//third_party/blink/public/mojom:mojom_core",
-    "//third_party/blink/public/mojom:mojom_modules",
-  ]
+  overridden_deps = [ "//third_party/blink/public/mojom:mojom_core" ]
   component_deps = [ "//third_party/blink/public/common" ]
 
   component_output_prefix = "content_common_mojo_bindings"
@@ -658,7 +651,6 @@ if (is_android) {
 }
 
 rust_static_library("common_id_types") {
-  crate_name = "content_common_id_types"
   crate_root = "child_process_id.rs"
   sources = [ crate_root ]
   allow_unsafe = true

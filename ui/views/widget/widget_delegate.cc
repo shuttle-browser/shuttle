@@ -166,7 +166,7 @@ bool WidgetDelegate::RotatePaneFocusFromView(View* focused_view,
   // Check to see if a pane already has focus and update the index accordingly.
   if (focused_view) {
     const auto i =
-        std::ranges::find_if(panes, [focused_view](const auto* pane) {
+        std::ranges::find_if(panes, [focused_view](const views::View* pane) {
           return pane && pane->Contains(focused_view);
         });
     if (i != panes.cend()) {
@@ -379,9 +379,9 @@ std::unique_ptr<FrameView> WidgetDelegate::CreateFrameView(Widget* widget) {
   return frame_view_factory_.Run(widget);
 }
 
-View* WidgetDelegate::CreateOverlayView() {
+std::unique_ptr<View> WidgetDelegate::CreateOverlayView() {
   DCHECK(overlay_view_factory_);
-  return std::move(overlay_view_factory_).Run().release();
+  return std::move(overlay_view_factory_).Run();
 }
 
 bool WidgetDelegate::WidgetHasHitTestMask() const {

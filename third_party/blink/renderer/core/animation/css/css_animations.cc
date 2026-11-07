@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <bitset>
+#include <ranges>
 #include <tuple>
 
 #include "third_party/blink/public/platform/platform.h"
@@ -72,7 +73,6 @@
 #include "third_party/blink/renderer/core/css/css_unparsed_declaration_value.h"
 #include "third_party/blink/renderer/core/css/css_value_list.h"
 #include "third_party/blink/renderer/core/css/media_values.h"
-#include "third_party/blink/renderer/core/css/native_paint_image_generator.h"
 #include "third_party/blink/renderer/core/css/parser/css_variable_parser.h"
 #include "third_party/blink/renderer/core/css/post_style_update_scope.h"
 #include "third_party/blink/renderer/core/css/properties/computed_style_utils.h"
@@ -1392,7 +1392,7 @@ bool TimelineMatchesScope(const ScrollTimeline& timeline,
   const TreeScope* ref_scope = target_name.GetTreeScope();
   CHECK(ref_scope);
 
-  if (!def_scope->IsInclusiveAncestorTreeScopeOf(*ref_scope)) {
+  if (!def_scope->IsInclusiveAncestorOf(*ref_scope)) {
     UseCounter::Count(document, WebFeature::kCSSTimelineTreeScopeMismatch);
     if (RuntimeEnabledFeatures::CSSTreeScopedScrollTimelineEnabled()) {
       return false;
@@ -1867,7 +1867,6 @@ void CSSAnimations::CalculateCompositorAnimationUpdate(
   }
 
   if (npw_reasons != Animation::NativePaintWorkletProperties::kNoPaintWorklet) {
-    CHECK(NativePaintImageGenerator::NativePaintWorkletAnimationsEnabled());
     element_animations->RecalcCompositedStatusForKeyframeChange(
         animating_element, style, npw_reasons, force_update);
   }
@@ -2222,6 +2221,32 @@ bool HasAnimationTrigger(size_t animation_index,
          data->GetTriggerAttachments(animation_index);
 }
 
+// Returns true if the backdrop-filter value of `effect` may change, i.e. if the
+// animation needs a composited backdrop-filter effect. An animation whose value
+// can't change, such as the view transition group animation from the old
+// element's `none` value to the underlying `none` value, doesn't need one,
+// which would require render surfaces for the animating element and for its
+// backdrop root. This uses the same static property check as
+// CompositorAnimations, which only animates dynamic properties on the
+// compositor.
+bool BackdropFilterMayChange(const AnimationEffect& effect,
+                             const ComputedStyleBuilder& builder) {
+  if (!RuntimeEnabledFeatures::
+          SkipCompositingStaticBackdropFilterAnimationEnabled()) {
+    return true;
+  }
+  const KeyframeEffectModelBase* model = GetKeyframeEffectModelBase(&effect);
+  // The base style is set by StyleResolver::ApplyAnimatedStyle() before the
+  // animation flags are updated, and it's kept in the resulting computed style,
+  // so CompositorAnimations checks against the same base style.
+  const ComputedStyle* base_style = builder.GetBaseComputedStyle();
+  if (!model || !base_style) {
+    return true;
+  }
+  return model->IsDynamicProperty(
+      PropertyHandle(GetCSSPropertyBackdropFilter()), *base_style);
+}
+
 void UpdateAnimationFlagsForEffect(const AnimationEffect& effect,
                                    ComputedStyleBuilder& builder) {
   if (effect.Affects(PropertyHandle(GetCSSPropertyOpacity())))
@@ -2236,8 +2261,12 @@ void UpdateAnimationFlagsForEffect(const AnimationEffect& effect,
     builder.SetHasCurrentTranslateAnimation(true);
   if (effect.Affects(PropertyHandle(GetCSSPropertyFilter())))
     builder.SetHasCurrentFilterAnimation(true);
-  if (effect.Affects(PropertyHandle(GetCSSPropertyBackdropFilter())))
+  if (effect.Affects(PropertyHandle(GetCSSPropertyBackdropFilter()))) {
     builder.SetHasCurrentBackdropFilterAnimation(true);
+    if (BackdropFilterMayChange(effect, builder)) {
+      builder.SetHasCurrentDynamicBackdropFilterAnimation(true);
+    }
+  }
   if (effect.Affects(PropertyHandle(GetCSSPropertyClipPath()))) {
     builder.SetHasCurrentClipPathAnimation(true);
   }
@@ -3125,13 +3154,8 @@ void CSSAnimations::CalculateTransitionUpdate(
          "@starting-style style";
 #endif
 
-  if (old_style && !old_style->IsStartingStyle() &&
-      !animating_element.GetDocument().RenderingHadBegunForLastStyleUpdate()) {
-    // Only allow transitions on the first rendered frame for @starting-style.
-    old_style = nullptr;
-  }
-
-  if (!animation_style_recalc && old_style) {
+  if (!animation_style_recalc &&
+      CanStartTransitionsForStyle(old_style, animating_element.GetDocument())) {
     // TODO: Don't run transitions if style.Display() == EDisplay::kNone
     // and display is not transitioned. I.e. display is actually none.
     // Don't bother updating listed_properties unless we need it below.
@@ -3333,7 +3357,7 @@ const ComputedStyle& CSSAnimations::EnsureAfterChangeStyle(
   StyleResolver& resolver = animating_element.GetDocument().GetStyleResolver();
   StyleRecalcContext context =
       StyleRecalcContext::FromAncestors(*ancestors.back());
-  for (Element* ancestor : base::Reversed(ancestors)) {
+  for (Element* ancestor : std::views::reverse(ancestors)) {
     // Set the old_style to make sure @starting-style rules do not apply. Even
     // when cascading for before-change style, @starting-style should not apply
     // to ancestors.

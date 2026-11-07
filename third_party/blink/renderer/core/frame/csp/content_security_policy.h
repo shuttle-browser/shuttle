@@ -258,7 +258,6 @@ class CORE_EXPORT ContentSecurityPolicy final
   bool AllowWasmCodeGeneration(ReportingDisposition,
                                ExceptionStatus,
                                const String& script_content);
-  bool AllowTrustedTypesEval(ReportingDisposition, ExceptionStatus);
 
   HashSet<HashAlgorithm> HashesToReport() const;
   void AddHashReportIfNeeded(
@@ -384,8 +383,8 @@ class CORE_EXPORT ContentSecurityPolicy final
       const String& source = g_empty_string,
       const String& source_prefix = g_empty_string,
       std::optional<base::UnguessableToken> issue_id = std::nullopt,
-      std::optional<String> eval_hash = std::nullopt,
-      std::optional<String> url_hash = std::nullopt);
+      const String& eval_hash = String(),
+      const String& url_hash = String());
 
   // Strip a URL to make it safe to report it.
   static String StripURLForUseInReport(const SecurityOrigin* security_origin,
@@ -500,6 +499,8 @@ class CORE_EXPORT ContentSecurityPolicy final
   FRIEND_TEST_ALL_PREFIXES(ContentSecurityPolicyTest, NonceSinglePolicy);
   FRIEND_TEST_ALL_PREFIXES(ContentSecurityPolicyTest, NonceMultiplePolicy);
   FRIEND_TEST_ALL_PREFIXES(ContentSecurityPolicyTest, EmptyCSPIsNoOp);
+  FRIEND_TEST_ALL_PREFIXES(ContentSecurityPolicyTest,
+                           ReportViolationBypassingScheme);
   FRIEND_TEST_ALL_PREFIXES(BaseFetchContextTest, CanRequest);
   FRIEND_TEST_ALL_PREFIXES(BaseFetchContextTest, CheckCSPForRequest);
   FRIEND_TEST_ALL_PREFIXES(BaseFetchContextTest,

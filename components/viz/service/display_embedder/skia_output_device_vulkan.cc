@@ -15,7 +15,6 @@
 #include "gpu/command_buffer/service/memory_tracking.h"
 #include "gpu/command_buffer/service/shared_context_state.h"
 #include "gpu/command_buffer/service/vulkan_context_provider.h"
-#include "gpu/config/gpu_finch_features.h"
 #include "gpu/vulkan/vulkan_fence_helper.h"
 #include "gpu/vulkan/vulkan_function_pointers.h"
 #include "gpu/vulkan/vulkan_implementation.h"
@@ -36,6 +35,7 @@
 #include "third_party/skia/include/gpu/ganesh/vk/GrVkTypes.h"
 #include "third_party/skia/include/gpu/vk/VulkanMutableTextureState.h"
 #include "ui/gfx/presentation_feedback.h"
+#include "ui/gl/gl_switches.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "gpu/ipc/common/gpu_surface_lookup.h"
@@ -106,8 +106,7 @@ bool SkiaOutputDeviceVulkan::Reshape(const ReshapeParams& params) {
     return false;
   }
 
-  return RecreateSwapChain(params.image_info, params.sample_count,
-                           params.transform);
+  return RecreateSwapChain(params.image_info, params.transform);
 }
 
 void SkiaOutputDeviceVulkan::Submit(
@@ -226,7 +225,7 @@ SkSurface* SkiaOutputDeviceVulkan::BeginPaint(
     memory_type_tracker_->TrackMemAlloc(requirements.size);
     sk_surface = SkSurfaces::WrapBackendTexture(
         context_provider_->GetGrContext(), backend_texture,
-        kTopLeft_GrSurfaceOrigin, sample_count_, color_type_, color_space_,
+        kTopLeft_GrSurfaceOrigin, /*sampleCnt=*/1, color_type_, color_space_,
         &surface_props);
     if (!sk_surface) [[unlikely]] {
       return nullptr;
@@ -345,7 +344,6 @@ bool SkiaOutputDeviceVulkan::Initialize() {
 
 bool SkiaOutputDeviceVulkan::RecreateSwapChain(
     const SkImageInfo& image_info,
-    int sample_count,
     gfx::OverlayTransform transform) {
   auto generation = vulkan_surface_->swap_chain_generation();
 
@@ -358,8 +356,7 @@ bool SkiaOutputDeviceVulkan::RecreateSwapChain(
 
   bool recreate =
       vulkan_surface_->swap_chain_generation() != generation ||
-      !SkColorSpace::Equals(image_info.colorSpace(), color_space_.get()) ||
-      sample_count_ != sample_count;
+      !SkColorSpace::Equals(image_info.colorSpace(), color_space_.get());
   if (recreate) [[likely]] {
     // swapchain is changed, we need recreate all cached sk surfaces.
     for (const auto& sk_surface_size_pair : sk_surface_size_pairs_) {
@@ -370,7 +367,6 @@ bool SkiaOutputDeviceVulkan::RecreateSwapChain(
     sk_surface_size_pairs_.resize(num_images);
     color_type_ = image_info.colorType();
     color_space_ = image_info.refColorSpace();
-    sample_count_ = sample_count;
     damage_of_images_.resize(num_images);
     for (auto& damage : damage_of_images_)
       damage = gfx::Rect(vulkan_surface_->image_size());

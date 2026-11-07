@@ -1573,6 +1573,13 @@ class ComputedStyle final : public ComputedStyleBase {
     return DefaultAnchorData(PositionAnchor(), GetPositionArea());
   }
 
+  bool ReferencesDefaultAnchor() const {
+    return !GetPositionArea().IsNone() ||
+           AlignSelf().GetComputedPosition() == ItemPosition::kAnchorCenter ||
+           JustifySelf().GetComputedPosition() == ItemPosition::kAnchorCenter ||
+           HasDefaultAnchorFunctions();
+  }
+
   // Clear utility functions.
   bool HasClear() const { return Clear() != EClear::kNone; }
   EClear UnresolvedClear() const { return Clear(); }
@@ -1814,6 +1821,12 @@ class ComputedStyle final : public ComputedStyleBase {
     return IsInInlinifyingDisplay() &&
            (display == EDisplay::kContents || display == EDisplay::kInline ||
             display == EDisplay::kInlineListItem);
+  }
+
+  bool AllowsZIndexOnChildren() const {
+    return IsDisplayFlex() || IsDisplayWebkitBox() || IsDisplayGrid() ||
+           IsDisplayGridLanes() ||
+           (Display() == EDisplay::kContents && IsInZIndexAllowingDisplay());
   }
 
   // Isolation utility functions.
@@ -2064,8 +2077,7 @@ class ComputedStyle final : public ComputedStyleBase {
            HasCurrentFilterAnimation() || HasCurrentBackdropFilterAnimation() ||
            (RuntimeEnabledFeatures::CompositeClipPathAnimationEnabled() &&
             HasCurrentClipPathAnimation()) ||
-           (RuntimeEnabledFeatures::CompositeBGColorAnimationEnabled() &&
-            HasCurrentBackgroundColorAnimation());
+           HasCurrentBackgroundColorAnimation();
   }
   bool ShouldCompositeForCurrentAnimations() const {
     return HasCurrentOpacityAnimation() ||
@@ -2524,12 +2536,6 @@ class ComputedStyle final : public ComputedStyleBase {
     if (pseudo == kPseudoIdBackdrop && Overlay() == EOverlay::kNone) {
       return false;
     }
-    // ::overscroll-backdrop is generated for overscroll targets (which have
-    // -internal-overscroll-position: auto).
-    if (pseudo == kPseudoIdOverscrollBackdrop &&
-        !IsInternalOverscrollPositionAuto()) {
-      return false;
-    }
     if (pseudo == kPseudoIdScrollMarkerGroupBefore) {
       return HasScrollMarkerGroupBefore() && IsScrollContainer();
     }
@@ -2677,9 +2683,6 @@ class ComputedStyle final : public ComputedStyleBase {
            type == EOverscrollContainerType::kPush;
   }
 
-  bool IsInternalOverscrollPositionAuto() const {
-    return InternalOverscrollPosition() == EInternalOverscrollPosition::kAuto;
-  }
   bool IsUnboundedElementActive() const {
     return InternalUnbounded() == EInternalUnbounded::kActive;
   }
@@ -3756,7 +3759,7 @@ class ComputedStyleBuilder final : public ComputedStyleBuilderBase {
 
  private:
   void UpdateAnimatedSource(AnimatedSourceProperty property,
-                            bool is_inherited,
+                            const CSSProperty& css_property,
                             AnimatedSource source);
 
   mutable bool has_own_animations_ = false;

@@ -99,6 +99,9 @@ PageActionControllerImpl::PageActionControllerImpl(
       base::BindRepeating(&PageActionControllerImpl::OnTabWillDeactivate,
                           base::Unretained(this)));
   chip_selector_ = CreateChipSelector(
+      base::BindRepeating(
+          &PageActionControllerImpl::IsPageActionSuppressedByOmnibox,
+          base::Unretained(this)),
       base::BindRepeating(&PageActionControllerImpl::DoShowSuggestionChip,
                           base::Unretained(this)),
       base::BindRepeating(&PageActionControllerImpl::DoHideSuggestionChip,
@@ -323,6 +326,11 @@ ScopedPageActionActivity PageActionControllerImpl::AddActivity(
   return ScopedPageActionActivity(*this, action_id);
 }
 
+bool PageActionControllerImpl::IsPageActionSuppressedByOmnibox(
+    actions::ActionId page_action_id) {
+  return FindPageActionModel(page_action_id).IsAffectedByOmniboxSuppression();
+}
+
 void PageActionControllerImpl::DecrementActivityCounter(
     actions::ActionId action_id) {
   auto it = activity_counters_.find(action_id);
@@ -538,6 +546,7 @@ void PageActionControllerImpl::SetShouldHidePageActions(
     model->SetIsSuppressedByOmnibox(PageActionPassKey(),
                                     should_hide_page_actions);
   }
+  chip_selector_->ReevaluateAfterSuppressionChange();
 }
 
 void PageActionControllerImpl::OnActionsChanged() {
@@ -610,6 +619,9 @@ void PageActionControllerImpl::RegisterCallbacks(PageActionPassKey,
   delegate->SetAnchoredMessageCollapseCallback(base::BindRepeating(
       &PageActionControllerImpl::ResumeAnchoredMessageTimeout,
       weak_factory_.GetWeakPtr(), action_id));
+  delegate->SetAnchoredMessageDowngradeCallback(
+      base::BindRepeating(&PageActionControllerImpl::DowngradeAnchoredMessage,
+                          weak_factory_.GetWeakPtr(), action_id));
 }
 
 void PageActionControllerImpl::RecordClickMetric(

@@ -29,7 +29,6 @@ build_webui("build") {
     "privacy_page/security/fingerprint_progress_arc.ts",
     "privacy_page/security/secure_dns.ts",
     "privacy_page/security/secure_dns_input.ts",
-    "privacy_page/security/secure_dns_v2.ts",
     "privacy_page/security/security_keys_bio_enroll_dialog.ts",
     "privacy_page/security/security_keys_credential_management_dialog.ts",
     "privacy_page/security/security_keys_pin_field.ts",
@@ -37,8 +36,6 @@ build_webui("build") {
     "privacy_page/security/security_keys_set_pin_dialog.ts",
     "privacy_page/security/security_keys_subpage.ts",
     "privacy_page/security/security_page.ts",
-    "privacy_page/security/security_page_feature_row.ts",
-    "privacy_page/security/security_page_v2.ts",
     "settings_main/settings_main.ts",
     "settings_menu/settings_menu.ts",
     "settings_ui/settings_ui.ts",
@@ -119,12 +116,6 @@ build_webui("build") {
     web_component_files += [ "site_settings/smart_card_readers_page.ts" ]
   }
 
-  if (is_mac) {
-  }
-
-  if (is_win || is_mac) {
-  }
-
   # -----------------web_component_files end ----------------------------------
 
   # -----------------ts_files start ----------------------------
@@ -160,8 +151,7 @@ build_webui("build") {
     "clear_browsing_data_dialog/history_deletion_dialog.ts",
     "controls/controlled_button.html.ts",
     "controls/controlled_button.ts",
-    "controls/pref_key_observer_mixin.ts",
-    "controls/pref_key_observer_mixin_lit.ts",
+    "controls/settings_boolean_control_mixin.ts",
     "controls/settings_dropdown_menu.html.ts",
     "controls/settings_dropdown_menu.ts",
     "controls/settings_slider.html.ts",
@@ -219,7 +209,6 @@ build_webui("build") {
     "privacy_page/do_not_track_toggle.ts",
     "privacy_page/security/safe_browsing_types.ts",
     "privacy_page/security/security_keys_browser_proxy.ts",
-    "relaunch_mixin.ts",
     "relaunch_mixin_lit.ts",
     "reset_page/reset_browser_proxy.ts",
     "reset_page/reset_page.html.ts",
@@ -230,7 +219,6 @@ build_webui("build") {
     "reset_page/reset_profile_dialog.ts",
     "route.ts",
     "router.ts",
-    "scrollable_mixin.ts",
     "search_metrics_recorder.ts",
     "search_page/extension_controlled_message.html.ts",
     "search_page/extension_controlled_message.ts",
@@ -248,6 +236,8 @@ build_webui("build") {
     "search_page/search_engine_icon.ts",
     "search_page/search_engine_list_dialog.html.ts",
     "search_page/search_engine_list_dialog.ts",
+    "search_page/search_engine_more_engines_dialog.html.ts",
+    "search_page/search_engine_more_engines_dialog.ts",
     "search_page/search_engines_browser_proxy.ts",
     "search_page/search_engines_list.html.ts",
     "search_page/search_engines_list.ts",
@@ -271,8 +261,12 @@ build_webui("build") {
     "settings_page/settings_view_mixin_lit.ts",
     "settings_page/settings_view_mixin.ts",
     "site_settings/constants.ts",
+    "site_settings/cr_lazy_render.ts",
+    "site_settings/focus_row_mixin.ts",
+    "site_settings/list_property_update_mixin.ts",
     "site_settings/site_settings_browser_proxy.ts",
     "site_settings/site_settings_mixin.ts",
+    "site_settings/site_settings_mixin_lit.ts",
     "site_settings/site_settings_util.ts",
     "site_settings/website_usage_browser_proxy.ts",
     "time.ts",
@@ -332,6 +326,11 @@ build_webui("build") {
     ]
   }
 
+  if (is_mac) {
+    ts_files += [
+    ]
+  }
+
   if (is_win || is_mac) {
   }
 
@@ -362,9 +361,14 @@ build_webui("build") {
     "appearance_page/home_url_input.css",
     "clear_browsing_data_dialog/clear_browsing_data_dialog.css",
     "clear_browsing_data_dialog/clear_browsing_data_time_picker.css",
+    "controls/collapse_radio_button.css",
     "controls/controlled_button.css",
+    "controls/controlled_radio_button.css",
+    "controls/settings_checkbox.css",
     "controls/settings_dropdown_menu.css",
+    "controls/settings_radio_group.css",
     "controls/settings_slider.css",
+    "controls/settings_toggle_button.css",
     "downloads_page/downloads_page.css",
     "languages_page/add_languages_dialog.css",
     "languages_page/edit_dictionary_page.css",
@@ -381,13 +385,18 @@ build_webui("build") {
     "performance_page/tab_discard/exception_entry.css",
     "performance_page/tab_discard/exception_list.css",
     "performance_page/tab_discard/exception_tabbed_add_dialog.css",
+    "privacy_page/cookies_page.css",
     "privacy_page/do_not_track_toggle.css",
     "privacy_page/personalization_options.css",
+    "privacy_page/security/fingerprint_progress_arc.css",
+    "privacy_page/security/secure_dns.css",
+    "privacy_page/security/secure_dns_input.css",
     "privacy_page/security/security_keys_bio_enroll_dialog.css",
     "privacy_page/security/security_keys_credential_management_dialog.css",
     "privacy_page/security/security_keys_pin_field.css",
     "privacy_page/security/security_keys_reset_dialog.css",
     "privacy_page/security/security_keys_set_pin_dialog.css",
+    "privacy_page/security/security_page.css",
     "reset_page/reset_profile_banner.css",
     "reset_page/reset_profile_dialog.css",
     "search_page/extension_controlled_message.css",
@@ -399,19 +408,39 @@ build_webui("build") {
     "search_page/search_engine_entry_shared.css",
     "search_page/search_engine_icon.css",
     "search_page/search_engine_list_dialog.css",
+    "search_page/search_engine_list_dialog_shared.css",
+    "search_page/search_engine_more_engines_dialog.css",
     "search_page/search_engines_list.css",
     "search_page/search_engines_page.css",
     "search_page/search_page.css",
     "search_page/search_page_index.css",
     "search_page/site_shortcuts_page.css",
+    "settings_main/settings_main.css",
+    "settings_menu/settings_menu.css",
     "settings_page/settings_section.css",
     "settings_page/settings_subpage.css",
+    "settings_ui/settings_ui.css",
+    "site_favicon.css",
+    "site_settings/action_link.css",
+    "site_settings/add_site_dialog.css",
+    "site_settings/category_setting_exceptions.css",
     "site_settings/clear_storage_dialog_shared.css",
+    "site_settings/media_picker.css",
+    "site_settings/search_highlight_style.css",
+    "site_settings/settings_category_default_radio_group.css",
     "site_settings/site_settings_shared.css",
     "site_settings/site_settings_shared_lit.css",
+    "site_settings/zoom_levels.css",
     "system_page/system_page.css",
   ]
 
+  if (!is_chromeos) {
+    mojo_files_deps =
+        [ "//chrome/browser/accessibility:mojo_bindings_ts__generator" ]
+    mojo_files = [
+      "$root_gen_dir/chrome/browser/accessibility/page_colors.mojom-webui.ts",
+    ]
+  }
 
   ts_composite = true
   ts_definitions = [

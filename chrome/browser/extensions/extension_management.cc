@@ -16,7 +16,6 @@
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_functions.h"
-#include "base/metrics/histogram_macros.h"
 #include "base/no_destructor.h"
 #include "base/observer_list.h"
 #include "base/strings/string_split.h"
@@ -45,7 +44,6 @@
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/common/pref_names.h"
 #include "components/crx_file/id_util.h"
-#include "components/enterprise/browser/reporting/common_pref_names.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/common/content_switches.h"
@@ -77,8 +75,6 @@
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ash/profiles/profile_helper.h"
-#else
-#include "components/enterprise/browser/reporting/common_pref_names.h"
 #endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
@@ -105,7 +101,7 @@ BASE_FEATURE(kDisableForceInstalledExtensionsInLowTrustEnviromentWhenGreylisted,
 
 // Blocks DSE/NTP override policy extensions in low-trust environments.
 BASE_FEATURE(kBlockPolicyDseNtpOverridesInLowTrust,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #endif
 
 ExtensionManagement::ExtensionManagement(Profile* profile)
@@ -129,16 +125,15 @@ ExtensionManagement::ExtensionManagement(Profile* profile)
   pref_change_registrar_.Add(pref_names::kAllowedTypes, pref_change_callback);
   pref_change_registrar_.Add(pref_names::kExtensionManagement,
                              pref_change_callback);
-  pref_change_registrar_.Add(
-      enterprise_reporting::kCloudExtensionRequestEnabled,
-      pref_change_callback);
-#if !BUILDFLAG(IS_CHROMEOS)
-  pref_change_registrar_.Add(enterprise_reporting::kCloudReportingEnabled,
-                             pref_change_callback);
-#endif
 
   pref_change_registrar_.Add(pref_names::kExtensionUnpublishedAvailability,
                              pref_change_callback);
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+  pref_change_registrar_.Add(
+      pref_names::kExtensionForceInstallWithSearchOrNewTabOverridesEnabled,
+      pref_change_callback);
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 
   // Note that both |global_settings_| and |default_settings_| will be null
   // before first call to Refresh(), so in order to resolve this, Refresh() must
@@ -260,6 +255,18 @@ bool ExtensionManagement::IsForcedOrRecommendedInstallConfigured(
          mode == ManagedInstallationMode::kRecommended;
 }
 
+bool ExtensionManagement::IsPolicyInstalled(const Extension& extension) {
+  if (Manifest::IsPolicyLocation(extension.location())) {
+    return true;
+  }
+  // Verify policy settings for recommended extensions because the
+  // `kExternalPrefDownload` location is shared with non-policy installs
+  // and default apps.
+  return extension.location() ==
+             mojom::ManifestLocation::kExternalPrefDownload &&
+         IsForcedOrRecommendedInstallConfigured(extension);
+}
+
 base::DictValue ExtensionManagement::GetForceInstallList() const {
   return GetInstallListByMode(ManagedInstallationMode::kForced);
 }
@@ -293,7 +300,7 @@ bool ExtensionManagement::HasAllowlistedExtension() {
     auto extension_id = *deferred_ids_.begin();
     // This will remove the entry from |deferred_ids_|.
     LoadDeferredExtensionSetting(extension_id);
-    DCHECK(!deferred_ids_.contains(extension_id));
+    CHECK(!deferred_ids_.contains(extension_id), base::NotFatalUntil::M161);
     if (AccessById(extension_id)->installation_mode ==
         ManagedInstallationMode::kAllowed) {
       NotifyExtensionManagementPrefChanged();
@@ -317,7 +324,7 @@ GURL ExtensionManagement::GetEffectiveUpdateURL(const Extension& extension) {
         << "Update URL should not be overridden for default-installed "
            "extensions!";
     auto* setting = GetSettingsForId(extension.id());
-    DCHECK(setting);
+    CHECK(setting, base::NotFatalUntil::M161);
     const GURL update_url(setting->update_url);
     // It's important that we never override a non-webstore update URL to be
     // the webstore URL. Otherwise, a policy may inadvertently cause
@@ -535,10 +542,11 @@ bool ExtensionManagement::IsLowTrustEnforcementActive() const {
 
 bool ExtensionManagement::IsDseNtpOverrideBlockingActive() const {
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
-  if (!base::FeatureList::IsEnabled(kBlockPolicyDseNtpOverridesInLowTrust)) {
+  if (!base::FeatureList::IsEnabled(kBlockPolicyDseNtpOverridesInLowTrust) ||
+      global_settings_->allow_low_trust_dse_ntp_overrides) {
     return false;
   }
-#endif
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
   return IsLowTrustEnforcementActive();
 }
 
@@ -553,16 +561,7 @@ bool ExtensionManagement::ShouldBlockPolicyInstalledDseNtpOverrideExtension(
   }
 
   // Block policy install attempts while allowing user-driven installs.
-  bool is_forced_policy = Manifest::IsPolicyLocation(extension.location());
-
-  // We must verify policy settings for recommended policy because the
-  // `kExternalPrefDownload` location is shared with non-policy installs
-  // and default apps.
-  bool is_recommended_policy =
-      extension.location() == mojom::ManifestLocation::kExternalPrefDownload &&
-      IsForcedOrRecommendedInstallConfigured(extension);
-
-  return is_forced_policy || is_recommended_policy;
+  return IsPolicyInstalled(extension);
 }
 
 bool ExtensionManagement::IsExtensionBlockedByLowTrust(
@@ -713,7 +712,6 @@ bool ExtensionManagement::CheckMinimumVersion(const Extension* extension,
 
 void ExtensionManagement::Refresh() {
   TRACE_EVENT0("browser,startup", "ExtensionManagement::Refresh");
-  SCOPED_UMA_HISTOGRAM_TIMER("Extensions.Management_Refresh");
   // Load all extension management settings preferences.
   const base::ListValue* allowed_list_pref =
       LoadListPreference(pref_names::kInstallAllowList, true);
@@ -729,13 +727,15 @@ void ExtensionManagement::Refresh() {
       LoadListPreference(pref_names::kAllowedTypes, true);
   const base::DictValue* dict_pref =
       LoadDictPreference(pref_names::kExtensionManagement, true);
-  const base::Value* extension_request_pref =
-      LoadPreference(enterprise_reporting::kCloudExtensionRequestEnabled, false,
-                     base::Value::Type::BOOLEAN);
 
   const base::Value* unpublished_availability_pref =
       LoadPreference(pref_names::kExtensionUnpublishedAvailability,
                      /*force_managed=*/true, base::Value::Type::INTEGER);
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+  const base::Value* allow_overrides_pref = LoadPreference(
+      pref_names::kExtensionForceInstallWithSearchOrNewTabOverridesEnabled,
+      /*force_managed=*/true, base::Value::Type::BOOLEAN);
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 
   // Reset all settings.
   global_settings_ = std::make_unique<internal::GlobalSettings>();
@@ -744,8 +744,7 @@ void ExtensionManagement::Refresh() {
   default_settings_ = std::make_unique<internal::IndividualSettings>();
 
   // Parse default settings.
-  if ((denied_list_pref && denied_list_pref->contains("*")) ||
-      (extension_request_pref && extension_request_pref->GetBool())) {
+  if (denied_list_pref && denied_list_pref->contains("*")) {
     default_settings_->installation_mode = ManagedInstallationMode::kBlocked;
   }
 
@@ -827,6 +826,13 @@ void ExtensionManagement::Refresh() {
         static_cast<internal::GlobalSettings::UnpublishedAvailability>(
             unpublished_availability_pref->GetInt());
   }
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+  if (allow_overrides_pref) {
+    global_settings_->allow_low_trust_dse_ntp_overrides =
+        allow_overrides_pref->GetBool();
+  }
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 
   if (dict_pref) {
     // Parse new extension management preference.
@@ -952,7 +958,7 @@ internal::IndividualSettings* ExtensionManagement::GetSettingsForId(
 
 void ExtensionManagement::LoadDeferredExtensionSetting(
     const std::string& extension_id) {
-  DCHECK(deferred_ids_.contains(extension_id));
+  CHECK(deferred_ids_.contains(extension_id), base::NotFatalUntil::M161);
 
   // No need to check again later.
   deferred_ids_.erase(extension_id);
@@ -1049,8 +1055,9 @@ base::DictValue ExtensionManagement::GetInstallListByMode(
     ManagedInstallationMode installation_mode) const {
   // This is only meaningful if we 've loaded the extensions for the given
   // installation mode.
-  DCHECK(installation_mode == ManagedInstallationMode::kForced ||
-         installation_mode == ManagedInstallationMode::kRecommended);
+  CHECK(installation_mode == ManagedInstallationMode::kForced ||
+            installation_mode == ManagedInstallationMode::kRecommended,
+        base::NotFatalUntil::M161);
 
   base::DictValue extension_dict;
   for (const auto& [id, settings] : settings_by_id_) {

@@ -130,6 +130,7 @@ FilterEffectBuilder::FilterEffectBuilder(const gfx::RectF& reference_box,
                                          float zoom,
                                          Color current_color,
                                          mojom::blink::ColorScheme color_scheme,
+                                         bool is_in_canvas_subtree,
                                          const cc::PaintFlags* fill_flags,
                                          const cc::PaintFlags* stroke_flags)
     : reference_box_(reference_box),
@@ -138,6 +139,7 @@ FilterEffectBuilder::FilterEffectBuilder(const gfx::RectF& reference_box,
       shorthand_scale_(1),
       current_color_(current_color),
       color_scheme_(color_scheme),
+      is_in_canvas_subtree_(is_in_canvas_subtree),
       fill_flags_(fill_flags),
       stroke_flags_(stroke_flags) {}
 
@@ -364,6 +366,9 @@ FilterEffect* FilterEffectBuilder::BuildFilterEffect(
       }
       if (previous_effect->OriginTainted())
         effect->SetOriginTainted();
+      if (previous_effect->ContainsBackdrop()) {
+        effect->SetContainsBackdrop();
+      }
       previous_effect = effect;
     }
   }
@@ -371,16 +376,21 @@ FilterEffect* FilterEffectBuilder::BuildFilterEffect(
 }
 
 CompositorFilterOperations FilterEffectBuilder::BuildFilterOperations(
-    const FilterOperations& operations) const {
+    const FilterOperations& operations,
+    bool contains_backdrop) const {
   InterpolationSpace current_interpolation_space = kInterpolationSpaceSRGB;
 
   CompositorFilterOperations filters;
+  if (contains_backdrop) {
+    filters.SetContainsBackdrop();
+  }
   for (FilterOperation* op : operations.Operations()) {
     switch (op->GetType()) {
       case FilterOperation::OperationType::kReference: {
         auto& reference_operation = To<ReferenceFilterOperation>(*op);
         Filter* reference_filter = BuildReferenceFilter(
-            reference_operation, nullptr, nullptr, filters.OriginTainted());
+            reference_operation, nullptr, nullptr, filters.OriginTainted(),
+            filters.ContainsBackdrop());
         if (reference_filter && reference_filter->LastEffect()) {
           // Set the interpolation space for the source of the (sub)filter to
           // match that of the previous primitive (or input).
@@ -515,12 +525,16 @@ Filter* FilterEffectBuilder::BuildReferenceFilter(
     const ReferenceFilterOperation& reference_operation,
     FilterEffect* previous_effect,
     SVGFilterGraphNodeMap* node_map,
-    bool input_tainted) const {
+    bool input_tainted,
+    bool input_contains_backdrop) const {
   SVGResource* resource = reference_operation.Resource();
   auto* filter_element =
       DynamicTo<SVGFilterElement>(resource ? resource->Target() : nullptr);
   if (!filter_element)
     return nullptr;
+  if (is_in_canvas_subtree_ && !filter_element->IsInCanvasSubtree()) {
+    return nullptr;
+  }
   if (auto* resource_container = resource->ResourceContainerNoCycleCheck(
           SVGResource::Usage::kContent)) {
     resource_container->ClearInvalidationMask();
@@ -553,6 +567,10 @@ Filter* FilterEffectBuilder::BuildReferenceFilter(
 
   if (input_tainted || (previous_effect && previous_effect->OriginTainted())) {
     result->GetSourceGraphic()->SetOriginTainted();
+  }
+  if (input_contains_backdrop ||
+      (previous_effect && previous_effect->ContainsBackdrop())) {
+    result->GetSourceGraphic()->SetContainsBackdrop();
   }
 
   if (!previous_effect)

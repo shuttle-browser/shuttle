@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "base/check.h"
@@ -35,10 +36,6 @@
 #include "chrome/browser/net/system_network_context_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_observer.h"
-#include "components/signin/public/base/signin_buildflags.h"
-#include "components/signin/public/base/signin_switches.h"
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-#endif
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
@@ -87,6 +84,7 @@
 #include "ui/base/page_transition_types.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/gfx/native_ui_types.h"
+
 
 #if BUILDFLAG(IS_MAC)
 #include "chrome/browser/webauthn/chrome_authenticator_request_delegate_mac.h"
@@ -180,10 +178,13 @@ class CableLinkingEventHandler : public ProfileObserver {
   raw_ptr<Profile> profile_;
 };
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-constexpr char kHybridPasskeyEngagementHistogram[] =
+constexpr char kSigninHybridPasskeyEngagementHistogram[] =
     "Signin.HybridPasskey.InlineQrEngagement";
-#endif
+constexpr char kSigninHybridPasskeyOutcomeHistogram[] =
+    "Signin.HybridPasskey.Outcome";
+constexpr char kHybridOutcomeHistogram[] = "WebAuthentication.Hybrid.Outcome";
+constexpr char kHybridQrEngagementHistogram[] =
+    "WebAuthentication.Hybrid.QrEngagement";
 
 }  // namespace
 
@@ -348,12 +349,11 @@ void ChromeAuthenticatorRequestDelegate::OnTransactionSuccessful(
   if (request_source != RequestSource::kWebAuthentication) {
     return;
   }
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
   MaybeRecordHybridPasskeyOutcome(
       authenticator_type == device::AuthenticatorType::kPhone
           ? HybridPasskeyOutcome::kSuccess
           : HybridPasskeyOutcome::kOtherAuthenticatorUsed);
-#endif
+
 #if BUILDFLAG(IS_MAC)
   if (authenticator_type == device::AuthenticatorType::kTouchID) {
     base::Time::Exploded exploded;
@@ -380,7 +380,6 @@ void ChromeAuthenticatorRequestDelegate::OnTransactionSuccessful(
 void ChromeAuthenticatorRequestDelegate::OnTransactionFailed(
     std::optional<device::AuthenticatorType> authenticator_type,
     InterestingFailureReason reason) {
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
   // Other authenticators keep running after a hybrid event is received. A
   // failure from one of them (e.g. a security key tapped after scanning the QR
   // code) ends the request, so it is recorded as `kOtherAuthenticatorUsed`
@@ -394,7 +393,6 @@ void ChromeAuthenticatorRequestDelegate::OnTransactionFailed(
     MaybeRecordHybridPasskeyOutcome(
         HybridPasskeyOutcome::kOtherAuthenticatorUsed);
   }
-#endif
 }
 
 void ChromeAuthenticatorRequestDelegate::RegisterActionCallbacks(
@@ -438,6 +436,7 @@ void ChromeAuthenticatorRequestDelegate::ConfigureDiscoveries(
     device::FidoDiscoveryFactory* discovery_factory) {
   DCHECK(request_type == device::FidoRequestType::kGetAssertion ||
          resident_key_requirement.has_value());
+  request_source_ = request_source;
 
   // Without the UI enabled, discoveries like caBLE, Android AOA, iCloud
   // keychain, and the enclave, don't make sense.
@@ -571,7 +570,9 @@ bool ChromeAuthenticatorRequestDelegate::EmbedderControlsAuthenticatorDispatch(
     // There is no UI to handle request dispatch.
     return false;
   }
-  if (dialog_controller_->ui_presentation() == UIPresentation::kAutofill &&
+  const UIPresentation ui_presentation = dialog_controller_->ui_presentation();
+  if ((ui_presentation == UIPresentation::kAutofill ||
+       ui_presentation == UIPresentation::kAmbient) &&
       dialog_model_->step() ==
           AuthenticatorRequestDialogModel::Step::kNotStarted) {
     // If the inlined QR code suggestion feature is enabled, we do not want to
@@ -580,9 +581,9 @@ bool ChromeAuthenticatorRequestDelegate::EmbedderControlsAuthenticatorDispatch(
     // hybrid handshake advertising immediately on page load to make the QR
     // string payload instantly available for rendering inside the Autofill
     // popup, while avoiding unnecessary Bluetooth advertising on other pages.
-    // There is an active conditional request that is not showing any UI. The UI
-    // will dispatch to any plugged in authenticators after the user selects an
-    // option.
+    // There is an active conditional or ambient request that is not showing any
+    // modal UI. The UI will dispatch to any plugged in authenticators after the
+    // user selects an option.
     return true;
   }
   auto transport = authenticator.AuthenticatorTransport();
@@ -645,13 +646,11 @@ void ChromeAuthenticatorRequestDelegate::OnRetryUserVerification(int attempts) {
 
 void ChromeAuthenticatorRequestDelegate::OnStartOver() {
   DCHECK(start_over_callback_);
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
   // If the request is restarted within the same delegate, record the
   // outcome for the prior attempt before resetting for the new attempt.
   MaybeRecordHybridPasskeyOutcome(
       HybridPasskeyTerminationReason::kUserCancelled);
   MaybeRecordHybridPasskeyEngagement();
-#endif
   dialog_model_->generation++;
   if (g_observer) {
     g_observer->PreStartOver();
@@ -664,11 +663,17 @@ void ChromeAuthenticatorRequestDelegate::OnModelDestroyed(
   DCHECK_EQ(model, dialog_model_.get());
 }
 
+void ChromeAuthenticatorRequestDelegate::OnStepTransition() {
+  if (dialog_model_->step() ==
+      AuthenticatorRequestDialogModel::Step::kCableV2QRCode) {
+    hybrid_passkey_modal_qr_shown_ = true;
+  }
+}
+
 void ChromeAuthenticatorRequestDelegate::OnCancelRequest() {
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
   MaybeRecordHybridPasskeyOutcome(
       HybridPasskeyTerminationReason::kUserCancelled);
-#endif
+
   // |cancel_callback_| must be invoked at most once as invocation of
   // |cancel_callback_| will destroy |this|.
   DCHECK(cancel_callback_);
@@ -776,9 +781,7 @@ void ChromeAuthenticatorRequestDelegate::ShowUI(TransportAvailabilityInfo tai) {
 
 void ChromeAuthenticatorRequestDelegate::OnCableEvent(
     device::cablev2::Event event) {
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
   SetHybridPasskeyStageFromCableEvent(event);
-#endif
   if (event == device::cablev2::Event::kReady) {
     cable_device_ready_ = true;
   }
@@ -975,7 +978,6 @@ void ChromeAuthenticatorRequestDelegate::UpdateModelForTransportAvailability(
   dialog_model_->platform_has_biometrics = tai.platform_has_biometrics;
 }
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
 void ChromeAuthenticatorRequestDelegate::SetHybridPasskeyStageFromCableEvent(
     device::cablev2::Event event) {
   switch (event) {
@@ -1054,10 +1056,13 @@ void ChromeAuthenticatorRequestDelegate::MaybeRecordHybridPasskeyOutcome(
     return;
   }
   hybrid_passkey_stage_.reset();
-  if (!is_chrome_signin_request_) {
-    return;
+  if (request_source_ == RequestSource::kWebAuthentication) {
+    base::UmaHistogramEnumeration(kHybridOutcomeHistogram, outcome);
   }
-  base::UmaHistogramEnumeration("Signin.HybridPasskey.Outcome", outcome);
+  if (is_chrome_signin_request_) {
+    base::UmaHistogramEnumeration(kSigninHybridPasskeyOutcomeHistogram,
+                                  outcome);
+  }
 }
 
 void ChromeAuthenticatorRequestDelegate::
@@ -1069,14 +1074,18 @@ void ChromeAuthenticatorRequestDelegate::MaybeRecordHybridPasskeyEngagement() {
   // Consume the state so that the sample cannot be emitted twice for the same
   // attempt, e.g. by `OnStartOver()` and then by the destructor, and so that a
   // scan never carries over into the next attempt.
-  const bool qr_shown = std::exchange(hybrid_passkey_qr_shown_, false);
+  const bool inline_qr_shown = std::exchange(hybrid_passkey_qr_shown_, false);
+  const bool modal_qr_shown =
+      std::exchange(hybrid_passkey_modal_qr_shown_, false);
   const bool scanned = std::exchange(hybrid_passkey_scanned_, false);
-  if (!qr_shown || !is_chrome_signin_request_) {
-    return;
+  const HybridPasskeyEngagement engagement =
+      scanned ? HybridPasskeyEngagement::kScanDetected
+              : HybridPasskeyEngagement::kNoScanDetected;
+  if (inline_qr_shown && is_chrome_signin_request_) {
+    base::UmaHistogramEnumeration(kSigninHybridPasskeyEngagementHistogram,
+                                  engagement);
   }
-  base::UmaHistogramEnumeration(kHybridPasskeyEngagementHistogram,
-                                scanned
-                                    ? HybridPasskeyEngagement::kScanDetected
-                                    : HybridPasskeyEngagement::kNoScanDetected);
+  if (modal_qr_shown && request_source_ == RequestSource::kWebAuthentication) {
+    base::UmaHistogramEnumeration(kHybridQrEngagementHistogram, engagement);
+  }
 }
-#endif

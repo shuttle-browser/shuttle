@@ -29,7 +29,6 @@
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
 #include "third_party/blink/renderer/platform/web_test_support.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_mojo.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_utf8_adaptor.h"
 #include "third_party/inspector_protocol/crdtp/cbor.h"
@@ -266,7 +265,8 @@ bool DevToolsSession::IsDetached() {
 void DevToolsSession::Append(InspectorAgent* agent) {
   agents_.push_back(agent);
   agent->Init(agent_->probe_sink_.Get(), inspector_backend_dispatcher_.get(),
-              &session_state_, v8_session_);
+              &session_state_, v8_session_,
+              ClientIsTrusted(client_is_trusted_));
 }
 
 void DevToolsSession::Detach() {
@@ -451,6 +451,14 @@ void DevToolsSession::flushProtocolNotifications() {
 
 void DevToolsSession::FlushProtocolNotifications() {
   if (IsDetached()) {
+    return;
+  }
+  // Only a handful of commands can be interrupting, and these generally
+  // do not generate protocol notifications. However, flushing notifications
+  // while interrupting may cause some undesired consequences, in particular
+  // in case of CSS agent that performs non-trivial work upon flushing, so
+  // defer it until handling a top-level command.
+  if (agent_->IsInterruptingExecution()) {
     return;
   }
   for (wtf_size_t i = 0; i < agents_.size(); i++) {

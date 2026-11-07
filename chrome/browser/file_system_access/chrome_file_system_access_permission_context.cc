@@ -104,7 +104,6 @@
 #endif
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-#include "chrome/browser/enterprise/connectors/analysis/content_analysis_delegate.h"
 #include "chrome/browser/safe_browsing/download_protection/download_protection_util.h"
 #include "chrome/browser/ui/file_system_access/file_system_access_dangerous_file_dialog.h"
 #include "components/safe_browsing/content/common/file_type_policies.h"
@@ -201,10 +200,11 @@ void ShowFileSystemAccessRestrictedDirectoryDialogOnUIThread(
     content::GlobalRenderFrameHostId frame_id,
     const url::Origin& origin,
     HandleType handle_type,
+    AccessTrigger access_trigger,
     base::OnceCallback<
         void(ChromeFileSystemAccessPermissionContext::SensitiveEntryResult)>
         callback) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   content::RenderFrameHost* rfh = content::RenderFrameHost::FromID(frame_id);
   if (!rfh || !rfh->IsActive()) {
     // Requested from a no longer valid RenderFrameHost.
@@ -223,7 +223,7 @@ void ShowFileSystemAccessRestrictedDirectoryDialogOnUIThread(
   }
 
   ShowFileSystemAccessRestrictedDirectoryDialog(
-      origin, handle_type, std::move(callback), web_contents);
+      origin, handle_type, access_trigger, std::move(callback), web_contents);
 }
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
@@ -234,7 +234,7 @@ void ShowFileSystemAccessDangerousFileDialogOnUIThread(
     base::OnceCallback<
         void(ChromeFileSystemAccessPermissionContext::SensitiveEntryResult)>
         callback) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   content::RenderFrameHost* rfh = content::RenderFrameHost::FromID(frame_id);
   if (!rfh || !rfh->IsActive()) {
     // Requested from a no longer valid RenderFrameHost.
@@ -269,8 +269,32 @@ bool ContainsInvalidDNSCharacter(base::FilePath::StringType hostname) {
   return false;
 }
 
+bool IsLocalUNCServer(base::FilePath::StringViewType server) {
+  if (server.size() > 1 && server.back() == FILE_PATH_LITERAL('.')) {
+    server.remove_suffix(1);
+  }
+  static constexpr base::FilePath::StringViewType kLocalServers[] = {
+      FILE_PATH_LITERAL("localhost"),
+      FILE_PATH_LITERAL("wsl.localhost"),
+      // Hypervisor host-share redirectors (Parallels, VMware, VirtualBox).
+      FILE_PATH_LITERAL("mac"),
+      FILE_PATH_LITERAL("psf"),
+      FILE_PATH_LITERAL("vmware-host"),
+      FILE_PATH_LITERAL(".host"),
+      FILE_PATH_LITERAL("vboxsvr"),
+      FILE_PATH_LITERAL("vboxsrv"),
+  };
+  for (const auto& candidate : kLocalServers) {
+    if (base::FilePath::CompareEqualIgnoreCase(server, candidate)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Returns true if the path is a Universal Naming Convention (UNC) path pointing
-// to a local system path, device namespace, or WSL loopback redirector.
+// to a local system path, device namespace, WSL loopback redirector, or
+// hypervisor host-share namespace.
 bool MaybeIsLocalUNCPath(const base::FilePath& path) {
   if (!path.IsNetwork()) {
     return false;
@@ -279,16 +303,11 @@ bool MaybeIsLocalUNCPath(const base::FilePath& path) {
   const std::vector<base::FilePath::StringType> components =
       path.GetComponents();
 
-  // Check for server name that could represent a local system. We only
+  // Check for server name that could represent a local or host system. We only
   // check for a very short list, as it is impossible to cover all different
   // variants on Windows.
   if (components.size() >= 2 &&
-      (base::FilePath::CompareEqualIgnoreCase(components[1],
-                                              FILE_PATH_LITERAL("localhost")) ||
-       base::FilePath::CompareEqualIgnoreCase(
-           components[1], FILE_PATH_LITERAL("wsl.localhost")) ||
-       base::FilePath::CompareEqualIgnoreCase(
-           components[1], FILE_PATH_LITERAL("wsl.localhost.")) ||
+      (IsLocalUNCServer(components[1]) ||
        components[1] == FILE_PATH_LITERAL("127.0.0.1") ||
        components[1] == FILE_PATH_LITERAL(".") ||
        components[1] == FILE_PATH_LITERAL("?") ||
@@ -328,6 +347,47 @@ bool MaybeIsLocalUNCPath(const base::FilePath& path) {
   }
 
   return false;
+}
+
+// Kill switch for the WSL home exemption below, see crbug.com/573422635.
+BASE_FEATURE(kFileSystemAccessAllowWslHomeSubfolders,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Returns true if `path` is inside a home directory of a WSL distribution, such
+// as \\wsl.localhost\Ubuntu\home\user\src, and not inside one of the home
+// directory's dot entries, such as .ssh or .bashrc, or its bin directory. The
+// home-relative rules resolve to drive-letter paths and cannot match WSL paths,
+// so `ShouldBlockAccessToPath()` rejects all other WSL paths through
+// `MaybeIsLocalUNCPath()`.
+bool IsAllowedWslHomePath(const base::FilePath& path) {
+  if (!base::FeatureList::IsEnabled(kFileSystemAccessAllowWslHomeSubfolders) ||
+      !path.IsNetwork() || path.ReferencesParent()) {
+    return false;
+  }
+
+  // {\\, wsl.localhost, <distro>, home, <user>, <child>, ...}. Linux paths are
+  // case-sensitive, so "home" must match exactly.
+  const std::vector<base::FilePath::StringType> components =
+      path.GetComponents();
+  if (components.size() < 6 ||
+      !base::FilePath::CompareEqualIgnoreCase(
+          components[1], FILE_PATH_LITERAL("wsl.localhost")) ||
+      components[3] != FILE_PATH_LITERAL("home")) {
+    return false;
+  }
+
+  // Rejects dot entries, and names that Windows path normalization can drop
+  // (".", " .", " "), which could make the path resolve to a home directory.
+  const auto is_plain_name = [](base::FilePath::StringViewType name) {
+    return !name.empty() && name.front() != FILE_PATH_LITERAL('.') &&
+           name.back() != FILE_PATH_LITERAL('.') &&
+           name.back() != FILE_PATH_LITERAL(' ');
+  };
+  // ~/bin is on the default PATH, and files created from Windows in WSL can be
+  // executable.
+  return is_plain_name(components[2]) && is_plain_name(components[4]) &&
+         is_plain_name(components[5]) &&
+         components[5] != FILE_PATH_LITERAL("bin");
 }
 #endif
 
@@ -430,9 +490,49 @@ GenerateBlockPaths(bool should_normalize_file_path) {
       // And limit access to ~/.gnupg as well.
       BlockPath::CreateRelative(base::DIR_HOME, FILE_PATH_LITERAL(".gnupg"),
                                 BlockType::kBlockAllChildren),
+      // ~/.config holds configuration for many cross-platform tools, so block
+      // it on all platforms, see crbug.com/569012015.
+      BlockPath::CreateRelative(base::DIR_HOME, FILE_PATH_LITERAL(".config"),
+                                BlockType::kBlockAllChildren),
+      // ~/.cache holds caches and virtual environments for cross-platform
+      // tools, so block it on all platforms, see crbug.com/577400245.
+      BlockPath::CreateRelative(base::DIR_HOME, FILE_PATH_LITERAL(".cache"),
+                                BlockType::kBlockAllChildren),
+      // Shell startup files in the home directory, including the ones read by
+      // Git Bash on Windows, see crbug.com/558362029.
+      BlockPath::CreateRelative(base::DIR_HOME,
+                                FILE_PATH_LITERAL(".bash_profile"),
+                                BlockType::kBlockAllChildren),
+      BlockPath::CreateRelative(base::DIR_HOME,
+                                FILE_PATH_LITERAL(".bash_login"),
+                                BlockType::kBlockAllChildren),
+      BlockPath::CreateRelative(base::DIR_HOME, FILE_PATH_LITERAL(".bashrc"),
+                                BlockType::kBlockAllChildren),
+      BlockPath::CreateRelative(base::DIR_HOME, FILE_PATH_LITERAL(".profile"),
+                                BlockType::kBlockAllChildren),
+      BlockPath::CreateRelative(base::DIR_HOME, FILE_PATH_LITERAL(".zshenv"),
+                                BlockType::kBlockAllChildren),
+      BlockPath::CreateRelative(base::DIR_HOME, FILE_PATH_LITERAL(".zprofile"),
+                                BlockType::kBlockAllChildren),
+      BlockPath::CreateRelative(base::DIR_HOME, FILE_PATH_LITERAL(".zshrc"),
+                                BlockType::kBlockAllChildren),
+      BlockPath::CreateRelative(base::DIR_HOME, FILE_PATH_LITERAL(".zlogin"),
+                                BlockType::kBlockAllChildren),
       // Block write access to */.git/hooks, see crbug.com/465668234 and
       // crbug.com/553115714.
       BlockPath::CreateSuffix(FILE_PATH_LITERAL(".git/hooks"),
+                              BlockType::kBlockWrite),
+      // Block write access to the repository config and to submodule git
+      // directories, which have their own hooks and config, see
+      // crbug.com/572269631 and crbug.com/571913154.
+      BlockPath::CreateSuffix(FILE_PATH_LITERAL(".git/config"),
+                              BlockType::kBlockWrite),
+      BlockPath::CreateSuffix(FILE_PATH_LITERAL(".git/modules"),
+                              BlockType::kBlockWrite),
+      // Block write access to */.mvn, which holds Maven project and JVM
+      // configuration (such as jvm.config, maven.config, and extensions.xml),
+      // see crbug.com/578500839.
+      BlockPath::CreateSuffix(FILE_PATH_LITERAL(".mvn"),
                               BlockType::kBlockWrite),
 #if BUILDFLAG(IS_WIN)
       // Some Windows specific directories to block, basically all apps, the
@@ -463,6 +563,10 @@ GenerateBlockPaths(bool should_normalize_file_path) {
       // Block access to /System/Volumes (internal system and container
       // volumes).
       BlockPath::CreateAbsolute(FILE_PATH_LITERAL("/System/Volumes"),
+                                BlockType::kBlockAllChildren),
+      // Block access to devices via /dev, matching Linux, see
+      // crbug.com/569012543.
+      BlockPath::CreateAbsolute(FILE_PATH_LITERAL("/dev"),
                                 BlockType::kBlockAllChildren),
       BlockPath::CreateRelative(base::DIR_APP_DATA,
                                 BlockType::kBlockAllChildren),
@@ -514,16 +618,32 @@ GenerateBlockPaths(bool should_normalize_file_path) {
                                 BlockType::kBlockAllChildren),
       BlockPath::CreateAbsolute(FILE_PATH_LITERAL("/etc"),
                                 BlockType::kBlockAllChildren),
-      // And block all of ~/.config, matching the similar restrictions on mac
-      // and windows.
-      BlockPath::CreateRelative(base::DIR_HOME, FILE_PATH_LITERAL(".config"),
+      // And runtime data in /run, including per-session runtime directories
+      // (/run/user/<uid>, the default $XDG_RUNTIME_DIR), see
+      // crbug.com/577376424.
+      BlockPath::CreateAbsolute(FILE_PATH_LITERAL("/run"),
                                 BlockType::kBlockAllChildren),
       // Block ~/.dbus as well, just in case, although there probably isn't much
       // a website can do with access to that directory and its contents.
       BlockPath::CreateRelative(base::DIR_HOME, FILE_PATH_LITERAL(".dbus"),
                                 BlockType::kBlockAllChildren),
-      // And block all of ~/.cache, matching the similar restrictions on mac
-      // and windows.
+      // Block per-user application data, see crbug.com/561996724.
+      BlockPath::CreateRelative(base::DIR_HOME,
+                                FILE_PATH_LITERAL(".local/share"),
+                                BlockType::kBlockAllChildren),
+      // Block the legacy per-user fontconfig configuration, see
+      // crbug.com/559780982. The current location is under ~/.config.
+      BlockPath::CreateRelative(base::DIR_HOME,
+                                FILE_PATH_LITERAL(".fonts.conf"),
+                                BlockType::kBlockAllChildren),
+      BlockPath::CreateRelative(base::DIR_HOME,
+                                FILE_PATH_LITERAL(".fonts.conf.d"),
+                                BlockType::kBlockAllChildren),
+      // Block the per-user NSS database, see crbug.com/557367241.
+      BlockPath::CreateRelative(base::DIR_HOME, FILE_PATH_LITERAL(".pki"),
+                                BlockType::kBlockAllChildren),
+      // Also block base::DIR_CACHE to cover $XDG_CACHE_HOME overrides on Linux
+      // and ChromeOS, and the app cache directory on Android.
       BlockPath::CreateRelative(base::DIR_CACHE, BlockType::kBlockAllChildren),
 #endif
 #if BUILDFLAG(IS_ANDROID)
@@ -603,8 +723,8 @@ bool ShouldBlockAccessToPath(
         extra_rules,
     ChromeFileSystemAccessPermissionContext::BlockPathRules block_path_rules,
     base::FilePath profile_path) {
-  DCHECK(!path.empty());
-  DCHECK(path.IsAbsolute());
+  CHECK(!path.empty(), base::NotFatalUntil::M161);
+  CHECK(path.IsAbsolute(), base::NotFatalUntil::M161);
 
   path = NormalizeFilePathForBlocklist(path, should_normalize_file_path);
   profile_path =
@@ -617,7 +737,7 @@ bool ShouldBlockAccessToPath(
 #if BUILDFLAG(IS_WIN)
   // On Windows, local UNC paths are rejected, as UNC path can be written in a
   // way that can bypass the blocklist.
-  if (MaybeIsLocalUNCPath(path)) {
+  if (MaybeIsLocalUNCPath(path) && !IsAllowedWslHomePath(path)) {
     return true;
   }
 #endif
@@ -754,10 +874,11 @@ bool IsPathOrDescendantIgnoreCase(
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 void DoSafeBrowsingCheckOnUIThread(
+    base::WeakPtr<ChromeFileSystemAccessPermissionContext> permission_context,
     content::GlobalRenderFrameHostId frame_id,
     std::unique_ptr<content::FileSystemAccessWriteItem> item,
     safe_browsing::CheckDownloadCallback callback) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
   safe_browsing::SafeBrowsingService* sb_service =
       g_browser_process->safe_browsing_service();
@@ -768,20 +889,25 @@ void DoSafeBrowsingCheckOnUIThread(
   }
 
   if (!item->browser_context) {
-    content::RenderProcessHost* rph =
-        content::RenderProcessHost::FromID(frame_id.child_id);
-    if (!rph) {
-      std::move(callback).Run(safe_browsing::DownloadCheckResult::UNKNOWN);
+    if (permission_context) {
+      item->browser_context = permission_context->profile();
+    } else if (content::RenderProcessHost* rph =
+                   content::RenderProcessHost::FromID(frame_id.child_id)) {
+      item->browser_context = rph->GetBrowserContext();
+    }
+    if (!item->browser_context) {
+      std::move(callback).Run(
+          safe_browsing::DownloadCheckResult::BLOCKED_SCAN_FAILED);
       return;
     }
-    item->browser_context = rph->GetBrowserContext();
   }
 
   if (!item->web_contents) {
     content::RenderFrameHost* rfh = content::RenderFrameHost::FromID(frame_id);
     if (rfh) {
-      DCHECK_NE(rfh->GetLifecycleState(),
-                content::RenderFrameHost::LifecycleState::kPrerendering);
+      CHECK_NE(rfh->GetLifecycleState(),
+               content::RenderFrameHost::LifecycleState::kPrerendering,
+               base::NotFatalUntil::M161);
       item->web_contents =
           content::WebContents::FromRenderFrameHost(rfh)->GetWeakPtr();
     }
@@ -1287,7 +1413,7 @@ class ChromeFileSystemAccessPermissionContext::PermissionGrantImpl
       const content::PathInfo& old_path,
       const content::PathInfo& new_path,
       bool allow_overwrite) {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+    CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
     auto old_path_it =
         std::ranges::find_if(grants, [&old_path](const auto& entry) {
           return entry.first == old_path.path;
@@ -2149,7 +2275,7 @@ std::string ChromeFileSystemAccessPermissionContext::GetKeyForObject(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   const auto optional_path =
       base::ValueToFilePath(object.Find(kPermissionPathKey));
-  DCHECK(optional_path);
+  CHECK(optional_path, base::NotFatalUntil::M161);
   return std::string(PathAsPermissionKey(optional_path.value()));
 }
 
@@ -2181,7 +2307,7 @@ std::u16string ChromeFileSystemAccessPermissionContext::GetObjectDisplayName(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   const auto optional_path =
       base::ValueToFilePath(object.Find(kPermissionPathKey));
-  DCHECK(optional_path);
+  CHECK(optional_path, base::NotFatalUntil::M161);
   return optional_path->LossyDisplayName();
 }
 
@@ -2208,7 +2334,7 @@ ChromeFileSystemAccessPermissionContext::GetGrantedPaths(
     const url::Origin& origin) {
   return base::ToVector(GetGrantedObjects(origin), [](const auto& object) {
     const auto* path = object->value.Find(kPermissionPathKey);
-    DCHECK(path);
+    CHECK(path, base::NotFatalUntil::M161);
     return base::ValueToFilePath(path).value();
   });
 }
@@ -2260,104 +2386,8 @@ void ChromeFileSystemAccessPermissionContext::CheckPathsAgainstEnterprisePolicy(
     std::vector<content::PathInfo> entries,
     content::GlobalRenderFrameHostId frame_id,
     EntriesAllowedByEnterprisePolicyCallback callback) {
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-  // Get WebContents pointer in order to perform enterprise content analysis.
-  content::RenderFrameHost* rfh = content::RenderFrameHost::FromID(frame_id);
-  content::WebContents* web_contents = nullptr;
-  if (!entries.empty()) {
-    if (rfh && rfh->IsActive()) {
-      web_contents = content::WebContents::FromRenderFrameHost(rfh);
-    }
-  }
-
-  if (!web_contents) {
-    std::move(callback).Run(std::move(entries));
-    return;
-  }
-
-  Profile* browser_profile = Profile::FromBrowserContext(profile());
-  enterprise_connectors::ContentAnalysisDelegate::Data data;
-  if (!enterprise_connectors::ContentAnalysisDelegate::IsEnabled(
-          browser_profile, web_contents->GetLastCommittedURL(), &data,
-          enterprise_connectors::AnalysisConnector::FILE_ATTACHED)) {
-    std::move(callback).Run(std::move(entries));
-    return;
-  }
-
-  data.reason =
-      enterprise_connectors::ContentAnalysisRequest::FILE_PICKER_DIALOG;
-  data.initiating_frame_id = frame_id;
-
-#if BUILDFLAG(IS_CHROMEOS)
-  storage::FileSystemContext* file_system_context = nullptr;
-  if (rfh) {
-    content::SiteInstance* site_instance = rfh->GetSiteInstance();
-    if (site_instance && browser_profile) {
-      file_system_context = browser_profile->GetStoragePartition(site_instance)
-                                ->GetFileSystemContext();
-    }
-  }
-  storage::ExternalMountPoints* mount_points =
-      storage::ExternalMountPoints::GetSystemInstance();
-#endif
-
-  // Resolve virtual paths for kExternal files to their physical paths
-  // so they can be scanned, but keep the original entries (with virtual paths)
-  // to return to the caller.
-  data.paths.reserve(entries.size());
-  for (const auto& entry : entries) {
-    base::FilePath path_to_scan = entry.path;
-#if BUILDFLAG(IS_CHROMEOS)
-    if (entry.type == content::PathType::kExternal) {
-      base::FilePath resolved_path = GetExternalPath(
-          browser_profile, file_system_context, mount_points, entry.path);
-      if (!resolved_path.empty()) {
-        path_to_scan = std::move(resolved_path);
-      }
-    }
-#endif  // BUILDFLAG(IS_CHROMEOS)
-    data.paths.push_back(std::move(path_to_scan));
-  }
-
-  // CreateForFilesInWebContents() only handles real OS files. Any kExternal
-  // entries that failed to resolve will be ignored by the scanner and
-  // reconciled based on the policy's default action (fail-open or fail-closed).
-  // TODO(crbug.com/535207208): Add a test to validate that unscannedFileEvent
-  // is reported for these unresolved files.
-  enterprise_connectors::ContentAnalysisDelegate::CreateForFilesInWebContents(
-      web_contents, std::move(data),
-      base::BindOnce(
-          &ChromeFileSystemAccessPermissionContext::OnContentAnalysisComplete,
-          weak_factory_.GetWeakPtr(), std::move(entries), std::move(callback)),
-      enterprise_connectors::DeepScanAccessPoint::UPLOAD);
-#else
   std::move(callback).Run(std::move(entries));
-#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
 }
-
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-
-// TODO(crbug.com/534804380): Remove the unused `paths` parameter.
-void ChromeFileSystemAccessPermissionContext::OnContentAnalysisComplete(
-    std::vector<content::PathInfo> entries,
-    EntriesAllowedByEnterprisePolicyCallback callback,
-    std::vector<base::FilePath> paths,
-    std::vector<bool> allowed) {
-  CHECK_EQ(paths.size(), allowed.size());
-  CHECK_EQ(paths.size(), entries.size());
-
-  std::vector<content::PathInfo> result_entries;
-  for (size_t i = 0; i < paths.size(); ++i) {
-    if (allowed[i]) {
-      result_entries.emplace_back(entries[i].type, std::move(entries[i].path),
-                                  std::move(entries[i].display_name));
-    }
-  }
-
-  std::move(callback).Run(std::move(result_entries));
-}
-
-#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
 
 void ChromeFileSystemAccessPermissionContext::
     CheckShouldBlockAccessToPathAndReply(
@@ -2448,7 +2478,8 @@ void ChromeFileSystemAccessPermissionContext::PerformAfterWriteChecks(
   content::GetUIThreadTaskRunner({})->PostTask(
       FROM_HERE,
       base::BindOnce(
-          &DoSafeBrowsingCheckOnUIThread, frame_id, std::move(item),
+          &DoSafeBrowsingCheckOnUIThread, weak_factory_.GetWeakPtr(), frame_id,
+          std::move(item),
           base::BindOnce(
               [](scoped_refptr<base::TaskRunner> task_runner,
                  base::OnceCallback<void(AfterWriteCheckResult result)>
@@ -2543,7 +2574,7 @@ void ChromeFileSystemAccessPermissionContext::DidCheckPathAgainstBlocklist(
     content::GetUIThreadTaskRunner({})->PostTask(
         FROM_HERE,
         base::BindOnce(&ShowFileSystemAccessRestrictedDirectoryDialogOnUIThread,
-                       frame_id, origin, handle_type,
+                       frame_id, origin, handle_type, access_trigger,
                        std::move(result_callback)));
     return;
   }
@@ -2619,7 +2650,7 @@ void ChromeFileSystemAccessPermissionContext::MaybeEvictEntries(
 
   for (const auto& entry : oldest_entries) {
     bool did_remove_entry = dict.Remove(entry.second);
-    DCHECK(did_remove_entry);
+    CHECK(did_remove_entry, base::NotFatalUntil::M161);
   }
 }
 
@@ -3774,7 +3805,8 @@ void ChromeFileSystemAccessPermissionContext::PermissionGrantDestroyed(
   // be granted but won't be visible in any UI because the permission context
   // isn't tracking them anymore.
   if (grant_it == grants.end()) {
-    DCHECK_EQ(PermissionStatus::DENIED, grant->GetActivePermissionStatus());
+    CHECK_EQ(PermissionStatus::DENIED, grant->GetActivePermissionStatus(),
+             base::NotFatalUntil::M161);
     return;
   }
 

@@ -30,12 +30,12 @@ uint32_t NumberedTag(uint32_t base_tag, uint32_t number) {
   return base_tag;
 }
 
-uint32_t ssTag(uint32_t number) {
+uint32_t SsTag(uint32_t number) {
   uint32_t base_tag = HB_TAG('s', 's', 0, 0);
   return NumberedTag(base_tag, number);
 }
 
-uint32_t cvTag(uint32_t number) {
+uint32_t CvTag(uint32_t number) {
   uint32_t base_tag = HB_TAG('c', 'v', 0, 0);
   return NumberedTag(base_tag, number);
 }
@@ -116,7 +116,7 @@ scoped_refptr<FontVariantAlternates> FontVariantAlternates::Resolve(
   // features ss01 through ss99. [...]"
 
   if (swash_) {
-    Vector<uint32_t> swash_resolved = resolve_swash(*swash_);
+    Vector<uint32_t> swash_resolved = resolve_swash(swash_);
     if (!swash_resolved.empty()) {
       CHECK_EQ(swash_resolved.size(), 1u);
       clone->resolved_features_.emplace_back(kSwshTag, swash_resolved[0]);
@@ -125,7 +125,7 @@ scoped_refptr<FontVariantAlternates> FontVariantAlternates::Resolve(
   }
 
   if (ornaments_) {
-    Vector<uint32_t> ornaments_resolved = resolve_ornaments(*ornaments_);
+    Vector<uint32_t> ornaments_resolved = resolve_ornaments(ornaments_);
     if (!ornaments_resolved.empty()) {
       CHECK_EQ(ornaments_resolved.size(), 1u);
       clone->resolved_features_.emplace_back(kOrnmTag, ornaments_resolved[0]);
@@ -133,7 +133,7 @@ scoped_refptr<FontVariantAlternates> FontVariantAlternates::Resolve(
   }
 
   if (annotation_) {
-    Vector<uint32_t> annotation_resolved = resolve_annotation(*annotation_);
+    Vector<uint32_t> annotation_resolved = resolve_annotation(annotation_);
     if (!annotation_resolved.empty()) {
       CHECK_EQ(annotation_resolved.size(), 1u);
       clone->resolved_features_.emplace_back(kNaltTag, annotation_resolved[0]);
@@ -141,7 +141,7 @@ scoped_refptr<FontVariantAlternates> FontVariantAlternates::Resolve(
   }
 
   if (stylistic_) {
-    Vector<uint32_t> stylistic_resolved = resolve_stylistic(*stylistic_);
+    Vector<uint32_t> stylistic_resolved = resolve_stylistic(stylistic_);
     if (!stylistic_resolved.empty()) {
       CHECK_EQ(stylistic_resolved.size(), 1u);
       clone->resolved_features_.emplace_back(kSaltTag, stylistic_resolved[0]);
@@ -154,7 +154,7 @@ scoped_refptr<FontVariantAlternates> FontVariantAlternates::Resolve(
       if (!styleset_resolved.empty()) {
         for (auto styleset_entry : styleset_resolved) {
           if (styleset_entry <= kMaxTag) {
-            clone->resolved_features_.emplace_back(ssTag(styleset_entry), 1u);
+            clone->resolved_features_.emplace_back(SsTag(styleset_entry), 1u);
           }
         }
       }
@@ -173,7 +173,7 @@ scoped_refptr<FontVariantAlternates> FontVariantAlternates::Resolve(
         }
         if (character_variant_resolved[0] <= kMaxTag) {
           clone->resolved_features_.emplace_back(
-              cvTag(character_variant_resolved[0]), feature_value);
+              CvTag(character_variant_resolved[0]), feature_value);
         }
       }
     }
@@ -193,14 +193,14 @@ scoped_refptr<FontVariantAlternates> FontVariantAlternates::Resolve(
 uint32_t FontVariantAlternates::GetHash() const {
   uint32_t computed_hash = 0;
   AddIntToHash(computed_hash,
-               stylistic_.has_value() ? blink::GetHash(*stylistic_) : -1);
+               stylistic_ ? blink::GetHash(stylistic_) : -1);
   AddIntToHash(computed_hash, historical_forms_);
   AddIntToHash(computed_hash,
-               swash_.has_value() ? blink::GetHash(*swash_) : -1);
+               swash_ ? blink::GetHash(swash_) : -1);
   AddIntToHash(computed_hash,
-               ornaments_.has_value() ? blink::GetHash(*ornaments_) : -1);
+               ornaments_ ? blink::GetHash(ornaments_) : -1);
   AddIntToHash(computed_hash,
-               annotation_.has_value() ? blink::GetHash(*annotation_) : -1);
+               annotation_ ? blink::GetHash(annotation_) : -1);
   if (!styleset_.empty()) {
     for (const AtomicString& styleset_alias : styleset_) {
       AddIntToHash(computed_hash, blink::GetHash(styleset_alias));

@@ -165,12 +165,6 @@ void MenuHost::InitMenuHost(const InitParams& init_params) {
     params.activatable = Widget::InitParams::Activatable::kYes;
   }
 
-#if BUILDFLAG(IS_WIN)
-  // On Windows use the software compositor to ensure that we don't block
-  // the UI thread blocking issue during command buffer creation. We can
-  // revert this change once http://crbug.com/125248 is fixed.
-  params.force_software_compositing = true;
-#endif
   Init(std::move(params));
   std::optional<std::string> show_menu_host_duration_histogram =
       menu_controller->TakeShowMenuHostDurationHistogram();
@@ -314,6 +308,7 @@ void MenuHost::SetMenuHostOwnedWindowAnchor(
 
 void MenuHost::ReleaseMenuHostCapture() {
   if (native_widget_private()->HasCapture()) {
+    base::AutoReset<bool> reseter(&ignore_capture_lost_, true);
     native_widget_private()->ReleaseCapture();
   }
 }

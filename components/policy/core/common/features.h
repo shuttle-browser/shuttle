@@ -29,13 +29,15 @@ POLICY_EXPORT BASE_DECLARE_FEATURE(kEnhancedSecurityEventFields);
 // Controls if we can use the cec flag in PolicyData.
 POLICY_EXPORT BASE_DECLARE_FEATURE(kUseCECFlagInPolicyData);
 
+// When enabled, increases the maximum cloud policy cache size limit read from
+// disk (for both user and machine level caches) from 1 MB to 2 MB to
+// accommodate large enterprise policy sets.
+POLICY_EXPORT BASE_DECLARE_FEATURE(kUserPolicyCacheSizeLimit2MB);
+
 #if BUILDFLAG(IS_ANDROID)
 // Enables policy initialization for signed-in users in new entry points.
 POLICY_EXPORT BASE_DECLARE_FEATURE(
     kInitializePoliciesForSignedInUserInNewEntryPoints);
-
-// Controls whether to use active admins to calculate the enterprise info.
-POLICY_EXPORT BASE_DECLARE_FEATURE(kAndroidUseAdminsForEnterpriseInfo);
 
 // Controls whether to use RestrictionsManager instead of UserManager in
 // AppRestrictionsProvider to retrieve application restrictions.
@@ -105,6 +107,9 @@ POLICY_EXPORT BASE_DECLARE_FEATURE(kExportPlatformPoliciesJson);
 POLICY_EXPORT BASE_DECLARE_FEATURE(kMigrateSecureConnectApiToDmServer);
 POLICY_EXPORT extern const base::FeatureParam<base::TimeDelta>
     kMigrateSecureConnectApiToDmServerFetchTimeout;
+
+// Returns true if `kMigrateSecureConnectApiToDmServer` is enabled.
+POLICY_EXPORT bool IsMigrateSecureConnectApiToDmServerEnabled();
 
 }  // namespace policy::features
 

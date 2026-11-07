@@ -13,6 +13,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <ranges>
 #include <set>
 #include <utility>
 #include <vector>
@@ -22,7 +23,6 @@
 #include "base/byte_size.h"
 #include "base/clang_profiling_buildflags.h"
 #include "base/command_line.h"
-#include "base/containers/adapters.h"
 #include "base/containers/flat_map.h"
 #include "base/containers/map_util.h"
 #include "base/debug/alias.h"
@@ -1145,7 +1145,8 @@ class UnmatchedServiceWorkerProcessTracker
 
   std::optional<SiteProcessIDPair> FindFreshestProcessForSite(
       SiteInstanceImpl* site_instance) const {
-    const auto reversed_site_process_set = base::Reversed(site_process_set_);
+    const auto reversed_site_process_set =
+        std::views::reverse(site_process_set_);
     if (site_instance->IsDefaultSiteInstance()) {
       // See if we can find an entry that maps to a site associated with the
       // default SiteInstance. This allows the default SiteInstance to reuse a
@@ -1437,11 +1438,29 @@ size_t GetOutermostMainFrameCountForFastShutdown(RenderProcessHost* process) {
         RenderFrameHostImpl* const outermost_rfh =
             static_cast<RenderFrameHostImpl*>(rfh)->GetOutermostMainFrame();
         if (outermost_rfh->lifecycle_state() ==
-            RenderFrameHostLifecycleStateImpl::kActive) {
+                RenderFrameHostLifecycleStateImpl::kActive &&
+            !outermost_rfh->document_associated_data().is_discarded()) {
           outermost_main_frames.insert(outermost_rfh);
         }
       });
   return outermost_main_frames.size();
+}
+
+// Returns the priority to apply to the OS process and send to the renderer,
+// given the calculated `priority`. With --disable-renderer-backgrounding, the
+// process is kept visible and, on desktop, the priority override is ignored.
+RenderProcessPriority ComputeAppliedPriority(
+    const RenderProcessPriority& priority) {
+  if (!base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kDisableRendererBackgrounding)) {
+    return priority;
+  }
+  RenderProcessPriority applied_priority = priority;
+  applied_priority.visible = true;
+#if !BUILDFLAG(IS_ANDROID)
+  applied_priority.priority_override = std::nullopt;
+#endif
+  return applied_priority;
 }
 
 }  // namespace
@@ -1716,6 +1735,7 @@ RenderProcessHostImpl::RenderProcessHostImpl(
                 true /* boost_for_pending_views */,
                 false /*boost_for_loading*/,
                 false /* boost_for_discard */,
+                false /* boost_for_background_execution */,
 #if BUILDFLAG(IS_ANDROID)
                 is_spare_renderer,
                 ChildProcessImportance::NORMAL
@@ -1723,6 +1743,7 @@ RenderProcessHostImpl::RenderProcessHostImpl(
                 std::nullopt
 #endif
                 ),
+      applied_priority_(priority_),
       id_(ChildProcessHostImpl::GenerateChildProcessUniqueId()),
       browser_context_(browser_context),
       storage_partition_impl_(storage_partition_impl),
@@ -1753,7 +1774,7 @@ RenderProcessHostImpl::RenderProcessHostImpl(
 
   widget_helper_ = new RenderWidgetHelper();
 
-  ChildProcessSecurityPolicyImpl::GetInstance()->Add(GetID(), browser_context);
+  ChildProcessSecurityPolicyImpl::GetInstance()->Add(GetID());
 
   CHECK(!BrowserMainRunner::ExitedMainMessageLoop());
   RegisterHost(GetID(), this);
@@ -1778,8 +1799,8 @@ RenderProcessHostImpl::RenderProcessHostImpl(
   // TODO(crbug.com/379869738): Remove GetUnsafeValue.
   gpu_client_ = std::make_unique<viz::GpuClient>(
       std::make_unique<BrowserGpuClientDelegate>(), id.GetUnsafeValue(),
-      tracing_id,
-      /*enable_extra_handles_validation=*/false, GetUIThreadTaskRunner({}));
+      tracing_id, viz::mojom::GpuClientType::kRenderer,
+      GetUIThreadTaskRunner({}));
 }
 
 // static
@@ -1960,7 +1981,7 @@ bool RenderProcessHostImpl::Init() {
 
   // Find the renderer before creating the channel so if this fails early we
   // return without creating the channel.
-  base::FilePath renderer_path = ChildProcessHost::GetChildPath(flags);
+  base::FilePath renderer_path = ChildProcessHost::GetChildPath(flags, GetID());
   if (renderer_path.empty())
     return false;
 
@@ -2114,7 +2135,7 @@ bool RenderProcessHostImpl::Init() {
 #if BUILDFLAG(IS_WIN)
     std::unique_ptr<SandboxedProcessLauncherDelegate> sandbox_delegate =
         std::make_unique<RendererSandboxedProcessLauncherDelegateWin>(
-            *cmd_line, IsPdf(), IsJitDisabled());
+            *cmd_line, IsPdf(), IsJitDisabled(), GetID());
 #else
     std::unique_ptr<SandboxedProcessLauncherDelegate> sandbox_delegate =
         std::make_unique<RendererSandboxedProcessLauncherDelegate>();
@@ -2296,8 +2317,8 @@ void RenderProcessHostImpl::InitializeSharedMemoryRegionsOnceChannelIsUp() {
   if (!last_foreground_time_region_.has_value()) {
     last_foreground_time_region_ =
         base::AtomicSharedMemory<base::TimeTicks>::Create(
-            priority_.is_background() ? base::TimeTicks()
-                                      : base::TimeTicks::Now());
+            applied_priority_.is_background() ? base::TimeTicks()
+                                              : base::TimeTicks::Now());
     // TODO(https://crbug.com/526542975): CHECK-exclusion: Convert to CHECK once
     // we are sure this isn't hit.
     DCHECK(last_foreground_time_region_.has_value());
@@ -2580,9 +2601,8 @@ void RenderProcessHostImpl::CreateOOPVideoDecoder(
       if (!oop_video_decoder_gpu_client_) {
         mojo::PendingReceiver<viz::mojom::Gpu> gpu_receiver =
             gpu_remote.InitWithNewPipeAndPassReceiver();
-        oop_video_decoder_gpu_client_ =
-            content::CreateGpuClient(std::move(gpu_receiver),
-                                     /*enable_extra_handles_validation=*/true);
+        oop_video_decoder_gpu_client_ = content::CreateGpuClient(
+            std::move(gpu_receiver), viz::mojom::GpuClientType::kOOPVD);
       } else {
         oop_video_decoder_gpu_client_->Add(
             gpu_remote.InitWithNewPipeAndPassReceiver());
@@ -3429,6 +3449,21 @@ void RenderProcessHostImpl::OnBoostForLoadingRemoved() {
   }
 }
 
+void RenderProcessHostImpl::OnBoostForBackgroundExecutionAdded() {
+  ++boost_for_background_execution_count_;
+  if (boost_for_background_execution_count_ == 1) {
+    UpdateProcessPriority();
+  }
+}
+
+void RenderProcessHostImpl::OnBoostForBackgroundExecutionRemoved() {
+  CHECK_GT(boost_for_background_execution_count_, 0);
+  --boost_for_background_execution_count_;
+  if (boost_for_background_execution_count_ == 0) {
+    UpdateProcessPriority();
+  }
+}
+
 void RenderProcessHostImpl::OnImmersiveXrSessionStarted() {
   // TODO(https://crbug.com/397907158): Evaluate upgrading to CHECK.
   DUMP_WILL_BE_CHECK(!has_immersive_xr_session_);
@@ -4231,9 +4266,6 @@ bool RenderProcessHostImpl::FastShutdownIfPossible(
     bool ignore_keep_alive,
     bool ignore_pending_reuse,
     bool use_outermost_main_frame_check) {
-  base::UmaHistogramBoolean(
-      "BrowserRenderProcessHost.FastShutdownIfPossible.Total", true);
-
   // TODO(crbug.com/463513005): When switching to checking outermost main frame
   // counts by default consider eliminating `pending_views_` - capturing these
   // in the count returned by the function instead (`pending_views_` covers
@@ -4246,7 +4278,7 @@ bool RenderProcessHostImpl::FastShutdownIfPossible(
 
   // Do not shut down the process if there are active or pending views other
   // than the ones we're shutting down.
-  if (page_count &&
+  if ((page_count || use_outermost_main_frame_check) &&
       page_count != (view_or_outermost_frame_count + pending_views_)) {
     LogDelayReasonForFastShutdown(
         DelayShutdownReason::kOtherActiveOrPendingViews);
@@ -4454,8 +4486,15 @@ bool RenderProcessHostImpl::HasOnlyNonLiveRenderFrameHosts() {
     // RenderFrameHosts).
     if (RenderFrameHostImpl* rfh = RenderFrameHostImpl::FromID(rfh_id)) {
       found_rfh_count++;
-      if (rfh->IsRenderFrameLive())
+      if (rfh->IsRenderFrameLive()) {
         return false;
+      }
+
+      // A RenderFrameHost that is pending deletion can still be on the stack.
+      // Do not shut down the process until its deletion is complete.
+      if (rfh->IsPendingDeletion()) {
+        return false;
+      }
 
       // If this process contains a frame from an inner WebContents, skip the
       // process leak cleanup for now. Inner WebContents attachment can break
@@ -5007,7 +5046,7 @@ bool RenderProcessHostImpl::IsSuitableHost(
   // from |site_url| if an effective URL is used.
   bool host_has_web_ui_bindings =
       ChildProcessSecurityPolicyImpl::GetInstance()->HasWebUIBindings(
-          host->GetDeprecatedID());
+          host->GetID());
   if (host->HostHasNotBeenUsed()) {
     // If the host hasn't been used, it won't have the expected WebUI bindings
     // or origin locks just *yet* - skip the checks in this case.  One example
@@ -5090,6 +5129,15 @@ bool RenderProcessHostImpl::IsSuitableHost(
           !process_lock.IsCompatibleWithWebExposedIsolation(site_info)) {
         TRACE_EVENT_INSTANT("navigation",
                             "NotSuitableHost: WebExposedIsolation diff");
+        return false;
+      }
+
+      // Sites from different shards must never share a process (see
+      // BrowserContext::SetSitesForEmbedderShard()). A used process's shard is
+      // recorded on its ProcessLock (see ProcessLock::shard()), while an unused
+      // process can still be used for any shard.
+      if (!host->IsUnused() && process_lock.shard() != site_info.shard()) {
+        TRACE_EVENT_INSTANT("navigation", "NotSuitableHost: shard diff");
         return false;
       }
 
@@ -6011,19 +6059,21 @@ void RenderProcessHostImpl::UpdateProcessPriority() {
   if (!run_renderer_in_process() && (!child_process_launcher_.get() ||
                                      child_process_launcher_->IsStarting())) {
     // This path can be hit early (no-op) or on ProcessDied(). Reset
-    // |priority_| to defaults in case this RenderProcessHostImpl is reused.
+    // |priority_| and |applied_priority_| to defaults in case this
+    // RenderProcessHostImpl is reused.
     priority_.visible = !blink::kLaunchingProcessIsBackgrounded;
     priority_.boost_for_pending_views = true;
+    applied_priority_ = priority_;
     return;
   }
 
-  RenderProcessPriority priority(
-      visible_clients_ > 0 || base::CommandLine::ForCurrentProcess()->HasSwitch(
-                                  switches::kDisableRendererBackgrounding),
-      media_stream_count_ > 0, has_immersive_xr_session_,
+  const RenderProcessPriority previous_priority = priority_;
+  priority_ = RenderProcessPriority(
+      visible_clients_ > 0, media_stream_count_ > 0, has_immersive_xr_session_,
       foreground_service_worker_count_ > 0, frame_depth_, intersects_viewport_,
       pending_views_ > 0, /* boost_for_pending_views */
       boost_for_loading_count_ > 0, is_discarding_,
+      boost_for_background_execution_count_ > 0,
 #if BUILDFLAG(IS_ANDROID)
       spare_renderer_priority_status_ == SpareRendererPriorityStatus::kSpare,
       GetEffectiveImportance()
@@ -6032,44 +6082,52 @@ void RenderProcessHostImpl::UpdateProcessPriority() {
 #endif
   );
 
-  if (priority_ == priority) {
+  const RenderProcessPriority previous_applied_priority = applied_priority_;
+  applied_priority_ = ComputeAppliedPriority(priority_);
+
+  if (priority_ == previous_priority &&
+      applied_priority_ == previous_applied_priority) {
     return;
   }
-  const bool priority_state_changed =
-      priority_.GetProcessPriority() != priority.GetProcessPriority();
-  const bool visibility_state_changed = priority_.visible != priority.visible;
-
   TRACE_EVENT("renderer_host", "RenderProcessHostImpl::UpdateProcessPriority",
               ChromeTrackEvent::kRenderProcessHost, *this,
-              ChromeTrackEvent::kChildProcessLauncherPriority, priority);
-  priority_ = priority;
+              ChromeTrackEvent::kChildProcessLauncherPriority,
+              applied_priority_);
 
-  // Control the background state from the browser process, otherwise the task
-  // telling the renderer to "unbackground" itself may be preempted by other
-  // tasks executing at lowered priority ahead of it or simply by not being
-  // swiftly scheduled by the OS per the low process priority
-  // (http://crbug.com/398103).
-  if (!run_renderer_in_process() &&
-      GetContentClient()->browser()->IsRendererProcessPriorityEnabled()) {
-    CHECK(child_process_launcher_.get(), base::NotFatalUntil::M152);
-    CHECK(!child_process_launcher_->IsStarting(), base::NotFatalUntil::M152);
+  if (applied_priority_ != previous_applied_priority) {
+    // Control the background state from the browser process, otherwise the
+    // task telling the renderer to "unbackground" itself may be preempted by
+    // other tasks executing at lowered priority ahead of it or simply by not
+    // being swiftly scheduled by the OS per the low process priority
+    // (http://crbug.com/398103).
+    if (!run_renderer_in_process() &&
+        GetContentClient()->browser()->IsRendererProcessPriorityEnabled()) {
+      CHECK(child_process_launcher_.get(), base::NotFatalUntil::M152);
+      CHECK(!child_process_launcher_->IsStarting(), base::NotFatalUntil::M152);
 #if BUILDFLAG(IS_ANDROID)
-    // TODO(339097516): Remove the following CHECK when the issue is fixed.
-    CHECK(child_process_launcher_->GetProcess().IsValid());
-    child_process_launcher_->SetRenderProcessPriority(priority_);
+      // TODO(339097516): Remove the following CHECK when the issue is fixed.
+      CHECK(child_process_launcher_->GetProcess().IsValid());
+      child_process_launcher_->SetRenderProcessPriority(applied_priority_);
 #else  // !BUILDFLAG(IS_ANDROID)
-    auto process_priority = priority_.GetProcessPriority();
-    if (!base::FeatureList::IsEnabled(kUserVisibleProcessPriority) &&
-        process_priority == base::Process::Priority::kUserVisible) {
-      process_priority = base::Process::Priority::kUserBlocking;
-    }
-    child_process_launcher_->SetProcessPriority(process_priority);
+      auto process_priority = applied_priority_.GetProcessPriority();
+      if (!base::FeatureList::IsEnabled(kUserVisibleProcessPriority) &&
+          process_priority == base::Process::Priority::kUserVisible) {
+        process_priority = base::Process::Priority::kUserBlocking;
+      }
+      child_process_launcher_->SetProcessPriority(process_priority);
 #endif  // BUILDFLAG(IS_ANDROID)
+    }
+
+    // Notify the child process of the change in state.
+    if (applied_priority_.GetProcessPriority() !=
+            previous_applied_priority.GetProcessPriority() ||
+        applied_priority_.visible != previous_applied_priority.visible) {
+      SendProcessStateToRenderer();
+    }
   }
 
-  // Notify the child process of the change in state.
-  if (priority_state_changed || visibility_state_changed) {
-    SendProcessStateToRenderer();
+  if (priority_ == previous_priority) {
+    return;
   }
   for (auto& observer : internal_observers_)
     observer.RenderProcessPriorityChanged(this);
@@ -6077,7 +6135,8 @@ void RenderProcessHostImpl::UpdateProcessPriority() {
   // Update the priority of the process running the controller service worker
   // when client's background state changed. We can make the service worker
   // process backgrounded if all of its clients are backgrounded.
-  if (priority_state_changed) {
+  if (priority_.GetProcessPriority() !=
+      previous_priority.GetProcessPriority()) {
     UpdateControllerServiceWorkerProcessPriority();
   }
 }
@@ -6105,13 +6164,14 @@ void RenderProcessHostImpl::SendProcessStateToRenderer() {
   // latest TimeTicks value it sees and doesn't depend on it reflecting anything
   // about the state of other memory.
   last_foreground_time_region_->WritableRef().store(
-      priority_.is_background() ? base::TimeTicks() : base::TimeTicks::Now(),
+      applied_priority_.is_background() ? base::TimeTicks()
+                                        : base::TimeTicks::Now(),
       std::memory_order_relaxed);
 
-  base::Process::Priority priority = priority_.GetProcessPriority();
+  base::Process::Priority priority = applied_priority_.GetProcessPriority();
   mojom::RenderProcessVisibleState visible_state =
-      priority_.visible ? mojom::RenderProcessVisibleState::kVisible
-                        : mojom::RenderProcessVisibleState::kHidden;
+      applied_priority_.visible ? mojom::RenderProcessVisibleState::kVisible
+                                : mojom::RenderProcessVisibleState::kHidden;
   GetRendererInterface()->SetProcessState(priority, visible_state);
 }
 
@@ -6133,8 +6193,8 @@ void RenderProcessHostImpl::OnProcessLaunched() {
     CHECK(child_process_launcher_->GetProcess().IsValid(),
           base::NotFatalUntil::M152);
     // TODO(crbug.com/40590142): This should be based on
-    // |priority_.GetProcessPriority()|, see similar check below.
-    CHECK_EQ(blink::kLaunchingProcessIsBackgrounded, !priority_.visible,
+    // |applied_priority_.GetProcessPriority()|, see similar check below.
+    CHECK_EQ(blink::kLaunchingProcessIsBackgrounded, !applied_priority_.visible,
              base::NotFatalUntil::M152);
 
     // Unpause the channel now that the process is launched. We don't flush it
@@ -6166,22 +6226,24 @@ void RenderProcessHostImpl::OnProcessLaunched() {
         .WithArgs(GetProcess().Pid());
 
     // Not all platforms launch processes in the same backgrounded state. Make
-    // sure |priority_.visible| reflects this platform's initial process
+    // sure |applied_priority_.visible| reflects this platform's initial process
     // state.
 #if BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_IOS_TVOS)
-    priority_.visible = child_process_launcher_->GetProcess().GetPriority(
-                            ChildProcessTaskPortProvider::GetInstance()) ==
-                        base::Process::Priority::kUserBlocking;
+    applied_priority_.visible =
+        child_process_launcher_->GetProcess().GetPriority(
+            ChildProcessTaskPortProvider::GetInstance()) ==
+        base::Process::Priority::kUserBlocking;
 #elif BUILDFLAG(IS_ANDROID)
     // Android child process priority works differently and cannot be queried
     // directly from base::Process.
     // TODO(crbug.com/40590142): Fix initial priority on Android to
-    // reflect |priority_.GetProcessPriority()|.
-    CHECK_EQ(blink::kLaunchingProcessIsBackgrounded, !priority_.visible,
+    // reflect |applied_priority_.GetProcessPriority()|.
+    CHECK_EQ(blink::kLaunchingProcessIsBackgrounded, !applied_priority_.visible,
              base::NotFatalUntil::M152);
 #else
-    priority_.visible = child_process_launcher_->GetProcess().GetPriority() !=
-                        base::Process::Priority::kBestEffort;
+    applied_priority_.visible =
+        child_process_launcher_->GetProcess().GetPriority() !=
+        base::Process::Priority::kBestEffort;
 #endif
 
     // Only update the priority on startup if boosting is enabled (to avoid

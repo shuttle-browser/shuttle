@@ -101,14 +101,14 @@ TextRunLayoutUnit ShapeResultSpacing::NextExpansion() {
   return expansion_per_opportunity_;
 }
 
-TextRunLayoutUnit ShapeResultSpacing::ComputeSpacing(unsigned index,
+TextRunLayoutUnit ShapeResultSpacing::ComputeSpacing(wtf_size_t index,
                                                      bool is_cursive_script) {
   DCHECK(has_spacing_);
   UChar32 character = text_[index];
   bool treat_as_space =
-      (Character::TreatAsSpace(character) ||
+      (unicode::TreatAsSpace(character) ||
        (normalize_space_ &&
-        Character::IsNormalizedCanvasSpaceCharacter(character))) &&
+        unicode::IsNormalizedCanvasSpaceCharacter(character))) &&
       (character != '\t' || !allow_tabs_);
   if (treat_as_space && character != uchar::kNoBreakSpace) {
     character = uchar::kSpace;
@@ -124,7 +124,7 @@ TextRunLayoutUnit ShapeResultSpacing::ComputeSpacing(unsigned index,
       RuntimeEnabledFeatures::IgnoreLetterSpacingInCursiveScriptsEnabled()
           ? (!is_cursive_script || treat_as_space)
           : true;
-  if (has_letter_spacing && !Character::TreatAsZeroWidthSpace(character) &&
+  if (has_letter_spacing && !unicode::TreatAsZeroWidthSpace(character) &&
       apply_letter_spacing) {
     spacing += letter_spacing_;
     is_letter_spacing_applied_ = true;
@@ -141,7 +141,7 @@ TextRunLayoutUnit ShapeResultSpacing::ComputeSpacing(unsigned index,
 
 std::pair<TextRunLayoutUnit, TextRunLayoutUnit>
 ShapeResultSpacing::ComputeExpansion(TextJustify method,
-                                     unsigned index,
+                                     wtf_size_t index,
                                      bool is_cursive_script) {
   if (!HasExpansion() || index >= text_.length()) {
     return {TextRunLayoutUnit(), TextRunLayoutUnit()};

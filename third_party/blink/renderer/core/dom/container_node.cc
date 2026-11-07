@@ -66,6 +66,7 @@
 #include "third_party/blink/renderer/core/html/html_dialog_element.h"
 #include "third_party/blink/renderer/core/html/html_document.h"
 #include "third_party/blink/renderer/core/html/html_frame_owner_element.h"
+#include "third_party/blink/renderer/core/html/html_html_element.h"
 #include "third_party/blink/renderer/core/html/html_stream.h"
 #include "third_party/blink/renderer/core/html/html_tag_collection.h"
 #include "third_party/blink/renderer/core/html/html_template_element.h"
@@ -636,9 +637,6 @@ bool ContainerNode::CheckParserAcceptChild(const Node& new_child) const {
 
 void ContainerNode::ParserInsertBefore(Node* new_child, Node& next_child) {
   DCHECK(new_child);
-  DCHECK(next_child.parentNode() == this ||
-         (IsA<DocumentFragment>(*this) &&
-          To<DocumentFragment>(*this).IsTemplateContent()));
   DCHECK(!new_child->IsDocumentFragment());
   DCHECK(!IsA<HTMLTemplateElement>(this));
 
@@ -1332,8 +1330,7 @@ void ContainerNode::NotifyNodeAtEndOfBuildingFragmentTree(
   }
 
   // As an optimization we don't notify leaf nodes when when inserting
-  // into detached subtrees that are not in a shadow tree, unless the
-  // node has DOM Parts attached.
+  // into detached subtrees that are not in a shadow tree.
   if (!node.IsContainerNode() && !IsInShadowTree()) {
     return;
   }
@@ -1429,9 +1426,8 @@ void ContainerNode::NotifyNodeRemoved(Node& root) {
 
   for (Node& node : NodeTraversal::InclusiveDescendantsOf(root)) {
     // As an optimization we skip notifying Text nodes and other leaf nodes
-    // of removal when they're not in the Document tree, not in a shadow root,
-    // and don't have DOM Parts, since the virtual call to removedFrom is not
-    // needed.
+    // of removal when they're not in the Document tree or a shadow root, since
+    // the virtual call to removedFrom is not needed.
     if (!node.IsContainerNode() && !node.IsInTreeScope()) {
       continue;
     }
@@ -1985,6 +1981,9 @@ WritableStream* ContainerNode::streamAppendHTMLUnsafe(
   }
 
   ContainerNode* target = TargetForHTMLInsertion();
+  if (!target->CheckValidParentForPartialInsertion(exception_state)) {
+    return nullptr;
+  }
   return HTMLStream::Create(script_state, target, nullptr,
                             Sanitizer::Mode::kUnsafe, *resolved_options,
 
@@ -1996,7 +1995,9 @@ WritableStream* ContainerNode::streamAppendHTML(
     SetHTMLOptions* options,
     ExceptionState& exception_state) {
   ContainerNode* target = TargetForHTMLInsertion();
-  ;
+  if (!target->CheckValidParentForPartialInsertion(exception_state)) {
+    return nullptr;
+  }
   return HTMLStream::Create(script_state, target, nullptr,
                             Sanitizer::Mode::kSafe,
                             FragmentParserOptions(options), exception_state);
@@ -2016,6 +2017,9 @@ WritableStream* ContainerNode::streamPrependHTMLUnsafe(
   }
 
   ContainerNode* target = TargetForHTMLInsertion();
+  if (!target->CheckValidParentForPartialInsertion(exception_state)) {
+    return nullptr;
+  }
   return HTMLStream::Create(script_state, target, target->firstChild(),
                             Sanitizer::Mode::kUnsafe, *resolved_options,
                             exception_state);
@@ -2026,6 +2030,9 @@ WritableStream* ContainerNode::streamPrependHTML(
     SetHTMLOptions* options,
     ExceptionState& exception_state) {
   ContainerNode* target = TargetForHTMLInsertion();
+  if (!target->CheckValidParentForPartialInsertion(exception_state)) {
+    return nullptr;
+  }
   return HTMLStream::Create(script_state, target, target->firstChild(),
                             Sanitizer::Mode::kSafe,
                             FragmentParserOptions(options), exception_state);
@@ -2066,13 +2073,10 @@ void ContainerNode::appendHTML(const String& html,
                                SetHTMLOptions* options,
                                ExceptionState& exception_state) {
   CHECK(IsElementNode() || IsShadowRoot());
-  InsertHTMLBefore(nullptr, html,
-                   FragmentParserConfig::ForContainer(
-                       this, Sanitizer::Mode::kSafe,
-                       IsElementNode() ? trusted_types_names::kElement
-                                       : trusted_types_names::kShadowRoot,
-                       trusted_types_names::kAppendHTML),
-                   FragmentParserOptions(options), exception_state);
+  InsertHTMLBefore(
+      nullptr, html,
+      FragmentParserConfig::ForContainer(this, Sanitizer::Mode::kSafe),
+      FragmentParserOptions(options), exception_state);
 }
 
 void ContainerNode::appendHTMLUnsafe(
@@ -2092,9 +2096,8 @@ void ContainerNode::appendHTMLUnsafe(
 
   CHECK(IsElementNode() || IsShadowRoot());
 
-  const FragmentParserConfig config = FragmentParserConfig::ForContainer(
-      this, Sanitizer::Mode::kUnsafe, interface_name,
-      trusted_types_names::kAppendHTMLUnsafe);
+  const FragmentParserConfig config =
+      FragmentParserConfig::ForContainer(this, Sanitizer::Mode::kUnsafe);
   InsertHTMLBefore(nullptr, compliant_string, config, resolved_options,
                    exception_state);
 }
@@ -2103,16 +2106,12 @@ void ContainerNode::prependHTML(const String& html,
                                 SetHTMLOptions* options,
                                 ExceptionState& exception_state) {
   CHECK(IsElementNode() || IsShadowRoot());
-  InsertHTMLBefore(IsA<HTMLTemplateElement>(this)
-                       ? To<HTMLTemplateElement>(this)->content()->firstChild()
-                       : firstChild(),
-                   html,
-                   FragmentParserConfig::ForContainer(
-                       this, Sanitizer::Mode::kSafe,
-                       IsElementNode() ? trusted_types_names::kElement
-                                       : trusted_types_names::kShadowRoot,
-                       trusted_types_names::kPrependHTML),
-                   FragmentParserOptions(options), exception_state);
+  InsertHTMLBefore(
+      IsA<HTMLTemplateElement>(this)
+          ? To<HTMLTemplateElement>(this)->content()->firstChild()
+          : firstChild(),
+      html, FragmentParserConfig::ForContainer(this, Sanitizer::Mode::kSafe),
+      FragmentParserOptions(options), exception_state);
 }
 
 void ContainerNode::prependHTMLUnsafe(
@@ -2132,9 +2131,8 @@ void ContainerNode::prependHTMLUnsafe(
 
   CHECK(IsElementNode() || IsShadowRoot());
 
-  const FragmentParserConfig config = FragmentParserConfig::ForContainer(
-      this, Sanitizer::Mode::kUnsafe, interface_name,
-      trusted_types_names::kPrependHTMLUnsafe);
+  const FragmentParserConfig config =
+      FragmentParserConfig::ForContainer(this, Sanitizer::Mode::kUnsafe);
   InsertHTMLBefore(IsA<HTMLTemplateElement>(this)
                        ? To<HTMLTemplateElement>(this)->content()->firstChild()
                        : firstChild(),
@@ -2147,6 +2145,9 @@ void ContainerNode::InsertHTMLBefore(Node* ref_child,
                                      const FragmentParserOptions& options,
                                      ExceptionState& exception_state) {
   if (exception_state.HadException()) {
+    return;
+  }
+  if (!CheckValidParentForPartialInsertion(exception_state)) {
     return;
   }
   if (DocumentFragment* fragment =
@@ -2163,11 +2164,34 @@ void ContainerNode::ReplaceChildWithHTML(Node* ref_child,
   if (exception_state.HadException()) {
     return;
   }
+  if (!CheckValidParentForPartialInsertion(exception_state)) {
+    return;
+  }
   if (DocumentFragment* fragment =
           ParseHTMLFragment(html, config, options, exception_state)) {
     TargetForHTMLInsertion()->ReplaceChild(fragment, ref_child,
                                            exception_state);
   }
+}
+
+bool ContainerNode::CheckValidParentForPartialInsertion(
+    ExceptionState& exception_state) {
+  // https://html.spec.whatwg.org/C/#filter-and-pre-insert-html
+  // https://html.spec.whatwg.org/C/#filter-and-replace-with-html
+  // https://html.spec.whatwg.org/C/#get-the-parent-for-html-streaming
+  // "If parent is an html element, then throw a HierarchyRequestError
+  // DOMException." Parsing a fragment with an html context element always
+  // produces head and body elements, which is only suitable when replacing all
+  // children, i.e. for setHTML{Unsafe}() and streamHTML{Unsafe}(). This
+  // precedes parsing, and thus sanitizer config validation.
+  if (IsA<HTMLHtmlElement>(this)) {
+    exception_state.ThrowDOMException(
+        DOMExceptionCode::kHierarchyRequestError,
+        "Cannot insert HTML into or around a child of an html element. Use "
+        "setHTML() or setHTMLUnsafe() to replace its children.");
+    return false;
+  }
+  return true;
 }
 
 ContainerNode* ContainerNode::TargetForHTMLInsertion() {

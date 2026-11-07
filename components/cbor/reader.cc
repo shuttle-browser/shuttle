@@ -18,11 +18,11 @@
 
 #include <math.h>
 
-#include <iterator>
+#include <algorithm>
 #include <limits>
-#include <map>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "base/bit_cast.h"
 #include "base/check_op.h"
@@ -37,6 +37,7 @@
 #include "base/strings/string_view_util.h"
 #include "base/time/time.h"
 #include "base/timer/elapsed_timer.h"
+#include "build/build_config.h"
 #include "components/cbor/cbor_buildflags.h"
 #include "components/cbor/constants.h"
 #include "components/cbor/experiment_metrics.h"
@@ -61,14 +62,14 @@ ASSERT_DECODER_ERROR_EQ(INCORRECT_MAP_KEY_TYPE, IncorrectMapKeyType);
 ASSERT_DECODER_ERROR_EQ(TOO_MUCH_NESTING, TooMuchNesting);
 ASSERT_DECODER_ERROR_EQ(INVALID_UTF8, InvalidUtf8);
 ASSERT_DECODER_ERROR_EQ(EXTRANEOUS_DATA, ExtraneousData);
-ASSERT_DECODER_ERROR_EQ(OUT_OF_ORDER_KEY, OutOfOrderKey);
 ASSERT_DECODER_ERROR_EQ(NON_MINIMAL_CBOR_ENCODING, NonMinimalCborEncoding);
 ASSERT_DECODER_ERROR_EQ(UNSUPPORTED_SIMPLE_VALUE, UnsupportedSimpleValue);
 ASSERT_DECODER_ERROR_EQ(UNSUPPORTED_FLOATING_POINT_VALUE,
                         UnsupportedFloatingPointValue);
 ASSERT_DECODER_ERROR_EQ(OUT_OF_RANGE_INTEGER_VALUE, OutOfRangeIntegerValue);
-ASSERT_DECODER_ERROR_EQ(DUPLICATE_KEY, DuplicateKey);
 ASSERT_DECODER_ERROR_EQ(UNKNOWN_ERROR, UnknownError);
+ASSERT_DECODER_ERROR_EQ(OUT_OF_ORDER_OR_DUPLICATE_KEY,
+                        OutOfOrderOrDuplicateKey);
 // LINT.ThenChange(//components/cbor/reader.h:DecoderError,//components/cbor/rust/reader.rs:Error)
 #undef ASSERT_DECODER_ERROR_EQ
 #endif
@@ -104,8 +105,8 @@ const char kInvalidUTF8[] =
     "String encodings other than UTF-8 are not allowed.";
 const char kExtraneousData[] = "Trailing data bytes are not allowed.";
 const char kMapKeyOutOfOrder[] =
-    "Map keys must be strictly monotonically increasing based on byte length "
-    "and then by byte-wise lexical order.";
+    "Map keys must be strictly monotonically increasing based on major type, "
+    "byte length and then by byte-wise lexical order.";
 const char kNonMinimalCBOREncoding[] =
     "Unsigned integers must be encoded with minimum number of bytes.";
 const char kUnsupportedSimpleValue[] =
@@ -114,8 +115,24 @@ const char kUnsupportedFloatingPointValue[] =
     "Floating point numbers are not supported.";
 const char kOutOfRangeIntegerValue[] =
     "Integer values must be between INT64_MIN and INT64_MAX.";
-const char kMapKeyDuplicate[] = "Duplicate map keys are not allowed.";
 const char kUnknownError[] = "An unknown error occured.";
+
+// Every duration recorded for a parse uses this bucket layout, so that their
+// distributions line up.
+constexpr base::TimeDelta kDurationMin = base::Microseconds(1);
+constexpr base::TimeDelta kDurationMax = base::Milliseconds(100);
+constexpr size_t kDurationBuckets = 50;
+
+// Returns whether `base::ThreadTicks` is precise enough to split a parse's
+// wall time into on- and off-CPU time. On Windows on Arm, it comes from
+// GetThreadTimes(), which only advances once per scheduler tick (~15.6 ms).
+bool CanSplitCpuTime() {
+#if BUILDFLAG(IS_WIN) && defined(ARCH_CPU_ARM64)
+  return false;
+#else
+  return base::ThreadTicks::IsSupported();
+#endif
+}
 
 class [[nodiscard]] ScopedMetricsReporter {
  public:
@@ -128,21 +145,47 @@ class [[nodiscard]] ScopedMetricsReporter {
   ScopedMetricsReporter& operator=(const ScopedMetricsReporter&) = delete;
 
   ~ScopedMetricsReporter() {
+    // Stop the measurements in the reverse order of starting them, and before
+    // recording anything, so that none of them includes the histogram code.
     const base::TimeDelta elapsed = timer_.Elapsed();
+    const base::ThreadTicks thread_end = thread_start_.is_null()
+                                             ? base::ThreadTicks()
+                                             : base::ThreadTicks::Now();
 
     UMA_HISTOGRAM_ENUMERATION("CBOR.Read.Result", *error_code_);
     UMA_HISTOGRAM_COUNTS_10M("CBOR.Read.Size",
                              base::saturated_cast<int>(payload_size_));
     if (base::TimeTicks::IsHighResolution()) {
       UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES("CBOR.Read.Duration", elapsed,
-                                              base::Microseconds(1),
-                                              base::Milliseconds(100), 50);
+                                              kDurationMin, kDurationMax,
+                                              kDurationBuckets);
+      // On Windows, `base::ThreadTicks::Now()` is null until the TSC frequency
+      // has been measured.
+      if (!thread_start_.is_null() && !thread_end.is_null()) {
+        // The thread clock starts before and stops after the wall clock, and
+        // both count whole microseconds, so the thread time can come out
+        // slightly longer. Capping it keeps the two parts adding up to
+        // `elapsed`.
+        const base::TimeDelta on_cpu =
+            std::min(thread_end - thread_start_, elapsed);
+        UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES("CBOR.Read.OnCpuDuration",
+                                                on_cpu, kDurationMin,
+                                                kDurationMax, kDurationBuckets);
+        UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES("CBOR.Read.OffCpuDuration",
+                                                elapsed - on_cpu, kDurationMin,
+                                                kDurationMax, kDurationBuckets);
+      }
     }
   }
 
  private:
   const size_t payload_size_;
   const base::raw_ref<const Reader::DecoderError> error_code_;
+
+  // Initialized in declaration order, so that reading the thread clock does
+  // not count towards the wall-clock duration of the parse.
+  const base::ThreadTicks thread_start_ =
+      CanSplitCpuTime() ? base::ThreadTicks::Now() : base::ThreadTicks();
   const base::ElapsedTimer timer_;
 };
 
@@ -180,8 +223,7 @@ Value Reader::ConvertRustMapKeyToCpp(const cbor::rust::MapKey& rust_key) {
     case cbor::rust::MapKeyKind::Tag::InvalidUtf8:
       // Unreachable when parsing (`allow_invalid_utf8` does not apply to map
       // keys); exists so `Writer` can encode test-only `INVALID_UTF8` keys.
-      return Value(rust_key.as_invalid_utf8()->to_span(),
-                   Value::Type::INVALID_UTF8);
+      return Value(Value::invalid_utf8, rust_key.as_invalid_utf8()->to_span());
   }
   NOTREACHED();
 }
@@ -194,16 +236,15 @@ Value Reader::ConvertRustValueToCpp(const cbor::rust::Value& rust_val) {
     case cbor::rust::ValueKind::Tag::Boolean:
       return Value(*rust_val.as_bool());
     case cbor::rust::ValueKind::Tag::Null:
-      return Value(Value::Null());
+      return Value(Value::null);
     case cbor::rust::ValueKind::Tag::Undefined:
-      return Value(Value::Undefined());
+      return Value(Value::undefined);
     case cbor::rust::ValueKind::Tag::Bytestring:
       return Value(rust_val.as_bytestring()->to_span());
     case cbor::rust::ValueKind::Tag::String:
       return Value(rust_val.as_string()->to_string_view());
     case cbor::rust::ValueKind::Tag::InvalidUtf8:
-      return Value(rust_val.as_invalid_utf8()->to_span(),
-                   Value::Type::INVALID_UTF8);
+      return Value(Value::invalid_utf8, rust_val.as_invalid_utf8()->to_span());
     case cbor::rust::ValueKind::Tag::Array: {
       return Value(base::ToVector(rust_val.as_array()->to_span(),
                                   ConvertRustValueToCpp));
@@ -299,8 +340,8 @@ std::optional<Value> Reader::Read(base::span<uint8_t const> data,
 #endif
 
   Reader reader(data);
-  std::optional<Value> value =
-      reader.DecodeCompleteDataItem(config, config.max_nesting_level);
+  std::optional<Value> value = reader.DecodeCompleteDataItem(
+      config, config.max_nesting_level, /*is_key=*/false);
 
   error_code_out = reader.GetErrorCode();
   const bool success = value.has_value();
@@ -318,7 +359,8 @@ std::optional<Value> Reader::Read(base::span<uint8_t const> data,
 }
 
 std::optional<Value> Reader::DecodeCompleteDataItem(const Config& config,
-                                                    int max_nesting_level) {
+                                                    int max_nesting_level,
+                                                    bool is_key) {
   if (max_nesting_level < 0 || max_nesting_level > kCBORMaxDepth) {
     error_code_ = DecoderError::TOO_MUCH_NESTING;
     return std::nullopt;
@@ -337,12 +379,25 @@ std::optional<Value> Reader::DecodeCompleteDataItem(const Config& config,
     case Value::Type::BYTE_STRING:
       return ReadByteStringContent(*header);
     case Value::Type::STRING:
-      return ReadStringContent(*header, config);
+      return ReadStringContent(
+          *header, /*allow_invalid_utf8=*/config.allow_invalid_utf8 && !is_key);
     case Value::Type::ARRAY:
+      if (is_key) {
+        error_code_ = DecoderError::INCORRECT_MAP_KEY_TYPE;
+        return std::nullopt;
+      }
       return ReadArrayContent(*header, config, max_nesting_level);
     case Value::Type::MAP:
+      if (is_key) {
+        error_code_ = DecoderError::INCORRECT_MAP_KEY_TYPE;
+        return std::nullopt;
+      }
       return ReadMapContent(*header, config, max_nesting_level);
     case Value::Type::SIMPLE_VALUE:
+      if (is_key) {
+        error_code_ = DecoderError::INCORRECT_MAP_KEY_TYPE;
+        return std::nullopt;
+      }
       return DecodeToSimpleValue(*header);
     case Value::Type::INVALID_UTF8:
       break;
@@ -434,17 +489,17 @@ std::optional<Value> Reader::DecodeToSimpleValue(const DataItemHeader& header) {
   CHECK_LE(header.value, 255u);
   // |SimpleValue| is an enum class and so the underlying type is specified to
   // be |int|. So this cast is safe.
-  Value::SimpleValue possibly_unsupported_simple_value =
-      static_cast<Value::SimpleValue>(static_cast<int>(header.value));
+  constants::SimpleValue possibly_unsupported_simple_value =
+      static_cast<constants::SimpleValue>(static_cast<int>(header.value));
   switch (possibly_unsupported_simple_value) {
-    case Value::SimpleValue::FALSE_VALUE:
+    case constants::SimpleValue::kFalse:
       return Value(false);
-    case Value::SimpleValue::TRUE_VALUE:
+    case constants::SimpleValue::kTrue:
       return Value(true);
-    case Value::SimpleValue::NULL_VALUE:
-      return Value(Value::Null());
-    case Value::SimpleValue::UNDEFINED:
-      return Value(Value::Undefined());
+    case constants::SimpleValue::kNull:
+      return Value(Value::null);
+    case constants::SimpleValue::kUndefined:
+      return Value(Value::undefined);
   }
 
   error_code_ = DecoderError::UNSUPPORTED_SIMPLE_VALUE;
@@ -453,7 +508,7 @@ std::optional<Value> Reader::DecodeToSimpleValue(const DataItemHeader& header) {
 
 std::optional<Value> Reader::ReadStringContent(
     const Reader::DataItemHeader& header,
-    const Config& config) {
+    bool allow_invalid_utf8) {
   uint64_t num_bytes = header.value;
   const std::optional<base::span<const uint8_t>> bytes = ReadBytes(num_bytes);
   if (!bytes) {
@@ -465,8 +520,8 @@ std::optional<Value> Reader::ReadStringContent(
     return Value(cbor_string_view);
   }
 
-  if (config.allow_invalid_utf8) {
-    return Value(*bytes, Value::Type::INVALID_UTF8);
+  if (allow_invalid_utf8) {
+    return Value(Value::invalid_utf8, *bytes);
   }
 
   error_code_ = DecoderError::INVALID_UTF8;
@@ -493,7 +548,7 @@ std::optional<Value> Reader::ReadArrayContent(
   Value::ArrayValue cbor_array;
   for (uint64_t i = 0; i < length; ++i) {
     std::optional<Value> cbor_element =
-        DecodeCompleteDataItem(config, max_nesting_level - 1);
+        DecodeCompleteDataItem(config, max_nesting_level - 1, /*is_key=*/false);
     if (!cbor_element.has_value()) {
       return std::nullopt;
     }
@@ -508,52 +563,28 @@ std::optional<Value> Reader::ReadMapContent(
     int max_nesting_level) {
   const uint64_t length = header.value;
 
-  std::map<Value, Value, Value::Less> cbor_map;
+  std::vector<std::pair<Value, Value>> items;
   for (uint64_t i = 0; i < length; ++i) {
     std::optional<Value> key =
-        DecodeCompleteDataItem(config, max_nesting_level - 1);
+        DecodeCompleteDataItem(config, max_nesting_level - 1, /*is_key=*/true);
     if (!key.has_value()) {
       return std::nullopt;
     }
+
+    if (!items.empty() && !Value::Less()(items.back().first, *key)) {
+      error_code_ = DecoderError::OUT_OF_ORDER_OR_DUPLICATE_KEY;
+      return std::nullopt;
+    }
+
     std::optional<Value> value =
-        DecodeCompleteDataItem(config, max_nesting_level - 1);
+        DecodeCompleteDataItem(config, max_nesting_level - 1, /*is_key=*/false);
     if (!value.has_value()) {
       return std::nullopt;
     }
 
-    switch (key.value().type()) {
-      case Value::Type::UNSIGNED:
-      case Value::Type::NEGATIVE:
-      case Value::Type::STRING:
-      case Value::Type::BYTE_STRING:
-        break;
-      case Value::Type::INVALID_UTF8:
-        error_code_ = DecoderError::INVALID_UTF8;
-        return std::nullopt;
-      default:
-        error_code_ = DecoderError::INCORRECT_MAP_KEY_TYPE;
-        return std::nullopt;
-    }
-
-    auto [it, inserted] =
-        cbor_map.try_emplace(std::move(key.value()), std::move(value.value()));
-    if (!inserted) {
-      error_code_ = DecoderError::DUPLICATE_KEY;
-      return std::nullopt;
-    }
-
-    if (std::next(it) != cbor_map.end()) {
-      error_code_ = DecoderError::OUT_OF_ORDER_KEY;
-      return std::nullopt;
-    }
+    items.emplace_back(*std::move(key), *std::move(value));
   }
 
-  std::vector<std::pair<Value, Value>> items;
-  items.reserve(cbor_map.size());
-  while (!cbor_map.empty()) {
-    auto node = cbor_map.extract(cbor_map.begin());
-    items.emplace_back(std::move(node.key()), std::move(node.mapped()));
-  }
   return Value(Value::MapValue(base::sorted_unique, std::move(items)));
 }
 
@@ -602,8 +633,6 @@ const char* Reader::ErrorCodeToString(DecoderError error) {
       return kInvalidUTF8;
     case DecoderError::EXTRANEOUS_DATA:
       return kExtraneousData;
-    case DecoderError::OUT_OF_ORDER_KEY:
-      return kMapKeyOutOfOrder;
     case DecoderError::NON_MINIMAL_CBOR_ENCODING:
       return kNonMinimalCBOREncoding;
     case DecoderError::UNSUPPORTED_SIMPLE_VALUE:
@@ -612,10 +641,10 @@ const char* Reader::ErrorCodeToString(DecoderError error) {
       return kUnsupportedFloatingPointValue;
     case DecoderError::OUT_OF_RANGE_INTEGER_VALUE:
       return kOutOfRangeIntegerValue;
-    case DecoderError::DUPLICATE_KEY:
-      return kMapKeyDuplicate;
     case DecoderError::UNKNOWN_ERROR:
       return kUnknownError;
+    case DecoderError::OUT_OF_ORDER_OR_DUPLICATE_KEY:
+      return kMapKeyOutOfOrder;
     default:
       NOTREACHED();
   }

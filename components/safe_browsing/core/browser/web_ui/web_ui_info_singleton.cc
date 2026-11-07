@@ -4,11 +4,9 @@
 
 #include "components/safe_browsing/core/browser/web_ui/web_ui_info_singleton.h"
 
-#include "base/feature_list.h"
 #include "base/functional/callback_helpers.h"
 #include "base/strings/strcat.h"
 #include "components/safe_browsing/core/browser/web_ui/web_ui_info_singleton_event_observer.h"
-#include "components/safe_browsing/core/common/features.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 
 namespace safe_browsing {
@@ -263,11 +261,7 @@ void WebUIInfoSingleton::ClearHPRTLookupPings() {
 }
 
 void WebUIInfoSingleton::AddToV5GetHashLookups(
-    const V5GetHashProtocolManager::V5GetHashLookup& lookup) {
-  if (!base::FeatureList::IsEnabled(kLocalListsUseSBv5WebUI)) {
-    return;
-  }
-
+    V5GetHashProtocolManager::V5GetHashLookup lookup) {
   if (!HasListener()) {
     return;
   }
@@ -277,7 +271,7 @@ void WebUIInfoSingleton::AddToV5GetHashLookups(
     webui_listener->NotifyV5GetHashLookupJsListener(lookup);
   }
 
-  v5_get_hash_lookups_.push_back(lookup);
+  v5_get_hash_lookups_.push_back(std::move(lookup));
 }
 
 void WebUIInfoSingleton::ClearV5GetHashLookups() {
@@ -308,21 +302,6 @@ void WebUIInfoSingleton::NotifyLogMessageListeners(const base::Time& timestamp,
   }
 }
 
-void WebUIInfoSingleton::AddToReportingEvents(
-    const ::chrome::cros::reporting::proto::UploadEventsRequest& event,
-    const base::DictValue& result) {
-  if (!HasListener()) {
-    return;
-  }
-
-  for (safe_browsing::WebUIInfoSingletonEventObserver* webui_listener :
-       webui_instances_) {
-    webui_listener->NotifyReportingEventJsListener(event, result);
-  }
-
-  upload_event_requests_.emplace_back(std::move(event), result.Clone());
-}
-
 // TODO(crbug.com/443997643): Delete when
 // UploadRealtimeReportingEventsUsingProto is cleaned up.
 void WebUIInfoSingleton::AddToReportingEvents(const base::DictValue& event) {
@@ -340,9 +319,6 @@ void WebUIInfoSingleton::AddToReportingEvents(const base::DictValue& event) {
 
 void WebUIInfoSingleton::ClearReportingEvents() {
   std::vector<base::DictValue>().swap(reporting_events_);
-  std::vector<std::pair<::chrome::cros::reporting::proto::UploadEventsRequest,
-                        base::DictValue>>()
-      .swap(upload_event_requests_);
 }
 
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)

@@ -3,6 +3,9 @@
 // found in the LICENSE file.
 
 #include "ui/events/gestures/gesture_types.h"
+
+#include <string_view>
+
 #include "ui/events/gestures/gesture_provider_aura.h"
 
 namespace ui {
@@ -14,9 +17,8 @@ bool GestureConsumer::RequiresDoubleTapGestureEvents() const {
   return false;
 }
 
-const std::string& GestureConsumer::GetName() const {
-  static const std::string name("GestureConsumer");
-  return name;
+std::string_view GestureConsumer::GetName() const {
+  return kName;
 }
 
 std::unique_ptr<GestureProviderAura> GestureConsumer::TakeProvider() {

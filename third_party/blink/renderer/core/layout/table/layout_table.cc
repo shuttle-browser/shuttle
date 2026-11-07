@@ -43,7 +43,7 @@ LayoutTable* LayoutTable::CreateAnonymousWithParent(
       parent.IsLayoutInline() ? EDisplay::kInlineTable : EDisplay::kTable;
   const ComputedStyle& new_style =
       parent.GetDocument().GetStyleResolver().CreateAnonymousStyleWithDisplay(
-          parent.StyleRef(), display);
+          parent.Style(), display);
   auto* new_table = MakeGarbageCollected<LayoutTable>(nullptr);
   new_table->SetDocumentForAnonymous(parent.GetDocument());
   new_table->SetStyle(new_style);
@@ -174,7 +174,7 @@ void LayoutTable::SetCachedTableColumnConstraints(
 void LayoutTable::GridBordersChanged() {
   NOT_DESTROYED();
   InvalidateCachedTableBorders();
-  if (StyleRef().BorderCollapse() == EBorderCollapse::kCollapse) {
+  if (Style().BorderCollapse() == EBorderCollapse::kCollapse) {
     SetShouldDoFullPaintInvalidationWithoutLayoutChange(
         PaintInvalidationReason::kStyle);
     // If borders change, table fragment must be regenerated.
@@ -187,14 +187,16 @@ void LayoutTable::TableGridStructureChanged() {
   NOT_DESTROYED();
   // Callers must ensure table layout gets invalidated.
   InvalidateCachedTableBorders();
-  if (StyleRef().BorderCollapse() == EBorderCollapse::kCollapse)
+  if (Style().BorderCollapse() == EBorderCollapse::kCollapse) {
     SetShouldDoFullPaintInvalidation();
+  }
 }
 
 bool LayoutTable::HasBackgroundForPaint() const {
   NOT_DESTROYED();
-  if (StyleRef().HasBackground())
+  if (Style().HasBackground()) {
     return true;
+  }
   DCHECK_GT(PhysicalFragmentCount(), 0u);
   const GCedTableColumnGeometries* column_geometries =
       GetPhysicalFragment(0)->TableColumnGeometries();
@@ -207,63 +209,11 @@ bool LayoutTable::HasBackgroundForPaint() const {
   return false;
 }
 
-void LayoutTable::AddChildBeforeDescendant(LayoutObject* new_child,
-                                           LayoutObject* before_descendant,
-                                           bool can_be_direct_child) {
-  NOT_DESTROYED();
-  DCHECK_NE(before_descendant->Parent(), this);
-
-  if (can_be_direct_child) {
-    LayoutObject* before_child =
-        SplitAnonymousBoxesAroundChild(before_descendant);
-    DCHECK_EQ(before_child->Parent(), this);
-    AddChild(new_child, before_child);
-    return;
-  }
-
-  LayoutObject* before_descendant_container = before_descendant->Parent();
-  while (before_descendant_container->Parent() != this) {
-    before_descendant_container = before_descendant_container->Parent();
-  }
-  CHECK(before_descendant_container->IsAnonymous());
-  CHECK(before_descendant_container->IsTableSection());
-
-  // Insert the child into the anonymous table-section instead of here.
-  before_descendant_container->AddChild(new_child, before_descendant);
-}
-
 void LayoutTable::AddChild(LayoutObject* new_child,
                            LayoutObject* before_child) {
   NOT_DESTROYED();
   TableGridStructureChanged();
-
-  const bool can_be_direct_child = new_child->IsTableCaption() ||
-                                   new_child->IsLayoutTableCol() ||
-                                   new_child->IsTableSection();
-
-  if (before_child && before_child->Parent() != this) {
-    AddChildBeforeDescendant(new_child, before_child, can_be_direct_child);
-    return;
-  }
-
-  if (!can_be_direct_child) {
-    LayoutObject* after_child =
-        before_child ? before_child->PreviousSibling() : LastChild();
-
-    if (after_child && after_child->IsAnonymous()) {
-      after_child->AddChild(new_child);
-      return;
-    }
-
-    // No suitable existing anonymous table-section - create a new one.
-    LayoutTableSection* section =
-        LayoutTableSection::CreateAnonymousWithParent(*this);
-    LayoutBox::AddChild(section, before_child);
-    section->AddChild(new_child);
-    return;
-  }
-
-  LayoutBox::AddChild(new_child, before_child);
+  LayoutBlock::AddChild(new_child, before_child);
 }
 
 void LayoutTable::RemoveChild(LayoutObject* child) {
@@ -293,6 +243,11 @@ void LayoutTable::StyleDidChange(
   LayoutBlock::StyleDidChange(diff, old_style, new_style, style_change_context);
 }
 
+LayoutBlock* LayoutTable::CreateAnonymousChild() const {
+  NOT_DESTROYED();
+  return LayoutTableSection::CreateAnonymousWithParent(*this);
+}
+
 LayoutBox* LayoutTable::CreateAnonymousBoxWithSameTypeAs(
     const LayoutObject* parent) const {
   NOT_DESTROYED();
@@ -303,7 +258,7 @@ PhysicalRect LayoutTable::OverflowClipRect(
     OverlayScrollbarClipBehavior overlay_scrollbar_clip_behavior) const {
   NOT_DESTROYED();
   PhysicalRect clip_rect;
-  if (StyleRef().BorderCollapse() == EBorderCollapse::kCollapse) {
+  if (Style().BorderCollapse() == EBorderCollapse::kCollapse) {
     clip_rect = PhysicalRect(PhysicalOffset(), StitchedSize());
     const auto overflow_clip = GetOverflowClipAxes();
     gfx::Rect infinite_rect = InfiniteIntRect();
@@ -344,7 +299,7 @@ PhysicalBoxStrut LayoutTable::BorderOutsets() const {
   // ScrollAnchoring fails this DCHECK.
   if (HasCollapsedBorders() && cached_table_borders_) {
     return cached_table_borders_->TableBorder().ConvertToPhysical(
-        StyleRef().GetWritingDirection());
+        Style().GetWritingDirection());
   }
   return LayoutBlock::BorderOutsets();
 }

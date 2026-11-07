@@ -45,8 +45,6 @@ source_set("mixers") {
     "tab_strip_color_mixer.h",
   ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   deps = [
     ":color_headers",
     "//build:branding_buildflags",
@@ -78,7 +76,6 @@ source_set("mixers") {
   if (is_win) {
     sources += [ "win/native_chrome_color_mixer_win.cc" ]
     deps += [
-      "//chrome/browser/win",
       "//ui/base",
       "//ui/color:accent_color_observer",
       "//ui/native_theme",

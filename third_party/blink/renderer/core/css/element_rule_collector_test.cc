@@ -147,6 +147,48 @@ class ElementRuleCollectorTest : public PageTestBase {
   }
 };
 
+TEST_F(ElementRuleCollectorTest, PresentationHintApplicationMetadata) {
+  for (bool enabled : {false, true}) {
+    ScopedSvgIncrementalStyleForTest incremental_style(enabled);
+    SCOPED_TRACE(enabled);
+    SetBodyInnerHTML(R"HTML(
+      <div id="html"></div>
+      <svg><rect id="svg"/></svg>
+    )HTML");
+    const auto* properties =
+        css_test_helpers::ParseDeclarationBlock("opacity: 0.5");
+    for (const char* id : {"html", "svg"}) {
+      SCOPED_TRACE(id);
+      Element* element = GetElementById(id);
+      for (CascadeOrigin origin :
+           {CascadeOrigin::kAuthorPresentationalHint, CascadeOrigin::kAuthor}) {
+        const bool is_inline_style = origin == CascadeOrigin::kAuthor;
+        ElementResolveContext context(*element);
+        SelectorFilter filter;
+        MatchResult result;
+        if (is_inline_style) {
+          result.BeginAddingAuthorRulesForTreeScope(GetDocument());
+        }
+        ElementRuleCollector collector(context, StyleRecalcContext(), filter,
+                                       result, InsideLink(element));
+        collector.AddElementStyleProperties(properties, origin,
+                                            /*is_cacheable=*/true,
+                                            is_inline_style);
+        ASSERT_EQ(1u, result.GetMatchedProperties().size());
+        const bool is_svg_hint =
+            enabled && element->IsSVGElement() && !is_inline_style;
+        EXPECT_EQ(
+            is_svg_hint,
+            result.GetMatchedProperties()[0].data_.is_svg_presentation_hint);
+        ASSERT_EQ(1u, result.GetMatchedPropertiesHash().size());
+        EXPECT_EQ(
+            is_svg_hint,
+            result.GetMatchedPropertiesHash()[0].data.is_svg_presentation_hint);
+      }
+    }
+  }
+}
+
 TEST_F(ElementRuleCollectorTest, LinkMatchType) {
   SetBodyInnerHTML(R"HTML(
     <div id=foo></div>
@@ -158,14 +200,12 @@ TEST_F(ElementRuleCollectorTest, LinkMatchType) {
     </a>
     <div id=bar></div>
   )HTML");
-  Element* foo = GetDocument().getElementById(AtomicString("foo"));
-  Element* bar = GetDocument().getElementById(AtomicString("bar"));
-  Element* visited = GetDocument().getElementById(AtomicString("visited"));
-  Element* link = GetDocument().getElementById(AtomicString("link"));
-  Element* unvisited_span =
-      GetDocument().getElementById(AtomicString("unvisited_span"));
-  Element* visited_span =
-      GetDocument().getElementById(AtomicString("visited_span"));
+  Element* foo = GetElementById("foo");
+  Element* bar = GetElementById("bar");
+  Element* visited = GetElementById("visited");
+  Element* link = GetElementById("link");
+  Element* unvisited_span = GetElementById("unvisited_span");
+  Element* visited_span = GetElementById("visited_span");
   ASSERT_TRUE(foo);
   ASSERT_TRUE(bar);
   ASSERT_TRUE(visited);
@@ -261,10 +301,8 @@ TEST_F(ElementRuleCollectorTest, LinkMatchTypeHostContext) {
     <a href="unvisited"><div id="unvisited_host"></div></a>
   )HTML");
 
-  Element* visited_host =
-      GetDocument().getElementById(AtomicString("visited_host"));
-  Element* unvisited_host =
-      GetDocument().getElementById(AtomicString("unvisited_host"));
+  Element* visited_host = GetElementById("visited_host");
+  Element* unvisited_host = GetElementById("unvisited_host");
   ASSERT_TRUE(visited_host);
   ASSERT_TRUE(unvisited_host);
 
@@ -444,9 +482,9 @@ TEST_F(ElementRuleCollectorTest, DirectNesting) {
   RuleSet* rule_set = RuleSetFromSingleRule(GetDocument(), rule);
   ASSERT_NE(nullptr, rule_set);
 
-  Element* foo = GetDocument().getElementById(AtomicString("foo"));
-  Element* bar = GetDocument().getElementById(AtomicString("bar"));
-  Element* baz = GetDocument().getElementById(AtomicString("baz"));
+  Element* foo = GetElementById("foo");
+  Element* bar = GetElementById("bar");
+  Element* baz = GetElementById("baz");
   ASSERT_NE(nullptr, foo);
   ASSERT_NE(nullptr, bar);
   ASSERT_NE(nullptr, baz);
@@ -478,8 +516,8 @@ TEST_F(ElementRuleCollectorTest, RuleNotStartingWithAmpersand) {
   RuleSet* rule_set = RuleSetFromSingleRule(GetDocument(), rule);
   ASSERT_NE(nullptr, rule_set);
 
-  Element* foo = GetDocument().getElementById(AtomicString("foo"));
-  Element* bar = GetDocument().getElementById(AtomicString("bar"));
+  Element* foo = GetElementById("foo");
+  Element* bar = GetElementById("bar");
   ASSERT_NE(nullptr, foo);
   ASSERT_NE(nullptr, bar);
 
@@ -502,7 +540,7 @@ TEST_F(ElementRuleCollectorTest, NestingAtToplevelMatchesNothing) {
   RuleSet* rule_set = RuleSetFromSingleRule(GetDocument(), rule);
   ASSERT_NE(nullptr, rule_set);
 
-  Element* foo = GetDocument().getElementById(AtomicString("foo"));
+  Element* foo = GetElementById("foo");
   ASSERT_NE(nullptr, foo);
 
   HeapVector<MatchedRule> foo_rules = GetAllMatchedRules(foo, rule_set);
@@ -525,9 +563,9 @@ TEST_F(ElementRuleCollectorTest, NestedRulesInMediaQuery) {
   RuleSet* rule_set = RuleSetFromSingleRule(GetDocument(), rule);
   ASSERT_NE(nullptr, rule_set);
 
-  Element* foo = GetDocument().getElementById(AtomicString("foo"));
-  Element* bar = GetDocument().getElementById(AtomicString("bar"));
-  Element* baz = GetDocument().getElementById(AtomicString("baz"));
+  Element* foo = GetElementById("foo");
+  Element* bar = GetElementById("bar");
+  Element* baz = GetElementById("baz");
   ASSERT_NE(nullptr, foo);
   ASSERT_NE(nullptr, bar);
   ASSERT_NE(nullptr, baz);
@@ -558,15 +596,13 @@ TEST_F(ElementRuleCollectorTest, FindStyleRuleWithNesting) {
       </div>
     </div>
   )HTML");
-  CSSStyleSheet* sheet =
-      To<HTMLStyleElement>(GetDocument().getElementById(AtomicString("style")))
-          ->sheet();
+  CSSStyleSheet* sheet = To<HTMLStyleElement>(GetElementById("style"))->sheet();
 
   RuleSet* rule_set = &sheet->Contents()->GetRuleSet();
   ASSERT_NE(nullptr, rule_set);
 
-  Element* foo = GetDocument().getElementById(AtomicString("foo"));
-  Element* bar = GetDocument().getElementById(AtomicString("bar"));
+  Element* foo = GetElementById("foo");
+  Element* bar = GetElementById("bar");
   ASSERT_NE(nullptr, foo);
   ASSERT_NE(nullptr, bar);
 
@@ -866,13 +902,12 @@ TEST_F(ElementRuleCollectorTest, TraceRuleIndexList) {
 
   // All of this stuff should go out of scope, except `rule_index_list`.
   {
-    Element* sheet_element =
-        GetDocument().getElementById(AtomicString("style"));
+    Element* sheet_element = GetElementById("style");
     ASSERT_TRUE(sheet_element);
     CSSStyleSheet* sheet = To<HTMLStyleElement>(sheet_element)->sheet();
     RuleSet* rule_set = &sheet->Contents()->GetRuleSet();
     ASSERT_TRUE(rule_set);
-    Element* e = GetDocument().getElementById(AtomicString("e"));
+    Element* e = GetElementById("e");
     ASSERT_TRUE(e);
     rule_index_list = GetMatchedCSSRuleList(e, rule_set);
   }

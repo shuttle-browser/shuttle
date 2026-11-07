@@ -21,17 +21,6 @@ class Profile;
 
 // TODO (crbug.com/40193436): Add unit tests for this file.
 
-class BrowserCloudManagementStatusProvider final
-    : public policy::ManagementStatusProvider {
- public:
-  BrowserCloudManagementStatusProvider();
-  ~BrowserCloudManagementStatusProvider() final;
-
- protected:
-  // ManagementStatusProvider impl
-  EnterpriseManagementAuthority FetchAuthority() final;
-};
-
 class LocalBrowserManagementStatusProvider final
     : public policy::ManagementStatusProvider {
  public:
@@ -52,20 +41,6 @@ class LocalDomainBrowserManagementStatusProvider final
  protected:
   // ManagementStatusProvider impl
   EnterpriseManagementAuthority FetchAuthority() final;
-};
-
-class ProfileCloudManagementStatusProvider final
-    : public policy::ManagementStatusProvider {
- public:
-  explicit ProfileCloudManagementStatusProvider(Profile* profile);
-  ~ProfileCloudManagementStatusProvider() final;
-
- protected:
-  // ManagementStatusProvider impl
-  EnterpriseManagementAuthority FetchAuthority() final;
-
- private:
-  raw_ptr<Profile> profile_;
 };
 
 class LocalTestPolicyUserManagementProvider final

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <memory>
 #include <numeric>
+#include <string_view>
 
 #include "base/byte_size.h"
 #include "base/check.h"
@@ -312,8 +313,9 @@ base::MemoryConsumerTraits GetBlobMemoryControllerTraits() {
   return base::MemoryConsumerTraits(
       // Can hold up to ~2GB of blob data in memory (platform-dependent).
       base::MemoryConsumerTraits::EstimatedMemoryUsage::kLarge,
-      // Eviction requires traversing LRU cache and paging items to disk.
-      base::MemoryConsumerTraits::ReleaseMemoryCost::kRequiresTraversal,
+      // Paging items to disk reads their data and writes it to files.
+      base::MemoryConsumerTraits::ReleaseMemoryDataAccess::
+          kReadsAndWritesToDisk,
       // Paged items can be read back from disk.
       base::MemoryConsumerTraits::InformationRetention::kLossless,
       // Eviction is asynchronous, and it uses AsyncMemoryConsumerRegistration.
@@ -342,15 +344,43 @@ FileCreationInfo::~FileCreationInfo() {
 FileCreationInfo::FileCreationInfo(FileCreationInfo&&) = default;
 FileCreationInfo& FileCreationInfo::operator=(FileCreationInfo&&) = default;
 
+size_t BlobMemoryController::CreatorIdentityHash::operator()(
+    const scoped_refptr<base::RefCountedString>& s) const {
+  return std::hash<std::string_view>{}(s ? std::string_view(s->as_string())
+                                         : std::string_view());
+}
+
+bool BlobMemoryController::CreatorIdentityEq::operator()(
+    const scoped_refptr<base::RefCountedString>& a,
+    const scoped_refptr<base::RefCountedString>& b) const {
+  if (a == b) {
+    return true;
+  }
+  std::string_view sa =
+      a ? std::string_view(a->as_string()) : std::string_view();
+  std::string_view sb =
+      b ? std::string_view(b->as_string()) : std::string_view();
+  return sa == sb;
+}
+
 MemoryAllocation::MemoryAllocation(
     base::WeakPtr<BlobMemoryController> controller,
     uint64_t item_id,
-    size_t length)
-    : controller_(std::move(controller)), item_id_(item_id), length_(length) {}
+    size_t length,
+    scoped_refptr<base::RefCountedString> creator_identity)
+    : controller_(std::move(controller)),
+      item_id_(item_id),
+      length_(length),
+      creator_identity_(std::move(creator_identity)) {
+  CHECK(controller_);
+  controller_->memory_usage_by_creator_identity_[creator_identity_] +=
+      base::ByteSize(length_);
+}
 
 MemoryAllocation::~MemoryAllocation() {
-  if (controller_)
-    controller_->RevokeMemoryAllocation(item_id_, length_);
+  if (controller_) {
+    controller_->RevokeMemoryAllocation(item_id_, length_, creator_identity_);
+  }
 }
 
 BlobMemoryController::QuotaAllocationTask::~QuotaAllocationTask() = default;
@@ -732,7 +762,8 @@ void BlobMemoryController::ShrinkMemoryAllocation(ShareableBlobDataItem* item) {
   blob_memory_used_ += item->item()->length();
   item->set_memory_allocation(std::make_unique<MemoryAllocation>(
       weak_factory_.GetWeakPtr(), item->item_id(),
-      base::checked_cast<size_t>(item->item()->length())));
+      base::checked_cast<size_t>(item->item()->length()),
+      item->creator_identity()));
   MaybeGrantPendingMemoryRequests();
 }
 
@@ -768,7 +799,7 @@ void BlobMemoryController::NotifyMemoryItemsUsed(
     }
     // We don't want to re-add the item if we're currently paging it to disk.
     if (items_paging_to_file_.contains(item->item_id())) {
-      return;
+      continue;
     }
     auto iterator = populated_memory_items_.Get(item->item_id());
     if (iterator == populated_memory_items_.end()) {
@@ -820,8 +851,8 @@ void BlobMemoryController::OnStorageLimitsCalculated(BlobStorageLimits limits) {
   limits_ = limits;
 
   if (IsStatefulMemoryPressureEnabled()) {
-    size_t target_max_memory = base::ScaleByMemoryLimit(
-        base_limits_.max_blob_in_memory_space, memory_limit());
+    size_t target_max_memory =
+        memory_limit().Scale(base_limits_.max_blob_in_memory_space);
     limits_.max_blob_in_memory_space =
         std::max(blob_memory_used_, target_max_memory);
   }
@@ -952,6 +983,7 @@ void BlobMemoryController::MaybeScheduleEvictionUntilSystemHealthy(
         CollectItemsForEviction(&items_to_swap, min_page_file_size);
     if (total_items_size == 0)
       break;
+    CHECK_GE(total_memory_usage, total_items_size);
 
     std::vector<base::span<const uint8_t>> data_for_paging;
     for (auto& shared_blob_item : items_to_swap) {
@@ -963,6 +995,8 @@ void BlobMemoryController::MaybeScheduleEvictionUntilSystemHealthy(
     pending_evictions_++;
     disk_used_ += total_items_size;
     in_flight_memory_used_ += total_items_size;
+    // These items will no longer use memory once they are written to disk.
+    total_memory_usage -= total_items_size;
 
     // Create our file reference.
     FilePath page_file_path = GenerateNextPageFileName();
@@ -1133,14 +1167,29 @@ void BlobMemoryController::GrantMemoryAllocations(
     item->set_state(ShareableBlobDataItem::QUOTA_GRANTED);
     item->set_memory_allocation(std::make_unique<MemoryAllocation>(
         weak_factory_.GetWeakPtr(), item->item_id(),
-        base::checked_cast<size_t>(item->item()->length())));
+        base::checked_cast<size_t>(item->item()->length()),
+        item->creator_identity()));
   }
 }
 
-void BlobMemoryController::RevokeMemoryAllocation(uint64_t item_id,
-                                                  size_t length) {
+void BlobMemoryController::RevokeMemoryAllocation(
+    uint64_t item_id,
+    size_t length,
+    scoped_refptr<base::RefCountedString> creator_identity) {
   DCHECK_LE(length, blob_memory_used_);
   blob_memory_used_ -= length;
+
+  auto it = memory_usage_by_creator_identity_.find(creator_identity);
+  if (it != memory_usage_by_creator_identity_.end()) {
+    base::ByteSize byte_length(length);
+    if (byte_length > it->second) {
+      NOTREACHED();
+    } else if (byte_length == it->second) {
+      memory_usage_by_creator_identity_.erase(it);
+    } else {
+      it->second -= byte_length;
+    }
+  }
 
   auto iterator = populated_memory_items_.Get(item_id);
   if (iterator != populated_memory_items_.end()) {

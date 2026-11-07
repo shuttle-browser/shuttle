@@ -50,12 +50,10 @@ class RenderBlockingResourceManagerTest : public SimTest {
     return GetRenderBlockingResourceManager().FontPreloadTimerIsActiveForTest();
   }
 
-  Element* GetTarget() {
-    return GetDocument().getElementById(AtomicString("target"));
-  }
+  Element* GetTarget() { return GetElementById("target"); }
 
   const Font& GetTargetFont() {
-    return *GetTarget()->GetLayoutObject()->StyleRef().GetFont();
+    return *GetTarget()->GetLayoutObject()->Style().GetFont();
   }
 };
 

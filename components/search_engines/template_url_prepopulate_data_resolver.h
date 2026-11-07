@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/regional_capabilities/regional_capabilities_country_id.h"
@@ -70,6 +71,12 @@ class Resolver : public KeyedService {
   std::unique_ptr<TemplateURLData> GetEngineFromFullList(
       std::u16string_view keyword) const;
 
+  // Returns every known prepopulated engine, deduplicated by ID. When several
+  // definitions share an ID, the profile country's one is used, matching
+  // `GetEngineFromFullList(id)`.
+  std::vector<raw_ptr<const PrepopulatedEngine>> GetAllPrepopulatedEngines()
+      const;
+
   // Returns the fallback default search provider, currently hardcoded to be
   // Google, or whichever one is the first of the list if Google is not in the
   // list of prepopulated search engines.
@@ -80,8 +87,9 @@ class Resolver : public KeyedService {
   // Computes whether updates relative to prepopulated search engines need to be
   // made in the local search engines database.
   //
-  // Returns `std::nullopt` when no updates are needed, or a `Metadata`
-  // providing country and data version info about the data to be merged in.
+  // Returns `std::nullopt` when no updates are needed, or a
+  // `BuiltinKeywordsMetadata`when data needs to be merged in, that provides the
+  // relevant country, data version and migration state info for the new data.
   std::optional<BuiltinKeywordsMetadata> ComputeDatabaseUpdateRequirements(
       const WDKeywordsResult::Metadata& keywords_database_metadata) const;
 

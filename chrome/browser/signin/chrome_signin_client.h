@@ -77,6 +77,7 @@ class ChromeSigninClient : public SigninClient {
 
   signin::OAuthConsumer GetOAuthConsumerFromId(
       signin::OAuthConsumerId oauth_consumer_id) const override;
+  bool IsAccountSignedInOnOtherProfile(const GaiaId& gaia_id) const override;
 
   // Used in tests to override the URLLoaderFactory returned by
   // GetURLLoaderFactory().

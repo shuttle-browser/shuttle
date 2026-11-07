@@ -10,7 +10,6 @@ option java_outer_classname = "HintsProto";
 package optimization_guide.proto;
 
 import "components/optimization_guide/proto/common_types.proto";
-import "components/optimization_guide/proto/filter_execution_metadata.proto";
 import "components/optimization_guide/proto/loading_predictor_metadata.proto";
 
 // Information about the hint that the client already has for a host.
@@ -90,14 +89,15 @@ message GetHintsRequest {
 }
 
 message RequestContextMetadata {
+  // Shuttle: filter_execution_metadata (multistep filter) removed.
+  reserved 2;
+
   // update logic at {@link HintsManager::CanApplyOptimizationOnDemand} for
   // getting the context metadata sent and setting the metadata w.r.t the
   // context.
   oneof metadata {
     // Only filled in when RequestContext is CONTEXT_PAGE_INSIGHTS_HUB.
     PageInsightsHubRequestContextMetadata page_insights_hub_metadata = 1;
-    // Only filled in when RequestContext is CONTEXT_FILTER_EXECUTION.
-    FilterExecutionRequestContextMetadata filter_execution_metadata = 2;
   }
 }
 

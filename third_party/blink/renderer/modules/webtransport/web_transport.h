@@ -10,6 +10,7 @@
 #include <optional>
 
 #include "base/containers/span.h"
+#include "base/functional/callback.h"
 #include "base/time/time.h"
 #include "base/types/pass_key.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
@@ -27,6 +28,7 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_web_transport_reliability_mode.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_state_observer.h"
 #include "third_party/blink/renderer/core/fetch/headers.h"
+#include "third_party/blink/renderer/core/typed_arrays/dom_typed_array.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
@@ -50,7 +52,9 @@ class IncomingStream;
 class OutgoingStream;
 class ReadableStream;
 class ScriptState;
+class V8UnionArrayBufferOrArrayBufferView;
 class WebTransportCloseInfo;
+class WebTransportDatagramStats;
 class WebTransportDatagramsWritable;
 class WebTransportOptions;
 class WebTransportSendGroup;
@@ -104,6 +108,11 @@ class MODULES_EXPORT WebTransport final
   ScriptPromise<IDLUndefined> draining(ScriptState*);
   void setDatagramWritableQueueExpirationDuration(double ms);
   ScriptPromise<WebTransportConnectionStats> getStats(ScriptState*);
+  ScriptPromise<NotShared<DOMUint8Array>> exportKeyingMaterial(
+      ScriptState*,
+      const V8UnionArrayBufferOrArrayBufferView* label,
+      const V8UnionArrayBufferOrArrayBufferView* context,
+      uint32_t output_length);
   const String& protocol();
   WebTransportSendGroup* createSendGroup(ExceptionState&);
   V8WebTransportReliabilityMode reliability() const;
@@ -142,12 +151,22 @@ class MODULES_EXPORT WebTransport final
   void OnIncomingStreamClosed(uint32_t stream_id,
                               bool fin_received,
                               uint64_t bytes_received) override;
-  void OnOutgoingStreamClosed(uint32_t stream_id) override;
+  void OnOutgoingStreamClosed(
+      uint32_t stream_id,
+      network::mojom::blink::WebTransportSendStreamStatsPtr final_stats)
+      override;
+  void OnOutgoingStreamStatsFinalized(
+      uint32_t stream_id,
+      network::mojom::blink::WebTransportSendStreamStatsPtr final_stats)
+      override;
   void OnReceivedResetStream(uint32_t stream_id,
                              uint32_t stream_error_code,
                              uint64_t bytes_received) override;
-  void OnReceivedStopSending(uint32_t stream_id,
-                             uint32_t stream_error_code) override;
+  void OnReceivedStopSending(
+      uint32_t stream_id,
+      uint32_t stream_error_code,
+      network::mojom::blink::WebTransportSendStreamStatsPtr final_stats)
+      override;
   void OnClosed(
       network::mojom::blink::WebTransportCloseInfoPtr close_info,
       network::mojom::blink::WebTransportStatsPtr final_stats) override;
@@ -174,6 +193,8 @@ class MODULES_EXPORT WebTransport final
   void SetStreamPriority(
       uint32_t stream_id,
       network::mojom::blink::WebTransportStreamPriorityPtr priority);
+  void RequestSendStreamStats(Vector<uint32_t> stream_ids,
+                              base::OnceClosure callback);
 
   // Removes the reference to a stream. |has_received_close| indicates whether
   // OnIncomingStreamClosed() was called for this stream before it was
@@ -235,6 +256,7 @@ class MODULES_EXPORT WebTransport final
   class ReceiveStreamVendor;
   class BidirectionalStreamVendor;
   class PendingStreamCreation;
+  class PendingExportKeyingMaterialRequest;
 
   WebTransport(ScriptState*, const String& url, ExecutionContext* context);
 
@@ -251,6 +273,7 @@ class MODULES_EXPORT WebTransport final
   void RejectPendingStreamCreations(v8::Local<v8::Value> error);
   void RejectPendingStreamResolvers(v8::Local<v8::Value> error);
   void HandlePendingGetStatsResolvers(v8::Local<v8::Value> error);
+  void OnTransportRemoteDisconnected();
   void RunPendingReceiveStreamStatsCallbacks();
   void OnReceiveStreamStatsResponse(
       uint64_t request_id,
@@ -258,6 +281,12 @@ class MODULES_EXPORT WebTransport final
   void ForgetDatagramUnderlyingSink(DatagramUnderlyingSink*);
   void RetainDatagramUnderlyingSinkWithPendingWrites(DatagramUnderlyingSink*);
   void ReleaseDatagramUnderlyingSinkWithPendingWrites(DatagramUnderlyingSink*);
+  void SendExportKeyingMaterialRequest(
+      PendingExportKeyingMaterialRequest* request);
+  void OnExportKeyingMaterialResponse(
+      PendingExportKeyingMaterialRequest* request,
+      const std::optional<Vector<uint8_t>>& keying_material);
+  void RejectPendingExportKeyingMaterialRequests();
 
   // Result type for ExtractSendStreamOptions().
   struct SendStreamOptions {
@@ -295,12 +324,29 @@ class MODULES_EXPORT WebTransport final
       int64_t send_order,
       bool succeeded,
       uint32_t stream_id);
+  // Applies final stats to the active or recently forgotten stream. Returns
+  // the active stream when terminal handling still needs to close or error it.
+  OutgoingStream* ApplyFinalSendStreamStats(
+      uint32_t stream_id,
+      network::mojom::blink::WebTransportSendStreamStatsPtr final_stats,
+      bool finalize_forgotten_without_stats = false);
+  void OnAbortStreamResponse(
+      uint32_t stream_id,
+      network::mojom::blink::WebTransportSendStreamStatsPtr final_stats);
+  void OnSendStreamStatsResponse(
+      Vector<uint32_t> stream_ids,
+      Vector<network::mojom::blink::WebTransportSendStreamStatsPtr> stats);
+  void RunPendingSendStreamStatsCallbacksForStream(
+      uint32_t stream_id,
+      network::mojom::blink::WebTransportSendStreamStatsPtr stats = nullptr);
+  void RunPendingSendStreamStatsCallbacks();
   void OnGetStatsResponse(network::mojom::blink::WebTransportStatsPtr);
 
   bool DoesSubresourceFilterBlockConnection(const KURL& url);
 
   WebTransportConnectionStats* ConvertStatsFromMojom(
       network::mojom::blink::WebTransportStatsPtr in);
+  void UpdateIncomingDatagramStats(WebTransportDatagramStats*);
 
   Member<DatagramDuplexStream> datagrams_;
 
@@ -365,6 +411,14 @@ class MODULES_EXPORT WebTransport final
               IntWithZeroKeyHashTraits<uint32_t>>
       outgoing_stream_map_;
 
+  // Weakly tracks streams removed by ForgetOutgoingStream() while awaiting
+  // final stats from graceful close, local abort, or STOP_SENDING.
+  // A non-null final snapshot removes the entry; otherwise Dispose() clears it.
+  HeapHashMap<uint32_t,
+              WeakMember<OutgoingStream>,
+              IntWithZeroKeyHashTraits<uint32_t>>
+      recently_forgotten_outgoing_streams_;
+
   // Final close information for streams whose close notification arrived
   // before the corresponding renderer stream was created.
   HashMap<uint32_t,
@@ -400,7 +454,18 @@ class MODULES_EXPORT WebTransport final
           IntWithZeroKeyHashTraits<uint64_t>>
       pending_receive_stream_stats_callbacks_;
   uint64_t next_receive_stream_stats_request_id_ = 0;
+
+  // Coalesces concurrent requests for a stream until a live response, a final
+  // stream notification, or WebTransport Mojo disconnection completes them.
+  HashMap<uint32_t,
+          Vector<base::OnceClosure>,
+          IntWithZeroKeyHashTraits<uint32_t>>
+      pending_send_stream_stats_callbacks_;
+
   bool cleanup_started_ = false;
+
+  HeapLinkedHashSet<Member<PendingExportKeyingMaterialRequest>>
+      pending_export_keying_material_requests_;
 
   // Tracks resolvers for in-progress createSendStream() and
   // createBidirectionalStream() operations so they can be rejected.

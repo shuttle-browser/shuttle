@@ -28,20 +28,12 @@ bool DocumentNameCollection::ElementMatches(const HTMLElement& element) const {
   // Match images, forms, embeds, objects and iframes by name,
   // object by id, and images by id but only if they have
   // a name attribute (this very strange rule matches IE)
-  auto* html_embed_element = DynamicTo<HTMLEmbedElement>(&element);
   if (IsA<HTMLFormElement>(element) || IsA<HTMLIFrameElement>(element) ||
-      (html_embed_element &&
-       (RuntimeEnabledFeatures::
-            DocumentNamedPropertiesIgnoreExposednessEnabled() ||
-        html_embed_element->IsExposed()))) {
+      IsA<HTMLEmbedElement>(element)) {
     return element.GetNameAttribute() == name_;
   }
 
-  auto* html_object_element = DynamicTo<HTMLObjectElement>(&element);
-  if (html_object_element &&
-      (RuntimeEnabledFeatures::
-           DocumentNamedPropertiesIgnoreExposednessEnabled() ||
-       html_object_element->IsExposed())) {
+  if (IsA<HTMLObjectElement>(element)) {
     return element.GetNameAttribute() == name_ ||
            element.GetIdAttribute() == name_;
   }

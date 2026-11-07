@@ -4,6 +4,7 @@
 
 #include "pdf/pdfium/pdfium_page.h"
 
+#include <array>
 #include <optional>
 #include <string>
 #include <utility>
@@ -11,6 +12,7 @@
 
 #include "base/check.h"
 #include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "base/containers/to_vector.h"
 #include "base/files/file_path.h"
 #include "base/strings/string_util.h"
@@ -122,6 +124,19 @@ constexpr struct {
     {5, 2, {1399, 46}},  // Super wide
     {6, 2, {46, 1399}},  // Super tall
 };
+
+// Expects `actual` to match `expected`, comparing points within 1 px.
+void ExpectLineSegmentsNear(base::span<const AccessibilityLineSegment> expected,
+                            base::span<const AccessibilityLineSegment> actual) {
+  ASSERT_EQ(expected.size(), actual.size());
+  for (size_t i = 0; i < expected.size(); ++i) {
+    SCOPED_TRACE(testing::Message() << "at index " << i);
+    EXPECT_NEAR(expected[i].start.x(), actual[i].start.x(), 1.0f);
+    EXPECT_NEAR(expected[i].start.y(), actual[i].start.y(), 1.0f);
+    EXPECT_NEAR(expected[i].end.x(), actual[i].end.x(), 1.0f);
+    EXPECT_NEAR(expected[i].end.y(), actual[i].end.y(), 1.0f);
+  }
+}
 
 }  // namespace
 
@@ -618,6 +633,138 @@ TEST_P(PDFiumPageHeuristicEnhancementsTest, AnnotLinkReplacesDuplicateWebLink) {
   EXPECT_THAT(actual_urls, testing::UnorderedElementsAreArray(expected_urls));
 }
 
+TEST_P(PDFiumPageHeuristicEnhancementsTest, GetGraphicInfo) {
+  TestClient client(/*use_skia_renderer=*/false);
+  std::unique_ptr<PDFiumEngine> engine =
+      InitializeEngine(&client, FILE_PATH_LITERAL("graphic_with_text.pdf"));
+  ASSERT_TRUE(engine);
+
+  PDFiumPage& page = GetPDFiumPage(*engine, 0);
+  std::vector<AccessibilityFormGraphicInfo> graphics =
+      page.GetFormGraphicInfo();
+  if (!HeuristicEnhancementsEnabled()) {
+    EXPECT_TRUE(graphics.empty());
+    return;
+  }
+
+  // Only /Fm1 (combining a nested path form and visible text) is returned;
+  // /Fm2 (text-only) and /Fm3 (invisible text) are excluded.
+  ASSERT_EQ(1u, graphics.size());
+  EXPECT_EQ(1u, graphics[0].text_range.index);
+  EXPECT_EQ(1u, graphics[0].text_range.count);
+  EXPECT_EQ(gfx::RectF(70.0f, 188.0f, 164.0f, 84.0f), graphics[0].bounds);
+
+  std::vector<AccessibilityTextRunInfo> text_runs = page.GetTextRunInfo();
+  ASSERT_GE(text_runs.size(), 2u);
+  EXPECT_EQ(0u, text_runs[0].start_index);
+  EXPECT_EQ(16u, text_runs[0].len);
+  EXPECT_EQ(16u, text_runs[1].start_index);
+  EXPECT_EQ(16u, text_runs[1].len);
+}
+
+// Malformed PDFs can nest Form XObjects arbitrarily deep or have them invoke
+// themselves. Neither should hang or crash graphic detection.
+TEST_P(PDFiumPageHeuristicEnhancementsTest, GetGraphicInfoWithRecursiveForms) {
+  TestClient client(/*use_skia_renderer=*/false);
+  std::unique_ptr<PDFiumEngine> engine = InitializeEngine(
+      &client, FILE_PATH_LITERAL("graphic_with_recursive_forms.pdf"));
+  ASSERT_TRUE(engine);
+
+  EXPECT_EQ(
+      u"Before graphic\r\nToo deep graphic\r\nDeep graphic\r\nAfter graphic",
+      engine->GetPageText(/*page_index=*/0));
+
+  PDFiumPage& page = GetPDFiumPage(*engine, 0);
+  std::vector<AccessibilityFormGraphicInfo> graphics =
+      page.GetFormGraphicInfo();
+  if (!HeuristicEnhancementsEnabled()) {
+    EXPECT_TRUE(graphics.empty());
+    return;
+  }
+
+  // /FmDeep and /FmTooDeep both have visible text and reach the same path
+  // through a chain of nested forms, 31 and 32 levels down respectively. Only
+  // the former is within the maximum form depth. /FmLoop (self-referencing)
+  // has no text.
+  ASSERT_EQ(1u, graphics.size());
+  EXPECT_EQ(2u, graphics[0].text_range.index);
+  EXPECT_EQ(1u, graphics[0].text_range.count);
+  EXPECT_EQ(gfx::RectF(70.0f, 321.0f, 164.0f, 84.0f), graphics[0].bounds);
+}
+
+TEST_P(PDFiumPageHeuristicEnhancementsTest, GetLineSegmentInfo) {
+  TestClient client(/*use_skia_renderer=*/false);
+  std::unique_ptr<PDFiumEngine> engine =
+      InitializeEngine(&client, FILE_PATH_LITERAL("table_lines.pdf"));
+  ASSERT_TRUE(engine);
+
+  PDFiumPage& page = GetPDFiumPage(*engine, 0);
+  std::vector<AccessibilityLineSegment> line_segments =
+      page.GetLineSegmentInfo();
+  if (!HeuristicEnhancementsEnabled()) {
+    EXPECT_TRUE(line_segments.empty());
+    return;
+  }
+
+  // Converts PDF coordinates on the 400x400 pt page to pixels.
+  auto to_pixel = [](float x, float y) {
+    return gfx::PointF(x * 4.0f / 3.0f, (400.0f - y) * 4.0f / 3.0f);
+  };
+
+  // Segments appear in path order. The curve, the filled-only rectangle, and
+  // the zero-length line are skipped.
+  const auto kExpectedSegments = std::to_array<AccessibilityLineSegment>({
+      // 3x3 grid.
+      {to_pixel(50, 300), to_pixel(350, 300)},
+      {to_pixel(50, 280), to_pixel(350, 280)},
+      {to_pixel(50, 260), to_pixel(350, 260)},
+      {to_pixel(50, 240), to_pixel(350, 240)},
+      {to_pixel(50, 240), to_pixel(50, 300)},
+      {to_pixel(150, 240), to_pixel(150, 300)},
+      {to_pixel(250, 240), to_pixel(250, 300)},
+      {to_pixel(350, 240), to_pixel(350, 300)},
+      // Touching segments.
+      {to_pixel(50, 200), to_pixel(200, 200)},
+      {to_pixel(200, 200), to_pixel(350, 200)},
+      // Stroked rectangle.
+      {to_pixel(50, 120), to_pixel(350, 120)},
+      {to_pixel(350, 120), to_pixel(350, 160)},
+      {to_pixel(350, 160), to_pixel(50, 160)},
+      {to_pixel(50, 160), to_pixel(50, 120)},
+      // Transformed line.
+      {to_pixel(50, 70), to_pixel(150, 70)},
+      // Closed subpath starting with a curve.
+      {to_pixel(360, 30), to_pixel(360, 10)},
+      {to_pixel(360, 10), to_pixel(300, 10)},
+      // Diagonal line.
+      {to_pixel(50, 50), to_pixel(150, 90)},
+      // Short line.
+      {to_pixel(300, 50), to_pixel(305, 50)},
+  });
+
+  ExpectLineSegmentsNear(kExpectedSegments, line_segments);
+}
+
+TEST_P(PDFiumPageHeuristicEnhancementsTest, GetLineSegmentInfoCached) {
+  TestClient client(/*use_skia_renderer=*/false);
+  std::unique_ptr<PDFiumEngine> engine =
+      InitializeEngine(&client, FILE_PATH_LITERAL("table_lines.pdf"));
+  ASSERT_TRUE(engine);
+
+  PDFiumPage& page = GetPDFiumPage(*engine, 0);
+  EXPECT_EQ(page.GetLineSegmentInfo(), page.GetLineSegmentInfo());
+}
+
+TEST_P(PDFiumPageHeuristicEnhancementsTest, GetLineSegmentInfoNoPaths) {
+  TestClient client(/*use_skia_renderer=*/false);
+  std::unique_ptr<PDFiumEngine> engine =
+      InitializeEngine(&client, FILE_PATH_LITERAL("hello_world2.pdf"));
+  ASSERT_TRUE(engine);
+
+  PDFiumPage& page = GetPDFiumPage(*engine, 0);
+  EXPECT_TRUE(page.GetLineSegmentInfo().empty());
+}
+
 INSTANTIATE_TEST_SUITE_P(All,
                          PDFiumPageHeuristicEnhancementsTest,
                          testing::Bool());
@@ -899,7 +1046,9 @@ TEST_P(PDFiumPageTextTest, HighlightTextRunInfo) {
 }
 
 TEST_P(PDFiumPageTextTest, GetTextRunInfoAtWithHeuristicEnhancements) {
+  constexpr int kDirectionRunCharIndex = 16;
   float font_size_disabled;
+  AccessibilityTextDirection direction_disabled;
   {
     base::test::ScopedFeatureList scoped_feature_list;
     scoped_feature_list.InitAndDisableFeature(
@@ -908,9 +1057,15 @@ TEST_P(PDFiumPageTextTest, GetTextRunInfoAtWithHeuristicEnhancements) {
         GetFontMatrixPDFTextRunInfo(0);
     ASSERT_TRUE(text_run_info.has_value());
     font_size_disabled = text_run_info->style.font_size;
+
+    std::optional<AccessibilityTextRunInfo> direction_run_info =
+        GetFontMatrixPDFTextRunInfo(kDirectionRunCharIndex);
+    ASSERT_TRUE(direction_run_info.has_value());
+    direction_disabled = direction_run_info->direction;
   }
 
   float font_size_enabled;
+  AccessibilityTextDirection direction_enabled;
   {
     base::test::ScopedFeatureList scoped_feature_list;
     scoped_feature_list.InitAndEnableFeature(
@@ -919,6 +1074,11 @@ TEST_P(PDFiumPageTextTest, GetTextRunInfoAtWithHeuristicEnhancements) {
         GetFontMatrixPDFTextRunInfo(0);
     ASSERT_TRUE(text_run_info.has_value());
     font_size_enabled = text_run_info->style.font_size;
+
+    std::optional<AccessibilityTextRunInfo> direction_run_info =
+        GetFontMatrixPDFTextRunInfo(kDirectionRunCharIndex);
+    ASSERT_TRUE(direction_run_info.has_value());
+    direction_enabled = direction_run_info->direction;
   }
 
   // For "A1", the base font size is 1.0, and the vertical scale of the matrix
@@ -933,6 +1093,8 @@ TEST_P(PDFiumPageTextTest, GetTextRunInfoAtWithHeuristicEnhancements) {
   float expected_font_size_disabled = UsingTestFonts() ? 10.667f : 12.0f;
   EXPECT_NEAR(font_size_disabled, expected_font_size_disabled, 0.001f);
   EXPECT_NEAR(font_size_enabled, 10.0f, 0.001f);
+  EXPECT_EQ(direction_disabled, AccessibilityTextDirection::kTopToBottom);
+  EXPECT_EQ(direction_enabled, AccessibilityTextDirection::kLeftToRight);
 }
 
 TEST_P(PDFiumPageTextTest, GetTextRunInfoFontWeight) {

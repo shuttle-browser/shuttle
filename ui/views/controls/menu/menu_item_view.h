@@ -141,6 +141,11 @@ class VIEWS_EXPORT MenuItemView : public View, public LayoutDelegate {
     int top_radius = 0;
     int bottom_radius = 0;
     std::optional<int> horizontal_margin = std::nullopt;
+    // Extra padding above and below the item's row, filled with the background
+    // color. The row keeps its height, and the selection highlight covers
+    // only the row.
+    int top_padding = 0;
+    int bottom_padding = 0;
   };
 
   // Constructor for use with the top level menu item. This menu is never
@@ -172,6 +177,7 @@ class VIEWS_EXPORT MenuItemView : public View, public LayoutDelegate {
       std::optional<ui::NewBadgeType> badge_type);
 
   // Hides and cancels the menu. This does nothing if the menu is not open.
+  // Must only be called on the root item.
   void Cancel();
 
   // Add an item to the menu at a specified index.  ChildrenChanged() should
@@ -188,11 +194,28 @@ class VIEWS_EXPORT MenuItemView : public View, public LayoutDelegate {
       ui::MenuSeparatorType separator_style,
       std::optional<ui::ColorId> submenu_background_color = std::nullopt,
       std::optional<ui::ColorId> foreground_color = std::nullopt,
-      std::optional<ui::ColorId> selected_color_id = std::nullopt);
+      std::optional<ui::ColorId> selected_color_id = std::nullopt,
+      std::optional<ui::ColorId> submenu_arrow_color_id = std::nullopt);
+
+  // Appends `item` to the menu, or inserts it at `index` if specified.
+  template <typename T>
+    requires(std::derived_from<T, MenuItemView>)
+  T* AddMenuItemView(
+      std::unique_ptr<T> item,
+      std::optional<size_t> index = std::nullopt,
+      std::optional<ui::ColorId> submenu_background_color = std::nullopt,
+      std::optional<ui::ColorId> foreground_color = std::nullopt,
+      std::optional<ui::ColorId> selected_color_id = std::nullopt,
+      std::optional<ui::ColorId> submenu_arrow_color_id = std::nullopt) {
+    return static_cast<T*>(AddMenuItemViewImpl(
+        std::move(item), index, submenu_background_color, foreground_color,
+        selected_color_id, submenu_arrow_color_id));
+  }
 
   void SetMenuItemBackground(
       std::optional<MenuItemBackground> menu_item_background) {
     menu_item_background_ = menu_item_background;
+    invalidate_dimensions();
   }
 
   void SetContainerStyle(ui::ColorId background_color_id,
@@ -336,6 +359,8 @@ class VIEWS_EXPORT MenuItemView : public View, public LayoutDelegate {
 
   // Returns true if the item is selected.
   bool IsSelected() const { return selected_; }
+  void SetIsPinned(bool is_pinned);
+  bool IsPinned() const { return is_pinned_; }
 
   // Adds a callback subscription associated with the above selected property.
   // The callback will be invoked whenever the selected property changes.
@@ -412,13 +437,9 @@ class VIEWS_EXPORT MenuItemView : public View, public LayoutDelegate {
   // Returns the trailing horizontal padding after content.
   int GetTrailingPadding() const;
 
-  void set_controller(MenuController* controller) {
-    if (controller) {
-      controller_ = controller->AsWeakPtr();
-    } else {
-      controller_.reset();
-    }
-  }
+  // Sets the controller running this menu. Only valid on the root item; other
+  // items get the controller from the root via GetMenuController().
+  void SetController(MenuController* controller);
   MenuController* GetMenuController();
   const MenuController* GetMenuController() const;
 
@@ -449,6 +470,12 @@ class VIEWS_EXPORT MenuItemView : public View, public LayoutDelegate {
   // Returns true if the menu has mnemonics. This only useful on the root menu
   // item.
   bool has_mnemonics() const { return has_mnemonics_; }
+
+  // Returns true if this menu's mnemonics should be shown (underlined).
+  // Reads the root menu item's state, so it can be called on any of its
+  // children, submenus, and the root itself. Views hosted inside a menu item
+  // can use this to show their own mnemonics consistently.
+  bool ShouldShowMnemonics() const;
 
   void set_vertical_margin(int vertical_margin) {
     vertical_margin_ = vertical_margin;
@@ -539,6 +566,14 @@ class VIEWS_EXPORT MenuItemView : public View, public LayoutDelegate {
                int command,
                Type type,
                MenuDelegate* delegate);
+
+  MenuItemView* AddMenuItemViewImpl(
+      std::unique_ptr<MenuItemView> item,
+      std::optional<size_t> index,
+      std::optional<ui::ColorId> submenu_background_color = std::nullopt,
+      std::optional<ui::ColorId> foreground_color = std::nullopt,
+      std::optional<ui::ColorId> selected_color_id = std::nullopt,
+      std::optional<ui::ColorId> submenu_arrow_color_id = std::nullopt);
 
   const SubmenuView* GetContainingSubmenu() const {
     return parent_menu_item_->GetSubmenu();
@@ -668,9 +703,19 @@ class VIEWS_EXPORT MenuItemView : public View, public LayoutDelegate {
     foreground_color_id_ = foreground_color_id;
   }
 
+  void SetSubmenuArrowColorId(
+      std::optional<ui::ColorId> submenu_arrow_color_id) {
+    submenu_arrow_color_id_ = submenu_arrow_color_id;
+  }
+
   // Returns the corresponding margin from the `MenuConfig` if
   // `vertical_margin_` is not set.
   int GetVerticalMargin() const;
+
+  // Returns the top and bottom padding of `menu_item_background_`, or empty
+  // insets if there is no background. The item's row is its bounds minus
+  // this padding.
+  gfx::Insets GetBackgroundPadding() const;
 
   ViewAccessibility* GetSubmenuViewAccessibility();
   ViewAccessibility* GetScrollViewContainerViewAccessibility();
@@ -686,7 +731,9 @@ class VIEWS_EXPORT MenuItemView : public View, public LayoutDelegate {
   // as necessary.
   raw_ptr<MenuDelegate> delegate_ = nullptr;
 
-  // The controller for the run operation, or NULL if the menu isn't showing.
+  // The controller for the run operation, or null if the menu isn't showing.
+  // Only set on the root menu item; use GetMenuController() instead of
+  // accessing this directly.
   base::WeakPtr<MenuController> controller_;
 
   // Used to detect when Cancel was invoked.
@@ -701,6 +748,8 @@ class VIEWS_EXPORT MenuItemView : public View, public LayoutDelegate {
 
   // Whether we're selected.
   bool selected_ = false;
+
+  bool is_pinned_ = false;
 
   bool last_paint_as_selected_ = false;
 
@@ -813,6 +862,7 @@ class VIEWS_EXPORT MenuItemView : public View, public LayoutDelegate {
   std::optional<ui::ColorId> foreground_color_id_;
   std::optional<MenuItemBackground> menu_item_background_;
   std::optional<ui::ColorId> selected_color_id_;
+  std::optional<ui::ColorId> submenu_arrow_color_id_;
   std::optional<int> top_margin_;
   std::optional<int> bottom_margin_;
 
@@ -828,6 +878,10 @@ class VIEWS_EXPORT MenuItemView : public View, public LayoutDelegate {
 // reference the MenuItemView that owns its submenu.
 VIEWS_EXPORT extern const ui::ClassProperty<MenuItemView*>* const
     kSubmenuItemKey;
+
+// Property set on a child views::Button inside a container MenuItemView to
+// specify its mnemonic character for keyboard selection in MenuController.
+VIEWS_EXPORT extern const ui::ClassProperty<char16_t>* const kMenuMnemonicKey;
 
 class VIEWS_EXPORT MenuItemActionViewInterface
     : public BaseActionViewInterface {
@@ -855,6 +909,7 @@ class VIEWS_EXPORT EmptyMenuMenuItem : public MenuItemView {
 
 }  // namespace views
 
+DECLARE_EXPORTED_UI_CLASS_PROPERTY_TYPE(VIEWS_EXPORT, char16_t)
 DECLARE_EXPORTED_UI_CLASS_PROPERTY_TYPE(VIEWS_EXPORT, views::MenuItemView*)
 
 #endif  // UI_VIEWS_CONTROLS_MENU_MENU_ITEM_VIEW_H_

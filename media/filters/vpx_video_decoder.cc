@@ -75,6 +75,15 @@ static std::unique_ptr<vpx_codec_ctx> InitializeVpxContext(
   return nullptr;
 }
 
+// libvpx may decode a corrupted VP8 delta frame with error and still return
+// VPX_CODEC_OK; the corruption is only reported via VP8D_GET_FRAME_CORRUPTED.
+static bool IsVp8FrameCorrupted(vpx_codec_ctx* context) {
+  int corrupted = 0;
+  return vpx_codec_control(context, VP8D_GET_FRAME_CORRUPTED, &corrupted) !=
+             VPX_CODEC_OK ||
+         corrupted != 0;
+}
+
 static int32_t GetVP9FrameBuffer(void* user_priv,
                                  size_t min_size,
                                  vpx_codec_frame_buffer* fb) {
@@ -317,6 +326,12 @@ bool VpxVideoDecoder::VpxDecode(const DecoderBuffer* buffer,
                   << vpx_codec_err_to_string(status);
       return false;
     }
+    if (config_.codec() == VideoCodec::kVP8 &&
+        IsVp8FrameCorrupted(vpx_codec_.get())) {
+      error_status_ = DecoderStatus::Codes::kMalformedBitstream;
+      DLOG(ERROR) << "Corrupted VP8 frame.";
+      return false;
+    }
   }
 
   // Gets pointer to decoded data.
@@ -442,6 +457,12 @@ VpxVideoDecoder::AlphaDecodeStatus VpxVideoDecoder::DecodeAlphaPlane(
                   << vpx_codec_error(vpx_codec_alpha_.get());
       return kAlphaPlaneError;
     }
+    if (config_.codec() == VideoCodec::kVP8 &&
+        IsVp8FrameCorrupted(vpx_codec_alpha_.get())) {
+      error_status_ = DecoderStatus::Codes::kMalformedBitstream;
+      DLOG(ERROR) << "Corrupted VP8 frame (alpha).";
+      return kAlphaPlaneError;
+    }
   }
 
   vpx_codec_iter_t iter_alpha = nullptr;
@@ -451,9 +472,10 @@ VpxVideoDecoder::AlphaDecodeStatus VpxVideoDecoder::DecodeAlphaPlane(
   }
 
   if ((*vpx_image_alpha)->d_h != vpx_image->d_h ||
-      (*vpx_image_alpha)->d_w != vpx_image->d_w) {
-    DLOG(ERROR) << "The alpha plane dimensions are not the same as the "
-                   "image dimensions.";
+      (*vpx_image_alpha)->d_w != vpx_image->d_w ||
+      (*vpx_image_alpha)->bit_depth != vpx_image->bit_depth) {
+    DLOG(ERROR) << "The alpha plane dimensions/bit depth are not the same as "
+                   "the image dimensions/bit depth.";
     return kAlphaPlaneError;
   }
 
@@ -484,7 +506,8 @@ bool VpxVideoDecoder::CopyVpxImageToVideoFrame(
     case VPX_IMG_FMT_I42016:
       switch (vpx_image->bit_depth) {
         case 10:
-          codec_format = PIXEL_FORMAT_YUV420P10;
+          codec_format = vpx_image_alpha ? PIXEL_FORMAT_YUV420AP10
+                                         : PIXEL_FORMAT_YUV420P10;
           break;
         case 12:
           codec_format = PIXEL_FORMAT_YUV420P12;
@@ -498,7 +521,8 @@ bool VpxVideoDecoder::CopyVpxImageToVideoFrame(
     case VPX_IMG_FMT_I42216:
       switch (vpx_image->bit_depth) {
         case 10:
-          codec_format = PIXEL_FORMAT_YUV422P10;
+          codec_format = vpx_image_alpha ? PIXEL_FORMAT_YUV422AP10
+                                         : PIXEL_FORMAT_YUV422P10;
           break;
         case 12:
           codec_format = PIXEL_FORMAT_YUV422P12;
@@ -512,7 +536,8 @@ bool VpxVideoDecoder::CopyVpxImageToVideoFrame(
     case VPX_IMG_FMT_I44416:
       switch (vpx_image->bit_depth) {
         case 10:
-          codec_format = PIXEL_FORMAT_YUV444P10;
+          codec_format = vpx_image_alpha ? PIXEL_FORMAT_YUV444AP10
+                                         : PIXEL_FORMAT_YUV444P10;
           break;
         case 12:
           codec_format = PIXEL_FORMAT_YUV444P12;

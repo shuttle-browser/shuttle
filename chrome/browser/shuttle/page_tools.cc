@@ -4,6 +4,10 @@
 
 #include "chrome/browser/shuttle/page_tools.h"
 
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <optional>
 #include <set>
@@ -11,24 +15,36 @@
 #include <utility>
 
 #include "base/command_line.h"
+#include "base/containers/span.h"
 #include "base/environment.h"
+#include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/files/scoped_file.h"
 #include "base/functional/bind.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/no_destructor.h"
 #include "base/path_service.h"
-#include "build/build_config.h"
+#include "base/posix/eintr_wrapper.h"
+#include "base/rand_util.h"
 #include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/task/thread_pool.h"
 #include "base/time/time.h"
+#include "build/build_config.h"
 #include "chrome/browser/shuttle/agent_browser_sidecar.h"
 #include "chrome/browser/shuttle/network_access.h"
 #include "chrome/browser/shuttle/session_manager.h"
 #include "content/public/browser/web_contents.h"
+#include "crypto/sha2.h"
+#include "third_party/re2/src/re2/re2.h"
+#include "ui/base/clipboard/clipboard_buffer.h"
+#include "ui/base/clipboard/scoped_clipboard_writer.h"
 
 namespace shuttle {
 
@@ -81,6 +97,19 @@ struct Translated {
   base::TimeDelta timeout = kDefaultTimeout;
 };
 
+re2::RE2::Options PatternOptions() {
+  re2::RE2::Options options;
+  options.set_case_sensitive(false);
+  options.set_log_errors(false);
+  return options;
+}
+
+// Tools that retry once after scrolling the element to the viewport centre
+// when another element covers it (sticky headers/trays near the edges).
+bool RetriesWhenCovered(std::string_view tool) {
+  return tool == "click" || tool == "dblclick" || tool == "hover";
+}
+
 // Maps our arguments to agent-browser's. Returns an error message or "".
 std::string Translate(const base::DictValue& tool,
                       const base::DictValue& args,
@@ -123,8 +152,8 @@ std::string Translate(const base::DictValue& tool,
       return "Unknown argument: " + std::string(key);
     }
     // Of the variants' selector arguments only the chosen one is sent on.
-    if (key != chosen_key && std::ranges::find(variant_keys, key) !=
-                                 variant_keys.end()) {
+    if (key != chosen_key &&
+        std::ranges::find(variant_keys, key) != variant_keys.end()) {
       continue;
     }
     std::string dest(key);
@@ -152,7 +181,19 @@ std::string Translate(const base::DictValue& tool,
       return "name must be 1-64 characters of a-z 0-9 -";
     }
     out->args.Remove("name");
-    out->args.Set("path", states_dir.AppendASCII(*name + ".json").AsUTF8Unsafe());
+    out->args.Set("path",
+                  states_dir.AppendASCII(*name + ".json").AsUTF8Unsafe());
+  }
+  if (special && *special == "save_text") {
+    const std::string* to = args.FindString("to");
+    if (!to || *to == "file") {
+      const std::string* name = args.FindString("name");
+      if (!name || !IsSafeName(*name)) {
+        return "to=file needs a name of 1-64 characters of a-z 0-9 -";
+      }
+    } else if (*to != "clipboard") {
+      return "to must be file or clipboard";
+    }
   }
 
   // Waits can legitimately outlast the default.
@@ -238,6 +279,161 @@ std::string SlimText(const std::string& text) {
   return base::WriteJson(*data).value_or(text);
 }
 
+// Keeps the lines of an accessibility snapshot that match `pattern`, with
+// their ancestors (for context) and their children (a table row's cells and
+// buttons, say). Lines nest by indentation.
+std::string FilterSnapshot(const std::string& text, const re2::RE2& pattern) {
+  std::vector<std::string_view> lines = base::SplitStringPiece(
+      text, "\n", base::KEEP_WHITESPACE, base::SPLIT_WANT_ALL);
+  std::vector<size_t> indent(lines.size());
+  for (size_t i = 0; i < lines.size(); ++i) {
+    size_t first = lines[i].find_first_not_of(' ');
+    indent[i] = first == std::string_view::npos ? lines[i].size() : first;
+  }
+  std::vector<bool> keep(lines.size(), false);
+  bool any = false;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    if (!re2::RE2::PartialMatch(lines[i], pattern)) {
+      continue;
+    }
+    any = true;
+    keep[i] = true;
+    size_t level = indent[i];
+    for (size_t j = i; j-- > 0 && level > 0;) {
+      if (indent[j] < level) {
+        keep[j] = true;
+        level = indent[j];
+      }
+    }
+    for (size_t j = i + 1; j < lines.size() && indent[j] > indent[i]; ++j) {
+      keep[j] = true;
+    }
+  }
+  if (!any) {
+    return "No snapshot lines match the filter.";
+  }
+  std::string out;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    if (keep[i]) {
+      base::StrAppend(&out, {lines[i], "\n"});
+    }
+  }
+  out.pop_back();
+  return out;
+}
+
+// The first text part of a raw agent-browser result.
+std::string RawText(const base::DictValue& result) {
+  if (const base::ListValue* content = result.FindList("content")) {
+    for (const base::Value& part : *content) {
+      const std::string* type = part.GetDict().FindString("type");
+      const std::string* text = part.GetDict().FindString("text");
+      if (type && *type == "text" && text) {
+        return *text;
+      }
+    }
+  }
+  return std::string();
+}
+
+struct SavedText {
+  std::string error;
+  std::string path;
+};
+
+// Opens directory `name` in `parent_fd` (creating it with mode 0700 if missing)
+// without following a link, and makes sure it is a directory owned by this
+// user with mode 0700. Returns an invalid fd on any failure.
+base::ScopedFD OpenPrivateDir(int parent_fd, const std::string& name) {
+  if (mkdirat(parent_fd, name.c_str(), 0700) != 0 && errno != EEXIST) {
+    return base::ScopedFD();
+  }
+  base::ScopedFD fd(HANDLE_EINTR(openat(
+      parent_fd, name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)));
+  if (!fd.is_valid()) {
+    return base::ScopedFD();
+  }
+  struct stat st;
+  if (fstat(fd.get(), &st) != 0 || !S_ISDIR(st.st_mode) ||
+      st.st_uid != geteuid()) {
+    return base::ScopedFD();
+  }
+  if ((st.st_mode & 07777) != 0700 && fchmod(fd.get(), 0700) != 0) {
+    return base::ScopedFD();
+  }
+  return fd;
+}
+
+// Writes `value` to `secrets_dir`/`name`.txt, readable only by the user.
+// `secrets_dir` is <profile>/shuttle/secrets/<agent>: the three components
+// below the profile directory are opened without following links (and must be
+// private directories of this user), the value goes into a new exclusively
+// created 0600 file that then replaces the destination entry atomically. An
+// existing file (or link) at the destination is replaced, never written
+// through.
+SavedText WriteSecretFile(base::FilePath secrets_dir,
+                          std::string name,
+                          std::string value) {
+  SavedText out;
+  const base::FilePath agent_dir = secrets_dir.DirName().DirName();
+  const std::string fail = "Could not write the secret file under " +
+                           secrets_dir.AsUTF8Unsafe() +
+                           " (it must be a private directory of this user)";
+  // The profile directory is the trusted anchor; every component below it
+  // (shuttle/secrets/<agent>) is opened without following links and must be a
+  // private directory of this user.
+  base::ScopedFD profile_fd(HANDLE_EINTR(
+      open(agent_dir.DirName().value().c_str(),
+           O_RDONLY | O_DIRECTORY | O_CLOEXEC)));
+  if (!profile_fd.is_valid()) {
+    out.error = fail;
+    return out;
+  }
+  base::ScopedFD base_fd =
+      OpenPrivateDir(profile_fd.get(), agent_dir.BaseName().value());
+  if (!base_fd.is_valid()) {
+    out.error = fail;
+    return out;
+  }
+  base::ScopedFD secrets_fd = OpenPrivateDir(base_fd.get(), "secrets");
+  if (!secrets_fd.is_valid()) {
+    out.error = fail;
+    return out;
+  }
+  base::ScopedFD dir_fd =
+      OpenPrivateDir(secrets_fd.get(), secrets_dir.BaseName().value());
+  if (!dir_fd.is_valid()) {
+    out.error = fail;
+    return out;
+  }
+  const std::string final_name = name + ".txt";
+  const std::string temp_name =
+      "." + name + ".tmp-" + base::HexEncodeLower(base::RandBytesAsVector(8));
+  base::ScopedFD file(HANDLE_EINTR(
+      openat(dir_fd.get(), temp_name.c_str(),
+             O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600)));
+  if (!file.is_valid()) {
+    out.error = fail;
+    return out;
+  }
+  struct stat st;
+  const bool ok =
+      fchmod(file.get(), 0600) == 0 && fstat(file.get(), &st) == 0 &&
+      S_ISREG(st.st_mode) && st.st_uid == geteuid() &&
+      (st.st_mode & 07777) == 0600 &&
+      base::WriteFileDescriptor(file.get(), value) &&
+      HANDLE_EINTR(fsync(file.get())) == 0;
+  file.reset();
+  if (!ok || renameat(dir_fd.get(), temp_name.c_str(), dir_fd.get(),
+                      final_name.c_str()) != 0) {
+    unlinkat(dir_fd.get(), temp_name.c_str(), 0);
+    out.error = fail;
+    return out;
+  }
+  out.path = secrets_dir.AppendASCII(final_name).AsUTF8Unsafe();
+  return out;
+}
+
 ToolResult ToToolResult(base::expected<base::DictValue, std::string> response) {
   if (!response.has_value()) {
     return ToolResult::Error(std::move(response.error()));
@@ -248,8 +444,7 @@ ToolResult ToToolResult(base::expected<base::DictValue, std::string> response) {
   ToolResult out;
   out.is_error = is_error;
   if (!content) {
-    out.content.Append(
-        base::DictValue().Set("type", "text").Set("text", "ok"));
+    out.content.Append(base::DictValue().Set("type", "text").Set("text", "ok"));
     return out;
   }
   bool has_image = false;
@@ -266,8 +461,8 @@ ToolResult ToToolResult(base::expected<base::DictValue, std::string> response) {
         continue;
       }
       const std::string* text = part.FindString("text");
-      out.content.Append(base::DictValue().Set(
-                             "type", "text")
+      out.content.Append(base::DictValue()
+                             .Set("type", "text")
                              .Set("text", SlimText(text ? *text : "")));
     } else {
       out.content.Append(part.Clone());
@@ -282,6 +477,24 @@ bool IsSafeAgentId(const std::string& id) {
 }
 
 }  // namespace
+
+struct PageToolManager::PendingCall {
+  std::string tool;
+  std::string session_id;
+  std::string target_id;
+  std::string ab_tool;
+  base::DictValue ab_args;
+  base::TimeDelta timeout;
+  bool retried = false;
+  // snapshot: regex the lines must match.
+  std::string filter;
+  // save-text.
+  bool save_text = false;
+  std::string save_to;
+  std::string save_name;
+  std::string save_regex;
+  base::FilePath secrets_dir;
+};
 
 PageToolManager::PageToolManager(SessionManager* sessions,
                                  base::FilePath profile_path)
@@ -343,30 +556,216 @@ void PageToolManager::Call(std::string_view name,
   content::WebContents* contents = SessionManager::FindTab(*target_id);
   std::string session_id =
       contents ? SessionManager::SessionOf(contents) : std::string();
-  const Session* session = session_id.empty() ? nullptr : sessions_->Get(session_id);
+  const Session* session =
+      session_id.empty() ? nullptr : sessions_->Get(session_id);
   if (!session || !IsSafeAgentId(session->agent)) {
     std::move(callback).Run(ToolResult::Error(
         "Not a leased tab of an open session: " + *target_id));
     return;
   }
 
-  base::FilePath states_dir =
-      profile_path_.Append("shuttle").Append("states").Append(session->agent);
+  base::FilePath agent_dir = profile_path_.Append("shuttle");
+  base::FilePath states_dir = agent_dir.Append("states").Append(session->agent);
   Translated translated;
   std::string error = Translate(*tool, args, states_dir, &translated);
   if (!error.empty()) {
     std::move(callback).Run(ToolResult::Error(std::move(error)));
     return;
   }
-  GetOrCreateSidecar(session_id, context.host, states_dir)
-      ->CallTool(*target_id, std::move(translated.ab_tool),
-                 std::move(translated.args), translated.timeout,
-                 base::BindOnce(
-                     [](ToolCallback callback,
-                        base::expected<base::DictValue, std::string> result) {
-                       std::move(callback).Run(ToToolResult(std::move(result)));
-                     },
-                     std::move(callback)));
+
+  PendingCall call;
+  call.tool = std::string(name);
+  call.session_id = session_id;
+  call.target_id = *target_id;
+  call.ab_tool = std::move(translated.ab_tool);
+  call.ab_args = std::move(translated.args);
+  call.timeout = translated.timeout;
+  if (const std::string* filter = args.FindString("filter");
+      filter && !filter->empty()) {
+    re2::RE2 pattern(*filter, PatternOptions());
+    if (!pattern.ok()) {
+      std::move(callback).Run(
+          ToolResult::Error("Bad filter regex: " + pattern.error()));
+      return;
+    }
+    call.filter = *filter;
+    // agent-browser snapshots default to interactive elements only; a filter
+    // searches page text (e.g. "API key"), so default to the full tree.
+    if (!args.Find("interactive")) {
+      call.ab_args.Set("interactive", false);
+    }
+  }
+  const std::string* special = tool->FindDict("ab")->FindString("special");
+  if (special && *special == "save_text") {
+    call.save_text = true;
+    const std::string* to = args.FindString("to");
+    call.save_to = to ? *to : "file";
+    if (const std::string* save_name = args.FindString("name")) {
+      call.save_name = *save_name;
+    }
+    if (const std::string* regex = args.FindString("regex");
+        regex && !regex->empty()) {
+      re2::RE2 pattern(*regex, re2::RE2::Options(re2::RE2::Quiet));
+      if (!pattern.ok()) {
+        std::move(callback).Run(
+            ToolResult::Error("Bad regex: " + pattern.error()));
+        return;
+      }
+      call.save_regex = *regex;
+    }
+    call.secrets_dir = agent_dir.Append("secrets").Append(session->agent);
+  }
+  GetOrCreateSidecar(session_id, context.host, states_dir);
+  Send(std::move(call), std::move(callback));
+}
+
+void PageToolManager::Send(PendingCall call, ToolCallback callback) {
+  auto it = sidecars_.find(call.session_id);
+  if (it == sidecars_.end()) {
+    std::move(callback).Run(ToolResult::Error("The session was closed."));
+    return;
+  }
+  std::string target_id = call.target_id;
+  std::string ab_tool = call.ab_tool;
+  base::DictValue ab_args = call.ab_args.Clone();
+  base::TimeDelta timeout = call.timeout;
+  it->second->CallTool(
+      std::move(target_id), std::move(ab_tool), std::move(ab_args), timeout,
+      base::BindOnce(&PageToolManager::OnResult, weak_factory_.GetWeakPtr(),
+                     std::move(call), std::move(callback)));
+}
+
+void PageToolManager::OnResult(
+    PendingCall call,
+    ToolCallback callback,
+    base::expected<base::DictValue, std::string> result) {
+  const bool tool_error =
+      result.has_value() && result->FindBool("isError").value_or(false);
+
+  // Covered by a sticky header/tray: scroll to the centre, retry once.
+  if (tool_error && !call.retried && RetriesWhenCovered(call.tool) &&
+      RawText(*result).find("is covered by") != std::string::npos) {
+    auto it = sidecars_.find(call.session_id);
+    const std::string* selector = call.ab_args.FindString("selector");
+    if (it != sidecars_.end() && selector) {
+      call.retried = true;
+      std::string target_id = call.target_id;
+      base::DictValue scroll_args =
+          base::DictValue().Set("selector", *selector);
+      base::TimeDelta timeout = call.timeout;
+      it->second->CallTool(
+          std::move(target_id), "scroll_into_view", std::move(scroll_args),
+          timeout,
+          base::BindOnce(
+              [](base::WeakPtr<PageToolManager> self, PendingCall call,
+                 ToolCallback callback,
+                 base::expected<base::DictValue, std::string>) {
+                if (!self) {
+                  std::move(callback).Run(
+                      ToolResult::Error("The session was closed."));
+                  return;
+                }
+                self->Send(std::move(call), std::move(callback));
+              },
+              weak_factory_.GetWeakPtr(), std::move(call),
+              std::move(callback)));
+      return;
+    }
+  }
+
+  if (call.save_text) {
+    if (!result.has_value() || tool_error) {
+      // Never forward the sidecar's error text: it can carry page content
+      // (e.g. a cached accessible name of the secret's element).
+      std::move(callback).Run(ToolResult::Error(
+          "Could not read the element's text (a stale @ref? take a new "
+          "snapshot)."));
+      return;
+    }
+    SaveText(std::move(call), std::move(callback), RawText(*result));
+    return;
+  }
+
+  ToolResult out = ToToolResult(std::move(result));
+  if (!out.is_error && (!call.filter.empty() || call.retried)) {
+    for (base::Value& part : out.content) {
+      std::string* text = part.GetDict().FindString("text");
+      if (!text) {
+        continue;
+      }
+      if (!call.filter.empty()) {
+        *text = FilterSnapshot(*text, re2::RE2(call.filter, PatternOptions()));
+      }
+      if (call.retried) {
+        *text = "(Was covered: scrolled into view and retried.) " + *text;
+      }
+      break;
+    }
+  }
+  std::move(callback).Run(std::move(out));
+}
+
+void PageToolManager::SaveText(PendingCall call,
+                               ToolCallback callback,
+                               std::string text) {
+  std::string value(base::TrimWhitespaceASCII(text, base::TRIM_ALL));
+  if (!call.save_regex.empty()) {
+    re2::RE2 pattern(call.save_regex, re2::RE2::Options(re2::RE2::Quiet));
+    std::string match;
+    const bool found = pattern.NumberOfCapturingGroups() > 0
+                           ? re2::RE2::PartialMatch(value, pattern, &match)
+                           : re2::RE2::PartialMatch(
+                                 value,
+                                 re2::RE2("(" + call.save_regex + ")",
+                                          re2::RE2::Options(re2::RE2::Quiet)),
+                                 &match);
+    if (!found) {
+      // Never echo the text: it may be the secret.
+      std::move(callback).Run(
+          ToolResult::Error("The regex does not match the element's text."));
+      return;
+    }
+    value = std::move(match);
+  }
+  if (value.empty()) {
+    std::move(callback).Run(ToolResult::Error("The element has no text."));
+    return;
+  }
+  base::DictValue info;
+  info.Set("length", static_cast<int>(value.size()));
+  info.Set("sha256",
+           base::HexEncodeLower(crypto::SHA256HashString(value)).substr(0, 12));
+  if (call.save_to == "clipboard") {
+    {
+      // Commits when it goes out of scope: before success is reported.
+      ui::ScopedClipboardWriter writer(ui::ClipboardBuffer::kCopyPaste);
+      writer.WriteText(base::UTF8ToUTF16(value));
+      // Honoured on macOS (current host only, no clipboard history); Linux
+      // (Ozone) ignores it, see the tool description.
+      writer.MarkAsConfidential();
+    }
+    info.Set("saved", "clipboard");
+    std::move(callback).Run(ToolResult::Json(base::Value(std::move(info))));
+    return;
+  }
+  base::ThreadPool::PostTaskAndReplyWithResult(
+      FROM_HERE,
+      {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
+       base::TaskShutdownBehavior::BLOCK_SHUTDOWN},
+      base::BindOnce(&WriteSecretFile, call.secrets_dir, call.save_name,
+                     std::move(value)),
+      base::BindOnce(
+          [](base::DictValue info, ToolCallback callback, SavedText saved) {
+            if (!saved.error.empty()) {
+              std::move(callback).Run(ToolResult::Error(saved.error));
+              return;
+            }
+            info.Set("saved", "file");
+            info.Set("path", saved.path);
+            std::move(callback).Run(
+                ToolResult::Json(base::Value(std::move(info))));
+          },
+          std::move(info), std::move(callback)));
 }
 
 Sidecar* PageToolManager::GetOrCreateSidecar(const std::string& session_id,
@@ -409,18 +808,18 @@ void PageToolManager::OnSessionClosed(const std::string& session_id) {
 void PageToolManager::OnSidecarClosed(Sidecar* sidecar) {
   // Called from inside the sidecar: delete it after the call returns.
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-      FROM_HERE,
-      base::BindOnce(
-          [](base::WeakPtr<PageToolManager> self, Sidecar* sidecar) {
-            if (!self) {
-              return;
-            }
-            std::erase_if(self->retiring_,
-                          [sidecar](const std::unique_ptr<Sidecar>& s) {
-                            return s.get() == sidecar;
-                          });
-          },
-          weak_factory_.GetWeakPtr(), sidecar));
+      FROM_HERE, base::BindOnce(
+                     [](base::WeakPtr<PageToolManager> self, Sidecar* sidecar) {
+                       if (!self) {
+                         return;
+                       }
+                       std::erase_if(
+                           self->retiring_,
+                           [sidecar](const std::unique_ptr<Sidecar>& s) {
+                             return s.get() == sidecar;
+                           });
+                     },
+                     weak_factory_.GetWeakPtr(), sidecar));
 }
 
 void PageToolManager::Shutdown() {

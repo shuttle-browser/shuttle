@@ -25,6 +25,7 @@
 #include "components/persistent_cache/client.h"
 #include "components/persistent_cache/pending_backend.h"
 #include "gpu/command_buffer/service/memory_cache.h"
+#include "gpu/config/gpu_finch_features.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace gpu {
@@ -223,16 +224,41 @@ void GpuPersistentCacheTest::RunStoreAndLoadDataMultiThreaded(int num_threads) {
   }
 }
 
-// Tests that storing Dawn/Vulkan monolithic VkPipelineCache data doesn't store
-// anything in the memory cache.
+// Tests that storing Dawn/Vulkan monolithic VkPipelineCache or Ganesh
+// VkPipelineCache data doesn't store anything in the memory cache, and loading
+// it records the VkPipelineCache.LoadedSize histogram.
 TEST_F(GpuPersistentCacheTest, StoreVkPersistentCache) {
   InitializeCache();
+  base::HistogramTester histogram_tester;
 
   const std::string key = "my_keyMonolithicVkPipelineCache";
   const std::string value = "my_value";
   cache_->StoreData(key, base::as_byte_span(value));
 
   EXPECT_FALSE(memory_cache_->Find(key));
+
+  constexpr uint32_t kGaneshVkPipelineCacheKey = 1;
+  sk_sp<SkData> ganesh_key = SkData::MakeWithoutCopy(
+      &kGaneshVkPipelineCacheKey, sizeof(kGaneshVkPipelineCacheKey));
+  const std::string ganesh_value(2048, 'x');
+  sk_sp<SkData> ganesh_value_data =
+      SkData::MakeWithoutCopy(ganesh_value.data(), ganesh_value.size());
+  cache_->store(*ganesh_key, *ganesh_value_data);
+
+  std::string_view ganesh_key_str(
+      reinterpret_cast<const char*>(&kGaneshVkPipelineCacheKey),
+      sizeof(kGaneshVkPipelineCacheKey));
+  EXPECT_FALSE(memory_cache_->Find(ganesh_key_str));
+
+  sk_sp<SkData> loaded = cache_->load(*ganesh_key);
+  ASSERT_TRUE(loaded);
+  EXPECT_EQ(loaded->size(), ganesh_value.size());
+  histogram_tester.ExpectUniqueSample(
+      "GPU.PersistentCache.Test.VkPipelineCache.LoadedSize", 2, 1);
+
+  // Loading from the disk cache must not put the entry in the memory cache
+  // either.
+  EXPECT_FALSE(memory_cache_->Find(ganesh_key_str));
 }
 
 // Tests that the cache can be safely written to and read from by multiple
@@ -282,6 +308,90 @@ class GpuPersistentCacheAsyncTest : public GpuPersistentCacheTest {
     return async_cache;
   }
 };
+
+// Tests that when `async_write_options.task_runner` is a background sequence
+// different from the calling thread, `InitializeCache` offloads database
+// binding and initialization to a background worker while synchronizing
+// concurrent loads and stores without false cache misses.
+TEST_F(GpuPersistentCacheTest, InitializeCacheOffloadedToBackgroundTaskRunner) {
+  base::test::ScopedFeatureList feature_list{
+      features::kGpuPersistentCacheAsyncInitialize};
+  const std::string key_existing = "key_existing_on_disk";
+  const std::string value_existing = "value_existing_on_disk";
+  const std::string key_before = "key_before_init";
+  const std::string value_before = "value_before_init";
+
+  // Seed an existing entry on disk first.
+  {
+    auto cache = base::MakeRefCounted<GpuPersistentCache>(
+        "TestAsyncInit", MakeDefaultMemoryCache());
+    ASSERT_OK_AND_ASSIGN(
+        auto pending_backend,
+        backend_storage_->MakePendingBackend(
+            base::FilePath(FILE_PATH_LITERAL("AsyncInit")),
+            /*single_connection=*/true, /*journal_mode_wal=*/true));
+    cache->InitializeCache(std::move(pending_backend));
+    cache->StoreData(key_existing, base::as_byte_span(value_existing));
+  }
+
+  {
+    GpuPersistentCache::AsyncDiskWriteOpts options;
+    options.task_runner = base::ThreadPool::CreateSequencedTaskRunner(
+        {base::MayBlock(), base::TaskPriority::BEST_EFFORT});
+    ASSERT_FALSE(options.task_runner->RunsTasksInCurrentSequence());
+
+    auto cache = base::MakeRefCounted<GpuPersistentCache>(
+        "TestAsyncInit", MakeDefaultMemoryCache(),
+        GpuPersistentCache::MetadataOpts{}, std::move(options));
+
+    // Store an entry before calling InitializeCache().
+    cache->StoreData(key_before, base::as_byte_span(value_before));
+
+    ASSERT_OK_AND_ASSIGN(
+        auto pending_backend,
+        backend_storage_->MakePendingBackend(
+            base::FilePath(FILE_PATH_LITERAL("AsyncInit")),
+            /*single_connection=*/true, /*journal_mode_wal=*/true));
+
+    // Calling InitializeCache() from the main thread posts initialization to a
+    // background worker thread. Immediately loading `key_existing` without
+    // pumping the main thread loop must wait for the in-flight initialization
+    // and hit the disk cache rather than returning a false miss.
+    cache->InitializeCache(std::move(pending_backend));
+
+    std::vector<uint8_t> buffer_existing(value_existing.size());
+    EXPECT_EQ(cache->LoadData(key_existing, buffer_existing),
+              value_existing.size());
+    EXPECT_EQ(std::string(buffer_existing.begin(), buffer_existing.end()),
+              value_existing);
+
+    // Wait for delayed disk writes of `key_before` to flush.
+    task_environment_.FastForwardBy(base::Seconds(2));
+  }
+
+  // Reopen the cache synchronously from disk and verify both entries exist.
+  {
+    auto cache = base::MakeRefCounted<GpuPersistentCache>(
+        "TestAsyncInit", MakeDefaultMemoryCache());
+    ASSERT_OK_AND_ASSIGN(
+        auto pending_backend,
+        backend_storage_->MakePendingBackend(
+            base::FilePath(FILE_PATH_LITERAL("AsyncInit")),
+            /*single_connection=*/true, /*journal_mode_wal=*/true));
+    cache->InitializeCache(std::move(pending_backend));
+
+    std::vector<uint8_t> buffer_existing(value_existing.size());
+    EXPECT_EQ(cache->LoadData(key_existing, buffer_existing),
+              value_existing.size());
+    EXPECT_EQ(std::string(buffer_existing.begin(), buffer_existing.end()),
+              value_existing);
+
+    std::vector<uint8_t> buffer_before(value_before.size());
+    EXPECT_EQ(cache->LoadData(key_before, buffer_before), value_before.size());
+    EXPECT_EQ(std::string(buffer_before.begin(), buffer_before.end()),
+              value_before);
+  }
+}
 
 // Tests that when an async task runner is used, the data is written to disk
 // after a delay. It also verifies that the underlying DiskCache is kept alive

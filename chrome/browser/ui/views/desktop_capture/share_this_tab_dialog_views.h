@@ -62,12 +62,6 @@ class ShareThisTabDialogView : public views::DialogDelegateView {
   bool ShouldAutoAccept() const;
   bool ShouldAutoReject() const;
 
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  void OnScreenshotAllowedUpdated(bool screenshot_allowed);
-
-  base::CallbackListSubscription screenshot_callback_subscription_;
-#endif
-
   const base::WeakPtr<content::WebContents> web_contents_;
   const std::u16string app_name_;
 

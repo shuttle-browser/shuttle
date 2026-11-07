@@ -176,10 +176,7 @@ source_set("impl") {
     "trusted_sources_manager.cc",
   ]
 
-  public_deps = [
-    ":download",
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = [ ":download" ]
 
   deps = [
     ":status_text_builder_utils",
@@ -194,7 +191,7 @@ source_set("impl") {
     "//chrome/browser/net",
     "//chrome/browser/notifications",
     "//chrome/browser/offline_items_collection",
-    "//chrome/browser/optimization_guide",
+    "//chrome/browser/plugins",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/profiles/keep_alive",
     "//chrome/browser/safe_browsing",
@@ -211,8 +208,6 @@ source_set("impl") {
     "//components/background_fetch",
     "//components/download/content/factory",
     "//components/enterprise/common/proto:connectors_proto_gen",
-    "//components/enterprise/connectors/core",
-    "//components/enterprise/obfuscation/core:enterprise_obfuscation",
     "//components/history/content/browser",
     "//components/infobars/content",
     "//components/pdf/common:constants",
@@ -226,6 +221,7 @@ source_set("impl") {
     "//components/security_state/content",
     "//components/services/quarantine",
     "//components/strings",
+    "//third_party/re2",
     "//ui/base/unowned_user_data",
     "//url",
   ]
@@ -283,6 +279,7 @@ source_set("impl") {
     deps += [
       "//chrome/browser/image_decoder",
       "//chrome/browser/policy:path_parser",
+      "//chrome/browser/ui:browser_tabstrip",
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui:chrome_pages",
       "//chrome/browser/ui:scoped_tabbed_browser_displayer",
@@ -320,7 +317,6 @@ source_set("impl") {
       "//chrome/browser/ash/policy/skyvault",
       "//chrome/browser/chromeos/policy/dlp",
       "//chrome/browser/content_index",
-      "//chrome/browser/enterprise/connectors/analysis:obfuscation_rename_handler",
       "//chrome/browser/ui/ash/system_web_apps",
       "//chrome/browser/ui/webui/ash/cloud_upload",
       "//chromeos/ash/components/browser_context_helper",
@@ -374,17 +370,6 @@ source_set("impl") {
 
   if (enable_offline_pages) {
     deps += [ "//components/offline_pages/core" ]
-  }
-
-  if (enterprise_content_analysis || is_android) {
-    deps += [
-      "//components/enterprise/connectors/core:cloud_content_scanning",
-      "//components/enterprise/obfuscation/core:enterprise_obfuscation",
-    ]
-  }
-
-  if (safe_browsing_mode != 0 && enterprise_cloud_content_analysis) {
-    deps += [ "//chrome/browser/enterprise/connectors/reporting" ]
   }
 }
 

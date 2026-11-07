@@ -54,7 +54,6 @@
 #include "third_party/blink/renderer/core/inspector/worker_thread_debugger.h"
 #include "third_party/blink/renderer/core/loader/worker_resource_timing_notifier_impl.h"
 #include "third_party/blink/renderer/core/probe/core_probes.h"
-#include "third_party/blink/renderer/core/workers/cross_thread_global_scope_creation_params_copier.h"
 #include "third_party/blink/renderer/core/workers/global_scope_creation_params.h"
 #include "third_party/blink/renderer/core/workers/worker_backing_thread.h"
 #include "third_party/blink/renderer/core/workers/worker_clients.h"
@@ -69,7 +68,6 @@
 #include "third_party/blink/renderer/platform/scheduler/worker/non_main_thread_impl.h"
 #include "third_party/blink/renderer/platform/scheduler/worker/worker_thread_scheduler.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_std.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
@@ -184,19 +182,6 @@ void WorkerThread::Start(
                           IsOwningBackingThread() ?
                               thread_startup_data : std::nullopt,
                           std::move(devtools_params)));
-}
-
-void WorkerThread::EvaluateClassicScript(
-    const KURL& script_url,
-    const String& source_code,
-    std::unique_ptr<Vector<uint8_t>> cached_meta_data,
-    const v8_inspector::V8StackTraceId& stack_id) {
-  DCHECK_CALLED_ON_VALID_THREAD(parent_thread_checker_);
-  PostCrossThreadTask(
-      *GetTaskRunner(TaskType::kDOMManipulation), FROM_HERE,
-      CrossThreadBindOnce(&WorkerThread::EvaluateClassicScriptOnWorkerThread,
-                          CrossThreadUnretained(this), script_url, source_code,
-                          std::move(cached_meta_data), stack_id));
 }
 
 void WorkerThread::FetchAndRunClassicScript(
@@ -731,17 +716,6 @@ void WorkerThread::InitializeOnWorkerThread(
   // Note the above call runs nested message loop which may result in
   // worker thread being torn down by request from the parent thread,
   // while waiting for debugger.
-}
-
-void WorkerThread::EvaluateClassicScriptOnWorkerThread(
-    const KURL& script_url,
-    String source_code,
-    std::unique_ptr<Vector<uint8_t>> cached_meta_data,
-    const v8_inspector::V8StackTraceId& stack_id) {
-  WorkerGlobalScope* global_scope = To<WorkerGlobalScope>(GlobalScope());
-  CHECK(global_scope);
-  global_scope->EvaluateClassicScript(script_url, std::move(source_code),
-                                      std::move(cached_meta_data), stack_id);
 }
 
 void WorkerThread::FetchAndRunClassicScriptOnWorkerThread(

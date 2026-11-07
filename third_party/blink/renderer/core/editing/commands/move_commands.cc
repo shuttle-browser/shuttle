@@ -43,6 +43,7 @@
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/layout/layout_box.h"
 #include "third_party/blink/renderer/core/paint/paint_layer_scrollable_area.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 
 namespace blink {
 
@@ -60,7 +61,7 @@ int MoveCommands::VerticalScrollDistance(LocalFrame& frame) {
   if (!layout_object || !layout_object->IsBox())
     return 0;
   auto& layout_box = To<LayoutBox>(*layout_object);
-  const ComputedStyle& style = layout_box.StyleRef();
+  const ComputedStyle& style = layout_box.Style();
   if (!(style.OverflowY() == EOverflow::kScroll ||
         style.OverflowY() == EOverflow::kAuto || IsEditable(*focused_element) ||
         frame.IsCaretBrowsingEnabled())) {
@@ -143,6 +144,11 @@ void MoveCommands::UpdateFocusForCaretBrowsing(LocalFrame& frame) {
   const ComputedStyle* style = GetComputedStyleForElementOrLayoutObject(*node);
   if (!style || style->UsedUserModify() != EUserModify::kReadOnly) {
     return;
+  }
+
+  if (RuntimeEnabledFeatures::
+          CaretBrowsingSequentialFocusStartingPointEnabled()) {
+    frame.GetDocument()->SetSequentialFocusNavigationStartingPoint(node);
   }
 
   Element* new_focused_element = nullptr;

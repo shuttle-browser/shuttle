@@ -20,7 +20,6 @@
 #include "build/build_config.h"
 #include "build/buildflag.h"
 #include "chrome/browser/browsing_data/browsing_data_lifetime_policy_handler.h"
-#include "chrome/browser/enterprise/reporting/legacy_tech/legacy_tech_report_policy_handler.h"
 #include "chrome/browser/media/webrtc/capture_policy_utils.h"
 #include "chrome/browser/net/disk_cache_dir_policy_handler.h"
 #include "chrome/browser/net/explicitly_allowed_network_ports_policy_handler.h"
@@ -58,22 +57,8 @@
 #include "components/custom_handlers/pref_names.h"
 #include "components/domain_reliability/domain_reliability_prefs.h"
 #include "components/embedder_support/pref_names.h"
-#include "components/enterprise/browser/data_region/data_region_policy_handler.h"
-#include "components/enterprise/browser/reporting/cloud_profile_reporting_policy_handler.h"
-#include "components/enterprise/browser/reporting/cloud_reporting_frequency_policy_handler.h"
-#include "components/enterprise/browser/reporting/cloud_reporting_policy_handler.h"
-#include "components/enterprise/browser/reporting/common_pref_names.h"
 #include "components/enterprise/buildflags/buildflags.h"
-#include "components/enterprise/connectors/core/connectors_prefs.h"
-#include "components/enterprise/connectors/core/enterprise_connectors_policy_handler.h"
-#include "components/enterprise/content/copy_prevention_settings_policy_handler.h"
-#include "components/enterprise/content/pref_names.h"
-#include "components/enterprise/data_controls/core/browser/data_controls_policy_handler.h"
-#include "components/enterprise/data_controls/core/browser/prefs.h"
-#include "components/enterprise/device_trust/prefs.h"
-#include "components/enterprise/isolated_mode/prefs.h"
 #include "components/history/core/common/pref_names.h"
-#include "components/history_clusters/core/history_clusters_prefs.h"
 #include "components/language/core/browser/pref_names.h"
 #include "components/live_caption/pref_names.h"
 #include "components/metrics/metrics_pref_names.h"
@@ -81,8 +66,6 @@
 #include "components/ntp_tiles/enterprise/ntp_shortcuts_policy_handler.h"
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/omnibox/common/omnibox_features.h"
-#include "components/optimization_guide/core/feature_registry/feature_registration.h"
-#include "components/optimization_guide/core/optimization_guide_prefs.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
 #include "components/policy/core/browser/boolean_disabling_policy_handler.h"
 #include "components/policy/core/browser/configuration_policy_handler.h"
@@ -99,6 +82,7 @@
 #include "components/policy/core/common/schema.h"
 #include "components/policy/policy_constants.h"
 #include "components/privacy_sandbox/privacy_sandbox_prefs.h"
+#include "components/proxy_config/proxy_config_pref_names.h"
 #include "components/proxy_config/proxy_override_rules_policy_handler.h"
 #include "components/proxy_config/proxy_policy_handler.h"
 #include "components/safe_browsing/buildflags.h"
@@ -135,7 +119,6 @@
 #include "chrome/browser/policy/battery_saver_policy_handler.h"
 #include "chrome/browser/policy/managed_account_policy_handler.h"
 #include "components/headless/policy/headless_mode_policy_handler.h"
-#include "components/optimization_guide/core/feature_registry/feature_registration.h"
 #include "components/search_engines/enterprise/search_aggregator_policy_handler.h"
 #include "components/search_engines/enterprise/site_search_policy_handler.h"
 #endif  // BUILDFLAG(IS_ANDROID)
@@ -144,13 +127,7 @@
 #include "chrome/browser/policy/developer_tools_availability_list_policy_handler.h"
 #endif
 
-#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-#include "chrome/browser/enterprise/reporting/extension_request/extension_request_policy_handler.h"
-#endif
 
-#if BUILDFLAG(IS_MAC)
-#include "chrome/browser/enterprise/platform_auth/extensible_enterprise_sso_policy_handler.h"
-#endif  // BUILDFLAG(IS_MAC)
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/constants/ash_features.h"
@@ -190,14 +167,12 @@
 #include "chromeos/constants/pref_names.h"
 #include "chromeos/dbus/power/power_policy_controller.h"
 #include "chromeos/ui/wm/fullscreen/pref_names.h"
-#include "components/account_manager_core/pref_names.h"
 #include "components/drive/drive_pref_names.h"  // nogncheck crbug.com/40147906
 #include "components/user_manager/user.h"
 #include "components/user_manager/user_manager.h"
 #include "components/user_manager/user_manager_pref_names.h"
 #else
 #include "chrome/browser/policy/browser_signin_policy_handler.h"
-#include "components/enterprise/idle/idle_timeout_policy_handler.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
@@ -226,24 +201,9 @@
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 #include "chrome/browser/browser_switcher/browser_switcher_prefs.h"
-#include "chrome/browser/enterprise/idle/action.h"
 #include "chrome/browser/external_protocol/auto_launch_protocols_policy_handler.h"
-#include "components/device_signals/core/browser/pref_names.h"  // nogncheck due to crbug.com/40147906
-#include "components/proxy_config/proxy_config_pref_names.h"
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-#include "components/enterprise/network_header_injection/core/http_header_injection_policy_handler.h"
-#endif
-
-#if BUILDFLAG(ENTERPRISE_CLIENT_CERTIFICATES)
-#include "components/enterprise/client_certificates/core/prefs.h"
-#endif  // BUILDFLAG(ENTERPRISE_CLIENT_CERTIFICATES)
-
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-#include "components/enterprise/watermarking/watermark_style_policy_handler.h"  // nogncheck crbug.com/40147906
-#endif  // BUILDFLAG(ENTERPRISE_WATERMARK)
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #include "components/safe_browsing/content/common/file_type_policies_prefs.h"
@@ -264,6 +224,9 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kAdsSettingForIntrusiveAdsSites,
     prefs::kManagedDefaultAdsSetting,
     base::Value::Type::INTEGER },
+  { key::kAudioCaptureAllowed,
+    prefs::kAudioCaptureAllowed,
+    base::Value::Type::BOOLEAN },
   { key::kAutoplayAllowed,
     prefs::kAutoplayAllowed,
     base::Value::Type::BOOLEAN },
@@ -363,9 +326,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kWindowCaptureAllowedByOrigins,
     prefs::kWindowCaptureAllowedByOrigins,
     base::Value::Type::LIST },
-  { key::kHistoryClustersVisible,
-    history_clusters::prefs::kVisible,
-    base::Value::Type::BOOLEAN },
   { key::kAllowWebAuthnWithBrokenTlsCerts,
     webauthn::pref_names::kAllowWithBrokenCerts,
     base::Value::Type::BOOLEAN },
@@ -455,9 +415,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kAllowSocketPoolSizeRandomizationForProxies,
     prefs::kAllowSocketPoolSizeRandomizationForProxies,
     base::Value::Type::BOOLEAN },
-  { key::kIsolatedModeSettings,
-    enterprise_isolated_mode::kEnterpriseIsolatedModeSettings,
-    base::Value::Type::INTEGER },
   { key::kWebHidAllowAllDevicesForUrls,
     prefs::kManagedWebHidAllowAllDevicesForUrls,
     base::Value::Type::LIST },
@@ -488,9 +445,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kAmbientAuthenticationInPrivateModesEnabled,
     prefs::kAmbientAuthenticationInPrivateModesEnabled,
     base::Value::Type::INTEGER },
-  { key::kAudioCaptureAllowed,
-    prefs::kAudioCaptureAllowed,
-    base::Value::Type::BOOLEAN },
   { key::kAudioCaptureAllowedUrls,
     prefs::kAudioCaptureAllowedUrls,
     base::Value::Type::LIST },
@@ -655,9 +609,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     prefs::kPdfViewerOutOfProcessIframeEnabled,
     base::Value::Type::BOOLEAN },
 #endif  // BUILDFLAG(ENABLE_PDF)
-  { key::kPolicyRefreshRate,
-    policy_prefs::kUserPolicyRefreshRate,
-    base::Value::Type::INTEGER },
   { key::kPrintHeaderFooter,
     prefs::kPrintHeaderFooter,
     base::Value::Type::BOOLEAN },
@@ -970,6 +921,9 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
 #endif  // !BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+  { key::kDynamicPatchingEnabled,
+    prefs::kDynamicPatchingEnabled,
+    base::Value::Type::BOOLEAN },
   { key::kPrintPdfAsImageAvailability,
     prefs::kPrintPdfAsImageAvailability,
     base::Value::Type::BOOLEAN },
@@ -978,9 +932,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     base::Value::Type::INTEGER },
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  { key::kUnmanagedDeviceSignalsConsentFlowEnabled,
-    device_signals::prefs::kUnmanagedDeviceSignalsConsentFlowEnabled,
-    base::Value::Type::BOOLEAN },
   { key::kProfileSeparationDomainExceptionList,
     prefs::kProfileSeparationDomainExceptionList,
     base::Value::Type::LIST },
@@ -1023,9 +974,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kDiskCacheSize,
     prefs::kDiskCacheSize,
     base::Value::Type::INTEGER },
-  { key::kCloudManagementEnrollmentMandatory,
-    policy_prefs::kCloudManagementEnrollmentMandatory,
-    base::Value::Type::BOOLEAN },
   { key::kDisablePrintPreview,
     prefs::kPrintPreviewDisabled,
     base::Value::Type::BOOLEAN },
@@ -1092,12 +1040,15 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
 #endif // !BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-  { key::kExtensionDOMActivityLoggingEnabled,
-    enterprise_reporting::kExtensionDOMActivityLoggingEnabled,
-    base::Value::Type::BOOLEAN },
   { key::kExtensionReviewPromptsEnabled,
     prefs::kExtensionReviewPromptsAllowed,
     base::Value::Type::BOOLEAN },
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+  { key::kExtensionForceInstallWithSearchOrNewTabOverridesEnabled,
+    extensions::pref_names::
+        kExtensionForceInstallWithSearchOrNewTabOverridesEnabled,
+    base::Value::Type::BOOLEAN },
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 #endif // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
@@ -1265,27 +1216,8 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     base::Value::Type::BOOLEAN },
 #endif
 
-// The per-user policy is available on ChromeOS (declared `future_on:
-// chrome_os`), but the per-browser policy is not (it is `chrome.*`, i.e.
-// win/mac/linux only). As a result the per-browser `key::` constant is only
-// generated in non-ChromeOS builds, so its entry must be guarded accordingly.
-#if BUILDFLAG(ENTERPRISE_CLIENT_CERTIFICATES)
-  { key::kProvisionManagedClientCertificateForUser,
-    client_certificates::prefs::kProvisionManagedClientCertificateForUserPrefs,
-    base::Value::Type::INTEGER },
-#endif  // BUILDFLAG(ENTERPRISE_CLIENT_CERTIFICATES)
-
-#if BUILDFLAG(ENTERPRISE_CLIENT_CERTIFICATES) && !BUILDFLAG(IS_CHROMEOS)
-  { key::kProvisionManagedClientCertificateForBrowser,
-    client_certificates::prefs::kProvisionManagedClientCertificateForBrowserPrefs,
-    base::Value::Type::INTEGER },
-#endif  // BUILDFLAG(ENTERPRISE_CLIENT_CERTIFICATES) && !BUILDFLAG(IS_CHROMEOS)
-
   { key::kWebAudioOutputBufferingEnabled,
     prefs::kWebAudioOutputBufferingEnabled,
-    base::Value::Type::BOOLEAN },
-  { key::kReduceAcceptLanguageEnabled,
-    prefs::kReduceAcceptLanguageEnabled,
     base::Value::Type::BOOLEAN },
 #if !BUILDFLAG(IS_ANDROID)
   { key::kBuiltInAIAPIsEnabled,
@@ -1303,25 +1235,18 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kThirdPartyAiChatSettings,
     omnibox::kThirdPartyAiChatSettings,
     base::Value::Type::INTEGER },
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
+    BUILDFLAG(IS_ANDROID)
   { key::kEnableProxyOverrideRulesForAllUsers,
     proxy_config::prefs::kEnableProxyOverrideRulesForAllUsers,
     base::Value::Type::INTEGER },
-#endif // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-};
-// clang-format on
-
-// Mapping of policies to preferences with schema validation. Used for simple
-// policies that directly map to a single preference.
-// TODO(crbug.com/393395937): Move existing usages of
-// SimpleSchemaValidatingPolicyHandler to kSchemaValidatingPolicyMap.
-// clang-format off
-const SchemaValidatingPolicyToPreferenceMapEntry kSchemaValidatingPolicyMap[] =
-    {
-  // Policies for all platforms - Start.
-  // Policies for all platforms - End.
-  // Policies for ChromeOS - Start.
-  // Policies for ChromeOS - End.
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) ||
+        // BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
+  { key::kAppStoreRatingEnabled,
+    prefs::kAppRatingPolicyEnabled,
+    base::Value::Type::BOOLEAN },
+#endif  // BUILDFLAG(IS_ANDROID)
 };
 // clang-format on
 
@@ -1351,6 +1276,15 @@ bool AreFuturePoliciesEnabledByDefault() {
          channel != version_info::Channel::BETA;
 }
 
+bool AreCloudOnlyPoliciesAllowed() {
+#if !BUILDFLAG(IS_CHROMEOS)
+  // Never cloud managed (Shuttle): cloud-only policies stay unsettable.
+  return false;
+#else
+  return true;
+#endif  // !BUILDFLAG(IS_CHROMEOS)
+}
+
 }  // namespace
 
 void PopulatePolicyHandlerParameters(PolicyHandlerParameters* parameters) {
@@ -1371,16 +1305,10 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       new ConfigurationPolicyHandlerList(
           base::BindRepeating(&PopulatePolicyHandlerParameters),
           base::BindRepeating(&GetChromePolicyDetails),
-          AreFuturePoliciesEnabledByDefault()));
+          AreFuturePoliciesEnabledByDefault(), AreCloudOnlyPoliciesAllowed()));
   for (const PolicyToPreferenceMapEntry& entry : kSimplePolicyMap) {
     handlers->AddHandler(std::make_unique<SimplePolicyHandler>(
         entry.policy_name, entry.preference_path, entry.value_type));
-  }
-
-  for (const auto& entry : kSchemaValidatingPolicyMap) {
-    handlers->AddHandler(std::make_unique<SimpleSchemaValidatingPolicyHandler>(
-        entry.policy_name, entry.preference_path, chrome_schema, entry.strategy,
-        entry.recommended_permission, entry.mandatory_permission));
   }
 
   // Policies for all platforms - Start
@@ -1388,13 +1316,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       std::make_unique<
           LocalNetworkAccessIpAddressSpaceOverridesPolicyHandler>());
   handlers->AddHandler(std::make_unique<DefaultSensorsSettingPolicyHandler>());
-  handlers->AddHandler(
-      std::make_unique<enterprise_reporting::CloudReportingPolicyHandler>());
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_reporting::CloudReportingFrequencyPolicyHandler>());
-  handlers->AddHandler(
-      std::make_unique<enterprise_reporting::LegacyTechReportPolicyHandler>());
   handlers->AddHandler(std::make_unique<DefaultSearchPolicyHandler>());
   handlers->AddHandler(
       std::make_unique<safe_browsing::SafeBrowsingPolicyHandler>());
@@ -1412,42 +1333,20 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
           key::kUrlKeyedMetricsAllowed,
           unified_consent::prefs::kUrlKeyedAnonymizedDataCollectionEnabled)));
 
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
-          key::kOnSecurityEventEnterpriseConnector,
-          enterprise_connectors::kOnSecurityEventPref,
-          enterprise_connectors::kOnSecurityEventScopePref, chrome_schema));
 
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
-          key::kOnFileAttachedEnterpriseConnector,
-          enterprise_connectors::kOnFileAttachedPref,
-          enterprise_connectors::kOnFileAttachedScopePref, chrome_schema));
 
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
-          key::kOnFileDownloadedEnterpriseConnector,
-          enterprise_connectors::kOnFileDownloadedPref,
-          enterprise_connectors::kOnFileDownloadedScopePref, chrome_schema));
 
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
-          key::kOnNetworkRequestEnterpriseConnector,
-          enterprise_connectors::kOnNetworkRequestPref,
-          enterprise_connectors::kOnNetworkRequestScopePref, chrome_schema));
 
   handlers->AddHandler(std::make_unique<DeveloperToolsPolicyHandler>());
 
 #if BUILDFLAG(ENTERPRISE_PROXY)
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
-          key::kProxyProvisioningDomains,
-          enterprise_net::kProxyProvisioningDomains, chrome_schema));
+  // Was an EnterpriseConnectorsPolicyHandler (removed with the connectors);
+  // same behaviour: schema-validated value copied to the pref.
+  handlers->AddHandler(std::make_unique<SimpleSchemaValidatingPolicyHandler>(
+      key::kProxyProvisioningDomains, enterprise_net::kProxyProvisioningDomains,
+      chrome_schema, SCHEMA_ALLOW_UNKNOWN,
+      SimpleSchemaValidatingPolicyHandler::RECOMMENDED_ALLOWED,
+      SimpleSchemaValidatingPolicyHandler::MANDATORY_ALLOWED));
 #endif
 
   handlers->AddHandler(std::make_unique<IsolateOriginsPolicyHandler>());
@@ -1493,18 +1392,7 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS)
 
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-  handlers->AddHandler(
-      std::make_unique<WatermarkStylePolicyHandler>(chrome_schema));
-#endif  // BUILDFLAG(ENTERPRISE_WATERMARK)
 
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
-          key::kEnterpriseRealTimeUrlCheckMode,
-          enterprise_connectors::kEnterpriseRealTimeUrlCheckMode,
-          enterprise_connectors::kEnterpriseRealTimeUrlCheckScope,
-          chrome_schema));
   handlers->AddHandler(
       std::make_unique<SimpleJsonStringSchemaValidatingPolicyHandler>(
           key::kAutoSelectCertificateForUrls,
@@ -1519,16 +1407,20 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
   handlers->AddHandler(std::make_unique<WebHidDevicePolicyHandler>(
       key::kWebHidAllowDevicesWithHidUsagesForUrls,
       prefs::kManagedWebHidAllowDevicesWithHidUsagesForUrls, chrome_schema));
+  // TODO(crbug.com/571067805): Move `android` from `future_on` to
+  // `supported_on` in PromotionsEnabled.yaml when ready to launch.
+  auto promotions_enabled_policy_handler =
+      std::make_unique<SimplePolicyHandler>(key::kPromotionsEnabled,
+                                            prefs::kPromotionsEnabled,
+                                            base::Value::Type::BOOLEAN);
 #if BUILDFLAG(IS_ANDROID)
   handlers->AddHandler(
       std::make_unique<ContextualSearchPolicyHandlerAndroid>());
+  handlers->AddHandler(std::move(promotions_enabled_policy_handler));
 #else  // !BUILDFLAG(IS_ANDROID)
   handlers->AddHandler(std::make_unique<BrowsingDataLifetimePolicyHandler>(
       key::kClearBrowsingDataOnExitList,
       browsing_data::prefs::kClearBrowsingDataOnExitList, chrome_schema));
-  handlers->AddHandler(std::make_unique<CopyPreventionSettingsPolicyHandler>(
-      key::kCopyPreventionSettings,
-      enterprise::content::kCopyPreventionSettings, chrome_schema));
   handlers->AddHandler(std::make_unique<DefaultDownloadDirPolicyHandler>());
   handlers->AddHandler(std::make_unique<DownloadDirPolicyHandler>());
 
@@ -1536,9 +1428,7 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       std::make_unique<SimplePolicyHandler>(key::kPromotionalTabsEnabled,
                                             prefs::kPromotionsEnabled,
                                             base::Value::Type::BOOLEAN),
-      std::make_unique<SimplePolicyHandler>(key::kPromotionsEnabled,
-                                            prefs::kPromotionsEnabled,
-                                            base::Value::Type::BOOLEAN)));
+      std::move(promotions_enabled_policy_handler)));
 
   handlers->AddHandler(std::make_unique<headless::HeadlessModePolicyHandler>());
   handlers->AddHandler(
@@ -1573,23 +1463,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       SimpleSchemaValidatingPolicyHandler::MANDATORY_ALLOWED));
 
   // Handlers for Chrome Enterprise Connectors policies.
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
-          key::kOnBulkDataEntryEnterpriseConnector,
-          enterprise_connectors::kOnBulkDataEntryPref,
-          enterprise_connectors::kOnBulkDataEntryScopePref, chrome_schema));
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
-          key::kOnDataCopiedEnterpriseConnector,
-          enterprise_connectors::kOnDataCopiedPref,
-          enterprise_connectors::kOnDataCopiedScopePref, chrome_schema));
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
-          key::kOnPrintEnterpriseConnector, enterprise_connectors::kOnPrintPref,
-          enterprise_connectors::kOnPrintScopePref, chrome_schema));
 
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
   handlers->AddHandler(
@@ -1605,13 +1478,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       SCHEMA_ALLOW_UNKNOWN,
       SimpleSchemaValidatingPolicyHandler::RECOMMENDED_ALLOWED,
       SimpleSchemaValidatingPolicyHandler::MANDATORY_PROHIBITED));
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_custom_headers::HttpHeaderInjectionPolicyHandler>(
-          chrome_schema));
-#endif
   handlers->AddHandler(std::make_unique<SimpleSchemaValidatingPolicyHandler>(
       key::kRelaunchWindow, prefs::kRelaunchWindow, chrome_schema,
       SCHEMA_ALLOW_UNKNOWN,
@@ -1662,19 +1528,9 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       SimpleSchemaValidatingPolicyHandler::MANDATORY_ALLOWED));
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-#if !BUILDFLAG(IS_CHROMEOS)
-  handlers->AddHandler(
-      std::make_unique<enterprise_idle::IdleTimeoutPolicyHandler>());
-  handlers->AddHandler(
-      std::make_unique<enterprise_idle::IdleTimeoutActionsPolicyHandler>(
-          chrome_schema));
-#endif  // !BUILDFLAG(IS_CHROMEOS)
 
   handlers->AddHandler(
       std::make_unique<content_settings::CookieSettingsPolicyHandler>());
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_reporting::CloudProfileReportingPolicyHandler>());
   handlers->AddHandler(std::make_unique<ForceSafeSearchPolicyHandler>());
   handlers->AddHandler(std::make_unique<ForceYouTubeSafetyModePolicyHandler>());
   handlers->AddHandler(std::make_unique<HomepageLocationPolicyHandler>());
@@ -1720,20 +1576,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       key::kBrowsingDataLifetime, browsing_data::prefs::kBrowsingDataLifetime,
       chrome_schema));
 
-#if !BUILDFLAG(IS_CHROMEOS)
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
-          key::kBrowserContextAwareAccessSignalsAllowlist,
-          enterprise_connectors::kBrowserContextAwareAccessSignalsAllowlistPref,
-          chrome_schema));
-#endif  // !BUILDFLAG(IS_CHROMEOS)
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
-          key::kUserContextAwareAccessSignalsAllowlist,
-          enterprise_connectors::kUserContextAwareAccessSignalsAllowlistPref,
-          chrome_schema));
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
   handlers->AddHandler(std::make_unique<ThemeColorPolicyHandler>());
   handlers->AddHandler(
@@ -1741,23 +1583,13 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
           std::make_unique<ManagedAccountRestrictionsPolicyHandler>(
               chrome_schema),
           std::vector<std::string>{
-              key::kProfileSeparationSettings,
-              key::kProfileSeparationDataMigrationSettings,
               key::kProfileSeparationDomainExceptionList}));
-  handlers->AddHandler(std::make_unique<CloudUserOnlyPolicyChecker>(
-      std::make_unique<SimplePolicyHandler>(key::kProfileSeparationSettings,
-                                            prefs::kProfileSeparationSettings,
-                                            base::Value::Type::INTEGER)));
-
-  handlers->AddHandler(std::make_unique<SimpleDeprecatingPolicyHandler>(
-      std::make_unique<SimplePolicyHandler>(
-          key::kEnterpriseProfileCreationKeepBrowsingData,
-          prefs::kEnterpriseProfileCreationKeepBrowsingData,
-          base::Value::Type::BOOLEAN),
-      std::make_unique<SimplePolicyHandler>(
-          key::kProfileSeparationDataMigrationSettings,
-          prefs::kProfileSeparationDataMigrationSettings,
-          base::Value::Type::INTEGER)));
+  // ProfileSeparationSettings / ProfileSeparationDataMigrationSettings were
+  // removed with managed-profile interception (Shuttle).
+  handlers->AddHandler(std::make_unique<SimplePolicyHandler>(
+      key::kEnterpriseProfileCreationKeepBrowsingData,
+      prefs::kEnterpriseProfileCreationKeepBrowsingData,
+      base::Value::Type::BOOLEAN));
   handlers->AddHandler(std::make_unique<SimplePolicyHandler>(
       key::kEnterpriseCustomLabelForBrowser,
       prefs::kEnterpriseCustomLabelForBrowser, base::Value::Type::STRING));
@@ -1785,16 +1617,9 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || \
     BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID)
-  handlers->AddHandler(std::make_unique<CloudUserOnlyPolicyChecker>(
-      std::make_unique<URLSchemeListPolicyHandler>(
-          key::kSaasUsageReportingDomainUrlsForProfiles,
-          enterprise_reporting::kSaasUsageDomainUrlsForProfile)));
 #endif
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
     BUILDFLAG(IS_ANDROID)
-  handlers->AddHandler(std::make_unique<URLSchemeListPolicyHandler>(
-      key::kSaasUsageReportingDomainUrlsForBrowsers,
-      enterprise_reporting::kSaasUsageDomainUrlsForBrowser));
 #endif
   std::vector<std::unique_ptr<ConfigurationPolicyHandler>>
       signin_legacy_policies;
@@ -1805,13 +1630,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       base::Value::Type::BOOLEAN));
 #endif
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  handlers->AddHandler(std::make_unique<CloudUserOnlyPolicyChecker>(
-      std::make_unique<SimplePolicyHandler>(
-          key::kSecuritySignalsClientCertificatesSelectors,
-          enterprise_reporting::kSecuritySignalsClientCertificatesSelectors,
-          base::Value::Type::LIST)));
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   signin_legacy_policies.push_back(std::make_unique<SimplePolicyHandler>(
       key::kSigninAllowed,
 #if BUILDFLAG(IS_ANDROID)
@@ -1827,23 +1645,8 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       std::move(signin_legacy_policies),
       std::make_unique<BrowserSigninPolicyHandler>(chrome_schema)));
 
-  handlers->AddHandler(std::make_unique<CloudUserOnlyPolicyChecker>(
-      std::make_unique<SimplePolicyHandler>(
-          key::kUserSecuritySignalsReporting,
-          enterprise_reporting::kUserSecuritySignalsReporting,
-          base::Value::Type::BOOLEAN)));
-  handlers->AddHandler(std::make_unique<CloudUserOnlyPolicyChecker>(
-      std::make_unique<SimplePolicyHandler>(
-          key::kUserSecurityAuthenticatedReporting,
-          enterprise_reporting::kUserSecurityAuthenticatedReporting,
-          base::Value::Type::BOOLEAN)));
 
 
-#if BUILDFLAG(IS_MAC)
-  handlers->AddHandler(
-      std::make_unique<enterprise_auth::ExtensibleEnterpriseSSOPolicyHandler>(
-          chrome_schema));
-#endif  // BUILDFLAG(IS_MAC)
 
 // On most platforms, there is a legacy policy
 // kUnsafelyTreatInsecureOriginAsSecure which has been replaced by
@@ -1904,12 +1707,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       extensions::pref_names::kExtensionUnpublishedAvailability,
       /*min=*/0, /*max=*/1, /*clamp=*/false));
   handlers->AddHandler(std::make_unique<ExtensionDeveloperModePolicyHandler>());
-  handlers->AddHandler(
-      std::make_unique<enterprise_reporting::ExtensionRequestPolicyHandler>());
-  handlers->AddHandler(std::make_unique<SimplePolicyHandler>(
-      key::kExtensionInstallCloudPolicyChecksEnabled,
-      extensions::pref_names::kExtensionInstallCloudPolicyChecksEnabled,
-      base::Value::Type::BOOLEAN));
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
@@ -1919,15 +1716,12 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
   handlers->AddHandler(std::make_unique<URLSchemeListPolicyHandler>(
       key::kAllHttpAuthSchemesAllowedForOrigins,
       prefs::kAllHttpAuthSchemesAllowedForOrigins));
+  handlers->AddHandler(std::make_unique<URLSchemeListPolicyHandler>(
+      key::kAllHttpAuthSchemesAllowedForProxies,
+      prefs::kAllHttpAuthSchemesAllowedForProxies));
 
   handlers->AddHandler(std::make_unique<PrivacySandboxPolicyHandler>());
 
-#if BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
-  handlers->AddHandler(
-      std::make_unique<data_controls::DataControlsPolicyHandler>(
-          key::kDataControlsRules, data_controls::kDataControlsRulesPref,
-          chrome_schema));
-#endif  // BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
 
 #if !BUILDFLAG(IS_ANDROID)
   handlers->AddHandler(std::make_unique<BatterySaverPolicyHandler>());
@@ -1940,8 +1734,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
   handlers->AddHandler(std::make_unique<MultiScreenCapturePolicyHandler>());
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-  handlers->AddHandler(std::make_unique<DataRegionPolicyHandler>(
-      key::kChromeDataRegionSetting, prefs::kChromeDataRegionSetting));
 
   std::vector<GenAiDefaultSettingsPolicyHandler::GenAiPolicyDetails>
       gen_ai_default_policies;
@@ -1992,13 +1784,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
   handlers->AddHandler(std::make_unique<GenAiDefaultSettingsPolicyHandler>(
       std::move(gen_ai_default_policies)));
 
-#if BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
-  handlers->AddHandler(std::make_unique<CloudUserOnlyPolicyChecker>(
-      std::make_unique<SimplePolicyHandler>(
-          key::kCacheEncryptionEnabled,
-          enterprise_connectors::kCacheEncryptionEnabledPref,
-          base::Value::Type::BOOLEAN)));
-#endif  // BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
 
   return handlers;
 }

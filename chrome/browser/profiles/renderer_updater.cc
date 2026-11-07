@@ -10,8 +10,10 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "build/chromeos_buildflags.h"
+#include "chrome/browser/browser_process.h"
 #include "chrome/browser/content_settings/content_settings_manager_delegate.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+#include "chrome/browser/global_features.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/renderer_configuration.mojom.h"
@@ -70,11 +72,12 @@ RendererUpdater::RendererUpdater(Profile* profile)
       prefs::kAllowedDomainsForApps,
       base::BindRepeating(&RendererUpdater::UpdateAllRenderers,
                           base::Unretained(this)));
+
 }
 
 RendererUpdater::~RendererUpdater() {
 #if BUILDFLAG(IS_CHROMEOS)
-  DCHECK(!oauth2_login_manager_);
+  CHECK(!oauth2_login_manager_, base::NotFatalUntil::M162);
 #endif
 }
 
@@ -88,8 +91,10 @@ void RendererUpdater::Shutdown() {
 
 void RendererUpdater::InitializeRenderer(
     content::RenderProcessHost* render_process_host) {
-  DCHECK_EQ(profile_, Profile::FromBrowserContext(
-                          render_process_host->GetBrowserContext()));
+  CHECK_EQ(
+      profile_,
+      Profile::FromBrowserContext(render_process_host->GetBrowserContext()),
+      base::NotFatalUntil::M162);
   auto renderer_configuration = GetRendererConfiguration(render_process_host);
 
   mojo::PendingReceiver<chrome::mojom::ChromeOSListener>

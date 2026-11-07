@@ -9,7 +9,6 @@
 #include <optional>
 
 #include "base/metrics/histogram_functions.h"
-#include "base/not_fatal_until.h"
 #include "base/notreached.h"
 #include "base/rand_util.h"
 #include "base/strings/strcat.h"
@@ -51,6 +50,10 @@ const char kHistogramMaxEventDuration[] =
 const char kHistogramAllTypes[] = ".AllTypes";
 const char kHistogramKeyboard[] = ".Keyboard";
 const char kHistogramTapOrClick[] = ".TapOrClick";
+const char kHistogramMainFrame[] = ".MainFrame";
+const char kHistogramCrossFrameTarget[] = ".CrossFrameTarget";
+const char kHistogramMainFrameIncludingCrossFrameTarget[] =
+    ".MainFrameIncludingCrossFrameTarget";
 
 constexpr char kUserInteractionTraceEventCategory[] = "latency";
 
@@ -147,11 +150,7 @@ void ResponsivenessMetrics::TryAssignInteractionId(
 
   // All known events and dispatch flows should be handled by one of the
   // pathways above.
-  NOTREACHED(base::NotFatalUntil::M151);
-
-  // This is a catch-all, just in case, because without assigning a known
-  // interactionID the whole event queue gets stuck.
-  SetInteractionId(new_entry, PerformanceTimelineEntryIdInfo::kNone);
+  NOTREACHED();
 }
 
 void ResponsivenessMetrics::HandleKeyboardInteraction(
@@ -203,9 +202,7 @@ void ResponsivenessMetrics::HandleKeyboardInteraction(
 
   // All known events and dispatch flows should be handled by one of the
   // pathways above.
-  NOTREACHED(base::NotFatalUntil::M151);
-
-  SetInteractionId(new_entry, PerformanceTimelineEntryIdInfo::kNone);
+  NOTREACHED();
 }
 
 void ResponsivenessMetrics::HandleNavigationInteraction(
@@ -268,10 +265,7 @@ void ResponsivenessMetrics::HandleNavigationInteraction(
     return;
   }
 
-  NOTREACHED(base::NotFatalUntil::M151);
-
-  // This fallback just ensures the Event Timing queue doesn't get stuck.
-  SetInteractionId(new_entry, last_navigate_interaction_id_);
+  NOTREACHED();
 }
 
 PerformanceTimelineEntryIdInfo
@@ -368,9 +362,7 @@ void ResponsivenessMetrics::HandleCompositionInteraction(
 
   // All known events and dispatch flows should be handled by one of the
   // pathways above.
-  NOTREACHED(base::NotFatalUntil::M151);
-
-  SetInteractionId(new_entry, PerformanceTimelineEntryIdInfo::kNone);
+  NOTREACHED();
 }
 
 void ResponsivenessMetrics::HandlePointerInteraction(
@@ -492,9 +484,7 @@ void ResponsivenessMetrics::HandlePointerInteraction(
 
   // All known events and dispatch flows should be handled by one of the
   // pathways above.
-  NOTREACHED(base::NotFatalUntil::M151);
-
-  SetInteractionId(new_entry, PerformanceTimelineEntryIdInfo::kNone);
+  NOTREACHED();
 }
 
 void ResponsivenessMetrics::SetInteractionId(
@@ -625,6 +615,18 @@ void ResponsivenessMetrics::RecordUserInteractionHistograms(
     LogResponsivenessHistogram(duration, kHistogramTapOrClick);
   } else {
     LogResponsivenessHistogram(duration, kHistogramKeyboard);
+  }
+
+  const auto* reporting_info = entry.GetEventTimingReportingInfo();
+  if (reporting_info->is_main_frame && !reporting_info->is_cross_frame_target) {
+    LogResponsivenessHistogram(duration, kHistogramMainFrame);
+  }
+  if (reporting_info->is_cross_frame_target) {
+    LogResponsivenessHistogram(duration, kHistogramCrossFrameTarget);
+  }
+  if (reporting_info->is_main_frame || reporting_info->is_cross_frame_target) {
+    LogResponsivenessHistogram(duration,
+                               kHistogramMainFrameIncludingCrossFrameTarget);
   }
 }
 

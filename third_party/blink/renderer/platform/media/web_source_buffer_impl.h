@@ -15,7 +15,6 @@
 #include "base/time/time.h"
 #include "media/base/stream_parser.h"
 #include "third_party/blink/public/platform/web_source_buffer.h"
-#include "third_party/blink/renderer/platform/platform_export.h"
 
 namespace media {
 class ChunkDemuxer;
@@ -25,7 +24,7 @@ enum class SourceBufferParseWarning;
 
 namespace blink {
 
-class PLATFORM_EXPORT WebSourceBufferImpl : public WebSourceBuffer {
+class WebSourceBufferImpl : public WebSourceBuffer {
  public:
   WebSourceBufferImpl(const std::string& id, media::ChunkDemuxer* demuxer);
   WebSourceBufferImpl(const WebSourceBufferImpl&) = delete;
@@ -38,8 +37,8 @@ class PLATFORM_EXPORT WebSourceBufferImpl : public WebSourceBuffer {
   bool SetMode(AppendMode mode) override;
   WebTimeRanges Buffered() override;
   double HighestPresentationTimestamp() override;
-  bool EvictCodedFrames(double currentPlaybackTime,
-                        size_t newDataSize) override;
+  bool EvictCodedFrames(double current_playback_time,
+                        size_t new_data_size) override;
   [[nodiscard]] bool AppendToParseBuffer(
       base::span<const unsigned char> data) override;
   [[nodiscard]] media::StreamParser::ParseStatus RunSegmentParserLoop(

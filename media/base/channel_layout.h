@@ -230,14 +230,17 @@ class MEDIA_EXPORT ChannelLayoutConfig {
   // Crashes if `channel_layout` and `channels` are incompatible.
   ChannelLayoutConfig(ChannelLayout channel_layout, int channels);
 
-  ChannelLayoutConfig(const ChannelLayoutConfig& other);
-  ChannelLayoutConfig& operator=(const ChannelLayoutConfig& other);
+  constexpr ChannelLayoutConfig(const ChannelLayoutConfig& other) = default;
+  constexpr ChannelLayoutConfig& operator=(const ChannelLayoutConfig& other) =
+      default;
 
   constexpr ~ChannelLayoutConfig() = default;
 
   template <ChannelLayout layout>
   static constexpr ChannelLayoutConfig FromLayout() {
-    if constexpr (layout == CHANNEL_LAYOUT_MONO) {
+    if constexpr (layout == CHANNEL_LAYOUT_NONE) {
+      return ChannelLayoutConfig();
+    } else if constexpr (layout == CHANNEL_LAYOUT_MONO) {
       return Mono();
     } else if constexpr (layout == CHANNEL_LAYOUT_STEREO) {
       return Stereo();

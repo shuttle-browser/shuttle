@@ -14,7 +14,6 @@ source_set("util") {
   sources = [ "image_util.cc" ]
   public_deps = [
     "//base",
-    "//chrome/browser:browser_public_dependencies",
     "//ui/base",
   ]
   deps = [
@@ -32,7 +31,6 @@ source_set("impl") {
   deps = [
     ":util",
     "//base",
-    "//chrome/browser/picture_in_picture",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/ui:browser_window_header",
     "//chrome/browser/ui:ui_features",

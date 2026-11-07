@@ -31,7 +31,7 @@
 namespace blink {
 
 class CanvasContextCreationAttributesCore;
-class DOMMatrix;
+class ElementImageDefaultSize;
 class UpdateElementGeometryOptions;
 class ImageBitmap;
 class ImageEncodeOptions;
@@ -84,9 +84,9 @@ class CORE_EXPORT OffscreenCanvas final
                                     const ImageEncodeOptions* options,
                                     ExceptionState& exception_state);
 
-  DOMMatrix* getElementTransform(const V8UnionElementOrElementImage* element,
-                                 DOMMatrix* draw_transform,
-                                 ExceptionState&);
+  ElementImageDefaultSize* getElementImageDefaultSize(
+      const V8UnionElementOrElementImage* element,
+      ExceptionState&) const;
   void updateElementGeometry(const V8UnionElementOrElementImage*,
                              const UpdateElementGeometryOptions*,
                              ExceptionState&);
@@ -149,6 +149,9 @@ class CORE_EXPORT OffscreenCanvas final
                           float font_height) override;
   void ClearRenderedText(const gfx::RectF& rect) override;
   void ClearRenderedText() override;
+  bool ShouldCaptureRenderedText() override {
+    return should_capture_rendered_text_ && HasPlaceholderCanvas();
+  }
   void UpdateDrawnElementGeometry(Element&,
                                   const gfx::Transform*,
                                   const FloatClipRect*,
@@ -175,7 +178,7 @@ class CORE_EXPORT OffscreenCanvas final
   };
 
   bool PushFrameIfNeeded();
-  bool PushFrame(scoped_refptr<CanvasResource>&& frame);
+  bool PushFrame(scoped_refptr<ExportedCanvasResource>&& frame);
   void DidDraw(const gfx::Rect&) override;
   using CanvasRenderingContextHost::DidDraw;
   bool ShouldAccelerate2dContext() const override;
@@ -188,8 +191,6 @@ class CORE_EXPORT OffscreenCanvas final
   bool IsWebGL1Enabled() const override { return true; }
   bool IsWebGL2Enabled() const override { return true; }
   bool IsWebGLBlocked() const override { return false; }
-
-  // CanvasResourceProviderDelegate implementation
   void NotifyGpuContextLost() override;
   void SetNeedsCompositingUpdate() override {}
 
@@ -339,6 +340,8 @@ class CORE_EXPORT OffscreenCanvas final
   // then the following members would remain as initialized zero values.
   uint32_t client_id_ = 0;
   uint32_t sink_id_ = 0;
+
+  bool should_capture_rendered_text_ = false;
 
   Vector<ElementGeometryUpdate> pending_element_geometry_updates_;
 };

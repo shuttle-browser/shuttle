@@ -9,13 +9,11 @@ import logging
 import os
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 import zipfile
 
 from util import build_utils
-from util import parallel
 import action_helpers
 import zip_helpers
 
@@ -24,7 +22,7 @@ _SOURCE_ROOT = os.path.abspath(
 )
 # Import jinja2 from third_party/jinja2
 sys.path.insert(1, os.path.join(_SOURCE_ROOT, 'third_party'))
-from jinja2 import Template  # pylint: disable=F0401
+from jinja2 import Template  # noqa: E402
 
 
 # A variation of these maps also exists in:
@@ -87,7 +85,25 @@ AAPT_IGNORE_PATTERN = ':'.join(
     ]
 )
 
-MULTIPLE_RES_MAGIC_STRING = b'magic'
+
+def Aapt2Env():
+    """Returns the environment to use when running aapt2."""
+    # aapt2 makes a huge number of small allocations. Using a larger tcache and
+    # avoiding repeatedly growing / trimming the heap makes "aapt2 link" ~18%
+    # faster for chrome_apk. Unknown tunables are ignored, and non-glibc hosts
+    # ignore the variable altogether.
+    tunables = [
+        'glibc.malloc.tcache_count=65535',
+        'glibc.malloc.top_pad=67108864',
+        'glibc.malloc.trim_threshold=1073741824',
+        'glibc.malloc.hugetlb=1',
+    ]
+    env = os.environ.copy()
+    existing = env.get('GLIBC_TUNABLES')
+    if existing:
+        tunables.append(existing)
+    env['GLIBC_TUNABLES'] = ':'.join(tunables)
+    return env
 
 
 def ToAndroidLocaleName(chromium_locale):
@@ -254,31 +270,12 @@ All resource files must follow a structure of "$ROOT/$SUBDIR/$FILE"."""
     return list(resource_dirs)
 
 
-def IterResourceFilesInDirectories(
-    directories, ignore_pattern=AAPT_IGNORE_PATTERN
-):
-    globs = GenerateGlobs(ignore_pattern)
-    for d in directories:
-        for root, _, files in os.walk(d):
-            for f in files:
-                archive_path = f
-                parent_dir = os.path.relpath(root, d)
-                if parent_dir != '.':
-                    archive_path = os.path.join(parent_dir, f)
-                path = os.path.join(root, f)
-                if build_utils.MatchesGlob(archive_path, globs):
-                    continue
-                yield path, archive_path
-
-
 class ResourceInfoFile:
     """Helper for building up .res.info files."""
 
     def __init__(self):
         # Dict of archive_path -> source_path for the current target.
         self._entries = {}
-        # List of (old_archive_path, new_archive_path) tuples.
-        self._renames = []
         # We don't currently support using both AddMapping and MergeInfoFile.
         self._add_mapping_was_called = False
 
@@ -297,15 +294,6 @@ class ResourceInfoFile:
                 )
             )
 
-    def RegisterRename(self, old_archive_path, new_archive_path):
-        """Records an archive_path rename.
-
-        |old_archive_path| does not need to currently exist in the mappings. Renames
-        are buffered and replayed only when Write() is called.
-        """
-        if not old_archive_path.startswith('values'):
-            self._renames.append((old_archive_path, new_archive_path))
-
     def MergeInfoFile(self, info_file_path):
         """Merges the mappings from |info_file_path| into this object.
 
@@ -314,35 +302,17 @@ class ResourceInfoFile:
         assert not self._add_mapping_was_called
         # Allows clobbering, which is used when overriding resources.
         with open(info_file_path, encoding='utf-8') as f:
-            self._entries.update(l.rstrip().split('\t') for l in f)
-
-    def _ApplyRenames(self):
-        applied_renames = set()
-        ret = self._entries
-        for rename_tup in self._renames:
-            # Duplicate entries happen for resource overrides.
-            # Use a "seen" set to ensure we still error out if multiple renames
-            # happen for the same old_archive_path with different new_archive_paths.
-            if rename_tup in applied_renames:
-                continue
-            applied_renames.add(rename_tup)
-            old_archive_path, new_archive_path = rename_tup
-            ret[new_archive_path] = ret[old_archive_path]
-            del ret[old_archive_path]
-
-        self._entries = None
-        self._renames = None
-        return ret
+            self._entries.update(l.rstrip().split('\t') for l in f)  # noqa: E741
 
     def Write(self, info_file_path):
-        """Applies renames and writes out the file.
+        """Writes out the file.
 
         No other methods may be called after this.
         """
-        entries = self._ApplyRenames()
         lines = []
-        for archive_path, source_path in entries.items():
+        for archive_path, source_path in self._entries.items():
             lines.append('{}\t{}\n'.format(archive_path, source_path))
+        self._entries = None
         with open(info_file_path, 'w', encoding='utf-8') as info_file:
             info_file.writelines(sorted(lines))
 
@@ -397,7 +367,7 @@ def ResolveStyleableReferences(r_txt_path):
 
     sb = []
     with open(r_txt_path, encoding='utf-8') as f:
-        for l in f:
+        for l in f:  # noqa: E741
             if l.startswith('int[] styleable'):
                 brace_start = l.index('{') + 2
                 brace_end = l.index('}') - 1
@@ -415,7 +385,7 @@ def ResolveStyleableReferences(r_txt_path):
                     except:
                         logging.warning('Failed line: %r %r', l, v)
                         raise
-                l = l[:brace_start] + ', '.join(new_values) + l[brace_end:]
+                l = l[:brace_start] + ', '.join(new_values) + l[brace_end:]  # noqa: E741
             sb.append(l)
 
     with open(r_txt_path, 'w', encoding='utf-8') as f:
@@ -879,124 +849,33 @@ packageIdTransform);
 
 def ExtractBinaryManifestValues(aapt2_path, apk_path):
     """Returns (version_code, version_name, package_name) for the given apk."""
-    cmd = [
-        aapt2_path,
-        'dump',
-        'xmltree',
-        apk_path,
-        '--file',
-        'AndroidManifest.xml',
-    ]
-    filter_func = lambda output: build_utils.FilterLines(
-        output, r'warn: unexpected chunk type'
-    )
-    output = build_utils.CheckOutput(cmd, stderr_filter=filter_func)
+    # Extract only AndroidManifest.xml into a small temporary zip so that
+    # `aapt2 dump xmltree` does not spend ~0.7s loading the 22 MB resources.arsc
+    # table inside android.jar.
+    with tempfile.NamedTemporaryFile(suffix='.zip') as temp_zip:
+        with (
+            zipfile.ZipFile(apk_path) as src_z,
+            zipfile.ZipFile(temp_zip.name, 'w') as dst_z,
+        ):
+            dst_z.writestr(
+                'AndroidManifest.xml', src_z.read('AndroidManifest.xml')
+            )
+        cmd = [
+            aapt2_path,
+            'dump',
+            'xmltree',
+            temp_zip.name,
+            '--file',
+            'AndroidManifest.xml',
+        ]
+        filter_func = lambda output: build_utils.FilterLines(  # noqa: E731
+            output, r'warn: unexpected chunk type'
+        )
+        output = build_utils.CheckOutput(cmd, stderr_filter=filter_func)
     version_code = re.search(r'versionCode.*?=(\d*)', output).group(1)
     version_name = re.search(r'versionName.*?="(.*?)"', output).group(1)
     package_name = re.search(r'package.*?="(.*?)"', output).group(1)
     return version_code, version_name, package_name
-
-
-def ExtractArscPackage(aapt2_path, apk_path):
-    """Returns (package_name, package_id) of resources.arsc from apk_path.
-
-    When the apk does not have any entries in its resources file, in recent aapt2
-    versions it will not contain a "Package" line. The package is not even in the
-    actual resources.arsc/resources.pb file (which itself is mostly empty). Thus
-    return (None, None) when dump succeeds and there are no errors to indicate
-    that the package name does not exist in the resources file.
-    """
-    proc = subprocess.Popen(
-        [aapt2_path, 'dump', 'resources', apk_path],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        encoding='utf-8',
-    )
-    for line in proc.stdout:
-        # Package name=org.chromium.webview_shell id=7f
-        if line.startswith('Package'):
-            proc.kill()
-            parts = line.split()
-            package_name = parts[1].split('=')[1]
-            package_id = parts[2][3:]
-            return package_name, int(package_id, 16)
-
-    # aapt2 currently crashes when dumping webview resources, but not until after
-    # it prints the "Package" line (b/130553900).
-    stderr_output = proc.stderr.read()
-    if stderr_output:
-        sys.stderr.write(stderr_output)
-        raise Exception('Failed to find arsc package name')
-    return None, None
-
-
-def _RenameSubdirsWithPrefix(dir_path, prefix):
-    subdirs = [
-        d
-        for d in os.listdir(dir_path)
-        if os.path.isdir(os.path.join(dir_path, d))
-    ]
-    renamed_subdirs = []
-    for d in subdirs:
-        old_path = os.path.join(dir_path, d)
-        new_path = os.path.join(dir_path, '{}_{}'.format(prefix, d))
-        renamed_subdirs.append(new_path)
-        os.rename(old_path, new_path)
-    return renamed_subdirs
-
-
-def _HasMultipleResDirs(zip_path):
-    """Checks for magic comment set by prepare_resources.py
-
-    Returns: True iff the zipfile has the magic comment that means it contains
-    multiple res/ dirs inside instead of just contents of a single res/ dir
-    (without a wrapping res/).
-    """
-    with zipfile.ZipFile(zip_path) as z:
-        return z.comment == MULTIPLE_RES_MAGIC_STRING
-
-
-def _ExtractSingleDep(z, deps_dir):
-    subdirname = z.replace(os.path.sep, '_')
-    subdir = os.path.join(deps_dir, subdirname)
-    build_utils.ExtractAll(z, path=subdir)
-    if _HasMultipleResDirs(z):
-        # basename of the directory is used to create a zip during resource
-        # compilation, include the path in the basename to help blame errors
-        # on the correct target. For example directory 0_res may be renamed
-        # chrome_android_chrome_app_java_resources_0_res pointing to the
-        # name and path of the android_resources target from whence it came.
-        return _RenameSubdirsWithPrefix(subdir, subdirname)
-    return [subdir]
-
-
-def ExtractDeps(dep_zips, deps_dir):
-    """Extract a list of resource dependency zip files.
-
-    Args:
-       dep_zips: A list of zip file paths, each one will be extracted to
-         a subdirectory of |deps_dir|, named after the zip file's path (e.g.
-         '/some/path/foo.zip' -> '{deps_dir}/some_path_foo/').
-      deps_dir: Top-level extraction directory.
-    Returns:
-      The list of all sub-directory paths, relative to |deps_dir|.
-    Raises:
-      Exception: If a sub-directory already exists with the same name before
-        extraction.
-    """
-    seen_subdirs = set()
-    for z in dep_zips:
-        subdirname = z.replace(os.path.sep, '_')
-        subdir = os.path.join(deps_dir, subdirname)
-        if subdirname in seen_subdirs or os.path.exists(subdir):
-            raise Exception('Resource zip name conflict: ' + subdirname)
-        seen_subdirs.add(subdirname)
-
-    dep_subdirs = []
-    arg_tuples = [(z, deps_dir) for z in dep_zips]
-    for subdirs in parallel.BulkForkAndCall(_ExtractSingleDep, arg_tuples):
-        dep_subdirs.extend(subdirs)
-    return dep_subdirs
 
 
 class _ResourceBuildContext:
@@ -1017,9 +896,6 @@ class _ResourceBuildContext:
             self.temp_dir = tempfile.mkdtemp()
         self.remove_on_exit = not keep_files
 
-        # A location to store resources extracted form dependency zip files.
-        self.deps_dir = os.path.join(self.temp_dir, 'deps')
-        os.mkdir(self.deps_dir)
         # A location to place aapt-generated files.
         self.gen_dir = os.path.join(self.temp_dir, 'gen')
         os.mkdir(self.gen_dir)

@@ -21,22 +21,6 @@
 // NOTE: Within each of the following sections, the IDs are ordered roughly by
 // how they appear in the GUI/menus (left to right, top to bottom, etc.).
 
-// LINT.IfChange
-// =============================================================================
-// When adding a new IDC_* command below, you MUST also create
-// a corresponding declarative ActionItem in the modern Actions framework.
-// (Pure ActionItems added without legacy IDC_* commands are allowed).
-//
-// NOTE: For non-actionable structural menu containers or submenus that do not
-// trigger actions, do not add an ActionItem. Instead, add a positive
-// placeholder IDC_* command mapping at the bottom of this file growing
-// downwards.
-//
-// Quick Guide:
-// 1. Map ID in //chrome/browser/ui/actions/chrome_action_id.h: E(kActionFoo, IDC_FOO)
-// 2. Wire callback in BrowserActions::Initialize...() (browser_actions.cc).
-// =============================================================================
-
 // Navigation commands
 // TODO: Reorder to be in visible order; collapse holes
 #define IDC_BACK                        33000
@@ -103,6 +87,12 @@
 #define IDC_VERTICAL_TABS_SEND_FEEDBACK 34059
 #define IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER 34060
 #define IDC_TOGGLE_VERTICAL_TABS_COLLAPSE 34061
+#if BUILDFLAG(IS_ANDROID)
+#define IDC_TOGGLE_MULTISELECT          34064
+#define IDC_OPEN_TAB_STRIP_CONTEXT_MENU 34065
+#define IDC_REORDER_TAB_STRIP_ITEM_LEFT 34066
+#define IDC_REORDER_TAB_STRIP_ITEM_RIGHT 34067
+#endif  // BUILDFLAG(IS_ANDROID)
 
 // Web app window commands
 #define IDC_COPY_URL                    34071
@@ -110,6 +100,7 @@
 #define IDC_WEB_APP_SETTINGS            34073
 #define IDC_WEB_APP_MENU_APP_INFO       34074
 #define IDC_WEB_APP_UPGRADE_DIALOG      34075
+#define IDC_UNINSTALL_WEB_APP           34076
 
 #if BUILDFLAG(IS_CHROMEOS)
 // Move window to other user commands
@@ -129,7 +120,6 @@
 #define IDC_CLOSE_TAB_GROUP           34104
 #define IDC_GROUP_UNGROUPED_TABS      34105
 #define IDC_ADD_NEW_TAB_RECENT_GROUP  34107
-#define IDC_UNFOCUS_TAB_GROUP         34108
 
 // Page-related commands
 #define IDC_BOOKMARK_THIS_TAB           35000
@@ -240,6 +230,7 @@
 #define IDC_MANAGE_EXTENSIONS           40022
 #define IDC_DEV_TOOLS_INSPECT           40023
 #define IDC_UPGRADE_DIALOG              40024
+#define IDC_SCHEDULED_RESTART_DIALOG    40026
 #define IDC_PROFILING_ENABLED           40028
 #define IDC_EXTENSION_ERRORS            40031
 #define IDC_SHOW_AVATAR_MENU            40134
@@ -283,6 +274,7 @@
 #define IDC_CONTENT_CONTEXT_INSPECTELEMENT_WITH_DEVTOOLS 40301
 #define IDC_REPORT_UNSAFE_SITE 40302
 #define IDC_SHOW_READING_MODE_KEYBOARD 40303
+#define IDC_SHOW_TABS_FROM_OTHER_DEVICES_SIDE_PANEL 40304
 #define IDC_CHROME_ENTERPRISE_RELEASE_NOTES 40305
 #define IDC_SHOW_TTC_MENU 40306
 
@@ -404,6 +396,9 @@
 #define IDC_CONTENT_CONTEXT_RELOAD_GLIC  50232
 #define IDC_CONTENT_CONTEXT_ARCHIVE_GLIC 50233
 #define IDC_CONTENT_CONTEXT_GLIC    50234
+#define IDC_CONTENT_CONTEXT_GLIC_SMART_SUGGESTION 50235
+// Context menu item for Indigo (Try it on)
+#define IDC_CONTENT_CONTEXT_INDIGO 50240
 // Context menu items in the bookmark bar
 #define IDC_BOOKMARK_BAR_OPEN_ALL 51000
 #define IDC_BOOKMARK_BAR_OPEN_ALL_NEW_WINDOW 51001
@@ -439,6 +434,7 @@
 #define IDC_CONTENT_CONTEXT_SHARING_SUBMENU 51035
 #define IDC_CONTENT_CONTEXT_SEND_TAB_TO_SELF_DEVICE1 51040
 #define IDC_CONTENT_CONTEXT_SEND_TAB_TO_SELF_MANAGE_DEVICES 51045
+#define IDC_CONTENT_CONTEXT_SEND_TAB_TO_SELF_SIGN_IN 51046
 
 // ChromeOS clipboard history
 #define IDC_CONTENT_PASTE_FROM_CLIPBOARD 51037
@@ -540,6 +536,7 @@
 #define IDC_OMNIBOX_CONTEXT_SET_MODEL_PRO_NO_GEN_UI           54018
 #define IDC_OMNIBOX_CONTEXT_SHARED_TABS_SUBMENU               54019
 #define IDC_OMNIBOX_CONTEXT_SMART_TAB_SHARING                 54020
+#define IDC_OMNIBOX_CONTEXT_SINGLE_TAB                        54023
 
 // Skills commands
 #define IDC_MANAGE_SKILLS                                     54021
@@ -551,8 +548,9 @@
 #define IDC_OMNIBOX_EVERYWHERE_STATUS_ICON_MENU_SETTINGS                    54032
 #define IDC_OMNIBOX_EVERYWHERE_STATUS_ICON_MENU_EXIT                        54033
 
-// "Ask Google about this page" context menu item
+// "Ask Google about this page" menu items
 #define IDC_CONTENT_CONTEXT_ASK_GOOGLE_ABOUT_THIS_PAGE 54034
+#define IDC_ASK_GOOGLE_ABOUT_THIS_PAGE 54035
 
 
 // NOTE: The last valid command value is 57343 (0xDFFF)
@@ -568,7 +566,6 @@
 // each other, by only using every Nth id (where N is the number of unbounded
 // menus).
 #define IDC_FIRST_UNBOUNDED_MENU COMMAND_ID_FIRST_UNBOUNDED
-// LINT.ThenChange(//chrome/browser/ui/actions/chrome_action_id.h)
 
 // -----------------------------------------------------------------------------
 // Centralized Placeholder Command IDs for Non-Actionable Menu Containers
@@ -592,7 +589,9 @@
 #define IDC_SAVED_TAB_GROUPS_MENU 57332
 #define IDC_MORE_TOOLS_MENU 57331
 #define IDC_HELP_MENU 57330
-#define IDC_SKILLS_MENU 57310
+#define IDC_SKILLS_AND_EXTENSIONS_MENU 57310
+#define IDC_CONTEXTUAL_TASKS_MENU 57308
+#define IDC_OTHER_DEVICE_TABS_MENU 57307
 
 // Context Menu submenus
 #define IDC_SPELLCHECK_MENU 57329

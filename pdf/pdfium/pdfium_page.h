@@ -46,8 +46,10 @@ class PDFiumEngine;
 class PdfRect;
 class Thumbnail;
 struct AccessibilityCharInfo;
+struct AccessibilityFormGraphicInfo;
 struct AccessibilityHighlightInfo;
 struct AccessibilityImageInfo;
+struct AccessibilityLineSegment;
 struct AccessibilityLinkInfo;
 struct AccessibilityStructureElement;
 struct AccessibilityTextFieldInfo;
@@ -159,6 +161,15 @@ class PDFiumPage {
   // For all the highlights on the page, get their underlying text ranges and
   // bounding boxes.
   std::vector<AccessibilityHighlightInfo> GetHighlightInfo();
+
+  // For all the graphics (diagrams containing both graphical primitives and
+  // text) on the page, get their underlying text ranges and bounding boxes,
+  // sorted by text run index.
+  std::vector<AccessibilityFormGraphicInfo> GetFormGraphicInfo();
+
+  // Returns the straight line segments stroked by the page's top-level path
+  // objects, such as table borders.
+  std::vector<AccessibilityLineSegment> GetLineSegmentInfo();
 
   // Traverses the entire struct tree of the page recursively and extracts the
   // text run type or the alt text from struct tree elements corresponding to
@@ -370,6 +381,15 @@ class PDFiumPage {
     std::string note_text;
   };
 
+  // Represents a graphic containing both graphical primitives and text.
+  struct Graphic {
+    int32_t start_char_index = -1;
+    int32_t char_count = 0;
+
+    // The bounding rect of the graphic in screen coordinates.
+    gfx::Rect bounding_rect;
+  };
+
   // Returns a link index if the given character index is over a link, or -1
   // otherwise.
   int GetLink(int char_index, LinkTarget* target);
@@ -381,6 +401,10 @@ class PDFiumPage {
   void PopulateAnnotationLinks();
   // Calculate the locations of images on the page.
   void CalculateImages();
+  // Calculate the locations and character ranges of graphics on the page.
+  void CalculateGraphics();
+  // Returns the straight line segments on the page.
+  std::vector<AccessibilityLineSegment> CalculateLineSegments();
   // Populate annotations like highlight and text field on the page.
   void PopulateAnnotations();
   // Populate `highlights_` with `annot`.
@@ -451,6 +475,10 @@ class PDFiumPage {
   bool calculated_images_ = false;
   MarkedContentIdToImageMap marked_content_id_to_images_map_;
   std::vector<Image> images_;
+  bool calculated_graphics_ = false;
+  std::vector<Graphic> graphics_;
+  // Null until calculated, since a page may have no line segments.
+  std::optional<std::vector<AccessibilityLineSegment>> line_segments_;
   bool calculated_annotations_ = false;
   std::vector<Highlight> highlights_;
   bool calculated_page_object_text_run_breaks_ = false;

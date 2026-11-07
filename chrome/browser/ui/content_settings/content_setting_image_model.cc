@@ -5,6 +5,7 @@
 #include "chrome/browser/ui/content_settings/content_setting_image_model.h"
 
 #include <algorithm>
+#include <array>
 #include <string>
 #include <utility>
 
@@ -115,7 +116,7 @@ using ImageType = ContentSettingImageModel::ImageType;
 
 // The ordering of the models here influences the order in which icons are
 // shown in the omnibox.
-constexpr ImageType kContentSettingImageOrder[] = {
+constexpr auto kContentSettingImageOrder = std::to_array<ImageType>({
     ImageType::kCookies,
     ImageType::kImages,
     ImageType::kJavaScript,
@@ -139,9 +140,10 @@ constexpr ImageType kContentSettingImageOrder[] = {
 #if BUILDFLAG(IS_WIN)
     ImageType::kProtectedMediaIdentifier,
 #endif
-};
+});
 
-ui::ElementIdentifier GetElementIdentifierForType(ImageType image_type) {
+constexpr ui::ElementIdentifier GetElementIdentifierForType(
+    ImageType image_type) {
   switch (image_type) {
     case ImageType::kCookies:
       return ContentSettingImageModel::kCookiesIconElementId;
@@ -734,19 +736,21 @@ void ContentSettingImageModel::Update(content::WebContents* contents) {
       ContentSettingImageModelStates::Get(contents)->SetBubbleWasAutoOpened(
           image_type(), false);
     }
+    ContentSettingImageModelStates::Get(contents)->SetIconShownRecorded(
+        image_type(), false);
   }
 }
 
 bool ContentSettingImageModel::ShouldRunAnimation(
     content::WebContents* contents) {
-  DCHECK(contents);
+  CHECK(contents, base::NotFatalUntil::M162);
   return !ContentSettingImageModelStates::Get(contents)->AnimationHasRun(
       image_type());
 }
 
 void ContentSettingImageModel::SetAnimationHasRun(
     content::WebContents* contents) {
-  DCHECK(contents);
+  CHECK(contents, base::NotFatalUntil::M162);
   ContentSettingImageModelStates::Get(contents)->SetAnimationHasRun(
       image_type(), true);
 }
@@ -854,7 +858,7 @@ bool ContentSettingBlockedImageModel::UpdateAndGetVisibility(
 
   SetIcon(type, is_blocked);
   set_explanatory_string_id(explanation_id);
-  DCHECK(tooltip_id);
+  CHECK(tooltip_id, base::NotFatalUntil::M162);
   set_tooltip(l10n_util::GetStringUTF16(tooltip_id));
   return true;
 }
@@ -1169,7 +1173,7 @@ bool ContentSettingMediaImageModel::UpdateAndGetVisibility(
   }
 #endif  // BUILDFLAG(IS_MAC)
 
-  DCHECK(IsMicAccessed() || IsCamAccessed());
+  CHECK(IsMicAccessed() || IsCamAccessed(), base::NotFatalUntil::M162);
 
   int id = IDS_CAMERA_BLOCKED;
   if (IsMicBlockedOnSiteLevel() || IsCameraBlockedOnSiteLevel()) {
@@ -1253,6 +1257,17 @@ std::unique_ptr<ContentSettingBubbleModel>
 ContentSettingMediaImageModel::CreateBubbleModelImpl(
     ContentSettingBubbleModel::Delegate* delegate,
     content::Page& page) {
+  // The mic/camera state may have been cleared after the indicator was shown
+  // (e.g. Safety Hub auto-revoked permission and stopped capture while the
+  // indicator was dismissing). The bubble requires non-empty state (see
+  // ContentSettingMediaStreamBubbleModel's constructor), so return nullptr and
+  // let the caller dismiss the stale indicator.
+  PageSpecificContentSettings* content_settings =
+      PageSpecificContentSettings::GetForPage(page);
+  if (!content_settings ||
+      content_settings->GetMicrophoneCameraState().empty()) {
+    return nullptr;
+  }
   return std::make_unique<ContentSettingMediaStreamBubbleModel>(delegate, page);
 }
 
@@ -1414,7 +1429,9 @@ ContentSettingNotificationsImageModel::ContentSettingNotificationsImageModel()
 bool ContentSettingNotificationsImageModel::UpdateAndGetVisibility(
     WebContents* web_contents) {
   set_should_auto_open_bubble(false);
+  set_should_keep_label_expanded(false);
   set_blocked_on_system_level(false);
+  set_explanatory_string_id(0);
 
   // The notifications indicator is only shown for web apps, which this
   // browser doesn't have.
@@ -1512,7 +1529,7 @@ std::unique_ptr<ContentSettingBubbleModel>
 ContentSettingImageModel::CreateBubbleModel(
     ContentSettingBubbleModel::Delegate* delegate,
     content::WebContents* web_contents) {
-  DCHECK(web_contents);
+  CHECK(web_contents, base::NotFatalUntil::M162);
   return CreateBubbleModelImpl(delegate, web_contents->GetPrimaryPage());
 }
 
@@ -1535,15 +1552,15 @@ ContentSettingImageModel::GenerateContentSettingImageModels() {
 }
 
 // static
-std::vector<ui::ElementIdentifier>
+base::span<const ui::ElementIdentifier>
 ContentSettingImageModel::GetAllElementIdentifiers() {
-  std::vector<ui::ElementIdentifier> result;
-  result.reserve(std::size(kContentSettingImageOrder));
-  for (auto type : kContentSettingImageOrder) {
-    result.push_back(GetElementIdentifierForType(type));
-  }
-
-  return result;
+  static constexpr auto kAllElementIdentifiers = []() consteval {
+    std::array<ui::ElementIdentifier, kContentSettingImageOrder.size()> result;
+    std::ranges::transform(kContentSettingImageOrder, result.begin(),
+                           GetElementIdentifierForType);
+    return result;
+  }();
+  return kAllElementIdentifiers;
 }
 
 // static
@@ -1566,8 +1583,7 @@ bool ContentSettingImageModel::IsLeftHandSideIndicatorEnabled(
   // every other image type is always a right-hand-side content setting image.
   switch (image_type) {
     case ImageType::kMediaStream:
-      return base::FeatureList::IsEnabled(
-          content_settings::features::kLeftHandSideActivityIndicators);
+      return true;
     case ImageType::kSensors:
       return base::FeatureList::IsEnabled(
           content_settings::features::kLeftHandSideSensorActivityIndicators);

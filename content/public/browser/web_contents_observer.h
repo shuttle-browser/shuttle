@@ -46,6 +46,7 @@ enum class ViewportFit;
 }  // namespace blink
 
 namespace gfx {
+class Rect;
 class Size;
 }  // namespace gfx
 
@@ -80,6 +81,7 @@ class RenderViewHost;
 class RenderWidgetHost;
 class Page;
 struct CookieAccessDetails;
+struct DropData;
 struct EntryChangedDetails;
 struct FocusedNodeDetails;
 struct GlobalRequestID;
@@ -436,13 +438,9 @@ class CONTENT_EXPORT WebContentsObserver : public base::CheckedObserver {
   // TODO(crbug.com/492228028): Fix this to guarantee that this is called once
   // with `final_update` set to true, even when the find session is dropped
   // because another client started a new one.
-  //
-  // Mirrors WebContentsDelegate::FindReply(), which only the single
-  // WebContentsDelegate (typically the find-in-page UI) receives. Use this
-  // instead when a caller other than the find-in-page UI needs to know when
-  // its own request completes, without displacing the real delegate.
   virtual void DidReceiveFindReply(int request_id,
                                    int number_of_matches,
+                                   const gfx::Rect& selection_rect,
                                    int active_match_ordinal,
                                    bool final_update) {}
 
@@ -977,6 +975,11 @@ class CONTENT_EXPORT WebContentsObserver : public base::CheckedObserver {
   // Called when text selection is changed.
   virtual void OnTextSelectionChanged(RenderFrameHost* render_frame_host,
                                       std::u16string_view selected_text) {}
+
+  // Called when a drag started from `source_rfh` within this WebContents.
+  // `drop_data` has already been security-filtered and assigned its `drag_id`.
+  virtual void DidStartDrag(RenderFrameHost* source_rfh,
+                            const DropData& drop_data) {}
 
   // Notification that the |render_widget_host| for this WebContents has gained
   // focus.

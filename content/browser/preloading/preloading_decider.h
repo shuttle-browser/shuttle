@@ -56,9 +56,6 @@ class CONTENT_EXPORT PreloadingDecider
                       blink::mojom::SpeculationEagerness target_eagerness,
                       bool renderer_enacted);
 
-  //  Receives and processes ML model score for 'url' target link.
-  void OnPreloadingHeuristicsModelDone(const GURL& url, float score);
-
   // Receives and processes `url` selected by "moderate" viewport heuristic.
   void OnModerateViewportHeuristicTriggered(const GURL& url,
                                             bool renderer_enacted);
@@ -116,16 +113,6 @@ class CONTENT_EXPORT PreloadingDecider
   friend class DocumentUserData<PreloadingDecider>;
   DOCUMENT_USER_DATA_KEY_DECL();
 
-  // Attempts preloading actions starting from the most advanced (prerendering)
-  // to least (preconnect), in response to `enacting_predictor` predicting a
-  // navigation to `url`. If `fallback_to_preconnect` is true, we preconnect if
-  // no other action is taken.
-  void MaybeEnactCandidate(const GURL& url,
-                           const PreloadingPredictor& enacting_predictor,
-                           PreloadingConfidence confidence,
-                           bool fallback_to_preconnect,
-                           EagernessSet eagerness_to_exclude);
-
   // Merges the tags of all suitable candidates that match the given
   // `lookup_key`.
   // Returns a vector of std::optional<string> of candidates which will be
@@ -138,30 +125,9 @@ class CONTENT_EXPORT PreloadingDecider
       PreloadingConfidence confidence,
       EagernessSet eagerness_to_exclude);
 
-  // Prefetches the |url| if it is safe and eligible to be prefetched.
-  // Returns false if no suitable (given |enacting_predictor|) on-standby
-  // candidate is found for the given |url|, or the Prefetcher does not
-  // accept the candidate.
-  bool MaybePrefetch(const GURL& url,
-                     const PreloadingPredictor& enacting_predictor,
-                     PreloadingConfidence confidence,
-                     EagernessSet eagerness_to_exclude);
-
   // Returns true if a prefetch was attempted for the |url| and is not failed or
   // discarded by Prefetcher yet, and we should wait for it to finish.
   bool ShouldWaitForPrefetchResult(const GURL& url);
-
-  // Performs "prerender" or "prerender-until-script" `action` for the `url` if
-  // it is safe and eligible to be prerendered. Returns false for the first bool
-  // if no suitable (given `enacting_predictor`) on-standby candidate is found
-  // for the given `url`, or the Prerenderer does not accept the candidate.
-  // Returns true for the second bool if a PreloadingPrediction has been added.
-  std::pair<bool, bool> MaybePrerenderForAction(
-      const GURL& url,
-      blink::mojom::SpeculationAction action,
-      const PreloadingPredictor& enacting_predictor,
-      PreloadingConfidence confidence,
-      EagernessSet eagerness_to_exclude);
 
   // Returns true if a prerender was attempted for the |url| and is not failed
   // or discarded by Prerenderer yet, and we should wait for it to finish.
@@ -193,15 +159,6 @@ class CONTENT_EXPORT PreloadingDecider
   // Moves the candidates stored for |key| from |on_standby_candidates_| to
   // |processed_candidates_|. No-op if |key| has no on-standby candidates.
   void MarkCandidateAsProcessed(const SpeculationCandidateKey& key);
-
-  // Helper functions to select a prerender/prefetch candidate to be
-  // triggered.
-  std::optional<
-      std::pair<SpeculationCandidateKey, blink::mojom::SpeculationCandidatePtr>>
-  GetMatchedPreloadingCandidate(const SpeculationCandidateKey& lookup_key,
-                                const PreloadingPredictor& enacting_predictor,
-                                PreloadingConfidence confidence,
-                                EagernessSet eagerness_to_exclude) const;
 
  private:
   // Grant the test suite access to private members.
@@ -270,12 +227,6 @@ class CONTENT_EXPORT PreloadingDecider
   // so that it does not span unit tests.
   class BehaviorConfig;
   std::unique_ptr<const BehaviorConfig> behavior_config_;
-
-  // Whether this page has ever received an ML model prediction. Once it has,
-  // the model predictions supersede the hover heuristic. We store this here,
-  // rather than per-BrowserContext, since even if the model is loaded, it may
-  // not run for some pages (e.g. insecure http).
-  bool ml_model_available_ = false;
 
   raw_ptr<PreloadingDeciderObserverForTesting> observer_for_testing_;
   Preconnector preconnector_;

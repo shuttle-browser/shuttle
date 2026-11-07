@@ -19,7 +19,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/frame_separator.h"
-#include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
 #include "chrome/browser/ui/views/tabs/common/pinned_tab_container_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_node.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_view.h"
@@ -30,7 +29,6 @@
 #include "chrome/browser/ui/views/tabs/horizontal/horizontal_tab_strip_overflow_indicator_view.h"
 #include "chrome/browser/ui/views/tabs/horizontal/tab_scroll_button_container.h"
 #include "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_controller.h"
-#include "chrome/browser/ui/views/tabs/vertical/vertical_tab_strip_scroll_bar.h"
 #include "chrome/common/pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/tabs/public/tab_collection_types.h"
@@ -45,15 +43,6 @@
 #include "ui/views/view.h"
 #include "ui/views/view_class_properties.h"
 #include "ui/views/view_utils.h"
-
-namespace {
-
-bool IsVerticalOrientation(const TabCollectionNode* collection_node) {
-  return collection_node &&
-         collection_node->orientation() == TabStripOrientation::kVertical;
-}
-
-}  // namespace
 
 class TabStripView::TargetViewsTracker : public views::ViewObserver {
  public:
@@ -172,9 +161,10 @@ class TabStripView::TargetViewsTracker : public views::ViewObserver {
 };
 
 TabStripView::TabStripView(TabCollectionNode* collection_node)
-    : collection_node_(collection_node),
-      target_views_tracker_(std::make_unique<TargetViewsTracker>(
-          collection_node->orientation())) {
+    : orientation_(collection_node->orientation()),
+      collection_node_(collection_node),
+      target_views_tracker_(
+          std::make_unique<TargetViewsTracker>(orientation_)) {
   // Paint to a layer and mask to bounds to prevent tabs from overflowing and
   // drawing outside the window boundaries on Linux when the window is small.
   // This is configured here rather than a higher-level container so that drop
@@ -183,8 +173,7 @@ TabStripView::TabStripView(TabCollectionNode* collection_node)
   layer()->SetFillsBoundsOpaquely(false);
   layer()->SetMasksToBounds(true);
 
-  SetLayoutManager(
-      std::make_unique<TabStripViewLayout>(collection_node->orientation()));
+  SetLayoutManager(std::make_unique<TabStripViewLayout>(orientation_));
   SetProperty(views::kElementIdentifierKey, kTabStripElementId);
 
   pinned_tabs_scroll_view_ = AddChildView(std::make_unique<views::ScrollView>(
@@ -200,7 +189,7 @@ TabStripView::TabStripView(TabCollectionNode* collection_node)
       views::ScrollView::ScrollWithLayers::kEnabled));
   SetScrollViewProperties(unpinned_tabs_scroll_view_);
 
-  if (!IsVerticalOrientation(collection_node_)) {
+  if (orientation_ == TabStripOrientation::kHorizontal) {
     unpinned_tab_scroll_type_recorder_ =
         std::make_unique<tabs::UnpinnedTabScrollTypeRecorder>(
             unpinned_tabs_scroll_view_);
@@ -224,6 +213,10 @@ TabStripView::TabStripView(TabCollectionNode* collection_node)
           &TabStripView::ResetCollectionNode, base::Unretained(this))));
 
   if (tab_scroll_button_container_) {
+    callback_subscriptions_.emplace_back(
+        tab_scroll_button_container_->AddVisibleChangedCallback(
+            base::BindRepeating(&TabStripView::OnScrollButtonsVisibilityChanged,
+                                base::Unretained(this))));
     if (PrefService* prefs = GetPrefs()) {
       pref_change_registrar_.Init(prefs);
       pref_change_registrar_.Add(
@@ -363,7 +356,7 @@ void TabStripView::OnTabChanged(const tabs::TabInterface* active_tab) {
 
 void TabStripView::ScrollToFitTabs(const tabs::TabInterface* active_tab,
                                    const tabs::TabInterface* new_tab) {
-  if (!collection_node_ || !active_tab || !new_tab) {
+  if (!collection_node_ || (!active_tab && !new_tab)) {
     return;
   }
 
@@ -372,22 +365,14 @@ void TabStripView::ScrollToFitTabs(const tabs::TabInterface* active_tab,
   }
 
   TabCollectionNode* active_node =
-      collection_node_->GetNodeForHandle(active_tab->GetHandle());
+      active_tab ? collection_node_->GetNodeForHandle(active_tab->GetHandle())
+                 : nullptr;
   TabCollectionNode* new_node =
-      collection_node_->GetNodeForHandle(new_tab->GetHandle());
+      new_tab ? collection_node_->GetNodeForHandle(new_tab->GetHandle())
+              : nullptr;
 
-  if (!active_node || !new_node) {
-    return;
-  }
-
-  views::View* active_view = active_node->view();
-  views::View* new_view = new_node->view();
-
-  if (!active_view || !new_view) {
-    return;
-  }
-
-  ScrollToFitViews(active_view, new_view);
+  ScrollToFitViews(active_node ? active_node->view() : nullptr,
+                   new_node ? new_node->view() : nullptr);
 }
 
 void TabStripView::ScrollToFitViews(views::View* view1, views::View* view2) {
@@ -477,24 +462,10 @@ bool TabStripView::IsTabScrollButtonsPinned() const {
                : true;
 }
 
-void TabStripView::SetCollapsedState(bool is_collapsed) {
-  if (is_collapsed != is_collapsed_) {
-    is_collapsed_ = is_collapsed;
-    InvalidateLayout();
-  }
-}
-
-void TabStripView::SetIsAnimatingSize(bool is_animating) {
-  for (views::ScrollView* scroll_view :
-       {pinned_tabs_scroll_view_, unpinned_tabs_scroll_view_}) {
-    // Scrollbars are not visible in the horizontal orientation so only update
-    // for the vertical orientation.
-    if (scroll_view && IsVerticalOrientation(collection_node_)) {
-      if (auto* scroll_bar = views::AsViewClass<VerticalTabStripScrollBar>(
-              scroll_view->vertical_scroll_bar())) {
-        scroll_bar->SetIsAnimatingSize(is_animating);
-      }
-    }
+void TabStripView::SetLeadingOverlap(int leading_overlap) {
+  if (leading_overlap != leading_overlap_) {
+    leading_overlap_ = leading_overlap;
+    InvalidateLayout(/*avoid_propagate_during_layout=*/true);
   }
 }
 
@@ -578,14 +549,11 @@ void TabStripView::SetScrollViewProperties(views::ScrollView* scroll_view) {
   scroll_view->SetUseContentsPreferredSize(true);
   scroll_view->SetBackgroundColor(std::nullopt);
   CHECK(collection_node_);
-  if (IsVerticalOrientation(collection_node_)) {
+  if (orientation_ == TabStripOrientation::kVertical) {
     scroll_view->SetHorizontalScrollBarMode(
         views::ScrollView::ScrollBarMode::kDisabled);
     scroll_view->SetOverflowGradientMask(
         views::ScrollView::GradientDirection::kVertical);
-    scroll_view->SetVerticalScrollBar(
-        std::make_unique<VerticalTabStripScrollBar>(
-            collection_node_->GetController()->GetStateController()));
   } else {
     scroll_view->SetHorizontalScrollBarMode(
         views::ScrollView::ScrollBarMode::kHiddenButEnabled);
@@ -666,7 +634,7 @@ void TabStripView::EnsureViewsVisibleInViewportPostLayout(
     return;
   }
 
-  const bool is_vertical = IsVerticalOrientation(collection_node_);
+  const bool is_vertical = orientation_ == TabStripOrientation::kVertical;
 
   // Handle the case where the scroll view is currently not in an overflow
   // state. In such a case the tracked views will be visible in the scroll
@@ -752,16 +720,10 @@ void TabStripView::EnableOverflowVisuals(views::ScrollView* scroll_view) {
   // Override the post-layout callback to prevent any scheduled scroll requests
   // from running.
   scroll_view->RegisterPostLayoutCallback(base::DoNothing());
-  if (IsVerticalOrientation(collection_node_)) {
+  if (orientation_ == TabStripOrientation::kVertical) {
     scroll_view->SetDrawOverflowIndicator(true);
     scroll_view->SetVerticalScrollBarMode(
         views::ScrollView::ScrollBarMode::kEnabled);
-
-    // Restore normal VerticalTabStripScrollBar scrollbar behavior.
-    if (auto* scroll_bar = views::AsViewClass<VerticalTabStripScrollBar>(
-            scroll_view->vertical_scroll_bar())) {
-      scroll_bar->SetIsAnimatingSize(false);
-    }
   }
 
   // Reset the active view as it is no longer needed after post-activation
@@ -775,17 +737,10 @@ void TabStripView::EnableOverflowVisuals(views::ScrollView* scroll_view) {
 void TabStripView::DisableOverflowVisuals(views::ScrollView* scroll_view) {
   // If in the vertical orientation also hide scrollbar visuals. This is not
   // needed for horizontal since the scrollbar is not shown.
-  if (IsVerticalOrientation(collection_node_)) {
+  if (orientation_ == TabStripOrientation::kVertical) {
     scroll_view->SetDrawOverflowIndicator(false);
     scroll_view->SetVerticalScrollBarMode(
         views::ScrollView::ScrollBarMode::kHiddenButEnabled);
-
-    // Suppress scrollbar visuals to avoid artifacts as views are resized to
-    // target bounds whilst simultaneously scrolling to target.
-    if (auto* scroll_bar = views::AsViewClass<VerticalTabStripScrollBar>(
-            scroll_view->vertical_scroll_bar())) {
-      scroll_bar->SetIsAnimatingSize(true);
-    }
   }
 }
 
@@ -813,9 +768,13 @@ void TabStripView::HideHoverCardOnScroll() {
   }
 }
 
-void TabStripView::SetAvailableUnpinnedSpace(views::SizeBound space) const {
-  if (unpinned_tabs_container_view_) {
-    unpinned_tabs_container_view_->SetAvailableSpace(space);
+void TabStripView::OnScrollButtonsVisibilityChanged() {
+  // Only scroll to the active tab if a scroll request isn't already pending
+  // (e.g. from adding or activating a tab) to avoid overwriting any tracked
+  // secondary target view.
+  if (collection_node_ && tab_scroll_button_container_->GetVisible() &&
+      target_views_tracker_->empty()) {
+    ScrollToFitTabs(collection_node_->GetController()->GetActiveTab(), nullptr);
   }
 }
 

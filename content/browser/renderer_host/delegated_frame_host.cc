@@ -31,8 +31,8 @@
 #include "content/browser/gpu/compositor_util.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/common/content_switches.h"
+#include "third_party/angle/include/GLES2/gl2.h"
 #include "third_party/blink/public/common/page/content_to_visible_time_request.h"
-#include "third_party/khronos/GLES2/gl2.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/gfx/geometry/dip_util.h"
 
@@ -151,6 +151,7 @@ void DelegatedFrameHost::WasHidden(HiddenCause cause) {
 void DelegatedFrameHost::CopyFromCompositingSurface(
     const gfx::Rect& src_subrect,
     const gfx::Size& output_size,
+    bool is_copy_request_secure,
     base::TimeDelta timeout,
     base::OnceCallback<void(const content::CopyFromSurfaceResult&)> callback) {
   const viz::SurfaceId surface_id(frame_sink_id_, local_surface_id_);
@@ -165,7 +166,8 @@ void DelegatedFrameHost::CopyFromCompositingSurface(
   CopyFromCompositingSurfaceInternal(
       src_subrect, output_size, surface_id,
       viz::CopyOutputRequest::ResultFormat::RGBA,
-      viz::CopyOutputRequest::ResultDestination::kSystemMemory, timeout,
+      viz::CopyOutputRequest::ResultDestination::kSystemMemory,
+      is_copy_request_secure, timeout,
       base::BindOnce(
           [](base::OnceCallback<void(const content::CopyFromSurfaceResult&)>
                  callback,
@@ -185,12 +187,18 @@ void DelegatedFrameHost::CopyFromCompositingSurfaceAsTexture(
     const gfx::Rect& src_subrect,
     const gfx::Size& output_size,
     viz::CopyOutputRequest::CopyOutputRequestCallback callback) {
-  const viz::SurfaceId surface_id(frame_sink_id_, local_surface_id_);
+  // Request copy from the smallest LocalSurfaceId for the current embed token
+  // (`SurfaceAggregator` already enforces the layer's `SurfaceRange`), so that
+  // Viz's `TakeCopyOutputRequests` can capture the currently active fallback
+  // surface even if the latest Browser-allocated `local_surface_id_` has not
+  // been submitted by the hidden renderer yet.
+  const viz::SurfaceId surface_id(frame_sink_id_,
+                                  local_surface_id_.ToSmallestId());
   CopyFromCompositingSurfaceInternal(
       src_subrect, output_size, surface_id,
       viz::CopyOutputRequest::ResultFormat::RGBA,
       viz::CopyOutputRequest::ResultDestination::kSharedImage,
-      base::TimeDelta(), std::move(callback));
+      /*is_copy_request_secure=*/false, base::TimeDelta(), std::move(callback));
 }
 
 void DelegatedFrameHost::CopyFromCompositingSurfaceInternal(
@@ -199,10 +207,12 @@ void DelegatedFrameHost::CopyFromCompositingSurfaceInternal(
     const viz::SurfaceId& surface_id,
     viz::CopyOutputRequest::ResultFormat format,
     viz::CopyOutputRequest::ResultDestination destination,
+    bool is_copy_request_secure,
     base::TimeDelta timeout,
     viz::CopyOutputRequest::CopyOutputRequestCallback callback) {
   auto request = std::make_unique<viz::CopyOutputRequest>(format, destination,
                                                           std::move(callback));
+  request->set_is_secure(is_copy_request_secure);
   // Run result callback on the current thread in case `callback` needs to run
   // on the current thread. See http://crbug.com/1431363. When we bound a
   // `ui::Compositor::ScopedKeepSurfaceAliveCallback` it must also be ran on the
@@ -500,14 +510,12 @@ void DelegatedFrameHost::OptOutFrameEviction() {
 
 void DelegatedFrameHost::DidCopyStaleContent(
     std::unique_ptr<viz::CopyOutputResult> result) {
-  // host may have become visible by the time the request to capture surface is
-  // completed.
-  if (frame_evictor_->visible() || result->IsEmpty())
+  // Host may have become visible or cancelled the pending eviction by the time
+  // the request to capture surface is completed.
+  if (frame_evictor_->visible() ||
+      frame_eviction_state_ != FrameEvictionState::kPendingEvictionRequests) {
     return;
-
-  CHECK_EQ(result->format(), viz::CopyOutputResult::Format::RGBA);
-  CHECK_EQ(result->destination(),
-           viz::CopyOutputResult::Destination::kSharedImage);
+  }
 
 // TODO(crbug.com/1227661): Revert https://crrev.com/c/3222541 to re-enable this
 // CHECK on CrOS.
@@ -517,6 +525,14 @@ void DelegatedFrameHost::DidCopyStaleContent(
   SetFrameEvictionStateAndNotifyObservers(FrameEvictionState::kNotStarted);
   ContinueDelegatedFrameEviction(
       frame_evictor_->CollectSurfaceIdsForEviction());
+
+  if (result->IsEmpty()) {
+    return;
+  }
+
+  CHECK_EQ(result->format(), viz::CopyOutputResult::Format::RGBA);
+  CHECK_EQ(result->destination(),
+           viz::CopyOutputResult::Destination::kSharedImage);
 
   auto transfer_resource = viz::TransferableResource::Make(
       result->GetSharedImage(),

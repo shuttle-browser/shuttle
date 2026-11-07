@@ -453,14 +453,18 @@ void WaylandEventSource::OnPointerMotionEvent(
     bool is_synthesized) {
   pointer_location_ = location;
 
-  // Deliberately excludes `tablet_tool_buttons_`. Some compositors warp the
-  // seat cursor to follow a tablet tool, emitting a wl_pointer.motion alongside
-  // the tool's own events; folding the tool's buttons in here would report a
-  // mouse move with a button held that the mouse does not have held. The tool's
-  // own button state reaches Aura through OnTabletToolMotion().
+  // Non-synthesized motion events deliberately exclude `tablet_tool_buttons_`.
+  // Some compositors warp the seat cursor to follow a tablet tool, emitting a
+  // wl_pointer.motion alongside the tool's own events; folding the tool's
+  // buttons in here would report a mouse move with a button held that the mouse
+  // does not have held. The tool's own button state reaches Aura through
+  // OnTabletToolMotion(). However, during a DnD session the compositor stops
+  // sending tablet motion events and sends wl_data_device.motion instead, which
+  // arrives here with `is_synthesized` set, so `tablet_tool_buttons_` must be
+  // included for synthesized events.
   int flags = pointer_flags_ | keyboard_modifiers_;
   if (is_synthesized) {
-    flags |= EF_IS_SYNTHESIZED;
+    flags |= EF_IS_SYNTHESIZED | tablet_tool_buttons_;
   }
   MouseEvent event(EventType::kMouseMoved, pointer_location_, pointer_location_,
                    timestamp, flags, 0);
@@ -841,9 +845,11 @@ void WaylandEventSource::OnTouchCancelEvent() {
   if (connection_->IsDragInProgress()) {
     return;
   }
+  CancelActiveTouches(base::TimeTicks::Now());
+}
 
+void WaylandEventSource::CancelActiveTouches(base::TimeTicks timestamp) {
   gfx::PointF location;
-  base::TimeTicks timestamp = base::TimeTicks::Now();
   std::vector<PointerId> ids;
   ids.reserve(touch_points_.size());
   for (const auto& touch_point : touch_points_) {

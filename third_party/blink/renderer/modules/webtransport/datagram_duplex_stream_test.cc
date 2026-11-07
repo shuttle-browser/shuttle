@@ -54,6 +54,12 @@ class StubWebTransport final : public network::mojom::blink::WebTransport {
     NOTREACHED();
   }
 
+  void ExportKeyingMaterial(
+      network::mojom::blink::WebTransportKeyingMaterialParamsPtr params,
+      ExportKeyingMaterialCallback callback) override {
+    NOTREACHED();
+  }
+
   void CreateStream(
       mojo::ScopedDataPipeConsumerHandle output_consumer,
       mojo::ScopedDataPipeProducerHandle input_producer,
@@ -84,7 +90,11 @@ class StubWebTransport final : public network::mojom::blink::WebTransport {
 
   void SendFin(uint32_t stream_id) override {}
 
-  void AbortStream(uint32_t stream_id, uint8_t code) override {}
+  void AbortStream(uint32_t stream_id,
+                   uint8_t code,
+                   AbortStreamCallback callback) override {
+    std::move(callback).Run(nullptr);
+  }
 
   void StopSending(uint32_t stream_id, uint8_t code) override {}
 
@@ -105,9 +115,11 @@ class StubWebTransport final : public network::mojom::blink::WebTransport {
     std::move(callback).Run(nullptr);
   }
 
-  void GetSendStreamStats(uint32_t stream_id,
+  void GetSendStreamStats(const Vector<uint32_t>& stream_ids,
                           GetSendStreamStatsCallback callback) override {
-    std::move(callback).Run(nullptr);
+    Vector<network::mojom::blink::WebTransportSendStreamStatsPtr> stats;
+    stats.resize(stream_ids.size());
+    std::move(callback).Run(std::move(stats));
   }
 
   void Close(network::mojom::blink::WebTransportCloseInfoPtr) override {}

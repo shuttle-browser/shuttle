@@ -19,8 +19,6 @@ source_set("soda") {
     "soda_client_impl.h",
   ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   deps = [
     ":soda_api_proto",
     "//base",

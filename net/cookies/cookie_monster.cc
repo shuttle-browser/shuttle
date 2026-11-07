@@ -82,6 +82,7 @@
 #include "base/time/time.h"
 #include "base/timer/elapsed_timer.h"
 #include "base/trace_event/trace_event.h"
+#include "net/base/features.h"
 #include "net/base/isolation_info.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "net/base/schemeful_site.h"
@@ -175,20 +176,13 @@ bool IncludeUnpartitionedCookies(
       &net::CookiePartitionKey::ForbidsUnpartitionedCookieAccess);
 }
 
-size_t NameValueSizeBytes(const net::CanonicalCookie& cc) {
-  base::CheckedNumeric<size_t> name_value_pair_size = cc.Name().size();
-  name_value_pair_size += cc.Value().size();
-  DCHECK(name_value_pair_size.IsValid());
-  return name_value_pair_size.ValueOrDie();
-}
-
 size_t NumBytesInCookieMapForKey(
     const net::CookieMonster::CookieMap& cookie_map,
     const std::string& key) {
   size_t result = 0;
   auto range = cookie_map.equal_range(key);
   for (auto it = range.first; it != range.second; ++it) {
-    result += NameValueSizeBytes(*it->second);
+    result += net::cookie_util::NameValueSizeBytes(*it->second);
   }
   return result;
 }
@@ -197,7 +191,7 @@ size_t NumBytesInCookieItVector(
     const net::CookieMonster::CookieItVector& cookie_its) {
   size_t result = 0;
   for (const auto& it : cookie_its) {
-    result += NameValueSizeBytes(*it->second);
+    result += net::cookie_util::NameValueSizeBytes(*it->second);
   }
   return result;
 }
@@ -617,12 +611,24 @@ void CookieMonster::GetAllCookiesWithAccessSemanticsAsync(
 
 void CookieMonster::DeleteCanonicalCookieAsync(const CanonicalCookie& cookie,
                                                DeleteCallback callback) {
-  DoCookieCallback(base::BindOnce(
+  auto delete_callback = base::BindOnce(
       // base::Unretained is safe as DoCookieCallback stores
       // the callback on |*this|, so the callback will not outlive
       // the object.
       &CookieMonster::DeleteCanonicalCookie, base::Unretained(this), cookie,
-      std::move(callback)));
+      std::move(callback));
+  if (base::FeatureList::IsEnabled(features::kCookieMonsterPerKeyDelete)) {
+    // `DeleteCanonicalCookie` only inspects
+    // `equal_range(GetKey(cookie.Domain()))`. Dispatching via
+    // `DoCookieCallbackForHostOrDomain` instead of `DoCookieCallback` avoids
+    // setting `seen_global_task_ = true`, which would otherwise disable per-key
+    // loading and force all subsequent cookie reads and writes across all
+    // domains to wait for the full SQLite store load.
+    DoCookieCallbackForHostOrDomain(std::move(delete_callback),
+                                    cookie.Domain());
+    return;
+  }
+  DoCookieCallback(std::move(delete_callback));
 }
 
 void CookieMonster::DeleteAllCreatedInTimeRangeAsync(
@@ -638,16 +644,28 @@ void CookieMonster::DeleteAllCreatedInTimeRangeAsync(
 
 void CookieMonster::DeleteAllMatchingInfoAsync(CookieDeletionInfo delete_info,
                                                DeleteCallback callback) {
+  std::optional<std::string> key =
+      delete_info.SingleMatchingRegistrableDomain();
+  base::UmaHistogramBoolean(
+      "Cookie.DeleteAllMatchingInfoAsync.HasSingleMatchingDomain",
+      key.has_value());
+
   auto cookie_matcher =
       base::BindRepeating(&CookieMonster::MatchCookieDeletionInfo,
                           base::Unretained(this), std::move(delete_info));
-
-  DoCookieCallback(base::BindOnce(
+  auto delete_callback = base::BindOnce(
       // base::Unretained is safe as DoCookieCallback stores
       // the callback on |*this|, so the callback will not outlive
       // the object.
       &CookieMonster::DeleteMatchingCookies, base::Unretained(this),
-      std::move(cookie_matcher), DELETE_COOKIE_EXPLICIT, std::move(callback)));
+      std::move(cookie_matcher), DELETE_COOKIE_EXPLICIT, std::move(callback));
+
+  if (key.has_value() &&
+      base::FeatureList::IsEnabled(features::kCookieMonsterPerKeyDelete)) {
+    DoCookieCallbackForHostOrDomain(std::move(delete_callback), *key);
+    return;
+  }
+  DoCookieCallback(std::move(delete_callback));
 }
 
 void CookieMonster::DeleteSessionCookiesAsync(
@@ -909,6 +927,7 @@ bool CookieMonster::MatchCookieDeletionInfo(
 void CookieMonster::DeleteCanonicalCookie(const CanonicalCookie& cookie,
                                           DeleteCallback callback) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  base::ElapsedTimer timer;
   uint32_t result = 0u;
   CookieMap* cookie_map = nullptr;
   PartitionedCookieMap::iterator cookie_partition_it;
@@ -946,6 +965,9 @@ void CookieMonster::DeleteCanonicalCookie(const CanonicalCookie& cookie,
       base::BindOnce(&MaybeRunDeleteCallback, weak_ptr_factory_.GetWeakPtr(),
                      callback ? base::BindOnce(std::move(callback), result)
                               : base::OnceClosure()));
+  base::UmaHistogramCustomMicrosecondsTimes(
+      "Cookie.DeleteCanonicalCookie.Duration", timer.Elapsed(),
+      base::Microseconds(1), base::Milliseconds(128), 100);
 }
 
 void CookieMonster::DeleteMatchingCookies(DeletePredicate predicate,
@@ -1660,7 +1682,7 @@ CookieMonster::InternalInsertCookie(const std::string& key,
   if (cc->IsPartitioned()) {
     const CookiePartitionKey& partition_key = cc->PartitionKey().value();
 
-    size_t n_bytes = NameValueSizeBytes(*cc);
+    size_t n_bytes = cookie_util::NameValueSizeBytes(*cc);
     num_partitioned_cookies_bytes_ += n_bytes;
     bytes_per_cookie_partition_[partition_key] += n_bytes;
     if (partition_key.nonce()) {
@@ -1800,7 +1822,7 @@ void CookieMonster::SetCanonicalCookie(
         << "SetCookie() key: " << key << " cc: " << cc->DebugString();
 
     if (cc->IsEffectivelySameSiteNone() && collect_metrics) {
-      size_t cookie_size = NameValueSizeBytes(*cc);
+      size_t cookie_size = cookie_util::NameValueSizeBytes(*cc);
       base::UmaHistogramCounts10000("Cookie.SameSiteNoneSizeBytes.Subsampled",
                                     cookie_size);
       if (cc->IsPartitioned()) {
@@ -2055,7 +2077,7 @@ void CookieMonster::InternalDeletePartitionedCookie(
           mapping.cause),
       mapping.notify);
 
-  size_t n_bytes = NameValueSizeBytes(*cc);
+  size_t n_bytes = cookie_util::NameValueSizeBytes(*cc);
   num_partitioned_cookies_bytes_ -= n_bytes;
   bytes_per_cookie_partition_[*cc->PartitionKey()] -= n_bytes;
   if (CookiePartitionKey::HasNonce(cc->PartitionKey())) {
@@ -2323,7 +2345,7 @@ size_t CookieMonster::GarbageCollectPartitionedCookies(
           auto cookies_list_it = *domain_list_it;
           auto cookie_map_it = *cookies_list_it;
 
-          bytes_used -= NameValueSizeBytes(*cookie_map_it->second);
+          bytes_used -= cookie_util::NameValueSizeBytes(*cookie_map_it->second);
 
           // Delete from the cookie store.
           InternalDeletePartitionedCookie(
@@ -2348,7 +2370,7 @@ size_t CookieMonster::GarbageCollectPartitionedCookies(
           auto cookies_list_it = *host_list_it;
           auto cookie_map_it = *cookies_list_it;
 
-          bytes_used -= NameValueSizeBytes(*cookie_map_it->second);
+          bytes_used -= cookie_util::NameValueSizeBytes(*cookie_map_it->second);
 
           // Delete from the cookie store.
           InternalDeletePartitionedCookie(
@@ -2366,7 +2388,8 @@ size_t CookieMonster::GarbageCollectPartitionedCookies(
              bytes_used > kPerPartitionDomainMaxCookieBytes ||
              non_expired_cookie_its.size() - i > kPerPartitionDomainMaxCookies;
              ++i) {
-          bytes_used -= NameValueSizeBytes(*non_expired_cookie_its[i]->second);
+          bytes_used -= cookie_util::NameValueSizeBytes(
+              *non_expired_cookie_its[i]->second);
           InternalDeletePartitionedCookie(
               cookie_partition_it, non_expired_cookie_its[i], true,
               DELETE_COOKIE_EVICTED_PER_PARTITION_DOMAIN);
@@ -2813,8 +2836,6 @@ void CookieMonster::RecordPeriodicStats(base::Time current_time) {
 bool CookieMonster::DoRecordPeriodicStats() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
-  SCOPED_UMA_HISTOGRAM_TIMER("Cookie.TimeToRecordPeriodicStats");
-
   // These values are all bogus if we have only partially loaded the cookies.
   if (started_fetching_all_cookies_ && !finished_fetching_all_cookies_)
     return false;
@@ -2840,7 +2861,7 @@ bool CookieMonster::DoRecordPeriodicStats() {
   std::map<std::string, size_t> n_bytes_per_key;
 
   for (const auto& [host_key, host_cookie] : cookies_) {
-    size_t cookie_n_bytes = NameValueSizeBytes(*host_cookie);
+    size_t cookie_n_bytes = cookie_util::NameValueSizeBytes(*host_cookie);
     n_bytes += cookie_n_bytes;
     n_bytes_per_key[host_key] += cookie_n_bytes;
 

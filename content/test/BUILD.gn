@@ -20,6 +20,7 @@ import("//mojo/public/tools/bindings/mojom.gni")
 import("//net/features.gni")
 import("//printing/buildflags/buildflags.gni")
 import("//services/device/public/cpp/compute_pressure/buildflags.gni")
+import("//services/network/public/cpp/features.gni")
 import("//services/screen_ai/buildflags/features.gni")
 import("//testing/test.gni")
 import("//third_party/blink/public/public_features.gni")
@@ -105,8 +106,6 @@ static_library("test_support") {
     "../browser/file_system_access/mock_file_system_access_permission_grant.h",
     "../browser/file_system_access/spying_shared_handle_state_factory.cc",
     "../browser/file_system_access/spying_shared_handle_state_factory.h",
-    "../browser/first_party_sets/test/scoped_mock_first_party_sets_handler.cc",
-    "../browser/first_party_sets/test/scoped_mock_first_party_sets_handler.h",
     "../browser/font_access/font_access_test_utils.cc",
     "../browser/font_access/font_access_test_utils.h",
     "../browser/installedapp/test/installed_app_provider_impl_test_utils.cc",
@@ -307,8 +306,6 @@ static_library("test_support") {
     "../public/test/render_view_test.h",
     "../public/test/scoped_accessibility_mode_override.cc",
     "../public/test/scoped_accessibility_mode_override.h",
-    "../public/test/scoped_overscroll_modes.cc",
-    "../public/test/scoped_overscroll_modes.h",
     "../public/test/scoped_page_focus_override.cc",
     "../public/test/scoped_page_focus_override.h",
     "../public/test/scoped_pip_exclusion_override.cc",
@@ -748,6 +745,8 @@ static_library("test_support") {
       "../public/test/system_media_controls_bridge_test_utils.cc",
       "../public/test/system_media_controls_bridge_test_utils.h",
       "../public/test/text_input_test_utils_mac.mm",
+      "run_inside_nsapplication_run_mac.h",
+      "run_inside_nsapplication_run_mac.mm",
     ]
     deps += [
       "//ui/base/mojom",

@@ -18,6 +18,7 @@
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_features.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 #include "third_party/blink/public/mojom/frame/sudden_termination_disabler_type.mojom.h"
 
 namespace resource_coordinator {
@@ -41,7 +42,65 @@ void AttemptFastKillForDiscard(
   const bool web_contents_discard_enabled =
       base::FeatureList::IsEnabled(features::kWebContentsDiscard);
 
-  // First try to fast-kill the process, if it's just running a single tab.
+  bool allow_skip_unload = false;
+  if (web_contents_discard_enabled) {
+    allow_skip_unload = true;
+  } else if (discard_reason == ::mojom::LifecycleUnitDiscardReason::URGENT) {
+#if BUILDFLAG(IS_CHROMEOS)
+    allow_skip_unload = true;
+#endif
+  }
+
+  const bool should_ignore_workers = web_contents_discard_enabled;
+
+  // Check if any frame has a beforeunload handler. On URGENT discards, the
+  // discard eligibility policy has already accounted for beforeunload, and
+  // legacy discard destroyed the WebContents without running beforeunload.
+  const bool check_before_unload =
+      !web_contents_discard_enabled ||
+      discard_reason != ::mojom::LifecycleUnitDiscardReason::URGENT;
+  bool has_before_unload = false;
+  absl::flat_hash_set<content::RenderProcessHost*> subframe_processes;
+  main_frame->ForEachRenderFrameHost([&](content::RenderFrameHost* rfh) {
+    if (check_before_unload && rfh->GetSuddenTerminationDisablerState(
+                                   blink::mojom::SuddenTerminationDisablerType::
+                                       kBeforeUnloadHandler)) {
+      has_before_unload = true;
+    }
+    content::RenderProcessHost* process = rfh->GetProcess();
+    if (process && process != render_process_host) {
+      subframe_processes.insert(process);
+    }
+  });
+
+  const bool should_skip_unload = allow_skip_unload && !has_before_unload;
+  if (web_contents_discard_enabled) {
+    // Attempt fast shutdown for any dedicated out-of-process iframe (OOPIF)
+    // processes before shutting down the main frame process. Shutting down the
+    // main frame process triggers RenderProcessGone() -> ResetChildren(), which
+    // would detach child frames and prevent
+    // GetOutermostMainFrameCountForFastShutdown from associating the OOPIF
+    // process with this tab's active main frame.
+    for (content::RenderProcessHost* process : subframe_processes) {
+      bool subframe_killed = process->FastShutdownIfPossible(
+          1u, /*skip_unload_handlers=*/false,
+          /*ignore_workers=*/false,
+          /*ignore_keep_alive=*/false,
+          /*ignore_pending_reuse=*/false,
+          /*use_outermost_main_frame_check=*/true);
+      if (!subframe_killed && should_skip_unload) {
+        process->FastShutdownIfPossible(
+            1u, /*skip_unload_handlers=*/true,
+            /*ignore_workers=*/should_ignore_workers,
+            /*ignore_keep_alive=*/false,
+            /*ignore_pending_reuse=*/false,
+            /*use_outermost_main_frame_check=*/true);
+      }
+    }
+  }
+
+  // Now try to fast-kill the main frame process, if it's just running a single
+  // tab.
   bool succeed = render_process_host->FastShutdownIfPossible(
       1u,
       /*skip_unload_handlers=*/false,
@@ -53,30 +112,29 @@ void AttemptFastKillForDiscard(
       succeed ? AttemptFastKillForDiscardResult::kKilled
               : AttemptFastKillForDiscardResult::kSkipped;
 
-#if BUILDFLAG(IS_CHROMEOS)
-  if (!succeed &&
-      discard_reason == ::mojom::LifecycleUnitDiscardReason::URGENT) {
-    // We avoid fast shutdown on tabs with beforeunload handlers on the main
-    // frame, as that is often an indication of unsaved user state.
-    static const bool should_ignore_workers =
-        features::kUrgentDiscardIgnoreWorkers.Get();
-    if (!main_frame->GetSuddenTerminationDisablerState(
-            blink::mojom::SuddenTerminationDisablerType::
-                kBeforeUnloadHandler) &&
-        render_process_host->FastShutdownIfPossible(
+  if (!succeed && should_skip_unload) {
+    // We avoid fast shutdown on tabs with beforeunload handlers, as that is
+    // often an indication of unsaved user state.
+    if (render_process_host->FastShutdownIfPossible(
             1u, /*skip_unload_handlers=*/true,
-            /*ignore_workers=*/should_ignore_workers,
+            /*ignore_workers=*/false,
             /*ignore_keep_alive=*/false,
             /*ignore_pending_reuse=*/false,
             /*use_outermost_main_frame_check=*/web_contents_discard_enabled)) {
-      result =
-          should_ignore_workers
-              ? AttemptFastKillForDiscardResult::
-                    kKilledWithoutUnloadHandlersAndWorkers
-              : AttemptFastKillForDiscardResult::kKilledWithoutUnloadHandlers;
+      result = AttemptFastKillForDiscardResult::kKilledWithoutUnloadHandlers;
+    } else if (should_ignore_workers &&
+               render_process_host->FastShutdownIfPossible(
+                   1u, /*skip_unload_handlers=*/true,
+                   /*ignore_workers=*/true,
+                   /*ignore_keep_alive=*/false,
+                   /*ignore_pending_reuse=*/false,
+                   /*use_outermost_main_frame_check=*/
+                   web_contents_discard_enabled)) {
+      result = AttemptFastKillForDiscardResult::
+          kKilledWithoutUnloadHandlersAndWorkers;
     }
   }
-#endif
+
   base::UmaHistogramEnumeration("Discarding.AttemptFastKillForDiscardResult",
                                 result);
 }

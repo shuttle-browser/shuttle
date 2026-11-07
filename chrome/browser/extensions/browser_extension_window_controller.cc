@@ -101,7 +101,7 @@ api::tabs::WindowType GetTabsWindowType(const BrowserWindowInterface* browser) {
     // reach this point).
     case BrowserWindowInterface::TYPE_NORMAL:
 #if !BUILDFLAG(IS_ANDROID)
-    case BrowserWindowInterface::TYPE_PICTURE_IN_PICTURE:
+    case BrowserWindowInterface::TYPE_FLOATING:
 #endif
       return api::tabs::WindowType::kNormal;
   }
@@ -296,15 +296,15 @@ bool BrowserExtensionWindowController::OpenOptionsPage(
     const Extension* extension,
     const GURL& url,
     bool open_in_tab) {
-  DCHECK(OptionsPageInfo::HasOptionsPage(extension));
+  CHECK(OptionsPageInfo::HasOptionsPage(extension), base::NotFatalUntil::M161);
 
 #if BUILDFLAG(IS_ANDROID)
   // On Android, we just open the options page in a new tab.
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
           url,
-          open_in_tab ? WindowOpenDisposition::NEW_FOREGROUND_TAB
-                      : WindowOpenDisposition::CURRENT_TAB,
+          open_in_tab ? WindowOpenDisposition::kNewForegroundTab
+                      : WindowOpenDisposition::kCurrentTab,
           ui::PAGE_TRANSITION_LINK);
   browser_->OpenURL(params, /*navigation_handle_callback=*/{});
 #else

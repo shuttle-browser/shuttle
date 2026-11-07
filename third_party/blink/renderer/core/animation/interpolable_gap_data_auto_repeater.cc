@@ -79,23 +79,27 @@ void InterpolableGapLengthAutoRepeater::Composite(
     const InterpolableGapLengthAutoRepeater& other,
     double fraction) {
   CHECK(IsCompatibleWith(other));
+  const wtf_size_t other_length = other.values_->length();
+  EnsureLCMInnerLength(other_length);
+
   for (wtf_size_t i = 0; i < values_->length(); ++i) {
     auto& a = To<InterpolableLength>(*values_->GetMutable(i));
-    auto& b = To<InterpolableLength>(*other.values_->Get(i));
+    const auto& b =
+        To<InterpolableLength>(*other.values_->Get(i % other_length));
     a.ScaleAndAdd(fraction, b);
   }
 }
 
 InterpolableGapColorAutoRepeater* InterpolableGapColorAutoRepeater::Create(
     const ValueRepeater<StyleColor>* repeater,
-    mojom::blink::ColorScheme color_scheme) {
+    const ColorThemeInfo& theme_info) {
   CHECK(repeater);
 
   InterpolableList* values =
       MakeGarbageCollected<InterpolableList>(repeater->RepeatedValues().size());
   for (wtf_size_t i = 0; i < repeater->RepeatedValues().size(); ++i) {
     InterpolableValue* result =
-        CreateItem(repeater->RepeatedValues()[i], color_scheme);
+        CreateItem(repeater->RepeatedValues()[i], theme_info);
     DCHECK(result);
     values->Set(i, std::move(result));
   }
@@ -155,19 +159,22 @@ GapData<StyleColor> InterpolableGapColorAutoRepeater::CreateGapData(
 
 InterpolableValue* InterpolableGapColorAutoRepeater::CreateItem(
     const StyleColor& value,
-    mojom::blink::ColorScheme color_scheme) {
-  return CSSColorInterpolationType::CreateBaseInterpolableColor(
-      value, color_scheme, /*color_provider=*/nullptr);
+    const ColorThemeInfo& theme_info) {
+  return CSSColorInterpolationType::CreateBaseInterpolableColor(value,
+                                                                theme_info);
 }
 
 void InterpolableGapColorAutoRepeater::Composite(
     const InterpolableGapColorAutoRepeater& other,
     double fraction) {
   CHECK(IsCompatibleWith(other));
+  const wtf_size_t other_length = other.values_->length();
+  EnsureLCMInnerLength(other_length);
 
   for (wtf_size_t i = 0; i < values_->length(); ++i) {
     auto& color = To<InterpolableColor>(*values_->GetMutable(i));
-    auto& other_color = To<InterpolableColor>(*other.values_->GetMutable(i));
+    const auto& other_color =
+        To<InterpolableColor>(*other.values_->Get(i % other_length));
     color.Composite(other_color, fraction);
   }
 }

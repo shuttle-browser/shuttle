@@ -4,21 +4,21 @@
 
 #include "chrome/browser/ui/views/tabs/common/tab_group_view.h"
 
+#include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_group_data.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
-#include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
 #include "chrome/browser/ui/views/tabs/common/dragged_tabs_container.h"
 #include "chrome/browser/ui/views/tabs/common/split_tab_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_animating_layout_manager.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_node.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_header_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_line_view.h"
-#include "chrome/browser/ui/views/tabs/common/tab_group_view_layout.h"
+#include "chrome/browser/ui/views/tabs/common/tab_group_unfocus_button.h"
+#include "chrome/browser/ui/views/tabs/common/tab_group_view_horizontal_layout.h"
 #include "chrome/browser/ui/views/tabs/common/tab_strip_collection_controller.h"
 #include "chrome/browser/ui/views/tabs/common/tab_strip_utils.h"
 #include "chrome/browser/ui/views/tabs/common/tab_strip_view.h"
@@ -55,6 +55,13 @@ const TabGroup* GetTabGroupFromNode(TabCollectionNode* node) {
       ->GetTabGroup();
 }
 
+// Shuttle: vertical tabs are removed; the horizontal layout serves every
+// orientation (the vertical layout and its collapse state are gone).
+std::unique_ptr<TabGroupView::LayoutManager> CreateTabGroupViewLayout(
+    TabStripOrientation orientation) {
+  return std::make_unique<TabGroupViewHorizontalLayout>();
+}
+
 }  // namespace
 
 TabGroupView::TabGroupView(TabCollectionNode* collection_node)
@@ -73,20 +80,25 @@ TabGroupView::TabGroupView(TabCollectionNode* collection_node)
       collection_node_(collection_node),
       tab_group_visual_data_(
           *GetTabGroupFromNode(collection_node_)->visual_data()),
+      is_ephemeral_(GetTabGroupFromNode(collection_node_)->is_ephemeral()),
+      unfocus_header_(AddChildView(std::make_unique<TabGroupUnfocusButton>(
+          orientation_,
+          base::BindRepeating(&TabGroupView::ExitFocusMode,
+                              base::Unretained(this))))),
       group_header_(AddChildView(std::make_unique<TabGroupHeaderView>(
           *this,
           orientation_,
-          collection_node_->GetController()->GetStateController(),
           &tab_group_visual_data_))),
       group_line_(AddChildView(std::make_unique<TabGroupLineView>(*this))),
       layout_manager_(*SetLayoutManager(std::make_unique<
                                         TabCollectionAnimatingLayoutManager>(
-          std::make_unique<TabGroupViewLayout>(collection_node->orientation()),
+          CreateTabGroupViewLayout(orientation_),
           *this,
-          collection_node->orientation() == TabStripOrientation::kHorizontal
+          collection_node->GetController()->animation_coordinator(),
+          orientation_ == TabStripOrientation::kHorizontal
               ? TabCollectionAnimatingLayoutManager::AnimationAxis::kHorizontal
-              : TabCollectionAnimatingLayoutManager::AnimationAxis::
-                    kVertical))) {
+              : TabCollectionAnimatingLayoutManager::AnimationAxis::kVertical,
+          /*animate_host_size=*/false))) {
   collection_node->set_remove_child_from_node(base::BindRepeating(
       &TabCollectionAnimatingLayoutManager::AnimateAndDestroyChildView,
       base::Unretained(&layout_manager_.get())));
@@ -112,6 +124,18 @@ TabGroupView::TabGroupView(TabCollectionNode* collection_node)
 }
 
 TabGroupView::~TabGroupView() = default;
+
+int TabGroupView::LayoutManager::GetCrossoverWidth() const {
+  return TabGroupView().GetMinimumSize().width();
+}
+
+void TabGroupView::LayoutManager::OnInstalled(views::View* host) {
+  CHECK(IsViewClass<class TabGroupView>(host));
+}
+
+const TabGroupView& TabGroupView::LayoutManager::TabGroupView() const {
+  return static_cast<const class TabGroupView&>(*host_view());
+}
 
 void TabGroupView::AddedToWidget() {
   paint_as_active_subscription_ =
@@ -168,6 +192,8 @@ void TabGroupView::ToggleCollapsedState(
     }
   }
 
+  auto allow_animation =
+      collection_node_->GetController()->ScopedAnimateLayout();
   collection_node_->GetController()->ToggleTabGroupCollapsedState(
       GetTabGroupFromNode(collection_node_), origin);
 
@@ -186,12 +212,10 @@ std::unique_ptr<views::Widget> TabGroupView::ShowGroupEditorBubble(
     return nullptr;
   }
 
-  // When the tab strip is collapsed, anchor to the group header, otherwise
-  // anchor to the editor bubble button.
+  // Anchor to the editor bubble button if there is one, otherwise to the group
+  // header.
   views::View* anchor_view =
-      (GetTabStripCollapseState() !=
-           tabs::VerticalTabStripCollapseState::kExpanded ||
-       !group_header_->editor_bubble_button())
+      !group_header_->editor_bubble_button()
           ? views::AsViewClass<views::View>(group_header_)
           : views::AsViewClass<views::View>(
                 group_header_->editor_bubble_button());
@@ -216,8 +240,7 @@ bool TabGroupView::IsViewDragging(const views::View& child_view) const {
 
 bool TabGroupView::ShouldAnimateOpacityForAddAndRemove(
     const views::View& child_view) const {
-  if (collection_node_ &&
-      collection_node_->orientation() == TabStripOrientation::kHorizontal) {
+  if (orientation_ == TabStripOrientation::kHorizontal) {
     return false;
   }
   // Only animate opacity for tab views.
@@ -228,29 +251,10 @@ bool TabGroupView::ShouldSnapToTarget(const views::View& child_view) const {
   return views::IsViewClass<SplitTabView>(&child_view);
 }
 
-void TabGroupView::SetAvailableSpace(views::SizeBound space) {
-  available_space_ = space;
-}
-
 int TabGroupView::GetCrossoverWidth() const {
-  if (collection_node_ &&
-      collection_node_->orientation() == TabStripOrientation::kHorizontal) {
-    return static_cast<TabGroupViewLayout*>(
-               layout_manager_->target_layout_manager())
-        ->CalculateHorizontalCrossoverWidth(this);
-  }
-  return GetMinimumSize().width();
-}
-
-std::optional<views::SizeBound>
-TabGroupView::GetAvailableMainAxisSpaceOverride() const {
-  if (collection_node_ &&
-      collection_node_->orientation() == TabStripOrientation::kHorizontal) {
-    if (available_space_.is_bounded()) {
-      return available_space_;
-    }
-  }
-  return std::nullopt;
+  return static_cast<const TabGroupView::LayoutManager*>(
+             layout_manager_->target_layout_manager())
+      ->GetCrossoverWidth();
 }
 
 void TabGroupView::OnAnimationEnded() {
@@ -259,6 +263,13 @@ void TabGroupView::OnAnimationEnded() {
   if (tab_group_visual_data_.is_collapsed()) {
     UpdateChildVisibilityForCollapseState(true);
   }
+}
+
+bool TabGroupView::ShouldAnimateLayout() {
+  if (!collection_node_) {
+    return false;
+  }
+  return collection_node_->GetController()->ShouldAnimateLayout();
 }
 
 bool TabGroupView::IsValid() const {
@@ -309,13 +320,29 @@ void TabGroupView::OnDataChanged() {
 
   const tabs::TabGroupData& tab_group_data =
       tab_group_data_observer_->tab_group_data();
+  is_ephemeral_ = GetTabGroupFromNode(collection_node_)->is_ephemeral();
+  const bool has_collapse_state_changed =
+      tab_group_visual_data_.is_collapsed() !=
+      tab_group_data.visual_data.is_collapsed();
   tab_group_visual_data_ = tab_group_data.visual_data;
+  if (unfocus_header_) {
+    unfocus_header_->SetVisible(IsGroupFocused());
+    unfocus_header_->SetGroupColorData(tab_group_visual_data_.color(),
+                                       is_ephemeral_);
+  }
   group_header_->OnDataChanged(tab_group_data);
 
-  // If the tab group is not collapsed update child visibility immediately. This
-  // allows tabs to be visible as they are animated in.
-  if (!tab_group_visual_data_.is_collapsed()) {
-    UpdateChildVisibilityForCollapseState(false);
+  std::optional<base::AutoReset<bool>> allow_animation;
+  if (has_collapse_state_changed) {
+    allow_animation.emplace(
+        collection_node_->GetController()->ScopedAnimateLayout());
+  }
+
+  // If the tab group is not collapsed (or if we are not animating the collapse)
+  // update child visibility immediately.
+  if (!tab_group_visual_data_.is_collapsed() || !ShouldAnimateLayout()) {
+    UpdateChildVisibilityForCollapseState(
+        tab_group_visual_data_.is_collapsed());
   }
 
   group_line_->SchedulePaint();
@@ -328,9 +355,6 @@ void TabGroupView::SetIsCollapsed(bool is_collapsed) {
     return;
   }
   is_collapsed_ = is_collapsed;
-  // Reset the cached available space so stale collapsed bounds (which only
-  // accommodated the header chip) do not constrain group tabs when expanding.
-  available_space_ = views::SizeBound();
   InvalidateLayout();
 }
 
@@ -350,6 +374,9 @@ bool TabGroupView::IsCollapsed() const {
 }
 
 views::ScrollView* TabGroupView::GetScrollViewForContainer() const {
+  if (!collection_node_) {
+    return nullptr;
+  }
   return views::ScrollView::GetScrollViewForContents(
       const_cast<views::View*>(parent()));
 }
@@ -508,6 +535,19 @@ std::unique_ptr<ExpandOnHoverLock> TabGroupView::AcquireExpandOnHoverLock() {
       ExpandOnHoverLockType::kKeepCurrentState);
 }
 
+std::unique_ptr<TabHoverCardController::ScopedHideHoverCardLock>
+TabGroupView::AcquireHoverCardHideLock() {
+  if (!collection_node_ || !collection_node_->GetController()) {
+    return nullptr;
+  }
+
+  if (TabHoverCardController* hover_card_controller =
+          collection_node_->GetController()->GetHoverCardController()) {
+    return hover_card_controller->GetHoverCardHideLock();
+  }
+  return nullptr;
+}
+
 void TabGroupView::ShiftGroupUp() {
   if (!collection_node_) {
     return;
@@ -525,6 +565,9 @@ void TabGroupView::ShiftGroupDown() {
 }
 
 bool TabGroupView::IsGroupFocused() const {
+  if (is_ephemeral_) {
+    return true;
+  }
   if (!collection_node_ || !collection_node_->GetController()) {
     return false;
   }
@@ -532,11 +575,32 @@ bool TabGroupView::IsGroupFocused() const {
          GetTabGroup().id();
 }
 
+bool TabGroupView::IsUnfocusButtonFocused() const {
+  return unfocus_header_ && unfocus_header_->HasFocus();
+}
+
+bool TabGroupView::CanShowEditorBubbleButton() const {
+  // Shuttle: no vertical tab strip collapse state (vertical tabs removed).
+  return orientation_ == TabStripOrientation::kVertical;
+}
+
 HorizontalTabClosingHelper* TabGroupView::GetTabClosingHelper() const {
   if (collection_node_ && collection_node_->GetController()) {
     return collection_node_->GetController()->tab_closing_helper();
   }
   return nullptr;
+}
+
+void TabGroupView::ExitFocusMode() {
+  if (!collection_node_ || !collection_node_->GetController()) {
+    return;
+  }
+  BrowserView* browser_view =
+      collection_node_->GetController()->GetBrowserView();
+  if (browser_view) {
+    chrome::ExitFocusMode(browser_view->browser(),
+                          TabGroupFocusExitReason::kHeaderUnfocusButton);
+  }
 }
 
 BEGIN_METADATA(TabGroupView)

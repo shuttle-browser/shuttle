@@ -37,19 +37,19 @@ bool BrowsingDataLifetimePolicyHandler::CheckPolicySettings(
     return false;
   }
 
-  if (!policies.Get(policy_name())) {
+  const base::Value* browsing_data_policy =
+      policies.GetValue(this->policy_name(), base::Value::Type::LIST);
+  if (!browsing_data_policy) {
     return true;
   }
 
-  const base::Value* browsing_data_policy =
-      policies.GetValue(this->policy_name(), base::Value::Type::LIST);
-  unsupported_types_ =
+  const base::flat_set<std::string> unsupported_types =
       browsing_data::GetBrowsingDataLifetimePlatformUnsupportedTypes(
           *browsing_data_policy);
-  if (!unsupported_types_.empty()) {
+  if (!unsupported_types.empty()) {
     errors->AddError(this->policy_name(),
                      IDS_POLICY_BROWSING_DATA_PLATFORM_UNSUPPORTED,
-                     base::JoinString(unsupported_types_, ", "), {},
+                     base::JoinString(unsupported_types, ", "), {},
                      policy::PolicyMap::MessageType::kWarning);
   }
 
@@ -59,21 +59,28 @@ bool BrowsingDataLifetimePolicyHandler::CheckPolicySettings(
 void BrowsingDataLifetimePolicyHandler::ApplyPolicySettings(
     const policy::PolicyMap& policies,
     PrefValueMap* prefs) {
-  if (unsupported_types_.empty()) {
+  const base::Value* browsing_data_policy =
+      policies.GetValue(this->policy_name(), base::Value::Type::LIST);
+  if (!browsing_data_policy) {
+    return;
+  }
+
+  const base::flat_set<std::string> unsupported_types =
+      browsing_data::GetBrowsingDataLifetimePlatformUnsupportedTypes(
+          *browsing_data_policy);
+  if (unsupported_types.empty()) {
     SimpleSchemaValidatingPolicyHandler::ApplyPolicySettings(policies, prefs);
   } else {
     // Make a copy of the policy value so as to remove unsupported types before
-    // adding into prefs. Using GetValueUnsafe, GetList, GetDict is ok here
-    // because this function is only called if the policy schema is valid.
-    base::Value filtered_policy_value =
-        policies.GetValueUnsafe(policy_name())->Clone();
+    // adding into prefs.
+    base::Value filtered_policy_value = browsing_data_policy->Clone();
     for (auto& item : filtered_policy_value.GetList()) {
       base::ListValue& data_types =
           item.GetDict().Find("data_types")->GetList();
       data_types.erase(
           std::remove_if(data_types.begin(), data_types.end(),
-                         [this](const base::Value& type) {
-                           return unsupported_types_.contains(type.GetString());
+                         [&unsupported_types](const base::Value& type) {
+                           return unsupported_types.contains(type.GetString());
                          }),
           data_types.end());
     }

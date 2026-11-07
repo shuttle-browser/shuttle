@@ -104,6 +104,23 @@ std::unique_ptr<AssociatedEndpointRustAdapter> CreateWithRustController(
   return AssociatedEndpointRustAdapter::Create(std::move(handle));
 }
 
+bool AssociatedEndpointRustAdapter::is_associated() const {
+  return group_controller() != nullptr;
+}
+
+void AssociatedEndpointRustAdapter::AssociatePeerWithRustController(
+    RustAssociatedGroupController& controller,
+    uint32_t interface_id) {
+  CHECK(!is_associated());
+  CHECK(mojo::IsValidInterfaceId(interface_id) &&
+        !mojo::IsPrimaryInterfaceId(interface_id));
+  mojo::ScopedInterfaceEndpointHandle handle = PassHandle();
+  auto reason = handle.disconnect_reason();
+  if (!controller.AssociatePeer(std::move(handle), interface_id)) {
+    controller.CloseEndpointHandle(interface_id, reason);
+  }
+}
+
 void CreatePairPendingAssociation(
     std::unique_ptr<AssociatedEndpointRustAdapter>& self_out,
     std::unique_ptr<AssociatedEndpointRustAdapter>& peer_out) {
@@ -164,6 +181,15 @@ mojo::AssociatedGroupController*
 AssociatedEndpointRustAdapter::group_controller() const {
   return client_adapter_ ? client_adapter_->group_controller()
                          : handle_.group_controller();
+}
+
+uint32_t AssociatedEndpointRustAdapter::AssociateInterface(
+    std::unique_ptr<AssociatedEndpointRustAdapter> endpoint) const {
+  auto* controller = group_controller();
+  if (!controller || !endpoint) {
+    return mojo::kInvalidInterfaceId;
+  }
+  return controller->AssociateInterface(endpoint->PassHandle());
 }
 
 }  // namespace mojo::rust::bindings

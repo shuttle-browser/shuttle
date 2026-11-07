@@ -285,7 +285,7 @@ void SuspiciousSiteControllerDesktop::OnLearnMoreClicked() {
   if (web_contents()) {
     web_contents()->OpenURL(content::OpenURLParams::CreateBrowserInitiated(
                                 GURL(chrome::kSafeBrowsingHelpCenterURL),
-                                WindowOpenDisposition::NEW_FOREGROUND_TAB,
+                                WindowOpenDisposition::kNewForegroundTab,
                                 ui::PAGE_TRANSITION_LINK),
                             /*navigation_handle_callback=*/{});
   }

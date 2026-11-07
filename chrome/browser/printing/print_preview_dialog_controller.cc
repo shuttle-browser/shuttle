@@ -25,6 +25,8 @@
 #include "chrome/grit/generated_resources.h"
 #include "components/guest_view/browser/guest_view_base.h"
 #include "components/web_modal/web_contents_modal_dialog_host.h"
+#include "components/web_modal/web_contents_modal_dialog_manager.h"
+#include "components/web_modal/web_contents_modal_dialog_manager_delegate.h"
 #include "content/public/browser/host_zoom_map.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
@@ -120,7 +122,7 @@ GURL PrintPreviewDialogDelegate::GetDialogContentURL() const {
 }
 
 void PrintPreviewDialogDelegate::GetDialogSize(gfx::Size* size) const {
-  DCHECK(size);
+  CHECK(size, base::NotFatalUntil::M162);
   const gfx::Size kMinDialogSize(800, 480);
   const int kBorder = 25;
   *size = kMinDialogSize;
@@ -178,6 +180,17 @@ void PrintPreviewDialogDelegate::OnCloseContents(WebContents* /* source */,
 
 bool PrintPreviewDialogDelegate::ShouldShowDialogTitle() const {
   return false;
+}
+
+// Returns whether `initiator` currently has somewhere to show a tab-modal
+// dialog.
+bool HasWebContentsModalDialogHost(WebContents* initiator) {
+  WebContents* top_level = guest_view::GuestViewBase::GetTopLevelWebContents(
+      initiator->GetResponsibleWebContents());
+  auto* manager =
+      web_modal::WebContentsModalDialogManager::FromWebContents(top_level);
+  return manager && manager->delegate() &&
+         manager->delegate()->GetWebContentsModalDialogHost(top_level);
 }
 
 }  // namespace
@@ -238,7 +251,7 @@ WebContents* PrintPreviewDialogController::GetOrCreatePreviewDialog(
     WebContents* initiator,
     const mojom::RequestPrintPreviewParams& params,
     bool is_pdf) {
-  DCHECK(initiator);
+  CHECK(initiator, base::NotFatalUntil::M162);
 
   // Get the print preview dialog for `initiator`.
   WebContents* preview_dialog = GetPrintPreviewForContents(initiator);
@@ -252,6 +265,12 @@ WebContents* PrintPreviewDialogController::GetOrCreatePreviewDialog(
   // these through. In the future we may want to restrict printing to tabs.
   tabs::TabInterface* tab = tabs::TabInterface::MaybeGetFromContents(initiator);
   if (tab && !tab->CanShowModalUI()) {
+    return nullptr;
+  }
+
+  // Do nothing if a non-tab initiator has no WebContentsModalDialogHost to
+  // host the print preview dialog.
+  if (!tab && !HasWebContentsModalDialogHost(initiator)) {
     return nullptr;
   }
 
@@ -274,6 +293,13 @@ WebContents* PrintPreviewDialogController::GetPrintPreviewForContents(
     }
   }
   return nullptr;
+}
+
+void PrintPreviewDialogController::CancelPrintPreview(WebContents* initiator) {
+  CHECK(initiator);
+  if (GetPrintPreviewForContents(initiator)) {
+    RemoveInitiator(initiator);
+  }
 }
 
 WebContents* PrintPreviewDialogController::GetInitiator(
@@ -510,7 +536,7 @@ void PrintPreviewDialogController::SaveInitiatorTitle(
 void PrintPreviewDialogController::RemoveInitiator(
     WebContents* initiator) {
   WebContents* preview_dialog = GetPrintPreviewForContents(initiator);
-  DCHECK(preview_dialog);
+  CHECK(preview_dialog, base::NotFatalUntil::M162);
   // Update the map entry first, so when the print preview dialog gets destroyed
   // and reaches RemovePreviewDialog(), it does not attempt to also remove the
   // initiator's observers.

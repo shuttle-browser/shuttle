@@ -16,17 +16,16 @@
 #endif
 
 // static
-void TabDialogs::CreateForWebContents(content::WebContents* contents) {
-  DCHECK(contents);
-  if (!FromWebContents(contents)) {
-    contents->SetUserData(UserDataKey(),
-                          std::make_unique<TabDialogsViews>(contents));
-  }
+std::unique_ptr<TabDialogs> TabDialogs::Create(tabs::TabInterface& tab,
+                                               content::WebContents* contents) {
+  CHECK(contents, base::NotFatalUntil::M162);
+  return std::make_unique<TabDialogsViews>(tab, contents);
 }
 
-TabDialogsViews::TabDialogsViews(content::WebContents* contents)
-    : web_contents_(contents) {
-  DCHECK(contents);
+TabDialogsViews::TabDialogsViews(tabs::TabInterface& tab,
+                                 content::WebContents* contents)
+    : TabDialogs(tab), web_contents_(contents) {
+  CHECK(contents, base::NotFatalUntil::M162);
 }
 
 TabDialogsViews::~TabDialogsViews() = default;

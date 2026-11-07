@@ -133,6 +133,18 @@ bool HasWritePermission(const base::FilePath& path) {
 // already exists. Must be called on a sequence which allows blocking.
 base::File::Error CreateCowSwapFile(const storage::FileSystemURL& source_url,
                                     const storage::FileSystemURL& swap_url) {
+  // `clonefile()` operates directly on raw paths and follows symlinks when
+  // `flags` is 0, whereas `LocalFileUtil` hides symlinks by mapping them to
+  // `FILE_ERROR_NOT_FOUND`. Reject symlinks on `source_url` as not found, and
+  // treat a symlink (including a dangling symlink) at `swap_url` as an
+  // existing file so swap creation advances to the next candidate swap name
+  // instead of creating the clone at the symlink's target.
+  if (base::IsLink(source_url.path())) {
+    return base::File::Error::FILE_ERROR_NOT_FOUND;
+  }
+  if (base::IsLink(swap_url.path())) {
+    return base::File::Error::FILE_ERROR_EXISTS;
+  }
   return clonefile(source_url.path().value().c_str(),
                    swap_url.path().value().c_str(),
                    /*flags=*/0) == 0
@@ -182,6 +194,28 @@ void FileSystemAccessFileHandleImpl::AsBlob(AsBlobCallback callback) {
                             nullptr);
     return;
   }
+
+  if (base::FeatureList::IsEnabled(
+          features::kFileSystemAccessDirectoryIterationBlocklistCheck)) {
+    RunWithSensitiveEntryAccess(
+        url(), display_name(), HandleType::kFile,
+        AccessTrigger::kProgrammaticRead,
+        base::BindOnce(&FileSystemAccessFileHandleImpl::DoAsBlob,
+                       weak_factory_.GetWeakPtr()),
+        base::BindOnce([](AsBlobCallback callback) {
+          std::move(callback).Run(file_system_access_error::FromStatus(
+                                      FileSystemAccessStatus::kSecurityError),
+                                  base::File::Info(), nullptr);
+        }),
+        std::move(callback));
+    return;
+  }
+
+  DoAsBlob(std::move(callback));
+}
+
+void FileSystemAccessFileHandleImpl::DoAsBlob(AsBlobCallback callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   // TODO(mek): Check backend::SupportsStreaming and create snapshot file if
   // streaming is not supported.

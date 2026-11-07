@@ -12,6 +12,7 @@ source_set("omnibox") {
     "omnibox_context_menu_mixin.h",
     "omnibox_full_popup_webui_content.h",
     "omnibox_header_view.h",
+    "omnibox_latency_tracker.h",
     "omnibox_local_answer_header_view.h",
     "omnibox_match_cell_view.h",
     "omnibox_mouse_enter_exit_handler.h",
@@ -52,6 +53,7 @@ source_set("omnibox") {
     "//chrome/browser/ui/tabs:tabs_public",
     "//chrome/browser/ui/views/frame:app_menu_button_observer",
     "//chrome/browser/ui/webui/cr_components/searchbox",
+    "//chrome/browser/ui/webui/omnibox_popup/mojom",
     "//chrome/browser/ui/webui/top_chrome",
     "//components/omnibox/browser",
     "//components/omnibox/common",
@@ -72,6 +74,10 @@ source_set("omnibox") {
     "//ui/views",
     "//ui/views/controls/webview",
   ]
+
+  if (is_chromeos) {
+    public_deps += [ "//ui/base/ime/ash" ]
+  }
 }
 
 source_set("impl") {
@@ -80,6 +86,7 @@ source_set("impl") {
     "omnibox_context_menu_mixin.cc",
     "omnibox_full_popup_webui_content.cc",
     "omnibox_header_view.cc",
+    "omnibox_latency_tracker.cc",
     "omnibox_local_answer_header_view.cc",
     "omnibox_match_cell_view.cc",
     "omnibox_mouse_enter_exit_handler.cc",
@@ -111,7 +118,6 @@ source_set("impl") {
     "//chrome/app/vector_icons",
     "//chrome/browser:file_select_helper",
     "//chrome/browser/external_protocol",
-    "//chrome/browser/history_clusters",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/page_load_metrics",
     "//chrome/browser/profiles:profile",
@@ -138,6 +144,7 @@ source_set("impl") {
     "//chrome/browser/ui/webui/searchbox",
     "//chrome/browser/ui/webui/top_chrome",
     "//chrome/common:buildflags",
+    "//components/input",
     "//components/omnibox/browser",
     "//components/omnibox/common",
     "//components/permissions",
@@ -145,6 +152,7 @@ source_set("impl") {
     "//components/search",
     "//components/search_engines",
     "//components/security_state/core",
+    "//components/startup_metric_utils",
     "//components/strings:components_strings",
     "//components/url_formatter",
     "//components/vector_icons",
@@ -155,23 +163,8 @@ source_set("impl") {
     "//ui/strings:ui_strings_grit",
   ]
 
-  # These .cc files include headers still compiled in //chrome/browser/ui:ui:
-  # browser.h, view_ids.h, views/frame/browser_view.h,
-  # views/frame/contents_web_view.h and views/theme_copying_widget.h. Reach
-  # them via browser_public_dependencies; the reverse edge is the
-  # allow_circular_includes_from entry on //chrome/browser/ui:ui.
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
-
   if (is_mac) {
     deps += [ ":native_widget_mac" ]
-  }
-
-  if (is_chromeos) {
-    deps += [
-      "//ui/aura",
-      "//ui/wm",
-      "//ui/wm/public",
-    ]
   }
 }
 

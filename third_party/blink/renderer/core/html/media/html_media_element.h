@@ -262,6 +262,7 @@ class CORE_EXPORT HTMLMediaElement
   TimeRanges* played();
   WebTimeRanges SeekableInternal() const;
   TimeRanges* seekable() const;
+  bool CanSeekTo(double time) const;
   bool ended() const;
   bool Autoplay() const;
   bool Loop() const;
@@ -1027,7 +1028,7 @@ class CORE_EXPORT HTMLMediaElement
 
   // AudioSourceProviderImpl wraps a WebAudioSourceProvider.
   // provideInput() calls into Chromium to get a rendered audio stream.
-  class AudioSourceProviderImpl final : public AudioSourceProvider {
+  class CORE_EXPORT AudioSourceProviderImpl final : public AudioSourceProvider {
     DISALLOW_NEW();
 
    public:
@@ -1096,8 +1097,7 @@ class CORE_EXPORT HTMLMediaElement
 
   Member<AutoplayPolicy> autoplay_policy_;
 
-  raw_ptr<RemotePlaybackClient, UnprotectedInRelease | DanglingUntriaged>
-      remote_playback_client_ = nullptr;
+  Member<RemotePlaybackClient> remote_playback_client_;
 
   Member<MediaControls> media_controls_;
   Member<HTMLMediaElementControlsList> controls_list_;
@@ -1130,12 +1130,9 @@ class CORE_EXPORT HTMLMediaElement
 template <>
 struct DowncastTraits<HTMLMediaElement> {
   static bool AllowFrom(const Node& node) {
-    auto* html_element = DynamicTo<HTMLElement>(node);
-    return html_element && AllowFrom(*html_element);
-  }
-  static bool AllowFrom(const HTMLElement& html_element) {
-    return html_element.HasTagName(html_names::kAudioTag) ||
-           html_element.HasTagName(html_names::kVideoTag);
+    const ElementType type = node.GetElementType();
+    return type == ElementType::kHTMLAudioElement ||
+           type == ElementType::kHTMLVideoElement;
   }
 };
 

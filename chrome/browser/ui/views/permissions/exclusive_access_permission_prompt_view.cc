@@ -129,14 +129,13 @@ void ExclusiveAccessPermissionPromptView::Show() {
 }
 
 void ExclusiveAccessPermissionPromptView::CreateWidget() {
-  DCHECK(GetNativeWindow());
+  CHECK(GetNativeWindow(), base::NotFatalUntil::M162);
   views::Widget* widget = views::BubbleDialogDelegateView::CreateBubble(this);
 
   widget->SetZOrderSublevel(ChromeWidgetSublevel::kSublevelSecurity);
 }
 
 void ExclusiveAccessPermissionPromptView::AddedToWidget() {
-  StartTrackingPictureInPictureOcclusion();
 
   auto title_container = std::make_unique<views::FlexLayoutView>();
   title_container->SetOrientation(views::LayoutOrientation::kHorizontal);

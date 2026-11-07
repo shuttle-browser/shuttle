@@ -108,7 +108,8 @@ void PictureLayer::SetForceUpdateRecordingSource() {
 
 bool PictureLayer::RequiresSetNeedsDisplayOnHdrHeadroomChange() const {
   if (const DisplayItemList* display_list = GetDisplayItemList()) {
-    return display_list->content_color_usage() == gfx::ContentColorUsage::kHDR;
+    return display_list->content_color_volume().GetContentColorUsage() ==
+           gfx::ContentColorUsage::kHDR;
   }
   return false;
 }
@@ -138,7 +139,7 @@ bool PictureLayer::Update() {
 
   updated |= recording_source.Update(
       bounds(), layer_tree_host()->recording_scale_factor(), *client_,
-      last_updated_invalidation_.Write(*this));
+      last_updated_invalidation_.Write(*this), id());
 
   if (!updated) {
     return false;
@@ -173,6 +174,9 @@ sk_sp<const SkPicture> PictureLayer::GetPicture() const {
 
 void PictureLayer::ClearClient() {
   client_ = nullptr;
+  if (IsAttached() && layer_tree_host()->in_will_commit()) {
+    return;
+  }
   UpdateDrawsContent();
 }
 

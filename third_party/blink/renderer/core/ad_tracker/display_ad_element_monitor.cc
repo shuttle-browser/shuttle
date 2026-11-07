@@ -6,21 +6,28 @@
 
 #include <cstdlib>
 
+#include "base/feature_list.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-blink.h"
+#include "third_party/blink/renderer/core/dom/shadow_root.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_client.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
+#include "third_party/blink/renderer/core/html/html_frame_owner_element.h"
 #include "third_party/blink/renderer/core/layout/hit_test_location.h"
 #include "third_party/blink/renderer/core/layout/hit_test_result.h"
+#include "third_party/blink/renderer/core/layout/layout_box_model_object.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/layout/layout_object_inlines.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/layout/map_coordinates_flags.h"
 #include "third_party/blink/renderer/core/page/page.h"
+#include "third_party/blink/renderer/core/page/scrolling/sticky_position_scrolling_constraints.h"
 #include "third_party/blink/renderer/core/paint/timing/paint_timing.h"
 #include "third_party/blink/renderer/core/probe/core_probes.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "ui/gfx/geometry/point_conversions.h"
+#include "ui/gfx/geometry/rect_conversions.h"
 #include "ui/gfx/geometry/size_conversions.h"
 
 namespace blink {
@@ -69,16 +76,32 @@ bool MeetsLargeStickyAdGeometry(const gfx::Rect& main_frame_viewport,
   return is_large && is_at_bottom;
 }
 
-// Determines whether the ad element or its containing block chain is static
-// w.r.t. the viewport.
-//
-// In-flow (static) elements flow with the document and cannot be sticky on
-// their own. Identifying them allows filtering out false positives caused by
-// layout shifts (e.g., scroll anchoring adjusting the scroll offset when
-// content expands above the viewport, while keeping the ad stationary in the
-// viewport).
-bool IsOutermostContainerStatic(Element* element) {
+// How the ad is positioned w.r.t. the main frame's document. For an ad in a
+// subframe, its frame owner is evaluated.
+struct AdPositioning {
+  // Whether the ad's outermost container is static, i.e., the ad flows with the
+  // document. In-flow elements cannot be sticky on their own, except via
+  // `position: sticky`. Identifying them allows filtering out false positives
+  // caused by layout shifts (e.g., scroll anchoring adjusting the scroll offset
+  // when content expands above the viewport, while keeping the ad stationary in
+  // the viewport).
+  bool is_in_flow;
+
+  // How far `position: sticky` currently shifts the ad vertically, counting
+  // only boxes that stick to the main frame's viewport.
+  int viewport_sticky_offset_y;
+};
+
+AdPositioning ComputeAdPositioning(Element* element) {
   DCHECK(element);
+
+  // Subframe content moves with the main frame's scroll as its frame owner
+  // does, so evaluate the outermost rendered frame owner instead.
+  HTMLFrameOwnerElement* owner = element->GetDocument().LocalOwner();
+  while (owner && owner->GetLayoutObject()) {
+    element = owner;
+    owner = owner->GetDocument().LocalOwner();
+  }
 
   LayoutView* layout_view = element->GetDocument().GetLayoutView();
   LayoutObject* object = element->GetLayoutObject();
@@ -91,17 +114,60 @@ bool IsOutermostContainerStatic(Element* element) {
   // directly under LayoutView. Because the element is attached and in a clean
   // post-paint state, Container() is guaranteed to reach LayoutView.
   LayoutObject* candidate = nullptr;
+  LayoutUnit viewport_sticky_offset_y;
   for (; object != layout_view; object = object->Container()) {
     DCHECK(object);
     candidate = object;
+
+    if (object->IsStickyPositioned()) {
+      const auto* y_data =
+          To<LayoutBoxModelObject>(object)->StickyConstraints().AxisData(
+              PhysicalAxis::kVertical);
+      if (y_data &&
+          y_data->containing_scroll_container_layer == layout_view->Layer()) {
+        viewport_sticky_offset_y += y_data->sticky_offset;
+      }
+    }
   }
 
   DCHECK(candidate);
 
   // 'candidate' is the outermost object whose position depends on the
   // document (e.g., <html> for in-flow content, or a fixed/absolute element).
-  const ComputedStyle& style = candidate->StyleRef();
-  return style.GetPosition() == EPosition::kStatic;
+  return {.is_in_flow = candidate->Style().GetPosition() == EPosition::kStatic,
+          .viewport_sticky_offset_y = viewport_sticky_offset_y.Round()};
+}
+
+// Returns whether `hit_element`, one of the elements hit at a sample point, is
+// rendered by `element` itself: `element` proper, an internal of its user-agent
+// shadow tree (e.g., the media controls of a <video>), or the content of a
+// frame it owns (e.g., an ad <iframe>). Other descendants are deliberately not
+// included: they are distinct content covering `element` (e.g., page content
+// inside a <body> whose background image is an ad), and an ad-related
+// descendant is monitored on its own.
+bool IsRenderedByElement(const Element* hit_element, const Element& element) {
+  for (const Element* current = hit_element; current;) {
+    if (current == &element) {
+      return true;
+    }
+    if (current->GetDocument() != element.GetDocument()) {
+      current = current->GetDocument().LocalOwner();
+    } else if (current->IsInUserAgentShadowRoot()) {
+      current = current->OwnerShadowHost();
+    } else {
+      return false;
+    }
+  }
+  return false;
+}
+
+// Returns whether `node` is a box that paints nothing itself (no background,
+// border or box-shadow), e.g., a transparent overlay hosting the controls of a
+// video player.
+bool IsTransparentBox(const Node& node) {
+  const LayoutObject* object = node.GetLayoutObject();
+  return node.IsElementNode() && object && object->IsBox() &&
+         !object->IsLayoutReplaced() && !object->HasBoxDecorationBackground();
 }
 
 }  // namespace
@@ -123,6 +189,24 @@ void DisplayAdElementMonitor::UpdateToVideoAd() {
 
   if (is_sticky_ad_ && !is_sticky_video_ad_) {
     UpdateToStickyVideoAd();
+  }
+}
+
+void DisplayAdElementMonitor::SetIsOverlayPopupAd() {
+  if (is_overlay_popup_ad_) {
+    return;
+  }
+  is_overlay_popup_ad_ = true;
+
+  // Repaint so the ad highlight picks up the "popup" label. This only affects
+  // painting when the highlight is currently shown and labels are enabled; if
+  // the highlight is turned on later, DidFinishLifecycleUpdate() invalidates
+  // paint on that transition.
+  if (should_highlight_ &&
+      base::FeatureList::IsEnabled(features::kAdHighlightLabel)) {
+    if (auto* layout_object = element_->GetLayoutObject()) {
+      layout_object->SetShouldDoFullPaintInvalidation();
+    }
   }
 }
 
@@ -310,23 +394,40 @@ DisplayAdElementMonitor::CheckOverlayVisibility(
 
   HitTestLocation location(intersection_rect_center);
 
+  // Collect all the nodes at the sample point, so that a transparent box in
+  // front of the element (e.g., an overlay hosting video controls) can be
+  // looked through.
   HitTestRequest::HitTestRequestType hit_type =
       HitTestRequest::kReadOnly | HitTestRequest::kAllowChildFrameContent |
       HitTestRequest::kIgnoreZeroOpacityObjects |
-      HitTestRequest::kHitTestVisualOverflow;
+      HitTestRequest::kHitTestVisualOverflow | HitTestRequest::kListBased |
+      HitTestRequest::kPenetratingList;
 
-  HitTestRequest request(hit_type, /*stop_node=*/element_->GetLayoutObject());
+  // No stop node on purpose: it would skip the element's descendants, so a
+  // container (e.g., a <body> whose background image is an ad) covered by
+  // non-ad content would still be hit. Instead, descend fully and decide
+  // afterwards whether the front-most content is rendered by the element.
+  HitTestRequest request(hit_type);
   HitTestResult result(request, location);
 
   main_frame.ContentLayoutObject()->HitTestNoLifecycleUpdate(location, result);
 
-  Node* inner_node = result.InnerNode();
-
-  if (!inner_node || inner_node->GetDomNodeId() != element_->GetDomNodeId()) {
-    return OverlayVisibility::kInvisible;
+  // Walk the nodes from front to back, skipping transparent boxes.
+  for (const auto& node : result.ListBasedTestResult()) {
+    // Like `InnerElement()`, map a text node or a pseudo-element to its parent
+    // element.
+    const Element* hit_element =
+        node->IsElementNode() && !node->IsPseudoElement()
+            ? To<Element>(node.Get())
+            : node->parentElement();
+    if (IsRenderedByElement(hit_element, *element_)) {
+      return OverlayVisibility::kVisible;
+    }
+    if (!IsTransparentBox(*node)) {
+      break;
+    }
   }
-
-  return OverlayVisibility::kVisible;
+  return OverlayVisibility::kInvisible;
 }
 
 DisplayAdElementMonitor::OverlayVisibility
@@ -351,11 +452,12 @@ DisplayAdElementMonitor::CalculateStickyAdState(
   int current_scroll_position =
       local_root_main_frame.GetOutermostMainFrameScrollPosition().y();
   int current_ad_y_position_in_viewport = rect_in_viewport.y();
+  AdPositioning positioning = ComputeAdPositioning(element_.Get());
 
   if (!sticky_ad_measurement_) {
-    sticky_ad_measurement_ = {current_scroll_position,
-                              current_ad_y_position_in_viewport,
-                              rect_in_viewport.height()};
+    sticky_ad_measurement_ = {
+        current_scroll_position, current_ad_y_position_in_viewport,
+        rect_in_viewport.height(), positioning.viewport_sticky_offset_y};
   } else {
     // Allow a tolerance (20% of the ad's height) to handle JS-driven sticky ads
     // that are not pixel-perfectly sticky but quickly reposition themselves to
@@ -368,9 +470,9 @@ DisplayAdElementMonitor::CalculateStickyAdState(
     if (y_difference > tolerance) {
       // The ad has moved beyond the tolerance. Discard the previous anchor and
       // establish a new one.
-      sticky_ad_measurement_ = {current_scroll_position,
-                                current_ad_y_position_in_viewport,
-                                rect_in_viewport.height()};
+      sticky_ad_measurement_ = {
+          current_scroll_position, current_ad_y_position_in_viewport,
+          rect_in_viewport.height(), positioning.viewport_sticky_offset_y};
     } else {
       // If the scroll position changes substantially (by more than the ad's
       // height) and the current y-position in the viewport hasn't changed
@@ -379,12 +481,18 @@ DisplayAdElementMonitor::CalculateStickyAdState(
       // Requiring a scroll distance greater than the ad's height prevents
       // transient sticky ads from being inadvertently categorized (e.g.,
       // parallax or scroller ads that will soon dismiss after a short scroll).
-      if (std::abs(current_scroll_position -
-                   sticky_ad_measurement_->viewport_scroll_position) >
-          sticky_ad_measurement_->ad_height) {
+      int scroll_delta = current_scroll_position -
+                         sticky_ad_measurement_->viewport_scroll_position;
+      if (std::abs(scroll_delta) > sticky_ad_measurement_->ad_height) {
         // Avoid declaring in-flow elements sticky when layout shifts (e.g.,
-        // scroll anchoring) alter scroll offset without moving the element.
-        if (IsOutermostContainerStatic(element_.Get())) {
+        // scroll anchoring) alter scroll offset without moving the element,
+        // unless `position: sticky` kept them in place (i.e., their sticky
+        // offset changed along with the scroll offset).
+        int sticky_offset_delta =
+            positioning.viewport_sticky_offset_y -
+            sticky_ad_measurement_->viewport_sticky_offset_y;
+        if (positioning.is_in_flow &&
+            std::abs(scroll_delta - sticky_offset_delta) > tolerance) {
           sticky_ad_measurement_.reset();
           return OverlayVisibility::kSkipped;
         }

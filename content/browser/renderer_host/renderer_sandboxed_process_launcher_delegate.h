@@ -5,11 +5,18 @@
 #ifndef CONTENT_BROWSER_RENDERER_HOST_RENDERER_SANDBOXED_PROCESS_LAUNCHER_DELEGATE_H_
 #define CONTENT_BROWSER_RENDERER_HOST_RENDERER_SANDBOXED_PROCESS_LAUNCHER_DELEGATE_H_
 
+#include <optional>
+
 #include "base/command_line.h"
 #include "build/build_config.h"
 #include "content/browser/sandboxed_process_launcher_delegate.h"
 #include "content/common/content_export.h"
 #include "sandbox/policy/mojom/sandbox.mojom.h"
+
+#if BUILDFLAG(IS_WIN)
+#include "content/public/browser/content_browser_client.h"
+#include "content/public/common/child_process_id.h"
+#endif
 
 namespace content {
 // NOTE: changes to this class need to be reviewed by the security team.
@@ -39,7 +46,10 @@ class CONTENT_EXPORT RendererSandboxedProcessLauncherDelegateWin
  public:
   RendererSandboxedProcessLauncherDelegateWin(const base::CommandLine& cmd_line,
                                               bool is_pdf_renderer,
-                                              bool is_jit_disabled);
+                                              bool is_jit_disabled,
+                                              ChildProcessId render_process_id);
+  ~RendererSandboxedProcessLauncherDelegateWin() override;
+
   // sandbox::policy::SandboxDelegate:
   std::string GetSandboxTag() override;
   bool InitializeConfig(sandbox::TargetConfig* config) override;
@@ -55,6 +65,9 @@ class CONTENT_EXPORT RendererSandboxedProcessLauncherDelegateWin
   const bool is_pdf_renderer_ = false;
   const bool restrict_core_sharing_ = false;
   bool dynamic_code_can_be_disabled_ = false;
+  // The sandbox policy extension captured on the UI thread at construction.
+  const std::optional<ContentBrowserClient::RendererSandboxPolicyExtension>
+      sandbox_policy_extension_;
 };
 #endif  // BUILDFLAG(IS_WIN)
 

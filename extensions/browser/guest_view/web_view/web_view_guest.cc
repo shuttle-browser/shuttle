@@ -162,19 +162,19 @@ uint32_t GetStoragePartitionRemovalMask(uint32_t web_view_removal_mask) {
 std::string WindowOpenDispositionToString(
     WindowOpenDisposition window_open_disposition) {
   switch (window_open_disposition) {
-    case WindowOpenDisposition::IGNORE_ACTION:
+    case WindowOpenDisposition::kIgnoreAction:
       return "ignore";
-    case WindowOpenDisposition::SAVE_TO_DISK:
+    case WindowOpenDisposition::kSaveToDisk:
       return "save_to_disk";
-    case WindowOpenDisposition::CURRENT_TAB:
+    case WindowOpenDisposition::kCurrentTab:
       return "current_tab";
-    case WindowOpenDisposition::NEW_BACKGROUND_TAB:
+    case WindowOpenDisposition::kNewBackgroundTab:
       return "new_background_tab";
-    case WindowOpenDisposition::NEW_FOREGROUND_TAB:
+    case WindowOpenDisposition::kNewForegroundTab:
       return "new_foreground_tab";
-    case WindowOpenDisposition::NEW_WINDOW:
+    case WindowOpenDisposition::kNewWindow:
       return "new_window";
-    case WindowOpenDisposition::NEW_POPUP:
+    case WindowOpenDisposition::kNewPopup:
       return "new_popup";
     default:
       return "";
@@ -810,14 +810,11 @@ void WebViewGuest::CloseContents(WebContents* source) {
   GuestClose();
 }
 
-void WebViewGuest::FindReply(WebContents* source,
-                             int request_id,
-                             int number_of_matches,
-                             const gfx::Rect& selection_rect,
-                             int active_match_ordinal,
-                             bool final_update) {
-  GuestViewBase::FindReply(source, request_id, number_of_matches,
-                           selection_rect, active_match_ordinal, final_update);
+void WebViewGuest::DidReceiveFindReply(int request_id,
+                                       int number_of_matches,
+                                       const gfx::Rect& selection_rect,
+                                       int active_match_ordinal,
+                                       bool final_update) {
   find_helper_.FindReply(request_id, number_of_matches, selection_rect,
                          active_match_ordinal, final_update);
 }
@@ -1492,14 +1489,7 @@ void WebViewGuest::RenderFrameCreated(
     return;
   }
 
-  PushWebViewStateToIOThread(render_frame_host);
-
-  if (!render_frame_host->GetParentOrOuterDocument()) {
-    ExtensionWebContentsObserver::GetForWebContents(web_contents())
-        ->GetLocalFrameChecked(render_frame_host)
-        .SetFrameName(name_);
-    SetTransparency(render_frame_host);
-  }
+  ApplyWebViewStateToRenderFrameHost(render_frame_host);
 }
 
 void WebViewGuest::RenderFrameDeleted(
@@ -1541,6 +1531,19 @@ void WebViewGuest::RenderFrameHostChanged(content::RenderFrameHost* old_host,
     WebViewRendererState::GetInstance()->RemoveGuest(
         old_host->GetProcess()->GetDeprecatedID(), old_host->GetRoutingID());
   }
+
+  // When a guest opens a popup, a new `WebViewGuest` is initially created in
+  // an unattached state (before the embedder attaches a `<webview>` element
+  // with its `view_instance_id`, content scripts, and `name` attribute). In
+  // MPArch, the popup's initial navigation starts before attachment (paused at
+  // `WillStartRequest()` by `CreateWindowThrottle`) and can create a
+  // speculative RenderFrameHost (`new_host`) whose `RenderFrameCreated()` runs
+  // while the guest is still unattached. When the embedder subsequently
+  // attaches the `<webview>`, `WillAttachToEmbedder()` and
+  // `DidAttachToEmbedder()` (`SetName()`, etc.) only update
+  // `GetGuestMainFrame()` (`old_host`), not the speculative `new_host`. Apply
+  // the post-attachment state to `new_host` when it swaps in.
+  ApplyWebViewStateToRenderFrameHost(new_host);
 }
 
 void WebViewGuest::ReportFrameNameChange(const std::string& name) {
@@ -1577,6 +1580,16 @@ void WebViewGuest::PushWebViewStateToIOThread(
   WebViewRendererState::GetInstance()->AddGuest(
       guest_host->GetProcess()->GetDeprecatedID(), guest_host->GetRoutingID(),
       web_view_info);
+}
+
+void WebViewGuest::ApplyWebViewStateToRenderFrameHost(
+    content::RenderFrameHost* render_frame_host) {
+  PushWebViewStateToIOThread(render_frame_host);
+
+  if (!render_frame_host->GetParentOrOuterDocument()) {
+    SetFrameName(render_frame_host);
+    SetTransparency(render_frame_host);
+  }
 }
 
 void WebViewGuest::RequestMediaAccessPermission(
@@ -1683,8 +1696,10 @@ bool WebViewGuest::IsPermissionRequestable(ContentSettingsType type) const {
 }
 
 std::optional<content::PermissionResult> WebViewGuest::OverridePermissionResult(
-    ContentSettingsType type) const {
-  auto result = web_view_permission_helper_->OverridePermissionResult(type);
+    ContentSettingsType type,
+    const url::Origin& requesting_origin) const {
+  auto result = web_view_permission_helper_->OverridePermissionResult(
+      type, requesting_origin);
   if (result) {
     return result;
   }
@@ -1702,8 +1717,9 @@ std::optional<content::PermissionResult> WebViewGuest::OverridePermissionResult(
 
   if (IsOwnedByControlledFrameEmbedder()) {
     // Permission of content within a Controlled Frame is isolated.
-    // Therefore, Controlled Frame decides what the immediate permission result
-    // is.
+    // If not overridden above (e.g. by an active ephemeral grant), Controlled
+    // Frame returns ASK so that permissions never leak from the profile's
+    // HostContentSettingsMap.
     if (permission_type == blink::PermissionType::AUDIO_CAPTURE ||
         permission_type == blink::PermissionType::VIDEO_CAPTURE ||
         permission_type == blink::PermissionType::CLIPBOARD_READ_WRITE ||
@@ -1905,9 +1921,7 @@ void WebViewGuest::SetName(const std::string& name) {
   if (!GetGuestMainFrame()->IsRenderFrameLive()) {
     return;
   }
-  ExtensionWebContentsObserver::GetForWebContents(web_contents())
-      ->GetLocalFrameChecked(GetGuestMainFrame())
-      .SetFrameName(name_);
+  SetFrameName(GetGuestMainFrame());
 }
 
 void WebViewGuest::SetSpatialNavigationEnabled(bool enabled) {
@@ -1970,6 +1984,13 @@ bool WebViewGuest::IsAudioMuted() {
     CHECK(web_contents());
     return web_contents()->IsAudioMuted();
   }
+}
+
+void WebViewGuest::SetFrameName(content::RenderFrameHost* render_frame_host) {
+  CHECK(render_frame_host->IsRenderFrameLive());
+  ExtensionWebContentsObserver::GetForWebContents(web_contents())
+      ->GetLocalFrameChecked(render_frame_host)
+      .SetFrameName(name_);
 }
 
 void WebViewGuest::SetTransparency(
@@ -2093,7 +2114,7 @@ WebContents* WebViewGuest::OpenURLFromTab(
   // LoadURLWithParams such that if the guest attempts to navigate to a URL that
   // it is not allowed to navigate to, a 'loadabort' event will fire in the
   // embedder, and the guest will be navigated to about:blank.
-  if (params.disposition == WindowOpenDisposition::CURRENT_TAB) {
+  if (params.disposition == WindowOpenDisposition::kCurrentTab) {
     LoadURLWithParams(content::NavigationController::LoadURLParams(params),
                       std::move(navigation_handle_callback),
                       true /* force_navigation */);

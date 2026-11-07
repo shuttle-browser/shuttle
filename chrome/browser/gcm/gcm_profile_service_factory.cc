@@ -16,7 +16,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_key.h"
-#include "chrome/browser/signin/identity_manager_factory.h"
 #include "components/gcm_driver/gcm_profile_service.h"
 #include "components/offline_pages/buildflags/buildflags.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -97,7 +96,7 @@ GCMProfileServiceFactory::GlobalTestingFactory& GetTestingFactory() {
 
 GCMProfileServiceFactory::ScopedTestingFactoryInstaller::
     ScopedTestingFactoryInstaller(GlobalTestingFactory testing_factory) {
-  DCHECK(!GetTestingFactory());
+  CHECK(!GetTestingFactory(), base::NotFatalUntil::M161);
   GetTestingFactory() = std::move(testing_factory);
 }
 
@@ -142,9 +141,7 @@ GCMProfileServiceFactory::GCMProfileServiceFactory()
               // TODO(crbug.com/41488885): Check if this service is needed for
               // Ash Internals.
               .WithAshInternals(ProfileSelection::kOwnInstance)
-              .Build()) {
-  DependsOn(IdentityManagerFactory::GetInstance());
-}
+              .Build()) {}
 
 GCMProfileServiceFactory::~GCMProfileServiceFactory() = default;
 
@@ -153,9 +150,9 @@ GCMProfileServiceFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
   Profile* profile = Profile::FromBrowserContext(context);
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  DCHECK(!profile->IsIncognitoProfile());
+  CHECK(!profile->IsIncognitoProfile(), base::NotFatalUntil::M161);
 #else
-  DCHECK(!profile->IsOffTheRecord());
+  CHECK(!profile->IsOffTheRecord(), base::NotFatalUntil::M161);
 #endif
 
   if (GlobalTestingFactory& testing_factory = GetTestingFactory()) {
@@ -179,7 +176,6 @@ GCMProfileServiceFactory::BuildServiceInstanceForBrowserContext(
           ->GetURLLoaderFactoryForBrowserProcess(),
       content::GetNetworkConnectionTracker(), chrome::GetChannel(),
       gcm::GetProductCategoryForSubtypes(profile->GetPrefs()),
-      IdentityManagerFactory::GetForProfile(profile),
       std::make_unique<GCMClientFactory>(), content::GetUIThreadTaskRunner({}),
       GetNetworkThreadTaskRunner(), blocking_task_runner,
       g_browser_process->os_crypt_async());

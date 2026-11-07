@@ -5,16 +5,24 @@
 #include "ui/decoration/decoration_util.h"
 
 #include <algorithm>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "base/check.h"
 #include "base/check_op.h"
+#include "base/export_template.h"
 #include "base/numerics/safe_conversions.h"
 #include "cc/paint/paint_flags.h"
+#include "third_party/skia/include/core/SkPath.h"
 #include "third_party/skia/include/core/SkRRect.h"
+#include "ui/decoration/highlight_border_value.h"
 #include "ui/gfx/canvas.h"
+#include "ui/gfx/geometry/dip_util.h"
 #include "ui/gfx/geometry/insets.h"
+#include "ui/gfx/geometry/outsets.h"
 #include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/rect_f.h"
 #include "ui/gfx/geometry/rounded_corners_f.h"
 #include "ui/gfx/geometry/skia_conversions.h"
 #include "ui/gfx/scoped_canvas.h"
@@ -24,8 +32,8 @@
 namespace ui::decoration {
 
 // static
-gfx::Insets ShadowGenerator::GetMargins(const gfx::ShadowValues& shadows) {
-  return gfx::ShadowValue::GetMargin(shadows);
+gfx::Outsets ShadowGenerator::GetMargins(const gfx::ShadowValues& shadows) {
+  return gfx::ShadowValue::GetMargin(shadows).ToOutsets();
 }
 
 // static
@@ -108,5 +116,78 @@ gfx::Insets GetInsetsForRoundedCorners(
       base::ClampRound(std::max(rounded_corners.upper_right(),
                                 rounded_corners.lower_right())));
 }
+
+void DrawHighlightBorder(gfx::Canvas* canvas,
+                         const HighlightBorderValue& value,
+                         const gfx::RoundedCornersF& rounded_corners,
+                         const gfx::Rect& bounds) {
+  const int thickness = value.thickness();
+  DCHECK_GT(thickness, 0);
+
+  cc::PaintFlags flags;
+  flags.setStrokeWidth(thickness);
+  flags.setColor(value.border_color());
+  flags.setStyle(cc::PaintFlags::kStroke_Style);
+  flags.setAntiAlias(true);
+
+  const float half_thickness = thickness / 2.0f;
+
+  // Scale bounds and corner radii with the device scale factor so the border
+  // matches the content, but keep the stroke width in physical pixels.
+  gfx::ScopedCanvas scoped_canvas(canvas);
+  const float dsf = canvas->UndoDeviceScaleFactor();
+  const gfx::RectF pixel_bounds = gfx::ConvertRectToPixels(bounds, dsf);
+  const gfx::RoundedCornersF scaled_radii =
+      gfx::ScaleRoundedCorners(rounded_corners, dsf);
+
+  gfx::RectF outer_border_bounds(pixel_bounds);
+  outer_border_bounds.Inset(half_thickness);
+  canvas->DrawPath(SkPath::RRect(gfx::RoundedRectFToSkRRect(outer_border_bounds,
+                                                            scaled_radii)),
+                   flags);
+
+  gfx::RectF inner_border_bounds(pixel_bounds);
+  inner_border_bounds.Inset(thickness + half_thickness);
+  flags.setColor(value.highlight_color());
+  canvas->DrawPath(SkPath::RRect(gfx::RoundedRectFToSkRRect(inner_border_bounds,
+                                                            scaled_radii)),
+                   flags);
+}
+
+// static
+gfx::Outsets HighlightBorderGenerator::GetMargins(
+    const HighlightBorderValue& value) {
+  DCHECK_GT(value.thickness(), 0);
+  return gfx::Outsets();
+}
+
+// static
+gfx::Insets HighlightBorderGenerator::GetNineboxApertureInsets(
+    const HighlightBorderValue& value,
+    const gfx::RoundedCornersF& rounded_corners) {
+  DCHECK_GT(value.thickness(), 0);
+
+  // Both rings' corner arcs end within two thicknesses plus the radius.
+  return gfx::Insets(2 * value.thickness()) +
+         GetInsetsForRoundedCorners(rounded_corners);
+}
+
+// static
+void HighlightBorderGenerator::Draw(gfx::Canvas* canvas,
+                                    const HighlightBorderValue& value,
+                                    const gfx::RoundedCornersF& rounded_corners,
+                                    const gfx::Rect& content_rect) {
+  DrawHighlightBorder(canvas, value, rounded_corners, content_rect);
+}
+
+template class EXPORT_TEMPLATE_DEFINE(COMPONENT_EXPORT(UI_DECORATION))
+    internal::DecorationCache<gfx::ShadowValues, ShadowGenerator>;
+
+template class EXPORT_TEMPLATE_DEFINE(COMPONENT_EXPORT(UI_DECORATION))
+    internal::DecorationCache<HighlightBorderValue, HighlightBorderGenerator>;
+
+template class EXPORT_TEMPLATE_DEFINE(COMPONENT_EXPORT(UI_DECORATION))
+    internal::DecorationCache<ShadowWithHighlightBorderValue,
+                              ShadowWithHighlightBorderGenerator>;
 
 }  // namespace ui::decoration

@@ -175,11 +175,6 @@ group("gn_all") {
       deps += [ "//chrome/enterprise_companion" ]
     }
 
-    if (!is_ios && !is_castos) {
-      if (!is_fuchsia) {
-      }
-    }
-
     if (use_blink) {
       deps += [
         "//cc:cc_unittests",
@@ -232,8 +227,6 @@ group("gn_all") {
         "//third_party/catapult/telemetry:bitmaptools($host_toolchain)",
       ]
       if (!is_android) {
-        if (!is_castos && !is_fuchsia) {
-        }
       } else {
         import("//tools/perf/chrome_telemetry_build/android_browser_types.gni")
         foreach(_target_suffix, telemetry_android_browser_target_suffixes) {
@@ -265,11 +258,6 @@ group("gn_all") {
       deps += [ "//printing:printing_unittests" ]
     }
 
-    if (enable_extensions) {
-      deps += [
-      ]
-    }
-
     if (enable_ml_internal) {
       deps += [
         "//components/optimization_guide/internal:ondevice_model_benchmark",
@@ -287,27 +275,12 @@ group("gn_all") {
       deps += [ "//remoting:remoting_all" ]
     }
 
-    if (toolkit_views) {
-      deps += [
-      ]
-    }
-
-    if (enterprise_watermark && toolkit_views) {
-    }
-
     if (use_aura) {
       deps += [
         "//ui/aura:aura_demo",
         "//ui/aura:aura_unittests",
         "//ui/wm:wm_unittests",
       ]
-    }
-
-    if (!is_android && !is_ios && !is_fuchsia) {
-      deps += [
-      ]
-      if (!is_castos) {
-      }
     }
 
     if (use_ozone) {
@@ -365,8 +338,6 @@ group("gn_all") {
         "//net:net_perftests",
         "//url:url_unittests",
       ]
-      if (is_java_debug && !incremental_install) {
-      }
 
       if (!is_cast_android) {
         deps += [
@@ -497,11 +468,6 @@ group("gn_all") {
         ]
       }
 
-      if (!is_android && !is_castos && !is_ios && !is_fuchsia) {
-        deps += [
-        ]
-      }
-
       if (!is_android && !is_ios) {
         deps += [
           "//net:crash_cache",
@@ -616,9 +582,6 @@ group("gn_all") {
       deps += [ "//third_party/breakpad:symupload($host_toolchain)" ]
     }
 
-    if (is_cast_android || is_castos || (is_fuchsia && enable_cast_receiver)) {
-    }
-
     if (is_cast_android || is_castos) {
       deps += [
         "//chromecast/cast_core:core_runtime_simple",
@@ -633,9 +596,6 @@ group("gn_all") {
       if (!is_android) {
         deps += [ "//third_party/crashpad/crashpad/handler:crashpad_handler" ]
       }
-    }
-
-    if (enable_message_center) {
     }
 
     if (!is_android && !is_ios) {
@@ -683,8 +643,6 @@ group("gn_all") {
       ]
 
       if (target_cpu == "x86" || target_cpu == "x64") {
-        if (!is_android) {
-        }
         deps += [ "//third_party/libjpeg_turbo:simd_asm" ]
       }
       if ((is_linux || is_chromeos) && current_toolchain == host_toolchain) {
@@ -711,10 +669,6 @@ group("gn_all") {
     }
 
     if (enable_vr) {
-      deps += [
-        "//chrome/browser/vr:vr_common_perftests",
-        "//chrome/browser/vr:vr_common_unittests",
-      ]
       if (!is_android) {
         deps += [ "//tools/perf/contrib/vr_benchmarks:vr_perf_tests" ]
       } else {
@@ -785,6 +739,7 @@ group("all_rust") {
     deps += [ "//skia" ]
   }
 }
+
 
 # TODO(https://crbug.com/1112776): ensure remoting is functional on Linux builds with
 # other than X11 Ozone backends.
@@ -904,7 +859,6 @@ if (is_chromeos) {
     data_deps = [
       "//chrome",
       "//chrome/test/chromedriver:chromedriver_server",
-      "//components/policy/test_support:fake_dmserver",
       "//sandbox/linux:chrome_sandbox",
       "//sandbox/linux:sandbox_linux_unittests",
       "//third_party/breakpad:minidump_stackwalk($host_system_allocator_toolchain)",
@@ -1459,9 +1413,6 @@ group("chromium_builder_perf") {
     if (!is_fuchsia) {
       data_deps += [
       ]
-    }
-
-    if (!is_chromeos && !is_fuchsia) {
     }
 
     if (!is_win) {

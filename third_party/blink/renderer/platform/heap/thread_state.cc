@@ -9,6 +9,7 @@
 
 #include "base/functional/callback.h"
 #include "base/notreached.h"
+#include "gin/public/cppgc.h"
 #include "gin/public/v8_platform.h"
 #include "third_party/blink/renderer/platform/bindings/active_script_wrappable_manager.h"
 #include "third_party/blink/renderer/platform/bindings/dom_data_store.h"
@@ -79,8 +80,10 @@ ThreadState* ThreadState::AttachMainThread(
 }
 
 // static
-ThreadState* ThreadState::AttachMainThreadForTesting(v8::Platform* platform) {
-  auto* thread_state = new ThreadState(platform);
+ThreadState* ThreadState::AttachMainThreadForTesting(
+    v8::Platform* platform,
+    std::optional<cppgc::StackStartMarker> stack_start_marker) {
+  auto* thread_state = new ThreadState(platform, stack_start_marker);
   ThreadStateStorage::AttachMainThread(
       *thread_state, thread_state->cpp_heap().GetAllocationHandle(),
       thread_state->cpp_heap().GetHeapHandle());
@@ -89,8 +92,10 @@ ThreadState* ThreadState::AttachMainThreadForTesting(v8::Platform* platform) {
 }
 
 // static
-ThreadState* ThreadState::AttachCurrentThread() {
-  auto* thread_state = new ThreadState(gin::V8Platform::Get());
+ThreadState* ThreadState::AttachCurrentThread(
+    std::optional<cppgc::StackStartMarker> stack_start_marker) {
+  auto* thread_state =
+      new ThreadState(gin::V8Platform::Get(), stack_start_marker);
   ThreadStateStorage::AttachNonMainThread(
       *thread_state, thread_state->cpp_heap().GetAllocationHandle(),
       thread_state->cpp_heap().GetHeapHandle());
@@ -99,8 +104,9 @@ ThreadState* ThreadState::AttachCurrentThread() {
 
 // static
 ThreadState* ThreadState::AttachCurrentThreadForTesting(
-    v8::Platform* platform) {
-  ThreadState* thread_state = new ThreadState(platform);
+    v8::Platform* platform,
+    std::optional<cppgc::StackStartMarker> stack_start_marker) {
+  ThreadState* thread_state = new ThreadState(platform, stack_start_marker);
   ThreadStateStorage::AttachNonMainThread(
       *thread_state, thread_state->cpp_heap().GetAllocationHandle(),
       thread_state->cpp_heap().GetHeapHandle());
@@ -177,6 +183,7 @@ std::unique_ptr<v8::CppHeap> CreateCppHeap(
     std::optional<cppgc::StackStartMarker> stack_start_marker) {
   v8::CppHeapCreateParams params(CustomSpaces::CreateCustomSpaces());
   params.stack_start_marker = std::move(stack_start_marker);
+  params.allocation_sampler = gin::GetCppGCAllocationSampler();
   return v8::CppHeap::Create(platform, params);
 }
 

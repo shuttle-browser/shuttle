@@ -30,6 +30,7 @@ ui::ColorId GetAlertIndicatorColor(TabAlert state,
     case tabs::TabAlert::kPipPlaying:
     case tabs::TabAlert::kGlicAccessing:
     case tabs::TabAlert::kGlicSharing:
+    case tabs::TabAlert::kAiModeSharing:
     case tabs::TabAlert::kActorWaitingOnUser:
     case tabs::TabAlert::kActorAccessing:
       group = 1;
@@ -116,6 +117,7 @@ const gfx::VectorIcon& GetAlertIcon(TabAlert alert_state) {
     case TabAlert::kActorAccessing:
     case TabAlert::kGlicAccessing:
     case TabAlert::kGlicSharing:
+    case TabAlert::kAiModeSharing:
       return kTaskSparkIcon;
     case TabAlert::kNone:
       NOTREACHED();

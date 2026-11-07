@@ -25,6 +25,8 @@ source_set("select_file_policy") {
   ]
 
   if (is_android) {
+  } else {
+    deps += [ "//components/tabs:public" ]
   }
 }
 

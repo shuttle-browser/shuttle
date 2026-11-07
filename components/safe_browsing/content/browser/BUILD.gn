@@ -16,8 +16,6 @@ source_set("safe_browsing_service") {
     "safe_browsing_service_interface.h",
   ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   deps = [
     "//base",
     "//components/safe_browsing/core/browser:referring_app_info",
@@ -44,8 +42,6 @@ if (safe_browsing_mode > 0) {
       "ui_manager.cc",
       "ui_manager.h",
     ]
-
-    configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
     deps = [
       ":browser",
@@ -100,8 +96,6 @@ source_set("browser") {
     "web_contents_key.cc",
     "web_contents_key.h",
   ]
-
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   deps = [
     "//base",
@@ -187,8 +181,6 @@ if (safe_browsing_mode != 0) {
     ]
 
     deps = [
-      "//components/optimization_guide/core",
-      "//components/optimization_guide/proto:optimization_guide_proto",
       "//components/prefs",
       "//components/safe_browsing/content/browser/web_ui",
       "//components/safe_browsing/content/common:interfaces",
@@ -203,8 +195,6 @@ if (safe_browsing_mode != 0) {
       "//net",
       "//net/traffic_annotation",
       "//services/network/public/cpp",
-      "//third_party/tflite_support",
-      "//third_party/tflite_support:tflite_support_proto",
       "//third_party/zlib/google:compression_utils",
       "//url",
     ]
@@ -218,15 +208,17 @@ if (safe_browsing_mode != 0) {
       "safe_browsing_tab_observer.h",
     ]
 
-    configs += [ "//build/config/compiler:wexit_time_destructors" ]
+    public_deps = [
+      "//base",
+      "//components/prefs",
+      "//components/tabs:public",
+      "//ui/base/unowned_user_data",
+    ]
 
     deps = [
       ":client_side_detection_images_cache",
       ":client_side_detection_service",
-      "//base",
-      "//components/optimization_guide/proto:optimization_guide_proto",
       "//components/permissions",
-      "//components/prefs",
       "//components/safe_browsing:buildflags",
       "//components/safe_browsing/content/browser",
       "//components/safe_browsing/content/common:interfaces",
@@ -248,10 +240,12 @@ if (safe_browsing_mode != 0) {
       "//components/security_interstitials/core:unsafe_resource",
       "//components/site_engagement/content",
       "//components/variations",
+      "//components/viz/common",
       "//components/zoom",
       "//content/public/browser",
       "//mojo/public/mojom/base:protobuf_support",
       "//ui/display",
+      "//ui/gfx/codec",
     ]
 
     if (is_android) {

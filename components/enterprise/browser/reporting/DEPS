@@ -1,6 +1,0 @@
-include_rules = [
-  "+components/certificate_matching",
-  "+components/keyed_service/core",
-  "+components/url_matcher",
-  "+extensions/buildflags/buildflags.h",
-]

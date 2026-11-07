@@ -26,6 +26,7 @@
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
+#include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -322,10 +323,7 @@ bool BrowserRootView::OnMouseWheel(const ui::MouseWheelEvent& event) {
   // TODO(dfried): See if it's possible to move this logic deeper into the view
   // hierarchy - ideally to HorizontalTabStripRegionView.
 
-  // Scroll-event-changes-tab is incompatible with vertical tabstrip, so
-  // disable it if the latter feature is enabled.
-  if (browser_defaults::kScrollEventChangesTab &&
-      !browser_view_->ShouldDrawVerticalTabStrip()) {
+  if (browser_defaults::kScrollEventChangesTab) {
     // Switch to the left/right tab if the wheel-scroll happens over the
     // tabstrip, or the empty space beside the tabstrip.
     views::View* hit_view = GetEventHandlerForPoint(event.location());
@@ -386,6 +384,11 @@ bool BrowserRootView::OnMouseWheel(const ui::MouseWheelEvent& event) {
                          event.time_stamp()));
         base::RecordAction(
             base::UserMetricsAction("ScrollToNavigate_PreviousTab"));
+        return true;
+      }
+      // When scrolling over the tab strip switches tabs, consume all wheel
+      // events so they do not also scroll the tab strip's scroll view.
+      if (base::FeatureList::IsEnabled(tabs::kTabStripUnification)) {
         return true;
       }
     }
@@ -459,8 +462,15 @@ void BrowserRootView::PaintChildren(const views::PaintInfo& paint_info) {
       // Except in Mac Immersive Fullscreen where the tabstrip is hosted in
       // `overlay_widget` or `tab_overlay_widget`, each have their own root
       // view.
-      ConvertRectToTarget(tab_strip_view,
+      ConvertRectToTarget(tab_view->parent(),
                           tab_strip_view->GetWidget()->GetRootView(), &bounds);
+
+      // If `tab_strip_view` paints to its own layer, there is no need to clip
+      // under the active tab.
+      if (tab_strip_view->layer()) {
+        bounds.set_y(bounds.bottom());
+        bounds.set_height(0);
+      }
 
       // Extend the bounds to cover the curve at the end of the toolbar.
       bounds.set_height(
@@ -473,7 +483,7 @@ void BrowserRootView::PaintChildren(const views::PaintInfo& paint_info) {
   canvas->UndoDeviceScaleFactor();
 
   const auto* widget = GetWidget();
-  DCHECK(widget);
+  CHECK(widget, base::NotFatalUntil::M162);
 
   const SkColor toolbar_top_separator_color =
       widget->GetColorProvider()->GetColor(
@@ -594,7 +604,7 @@ void BrowserRootView::NavigateToDroppedUrls(
     const ui::DropTargetEvent& event,
     ui::mojom::DragOperation& output_drag_op,
     std::unique_ptr<ui::LayerTreeOwner> drag_image_layer_owner) {
-  DCHECK(drop_info);
+  CHECK(drop_info, base::NotFatalUntil::M162);
 
   BrowserWindowInterface* const browser = browser_view_->browser();
   TabStripModel* const model = browser->GetTabStripModel();
@@ -635,7 +645,7 @@ void BrowserRootView::NavigateToDroppedUrls(
                           ui::PAGE_TRANSITION_LINK);
     params.tabstrip_index = insertion_index;
     base::RecordAction(base::UserMetricsAction("Tab_DropURLOnTab"));
-    params.disposition = WindowOpenDisposition::CURRENT_TAB;
+    params.disposition = WindowOpenDisposition::kCurrentTab;
     params.initiator_origin = event.data().GetRendererTaintedOrigin();
     params.source_contents = model->GetWebContentsAt(insertion_index);
     params.window_action = NavigateParams::WindowAction::kShowWindow;
@@ -650,7 +660,7 @@ void BrowserRootView::NavigateToDroppedUrls(
                           ui::PAGE_TRANSITION_LINK);
     params.tabstrip_index = insertion_index;
     base::RecordAction(base::UserMetricsAction("Tab_DropURLBetweenTabs"));
-    params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
+    params.disposition = WindowOpenDisposition::kNewForegroundTab;
     if (drop_info->index->group_inclusion ==
             DropIndex::GroupInclusion::kIncludeInGroup &&
         insertion_index < model->count()) {

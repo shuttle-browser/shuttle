@@ -142,6 +142,7 @@
 #include "third_party/blink/renderer/core/layout/constraint_space.h"
 #include "third_party/blink/renderer/core/layout/hit_test_result.h"
 #include "third_party/blink/renderer/core/layout/inline/inline_cursor.h"
+#include "third_party/blink/renderer/core/layout/layout_invalidation_reason.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/layout/layout_object_inlines.h"
 #include "third_party/blink/renderer/core/layout/layout_result.h"
@@ -371,6 +372,8 @@ enum ForcePseudoClassFlags {
   kPseudoLink = 1 << 23,
   kPseudoOpen = 1 << 24,
   kPseudoTargetCurrent = 1 << 25,
+  kPseudoBuffering = 1 << 26,
+  kPseudoStalled = 1 << 27,
 };
 
 static unsigned ComputePseudoClassMask(
@@ -402,6 +405,8 @@ static unsigned ComputePseudoClassMask(
   DEFINE_STATIC_LOCAL(String, autofill, ("autofill"));
   DEFINE_STATIC_LOCAL(String, link, ("link"));
   DEFINE_STATIC_LOCAL(String, open, ("open"));
+  DEFINE_STATIC_LOCAL(String, buffering, ("buffering"));
+  DEFINE_STATIC_LOCAL(String, stalled, ("stalled"));
 
   if (!pseudo_class_array || pseudo_class_array->empty())
     return kPseudoNone;
@@ -460,6 +465,10 @@ static unsigned ComputePseudoClassMask(
       result |= kPseudoLink;
     } else if (pseudo_class == open) {
       result |= kPseudoOpen;
+    } else if (pseudo_class == buffering) {
+      result |= kPseudoBuffering;
+    } else if (pseudo_class == stalled) {
+      result |= kPseudoStalled;
     }
   }
   return result;
@@ -912,6 +921,7 @@ void InspectorCSSAgent::Reset() {
 void InspectorCSSAgent::ResetNonPersistentData() {
   ResetPseudoStates();
   ResetStartingStyles();
+  ResetPositionTryOptions();
 }
 
 void InspectorCSSAgent::enable(std::unique_ptr<EnableCallback> prp_callback) {
@@ -1218,6 +1228,12 @@ void InspectorCSSAgent::ForcePseudoState(Element* element,
     case CSSSelector::kPseudoOpen:
       force = forced_pseudo_state & kPseudoOpen;
       break;
+    case CSSSelector::kPseudoBuffering:
+      force = forced_pseudo_state & kPseudoBuffering;
+      break;
+    case CSSSelector::kPseudoStalled:
+      force = forced_pseudo_state & kPseudoStalled;
+      break;
     default:
       break;
   }
@@ -1240,6 +1256,43 @@ void InspectorCSSAgent::ForceStartingStyle(Element* element, bool* result) {
   }
 
   *result = true;
+}
+
+// Sets `*forced_index` to 0 to force the base position (without fallbacks), or
+// to 1..N to force the 1-based index into `position-try-fallbacks`. Leaves
+// `*forced_index` unchanged if no option is forced for `element`.
+void InspectorCSSAgent::ForcePositionTryOption(
+    Element* element,
+    std::optional<wtf_size_t>* forced_index) {
+  if (node_id_to_forced_position_try_option_.empty() || !element) {
+    return;
+  }
+
+  int node_id = dom_agent_->BoundNodeId(element);
+  if (!node_id) {
+    return;
+  }
+
+  auto it = node_id_to_forced_position_try_option_.find(node_id);
+  if (it == node_id_to_forced_position_try_option_.end()) {
+    return;
+  }
+
+  wtf_size_t index = it->value;
+  if (index > 0) {
+    const ComputedStyle* style = element->GetComputedStyle();
+    const PositionTryFallbacks* fallbacks =
+        style ? style->GetPositionTryFallbacks() : nullptr;
+    if (!fallbacks || index - 1 >= fallbacks->GetFallbacks().size() ||
+        !element->GetDocument()
+             .GetStyleEngine()
+             .TrySetFromFallback(fallbacks->GetFallbacks()[index - 1])
+             .has_value()) {
+      index = 0;
+    }
+  }
+
+  *forced_index = index;
 }
 
 protocol::Response InspectorCSSAgent::getMediaQueries(
@@ -3509,6 +3562,51 @@ protocol::Response InspectorCSSAgent::forceStartingStyle(int node_id,
   return protocol::Response::Success();
 }
 
+protocol::Response InspectorCSSAgent::forcePositionTryOption(
+    int node_id,
+    std::optional<int> index) {
+  protocol::Response response = AssertEnabled();
+  if (!response.IsSuccess()) {
+    return response;
+  }
+  Element* element = nullptr;
+  response = dom_agent_->AssertElement(node_id, element);
+  if (!response.IsSuccess()) {
+    return response;
+  }
+  if (index.has_value() && *index < 0) {
+    return protocol::Response::InvalidParams("Index must be non-negative");
+  }
+
+  auto it = node_id_to_forced_position_try_option_.find(node_id);
+  std::optional<wtf_size_t> current_index =
+      it != node_id_to_forced_position_try_option_.end()
+          ? std::optional<wtf_size_t>(it->value)
+          : std::nullopt;
+
+  if (current_index == index) {
+    return protocol::Response::Success();
+  }
+
+  if (index.has_value()) {
+    node_id_to_forced_position_try_option_.Set(node_id, *index);
+  } else {
+    node_id_to_forced_position_try_option_.erase(node_id);
+  }
+
+  if (OutOfFlowData* out_of_flow_data = element->GetOutOfFlowData()) {
+    out_of_flow_data->ClearLastSuccessfulPositionFallback();
+  }
+  element->GetDocument()
+      .GetStyleEngine()
+      .MarkLastSuccessfulPositionFallbackDirtyForElement(*element);
+  if (LayoutObject* layout_object = element->GetLayoutObject()) {
+    layout_object->SetNeedsLayoutAndFullPaintInvalidation(
+        layout_invalidation_reason::kDevtools);
+  }
+  return protocol::Response::Success();
+}
+
 void InspectorCSSAgent::IncrementFocusedCountForAncestors(Element* element) {
   for (Node& ancestor : FlatTreeTraversal::AncestorsOf(*element)) {
     if (!IsA<Element>(ancestor))
@@ -3669,6 +3767,12 @@ void InspectorCSSAgent::CollectMediaQueriesFromStyleSheet(
     CSSStyleSheet* style_sheet,
     protocol::Array<protocol::CSS::CSSMedia>* media_array,
     protocol::Array<protocol::CSS::CSSRuleType>* rule_types) {
+  // A sheet loaded via @import shares its MediaList with the CSSImportRule.
+  // That media is reported from the import rule itself, with the import
+  // rule's source range, by CollectMediaQueriesFromRule().
+  if (style_sheet->ownerRule()) {
+    return;
+  }
   MediaList* media_list = style_sheet->media();
   String source_url;
   if (media_list && media_list->length()) {
@@ -4622,6 +4726,7 @@ void InspectorCSSAgent::WillRemoveDOMNode(Node* node) {
   DCHECK(node_id);
   node_id_to_forced_pseudo_state_.erase(node_id);
   node_id_to_forced_starting_style_.erase(node_id);
+  node_id_to_forced_position_try_option_.erase(node_id);
   computed_style_updated_node_ids_.erase(node_id);
 
   NodeToInspectorStyleSheet::iterator it =
@@ -4716,6 +4821,24 @@ void InspectorCSSAgent::ResetStartingStyles() {
     document->GetStyleEngine().MarkAllElementsForStyleRecalc(
         StyleChangeReasonForTracing::Create(style_change_reason::kInspector));
   }
+}
+
+void InspectorCSSAgent::ResetPositionTryOptions() {
+  for (auto& entry : node_id_to_forced_position_try_option_) {
+    if (auto* element = To<Element>(dom_agent_->NodeForId(entry.key))) {
+      if (OutOfFlowData* out_of_flow_data = element->GetOutOfFlowData()) {
+        out_of_flow_data->ClearLastSuccessfulPositionFallback();
+      }
+      element->GetDocument()
+          .GetStyleEngine()
+          .MarkLastSuccessfulPositionFallbackDirtyForElement(*element);
+      if (LayoutObject* layout_object = element->GetLayoutObject()) {
+        layout_object->SetNeedsLayoutAndFullPaintInvalidation(
+            layout_invalidation_reason::kDevtools);
+      }
+    }
+  }
+  node_id_to_forced_position_try_option_.clear();
 }
 
 HeapVector<Member<CSSStyleDeclaration>> InspectorCSSAgent::MatchingStyles(
@@ -5209,6 +5332,7 @@ protocol::Response InspectorCSSAgent::takeCoverageDelta(
     HeapHashMap<Member<const StyleRule>, Member<CSSStyleRule>> rule_to_css_rule;
     BuildRulesMap(style_sheet, &rule_to_css_rule);
 
+    HeapHashSet<Member<CSSRule>> used_rules;
     for (const auto& used_rule : *entry.value) {
       auto rule_to_css_rule_it = rule_to_css_rule.find(used_rule);
       if (rule_to_css_rule_it == rule_to_css_rule.end())
@@ -5221,13 +5345,13 @@ protocol::Response InspectorCSSAgent::takeCoverageDelta(
       // If the rule comes from an @import'ed file, the `rule_style_sheet` is
       // different from `style_sheet`.
       InspectorStyleSheet* rule_style_sheet = it->value;
-      CSSRule* rule = css_style_rule;
-      while (rule) {
+      for (CSSRule* rule = css_style_rule;
+           rule && used_rules.insert(rule).is_new_entry;
+           rule = rule->parentRule()) {
         if (std::unique_ptr<protocol::CSS::RuleUsage> rule_usage_object =
                 rule_style_sheet->BuildObjectForRuleUsage(rule, true)) {
           (*result)->emplace_back(std::move(rule_usage_object));
         }
-        rule = rule->parentRule();
       }
     }
   }
@@ -5410,6 +5534,7 @@ void InspectorCSSAgent::Trace(Visitor* visitor) const {
   visitor->Trace(weak_factory_);
   visitor->Trace(default_inspector_stylesheets_);
   InspectorBaseAgent::Trace(visitor);
+  InspectorStyleSheetBase::Listener::Trace(visitor);
 }
 
 void InspectorCSSAgent::LocalFontsEnabled(bool* result) {

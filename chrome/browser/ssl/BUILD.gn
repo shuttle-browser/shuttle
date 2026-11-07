@@ -112,10 +112,7 @@ source_set("impl") {
     "typed_navigation_upgrade_throttle.cc",
   ]
 
-  public_deps = [
-    ":ssl",
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = [ ":ssl" ]
 
   deps = [
     "//chrome/browser:browser_process",
@@ -169,6 +166,7 @@ source_set("impl") {
       "//chrome/browser:certificate_viewer",
       "//chrome/browser/extensions",
       "//chrome/browser/ui:browser_commands",
+      "//chrome/browser/ui:browser_tabstrip",
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui/tabs:tab_strip",
     ]

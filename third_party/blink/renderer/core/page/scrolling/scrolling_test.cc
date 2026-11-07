@@ -3025,14 +3025,24 @@ TEST_P(ScrollingTest, ThumbInvalidatesLayer) {
   auto* scroll_node = ScrollNodeByDOMElementId("scroller");
   auto* layer = ScrollbarLayerForScrollNode(
       scroll_node, cc::ScrollbarOrientation::kVertical);
-  // Solid color scrollbars do not repaint (see:
-  // |SolidColorScrollbarLayer::SetNeedsDisplayRect|).
-  if (layer->GetScrollbarLayerType() != cc::ScrollbarLayerBase::kSolidColor) {
-    layer->ResetUpdateRect();
-    ASSERT_TRUE(layer->update_rect().IsEmpty());
+  ASSERT_TRUE(layer);
+  layer->ResetUpdateRect();
+  ASSERT_TRUE(layer->update_rect().IsEmpty());
 
-    auto* scrollable_area = ScrollableAreaByDOMElementId("scroller");
-    scrollable_area->VerticalScrollbar()->SetNeedsPaintInvalidation(kThumbPart);
+  auto* scrollable_area = ScrollableAreaByDOMElementId("scroller");
+  ASSERT_TRUE(scrollable_area);
+  auto* scrollbar = scrollable_area->VerticalScrollbar();
+  ASSERT_TRUE(scrollbar);
+  scrollbar->SetNeedsPaintInvalidation(kThumbPart);
+  if (layer->GetScrollbarLayerType() == cc::ScrollbarLayerBase::kSolidColor) {
+    // SolidColorScrollbarLayer::SetNeedsDisplayRect() does not set update_rect_
+    // because solid color scrollbars do not rasterize on the main thread;
+    // instead, it schedules UpdateLayers() to pull ThumbColor() when
+    // ThumbNeedsRepaint() is true, and damage is tracked on the impl thread via
+    // SolidColorScrollbarLayerImpl::set_color().
+    EXPECT_TRUE(layer->update_rect().IsEmpty());
+    EXPECT_TRUE(scrollbar->ThumbNeedsRepaint());
+  } else {
     EXPECT_FALSE(layer->update_rect().IsEmpty());
   }
 }
@@ -3236,8 +3246,8 @@ TEST_P(UnifiedScrollingSimTest, ScrollNodeForEmbeddedScrollers) {
   RunIdleTasks();
   Compositor().BeginFrame();
 
-  HTMLFrameOwnerElement* iframe = To<HTMLFrameOwnerElement>(
-      GetDocument().getElementById(AtomicString("iframe")));
+  HTMLFrameOwnerElement* iframe =
+      To<HTMLFrameOwnerElement>(GetElementById("iframe"));
   auto* iframe_scrollable_area =
       iframe->contentDocument()->View()->LayoutViewport();
   const auto* iframe_scroll_node =
@@ -3323,8 +3333,8 @@ TEST_P(UnifiedScrollingSimTest, ScrollNodeForNestedEmbeddedScrollers) {
   RunIdleTasks();
   Compositor().BeginFrame();
 
-  HTMLFrameOwnerElement* child_iframe_1 = To<HTMLFrameOwnerElement>(
-      GetDocument().getElementById(AtomicString("child1")));
+  HTMLFrameOwnerElement* child_iframe_1 =
+      To<HTMLFrameOwnerElement>(GetElementById("child1"));
 
   HTMLFrameOwnerElement* child_iframe_2 = To<HTMLFrameOwnerElement>(
       child_iframe_1->contentDocument()->getElementById(
@@ -3544,7 +3554,7 @@ TEST_F(ScrollingSimTest, MAYBE_BasicScroll) {
 
   Compositor().BeginFrame();
 
-  Element* scroller = GetDocument().getElementById(AtomicString("s"));
+  Element* scroller = GetElementById("s");
   LayoutBox* box = To<LayoutBox>(scroller->GetLayoutObject());
   EXPECT_EQ(100, box->ScrolledContentOffset().top);
 }
@@ -3592,7 +3602,7 @@ TEST_F(ScrollingSimTest, MAYBE_BasicScrollClampedToScrollerSize) {
 
   Compositor().BeginFrame();
 
-  Element* scroller = GetDocument().getElementById(AtomicString("s"));
+  Element* scroller = GetElementById("s");
   LayoutBox* box = To<LayoutBox>(scroller->GetLayoutObject());
   EXPECT_EQ(100, box->ScrolledContentOffset().top);
 }
@@ -3612,7 +3622,7 @@ TEST_F(ScrollingSimTest, ImmediateCompositedScroll) {
   )HTML");
 
   Compositor().BeginFrame();
-  Element* scroller = GetDocument().getElementById(AtomicString("s"));
+  Element* scroller = GetElementById("s");
   LayoutBox* box = To<LayoutBox>(scroller->GetLayoutObject());
   EXPECT_EQ(0, GetActiveScrollOffset(box->GetScrollableArea()).y());
 
@@ -3678,7 +3688,7 @@ TEST_F(ScrollingSimTest, CompositedScrollDeferredWithLinkedAnimation) {
       ->mutator_host()
       ->PromoteScrollTimelinesPendingToActive();
 
-  Element* scroller = GetDocument().getElementById(AtomicString("s"));
+  Element* scroller = GetElementById("s");
   LayoutBox* box = To<LayoutBox>(scroller->GetLayoutObject());
 
   WebGestureEvent scroll_begin(
@@ -3827,8 +3837,7 @@ TEST_F(ScrollingSimTest, ScrollTimelineActiveAtBoundary) {
   // First frame: Initial commit creates the cc::Animation etc.
   Compositor().BeginFrame(0.016, /*raster=*/true);
 
-  blink::Animation* animation =
-      GetDocument().getElementById(AtomicString("align"))->getAnimations()[0];
+  blink::Animation* animation = GetElementById("align")->getAnimations()[0];
   cc::Animation* cc_animation =
       animation->GetCompositorAnimation()->CcAnimation();
   cc::ElementId element_id = cc_animation->element_id();
@@ -3856,7 +3865,7 @@ TEST_F(ScrollingSimTest, ScrollTimelineActiveAtBoundary) {
   EXPECT_EQ(gfx::KeyframeModel::RUNNING, keyframe_model_impl->run_state());
 
   // Scroll to the end.
-  GetDocument().getElementById(AtomicString("s"))->setScrollTop(800);
+  GetElementById("s")->setScrollTop(800);
 
   // Third frame: LayerTreeHost::ApplyMutatorEvents dispatches
   // AnimationEvent::STARTED and resets
@@ -3873,7 +3882,7 @@ TEST_F(ScrollingSimTest, ScrollTimelineActiveAtBoundary) {
   // Try reversed playbackRate, and verify that we are also ACTIVE in the case
   // local_time == before_active_boundary_time.
   animation->setPlaybackRate(-1);
-  GetDocument().getElementById(AtomicString("s"))->setScrollTop(0);
+  GetElementById("s")->setScrollTop(0);
   Compositor().BeginFrame(0.016, /*raster=*/true);
   Compositor().BeginFrame(0.016, /*raster=*/true);
 
@@ -3910,7 +3919,7 @@ TEST_F(ScrollingSimTest, ScrollLayoutTriggers) {
   Compositor().BeginFrame();
   ASSERT_EQ(0u, NumObjectsNeedingLayout());
 
-  Element* box = GetDocument().getElementById(AtomicString("box"));
+  Element* box = GetElementById("box");
 
   // Dirty the layout
   box->setAttribute(html_names::kStyleAttr, AtomicString("height: 10px"));
@@ -3949,7 +3958,7 @@ TEST_F(ScrollingSimTest, CompositedScrollbarScrollDoesNotBubble) {
 
   Compositor().BeginFrame();
 
-  Element* scroller = GetDocument().getElementById(AtomicString("scroller"));
+  Element* scroller = GetElementById("scroller");
   ScrollOffset max_offset = scroller->GetLayoutBoxForScrolling()
                                 ->GetScrollableArea()
                                 ->MaximumScrollOffset();

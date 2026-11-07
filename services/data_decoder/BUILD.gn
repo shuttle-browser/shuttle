@@ -27,12 +27,9 @@ source_set("lib") {
     "xml_parser.h",
   ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   deps = [
     "//base",
     "//build:blink_buildflags",
-    "//components/web_package",
     "//mojo/public/cpp/bindings",
     "//net",
     "//skia",

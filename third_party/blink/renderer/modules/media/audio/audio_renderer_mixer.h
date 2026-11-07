@@ -41,7 +41,8 @@ class BLINK_MODULES_EXPORT AudioRendererMixer
   void AddMixerInput(const media::AudioParameters& input_params,
                      media::AudioConverter::InputCallback* input);
   void RemoveMixerInput(const media::AudioParameters& input_params,
-                        media::AudioConverter::InputCallback* input);
+                        media::AudioConverter::InputCallback* input,
+                        media::AudioRendererSink::PauseReason pause_reason);
 
   // Since errors may occur even when no inputs are playing, an error callback
   // must be registered separately from adding a mixer input.
@@ -100,7 +101,9 @@ class BLINK_MODULES_EXPORT AudioRendererMixer
   // Handles physical stream pause when no inputs are playing.  For latency
   // reasons we don't want to immediately pause the physical stream.
   base::TimeDelta pause_delay_ GUARDED_BY(lock_);
-  base::TimeTicks last_play_time_ GUARDED_BY(lock_);
+  // With no inputs, Render() pauses the sink once this time passes. Set at
+  // construction and when the last input is removed.
+  base::TimeTicks pause_deadline_ GUARDED_BY(lock_);
   bool playing_ GUARDED_BY(lock_);
 
   // Set if the mixer receives an error from the sink. Indicates that this

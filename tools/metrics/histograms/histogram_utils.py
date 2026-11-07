@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 
 import setup_modules  # pylint: disable=unused-import
 
+
 import chromium_src.tools.metrics.common.xml_utils as xml_utils
 import chromium_src.tools.metrics.histograms.extract_histograms as extract_histograms
 import chromium_src.tools.metrics.histograms.histogram_paths as histogram_paths
@@ -25,7 +26,9 @@ def get_names(xml_files):
   """Returns all histogram names generated from a list of xml files.
 
   Args:
-    xml_files: A list of open file objects containing histogram definitions.
+    xml_files: A list of filenames or file-like objects containing histogram
+      definitions. Files opened from filenames are closed after parsing;
+      caller-provided streams remain open.
   Returns:
     The set of histogram names.
   """

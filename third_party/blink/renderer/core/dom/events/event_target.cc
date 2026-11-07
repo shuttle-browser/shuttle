@@ -35,6 +35,7 @@
 #include <optional>
 
 #include "base/format_macros.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/time/time.h"
 #include "third_party/blink/renderer/bindings/core/v8/js_based_event_listener.h"
 #include "third_party/blink/renderer/bindings/core/v8/js_event_listener.h"
@@ -78,6 +79,7 @@
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"
+#include "third_party/blink/renderer/platform/wtf/text/format.h"
 #include "third_party/blink/renderer/platform/wtf/text/strcat.h"
 #include "third_party/blink/renderer/platform/wtf/threading.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
@@ -139,11 +141,11 @@ void ReportBlockedEvent(EventTarget& target,
   if (!listener)
     return;
 
-  String message_text =
-      StrCat({"Handling of '", event.type(), "' input event was delayed for ",
-              String::Number(delayed.InMilliseconds()),
-              " ms due to main thread being busy. Consider marking event "
-              "handler as 'passive' to make the page more responsive."});
+  String message_text = Format(
+      "Handling of '{}' input event was delayed for {} ms due to main thread "
+      "being busy. Consider marking event handler as 'passive' to make the "
+      "page more responsive.",
+      event.type(), delayed.InMilliseconds());
   PerformanceMonitor::ReportGenericViolation(
       target.GetExecutionContext(), PerformanceMonitor::kBlockedEvent,
       message_text, delayed, listener->GetSourceLocation(target));
@@ -192,7 +194,8 @@ void CountFiringEventListeners(const Event& event,
   }
 
   struct CountedEvent {
-    const AtomicString& event_type;
+    // RAW_PTR_EXCLUSION: #global-scope
+    RAW_PTR_EXCLUSION const AtomicString& event_type;
     const WebFeature feature;
   };
   static const CountedEvent counted_events[] = {

@@ -19,7 +19,31 @@ const base::TickClock* GetDefaultTickClock() {
 // static
 constexpr base::TimeDelta RecentlyAudibleHelper::kRecentlyAudibleTimeout;
 
+DEFINE_USER_DATA(RecentlyAudibleHelper);
+
+RecentlyAudibleHelper::RecentlyAudibleHelper(tabs::TabInterface& tab,
+                                             content::WebContents* contents)
+    : content::WebContentsObserver(contents),
+      tick_clock_(GetDefaultTickClock()),
+      scoped_unowned_user_data_(tab.GetUnownedUserDataHost(), *this) {
+  if (contents->IsCurrentlyAudible()) {
+    last_audible_time_ = base::TimeTicks::Max();
+  }
+}
+
 RecentlyAudibleHelper::~RecentlyAudibleHelper() = default;
+
+// static
+RecentlyAudibleHelper* RecentlyAudibleHelper::From(tabs::TabInterface* tab) {
+  return tab ? Get(tab->GetUnownedUserDataHost()) : nullptr;
+}
+
+// static
+RecentlyAudibleHelper* RecentlyAudibleHelper::FromWebContents(
+    content::WebContents* contents) {
+  return contents ? From(tabs::TabInterface::MaybeGetFromContents(contents))
+                  : nullptr;
+}
 
 bool RecentlyAudibleHelper::WasEverAudible() const {
   return !last_audible_time_.is_null();
@@ -47,18 +71,9 @@ RecentlyAudibleHelper::RegisterRecentlyAudibleChangedCallback(
   return callback_list_.Add(callback);
 }
 
-RecentlyAudibleHelper::RecentlyAudibleHelper(content::WebContents* contents)
-    : content::WebContentsObserver(contents),
-      content::WebContentsUserData<RecentlyAudibleHelper>(*contents),
-      tick_clock_(GetDefaultTickClock()) {
-  if (contents->IsCurrentlyAudible()) {
-    last_audible_time_ = base::TimeTicks::Max();
-  }
-}
-
 void RecentlyAudibleHelper::OnAudioStateChanged(bool audible) {
   // Redundant notifications should never happen.
-  DCHECK(audible != IsCurrentlyAudible());
+  CHECK(audible != IsCurrentlyAudible(), base::NotFatalUntil::M162);
 
   // If audio is stopping remember the time at which it stopped and set a timer
   // to fire the recently audible transition.
@@ -79,8 +94,8 @@ void RecentlyAudibleHelper::OnAudioStateChanged(bool audible) {
 }
 
 void RecentlyAudibleHelper::OnRecentlyAudibleTimerFired() {
-  DCHECK(last_audible_time_ + kRecentlyAudibleTimeout <=
-         tick_clock_->NowTicks());
+  CHECK(last_audible_time_ + kRecentlyAudibleTimeout <= tick_clock_->NowTicks(),
+        base::NotFatalUntil::M162);
   // Notify of the transition to no longer being recently audible.
   callback_list_.Notify(false);
 
@@ -128,5 +143,3 @@ void RecentlyAudibleHelper::SetNotRecentlyAudibleForTesting() {
 void RecentlyAudibleHelper::FireRecentlyAudibleTimerForTesting() {
   OnRecentlyAudibleTimerFired();
 }
-
-WEB_CONTENTS_USER_DATA_KEY_IMPL(RecentlyAudibleHelper);

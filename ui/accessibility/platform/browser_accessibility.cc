@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <ranges>
 
 #include "base/check.h"
 #include "base/logging.h"
@@ -1000,16 +1001,20 @@ AXPlatformNodeId BrowserAccessibility::GetUniqueId() const {
   return unique_id_;
 }
 
-std::string BrowserAccessibility::SubtreeToStringHelper(size_t level) {
+std::string BrowserAccessibility::SubtreeToStringHelper(size_t level,
+                                                        bool stop_at_document) {
   std::string result(level * 2, '+');
   result += ToString();
+  if (stop_at_document && ui::IsPlatformDocument(GetRole())) {
+    return result + " [document contents omitted]\n";
+  }
   result += '\n';
 
   for (InternalChildIterator it = InternalChildrenBegin();
        it != InternalChildrenEnd(); ++it) {
     BrowserAccessibility* child = it.get();
     DCHECK(child);
-    result += child->SubtreeToStringHelper(level + 1);
+    result += child->SubtreeToStringHelper(level + 1, stop_at_document);
   }
 
   return result;
@@ -1035,6 +1040,14 @@ gfx::NativeViewAccessible BrowserAccessibility::GetParent() const {
   BrowserAccessibility* parent = PlatformGetParent();
   if (parent)
     return parent->GetNativeViewAccessible();
+
+  // Hiding an <iframe> can remove its element from the outer document's
+  // accessibility tree while leaving the embedded document's tree alive.
+  // The embedded document then has no accessible parent. Only the main frame
+  // may use the native view as a fallback parent.
+  if (!manager_->IsRootFrameManager()) {
+    return gfx::NativeViewAccessible();
+  }
 
   AXPlatformTreeManagerDelegate* delegate =
       manager_->GetDelegateFromRootManager();
@@ -1164,9 +1177,18 @@ gfx::NativeViewAccessible BrowserAccessibility::GetTableAncestor() const {
   return gfx::NativeViewAccessible();
 }
 
+static_assert(std::ranges::bidirectional_range<
+              BrowserAccessibility::PlatformChildrenRange>);
+
+BrowserAccessibility::PlatformChildIterator::PlatformChildIterator() = default;
+
 BrowserAccessibility::PlatformChildIterator::PlatformChildIterator(
     const PlatformChildIterator& it)
     : parent_(it.parent_), platform_iterator(it.platform_iterator) {}
+
+BrowserAccessibility::PlatformChildIterator&
+BrowserAccessibility::PlatformChildIterator::operator=(
+    const PlatformChildIterator& it) = default;
 
 BrowserAccessibility::PlatformChildIterator::PlatformChildIterator(
     const BrowserAccessibility* parent,
@@ -1214,6 +1236,11 @@ BrowserAccessibility::PlatformChildIterator::GetNativeViewAccessible() const {
 
 std::optional<size_t>
 BrowserAccessibility::PlatformChildIterator::GetIndexInParent() const {
+  // A default-constructed iterator has no parent. Return std::nullopt so that
+  // two such iterators compare equal in `ChildIterator::operator==`.
+  if (!parent_) {
+    return std::nullopt;
+  }
   if (platform_iterator == parent_->PlatformChildrenEnd().platform_iterator)
     return parent_->PlatformChildCount();
 
@@ -2035,13 +2062,13 @@ TextAttributeMap BrowserAccessibility::GetSpellingAndGrammarAttributes() const {
 
   TextAttributeMap spelling_attributes;
   if (IsText()) {
-    const std::vector<int32_t>& marker_types =
+    base::span<const int32_t> marker_types =
         GetIntListAttribute(ax::mojom::IntListAttribute::kMarkerTypes);
-    const std::vector<int32_t>& highlight_types =
+    base::span<const int32_t> highlight_types =
         GetIntListAttribute(ax::mojom::IntListAttribute::kHighlightTypes);
-    const std::vector<int>& marker_starts =
+    base::span<const int> marker_starts =
         GetIntListAttribute(ax::mojom::IntListAttribute::kMarkerStarts);
-    const std::vector<int>& marker_ends =
+    base::span<const int> marker_ends =
         GetIntListAttribute(ax::mojom::IntListAttribute::kMarkerEnds);
 
     CHECK_EQ(marker_types.size(), highlight_types.size());

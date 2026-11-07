@@ -10,19 +10,12 @@
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
 #include "build/build_config.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/segmentation_platform/segmentation_platform_service_factory.h"
 #include "chrome/browser/ui/webid/account_selection_view.h"
 #include "chrome/browser/webid/identity_provider_permission_request.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/favicon/core/favicon_driver.h"
 #include "components/permissions/permission_request_manager.h"
-#include "components/segmentation_platform/public/constants.h"
-#include "components/segmentation_platform/public/features.h"
-#include "components/segmentation_platform/public/result.h"
-#include "components/segmentation_platform/public/segmentation_platform_service.h"
 #include "content/public/browser/page.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/webid/federated_embedder_login_request.h"
@@ -42,47 +35,11 @@
 using content::webid::FederatedLoginResult;
 
 IdentityDialogController::IdentityDialogController(
-    content::WebContents* rp_web_contents,
-    segmentation_platform::SegmentationPlatformService* service,
-    optimization_guide::OptimizationGuideDecider* decider)
+    content::WebContents* rp_web_contents)
     : rp_web_contents_(rp_web_contents),
-      segmentation_platform_service_(service),
-      optimization_guide_decider_(decider) {
-  Profile* profile = Profile::FromBrowserContext(
-      rp_web_contents_->GetPrimaryMainFrame()->GetBrowserContext());
-  if (!base::FeatureList::IsEnabled(
-          segmentation_platform::features::kSegmentationPlatformFedCmUser)) {
-    passive_dialog_volume_ = PassiveDialogVolume::kDefault;
-    return;
-  }
-  if (profile->IsOffTheRecord()) {
-    passive_dialog_volume_ = PassiveDialogVolume::kDefault;
-    return;
-  }
-
-  if (!segmentation_platform_service_) {
-    segmentation_platform_service_ = segmentation_platform::
-        SegmentationPlatformServiceFactory::GetForProfile(profile);
-  }
-
-  if (!optimization_guide_decider_) {
-    optimization_guide_decider_ =
-        OptimizationGuideKeyedServiceFactory::GetForProfile(profile);
-  }
-  if (optimization_guide_decider_) {
-    optimization_guide_decider_->RegisterOptimizationTypes(
-        {optimization_guide::proto::OptimizationType::FEDCM_CLICKTHROUGH_RATE});
-  }
-
-  if (segmentation_platform_service_) {
-    RequestUiVolumeRecommendation(
-        base::BindOnce(&IdentityDialogController::
-                           OnRequestUiVolumeRecommendationResultReceived,
-                       weak_ptr_factory_.GetWeakPtr()));
-  } else {
-    passive_dialog_volume_ = PassiveDialogVolume::kDefault;
-  }
-}
+      // Shuttle: the segmentation platform (UI volume recommendation) is
+      // removed; passive mode always uses the default volume.
+      passive_dialog_volume_(PassiveDialogVolume::kDefault) {}
 
 IdentityDialogController::~IdentityDialogController() = default;
 
@@ -450,8 +407,6 @@ void IdentityDialogController::OnAccountSelected(
   }
   CHECK(on_account_selection_);
 
-  CollectTrainingData(UserAction::kSuccess);
-
   // We only allow dismiss after account selection on active modes and not on
   // passive mode.
   // TODO(crbug.com/335886093): Figure out whether users can cancel after
@@ -471,15 +426,6 @@ void IdentityDialogController::OnDismiss(DismissReason dismiss_reason) {
   // to null.
   if (!on_dismiss_) {
     return;
-  }
-
-  if (did_show_ui_) {
-    if (dismiss_reason == DismissReason::kCloseButton ||
-        dismiss_reason == DismissReason::kSwipe) {
-      CollectTrainingData(UserAction::kClosed);
-    } else {
-      CollectTrainingData(UserAction::kIgnored);
-    }
   }
 
   on_account_selection_.Reset();
@@ -511,7 +457,7 @@ void IdentityDialogController::ShowUrl(LinkType type, const GURL& url) {
     return;
   }
   // Cannot be invoked if FedCM UI is being shown.
-  DCHECK(ShouldShowFedCmUi());
+  CHECK(ShouldShowFedCmUi(), base::NotFatalUntil::M162);
   account_view_->ShowUrl(type, url);
 }
 
@@ -600,127 +546,6 @@ bool IdentityDialogController::TrySetAccountView() {
   account_view_->SetCanShowUi(ShouldShowFedCmUi());
   return true;
 }
-
-void IdentityDialogController::RequestUiVolumeRecommendation(
-    segmentation_platform::ClassificationResultCallback callback) {
-  if (!segmentation_platform_service_) {
-    segmentation_platform::ClassificationResult result(
-        segmentation_platform::PredictionStatus::kFailed);
-    std::move(callback).Run(result);
-    return;
-  }
-
-  segmentation_platform::PredictionOptions prediction_options;
-  prediction_options.on_demand_execution = true;
-  scoped_refptr<segmentation_platform::InputContext> input_context =
-      base::MakeRefCounted<segmentation_platform::InputContext>();
-  webid::FedCmClickthroughRateMetadata metadata =
-      GetFedCmClickthroughRateMetadata();
-  input_context->metadata_args.emplace(
-      segmentation_platform::kFedCmHost,
-      segmentation_platform::processing::ProcessedValue(
-          rp_web_contents_->GetLastCommittedURL().GetHost()));
-  input_context->metadata_args.emplace(
-      segmentation_platform::kFedCmUrl,
-      segmentation_platform::processing::ProcessedValue(
-          rp_web_contents_->GetLastCommittedURL()));
-  input_context->metadata_args.emplace(
-      segmentation_platform::kFedCmPerPageLoadClickthroughRate,
-      segmentation_platform::processing::ProcessedValue(
-          metadata.per_page_load_clickthrough_rate()));
-  input_context->metadata_args.emplace(
-      segmentation_platform::kFedCmPerClientClickthroughRate,
-      segmentation_platform::processing::ProcessedValue(
-          metadata.per_client_clickthrough_rate()));
-  input_context->metadata_args.emplace(
-      segmentation_platform::kFedCmPerImpressionClickthroughRate,
-      segmentation_platform::processing::ProcessedValue(
-          metadata.per_impression_clickthrough_rate()));
-  input_context->metadata_args.emplace(
-      segmentation_platform::kFedCmLikelyToSignin,
-      segmentation_platform::processing::ProcessedValue(
-          metadata.likely_to_signin()));
-  input_context->metadata_args.emplace(
-      segmentation_platform::kFedCmLikelyInsufficientData,
-      segmentation_platform::processing::ProcessedValue(
-          metadata.likely_insufficient_data()));
-  segmentation_platform_service_->GetClassificationResult(
-      segmentation_platform::kFedCmUserKey, prediction_options, input_context,
-      std::move(callback));
-}
-
-void IdentityDialogController::OnRequestUiVolumeRecommendationResultReceived(
-    const segmentation_platform::ClassificationResult&
-        ui_volume_recommendation) {
-  training_request_id_ = ui_volume_recommendation.request_id;
-
-  // Default to showing loud UI if the prediction fails for any reason.
-  if (ui_volume_recommendation.status !=
-          segmentation_platform::PredictionStatus::kSucceeded ||
-      ui_volume_recommendation.ordered_labels.empty() ||
-      ui_volume_recommendation.ordered_labels[0] == "FedCmUserLoud") {
-    passive_dialog_volume_ = PassiveDialogVolume::kDefault;
-  } else {
-    passive_dialog_volume_ = PassiveDialogVolume::kAmbient;
-  }
-
-  if (passive_dialog_volume_callback_) {
-    std::move(passive_dialog_volume_callback_).Run(*passive_dialog_volume_);
-  }
-}
-
-void IdentityDialogController::CollectTrainingData(UserAction user_action) {
-  if (!training_request_id_.has_value() || !segmentation_platform_service_) {
-    return;
-  }
-
-  ukm::SourceId source_id =
-      (rp_web_contents_ && rp_web_contents_->GetPrimaryMainFrame())
-          ? rp_web_contents_->GetPrimaryMainFrame()->GetPageUkmSourceId()
-          : ukm::kInvalidSourceId;
-
-  segmentation_platform::TrainingLabels training_labels;
-  base::UmaHistogramEnumeration("Blink.FedCm.SegmentationPlatform.UserAction",
-                                user_action);
-  training_labels.output_metric =
-      std::make_pair("Blink.FedCm.SegmentationPlatform.UserAction",
-                     static_cast<base::HistogramBase::Sample32>(user_action));
-
-  segmentation_platform_service_->CollectTrainingData(
-      segmentation_platform::proto::SegmentId::
-          OPTIMIZATION_TARGET_SEGMENTATION_FEDCM_USER,
-      *training_request_id_, source_id, training_labels, base::DoNothing());
-  training_request_id_ = std::nullopt;
-  segmentation_platform_service_ = nullptr;
-}
-
-webid::FedCmClickthroughRateMetadata
-IdentityDialogController::GetFedCmClickthroughRateMetadata() {
-  if (!optimization_guide_decider_) {
-    return webid::FedCmClickthroughRateMetadata();
-  }
-
-  optimization_guide::OptimizationMetadata opt_guide_metadata;
-  auto opt_guide_has_hint = optimization_guide_decider_->CanApplyOptimization(
-      rp_web_contents_->GetPrimaryMainFrame()->GetLastCommittedURL(),
-      optimization_guide::proto::OptimizationType::FEDCM_CLICKTHROUGH_RATE,
-      &opt_guide_metadata);
-  if (opt_guide_has_hint !=
-          optimization_guide::OptimizationGuideDecision::kTrue ||
-      !opt_guide_metadata.any_metadata().has_value()) {
-    return webid::FedCmClickthroughRateMetadata();
-  }
-
-  std::optional<webid::FedCmClickthroughRateMetadata> parsed_metadata =
-      optimization_guide::ParsedAnyMetadata<
-          webid::FedCmClickthroughRateMetadata>(
-          opt_guide_metadata.any_metadata().value());
-  if (!parsed_metadata.has_value()) {
-    return webid::FedCmClickthroughRateMetadata();
-  }
-  return parsed_metadata.value();
-}
-
 
 bool IdentityDialogController::ShouldShowFedCmUi() {
   return true;

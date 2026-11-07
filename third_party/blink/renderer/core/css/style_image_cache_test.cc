@@ -9,6 +9,7 @@
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/loader/empty_clients.h"
+#include "third_party/blink/renderer/core/loader/resource/image_resource_content.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/core/style/style_fetched_image.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
@@ -44,7 +45,7 @@ TEST_F(StyleImageCacheTest, DuplicateBackgroundImageURLs) {
     <div id="target"></div>
   )HTML");
 
-  Element* target = GetDocument().getElementById(AtomicString("target"));
+  Element* target = GetElementById("target");
   ASSERT_TRUE(target);
   ASSERT_FALSE(target->ComputedStyleRef().BackgroundLayers().GetImage());
 
@@ -72,7 +73,7 @@ TEST_F(StyleImageCacheTest, DifferingFragmentsBackgroundImageURLs) {
     <div id="target"></div>
   )HTML");
 
-  Element* target = GetDocument().getElementById(AtomicString("target"));
+  Element* target = GetElementById("target");
   ASSERT_TRUE(target);
   ASSERT_FALSE(target->ComputedStyleRef().BackgroundLayers().GetImage());
 
@@ -102,7 +103,7 @@ TEST_F(StyleImageCacheTest, CustomPropertyURL) {
     <div id="target"></div>
   )HTML");
 
-  Element* target = GetDocument().getElementById(AtomicString("target"));
+  Element* target = GetElementById("target");
 
   StyleImage* initial_image =
       target->ComputedStyleRef().BackgroundLayers().GetImage();
@@ -126,8 +127,8 @@ TEST_F(StyleImageCacheTest, ComputedValueRelativePath) {
     <div id="target2"></div>
   )HTML");
 
-  Element* target1 = GetDocument().getElementById(AtomicString("target1"));
-  Element* target2 = GetDocument().getElementById(AtomicString("target2"));
+  Element* target1 = GetElementById("target1");
+  Element* target2 = GetElementById("target2");
 
   // Resolves to the same absolute url. Can share the underlying
   // ImageResourceContent since the computed value is the absolute url.
@@ -163,7 +164,7 @@ TEST_F(StyleImageCacheTest, WeakReferenceGC) {
   EXPECT_TRUE(FetchedImageMap().Contains("http://test.com/url2.png"));
   EXPECT_EQ(FetchedImageMap().size(), 2u);
 
-  Element* sheet = GetDocument().getElementById(AtomicString("sheet"));
+  Element* sheet = GetElementById("sheet");
   ASSERT_TRUE(sheet);
   sheet->remove();
   UpdateAllLifecyclePhasesForTest();
@@ -213,7 +214,7 @@ TEST_F(StyleImageCacheWithLoadingTest, DuplicateBackgroundImageURLs) {
   url_test_helpers::RegisterMockedURLLoad(
       url_test_helpers::ToKURL("http://test.com/background_image.png"),
       test::CoreTestDataPath(kTestResourceFilename), kTestResourceMimeType);
-  Element* target = GetDocument().getElementById(AtomicString("target"));
+  Element* target = GetElementById("target");
   ASSERT_TRUE(target);
   ASSERT_FALSE(target->ComputedStyleRef().BackgroundLayers().GetImage());
 
@@ -245,7 +246,7 @@ TEST_F(StyleImageCacheWithLoadingTest, LoadFailedBackgroundImageURL) {
   const auto image_url =
       url_test_helpers::ToKURL("http://test.com/background_image.png");
   url_test_helpers::RegisterMockedErrorURLLoad(image_url);
-  Element* target = GetDocument().getElementById(AtomicString("target"));
+  Element* target = GetElementById("target");
   ASSERT_TRUE(target);
   ASSERT_FALSE(target->ComputedStyleRef().BackgroundLayers().GetImage());
   target->setAttribute(html_names::kClassAttr, AtomicString("rule1"));
@@ -267,6 +268,48 @@ TEST_F(StyleImageCacheWithLoadingTest, LoadFailedBackgroundImageURL) {
   EXPECT_FALSE(rule1_image2->ErrorOccurred());
   EXPECT_TRUE(FetchedImageMap().Contains(image_url.GetString()));
   EXPECT_EQ(FetchedImageMap().size(), 1u);
+}
+
+TEST_F(StyleImageCacheWithLoadingTest, DifferingCORSModesImageURLs) {
+  SetBodyInnerHTML(R"HTML(
+    <style>
+      .rule1 { background-image: url(http://test.com/background_image.png) }
+      .rule2 { mask-image: url(http://test.com/background_image.png) }
+    </style>
+    <div id="target"></div>
+  )HTML");
+
+  const auto image_url =
+      url_test_helpers::ToKURL("http://test.com/background_image.png");
+  WebURLResponse response(image_url);
+  response.SetMimeType("image/png");
+  response.SetHttpHeaderField(http_names::kContentType, kTestResourceMimeType);
+  response.SetHttpStatusCode(200);
+  // Mark the response as opaque (cross-origin no-cors) so IsCorsSameOrigin()
+  // is false:
+  response.SetType(network::mojom::FetchResponseType::kOpaque);
+  url_test_helpers::RegisterMockedURLLoadWithCustomResponse(
+      image_url, test::CoreTestDataPath(kTestResourceFilename), response);
+
+  Element* target = GetDocument().getElementById(AtomicString("target"));
+  ASSERT_TRUE(target);
+  ASSERT_FALSE(target->ComputedStyleRef().BackgroundLayers().GetImage());
+
+  target->setAttribute(html_names::kClassAttr, AtomicString("rule1"));
+  UpdateAllLifecyclePhasesForTest();
+  url_test_helpers::ServeAsynchronousRequests();
+
+  ImageResourceContent* rule1_image =
+      target->ComputedStyleRef().BackgroundLayers().GetImage()->CachedImage();
+  EXPECT_TRUE(rule1_image);
+
+  target->setAttribute(html_names::kClassAttr, AtomicString("rule2"));
+  UpdateAllLifecyclePhasesForTest();
+  url_test_helpers::ServeAsynchronousRequests();
+
+  ImageResourceContent* rule2_image =
+      target->ComputedStyleRef().MaskLayers().GetImage()->CachedImage();
+  EXPECT_NE(rule1_image, rule2_image);
 }
 
 }  // namespace blink

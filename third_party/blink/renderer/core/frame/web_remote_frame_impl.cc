@@ -36,6 +36,7 @@
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/platform/bindings/dom_wrapper_world.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 #include "ui/gfx/geometry/quad_f.h"
 #include "v8/include/v8.h"
@@ -137,6 +138,29 @@ WebRemoteFrameImpl* WebRemoteFrameImpl::CreateMainFrame(
   if (is_loading) {
     frame->DidStartLoading();
   }
+  return frame;
+}
+
+WebRemoteFrameImpl* WebRemoteFrameImpl::CreatePlaceholderForEmbeddedFrameTree(
+    mojom::blink::TreeScopeType scope,
+    const RemoteFrameToken& frame_token,
+    const base::UnguessableToken& devtools_frame_token,
+    HTMLFrameOwnerElement* frame_owner,
+    mojo::PendingAssociatedRemote<mojom::blink::RemoteFrameHost>
+        remote_frame_host,
+    mojo::PendingAssociatedReceiver<mojom::blink::RemoteFrame> receiver,
+    mojom::blink::FrameReplicationStatePtr replicated_state) {
+  DCHECK(frame_owner);
+  CHECK(RuntimeEnabledFeatures::PersistentWidgetAPIEnabled(
+      frame_owner->GetExecutionContext()));
+  auto* frame = MakeGarbageCollected<WebRemoteFrameImpl>(scope, frame_token);
+  LocalFrame* host_frame = frame_owner->GetDocument().GetFrame();
+  frame->InitializeCoreFrame(
+      *host_frame->GetPage(), frame_owner, /*parent=*/nullptr,
+      /*previous_sibling=*/nullptr, FrameInsertType::kInsertInConstructor,
+      g_null_atom, &host_frame->window_agent_factory(), devtools_frame_token,
+      std::move(remote_frame_host), std::move(receiver));
+  frame->SetReplicatedState(std::move(replicated_state));
   return frame;
 }
 
@@ -256,6 +280,17 @@ void WebRemoteFrameImpl::InitializeCoreFrame(
       ancestor_widget =
           To<WebLocalFrameImpl>(parent)->LocalRoot()->FrameWidgetImpl();
     }
+  } else if (owner && owner->IsLocal()) {
+    // Never gets to this point unless |owner| is a <persistentwidget> element.
+    HTMLFrameOwnerElement* owner_element = To<HTMLFrameOwnerElement>(owner);
+    CHECK(RuntimeEnabledFeatures::PersistentWidgetAPIEnabled(
+        owner_element->GetExecutionContext()));
+    DCHECK_EQ(owner_element->OwnerType(),
+              FrameOwnerElementType::kPersistentwidget);
+    LocalFrame& local_frame =
+        owner_element->GetDocument().GetFrame()->LocalFrameRoot();
+    ancestor_widget =
+        WebLocalFrameImpl::FromFrame(local_frame)->FrameWidgetImpl();
   }
 
   SetCoreFrame(MakeGarbageCollected<RemoteFrame>(

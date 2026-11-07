@@ -102,6 +102,7 @@ void CaptionsHandler::OnJavascriptAllowed() {
 }
 
 void CaptionsHandler::OnJavascriptDisallowed() {
+  installed_string_timer_.Stop();
   if (soda_available_) {
     speech::SodaInstaller::GetInstance()->RemoveObserver(this);
   }

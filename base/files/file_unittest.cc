@@ -573,7 +573,7 @@ TEST(FileTest, Length) {
 }
 
 // Flakily fails: http://crbug.com/86494
-#if BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
 TEST(FileTest, TouchGetInfo) {
 #else
 TEST(FileTest, DISABLED_TouchGetInfo) {
@@ -637,6 +637,41 @@ TEST(FileTest, DISABLED_TouchGetInfo) {
   EXPECT_EQ(info.creation_time.ToInternalValue(),
             creation_time.ToInternalValue());
 }
+
+#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
+TEST(FileTest, FromStatWithUnixEpochTimestamps) {
+  stat_wrapper_t stat_info = {};
+  File::Info info;
+  info.FromStat(stat_info);
+
+  EXPECT_EQ(Time::UnixEpoch(), info.last_modified);
+  EXPECT_EQ(Time::UnixEpoch(), info.last_accessed);
+  EXPECT_EQ(Time::UnixEpoch(), info.creation_time);
+}
+#endif  // BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA) || \
+    BUILDFLAG(IS_APPLE)
+TEST(FileTest, FromStatWithTimestampsInFirstUnixSecond) {
+  stat_wrapper_t stat_info = {};
+#if BUILDFLAG(IS_APPLE)
+  stat_info.st_mtimespec.tv_nsec = 123456000;
+  stat_info.st_atimespec.tv_nsec = 234567000;
+  stat_info.st_birthtimespec.tv_nsec = 345678000;
+#else
+  stat_info.st_mtim.tv_nsec = 123456000;
+  stat_info.st_atim.tv_nsec = 234567000;
+  stat_info.st_ctim.tv_nsec = 345678000;
+#endif
+  File::Info info;
+  info.FromStat(stat_info);
+
+  EXPECT_EQ(Time::UnixEpoch() + Microseconds(123456), info.last_modified);
+  EXPECT_EQ(Time::UnixEpoch() + Microseconds(234567), info.last_accessed);
+  EXPECT_EQ(Time::UnixEpoch() + Microseconds(345678), info.creation_time);
+}
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) ||
+        // BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_APPLE)
 
 // Test we can retrieve the file's creation time through File::GetInfo().
 TEST(FileTest, GetInfoForCreationTime) {

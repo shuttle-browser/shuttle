@@ -5,6 +5,7 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_CONTEXT_FEATURES_CONTEXT_FEATURE_SETTINGS_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CONTEXT_FEATURES_CONTEXT_FEATURE_SETTINGS_H_
 
+#include "third_party/blink/public/web/web_v8_features.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/platform/supplementable.h"
@@ -48,27 +49,25 @@ class CORE_EXPORT ContextFeatureSettings final
     return enable_mojo_js_file_system_access_helper_;
   }
 
-  // ContextEnabled=PrivateAggregationInSharedStorage
-  void EnablePrivateAggregationInSharedStorage(bool enable) {
-    enable_private_aggregation_in_shared_storage_ = enable;
-  }
-  bool isPrivateAggregationInSharedStorageEnabled() const {
-    return enable_private_aggregation_in_shared_storage_;
-  }
-
   enum class UnboundedElementAuth {
     kDenied,
     kAllowedOpenWeb,
+    // A non-privileged frame, allowed by permissions policy, whose main frame
+    // is privileged. Unlike kAllowedOpenWeb, this does not require user
+    // activation.
+    kAllowedByPrivilegedMainFrame,
     kAllowedPrivileged,
   };
 
   static UnboundedElementAuth GetUnboundedElementAuth(
       const ExecutionContext* context);
 
+  using UnboundedElementPrivilege = WebV8Features::UnboundedElementPrivilege;
+
   // ContextEnabled=UnboundedElement
-  void EnableUnboundedElement(bool is_privileged = false) {
+  void EnableUnboundedElement(UnboundedElementPrivilege privilege) {
     enable_unbounded_element_ = true;
-    enable_unbounded_element_privileged_ = is_privileged;
+    unbounded_element_privilege_ = privilege;
   }
   bool isUnboundedElementEnabled() const;
 
@@ -77,9 +76,9 @@ class CORE_EXPORT ContextFeatureSettings final
  private:
   bool enable_mojo_js_ = false;
   bool enable_mojo_js_file_system_access_helper_ = false;
-  bool enable_private_aggregation_in_shared_storage_ = false;
   bool enable_unbounded_element_ = false;
-  bool enable_unbounded_element_privileged_ = false;
+  UnboundedElementPrivilege unbounded_element_privilege_ =
+      UnboundedElementPrivilege::kNone;
 };
 
 }  // namespace blink

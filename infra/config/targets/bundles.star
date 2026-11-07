@@ -130,7 +130,7 @@ targets.bundle(
     per_test_modifications = {
         "chrome_public_test_apk_tablet": targets.mixin(
             swarming = targets.swarming(
-                shards = 3,
+                shards = 5,
             ),
         ),
     },
@@ -515,7 +515,7 @@ targets.bundle(
     per_test_modifications = {
         "chrome_junit_tests": targets.mixin(
             swarming = targets.swarming(
-                shards = 10,
+                shards = 4,
             ),
         ),
     },
@@ -1073,7 +1073,7 @@ targets.bundle(
     per_test_modifications = {
         "bf_cache_browser_tests": targets.mixin(
             swarming = targets.swarming(
-                shards = 10,
+                shards = 20,
             ),
         ),
     },
@@ -1397,7 +1397,7 @@ targets.bundle(
         ),
         "browser_tests": targets.mixin(
             swarming = targets.swarming(
-                shards = 8,
+                shards = 16,
                 dimensions = {
                     "cores": "8",
                 },
@@ -1420,7 +1420,7 @@ targets.bundle(
         ),
         "interactive_ui_tests": targets.mixin(
             swarming = targets.swarming(
-                shards = 3,
+                shards = 6,
                 dimensions = {
                     "cores": "8",
                 },
@@ -1524,11 +1524,6 @@ targets.bundle(
     targets = [
         "rlz_unittests",
     ],
-    per_test_modifications = {
-        "rlz_unittests": targets.mixin(
-            experiment_percentage = 100,
-        ),
-    },
 )
 
 targets.bundle(
@@ -1986,32 +1981,6 @@ targets.bundle(
         "mac_specific_chromium_gtests",
         "non_android_and_cast_and_chromeos_chromium_gtests",
         "non_android_chromium_gtests_no_nacl",
-    ],
-)
-
-# This test suite contains the exact same tests as
-# chromium_mac_gtests_no_nacl, with some tests default to run on mac vm.
-targets.bundle(
-    name = "chromium_mac_gtests_no_nacl_mac14_arm",
-    targets = [
-        "chromium_gtests",
-        "chromium_mac_gtests_vm_optional",
-        "non_android_and_cast_and_chromeos_chromium_gtests",
-        "non_android_chromium_gtests_no_nacl",
-    ],
-)
-
-# A subsuite tests of chromium_mac_gtests_no_nacl which
-# are safe to run on VMs
-targets.bundle(
-    name = "chromium_mac_gtests_vm_optional",
-    targets = [
-        "chromium_gtests_for_devices_with_graphical_output",
-        "chromium_gtests_for_linux_and_mac_only",
-        "mac_specific_chromium_gtests",
-    ],
-    mixins = [
-        "mac_26_vm_optional",
     ],
 )
 
@@ -4438,6 +4407,15 @@ targets.bundle(
         "webgl_conformance_gles_passthrough_tests",
     ],
     per_test_modifications = {
+        "vulkan_pixel_skia_gold_test": targets.per_test_modification(
+            replacements = targets.replacements(
+                args = {
+                    # Replaces --use-angle=gl with --use-angle=gles since
+                    # Wayland requires running tests with GLES, not GL.
+                    "--extra-browser-args": "--use-vulkan=native --disable-vulkan-fallback-to-gl-for-testing --enable-features=Vulkan --use-gl=angle --use-angle=gles --use-cmd-decoder=passthrough",
+                },
+            ),
+        ),
         "webgl2_conformance_gl_passthrough_tests": targets.remove(
             reason = "Wayland requires running tests with GLES, not GL",
         ),
@@ -4480,6 +4458,7 @@ targets.bundle(
 targets.bundle(
     name = "gpu_fyi_mac_specific_gtests",
     targets = [
+        "screen_capture_kit_mac_tests",
         # Face and barcode detection unit tests, which currently only run on
         # Mac OS, and require physical hardware.
         "services_unittests",
@@ -5241,12 +5220,6 @@ targets.bundle(
                 "--test-launcher-filter-file=testing/buildbot/filters/ios.media_unittests.filter",
             ],
         ),
-        "midi_unittests": targets.mixin(
-            args = [
-                "--test-launcher-bot-mode",
-                "--test-launcher-filter-file=testing/buildbot/filters/ios.use_blink.midi_unittests.filter",
-            ],
-        ),
         "mojo_unittests": targets.mixin(
             args = [
                 "--test-launcher-bot-mode",
@@ -5374,9 +5347,6 @@ targets.bundle(
                 shards = 3,
             ),
         ),
-        "rlz_unittests": targets.mixin(
-            experiment_percentage = 100,
-        ),
     },
 )
 
@@ -5445,6 +5415,20 @@ targets.bundle(
         "ios_chrome_web_eg2tests_module": targets.mixin(
             swarming = targets.swarming(
                 shards = 2,
+            ),
+        ),
+    },
+)
+
+targets.bundle(
+    name = "ios_eg2_tests_all",
+    targets = [
+        "ios_chrome_all_eg2tests_module",
+    ],
+    per_test_modifications = {
+        "ios_chrome_all_eg2tests_module": targets.mixin(
+            swarming = targets.swarming(
+                shards = 66,
             ),
         ),
     },
@@ -5566,8 +5550,6 @@ targets.bundle(
     ],
 )
 
-# TODO(crbug.com/441038354): comebine simulators into the same test targets once
-# iOS26 performance issue is resolved on the VMs
 targets.bundle(
     name = "ios_simulator_noncq_tests",
     targets = [
@@ -5583,32 +5565,14 @@ targets.bundle(
             ],
         ),
         targets.bundle(
-            targets = "ios_vm_eg2_cq_tests",
+            targets = [
+                "ios_eg2_tests_all",
+                "ios_web_shell_eg2tests_module",
+            ],
             mixins = [
                 "xcodebuild_sim_runner",
                 "record_failed_tests",
                 "mac_26_vm_optional",
-            ],
-            variants = [
-                "SIM_IPAD_AIR_6TH_GEN_18_5",
-            ],
-        ),
-        targets.bundle(
-            targets = "ios_eg2_cq_tests",
-            mixins = [
-                "xcodebuild_sim_runner",
-                "record_failed_tests",
-            ],
-            variants = [
-                "SIM_IPAD_AIR_6TH_GEN_26_5",
-                "SIM_IPAD_A16_27_0",
-            ],
-        ),
-        targets.bundle(
-            targets = "ios_eg2_tests",
-            mixins = [
-                "xcodebuild_sim_runner",
-                "record_failed_tests",
             ],
             variants = [
                 "SIM_IPAD_PRO_7TH_GEN_18_5",
@@ -5662,14 +5626,14 @@ targets.bundle(
             ],
         ),
         targets.bundle(
-            targets = "ios_vm_eg2_cq_tests",
+            targets = "ios_vm_eg2_smoke_cq_tests",
             mixins = [
-                "ci_only",
                 "xcodebuild_sim_runner",
                 "mac_26_vm_optional",
             ],
             variants = [
                 "SIM_IPHONE_15_18_5",
+                "SIM_IPHONE_16_26_5",
             ],
         ),
         targets.bundle(
@@ -5679,7 +5643,6 @@ targets.bundle(
                 "mac_26_vm_optional",
             ],
             variants = [
-                "SIM_IPHONE_16_26_5",
                 "SIM_IPHONE_16_27_0",
             ],
         ),
@@ -5708,21 +5671,49 @@ targets.bundle(
     ],
 )
 
-# This is essentially ios_eg2_cq_tests but runs on more shards,
-# because VM has slightly worse performance than bare metal.
+# This is essentially ios_eg2_cq_tests but runs on more shards without
+# parallel simulator clones, because VMs have fewer cores / worse performance
+# than bare metal under --clones 2 contention.
 # TODO(crbug.com/427497507): remove once we have launced more VMs.
 targets.bundle(
     name = "ios_vm_eg2_cq_tests",
     targets = [
-        "ios_eg2_cq_tests",
+        "ios_chrome_integration_eg2tests_module",
+        "ios_web_shell_eg2tests_module",
     ],
     per_test_modifications = {
         "ios_chrome_integration_eg2tests_module": [
             targets.mixin(
+                args = [
+                    "--clones",
+                    "1",
+                ],
                 swarming = targets.swarming(
-                    shards = 10,
+                    shards = 18,
                 ),
             ),
+        ],
+    },
+)
+
+targets.bundle(
+    name = "ios_vm_eg2_smoke_cq_tests",
+    targets = [
+        "ios_chrome_all_eg2tests_module",
+        "ios_web_shell_eg2tests_module",
+    ],
+    per_test_modifications = {
+        "ios_chrome_all_eg2tests_module": [
+            targets.mixin(
+                args = [
+                    "--clones",
+                    "1",
+                ],
+                swarming = targets.swarming(
+                    shards = 3,
+                ),
+            ),
+            "ios_smoke_tests",
         ],
     },
 )
@@ -5946,6 +5937,7 @@ targets.bundle(
     name = "mac_specific_isolated_scripts",
     targets = [
         "mac_signing_tests",
+        "views_examples_mac_signing_tests",
     ],
 )
 

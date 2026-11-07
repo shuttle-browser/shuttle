@@ -21,6 +21,8 @@ namespace blink {
 
 class ExceptionState;
 class ScriptState;
+template <typename IDLType>
+class ScriptPromiseResolver;
 class WebTransport;
 class WebTransportSendGroup;
 class WebTransportSendStreamStats;
@@ -49,7 +51,8 @@ class MODULES_EXPORT WebTransportSendStream final : public WritableStream {
     outgoing_stream_->InitWithExistingWritableStream(this, exception_state);
   }
 
-  OutgoingStream* GetOutgoingStream() { return outgoing_stream_.Get(); }
+  uint32_t stream_id() const { return stream_id_; }
+  OutgoingStream* GetOutgoingStream() const { return outgoing_stream_.Get(); }
 
   // Returns the WebTransport that owns this stream.
   WebTransport* GetTransport() const { return transport_.Get(); }
@@ -71,7 +74,11 @@ class MODULES_EXPORT WebTransportSendStream final : public WritableStream {
   void Trace(Visitor*) const override;
 
  private:
+  void OnSendStatsFinalized();
+  void SetSendGroup(WebTransportSendGroup*);
   void SendPriorityUpdate();
+  void ResolveGetStats(
+      ScriptPromiseResolver<WebTransportSendStreamStats>*) const;
 
   const Member<WebTransport> transport_;
   const uint32_t stream_id_;

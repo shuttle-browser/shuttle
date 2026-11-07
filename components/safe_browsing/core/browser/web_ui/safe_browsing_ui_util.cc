@@ -6,6 +6,7 @@
 
 #include "base/base64.h"
 #include "base/base64url.h"
+#include "base/feature_list.h"
 #include "base/i18n/number_formatting.h"
 #include "base/i18n/time_formatting.h"
 #include "base/json/json_writer.h"
@@ -14,9 +15,9 @@
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
-#include "components/enterprise/connectors/core/reporting_event_mappings.h"
 #include "components/safe_browsing/core/browser/referring_app_info.h"
 #include "components/safe_browsing/core/browser/web_ui/web_ui_info_singleton_event_observer.h"
+#include "components/safe_browsing/core/common/features.h"
 #include "components/safe_browsing/core/common/proto/csd.to_value.h"
 #include "components/safe_browsing/core/common/proto/realtimeapi.to_value.h"
 #include "components/safe_browsing/core/common/proto/safebrowsingv5.to_value.h"
@@ -25,7 +26,6 @@
 #if BUILDFLAG(IS_ANDROID)
 #include "base/strings/escape.h"
 #else
-#include "components/enterprise/common/proto/upload_request_response.to_value.h"  // nogncheck crbug.com/40147906
 #endif
 
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
@@ -502,7 +502,8 @@ base::DictValue SerializeV5GetHashLookup(
   AddKeyValue(request_key_values, "Local threat types",
               base::JoinString(local_threat_types, ", "));
 
-  if (!lookup.urls.empty()) {
+  if (!lookup.urls.empty() &&
+      base::FeatureList::IsEnabled(kShowUrlsInV5GetHashLookupsWebUI)) {
     std::vector<std::string> urls;
     urls.reserve(lookup.urls.size());
     for (const auto& url : lookup.urls) {
@@ -541,34 +542,6 @@ base::DictValue SerializeV5GetHashLookup(
   }
 
   return result;
-}
-
-base::DictValue SerializeUploadEventsRequest(
-    const ::chrome::cros::reporting::proto::UploadEventsRequest&
-        upload_events_request,
-    const base::DictValue& result) {
-  base::DictValue message;
-#if BUILDFLAG(IS_ANDROID)
-  message.Set("request",
-              base::EscapeNonASCII(upload_events_request.SerializeAsString()));
-#else
-  message.Set("request",
-              ::chrome::cros::reporting::proto::ToValue(upload_events_request));
-#endif
-  message.Set("response", result.Clone());
-
-  base::DictValue wrapper;
-  wrapper.Set("message", SerializeJson(message));
-  auto& event = upload_events_request.events()[0];
-  wrapper.Set("timeMillis",
-              event.time().seconds() * 1000 + event.time().nanos() / 1000000.0);
-  wrapper.Set("event_type",
-              enterprise_connectors::GetEventName(event.event_case()));
-  wrapper.Set("profile", upload_events_request.has_profile());
-  wrapper.Set("device", upload_events_request.has_device());
-  wrapper.Set("success",
-              result.FindBool("uploaded_successfully").value_or(false));
-  return wrapper;
 }
 
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)

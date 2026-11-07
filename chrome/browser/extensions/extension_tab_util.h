@@ -194,7 +194,7 @@ class ExtensionTabUtil {
 
   // Returns true if the `browser` supports tab groups in its tab strip. For
   // example, tab groups are not supported by many app types (PWAs, WebApks,
-  // Chrome Apps, etc.).
+  // Chrome Apps, etc.). Returns false if `browser` is null.
   static bool SupportsTabGroups(BrowserWindowInterface* browser);
 
   // Gets the metadata for the group with ID `group_id`. Sets the `error` if not
@@ -285,6 +285,11 @@ class ExtensionTabUtil {
       const Extension* extension,
       content::WebContents* web_contents);
 
+  // Returns the WindowController associated with the given `web_contents`, or
+  // nullptr if none exists. First checks if `web_contents` belongs to a
+  // BrowserWindowInterface; otherwise falls back to looking up the
+  // WindowController by the window SessionID recorded on `web_contents` (e.g.
+  // for standalone WindowControllers or transiently detached tabs).
   static WindowController* GetWindowControllerOfTab(
       content::WebContents* web_contents);
 

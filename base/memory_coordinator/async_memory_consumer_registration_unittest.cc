@@ -55,7 +55,7 @@ class TestPassiveAsyncMemoryConsumer : public PassiveMemoryConsumer {
 
 constexpr MemoryConsumerTraits kActiveTraits(
     MemoryConsumerTraits::EstimatedMemoryUsage::kSmall,
-    MemoryConsumerTraits::ReleaseMemoryCost::kFreesPagesWithoutTraversal,
+    MemoryConsumerTraits::ReleaseMemoryDataAccess::kNone,
     MemoryConsumerTraits::InformationRetention::kLossless,
     MemoryConsumerTraits::ExecutionType::kAsynchronous);
 
@@ -78,7 +78,8 @@ TEST_F(AsyncMemoryConsumerRegistrationTest, RegisterOnAnotherSequence) {
 
   {
     consumer.AsyncCall(&TestAsyncMemoryConsumer::ExpectOnUpdateMemoryLimitCall);
-    registry.NotifyUpdateMemoryLimitAsync(22, task_environment_.QuitClosure());
+    registry.NotifyUpdateMemoryLimitAsync(MemoryLimit::FromPercent(22),
+                                          task_environment_.QuitClosure());
     task_environment_.RunUntilQuit();
   }
 

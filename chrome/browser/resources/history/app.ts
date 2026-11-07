@@ -2,11 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://resources/cr_components/history_clusters/clusters.js';
 import 'chrome://resources/cr_elements/cr_drawer/cr_drawer.js';
 import 'chrome://resources/cr_elements/cr_lazy_render/cr_lazy_render_lit.js';
 import 'chrome://resources/cr_elements/cr_page_selector/cr_page_selector.js';
-import 'chrome://resources/cr_elements/cr_tabs/cr_tabs.js';
 import './history_list.js';
 import './history_toolbar.js';
 import './history_filter_chips.js';
@@ -17,7 +15,7 @@ import '/strings.m.js';
 
 import {ColorChangeUpdater, COLORS_CSS_SELECTOR} from 'chrome://resources/cr_components/color_change_listener/colors_css_updater.js';
 import {HistoryResultType} from 'chrome://resources/cr_components/history/constants.js';
-import type {PageCallbackRouter, QueryResult, QueryState} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
+import type {Device, PageCallbackRouter, QueryResult, QueryState, TimePeriodOption} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
 import {getInstance as getAnnouncerInstance} from 'chrome://resources/cr_elements/cr_a11y_announcer/cr_a11y_announcer.js';
 import type {CrDrawerElement} from 'chrome://resources/cr_elements/cr_drawer/cr_drawer.js';
 import type {CrLazyRenderLitElement} from 'chrome://resources/cr_elements/cr_lazy_render/cr_lazy_render_lit.js';
@@ -124,26 +122,20 @@ export class HistoryAppElement extends HistoryAppElementBase {
       // True if the window is narrow enough for the page to have a drawer.
       hasDrawer_: {type: Boolean},
       footerInfo: {type: Object},
-      historyClustersEnabled_: {type: Boolean},
-      historyClustersVisible_: {type: Boolean},
       lastSelectedTab_: {type: Number},
-      showHistoryClusters_: {
-        type: Boolean,
-        reflect: true,
-      },
-      showTabs_: {type: Boolean},
       // The index of the currently selected tab.
       selectedTab_: {type: Number},
-      tabsIcons_: {type: Array},
-      tabsNames_: {type: Array},
       scrollTarget_: {type: Object},
-      queryStateAfterDate_: {type: Object},
       tabContentScrollOffset_: {type: Number},
       numCharsTypedInSearch_: {type: Number},
+      devices_: {type: Array},
       includeActorVisits_: {type: Boolean},
       includeUserVisits_: {type: Boolean},
-      isBrowsingHistoryActorIntegrationM3Enabled_: {type: Boolean},
+      clientIds_: {type: Array},
       isGlicWebActuationAvailable_: {type: Boolean},
+      isBrowsingHistoryFilterByDeviceEnabled_: {type: Boolean},
+      isBrowsingHistoryFilterByTimePeriodEnabled_: {type: Boolean},
+      timePeriodOptions_: {type: Array},
     };
   }
 
@@ -153,12 +145,8 @@ export class HistoryAppElement extends HistoryAppElementBase {
     geminiAppsActivity: loadTimeData.getBoolean('isGlicEnabled'),
   };
   protected accessor hasDrawer_: boolean = false;
-  protected accessor historyClustersEnabled_: boolean =
-      loadTimeData.getBoolean('isHistoryClustersEnabled');
-  protected accessor historyClustersVisible_: boolean =
-      loadTimeData.getBoolean('isHistoryClustersVisible');
-  protected accessor lastSelectedTab_: number =
-      loadTimeData.getInteger('lastSelectedTab');
+  // Shuttle: the history list is the only tab (Journeys is removed).
+  protected accessor lastSelectedTab_: number = 0;
   protected accessor contentPage_: string = Page.HISTORY;
   protected accessor tabsContentPage_: string = Page.HISTORY;
   protected accessor pendingDelete_: boolean = false;
@@ -173,39 +161,28 @@ export class HistoryAppElement extends HistoryAppElementBase {
     after: null,
     includeUserVisits: true,
     includeActorVisits: true,
+    clientIds: [],
   };
   protected accessor selectedPage_: string = Page.HISTORY;
-  protected accessor selectedTab_: number =
-      loadTimeData.getInteger('lastSelectedTab') || 0;
-  protected accessor showTabs_: boolean = false;
-  protected accessor showHistoryClusters_: boolean = false;
-  protected accessor tabsIcons_: string[] = [
-    (document.documentElement.hasAttribute('webui-rounded-icons') ?
-         'images/list.svg' :
-         'images/list_old.svg'),
-    (document.documentElement.hasAttribute('webui-rounded-icons') ?
-         'chrome://resources/images/icon_journeys.svg' :
-         'chrome://resources/images/icon_journeys_old.svg'),
-  ];
-  protected accessor tabsNames_: string[] = [
-    loadTimeData.getString('historyListTabLabel'),
-    loadTimeData.getString('historyClustersTabLabel'),
-  ];
+  protected accessor selectedTab_: number = 0;
   protected accessor scrollTarget_: HTMLElement = document.body;
-  protected accessor queryStateAfterDate_: Date|undefined;
   protected accessor tabContentScrollOffset_: number = 0;
   protected accessor numCharsTypedInSearch_: number = 0;
+  protected accessor devices_: Device[] = [];
   protected accessor includeActorVisits_: boolean = true;
   protected accessor includeUserVisits_: boolean = true;
-  protected accessor isBrowsingHistoryActorIntegrationM3Enabled_: boolean =
-      loadTimeData.getBoolean('isBrowsingHistoryActorIntegrationM3Enabled');
+  protected accessor clientIds_: string[] = [];
   protected accessor isGlicWebActuationAvailable_: boolean =
       loadTimeData.getBoolean('isGlicWebActuationAvailable');
+  protected accessor isBrowsingHistoryFilterByDeviceEnabled_: boolean =
+      loadTimeData.getBoolean('isBrowsingHistoryFilterByDeviceEnabled');
+  protected accessor isBrowsingHistoryFilterByTimePeriodEnabled_: boolean =
+      loadTimeData.getBoolean('isBrowsingHistoryFilterByTimePeriodEnabled');
+  protected accessor timePeriodOptions_: TimePeriodOption[] = [];
 
   private callbackRouter_: PageCallbackRouter;
   private dataFromNativeBeforeInput_: string|null = null;
   private eventTracker_: EventTracker = new EventTracker();
-  private historyClustersViewStartTime_: Date|null = null;
   private lastRecordedSelectedPageHistogramValue_: HistoryPageViewHistogram =
       HistoryPageViewHistogram.END;
   private onHasOtherFormsChangedListenerId_: number|null = null;
@@ -218,23 +195,35 @@ export class HistoryAppElement extends HistoryAppElementBase {
   override connectedCallback() {
     super.connectedCallback();
 
+    // <if expr="is_android">
+    this.addThemedColors_();
+    ColorChangeUpdater.forDocument().start();
+    // </if>
+
+    // <if expr="not is_android">
     const enableWebuiRefresh2026 =
         loadTimeData.getString('webuiRefresh2026') !== '';
     if (enableWebuiRefresh2026) {
       this.addThemedColors_();
       ColorChangeUpdater.forDocument().start();
     }
+    // </if>
 
     this.eventTracker_.add(document, 'click', onDocumentClick);
     this.eventTracker_.add(document, 'auxclick', onDocumentClick);
     this.eventTracker_.add(
         document, 'keydown', (e: Event) => this.onKeyDown_(e as KeyboardEvent));
     this.eventTracker_.add(
-        document, 'visibilitychange', this.onVisibilityChange_.bind(this));
-    this.eventTracker_.add(
         document, 'record-history-link-click',
         this.onRecordHistoryLinkClick_.bind(this));
     this.shadowRoot.querySelector('history-query-manager')!.initialize();
+    BrowserProxyImpl.getInstance().getSyncedDevicesForFiltering().then(
+        ({devices}) => {
+          this.devices_ = devices;
+        });
+    BrowserProxyImpl.getInstance().getTimePeriodOptions().then(({options}) => {
+      this.timePeriodOptions_ = options;
+    });
 
     const mediaQuery = window.matchMedia('(max-width: 1023px)');
     this.hasDrawer_ = mediaQuery.matches;
@@ -263,35 +252,12 @@ export class HistoryAppElement extends HistoryAppElementBase {
     super.willUpdate(changedProperties);
     const changedPrivateProperties =
         changedProperties as Map<PropertyKey, unknown>;
-    if (changedPrivateProperties.has('historyClustersEnabled_') ||
-        changedPrivateProperties.has('historyClustersVisible_')) {
-      this.showHistoryClusters_ =
-          this.historyClustersEnabled_ && this.historyClustersVisible_;
-    }
-
-    if (changedPrivateProperties.has('showHistoryClusters_')) {
-      this.showTabs_ = this.showHistoryClusters_;
-    }
-
     if (changedPrivateProperties.has('selectedTab_')) {
       this.lastSelectedTab_ = this.selectedTab_;
       // Change in the currently selected tab requires change in the currently
       // selected page.
       if (!this.selectedPage_ || TABBED_PAGES.includes(this.selectedPage_)) {
         this.selectedPage_ = TABBED_PAGES[this.selectedTab_]!;
-      }
-    }
-
-    if (changedPrivateProperties.has('queryState_')) {
-      if (this.queryState_.after) {
-        const afterDate = new Date(this.queryState_.after + 'T00:00:00');
-        // This compute function listens for any subproperty changes on the
-        // queryState_ so the `after` param may not have changed.
-        if (this.queryStateAfterDate_?.getTime() !== afterDate.getTime()) {
-          this.queryStateAfterDate_ = afterDate;
-        }
-      } else {
-        this.queryStateAfterDate_ = undefined;
       }
     }
   }
@@ -311,10 +277,6 @@ export class HistoryAppElement extends HistoryAppElementBase {
     return this.scrollTarget_;
   }
 
-  protected getShowResultsByGroup_(): boolean {
-    return this.selectedPage_ === Page.HISTORY_CLUSTERS;
-  }
-
   protected getShowHistoryList_(): boolean {
     return this.selectedPage_ === Page.HISTORY;
   }
@@ -329,18 +291,12 @@ export class HistoryAppElement extends HistoryAppElementBase {
     }
 
     if (changedPrivateProperties.has('selectedPage_')) {
-      this.selectedPageChanged_(
-          changedPrivateProperties.get('selectedPage_') as string);
+      this.selectedPageChanged_();
     }
 
     if (changedPrivateProperties.has('hasDrawer_')) {
       this.hasDrawerChanged_();
     }
-  }
-
-  protected historyClustersSelected_(): boolean {
-    return this.selectedPage_ === Page.HISTORY_CLUSTERS &&
-        this.showHistoryClusters_;
   }
 
   private onFirstRender_() {
@@ -396,6 +352,13 @@ export class HistoryAppElement extends HistoryAppElementBase {
     if (document.body.classList.contains('loading')) {
       document.body.classList.remove('loading');
       this.onFirstRender_();
+      if (document.visibilityState === 'visible') {
+        requestAnimationFrame(() => {
+          BrowserProxyImpl.getInstance().recordTime(
+              'HistoryPage.TimeToFirstVisibleContent',
+              Math.round(performance.now()));
+        });
+      }
     }
   }
 
@@ -420,21 +383,6 @@ export class HistoryAppElement extends HistoryAppElementBase {
       getAnnouncerInstance().announce(
           loadTimeData.getString('itemsUnselected'));
       e.preventDefault();
-    }
-  }
-
-  private onVisibilityChange_() {
-    if (this.selectedPage_ !== Page.HISTORY_CLUSTERS) {
-      return;
-    }
-
-    if (document.visibilityState === 'hidden') {
-      this.recordHistoryClustersDuration_();
-    } else if (
-        document.visibilityState === 'visible' &&
-        this.historyClustersViewStartTime_ === null) {
-      // Restart the timer if the user switches back to the History tab.
-      this.historyClustersViewStartTime_ = new Date();
     }
   }
 
@@ -493,8 +441,7 @@ export class HistoryAppElement extends HistoryAppElementBase {
    * @return Whether the command was actually triggered.
    */
   private onSelectAllCommand_(): boolean {
-    if (this.$.toolbar.searchField.isSearchFocused() ||
-        this.historyClustersSelected_()) {
+    if (this.$.toolbar.searchField.isSearchFocused()) {
       return false;
     }
     this.selectOrUnselectAll();
@@ -520,27 +467,15 @@ export class HistoryAppElement extends HistoryAppElementBase {
   }
 
   private updateTabsContentPage_() {
-    this.tabsContentPage_ =
-        (this.selectedPage_ === Page.HISTORY_CLUSTERS &&
-         this.historyClustersEnabled_ && this.historyClustersVisible_) ?
-        Page.HISTORY_CLUSTERS :
-        Page.HISTORY;
+    this.tabsContentPage_ = Page.HISTORY;
   }
 
-  private selectedPageChanged_(oldPage: string) {
+  private selectedPageChanged_() {
     this.updateContentPage_();
     this.updateTabsContentPage_();
     this.unselectAll();
     this.historyViewChanged_();
     this.maybeUpdateSelectedHistoryTab_();
-
-    if (oldPage === Page.HISTORY_CLUSTERS &&
-        this.selectedPage_ !== Page.HISTORY_CLUSTERS) {
-      this.recordHistoryClustersDuration_();
-    }
-    if (this.selectedPage_ === Page.HISTORY_CLUSTERS) {
-      this.historyClustersViewStartTime_ = new Date();
-    }
   }
 
   protected onContentIronSelect_() {
@@ -579,18 +514,6 @@ export class HistoryAppElement extends HistoryAppElementBase {
     this.recordHistoryPageView_();
   }
 
-  // Records the history clusters page duration.
-  private recordHistoryClustersDuration_() {
-    assert(this.historyClustersViewStartTime_ !== null);
-
-    const duration =
-        new Date().getTime() - this.historyClustersViewStartTime_.getTime();
-    BrowserProxyImpl.getInstance().recordLongTime(
-        'History.Clusters.WebUISessionDuration', duration);
-
-    this.historyClustersViewStartTime_ = null;
-  }
-
   private hasDrawerChanged_() {
     const drawer = this.$.drawer.getIfExists();
     if (!this.hasDrawer_ && drawer && drawer.open) {
@@ -606,15 +529,7 @@ export class HistoryAppElement extends HistoryAppElementBase {
   }
 
   private recordHistoryPageView_() {
-    let histogramValue = HistoryPageViewHistogram.END;
-    switch (this.selectedPage_) {
-      case Page.HISTORY_CLUSTERS:
-        histogramValue = HistoryPageViewHistogram.JOURNEYS;
-        break;
-      default:
-        histogramValue = HistoryPageViewHistogram.HISTORY;
-        break;
-    }
+    const histogramValue = HistoryPageViewHistogram.HISTORY;
 
     // Avoid double-recording the same page consecutively.
     if (histogramValue === this.lastRecordedSelectedPageHistogramValue_) {
@@ -687,33 +602,44 @@ export class HistoryAppElement extends HistoryAppElementBase {
     this.pendingDelete_ = e.detail.value;
   }
 
-  protected onTabsSelectedChanged_(e: CustomEvent<{value: number}>) {
-    this.onSelectedTabChanged_(e);
-  }
-
   protected onSelectedTabChanged_(e: CustomEvent<{value: number}>) {
     this.selectedTab_ = e.detail.value;
   }
 
-  protected onHistoryClustersVisibleChanged_(e: CustomEvent<{value: boolean}>) {
-    this.historyClustersVisible_ = e.detail.value;
-  }
-
-  protected onFilterChanged_(
-      e: CustomEvent<{userVisits: boolean, actorVisits: boolean}>) {
+  protected onFilterChanged_(e: CustomEvent<{
+    userVisits: boolean,
+    actorVisits: boolean,
+    clientIds: string[],
+  }>) {
     this.includeUserVisits_ = e.detail.userVisits;
     this.includeActorVisits_ = e.detail.actorVisits;
+    this.clientIds_ = e.detail.clientIds;
 
     this.fire('change-query', {
       search: this.queryState_.searchTerm,
       includeActorVisits: this.includeActorVisits_,
       includeUserVisits: this.includeUserVisits_,
+      clientIds: this.clientIds_,
     });
   }
 
+  protected showActorFilter_(): boolean {
+    return this.isGlicWebActuationAvailable_;
+  }
+
+  protected showDeviceFilter_(): boolean {
+    return this.isBrowsingHistoryFilterByDeviceEnabled_ &&
+        this.devices_.length > 1;
+  }
+
+  protected showTimePeriodFilter_(): boolean {
+    return this.isBrowsingHistoryFilterByTimePeriodEnabled_ &&
+        this.timePeriodOptions_.length > 0;
+  }
+
   protected showFilterChips_(): boolean {
-    return this.isBrowsingHistoryActorIntegrationM3Enabled_ &&
-        this.isGlicWebActuationAvailable_ && !this.getShowResultsByGroup_();
+    return this.showActorFilter_() || this.showDeviceFilter_() ||
+        this.showTimePeriodFilter_();
   }
 
   // TODO(crub.com/509908129): Add static stylesheet in history.html

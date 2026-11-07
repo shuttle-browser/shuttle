@@ -167,6 +167,7 @@ void RemoteFrame::Trace(Visitor* visitor) const {
   visitor->Trace(receiver_);
   visitor->Trace(main_frame_receiver_);
   Frame::Trace(visitor);
+  ChildFrameCompositor::Trace(visitor);
 }
 
 void RemoteFrame::Navigate(FrameLoadRequest& frame_request,
@@ -276,7 +277,7 @@ void RemoteFrame::Navigate(FrameLoadRequest& frame_request,
   params->referrer = mojom::blink::Referrer::New(
       KURL(NullUrl(), request.ReferrerString()), request.GetReferrerPolicy());
   params->is_form_submission = !!frame_request.Form();
-  params->disposition = ui::mojom::blink::WindowOpenDisposition::CURRENT_TAB;
+  params->disposition = ui::mojom::blink::WindowOpenDisposition::kCurrentTab;
   params->should_replace_current_entry =
       frame_load_type == WebFrameLoadType::kReplaceCurrentItem;
   params->user_gesture = request.HasUserGesture();

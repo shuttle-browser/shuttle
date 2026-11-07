@@ -55,6 +55,8 @@ const char* DownloaderToString(CrxDownloader::DownloadMetrics::Downloader d) {
       return "bits";
     case CrxDownloader::DownloadMetrics::kBackgroundMac:
       return "nsurlsession_background";
+    case CrxDownloader::DownloadMetrics::kDeliveryOptimization:
+      return "delivery_optimization";
     default:
       return "unknown";
   }
@@ -117,6 +119,16 @@ void DownloadComplete(
                  .code = std::to_underlying(ServiceError::CANCELLED)})));
     return;
   }
+
+  CrxDownloader::DownloadMetrics::Downloader final_downloader =
+      CrxDownloader::DownloadMetrics::kNone;
+  for (const auto& metric : crx_downloader->download_metrics()) {
+    metrics::RecordCrxDownloadAttempt(metric);
+    if (metric.error == 0) {
+      final_downloader = metric.downloader;
+    }
+  }
+  metrics::RecordCrxDownloadFinalDownloader(final_downloader);
 
   if (download_result.error) {
     CHECK(download_result.response.empty());

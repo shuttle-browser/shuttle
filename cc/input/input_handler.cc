@@ -41,6 +41,7 @@
 #include "ui/gfx/geometry/point_conversions.h"
 #include "ui/gfx/geometry/point_f.h"
 #include "ui/gfx/geometry/quad_f.h"
+#include "ui/gfx/geometry/size_conversions.h"
 #include "ui/gfx/geometry/vector2d_f.h"
 
 namespace cc {
@@ -158,6 +159,14 @@ InputHandler::ScrollStatus InputHandler::ScrollBegin(ScrollState* scroll_state,
       ClearAnimatingSnapTargetsForElement(scroll_node->element_id);
     }
   }
+
+  // A snap fling constraint is valid only for the fling that set it. The
+  // cleanup in ScrollEnd() is deferred while a snap animation runs, so a new
+  // gesture can begin before that cleanup happens. Reset the constraint here so
+  // that it cannot clamp the scroll updates of the new gesture.
+  snap_fling_state_ = kNoFling;
+  fling_snap_constrain_x_ = std::nullopt;
+  fling_snap_constrain_y_ = std::nullopt;
 
   // This allows re-latch to an existing `CurrentlyScrollNode()`, if it is the
   // same scroll type - and animations / snaps have not yet been resolved on it.
@@ -360,7 +369,15 @@ InputHandlerScrollResult InputHandler::ScrollUpdate(
     AdjustScrollDeltaForScrollbarSnap(scroll_state);
   }
 
-  bool use_unconstrained = prevent_scroll_axis_locking_.value();
+  // TODO(crbug.com/535432422): Delete unconstrained deltas once
+  // kApplyScrollRailingInRenderer is launched and the legacy path is removed.
+  // When kApplyScrollRailingInRenderer is enabled, the browser will not rail
+  // the deltas so delta_x/delta_y will contain unconstrained values when
+  // necessary (i.e. when axis locking is prevented). Otherwise, explicitly fall
+  // back to unconstrained deltas when axis locking is prevented.
+  bool use_unconstrained =
+      !base::FeatureList::IsEnabled(features::kApplyScrollRailingInRenderer) &&
+      prevent_scroll_axis_locking_;
   float delta_x = use_unconstrained ? scroll_state.delta_x_unconstrained()
                                     : scroll_state.delta_x();
   float delta_y = use_unconstrained ? scroll_state.delta_y_unconstrained()
@@ -1420,6 +1437,9 @@ void InputHandler::DidCommit() {
   if (scroll_elasticity_helper_) {
     scroll_elasticity_helper_->ApplyStretchAmountsToPending();
   }
+  for (const auto& [element_id, target_ids] : updated_snapped_elements_) {
+    ActiveTree().SetTargetSnapAreaElementIds(element_id, target_ids);
+  }
 }
 
 void InputHandler::DidImplSideInvalidate() {
@@ -1511,8 +1531,8 @@ void InputHandler::ScrollOffsetAnimationFinished(ElementId element_id) {
     if (finished_node && finished_node->snap_container_data.has_value()) {
       TargetSnapAreaElementIds target_ids =
           GetAnimatingSnapTargetsForElement(finished_node->element_id);
-      finished_node->snap_container_data.value().SetTargetSnapAreaElementIds(
-          target_ids);
+      ActiveTree().SetTargetSnapAreaElementIds(finished_node->element_id,
+                                               target_ids);
       updated_snapped_elements_[finished_node->element_id] = target_ids;
       SetNeedsCommit();
     }
@@ -2388,8 +2408,13 @@ ScrollNode* InputHandler::FindNodeToLatch(ScrollState* scroll_state,
 }
 
 void InputHandler::UpdateRootLayerStateForSynchronousInputHandler() {
-  if (!input_handler_client_)
+  // If the active tree doesn't have an inner viewport scroll node yet, the
+  // compositor is uninitialized/unactivated and page scale factor defaults to
+  // 1.0. Avoid sending premature scale updates to the client until the root
+  // viewport scroll node is ready.
+  if (!input_handler_client_ || !ActiveTree().InnerViewportScrollNode()) {
     return;
+  }
   input_handler_client_->UpdateRootLayerStateForSynchronousInputHandler(
       ActiveTree().TotalScrollOffset(), ActiveTree().TotalMaxScrollOffset(),
       ActiveTree().ScrollableSize(), ActiveTree().current_page_scale_factor(),
@@ -2410,7 +2435,7 @@ void InputHandler::DidLatchToScroller(const ScrollState& scroll_state,
   latched_scroll_type_ = type;
   last_scroll_begin_state_ = scroll_state;
   prevent_scroll_axis_locking_ =
-      !!CurrentlyScrollingNode()->prevent_scroll_axis_locking;
+      CurrentlyScrollingNode()->prevent_scroll_axis_locking;
 
   ClearAnimatingSnapTargetsForElement(last_latched_scroller_);
 
@@ -2505,7 +2530,8 @@ bool InputHandler::SnapAtScrollEnd(SnapReason reason) {
       EnsureSnapAnimationData(CurrentlyScrollingNode()->element_id);
       SetAnimatingSnapTargetsForElement(CurrentlyScrollingNode()->element_id,
                                         snap.target_element_ids);
-    } else if (data.SetTargetSnapAreaElementIds(snap.target_element_ids)) {
+    } else if (ActiveTree().SetTargetSnapAreaElementIds(
+                   scroll_node->element_id, snap.target_element_ids)) {
       updated_snapped_elements_[scroll_node->element_id] =
           snap.target_element_ids;
     }
@@ -2552,7 +2578,8 @@ bool InputHandler::SnapAtScrollEnd(SnapReason reason) {
     // The updated snap target will be set when the animation is completed.
     SetAnimatingSnapTargetsForElement(scroll_node->element_id,
                                       snap.target_element_ids);
-  } else if (data.SetTargetSnapAreaElementIds(snap.target_element_ids)) {
+  } else if (ActiveTree().SetTargetSnapAreaElementIds(
+                 scroll_node->element_id, snap.target_element_ids)) {
     updated_snapped_elements_[scroll_node->element_id] =
         snap.target_element_ids;
     SetNeedsCommit();
@@ -2584,7 +2611,7 @@ void InputHandler::ClearCurrentlyScrollingNode() {
   delta_consumed_for_scroll_gesture_ = false;
   // TODO(crbug.com/479472367): Combine optional field related to latched node
   // into single struct.
-  prevent_scroll_axis_locking_.reset();
+  prevent_scroll_axis_locking_ = false;
   latched_scroll_type_.reset();
   last_scroll_update_state_.reset();
   last_scroll_begin_state_.reset();

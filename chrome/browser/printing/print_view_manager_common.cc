@@ -7,7 +7,10 @@
 #include <utility>
 
 #include "build/build_config.h"
+#include "chrome/browser/printing/scoped_tab_print_target_override.h"
+#include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/web_contents.h"
 #include "extensions/buildflags/buildflags.h"
 #include "pdf/buildflags.h"
 #include "printing/buildflags/buildflags.h"
@@ -138,7 +141,8 @@ content::RenderFrameHost* GetFullPagePlugin(content::WebContents* contents) {
         auto* guest_view =
             extensions::MimeHandlerViewGuest::FromRenderFrameHost(rfh);
         if (guest_view && guest_view->is_full_page_plugin()) {
-          DCHECK_EQ(guest_view->GetGuestMainFrame(), rfh);
+          CHECK_EQ(guest_view->GetGuestMainFrame(), rfh,
+                   base::NotFatalUntil::M162);
           full_page_plugin = rfh;
           return content::RenderFrameHost::FrameIterationAction::kStop;
         }
@@ -146,6 +150,18 @@ content::RenderFrameHost* GetFullPagePlugin(content::WebContents* contents) {
       });
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
   return full_page_plugin;
+}
+
+content::WebContents* GetWebContentsToPrint(tabs::TabInterface* tab) {
+  if (!tab) {
+    return nullptr;
+  }
+  auto* print_override =
+      ScopedTabPrintTargetOverride::Get(tab->GetUnownedUserDataHost());
+  if (print_override && print_override->target()) {
+    return print_override->target();
+  }
+  return tab->GetContents();
 }
 
 }  // namespace printing

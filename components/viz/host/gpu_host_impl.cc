@@ -292,16 +292,13 @@ void GpuHostImpl::ConnectFrameSinkManager(
 
 void GpuHostImpl::EstablishGpuChannel(int client_id,
                                       uint64_t client_tracing_id,
-                                      bool is_gpu_host,
-                                      bool enable_extra_handles_validation,
+                                      mojom::GpuClientType client_type,
                                       bool sync,
                                       mojo::ScopedMessagePipeHandle handle,
                                       EstablishChannelCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   TRACE_EVENT2("gpu", "GpuHostImpl::EstablishGpuChannel", "client_id",
-               client_id, "is_gpu_host", is_gpu_host);
-  DCHECK(!(is_gpu_host && enable_extra_handles_validation));
-
+               client_id, "client_type", client_type);
   shutdown_timeout_.Stop();
 
   if (gpu::IsReservedClientId(client_id)) {
@@ -323,22 +320,20 @@ void GpuHostImpl::EstablishGpuChannel(int client_id,
     {
       mojo::SyncCallRestrictions::ScopedAllowSyncCall scoped_allow;
       gpu_service_remote_->EstablishGpuChannel(
-          client_id, client_tracing_id, is_gpu_host,
-          enable_extra_handles_validation, std::move(handle), &success,
-          &gpu_info, &gpu_feature_info, &shared_image_capabilities);
+          client_id, client_tracing_id, client_type, std::move(handle),
+          &success, &gpu_info, &gpu_feature_info, &shared_image_capabilities);
     }
     OnChannelEstablished(client_id, /*sync=*/true, /*success=*/success,
                          gpu_info, gpu_feature_info, shared_image_capabilities);
   } else {
     gpu_service_remote_->EstablishGpuChannel(
-        client_id, client_tracing_id, is_gpu_host,
-        enable_extra_handles_validation, std::move(handle),
+        client_id, client_tracing_id, client_type, std::move(handle),
         base::BindOnce(&GpuHostImpl::OnChannelEstablished,
                        weak_ptr_factory_.GetWeakPtr(), client_id, false));
   }
 
   // The gpu host channel uses the same cache as the compositor client.
-  if (is_gpu_host &&
+  if (client_type == mojom::GpuClientType::kBrowser &&
       !base::FeatureList::IsEnabled(features::kGpuPersistentCache)) {
     SetChannelDiskCacheHandle(client_id,
                               gpu::kDisplayCompositorGpuDiskCacheHandle);
@@ -539,6 +534,11 @@ void GpuHostImpl::SetChannelPersistentCachePendingBackend(
       factory->DeletePendingBackendAsync(std::move(pending_backend));
     }
     return;
+  }
+  // Only record the size of the caches that the GPU process uses.
+  if (auto* factory = PersistentCacheSandboxedFileFactory::GetInstance()) {
+    factory->RecordDiskSizeAsync(
+        GetGpuDiskCacheSubdir(gpu::GetHandleType(handle)));
   }
   gpu_service()->SetChannelPersistentCachePendingBackend(
       client_id, handle, std::move(pending_backend));

@@ -37,6 +37,14 @@ class WebContents;
 }  // namespace content
 
 
+namespace lens {
+enum class LensOverlayInvocationSource;
+}  // namespace lens
+
+namespace omnibox {
+enum ChromeAimEntryPoint : int;
+}  // namespace omnibox
+
 namespace split_tabs {
 enum class SplitTabCreatedSource;
 }
@@ -251,9 +259,6 @@ void FindPrevious(BrowserWindowInterface* browser);
 void FindInPage(BrowserWindowInterface* browser, bool find_next, bool forward_direction);
 void ToggleTabSearchPin(BrowserWindowInterface* browser);
 void ToggleTabScrollButtonsPin(BrowserWindowInterface* browser);
-void ToggleVerticalTabs(BrowserWindowInterface* browser);
-void ToggleVerticalTabsExpandOnHover(BrowserWindowInterface* browser);
-void ToggleCollapseVerticalTabs(BrowserWindowInterface* browser);
 bool CanCloseFind(BrowserWindowInterface* browser);
 void CloseFind(BrowserWindowInterface* browser);
 void Zoom(BrowserWindowInterface* browser, content::PageZoom zoom);
@@ -281,7 +286,10 @@ void OpenSizeWindow(BrowserWindowInterface* browser);
 void ToggleShowFullURLs(BrowserWindowInterface* browser);
 void ToggleShowSearchTools(BrowserWindowInterface* browser);
 void ShowAppMenu(BrowserWindowInterface* browser);
-void OpenUpdateChromeDialog(BrowserWindowInterface* browser);
+void MaybeUpdateChrome(BrowserWindowInterface* browser);
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+void OpenScheduledRestartDialog(BrowserWindowInterface* browser);
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 bool CanRequestTabletSite(content::WebContents* current_tab);
 bool IsRequestingTabletSite(BrowserWindowInterface* browser);
 void ToggleRequestTabletSite(BrowserWindowInterface* browser);

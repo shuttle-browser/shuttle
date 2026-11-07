@@ -27,21 +27,18 @@ browser_exposed_mojom_targets = [
   "//chrome/browser/ui/webui/downloads:mojo_bindings",
   "//chrome/browser/ui/webui/infobar_internals:mojo_bindings",
   "//chrome/browser/ui/webui/location_internals:mojo_bindings",
-  "//chrome/browser/ui/webui/omnibox:mojo_bindings",
-  "//chrome/browser/ui/webui/omnibox/logging:mojo_bindings",
+  "//chrome/browser/ui/webui/omnibox_internals:mojo_bindings",
+  "//chrome/browser/ui/webui/omnibox_internals/logging:mojo_bindings",
   "//chrome/browser/ui/webui/omnibox_popup/mojom:mojom",
   "//chrome/browser/ui/webui/page_action_internals:mojo_bindings",
-  "//chrome/browser/ui/webui/segmentation_internals:mojo_bindings",
   "//chrome/browser/ui/webui/subresource_filter:mojo_bindings",
   "//chrome/browser/ui/webui/suggest_internals:mojo_bindings",
   "//chrome/browser/ui/webui/tab_strip_internals:mojo_bindings",
   "//chrome/browser/ui/webui/updater:mojo_bindings",
   "//chrome/browser/ui/webui/usb_internals:mojo_bindings",
-  "//chrome/browser/ui/webui/watermark:mojo_bindings",
   "//chrome/browser/ui/webui/webnn_internals:mojo_bindings",
   "//chrome/common:mojo_bindings",
   "//chrome/common:offline_page_auto_fetcher_mojom",
-  "//chrome/common:supervised_user_commands_mojom",
   "//chrome/services/file_util/public/mojom:mojom",
   "//components/media_gallery_util/public/mojom:mojom",
   "//chrome/services/printing/public/mojom:mojom",
@@ -54,19 +51,15 @@ browser_exposed_mojom_targets = [
   "//components/content_settings/core/common:content_settings_types",
   "//components/content_settings/core/common:mojo_bindings",
   "//components/continuous_search/common/public/mojom:mojom",
-  "//components/device_signals/core/common/mojom:mojom",
   "//components/digital_goods/mojom:mojom",
   "//components/discardable_memory/public/mojom:mojom",
   "//components/dom_distiller/content/common/mojom:mojom",
   "//components/dom_distiller/core/mojom:mojom",
   "//components/download/public/common:interfaces",
-  "//components/enterprise/connectors:mojom",
   "//components/facilitated_payments/core/mojom:facilitated_payments_agent_mojom",
   "//components/guest_contents/common:mojom",
   "//components/guest_view/common:mojom",
   "//components/heap_profiling/in_process:mojom",
-  "//components/history_clusters/history_clusters_internals/webui:mojo_bindings",
-  "//components/history_clusters/public/mojom:mojo_bindings",
   "//components/language_detection/content/common:common",
   "//components/metrics/public/mojom:call_stack_mojo_bindings",
   "//components/metrics/public/mojom:histogram_fetcher_mojo_bindings",
@@ -77,12 +70,9 @@ browser_exposed_mojom_targets = [
   "//components/network_hints/common:mojo_bindings",
   "//components/no_state_prefetch/common:mojo_bindings",
   "//components/omnibox/browser:mojo_bindings",
-  "//components/optimization_guide/content/mojom:mojo_interfaces",
   "//components/optimization_guide/core:interfaces",
-  "//components/optimization_guide/optimization_guide_internals/webui:mojo_bindings",
   "//components/os_crypt/async/common:algorithm_mojom",
   "//components/os_crypt/async/common:common_mojom",
-  "//components/page_image_service/mojom:mojo_bindings",
   "//components/page_load_metrics/common:page_load_metrics_mojom",
   "//components/paint_preview/common/mojom:mojom",
   "//components/payments/mojom:mojom",
@@ -164,9 +154,7 @@ browser_exposed_mojom_targets = [
   "//printing/mojom:mojom",
   "//printing/mojom:printing_context",
   "//sandbox/policy/mojom:mojom",
-  "//services/accessibility/public/mojom:automation_client",
   "//services/accessibility/public/mojom:automation",
-  "//services/accessibility/public/mojom:mojom",
   "//services/audio/public/mojom:mojom",
   "//services/cert_verifier/public/mojom:mojom",
   "//services/data_decoder/public/mojom:mojom_xml_parser",
@@ -262,7 +250,6 @@ browser_exposed_mojom_targets = [
   "//ui/webui/resources/cr_components/color_change_listener:mojom",
   "//ui/webui/resources/cr_components/customize_color_scheme_mode:mojom",
   "//ui/webui/resources/cr_components/history:mojo_bindings",
-  "//ui/webui/resources/cr_components/history_clusters:mojo_bindings",
   "//ui/webui/resources/cr_components/theme_color_picker:mojom",
   "//ui/webui/resources/js/browser_command:mojo_bindings",
   "//ui/webui/resources/js/metrics_reporter:mojo_bindings",
@@ -273,13 +260,10 @@ browser_exposed_mojom_targets = [
 ]
 
 if (!is_android) {
-  browser_exposed_mojom_targets += [
-    "//chrome/browser/ui/webui/iwa_dev:mojo_bindings",
-  ]
+  browser_exposed_mojom_targets +=
+      [ "//chrome/browser/ui/webui/iwa_dev:mojo_bindings" ]
 }
 
-
 if (enable_webui_ntp) {
-  browser_exposed_mojom_targets += [
-  ]
+  browser_exposed_mojom_targets += []
 }

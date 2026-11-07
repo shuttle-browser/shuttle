@@ -1,9 +1,0 @@
-monorail: {
-  project: "chromium"
-  component: "Enterprise"
-}
-team_email: "cros-reporting-team@google.com"
-os: CHROME_OS
-buganizer_public: {
-  component_id: 1456152
-}

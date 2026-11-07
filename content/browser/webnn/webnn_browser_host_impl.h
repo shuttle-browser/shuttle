@@ -11,17 +11,20 @@
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "services/webnn/public/mojom/webnn_browser_host.mojom.h"
 
-#if BUILDFLAG(IS_WIN)
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_APPLE)
 #include <string>
 
-#include "base/containers/flat_map.h"
 #include "base/memory/weak_ptr.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/webnn/public/cpp/context_properties.h"
-#include "services/webnn/public/cpp/ep_device_info.h"
-#include "services/webnn/public/mojom/ep_package_info.mojom.h"
 #include "services/webnn/public/mojom/webnn_compiler_service.mojom.h"
 #include "services/webnn/public/mojom/webnn_context_provider.mojom.h"
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_APPLE)
+
+#if BUILDFLAG(IS_WIN)
+#include "base/containers/flat_map.h"
+#include "services/webnn/public/cpp/ep_device_info.h"
+#include "services/webnn/public/mojom/ep_package_info.mojom.h"
 #endif  // BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(IS_APPLE)
@@ -66,15 +69,21 @@ class CONTENT_EXPORT WebNNBrowserHostImpl
 #if BUILDFLAG(IS_WIN)
   void EnsureExecutionProvidersReady(
       EnsureExecutionProvidersReadyCallback callback) override;
+#endif  // BUILDFLAG(IS_WIN)
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_APPLE)
   void RequestCompilerContext(
       webnn::mojom::CreateContextOptionsPtr context_options,
       const webnn::ContextProperties& context_properties,
+#if BUILDFLAG(IS_WIN)
       const webnn::EpDeviceInfo& target_device,
+#endif
       mojo::PendingReceiver<webnn::mojom::WebNNCompilerContext>
           compiler_context_receiver,
       mojo::PendingRemote<webnn::mojom::WebNNModelLoader> model_loader_remote,
       RequestCompilerContextCallback callback) override;
-#endif  // BUILDFLAG(IS_WIN)
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_APPLE)
+
   void CreateWeightsFile(CreateWeightsFileCallback callback) override;
 #if BUILDFLAG(IS_APPLE)
   void CopyCompiledModel(const base::FilePath& compiler_model_path,
@@ -98,16 +107,24 @@ class CONTENT_EXPORT WebNNBrowserHostImpl
       base::flat_map<std::string, webnn::mojom::EpPackageInfoPtr>
           ep_package_info_map);
 
-  // Handles disconnection of the Compiler process for `device_info`, erasing
+  // Handles the Compiler process becoming idle for `device_info`, resetting its
+  // remote.
+  void OnIdle(const webnn::EpDeviceInfo& device_info);
+
+  // Handles disconnection of the Compiler process for `device_info`, resetting
   // its remote and updating crash accounting.
-  void OnDisconnected(const webnn::EpDeviceInfo& device_info,
-                      uint32_t reason,
-                      const std::string& description);
+  void OnDisconnected(const webnn::EpDeviceInfo& device_info);
 
   // Per-EP-device remotes to Compiler processes, launched on demand.
   base::flat_map<webnn::EpDeviceInfo,
                  mojo::Remote<webnn::mojom::WebNNCompilerService>>
       webnn_compiler_remotes_;
+
+  base::WeakPtrFactory<WebNNBrowserHostImpl> weak_ptr_factory_{this};
+#elif BUILDFLAG(IS_APPLE)
+  void OnDisconnected();
+
+  mojo::Remote<webnn::mojom::WebNNCompilerService> webnn_compiler_remote_;
 
   base::WeakPtrFactory<WebNNBrowserHostImpl> weak_ptr_factory_{this};
 #endif  // BUILDFLAG(IS_WIN)

@@ -14,6 +14,7 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_union_constraindoublerange_double.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_union_constrainlongrange_long.h"
 #include "third_party/blink/renderer/core/html/html_camera_element.h"
+#include "third_party/blink/renderer/core/html/html_capability_element_metrics_util.h"
 #include "third_party/blink/renderer/core/html/html_media_track_element_base.h"
 #include "third_party/blink/renderer/core/html/html_microphone_element.h"
 #include "third_party/blink/renderer/core/html/html_user_media_element.h"
@@ -129,7 +130,8 @@ MediaCaptureElementConstraints::MediaCaptureElementConstraints(
     : Supplement<HTMLMediaCaptureElementBase>(element) {}
 
 void MediaCaptureElementConstraints::Trace(Visitor* visitor) const {
-  visitor->Trace(constraints_);
+  visitor->Trace(video_constraints_);
+  visitor->Trace(audio_constraints_);
   Supplement<HTMLMediaCaptureElementBase>::Trace(visitor);
 }
 
@@ -138,20 +140,21 @@ void MediaCaptureElementConstraints::setConstraints(
     const HTMLMediaStreamConstraints* constraints) {
   MediaCaptureElementConstraints& self = From(element);
   if (self.DidSetConstraints()) {
+    RecordCapabilityElementSetConstraintsRepeatedCall(element.TagQName(),
+                                                      RepeatedCall(true));
     return;
   }
+  RecordCapabilityElementSetConstraintsRepeatedCall(element.TagQName(),
+                                                    RepeatedCall(false));
 
-  HTMLMediaStreamConstraints* sanitized_constraints =
-      HTMLMediaStreamConstraints::Create();
-
-  sanitized_constraints->setVideo(SanitizeTrackConstraints(
+  MediaTrackConstraints* video_constraints = SanitizeTrackConstraints(
       (constraints && constraints->hasVideo()) ? constraints->video()
-                                               : nullptr));
-  sanitized_constraints->setAudio(SanitizeTrackConstraints(
+                                               : nullptr);
+  MediaTrackConstraints* audio_constraints = SanitizeTrackConstraints(
       (constraints && constraints->hasAudio()) ? constraints->audio()
-                                               : nullptr));
+                                               : nullptr);
 
-  self.SetConstraints(sanitized_constraints);
+  self.SetConstraints(video_constraints, audio_constraints);
 }
 
 void MediaCaptureElementConstraints::setConstraints(
@@ -159,21 +162,23 @@ void MediaCaptureElementConstraints::setConstraints(
     const MediaTrackConstraintSet* constraints) {
   MediaCaptureElementConstraints& self = From(element);
   if (self.DidSetConstraints()) {
+    RecordCapabilityElementSetConstraintsRepeatedCall(element.TagQName(),
+                                                      RepeatedCall(true));
     return;
   }
+  RecordCapabilityElementSetConstraintsRepeatedCall(element.TagQName(),
+                                                    RepeatedCall(false));
 
-  HTMLMediaStreamConstraints* sanitized_constraints =
-      HTMLMediaStreamConstraints::Create();
   MediaTrackConstraints* sanitized_track =
       SanitizeTrackConstraints(constraints);
 
   if (element.IsHTMLCameraElement()) {
-    sanitized_constraints->setVideo(sanitized_track);
+    self.SetConstraints(/*video_constraints=*/sanitized_track,
+                        /*audio_constraints=*/nullptr);
   } else if (element.IsHTMLMicrophoneElement()) {
-    sanitized_constraints->setAudio(sanitized_track);
+    self.SetConstraints(/*video_constraints=*/nullptr,
+                        /*audio_constraints=*/sanitized_track);
   }
-
-  self.SetConstraints(sanitized_constraints);
 }
 
 }  // namespace blink

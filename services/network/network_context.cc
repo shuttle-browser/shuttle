@@ -68,6 +68,7 @@
 #include "net/base/isolation_info.h"
 #include "net/base/load_flags.h"
 #include "net/base/net_errors.h"
+#include "net/base/net_info_source_list.h"
 #include "net/base/network_anonymization_key.h"
 #include "net/base/network_delegate.h"
 #include "net/base/network_isolation_key.h"
@@ -103,6 +104,7 @@
 #include "net/http/http_request_headers.h"
 #include "net/http/http_server_properties.h"
 #include "net/http/http_transaction_factory.h"
+#include "net/http/transport_security_state.h"
 #include "net/log/net_log_source_type.h"
 #include "net/net_buildflags.h"
 #include "net/proxy_resolution/configured_proxy_resolution_service.h"
@@ -188,6 +190,7 @@
 
 #if BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
 #include "services/network/device_bound_session_service_delegate.h"
+#include "services/network/restricted_device_bound_session_manager_impl.h"
 #include "services/network/ssl_private_key_proxy.h"
 #endif
 
@@ -1210,6 +1213,26 @@ void NetworkContext::GetRestrictedCookieManager(
   restricted_cookie_managers_.insert(std::move(ptr));
 }
 
+void NetworkContext::GetRestrictedDeviceBoundSessionManager(
+    mojo::PendingReceiver<mojom::RestrictedDeviceBoundSessionManager> receiver,
+    const url::Origin& origin,
+    const net::IsolationInfo& isolation_info) {
+#if BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
+  // Without a SessionService no session can exist, so the receiver is dropped,
+  // which closes the pipe.
+  net::device_bound_sessions::SessionService* session_service =
+      url_request_context_->device_bound_session_service();
+  if (!session_service) {
+    return;
+  }
+  restricted_device_bound_session_managers_.Add(
+      std::make_unique<RestrictedDeviceBoundSessionManagerImpl>(
+          *session_service, cookie_manager_->cookie_settings(), origin,
+          isolation_info),
+      std::move(receiver));
+#endif
+}
+
 void NetworkContext::GetTrustTokenQueryAnswerer(
     mojo::PendingReceiver<mojom::TrustTokenQueryAnswerer> receiver,
     const url::Origin& top_frame_origin) {
@@ -1364,10 +1387,19 @@ void NetworkContext::LoaderDestroyed(const OriginatingProcessId& process_id) {
   }
 }
 
-bool NetworkContext::CanCreateLoader(const OriginatingProcessId& process_id) {
+uint32_t NetworkContext::GetLoaderCount(
+    const OriginatingProcessId& process_id) const {
   auto it = loader_count_per_process_.find(process_id);
-  uint32_t count = (it == loader_count_per_process_.end() ? 0 : it->second);
-  return count < max_loaders_per_process_;
+  return it == loader_count_per_process_.end() ? 0 : it->second;
+}
+
+bool NetworkContext::CanCreateLoader(const OriginatingProcessId& process_id) {
+  return GetLoaderCount(process_id) < max_loaders_per_process_;
+}
+
+uint32_t NetworkContext::GetLoaderCountForTesting(
+    const OriginatingProcessId& process_id) const {
+  return GetLoaderCount(process_id);
 }
 
 size_t NetworkContext::GetNumOutstandingResolveHostRequestsForTesting() const {
@@ -2131,6 +2163,28 @@ void NetworkContext::ClearBadProxiesCache(
   std::move(callback).Run();
 }
 
+void NetworkContext::GetProxySettings(GetProxySettingsCallback callback) {
+  base::DictValue net_log_values =
+      url_request_context()->proxy_resolution_service()->GetProxyNetLogValues();
+  base::DictValue result;
+  if (base::DictValue* proxy_settings =
+          net_log_values.FindDict(net::kNetInfoProxySettings)) {
+    result = std::move(*proxy_settings);
+  }
+  if (base::ListValue* bad_proxies =
+          net_log_values.FindList(net::kNetInfoBadProxies)) {
+    result.Set(net::kNetInfoBadProxies, std::move(*bad_proxies));
+  }
+  base::TimeDelta time_since_epoch =
+      base::Time::Now() - base::Time::UnixEpoch();
+  base::TimeDelta reference_time_ticks =
+      base::TimeTicks::Now() - base::TimeTicks();
+  result.Set("timeTickOffset",
+             base::NumberToString(
+                 (time_since_epoch - reference_time_ticks).InMilliseconds()));
+  std::move(callback).Run(std::move(result));
+}
+
 void NetworkContext::CreateWebSocket(
     const GURL& url,
     const std::vector<std::string>& requested_protocols,
@@ -2500,12 +2554,11 @@ void NetworkContext::DeleteDynamicDataForHost(
       transport_security_state->DeleteDynamicDataForHost(host));
 }
 
-void NetworkContext::EnableStaticKeyPinningForTesting(
-    EnableStaticKeyPinningForTestingCallback callback) {
+void NetworkContext::ReinitializeKeyPinningForTesting(
+    ReinitializeKeyPinningForTestingCallback callback) {
   net::TransportSecurityState* state =
       url_request_context_->transport_security_state();
-  state->EnableStaticPinsForTesting();
-  state->SetPinningListAlwaysTimelyForTesting(true);
+  state->ReinitializePinningForTesting();
   std::move(callback).Run();
 }
 
@@ -2852,6 +2905,11 @@ void NetworkContext::OnHttpAuthDynamicParamsChanged(
   url_matcher::util::AddAllowFiltersWithLimit(
       url_matcher_.get(), http_auth_dynamic_network_service_params
                               ->patterns_allowed_to_use_all_schemes);
+  proxy_url_matcher_ = std::make_unique<url_matcher::URLMatcher>();
+  url_matcher::util::AddAllowFiltersWithLimit(
+      proxy_url_matcher_.get(),
+      http_auth_dynamic_network_service_params
+          ->patterns_allowed_to_use_all_schemes_for_proxies);
   http_auth_merged_preferences_.set_http_auth_scheme_filter(
       base::BindRepeating(&NetworkContext::IsAllowedToUseAllHttpAuthSchemes,
                           base::Unretained(this)));
@@ -2977,12 +3035,12 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
         std::move(params_->proxy_resolver_factory));
   }
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   if (params_->system_proxy_resolver) {
     builder.SetMojoSystemProxyResolver(
         std::move(params_->system_proxy_resolver));
   }
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
 #if BUILDFLAG(IS_CHROMEOS)
   if (params_->dhcp_wpad_url_client) {
@@ -3344,11 +3402,13 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
   // TransportSecurityState.  Since no requests have been made yet, safe to do
   // this even after the call to Build().
 
+#if BUILDFLAG(CHROME_KEY_PINNING_SUPPORTED)
   if (network_service_->pins_list_updated()) {
     result.url_request_context->transport_security_state()->UpdatePinList(
         network_service_->pinsets(), network_service_->host_pins(),
         network_service_->pins_list_update_time());
   }
+#endif  // BUILDFLAG(CHROME_KEY_PINNING_SUPPORTED)
 
 #if BUILDFLAG(IS_CT_SUPPORTED)
   if (params_->enforce_chrome_ct_policy) {
@@ -3600,8 +3660,13 @@ void NetworkContext::FinishConstructingTrustTokenStore(
 }
 
 bool NetworkContext::IsAllowedToUseAllHttpAuthSchemes(
-    const url::SchemeHostPort& scheme_host_port) {
-  DCHECK(url_matcher_);
+    const url::SchemeHostPort& scheme_host_port,
+    net::HttpAuth::Target target) {
+  if (target == net::HttpAuth::AUTH_PROXY) {
+    CHECK(proxy_url_matcher_);
+    return !proxy_url_matcher_->MatchURL(scheme_host_port.GetURL()).empty();
+  }
+  CHECK(url_matcher_);
   return !url_matcher_->MatchURL(scheme_host_port.GetURL()).empty();
 }
 
@@ -3936,6 +4001,12 @@ void NetworkContext::AddQuicHints(
         canonical_origin, network_anonymization_key, alternative_service,
         base::Time::Max(), quic::ParsedQuicVersionVector());
   }
+}
+
+void NetworkContext::Clone(
+    mojo::PendingReceiver<mojom::NetworkContext> receiver) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  cloned_receivers_.Add(this, std::move(receiver));
 }
 
 void NetworkContext::AddWildcardQuicHints(

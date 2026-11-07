@@ -621,6 +621,7 @@ void ExternalVkImageBacking::EndAccess(bool readonly,
 
   EndAccessInternal(readonly, std::move(external_semaphore));
   if (!readonly) {
+    wait_for_gl_finish_ = is_gl;
     if (use_separate_gl_texture()) {
       latest_content_ = is_gl ? kInGLTexture : kInVkImage;
     } else {
@@ -699,6 +700,7 @@ bool ExternalVkImageBacking::UploadFromMemory(
   }
 
   latest_content_ = kInVkImage;
+  wait_for_gl_finish_ = false;
 
   // Also upload to GL texture if there is a separate one.
   if (use_separate_gl_texture() && !gl_textures_.empty()) {
@@ -847,10 +849,9 @@ bool ExternalVkImageBacking::CreateGLTexture(bool is_passthrough,
   auto& vk_texture = vk_textures_[plane_index];
   auto& vulkan_image = vk_texture.vulkan_image;
   gfx::Size plane_size = vulkan_image->size();
-  auto plane_format = GLTextureHolder::GetPlaneFormat(format(), plane_index);
   DCHECK_EQ(gl_textures_.size(), plane_index);
   auto gl_texture = base::MakeRefCounted<GLTextureHolder>(
-      plane_format, plane_size, is_passthrough, nullptr);
+      format(), plane_index, size(), is_passthrough, nullptr);
 
   std::optional<ScopedDedicatedMemoryObject> memory_object;
   if (!use_separate_gl_texture()) {

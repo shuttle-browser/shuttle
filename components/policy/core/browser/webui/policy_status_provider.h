@@ -22,15 +22,7 @@ namespace base {
 class Time;
 }
 
-namespace enterprise_management {
-class PolicyData;
-}
-
 namespace policy {
-class CloudPolicyClient;
-class CloudPolicyCore;
-class CloudPolicyRefreshScheduler;
-class CloudPolicyStore;
 
 inline constexpr char kPolicyDescriptionKey[] = "policyDescriptionKey";
 inline constexpr char kFlexOrgWarningKey[] = "flexOrgWarning";
@@ -68,21 +60,6 @@ class POLICY_EXPORT PolicyStatusProvider {
   // remove `GetStatus` and `SupportsMojoStatus`.
   virtual policy::mojom::StatusPtr GetStatusMojo();
 
-  // Returns a dictionary with metadata about policies from a
-  // CloudPolicyCore instance. If |is_extension_install_policy| is true, the
-  // dictionary will be for extension install policies.
-  static base::DictValue GetStatusFromCore(
-      const CloudPolicyCore* core,
-      bool is_extension_install_policy = false);
-  static void PopulateStatusFromCore(const CloudPolicyCore* core,
-                                     bool is_extension_install_policy,
-                                     policy::mojom::StatusPtr& status);
-  static base::DictValue GetStatusFromPolicyData(
-      const enterprise_management::PolicyData* policy);
-  static void PopulateStatusFromPolicyData(
-      const enterprise_management::PolicyData* policy,
-      policy::mojom::StatusPtr& status);
-
   // Overrides clock in tests. Returned closure removes the override when
   // destroyed.
   static base::ScopedClosureRunner OverrideClockForTesting(
@@ -93,29 +70,7 @@ class POLICY_EXPORT PolicyStatusProvider {
 
  protected:
   void NotifyStatusChange();
-  static std::u16string GetPolicyStatusFromStore(const CloudPolicyStore*,
-                                                 const CloudPolicyClient*);
   static std::u16string GetTimeSinceLastActionString(base::Time);
-
-  // Add policy push information along with conditional refresh interval into
-  // policy `status` dictionary.
-  static void SetPolicyPushAndRefreshStatus(
-      base::DictValue& status,
-      const CloudPolicyRefreshScheduler* refresh_scheduler);
-  static void SetPolicyPushAndRefreshStatus(
-      policy::mojom::StatusPtr& status,
-      const CloudPolicyRefreshScheduler* refresh_scheduler);
-
-  // Add last report uploaded timestamp into policy `status` dictionary from
-  // `prefs`.
-  static void UpdateLastReportTimestamp(
-      base::DictValue& status,
-      PrefService* prefs,
-      const std::string& report_timestamp_pref_path);
-  static void UpdateLastReportTimestamp(
-      policy::mojom::StatusPtr& status,
-      PrefService* prefs,
-      const std::string& report_timestamp_pref_path);
 
  private:
   base::ObserverList<Observer, /*check_empty=*/true> observers_;

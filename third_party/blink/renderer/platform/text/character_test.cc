@@ -21,14 +21,14 @@
 #include "third_party/blink/renderer/platform/wtf/text/character_names.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 
-namespace blink {
+namespace blink::unicode {
 
 testing::AssertionResult IsCjkIdeographOrSymbolWithMessage(UChar32 codepoint) {
   const size_t kFormatBufferSize = 10;
   char formatted_as_hex[kFormatBufferSize];
   snprintf(formatted_as_hex, kFormatBufferSize, "0x%x", codepoint);
 
-  if (Character::IsCjkIdeographOrSymbol(codepoint)) {
+  if (IsCjkIdeographOrSymbol(codepoint)) {
     return testing::AssertionSuccess()
            << "Codepoint " << formatted_as_hex << " is a CjkIdeographOrSymbol.";
   }
@@ -53,46 +53,46 @@ TEST(CharacterTest, Derived) {
   for (auto s : set.strings()) {
     for (auto unit : icu::header::unsafeUTFStringCodePoints<UChar32>(s)) {
       UChar32 cp = unit.codePoint();
-      if (Character::IsExtendedPictographic(cp)) {
+      if (IsExtendedPictographic(cp)) {
         EXPECT_TRUE(IsCjkIdeographOrSymbolWithMessage(cp));
       }
     }
   }
 
   for (UChar32 ch = 0; ch < uchar::kMaxCodepoint; ++ch) {
-    if (Character::IsEmojiEmojiDefault(ch)) {
+    if (IsEmojiEmojiDefault(ch)) {
       EXPECT_TRUE(IsCjkIdeographOrSymbolWithMessage(ch));
     }
 
     const UBlockCode block = ublock_getCode(ch);
-    EXPECT_EQ(Character::IsBlockCjkSymbolsAndPunctuation(ch),
+    EXPECT_EQ(IsBlockCjkSymbolsAndPunctuation(ch),
               block == UBLOCK_CJK_SYMBOLS_AND_PUNCTUATION);
-    EXPECT_EQ(Character::IsBlockHalfwidthAndFullwidthForms(ch),
+    EXPECT_EQ(IsBlockHalfwidthAndFullwidthForms(ch),
               block == UBLOCK_HALFWIDTH_AND_FULLWIDTH_FORMS);
 
-    const UEastAsianWidth eaw = Character::EastAsianWidth(ch);
-    EXPECT_EQ(Character::IsEastAsianWidthFullwidth(ch),
+    const UEastAsianWidth eaw = EastAsianWidth(ch);
+    EXPECT_EQ(IsEastAsianWidthFullwidth(ch),
               eaw == UEastAsianWidth::U_EA_FULLWIDTH);
 
-    if (!Character::MayNeedEastAsianSpacing(ch)) {
-      EastAsianSpacingType type = Character::GetEastAsianSpacingType(ch);
+    if (!MayNeedEastAsianSpacing(ch)) {
+      EastAsianSpacingType type = GetEastAsianSpacingType(ch);
       DCHECK_NE(type, EastAsianSpacingType::kWide);
     }
 
-    if (!Character::MaybeHanKerningOpenOrCloseFast(ch)) {
-      DCHECK(!Character::MaybeHanKerningOpenSlow(ch));
-      DCHECK(!Character::MaybeHanKerningCloseSlow(ch));
+    if (!MaybeHanKerningOpenOrCloseFast(ch)) {
+      DCHECK(!internal::MaybeHanKerningOpenSlow(ch));
+      DCHECK(!internal::MaybeHanKerningCloseSlow(ch));
     }
 
     // Test UTF-16 functions.
     const UCharDirection bidi = ubidi_getClass(ch);
     if (bidi == UCharDirection::U_RIGHT_TO_LEFT ||
         bidi == UCharDirection::U_RIGHT_TO_LEFT_ARABIC ||
-        Character::IsBidiControl(ch)) {
+        unicode::IsBidiControl(ch)) {
       builder.Clear();
       builder.Append(ch);
       const String utf16 = builder.ToString();
-      DCHECK(Character::MaybeBidiRtl(utf16));
+      DCHECK(unicode::MaybeBidiRtl(utf16));
     }
   }
 }
@@ -111,7 +111,7 @@ TEST(CharacterTest, CjkIdeographOrSymbolCollisions) {
   for (auto s : set.strings()) {
     icu::UnicodeString us(s.data(), static_cast<int32_t>(s.length()));
     for (auto cp : icu::header::unsafeUTFStringCodePoints<UChar32>(us)) {
-      if (Character::IsExtendedPictographic(cp.codePoint())) {
+      if (IsExtendedPictographic(cp.codePoint())) {
         emoji_set.add(cp.codePoint());
       }
     }
@@ -160,18 +160,16 @@ static void TestSpecificUChar32RangeIdeograph(UChar32 range_start,
                                               bool before = true,
                                               bool after = true) {
   if (before) {
-    EXPECT_FALSE(Character::IsCjkIdeographOrSymbol(range_start - 1))
+    EXPECT_FALSE(IsCjkIdeographOrSymbol(range_start - 1))
         << std::hex << (range_start - 1);
   }
-  EXPECT_TRUE(Character::IsCjkIdeographOrSymbol(range_start))
-      << std::hex << range_start;
+  EXPECT_TRUE(IsCjkIdeographOrSymbol(range_start)) << std::hex << range_start;
   UChar32 mid = static_cast<UChar32>(
       (static_cast<uint64_t>(range_start) + range_end) / 2);
-  EXPECT_TRUE(Character::IsCjkIdeographOrSymbol(mid)) << std::hex << mid;
-  EXPECT_TRUE(Character::IsCjkIdeographOrSymbol(range_end))
-      << std::hex << range_end;
+  EXPECT_TRUE(IsCjkIdeographOrSymbol(mid)) << std::hex << mid;
+  EXPECT_TRUE(IsCjkIdeographOrSymbol(range_end)) << std::hex << range_end;
   if (after) {
-    EXPECT_FALSE(Character::IsCjkIdeographOrSymbol(range_end + 1))
+    EXPECT_FALSE(IsCjkIdeographOrSymbol(range_end + 1))
         << std::hex << (range_end + 1);
   }
 }
@@ -370,103 +368,103 @@ TEST(CharacterTest, HanKerning) {
       {0xFF63, HanKerningCharType::kCloseNarrow},
   };
   for (const Data& data : data_list) {
-    EXPECT_EQ(Character::GetHanKerningCharType(data.ch), data.type);
+    EXPECT_EQ(GetHanKerningCharType(data.ch), data.type);
   }
 }
 
 TEST(CharacterTest, CanTextDecorationSkipInk) {
   // ASCII
-  EXPECT_TRUE(Character::CanTextDecorationSkipInk('a'));
+  EXPECT_TRUE(unicode::CanTextDecorationSkipInk('a'));
   // Hangul Jamo
-  EXPECT_FALSE(Character::CanTextDecorationSkipInk(0x1100));
+  EXPECT_FALSE(unicode::CanTextDecorationSkipInk(0x1100));
   // Hiragana
-  EXPECT_FALSE(Character::CanTextDecorationSkipInk(0x3041));
+  EXPECT_FALSE(unicode::CanTextDecorationSkipInk(0x3041));
   // Bopomofo
-  EXPECT_FALSE(Character::CanTextDecorationSkipInk(0x31A0));
+  EXPECT_FALSE(unicode::CanTextDecorationSkipInk(0x31A0));
   // The basic CJK Unified Ideographs block
-  EXPECT_FALSE(Character::CanTextDecorationSkipInk(0x4E01));
+  EXPECT_FALSE(unicode::CanTextDecorationSkipInk(0x4E01));
   // Hangul Syllables
-  EXPECT_FALSE(Character::CanTextDecorationSkipInk(0xAC00));
+  EXPECT_FALSE(unicode::CanTextDecorationSkipInk(0xAC00));
   // Plane 2 / CJK Ideograph Extension B
-  EXPECT_FALSE(Character::CanTextDecorationSkipInk(0x20000));
+  EXPECT_FALSE(unicode::CanTextDecorationSkipInk(0x20000));
 }
 
 TEST(CharacterTest, TestEmojiTextDefault) {
   // Text-default emoji, i.e.
   // Emoji=Yes and EmojiPresentation=No
-  EXPECT_TRUE(Character::IsEmojiTextDefault(0x0023));
-  EXPECT_TRUE(Character::IsEmojiTextDefault(0x2744));
-  EXPECT_TRUE(Character::IsEmojiTextDefault(0x1F6F3));
+  EXPECT_TRUE(IsEmojiTextDefault(0x0023));
+  EXPECT_TRUE(IsEmojiTextDefault(0x2744));
+  EXPECT_TRUE(IsEmojiTextDefault(0x1F6F3));
 
   // Non-emoji
-  EXPECT_FALSE(Character::IsEmojiTextDefault('A'));
-  EXPECT_FALSE(Character::IsEmojiTextDefault(0x2713));
+  EXPECT_FALSE(IsEmojiTextDefault('A'));
+  EXPECT_FALSE(IsEmojiTextDefault(0x2713));
 
   // Emoji=Yes and EmojiPresentation=Yes
-  EXPECT_FALSE(Character::IsEmojiTextDefault(0x1F9C0));
-  EXPECT_FALSE(Character::IsEmojiTextDefault(0x26BD));
-  EXPECT_FALSE(Character::IsEmojiTextDefault(0x26BE));
+  EXPECT_FALSE(IsEmojiTextDefault(0x1F9C0));
+  EXPECT_FALSE(IsEmojiTextDefault(0x26BD));
+  EXPECT_FALSE(IsEmojiTextDefault(0x26BE));
 }
 
 TEST(CharacterTest, TestEmojiEmojiDefault) {
   // Emoji=Yes and EmojiPresentation=Yes
-  EXPECT_TRUE(Character::IsEmojiEmojiDefault(0x231A));
-  EXPECT_TRUE(Character::IsEmojiEmojiDefault(0x1F191));
-  EXPECT_TRUE(Character::IsEmojiEmojiDefault(0x1F19A));
-  EXPECT_TRUE(Character::IsEmojiEmojiDefault(0x1F9C0));
+  EXPECT_TRUE(IsEmojiEmojiDefault(0x231A));
+  EXPECT_TRUE(IsEmojiEmojiDefault(0x1F191));
+  EXPECT_TRUE(IsEmojiEmojiDefault(0x1F19A));
+  EXPECT_TRUE(IsEmojiEmojiDefault(0x1F9C0));
   // Kiss
-  EXPECT_TRUE(Character::IsEmojiEmojiDefault(0x1F48F));
+  EXPECT_TRUE(IsEmojiEmojiDefault(0x1F48F));
   // Couple with heart
-  EXPECT_TRUE(Character::IsEmojiEmojiDefault(0x1F491));
-  EXPECT_TRUE(Character::IsEmojiEmojiDefault(0x1F46A));
+  EXPECT_TRUE(IsEmojiEmojiDefault(0x1F491));
+  EXPECT_TRUE(IsEmojiEmojiDefault(0x1F46A));
 
   // Non-emoji
-  EXPECT_FALSE(Character::IsEmojiEmojiDefault('A'));
+  EXPECT_FALSE(IsEmojiEmojiDefault('A'));
 
   // Emoji=Yes and EmojiPresentation=No
-  EXPECT_FALSE(Character::IsEmojiEmojiDefault(0x1F202));
+  EXPECT_FALSE(IsEmojiEmojiDefault(0x1F202));
 }
 
 TEST(CharacterTest, EmojificationV11) {
   // Infinity and Chess pawn were given the emoji class, but have default text
   // presentation in Unicode 11.
-  EXPECT_TRUE(Character::IsEmojiTextDefault(0x265F));
-  EXPECT_TRUE(Character::IsEmojiTextDefault(0x267E));
+  EXPECT_TRUE(IsEmojiTextDefault(0x265F));
+  EXPECT_TRUE(IsEmojiTextDefault(0x267E));
 }
 
 TEST(CharacterTest, TestEmojiModifierBase) {
-  EXPECT_TRUE(Character::IsEmojiModifierBase(0x261D));
-  EXPECT_TRUE(Character::IsEmojiModifierBase(0x1F470));
-  EXPECT_TRUE(Character::IsEmojiModifierBase(0x1F478));
-  EXPECT_TRUE(Character::IsEmojiModifierBase(0x1F918));
-  EXPECT_FALSE(Character::IsEmojiModifierBase('A'));
-  EXPECT_FALSE(Character::IsEmojiModifierBase(0x1F47D));
+  EXPECT_TRUE(IsEmojiModifierBase(0x261D));
+  EXPECT_TRUE(IsEmojiModifierBase(0x1F470));
+  EXPECT_TRUE(IsEmojiModifierBase(0x1F478));
+  EXPECT_TRUE(IsEmojiModifierBase(0x1F918));
+  EXPECT_FALSE(IsEmojiModifierBase('A'));
+  EXPECT_FALSE(IsEmojiModifierBase(0x1F47D));
 }
 
 TEST(CharacterTest, TestEmoji40Data) {
-  EXPECT_TRUE(Character::IsEmojiEmojiDefault(0x1F32F));
-  EXPECT_TRUE(Character::IsEmojiEmojiDefault(0x1F57A));
-  EXPECT_TRUE(Character::IsEmojiEmojiDefault(0x1F919));
-  EXPECT_TRUE(Character::IsEmojiEmojiDefault(0x1F926));
-  EXPECT_TRUE(Character::IsEmojiModifierBase(0x1F574));
-  EXPECT_TRUE(Character::IsEmojiModifierBase(0x1F6CC));
-  EXPECT_TRUE(Character::IsEmojiModifierBase(0x1F919));
-  EXPECT_TRUE(Character::IsEmojiModifierBase(0x1F926));
-  EXPECT_TRUE(Character::IsEmojiModifierBase(0x1F933));
+  EXPECT_TRUE(IsEmojiEmojiDefault(0x1F32F));
+  EXPECT_TRUE(IsEmojiEmojiDefault(0x1F57A));
+  EXPECT_TRUE(IsEmojiEmojiDefault(0x1F919));
+  EXPECT_TRUE(IsEmojiEmojiDefault(0x1F926));
+  EXPECT_TRUE(IsEmojiModifierBase(0x1F574));
+  EXPECT_TRUE(IsEmojiModifierBase(0x1F6CC));
+  EXPECT_TRUE(IsEmojiModifierBase(0x1F919));
+  EXPECT_TRUE(IsEmojiModifierBase(0x1F926));
+  EXPECT_TRUE(IsEmojiModifierBase(0x1F933));
 }
 
 TEST(CharacterTest, EmojiReserved) {
 #if U_ICU_VERSION_MAJOR_NUM >= 78
-  EXPECT_TRUE(Character::IsEmoji(0x1FAEF));
+  EXPECT_TRUE(IsEmoji(0x1FAEF));
 #else
-  EXPECT_TRUE(Character::IsEmojiReserved(0x1FAEF));
+  EXPECT_TRUE(IsEmojiReserved(0x1FAEF));
 #endif
-  EXPECT_TRUE(Character::IsEmojiReserved(0x1FFFD));
+  EXPECT_TRUE(IsEmojiReserved(0x1FFFD));
 }
 
 TEST(CharacterTest, LineBreakAndQuoteNotEmoji) {
-  EXPECT_FALSE(Character::IsEmojiTextDefault('\n'));
-  EXPECT_FALSE(Character::IsEmojiTextDefault('"'));
+  EXPECT_FALSE(IsEmojiTextDefault('\n'));
+  EXPECT_FALSE(IsEmojiTextDefault('"'));
 }
 
 TEST(CharacterTest, Truncation) {
@@ -474,68 +472,67 @@ TEST(CharacterTest, Truncation) {
   UChar32 test_char = 0;
 
   test_char = kBase + uchar::kSpace;
-  EXPECT_FALSE(Character::TreatAsSpace(test_char));
+  EXPECT_FALSE(unicode::TreatAsSpace(test_char));
   test_char = kBase + uchar::kNoBreakSpace;
-  EXPECT_FALSE(Character::TreatAsSpace(test_char));
+  EXPECT_FALSE(unicode::TreatAsSpace(test_char));
 
   test_char = kBase + uchar::kZeroWidthNonJoiner;
-  EXPECT_FALSE(Character::TreatAsZeroWidthSpace(test_char));
+  EXPECT_FALSE(unicode::TreatAsZeroWidthSpace(test_char));
   test_char = kBase + uchar::kZeroWidthJoiner;
-  EXPECT_FALSE(Character::TreatAsZeroWidthSpace(test_char));
+  EXPECT_FALSE(unicode::TreatAsZeroWidthSpace(test_char));
 
   test_char = kBase + 0x12;
-  EXPECT_FALSE(Character::TreatAsZeroWidthSpaceInComplexScript(test_char));
-  EXPECT_FALSE(Character::TreatAsZeroWidthSpaceInComplexScript(test_char));
+  EXPECT_FALSE(unicode::TreatAsZeroWidthSpaceInComplexScript(test_char));
   test_char = kBase + uchar::kObjectReplacementCharacter;
-  EXPECT_FALSE(Character::TreatAsZeroWidthSpaceInComplexScript(test_char));
+  EXPECT_FALSE(unicode::TreatAsZeroWidthSpaceInComplexScript(test_char));
 
   test_char = kBase + 0xA;
-  EXPECT_FALSE(Character::IsNormalizedCanvasSpaceCharacter(test_char));
+  EXPECT_FALSE(unicode::IsNormalizedCanvasSpaceCharacter(test_char));
   test_char = kBase + 0x9;
-  EXPECT_FALSE(Character::IsNormalizedCanvasSpaceCharacter(test_char));
+  EXPECT_FALSE(unicode::IsNormalizedCanvasSpaceCharacter(test_char));
 }
 
 TEST(CharacterTest, IsBidiControl) {
-  EXPECT_TRUE(Character::IsBidiControl(0x202A));  // LEFT-TO-RIGHT EMBEDDING
-  EXPECT_TRUE(Character::IsBidiControl(0x202B));  // RIGHT-TO-LEFT EMBEDDING
-  EXPECT_TRUE(Character::IsBidiControl(0x202D));  // LEFT-TO-RIGHT OVERRIDE
-  EXPECT_TRUE(Character::IsBidiControl(0x202E));  // RIGHT-TO-LEFT OVERRIDE
-  EXPECT_TRUE(Character::IsBidiControl(0x202C));  // POP DIRECTIONAL FORMATTING
-  EXPECT_TRUE(Character::IsBidiControl(0x2066));  // LEFT-TO-RIGHT ISOLATE
-  EXPECT_TRUE(Character::IsBidiControl(0x2067));  // RIGHT-TO-LEFT ISOLATE
-  EXPECT_TRUE(Character::IsBidiControl(0x2068));  // FIRST STRONG ISOLATE
-  EXPECT_TRUE(Character::IsBidiControl(0x2069));  // POP DIRECTIONAL ISOLATE
-  EXPECT_TRUE(Character::IsBidiControl(0x200E));  // LEFT-TO-RIGHT MARK
-  EXPECT_TRUE(Character::IsBidiControl(0x200F));  // RIGHT-TO-LEFT MARK
-  EXPECT_TRUE(Character::IsBidiControl(0x061C));  // ARABIC LETTER MARK
-  EXPECT_FALSE(Character::IsBidiControl('A'));
-  EXPECT_FALSE(Character::IsBidiControl('0'));
-  EXPECT_FALSE(Character::IsBidiControl(0x05D0));
+  EXPECT_TRUE(unicode::IsBidiControl(0x202A));  // LEFT-TO-RIGHT EMBEDDING
+  EXPECT_TRUE(unicode::IsBidiControl(0x202B));  // RIGHT-TO-LEFT EMBEDDING
+  EXPECT_TRUE(unicode::IsBidiControl(0x202D));  // LEFT-TO-RIGHT OVERRIDE
+  EXPECT_TRUE(unicode::IsBidiControl(0x202E));  // RIGHT-TO-LEFT OVERRIDE
+  EXPECT_TRUE(unicode::IsBidiControl(0x202C));  // POP DIRECTIONAL FORMATTING
+  EXPECT_TRUE(unicode::IsBidiControl(0x2066));  // LEFT-TO-RIGHT ISOLATE
+  EXPECT_TRUE(unicode::IsBidiControl(0x2067));  // RIGHT-TO-LEFT ISOLATE
+  EXPECT_TRUE(unicode::IsBidiControl(0x2068));  // FIRST STRONG ISOLATE
+  EXPECT_TRUE(unicode::IsBidiControl(0x2069));  // POP DIRECTIONAL ISOLATE
+  EXPECT_TRUE(unicode::IsBidiControl(0x200E));  // LEFT-TO-RIGHT MARK
+  EXPECT_TRUE(unicode::IsBidiControl(0x200F));  // RIGHT-TO-LEFT MARK
+  EXPECT_TRUE(unicode::IsBidiControl(0x061C));  // ARABIC LETTER MARK
+  EXPECT_FALSE(unicode::IsBidiControl('A'));
+  EXPECT_FALSE(unicode::IsBidiControl('0'));
+  EXPECT_FALSE(unicode::IsBidiControl(0x05D0));
 }
 
 TEST(CharacterTest, IsNonCharacter) {
   // See http://www.unicode.org/faq/private_use.html#nonchar4
-  EXPECT_FALSE(Character::IsNonCharacter(0xFDD0 - 1));
+  EXPECT_FALSE(unicode::IsNonCharacter(0xFDD0 - 1));
   for (UChar32 bmp_noncharacter = 0xFDD0; bmp_noncharacter < 0xFDEF;
        ++bmp_noncharacter) {
-    EXPECT_TRUE(Character::IsNonCharacter(bmp_noncharacter));
+    EXPECT_TRUE(unicode::IsNonCharacter(bmp_noncharacter));
   }
-  EXPECT_FALSE(Character::IsNonCharacter(0xFDEF + 1));
+  EXPECT_FALSE(unicode::IsNonCharacter(0xFDEF + 1));
 
-  EXPECT_FALSE(Character::IsNonCharacter(0xFFFE - 1));
-  EXPECT_TRUE(Character::IsNonCharacter(0xFFFE));
-  EXPECT_TRUE(Character::IsNonCharacter(0xFFFF));
-  EXPECT_FALSE(Character::IsNonCharacter(0xFFFF + 1));
+  EXPECT_FALSE(unicode::IsNonCharacter(0xFFFE - 1));
+  EXPECT_TRUE(unicode::IsNonCharacter(0xFFFE));
+  EXPECT_TRUE(unicode::IsNonCharacter(0xFFFF));
+  EXPECT_FALSE(unicode::IsNonCharacter(0xFFFF + 1));
 
   for (uint32_t supplementary_plane_prefix = 0x10000;
        supplementary_plane_prefix < 0x100000;
        supplementary_plane_prefix += 0x10000) {
     EXPECT_FALSE(
-        Character::IsNonCharacter(supplementary_plane_prefix + 0xFFFE - 1));
-    EXPECT_TRUE(Character::IsNonCharacter(supplementary_plane_prefix + 0xFFFE));
-    EXPECT_TRUE(Character::IsNonCharacter(supplementary_plane_prefix + 0xFFFF));
+        unicode::IsNonCharacter(supplementary_plane_prefix + 0xFFFE - 1));
+    EXPECT_TRUE(unicode::IsNonCharacter(supplementary_plane_prefix + 0xFFFE));
+    EXPECT_TRUE(unicode::IsNonCharacter(supplementary_plane_prefix + 0xFFFF));
     EXPECT_FALSE(
-        Character::IsNonCharacter(supplementary_plane_prefix + 0xFFFF + 1));
+        unicode::IsNonCharacter(supplementary_plane_prefix + 0xFFFF + 1));
   }
 }
 
@@ -564,7 +561,7 @@ TEST(CharacterTest, TransformedIsUprightInMixedVertical) {
   for (UChar32 transformed_upright_character :
        vertical_orientation_transformed_upright_category) {
     EXPECT_TRUE(
-        Character::IsUprightInMixedVertical(transformed_upright_character));
+        unicode::IsUprightInMixedVertical(transformed_upright_character));
   }
 }
 
@@ -586,27 +583,27 @@ TEST(CharacterTest, IsVerticalMathCharacter) {
 
   for (UChar32 test_char = 0; test_char < uchar::kMaxCodepoint; test_char++) {
     if (test_char == uchar::kArabicMathematicalOperatorMeemWithHahWithTatweel) {
-      EXPECT_FALSE(Character::IsVerticalMathCharacter(test_char));
+      EXPECT_FALSE(unicode::IsVerticalMathCharacter(test_char));
     } else if (test_char == uchar::kArabicMathematicalOperatorHahWithDal) {
-      EXPECT_FALSE(Character::IsVerticalMathCharacter(test_char));
+      EXPECT_FALSE(unicode::IsVerticalMathCharacter(test_char));
     } else {
       bool in_vertical = !std::binary_search(
           stretchy_operator_with_inline_axis,
           UNSAFE_TODO(stretchy_operator_with_inline_axis +
                       std::size(stretchy_operator_with_inline_axis)),
           test_char);
-      EXPECT_TRUE(Character::IsVerticalMathCharacter(test_char) == in_vertical);
+      EXPECT_TRUE(unicode::IsVerticalMathCharacter(test_char) == in_vertical);
     }
   }
 }
 
 TEST(CharacterTest, ExtendedPictographic) {
-  EXPECT_FALSE(Character::IsExtendedPictographic(0x00A8));
-  EXPECT_TRUE(Character::IsExtendedPictographic(0x00A9));
-  EXPECT_FALSE(Character::IsExtendedPictographic(0x00AA));
-  EXPECT_FALSE(Character::IsExtendedPictographic(0x3298));
-  EXPECT_TRUE(Character::IsExtendedPictographic(0x3299));
-  EXPECT_FALSE(Character::IsExtendedPictographic(0x329A));
+  EXPECT_FALSE(IsExtendedPictographic(0x00A8));
+  EXPECT_TRUE(IsExtendedPictographic(0x00A9));
+  EXPECT_FALSE(IsExtendedPictographic(0x00AA));
+  EXPECT_FALSE(IsExtendedPictographic(0x3298));
+  EXPECT_TRUE(IsExtendedPictographic(0x3299));
+  EXPECT_FALSE(IsExtendedPictographic(0x329A));
 }
 
 TEST(CharacterTest, EmojiComponents) {
@@ -618,10 +615,10 @@ TEST(CharacterTest, EmojiComponents) {
                         0x1f3ff, 0x1f9b0, 0x1f9b3, 0xe0020, 0xe007f};
 
   for (auto false_test : false_set)
-    EXPECT_FALSE(Character::IsEmojiComponent(false_test));
+    EXPECT_FALSE(IsEmojiComponent(false_test));
 
   for (auto true_test : true_set)
-    EXPECT_TRUE(Character::IsEmojiComponent(true_test));
+    EXPECT_TRUE(IsEmojiComponent(true_test));
 }
 
 // Ensure that the iterator forwarding in SymbolsIterator is not
@@ -631,52 +628,49 @@ TEST(CharacterTest, MaybeEmojiPresentationNoIllegalShortcut) {
   for (UChar32 ch = 0; ch < uchar::kMaxCodepoint; ++ch) {
     const EmojiSegmentationCategory emoji = GetEmojiSegmentationCategory(ch);
     if (IsEmojiPresentationCategory(emoji)) {
-      EXPECT_TRUE(Character::MaybeEmojiPresentation(ch));
+      EXPECT_TRUE(MaybeEmojiPresentation(ch));
     }
-    if (!Character::MaybeEmojiPresentation(ch)) {
+    if (!MaybeEmojiPresentation(ch)) {
       EXPECT_FALSE(IsEmojiPresentationCategory(emoji));
     }
   }
 }
 
 TEST(CharacterTest, TestIsStandardizedVariationSequence) {
-  EXPECT_TRUE(Character::IsStandardizedVariationSequence(0x2293, 0xfe00));
-  EXPECT_TRUE(Character::IsStandardizedVariationSequence(0x8279, 0xfe00));
-  EXPECT_TRUE(Character::IsStandardizedVariationSequence(0x8279, 0xfe01));
-  EXPECT_FALSE(Character::IsStandardizedVariationSequence(0x8279, 0xe0100));
-  EXPECT_FALSE(Character::IsStandardizedVariationSequence(0x8279, 0xfe03));
+  EXPECT_TRUE(unicode::IsStandardizedVariationSequence(0x2293, 0xfe00));
+  EXPECT_TRUE(unicode::IsStandardizedVariationSequence(0x8279, 0xfe00));
+  EXPECT_TRUE(unicode::IsStandardizedVariationSequence(0x8279, 0xfe01));
+  EXPECT_FALSE(unicode::IsStandardizedVariationSequence(0x8279, 0xe0100));
+  EXPECT_FALSE(unicode::IsStandardizedVariationSequence(0x8279, 0xfe03));
 }
 
 TEST(CharacterTest, TestIsEmojiVariationSequence) {
-  EXPECT_TRUE(Character::IsEmojiVariationSequence(0x1fae8, 0xfe0f));
-  EXPECT_TRUE(Character::IsEmojiVariationSequence(0x0030, 0xfe0e));
-  EXPECT_FALSE(Character::IsEmojiVariationSequence(0x1faf0, 0xfe00));
-  EXPECT_FALSE(Character::IsEmojiVariationSequence(0x0041, 0xfe0f));
+  EXPECT_TRUE(IsEmojiVariationSequence(0x1fae8, 0xfe0f));
+  EXPECT_TRUE(IsEmojiVariationSequence(0x0030, 0xfe0e));
+  EXPECT_FALSE(IsEmojiVariationSequence(0x1faf0, 0xfe00));
+  EXPECT_FALSE(IsEmojiVariationSequence(0x0041, 0xfe0f));
 }
 
 TEST(CharacterTest, TestIsIdeographicVariationSequence) {
-  EXPECT_TRUE(Character::IsIdeographicVariationSequence(0x8279, 0xe0100));
-  EXPECT_TRUE(Character::IsIdeographicVariationSequence(0x8279, 0xe01ef));
-  EXPECT_TRUE(Character::IsIdeographicVariationSequence(0x9038, 0xe0101));
-  EXPECT_TRUE(Character::IsIdeographicVariationSequence(0x9038, 0xe01ef));
-  EXPECT_FALSE(Character::IsIdeographicVariationSequence(0x9038, 0xfe00));
-  EXPECT_FALSE(Character::IsIdeographicVariationSequence(0x0041, 0xe0100));
+  EXPECT_TRUE(IsIdeographicVariationSequence(0x8279, 0xe0100));
+  EXPECT_TRUE(IsIdeographicVariationSequence(0x8279, 0xe01ef));
+  EXPECT_TRUE(IsIdeographicVariationSequence(0x9038, 0xe0101));
+  EXPECT_TRUE(IsIdeographicVariationSequence(0x9038, 0xe01ef));
+  EXPECT_FALSE(IsIdeographicVariationSequence(0x9038, 0xfe00));
+  EXPECT_FALSE(IsIdeographicVariationSequence(0x0041, 0xe0100));
 }
 
 // The test data are sampled from the ground truth.
 TEST(CharacterTest, TestEastAsianSpacingPropertySampling) {
   // MICRO SIGN
-  EXPECT_EQ(Character::GetEastAsianSpacingType(0x00B5),
-            EastAsianSpacingType::kNarrow);
+  EXPECT_EQ(GetEastAsianSpacingType(0x00B5), EastAsianSpacingType::kNarrow);
   // WAVY DASH
-  EXPECT_EQ(Character::GetEastAsianSpacingType(0x3030),
-            EastAsianSpacingType::kOther);
+  EXPECT_EQ(GetEastAsianSpacingType(0x3030), EastAsianSpacingType::kOther);
   // KAWI DANDA
-  EXPECT_EQ(Character::GetEastAsianSpacingType(0x11F43),
+  EXPECT_EQ(GetEastAsianSpacingType(0x11F43),
             EastAsianSpacingType::kConditional);
   // KATAKANA LETTER SMALL KO
-  EXPECT_EQ(Character::GetEastAsianSpacingType(0x1B155),
-            EastAsianSpacingType::kWide);
+  EXPECT_EQ(GetEastAsianSpacingType(0x1B155), EastAsianSpacingType::kWide);
 }
 
 namespace {
@@ -794,9 +788,9 @@ TEST(CharacterTest, TestEastAsianSpacingPropertyRule) {
         &error_code);
     ASSERT_TRUE(U_SUCCESS(error_code))
         << error_code << "\t" << required_capacity;
-    UEastAsianWidth east_asian_width = Character::EastAsianWidth(test_char);
+    UEastAsianWidth east_asian_width = EastAsianWidth(test_char);
 
-    switch (Character::GetEastAsianSpacingType(test_char)) {
+    switch (GetEastAsianSpacingType(test_char)) {
       case EastAsianSpacingType::kWide:
         EXPECT_TRUE(
             ShouldBeWidth(test_char, script, east_asian_width, script_list))
@@ -911,7 +905,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_P(CanReceiveTextEmphasisTest, ToLowerWithoutOffset) {
   const auto data = GetParam();
-  EXPECT_EQ(Character::CanReceiveTextEmphasis(data.character), data.expected);
+  EXPECT_EQ(unicode::CanReceiveTextEmphasis(data.character), data.expected);
 }
 
-}  // namespace blink
+}  // namespace blink::unicode

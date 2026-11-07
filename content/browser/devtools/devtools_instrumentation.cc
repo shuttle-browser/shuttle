@@ -4,10 +4,12 @@
 
 #include "content/browser/devtools/devtools_instrumentation.h"
 
+#include <ranges>
+
 #include "base/byte_size.h"
-#include "base/containers/adapters.h"
 #include "base/feature_list.h"
 #include "base/notreached.h"
+#include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/to_string.h"
 #include "base/strings/utf_string_conversions.h"
@@ -1659,9 +1661,13 @@ bool ShouldWaitForDebuggerInWindowOpen() {
 
 DevtoolsOverriddenOutputParams ApplyEmulationOverrides(
     DevToolsAgentHostImpl* agent_host,
-    net::HttpRequestHeaders* headers) {
+    net::HttpRequestHeaders* headers,
+    const GURL& url) {
   DevtoolsOverriddenOutputParams output_params;
   for (auto* emulation : protocol::EmulationHandler::ForAgentHost(agent_host)) {
+    if (!emulation->MayApplyOverridesTo(url)) {
+      continue;
+    }
     bool ua_overridden = false;
     bool accept_language_overridden = false;
     emulation->ApplyOverrides(headers, &ua_overridden,
@@ -1694,17 +1700,20 @@ DevToolsAgentHostImpl* GetDevToolsAgentHostForNetworkOverrides(
   return RenderFrameDevToolsAgentHost::GetFor(frame_tree_node);
 }
 
-void ApplyNetworkRequestOverrides(
-    DevToolsAgentHostImpl* agent_host,
-    net::HttpRequestHeaders* headers,
-    bool* disable_cache,
-    bool* network_instrumentation_enabled,
-    bool* skip_service_worker,
-    bool* devtools_user_agent_overridden,
-    bool* devtools_accept_language_overridden,
-    GURL* referrer_override) {
+void ApplyNetworkRequestOverrides(DevToolsAgentHostImpl* agent_host,
+                                  const GURL& request_url,
+                                  net::HttpRequestHeaders* headers,
+                                  bool* disable_cache,
+                                  bool* network_instrumentation_enabled,
+                                  bool* skip_service_worker,
+                                  bool* devtools_user_agent_overridden,
+                                  bool* devtools_accept_language_overridden,
+                                  GURL* referrer_override) {
   for (auto* network : protocol::NetworkHandler::ForAgentHost(agent_host)) {
     if (!network->enabled()) {
+      continue;
+    }
+    if (!network->MayApplyOverridesTo(request_url)) {
       continue;
     }
     if (network_instrumentation_enabled) {
@@ -1715,7 +1724,7 @@ void ApplyNetworkRequestOverrides(
   }
 
   DevtoolsOverriddenOutputParams output_params =
-      ApplyEmulationOverrides(agent_host, headers);
+      ApplyEmulationOverrides(agent_host, headers, request_url);
   if (devtools_user_agent_overridden) {
     *devtools_user_agent_overridden = output_params.user_agent_overridden;
   }
@@ -1725,21 +1734,91 @@ void ApplyNetworkRequestOverrides(
   }
 }
 
+// Returns the value of `name` without the overrides of sessions whose client
+// may not attach to `url`: the value set by the last session that may, since
+// sessions apply overrides in order, or else its value in `original_headers`.
+std::optional<std::string> GetRevertedHeaderValue(
+    const std::vector<protocol::NetworkHandler*>& networks,
+    const GURL& url,
+    const net::HttpRequestHeaders& original_headers,
+    std::string_view name) {
+  std::optional<std::string> value = original_headers.GetHeader(name);
+  for (auto* network : networks) {
+    if (!network->enabled() || !network->MayApplyOverridesTo(url)) {
+      continue;
+    }
+    for (const auto& [header_name, header_value] : network->extra_headers()) {
+      if (base::EqualsCaseInsensitiveASCII(header_name, name)) {
+        value = header_value;
+      }
+    }
+  }
+  return value;
+}
+
+// Sets `name` to `value` in `headers`, or removes it if `value` is
+// std::nullopt, and records the change in `headers_update_params`.
+void SetHeaderOrRemoveIfAbsent(
+    std::string_view name,
+    const std::optional<std::string>& value,
+    net::HttpRequestHeaders* headers,
+    network::HttpRequestHeadersUpdateParams* headers_update_params) {
+  if (value) {
+    headers->SetHeader(name, *value);
+    headers_update_params->modified_headers.SetHeader(name, *value);
+    return;
+  }
+  headers->RemoveHeader(name);
+  headers_update_params->removed_headers.emplace_back(name);
+}
+
+// If `name` was overridden by emulation, sets it to its value in
+// `allowed_emulation_headers` if a session that may still apply emulation
+// overrides overrides it, and otherwise reverts it to `reverted_value` and
+// clears `overridden_by_emulation`. Returns whether `headers` changed.
+bool RevertEmulationOverride(
+    std::string_view name,
+    bool overridden_by_allowed_session,
+    const net::HttpRequestHeaders& allowed_emulation_headers,
+    const std::optional<std::string>& reverted_value,
+    bool* overridden_by_emulation,
+    net::HttpRequestHeaders* headers,
+    network::HttpRequestHeadersUpdateParams* headers_update_params) {
+  if (!*overridden_by_emulation) {
+    return false;
+  }
+  if (overridden_by_allowed_session) {
+    // The request may carry a restricted session's value, since the last
+    // session to apply its overrides wins.
+    std::string value = *allowed_emulation_headers.GetHeader(name);
+    headers->SetHeader(name, value);
+    headers_update_params->modified_headers.SetHeader(name, value);
+    return true;
+  }
+  // Only restricted sessions overrode it, so let the navigation compute it
+  // again, and remove it if it had no value before the overrides.
+  *overridden_by_emulation = false;
+  SetHeaderOrRemoveIfAbsent(name, reverted_value, headers,
+                            headers_update_params);
+  return true;
+}
+
 }  // namespace
 
 void ApplyExtraHeadersForWebSocket(
     const GlobalRenderFrameHostId& frame_id,
     const std::optional<base::UnguessableToken>& devtools_worker_token,
+    const GURL& url,
     net::HttpRequestHeaders* headers) {
-  auto apply_overrides = [headers](DevToolsAgentHostImpl* agent_host) {
+  auto apply_overrides = [&url, headers](DevToolsAgentHostImpl* agent_host) {
     if (!agent_host) {
       return;
     }
     bool disable_cache = false;
     bool skip_service_worker = false;
-    ApplyNetworkRequestOverrides(agent_host, headers, &disable_cache, nullptr,
-                                 &skip_service_worker, nullptr, nullptr,
-                                 nullptr);
+    ApplyNetworkRequestOverrides(agent_host, url, headers, &disable_cache,
+                                 nullptr, &skip_service_worker, nullptr,
+                                 nullptr, nullptr);
   };
   if (RenderFrameHostImpl* frame = RenderFrameHostImpl::FromID(frame_id)) {
     if (FrameTreeNode* ftn = frame->frame_tree_node()) {
@@ -1763,8 +1842,8 @@ void ApplyAuctionNetworkRequestOverrides(
   if (!agent_host) {
     return;
   }
-  ApplyNetworkRequestOverrides(agent_host, &request->headers, &disable_cache,
-                               network_instrumentation_enabled,
+  ApplyNetworkRequestOverrides(agent_host, request->url, &request->headers,
+                               &disable_cache, network_instrumentation_enabled,
                                &request->skip_service_worker, nullptr, nullptr,
                                nullptr);
   if (disable_cache) {
@@ -1774,6 +1853,7 @@ void ApplyAuctionNetworkRequestOverrides(
 
 void ApplyNetworkRequestOverrides(
     FrameTreeNode* frame_tree_node,
+    const GURL& url,
     blink::mojom::BeginNavigationParams* begin_params,
     bool* report_raw_headers,
     bool* devtools_user_agent_overridden,
@@ -1790,7 +1870,7 @@ void ApplyNetworkRequestOverrides(
   net::HttpRequestHeaders headers;
   headers.AddHeadersFromString(begin_params->headers);
   ApplyNetworkRequestOverrides(
-      agent_host, &headers, &disable_cache, report_raw_headers,
+      agent_host, url, &headers, &disable_cache, report_raw_headers,
       &begin_params->skip_service_worker, devtools_user_agent_overridden,
       devtools_accept_language_overridden, referrer_override);
   if (disable_cache) {
@@ -1803,9 +1883,74 @@ void ApplyNetworkRequestOverrides(
   begin_params->headers = headers.ToString();
 }
 
+bool RevertDisallowedNetworkOverridesOnRedirect(
+    FrameTreeNode* frame_tree_node,
+    const GURL& redirect_url,
+    const net::HttpRequestHeaders& original_headers,
+    net::HttpRequestHeaders* headers,
+    network::HttpRequestHeadersUpdateParams* headers_update_params,
+    bool* devtools_user_agent_override,
+    bool* devtools_accept_language_override,
+    bool* headers_reverted) {
+  *headers_reverted = false;
+  DevToolsAgentHostImpl* agent_host =
+      GetDevToolsAgentHostForNetworkOverrides(frame_tree_node);
+  if (!agent_host) {
+    return true;
+  }
+  std::vector<protocol::NetworkHandler*> networks =
+      protocol::NetworkHandler::ForAgentHost(agent_host);
+  for (auto* network : networks) {
+    if (!network->enabled() || network->MayApplyOverridesTo(redirect_url)) {
+      continue;
+    }
+    for (const auto& [name, value] : network->extra_headers()) {
+      if (base::EqualsCaseInsensitiveASCII(name,
+                                           net::HttpRequestHeaders::kReferer) &&
+          GURL(value).is_valid()) {
+        return false;
+      }
+      // A value set by a navigation throttle on this redirect replaces it, and
+      // NavigationURLLoaderImpl sets the Accept header itself.
+      if (headers_update_params->modified_headers.HasHeader(name) ||
+          base::EqualsCaseInsensitiveASCII(name,
+                                           net::HttpRequestHeaders::kAccept)) {
+        continue;
+      }
+      SetHeaderOrRemoveIfAbsent(name,
+                                GetRevertedHeaderValue(networks, redirect_url,
+                                                       original_headers, name),
+                                headers, headers_update_params);
+      *headers_reverted = true;
+    }
+  }
+  // Emulation overrides of sessions that may still apply them win over the
+  // network overrides and the original headers, like at navigation start.
+  net::HttpRequestHeaders allowed_emulation_headers;
+  DevtoolsOverriddenOutputParams allowed_emulation_overrides =
+      ApplyEmulationOverrides(agent_host, &allowed_emulation_headers,
+                              redirect_url);
+  *headers_reverted |= RevertEmulationOverride(
+      net::HttpRequestHeaders::kUserAgent,
+      allowed_emulation_overrides.user_agent_overridden,
+      allowed_emulation_headers,
+      GetRevertedHeaderValue(networks, redirect_url, original_headers,
+                             net::HttpRequestHeaders::kUserAgent),
+      devtools_user_agent_override, headers, headers_update_params);
+  *headers_reverted |= RevertEmulationOverride(
+      net::HttpRequestHeaders::kAcceptLanguage,
+      allowed_emulation_overrides.accept_language_overridden,
+      allowed_emulation_headers,
+      GetRevertedHeaderValue(networks, redirect_url, original_headers,
+                             net::HttpRequestHeaders::kAcceptLanguage),
+      devtools_accept_language_override, headers, headers_update_params);
+  return true;
+}
+
 bool ApplyUserAgentMetadataOverrides(
     FrameTreeNode* frame_tree_node,
-    std::optional<blink::UserAgentMetadata>* override_out) {
+    std::optional<blink::UserAgentMetadata>* override_out,
+    const GURL& url) {
   DevToolsAgentHostImpl* agent_host =
       GetDevToolsAgentHostForNetworkOverrides(frame_tree_node);
   if (!agent_host) {
@@ -1814,6 +1959,9 @@ bool ApplyUserAgentMetadataOverrides(
 
   bool result = false;
   for (auto* emulation : protocol::EmulationHandler::ForAgentHost(agent_host)) {
+    if (!emulation->MayApplyOverridesTo(url)) {
+      continue;
+    }
     result = emulation->ApplyUserAgentMetadataOverrides(override_out) || result;
   }
 
@@ -1864,7 +2012,7 @@ bool MaybeCreateProxyForInterception(
   }
   bool had_interceptors = false;
   const auto& handlers = HandlerType::ForAgentHost(agent_host);
-  for (const auto& handler : base::Reversed(handlers)) {
+  for (const auto& handler : std::views::reverse(handlers)) {
     had_interceptors |= handler->MaybeCreateProxyForInterception(
         process_id, storage_partition, frame_token, is_navigation, is_download,
         agent_override, header_client);
@@ -2473,6 +2621,119 @@ BuildUserReidentificationIssue(
   return issue;
 }
 
+protocol::Audits::GenericIssueErrorType GenericIssueErrorTypeToProtocol(
+    blink::mojom::GenericIssueErrorType error_type) {
+  switch (error_type) {
+    case blink::mojom::GenericIssueErrorType::kFormLabelForNameError:
+      return protocol::Audits::GenericIssueErrorTypeEnum::FormLabelForNameError;
+    case blink::mojom::GenericIssueErrorType::kFormDuplicateIdForInputError:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          FormDuplicateIdForInputError;
+    case blink::mojom::GenericIssueErrorType::kFormInputWithNoLabelError:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          FormInputWithNoLabelError;
+    case blink::mojom::GenericIssueErrorType::
+        kFormAutocompleteAttributeEmptyError:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          FormAutocompleteAttributeEmptyError;
+    case blink::mojom::GenericIssueErrorType::
+        kFormEmptyIdAndNameAttributesForInputError:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          FormEmptyIdAndNameAttributesForInputError;
+    case blink::mojom::GenericIssueErrorType::
+        kFormAriaLabelledByToNonExistingIdError:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          FormAriaLabelledByToNonExistingIdError;
+    case blink::mojom::GenericIssueErrorType::
+        kFormInputAssignedAutocompleteValueToIdOrNameAttributeError:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          FormInputAssignedAutocompleteValueToIdOrNameAttributeError;
+    case blink::mojom::GenericIssueErrorType::
+        kFormLabelHasNeitherForNorNestedInputError:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          FormLabelHasNeitherForNorNestedInputError;
+    case blink::mojom::GenericIssueErrorType::
+        kFormLabelForMatchesNonExistingIdError:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          FormLabelForMatchesNonExistingIdError;
+    case blink::mojom::GenericIssueErrorType::
+        kFormInputHasWrongButWellIntendedAutocompleteValueError:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          FormInputHasWrongButWellIntendedAutocompleteValueError;
+    case blink::mojom::GenericIssueErrorType::kResponseWasBlockedByORB:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          ResponseWasBlockedByORB;
+    case blink::mojom::GenericIssueErrorType::kNavigationEntryMarkedSkippable:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          NavigationEntryMarkedSkippable;
+    case blink::mojom::GenericIssueErrorType::kBackUINavigationWouldSkipAd:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          BackUINavigationWouldSkipAd;
+    case blink::mojom::GenericIssueErrorType::
+        kAutofillAndManualTextPolicyControlledFeaturesInfo:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          AutofillAndManualTextPolicyControlledFeaturesInfo;
+    case blink::mojom::GenericIssueErrorType::
+        kAutofillPolicyControlledFeatureInfo:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          AutofillPolicyControlledFeatureInfo;
+    case blink::mojom::GenericIssueErrorType::
+        kManualTextPolicyControlledFeatureInfo:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          ManualTextPolicyControlledFeatureInfo;
+    case blink::mojom::GenericIssueErrorType::
+        kFormModelContextParameterMissingTitleAndDescription:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          FormModelContextParameterMissingTitleAndDescription;
+    case blink::mojom::GenericIssueErrorType::kFormModelContextMissingToolName:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          FormModelContextMissingToolName;
+    case blink::mojom::GenericIssueErrorType::
+        kFormModelContextMissingToolDescription:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          FormModelContextMissingToolDescription;
+    case blink::mojom::GenericIssueErrorType::
+        kFormModelContextRequiredParameterMissingName:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          FormModelContextRequiredParameterMissingName;
+    case blink::mojom::GenericIssueErrorType::
+        kFormModelContextParameterMissingName:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          FormModelContextParameterMissingName;
+    case blink::mojom::GenericIssueErrorType::
+        kGeolocationPromptWithoutUserGesture:
+      return protocol::Audits::GenericIssueErrorTypeEnum::
+          GeolocationPromptWithoutUserGesture;
+  }
+}
+
+std::unique_ptr<protocol::Audits::InspectorIssue> BuildGenericIssue(
+    const blink::mojom::GenericIssueDetailsPtr& issue_details) {
+  auto generic_issue_details =
+      protocol::Audits::GenericIssueDetails::Create()
+          .SetErrorType(
+              GenericIssueErrorTypeToProtocol(issue_details->error_type))
+          .Build();
+  if (issue_details->frame_id) {
+    generic_issue_details->SetFrameId(*issue_details->frame_id);
+  }
+  if (issue_details->violating_node_id) {
+    generic_issue_details->SetViolatingNodeId(issue_details->violating_node_id);
+  }
+  if (issue_details->violating_node_attribute) {
+    generic_issue_details->SetViolatingNodeAttribute(
+        *issue_details->violating_node_attribute);
+  }
+  auto protocol_issue_details =
+      protocol::Audits::InspectorIssueDetails::Create()
+          .SetGenericIssueDetails(std::move(generic_issue_details))
+          .Build();
+  return protocol::Audits::InspectorIssue::Create()
+      .SetCode(protocol::Audits::InspectorIssueCodeEnum::GenericIssue)
+      .SetDetails(std::move(protocol_issue_details))
+      .Build();
+}
+
 }  // namespace
 
 void ReportBrowserInitiatedIssue(
@@ -2526,6 +2787,8 @@ void BuildAndReportBrowserInitiatedIssue(
         info->details->email_verification_request_details);
   } else if (info->code == blink::mojom::InspectorIssueCode::kWebInstallIssue) {
     issue = BuildWebInstallIssue(info->details->web_install_issue_details);
+  } else if (info->code == blink::mojom::InspectorIssueCode::kGenericIssue) {
+    issue = BuildGenericIssue(info->details->generic_issue_details);
   } else {
     NOTREACHED() << "Unsupported type of browser-initiated issue";
   }
@@ -2615,7 +2878,8 @@ void OnServiceWorkerMainScriptFetchingFailed(
           worker_token,
           status.completion_time.ToInternalValue() /
               static_cast<double>(base::Time::kMicrosecondsPerSecond),
-          status.encoded_data_length.InBytes());
+          status.encoded_data_length.InBytes(),
+          status.encoded_body_length.InBytesF());
     }
   } else if (agent_host) {
     for (auto* network_handler :
@@ -2748,9 +3012,9 @@ void OnWorkerMainScriptRequestWillBeSent(
   // Note: we apply overrides from the owner frame to match the behavior in the
   // renderer.
   bool disable_cache = false;
-  ApplyNetworkRequestOverrides(effective_host, &request.headers, &disable_cache,
-                               nullptr, &request.skip_service_worker, nullptr,
-                               nullptr, nullptr);
+  ApplyNetworkRequestOverrides(
+      effective_host, request.url, &request.headers, &disable_cache, nullptr,
+      &request.skip_service_worker, nullptr, nullptr, nullptr);
   if (disable_cache) {
     request.load_flags &=
         ~(net::LOAD_VALIDATE_CACHE | net::LOAD_SKIP_CACHE_VALIDATION |
@@ -2819,88 +3083,6 @@ void ApplyNetworkContextParamsOverrides(
       target_handler->ApplyNetworkContextParamsOverrides(browser_context,
                                                          context_params);
     }
-  }
-}
-
-protocol::Audits::GenericIssueErrorType GenericIssueErrorTypeToProtocol(
-    blink::mojom::GenericIssueErrorType error_type) {
-  switch (error_type) {
-    case blink::mojom::GenericIssueErrorType::kFormLabelForNameError:
-      return protocol::Audits::GenericIssueErrorTypeEnum::FormLabelForNameError;
-    case blink::mojom::GenericIssueErrorType::kFormDuplicateIdForInputError:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          FormDuplicateIdForInputError;
-    case blink::mojom::GenericIssueErrorType::kFormInputWithNoLabelError:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          FormInputWithNoLabelError;
-    case blink::mojom::GenericIssueErrorType::
-        kFormAutocompleteAttributeEmptyError:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          FormAutocompleteAttributeEmptyError;
-    case blink::mojom::GenericIssueErrorType::
-        kFormEmptyIdAndNameAttributesForInputError:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          FormEmptyIdAndNameAttributesForInputError;
-    case blink::mojom::GenericIssueErrorType::
-        kFormAriaLabelledByToNonExistingIdError:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          FormAriaLabelledByToNonExistingIdError;
-    case blink::mojom::GenericIssueErrorType::
-        kFormInputAssignedAutocompleteValueToIdOrNameAttributeError:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          FormInputAssignedAutocompleteValueToIdOrNameAttributeError;
-    case blink::mojom::GenericIssueErrorType::
-        kFormLabelHasNeitherForNorNestedInputError:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          FormLabelHasNeitherForNorNestedInputError;
-    case blink::mojom::GenericIssueErrorType::
-        kFormLabelForMatchesNonExistingIdError:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          FormLabelForMatchesNonExistingIdError;
-    case blink::mojom::GenericIssueErrorType::
-        kFormInputHasWrongButWellIntendedAutocompleteValueError:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          FormInputHasWrongButWellIntendedAutocompleteValueError;
-    case blink::mojom::GenericIssueErrorType::kResponseWasBlockedByORB:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          ResponseWasBlockedByORB;
-    case blink::mojom::GenericIssueErrorType::kNavigationEntryMarkedSkippable:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          NavigationEntryMarkedSkippable;
-    case blink::mojom::GenericIssueErrorType::kBackUINavigationWouldSkipAd:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          BackUINavigationWouldSkipAd;
-    case blink::mojom::GenericIssueErrorType::
-        kAutofillAndManualTextPolicyControlledFeaturesInfo:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          AutofillAndManualTextPolicyControlledFeaturesInfo;
-    case blink::mojom::GenericIssueErrorType::
-        kAutofillPolicyControlledFeatureInfo:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          AutofillPolicyControlledFeatureInfo;
-    case blink::mojom::GenericIssueErrorType::
-        kManualTextPolicyControlledFeatureInfo:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          ManualTextPolicyControlledFeatureInfo;
-    case blink::mojom::GenericIssueErrorType::
-        kFormModelContextParameterMissingTitleAndDescription:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          FormModelContextParameterMissingTitleAndDescription;
-    case blink::mojom::GenericIssueErrorType::kFormModelContextMissingToolName:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          FormModelContextMissingToolName;
-    case blink::mojom::GenericIssueErrorType::
-        kFormModelContextMissingToolDescription:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          FormModelContextMissingToolDescription;
-    case blink::mojom::GenericIssueErrorType::
-        kFormModelContextRequiredParameterMissingName:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          FormModelContextRequiredParameterMissingName;
-    case blink::mojom::GenericIssueErrorType::
-        kFormModelContextParameterMissingName:
-      return protocol::Audits::GenericIssueErrorTypeEnum::
-          FormModelContextParameterMissingName;
   }
 }
 

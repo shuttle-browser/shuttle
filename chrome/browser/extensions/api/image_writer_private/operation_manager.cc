@@ -163,28 +163,30 @@ void OperationManager::DestroyPartitions(
 void OperationManager::OnProgress(const ExtensionId& extension_id,
                                   image_writer_api::Stage stage,
                                   int progress) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
 
   image_writer_api::ProgressInfo info;
   info.stage = stage;
   info.percent_complete = progress;
 
-  auto args(image_writer_api::OnWriteProgress::Create(info));
-  std::unique_ptr<Event> event(new Event(
+  auto event_args = base::MakeRefCounted<EventArgs>(
+      image_writer_api::OnWriteProgress::Create(info));
+  auto event = std::make_unique<Event>(
       events::IMAGE_WRITER_PRIVATE_ON_WRITE_PROGRESS,
-      image_writer_api::OnWriteProgress::kEventName, std::move(args)));
+      image_writer_api::OnWriteProgress::kEventName, std::move(event_args));
 
   EventRouter::Get(browser_context_)
       ->DispatchEventToExtension(extension_id, std::move(event));
 }
 
 void OperationManager::OnComplete(const ExtensionId& extension_id) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
 
-  auto args(image_writer_api::OnWriteComplete::Create());
-  std::unique_ptr<Event> event(new Event(
+  auto event_args = base::MakeRefCounted<EventArgs>(
+      image_writer_api::OnWriteComplete::Create());
+  auto event = std::make_unique<Event>(
       events::IMAGE_WRITER_PRIVATE_ON_WRITE_COMPLETE,
-      image_writer_api::OnWriteComplete::kEventName, std::move(args)));
+      image_writer_api::OnWriteComplete::kEventName, std::move(event_args));
 
   EventRouter::Get(browser_context_)
       ->DispatchEventToExtension(extension_id, std::move(event));
@@ -196,7 +198,7 @@ void OperationManager::OnError(const ExtensionId& extension_id,
                                image_writer_api::Stage stage,
                                int progress,
                                const std::string& error_message) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   image_writer_api::ProgressInfo info;
 
   DLOG(ERROR) << "ImageWriter error: " << error_message;
@@ -204,10 +206,11 @@ void OperationManager::OnError(const ExtensionId& extension_id,
   info.stage = stage;
   info.percent_complete = progress;
 
-  auto args(image_writer_api::OnWriteError::Create(info, error_message));
-  std::unique_ptr<Event> event(
-      new Event(events::IMAGE_WRITER_PRIVATE_ON_WRITE_ERROR,
-                image_writer_api::OnWriteError::kEventName, std::move(args)));
+  auto event_args = base::MakeRefCounted<EventArgs>(
+      image_writer_api::OnWriteError::Create(info, error_message));
+  auto event = std::make_unique<Event>(
+      events::IMAGE_WRITER_PRIVATE_ON_WRITE_ERROR,
+      image_writer_api::OnWriteError::kEventName, std::move(event_args));
 
   EventRouter::Get(browser_context_)
       ->DispatchEventToExtension(extension_id, std::move(event));
@@ -236,6 +239,8 @@ Operation* OperationManager::GetOperation(const ExtensionId& extension_id) {
 void OperationManager::DeleteOperation(const ExtensionId& extension_id) {
   auto existing_operation = operations_.find(extension_id);
   if (existing_operation != operations_.end()) {
+    existing_operation->second->PostTask(
+        base::BindOnce(&Operation::Cancel, existing_operation->second));
     operations_.erase(existing_operation);
   }
 }
@@ -248,7 +253,8 @@ void OperationManager::OnExtensionUnloaded(
 }
 
 void OperationManager::OnShutdown(ExtensionRegistry* registry) {
-  DCHECK(extension_registry_observation_.IsObservingSource(registry));
+  CHECK(extension_registry_observation_.IsObservingSource(registry),
+        base::NotFatalUntil::M161);
   extension_registry_observation_.Reset();
 }
 
@@ -257,7 +263,8 @@ void OperationManager::OnBackgroundHostClose(const ExtensionId& extension_id) {
 }
 
 void OperationManager::OnProcessManagerShutdown(ProcessManager* manager) {
-  DCHECK(process_manager_observation_.IsObservingSource(manager));
+  CHECK(process_manager_observation_.IsObservingSource(manager),
+        base::NotFatalUntil::M161);
   process_manager_observation_.Reset();
 }
 

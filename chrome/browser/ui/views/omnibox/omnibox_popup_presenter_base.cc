@@ -7,9 +7,11 @@
 #include <optional>
 
 #include "base/auto_reset.h"
+#include "base/check_is_test.h"
 #include "base/check_op.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/strcat.h"
 #include "base/task/sequenced_task_runner.h"
@@ -18,6 +20,7 @@
 #include "base/trace_event/trace_event.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
+#include "chrome/browser/ui/omnibox/omnibox_popup_webui_creation.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter_delegate.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_webui_content.h"
@@ -41,6 +44,24 @@
 namespace omnibox {
 const void* kOmniboxWebUIPopupWidgetId = &kOmniboxWebUIPopupWidgetId;
 }
+
+namespace {
+
+std::string_view CreationReasonToString(
+    OmniboxPopupPresenterBase::CreationReason reason) {
+  switch (reason) {
+    case OmniboxPopupPresenterBase::CreationReason::kEager:
+      return "Eager";
+    case OmniboxPopupPresenterBase::CreationReason::kShow:
+      return "Show";
+    case OmniboxPopupPresenterBase::CreationReason::kContextMenu:
+      return "ContextMenu";
+    case OmniboxPopupPresenterBase::CreationReason::kAfterWindowPresentation:
+      return "AfterWindowPresentation";
+  }
+}
+
+}  // namespace
 
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(OmniboxPopupPresenterBase,
                                       kRoundedResultsFrame);
@@ -66,6 +87,7 @@ OmniboxPopupPresenterBase::~OmniboxPopupPresenterBase() {
 }
 
 void OmniboxPopupPresenterBase::Show() {
+  GetOrCreateWebUIContent(CreationReason::kShow);
   if (IsShown()) {
     // If a re-entrant `Show()` occurs while the widget is still visible but
     // WebContents was set to hidden by a preceding `Hide()`, ensure it is woken
@@ -194,6 +216,8 @@ void OmniboxPopupPresenterBase::OnVisualStateReady(
 }
 
 void OmniboxPopupPresenterBase::ShowWidget(base::TimeTicks show_request_time) {
+  is_open_ = true;
+  OnWidgetPresentedChanged(false);
   if (ShouldPreserveRequestedFocus() &&
       (widget_->IsActive() || focus_requested_)) {
     widget_->Show();
@@ -259,6 +283,8 @@ void OmniboxPopupPresenterBase::LogResultToContentReadyMetric(
 void OmniboxPopupPresenterBase::OnWidgetPresented(
     base::TimeTicks show_request_time,
     const gfx::PresentationFeedback& feedback) {
+  // Report even on failure so that nothing waits forever.
+  OnWidgetPresentedChanged(true);
   if (feedback.failed()) {
     return;
   }
@@ -285,9 +311,15 @@ void OmniboxPopupPresenterBase::Hide() {
   is_deferred_ = false;
   // Drop stale visual state callbacks.
   visual_state_weak_factory_.InvalidateWeakPtrs();
+  OnWidgetPresentedChanged(false);
 
   // Only close if UI DevTools settings allow.
   if (widget_ && widget_->ShouldHandleNativeWidgetActivationChanged(false)) {
+    // If external code already hid the widget (e.g. ash on a user switch), then
+    // we need to destroy the widget to prevent the external code from
+    // re-showing the widget.
+    const bool hidden_externally = is_open_ && !widget_->IsVisible();
+    is_open_ = false;
     widget_->Hide();
     if (auto* content = GetWebUIContent()) {
       if (base::FeatureList::IsEnabled(
@@ -304,7 +336,7 @@ void OmniboxPopupPresenterBase::Hide() {
     // from this show. `OnWidgetClosed()` extracts the WebUI container before
     // the widget is destroyed, so the WebContents (and the pre-warmed
     // renderer) survives and is re-parented by `EnsureWidgetCreated()`.
-    if (ShouldDestroyWidgetOnHide()) {
+    if (ShouldDestroyWidgetOnHide() || hidden_externally) {
       // Flag the teardown as deliberate so `WidgetDestroyed()` overrides don't
       // mistake it for the widget being closed out from under us (e.g. by the
       // OS) and re-enter the popup state teardown already in progress.
@@ -406,6 +438,13 @@ void OmniboxPopupPresenterBase::SetWebUIContent(
       GetUIContainer()->AddChildView(std::move(webui_content));
 
   Observe(omnibox_popup_webui_content_->GetWebContents());
+
+  // A hidden popup needs no native window, and building one per popup slows
+  // down browser window creation. `Show()` creates it on demand.
+  if (base::FeatureList::IsEnabled(
+          omnibox::kOmniboxWebUIPopupCreateWidgetOnShow)) {
+    return;
+  }
   EnsureWidgetCreated();
 
   // Explicitly put the presenter into its resting hidden state upon creation.
@@ -414,6 +453,98 @@ void OmniboxPopupPresenterBase::SetWebUIContent(
   if (base::FeatureList::IsEnabled(omnibox::kOmniboxWebUIPopupHideOnCreation)) {
     Hide();
   }
+}
+
+OmniboxPopupWebUIBaseContent*
+OmniboxPopupPresenterBase::GetOrCreateWebUIContent(CreationReason reason) {
+  if (auto* content = GetWebUIContent()) {
+    return content;
+  }
+  // Covers `CreateWebUIContent()`, which creates the WebContents and starts
+  // its navigation.
+  TRACE_EVENT("omnibox", "OmniboxPopupPresenterBase::GetOrCreateWebUIContent",
+              "prefix", GetPopupMetricPrefix(), "reason",
+              CreationReasonToString(reason));
+  std::unique_ptr<OmniboxPopupWebUIBaseContent> content = CreateWebUIContent();
+  if (!content) {
+    // Every production presenter either sets its content in its constructor
+    // or overrides `CreateWebUIContent()`. Only unit-test presenters without
+    // WebUI content get here.
+    CHECK_IS_TEST();
+    return nullptr;
+  }
+  SetWebUIContent(std::move(content));
+  return GetWebUIContent();
+}
+
+// static
+OmniboxPopupPresenterBase::WebUIContentCreationStrategy
+OmniboxPopupPresenterBase::GetWebUIContentCreationStrategy(
+    const base::Feature& defer_creation_feature) {
+  if (omnibox::ShouldCreatePopupWebUIOnDemand()) {
+    return WebUIContentCreationStrategy::kOnDemand;
+  }
+  if (base::FeatureList::IsEnabled(defer_creation_feature)) {
+    return WebUIContentCreationStrategy::kAfterWindowPresentation;
+  }
+  return WebUIContentCreationStrategy::kEager;
+}
+
+void OmniboxPopupPresenterBase::ApplyWebUIContentCreationStrategy(
+    WebUIContentCreationStrategy strategy) {
+  switch (strategy) {
+    case WebUIContentCreationStrategy::kEager:
+      GetOrCreateWebUIContent(CreationReason::kEager);
+      return;
+    case WebUIContentCreationStrategy::kAfterWindowPresentation:
+      CreateWebUIContentAfterWindowPresentation();
+      return;
+    case WebUIContentCreationStrategy::kOnDemand:
+      return;
+  }
+}
+
+std::unique_ptr<OmniboxPopupWebUIBaseContent>
+OmniboxPopupPresenterBase::CreateWebUIContent() {
+  return nullptr;
+}
+
+void OmniboxPopupPresenterBase::CreateWebUIContentAfterWindowPresentation() {
+  // Presenters are built with the browser window, before its first paint, so
+  // the next frame the location bar's widget presents is the window's first
+  // frame. A presenter built later, e.g. when the profile becomes eligible for
+  // AI Mode, gets the next frame instead.
+  views::Widget* widget = delegate().GetLocationBarWidget();
+  ui::Compositor* compositor = widget ? widget->GetCompositor() : nullptr;
+  if (!compositor) {
+    // `Show()` and the other callers of `GetOrCreateWebUIContent()` still
+    // create the content when they need it.
+    return;
+  }
+  // A successful-presentation callback is kept across failed presentations
+  // until a frame is presented (see
+  // `cc::PresentationTimeCallbackBuffer::PopPendingCallbacks()`), so it runs
+  // once the window is shown. A window that is created hidden or minimized
+  // runs it when it is first shown.
+  compositor->RequestSuccessfulPresentationTimeForNextFrame(
+      base::IgnoreArgs<const viz::FrameTimingDetails&>(
+          base::BindOnce(&OmniboxPopupPresenterBase::OnBrowserWindowPresented,
+                         weak_factory_.GetWeakPtr())));
+}
+
+void OmniboxPopupPresenterBase::OnBrowserWindowPresented() {
+  if (deferred_creation_scheduled_ || GetWebUIContent()) {
+    return;
+  }
+  deferred_creation_scheduled_ = true;
+  // Post rather than create inline, so that the WebContents is not created
+  // inside the presentation feedback callback.
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE,
+      base::BindOnce(base::IgnoreResult(
+                         &OmniboxPopupPresenterBase::GetOrCreateWebUIContent),
+                     weak_factory_.GetWeakPtr(),
+                     CreationReason::kAfterWindowPresentation));
 }
 
 bool OmniboxPopupPresenterBase::ShouldDestroyWidgetOnHide() const {
@@ -433,11 +564,6 @@ void OmniboxPopupPresenterBase::EnsureWidgetCreated() {
       views::Widget::InitParams::CLIENT_OWNS_WIDGET,
       ShouldReceiveFocus() ? views::Widget::InitParams::TYPE_WINDOW_FRAMELESS
                            : views::Widget::InitParams::TYPE_POPUP);
-#if BUILDFLAG(IS_WIN)
-  // On Windows use the software compositor to ensure that we don't block
-  // the UI thread during command buffer creation. See http://crbug.com/40198772
-  params.force_software_compositing = true;
-#endif
   params.opacity = views::Widget::InitParams::WindowOpacity::kTranslucent;
   params.parent = parent_widget->GetNativeView();
   params.context = parent_widget->GetNativeWindow();
@@ -497,12 +623,9 @@ bool OmniboxPopupPresenterBase::ShouldPreserveRequestedFocus() const {
   return false;
 }
 
-bool OmniboxPopupPresenterBase::IsDeactivating() const {
-  return false;
-}
-
 void OmniboxPopupPresenterBase::OnWidgetClosed(
     views::Widget::ClosedReason closed_reason) {
+  is_open_ = false;
   is_deferred_ = false;
   // Drop stale visual state callbacks when the widget is closed.
   visual_state_weak_factory_.InvalidateWeakPtrs();
@@ -642,7 +765,7 @@ void OmniboxPopupPresenterBase::RegisterBlocker() {
 void OmniboxPopupPresenterBase::UnregisterBlocker() {
   deactivation_blockers_count_--;
 
-  DCHECK_GE(deactivation_blockers_count_, 0);
+  CHECK_GE(deactivation_blockers_count_, 0, base::NotFatalUntil::M162);
   if (deactivation_blockers_count_ < 0) {
     deactivation_blockers_count_ = 0;
   }
@@ -665,6 +788,12 @@ void OmniboxPopupPresenterBase::ResetPermissionPromptShowingState() {
 
 void OmniboxPopupPresenterBase::HandlePermissionPromptDismissal() {
   SetPermissionPromptShowing(false);
+  // If the prompt was removed because the popup widget itself was hidden (e.g.
+  // during browser window teardown), do not enter dismissal mode or refocus the
+  // location bar.
+  if (!IsShown()) {
+    return;
+  }
   is_handling_prompt_dismissal_ = true;
   if (location_bar()) {
     location_bar()->FocusLocation(/*is_user_initiated=*/false,

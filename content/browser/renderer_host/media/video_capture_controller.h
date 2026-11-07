@@ -65,8 +65,7 @@ class CONTENT_EXPORT VideoCaptureController
                  const GlobalRenderFrameHostId& render_frame_host_id,
                  VideoCaptureControllerEventHandler* event_handler,
                  const media::VideoCaptureSessionId& session_id,
-                 const media::VideoCaptureParams& params,
-                 std::optional<url::Origin> origin);
+                 const media::VideoCaptureParams& params);
 
   // Stop video capture. This will take back all buffers held by
   // |event_handler|, and |event_handler| shouldn't use those buffers any more.
@@ -109,8 +108,6 @@ class CONTENT_EXPORT VideoCaptureController
   const std::optional<media::VideoCaptureFormat> GetVideoCaptureFormat() const;
 
   bool has_received_frames() const { return has_received_frames_; }
-
-  const std::optional<url::Origin> GetFirstClientOrigin() const;
 
   // Implementation of media::VideoFrameReceiver interface:
   void OnCaptureConfigurationChanged() override;
@@ -156,8 +153,6 @@ class CONTENT_EXPORT VideoCaptureController
           callback);
   void RequestRefreshFrame();
   void InvalidateBuffers();
-  void SetDesktopCaptureWindowIdAsync(gfx::NativeViewId window_id,
-                                      base::OnceClosure done_cb);
   int serial_id() const { return serial_id_; }
   const std::string& device_id() const { return device_id_; }
   blink::mojom::MediaStreamType stream_type() const { return stream_type_; }
@@ -228,9 +223,6 @@ class CONTENT_EXPORT VideoCaptureController
   ControllerClient* FindClient(const VideoCaptureControllerID& id,
                                VideoCaptureControllerEventHandler* handler);
 
-  // Find a client of |session_id| in |controller_clients_|.
-  ControllerClient* FindClient(const base::UnguessableToken& session_id);
-
   std::vector<BufferContext>::iterator FindBufferContextFromBufferContextId(
       int buffer_context_id);
   std::vector<BufferContext>::iterator FindUnretiredBufferContextFromBufferId(
@@ -283,8 +275,6 @@ class CONTENT_EXPORT VideoCaptureController
   base::TimeTicks time_of_start_request_;
 
   std::optional<media::VideoCaptureFormat> video_capture_format_;
-
-  std::optional<url::Origin> first_client_origin_;
 
   // As a work-around to technical limitations, we don't allow multiple
   // captures of the same tab, by the same capturer, if the first capturer

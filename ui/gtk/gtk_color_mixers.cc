@@ -49,9 +49,7 @@ void AddGtkNativeColorMixer(ui::ColorProvider* provider,
   const SkColor accent_fg = GetFgColor(
       "treeview.view "
       "treeview.view.cell:selected:focus label");
-  const SkColor accent_bg =
-      accent_color.value_or(GetBgColor("treeview.view "
-                                       "treeview.view.cell:selected:focus"));
+  const SkColor accent_bg = accent_color.value_or(GetThemeAccentColor());
 
   static constexpr char kTextFocused[] =
       "textview.view:focus:focus-within text:focus:focus-within";
@@ -74,15 +72,23 @@ void AddGtkNativeColorMixer(ui::ColorProvider* provider,
   mixer[ui::kColorAlertMediumSeverityText] = {
       SelectBasedOnDarkInput(ui::kColorPrimaryBackground, gfx::kGoogleYellow300,
                              gfx::kGoogleOrange900)};
-  mixer[ui::kColorDisabledForeground] = {label_fg_disabled};
+  // Some themes provide label colors with little or no contrast against their
+  // own window background (e.g. a white disabled label on a light window).
+  // Nudge them just enough to stay legible: readable for regular and secondary
+  // text, and visible for disabled text.
+  mixer[ui::kColorDisabledForeground] = ui::BlendForMinContrast(
+      label_fg_disabled, ui::kColorPrimaryBackground, std::nullopt,
+      color_utils::kMinimumVisibleContrastRatio);
   mixer[ui::kColorItemHighlight] = {GetBorderColor("entry:focus")};
   mixer[ui::kColorItemSelectionBackground] = {ui::kColorAccent};
   mixer[ui::kColorMenuSelectionBackground] = {GetBgColor(
       base::StrCat({GtkCssMenu(), " ", GtkCssMenuItem(), ":hover"}))};
   mixer[ui::kColorMidground] = {GetSeparatorColor("separator.horizontal")};
   mixer[ui::kColorPrimaryBackground] = {primary_bg};
-  mixer[ui::kColorPrimaryForeground] = {label_fg};
-  mixer[ui::kColorSecondaryForeground] = {label_fg_disabled};
+  mixer[ui::kColorPrimaryForeground] =
+      ui::BlendForMinContrast(label_fg, ui::kColorPrimaryBackground);
+  mixer[ui::kColorSecondaryForeground] =
+      ui::BlendForMinContrast(label_fg_disabled, ui::kColorPrimaryBackground);
   mixer[ui::kColorTextSelectionBackground] = {kSelectedTextBackground};
   mixer[ui::kColorTextSelectionForeground] = {kSelectedTextForeground};
 

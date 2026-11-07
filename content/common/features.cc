@@ -125,15 +125,8 @@ BASE_FEATURE(kBackForwardCacheTimeToLiveControl,
 
 // When enabled, the browser will schedule before unload tasks that continue
 // navigation network responses in a kHigh priority queue.
-// TODO(b/281094330): Run experiment on ChromeOS. Experiment was not run on
-// ChromeOS due to try bot issue.
 BASE_FEATURE(kBeforeUnloadBrowserResponseQueue,
-#if BUILDFLAG(IS_CHROMEOS)
-             base::FEATURE_DISABLED_BY_DEFAULT
-#else
-             base::FEATURE_ENABLED_BY_DEFAULT
-#endif
-);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 #if BUILDFLAG(IS_ANDROID)
 // Whether to hide paste popup on GestureScrollBegin or GestureScrollUpdate.
@@ -150,6 +143,13 @@ BASE_FEATURE(kCachedFirstRectAllowRangeOutsideSelection,
 BASE_FEATURE(kCancelCompositionWhenWindowLosesFocus,
              base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_MAC)
+
+// When enabled, forces opaque CacheStorage responses to be treated as
+// credentialed for the Cross-Origin-Resource-Policy (CORP) check.
+// TODO(crbug.com/568759904): Update the Fetch and Service Worker specs and
+// corresponding WPTs.
+BASE_FEATURE(kCacheStorageOpaqueResponseCredentialedForCorp,
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // When enabled, CDP method Page.captureScreenshot will increment
 // the LocalSurfaceId instead of waiting for ForceRedraw to complete.
@@ -221,8 +221,10 @@ BASE_FEATURE(kDocumentPolicyNegotiation, base::FEATURE_DISABLED_BY_DEFAULT);
 // When enabled, sandboxed renderer processes (except spare renderers) are
 // initially bound with a strong (BIND_IMPORTANT) binding right at creation
 // time, putting them immediately in the top-app cpuset group on Android.
+// Owner: khokhlov@google.com
+// TODO(crbug.com/536874828): Remove after the feature reaches 100% Stable.
 BASE_FEATURE(kEarlyTopAppForSandboxedRenderer,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #endif
 
 // When enabled `EditContext::updateSelection` calls from async selectionchange
@@ -410,6 +412,15 @@ BASE_FEATURE(kIsSuitableForUrlInfoEarlyReturnHoldback,
 // When enabled, child process will not terminate itself when IPC is reset.
 BASE_FEATURE(kKeepChildProcessAfterIPCReset, base::FEATURE_DISABLED_BY_DEFAULT);
 
+// When navigating away from a previously committed unassigned NavigationEntry
+// (e.g., chrome-native://newtab/ on Android), only replace its SiteInstance if
+// the new navigation stayed in that same SiteInstance, keeping it in its
+// original BrowsingInstance if the navigation swapped SiteInstances.
+// TODO(crbug.com/493236843): Remove this killswitch once the change has made it
+// through a stable channel revision.
+BASE_FEATURE(kKeepUnassignedSiteInstanceInOriginalBrowsingInstance,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 // When enabled, the renderer process will be killed if it provides
 // invalid (non-allowlisted) headers in a navigation request.
 BASE_FEATURE(kKillOnInvalidNavigationHeaders, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -569,6 +580,21 @@ BASE_FEATURE(kPermissionsPolicyVerificationInContent,
 // pen/touch pointer type is not clobbered.
 BASE_FEATURE(kMouseEventPreservePointerType, base::FEATURE_ENABLED_BY_DEFAULT);
 
+// Captures the cursor's screen position before emulated Aura pointer lock and
+// restores it on unlock, even if the cursor was outside the view or the window
+// moved while locked. See https://crbug.com/525729332.
+// TODO(crbug.com/525729332): ChromeOS could have issues restoring the pointer
+// to the same location it was in if the cursor was in a second display with
+// different DPI. Validate that the current solution works for ChromeOS, and add
+// a fix if it doesn't before enabling by default.
+BASE_FEATURE(kPointerLockRestoreScreenPosition,
+#if BUILDFLAG(IS_CHROMEOS)
+             base::FEATURE_DISABLED_BY_DEFAULT
+#else
+             base::FEATURE_ENABLED_BY_DEFAULT
+#endif
+);
+
 // If enabled, responses with an operative Cookie-Indices will not be used
 // if the relevant cookie values have changed.
 BASE_FEATURE(kPrefetchCookieIndices, base::FEATURE_DISABLED_BY_DEFAULT);
@@ -667,12 +693,6 @@ BASE_FEATURE(kReloadHiddenTabsWithCrashedSubframes,
 BASE_FEATURE(kRendererCancellationThrottleImprovements,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-// When enabled, allows a navigation to resume even if the renderer process for
-// its speculative RFH is killed. This only works for navigations that have not
-// yet received the response and picked the final RFH to commit in.
-BASE_FEATURE(kResumeNavigationWithSpeculativeRFHProcessGone,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
 // When enabled, the browser will try to swap to a new SiteInstance if there is
 // an existing warm (pending, committed, or delayed shutdown) renderer process
 // locked to the destination site and when the current process is an empty
@@ -710,6 +730,13 @@ BASE_FEATURE(kSandboxedProcessServiceLimitOnAndroid,
 
 BASE_FEATURE(kScrollAfterOSKViewportShrinkFix,
              base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Keeps re-scrolling the focused editable node into view when the on-screen
+// keyboard shrinks the viewport again after the initial show (e.g. Gboard
+// Translate bar, re-docking a floating keyboard). Kill switch for
+// crbug.com/565609019.
+BASE_FEATURE(kScrollFocusedNodeOnOSKViewportReshrink,
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #endif
 
 // Controls whether redirect Location headers are sanitized during navigation
@@ -745,6 +772,10 @@ const base::FeatureParam<std::string>
     kServiceWorkerBypassFetchHandlerBypassedHashStrings{
         &kServiceWorkerBypassFetchHandlerHashStrings,
         "script_checksum_to_bypass", ""};
+
+// Killswitch for crbug.com/563194341
+BASE_FEATURE(kServiceWorkerDropHandleForCSPSandboxedWorker,
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // (crbug.com/41411856): When enabled, the srcdoc iframes are controlled by the
 // same service worker that controls their parent.
@@ -891,10 +922,6 @@ BASE_FEATURE(kWebUIInProcessResourceLoading,
 // Enables WebOTP calls in cross-origin iframes if allowed by Permissions
 // Policy.
 BASE_FEATURE(kWebOTPAssertionFeaturePolicy, base::FEATURE_DISABLED_BY_DEFAULT);
-
-// Flag guard for fix for crbug.com/40942531.
-BASE_FEATURE(kLimitCrossOriginNonActivatedPaintHolding,
-             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Please keep features in alphabetical order.
 

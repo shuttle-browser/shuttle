@@ -26,6 +26,7 @@ def GetScopedUnitTests(input_api, build_android_dir, *, is_upload):
         J('gyp', 'java_cpp_features_tests.py'),
         J('gyp', 'java_cpp_strings_tests.py'),
         J('gyp', 'java_google_api_keys_tests.py'),
+        J('gyp', 'tracereferences_test.py'),
         J('gyp', 'util', 'java_cpp_utils_test.py'),
         J('gyp', 'util', 'manifest_utils_test.py'),
         J('gyp', 'util', 'md5_check_test.py'),
@@ -37,6 +38,7 @@ def GetScopedUnitTests(input_api, build_android_dir, *, is_upload):
         J('pylib', 'gtest', 'gtest_test_instance_test.py'),
         J('pylib', 'instrumentation', 'instrumentation_parser_test.py'),
         J('pylib', 'instrumentation', 'instrumentation_test_instance_test.py'),
+        J('pylib', 'local', 'device', 'local_device_environment_test.py'),
         J('pylib', 'local', 'device', 'local_device_gtest_run_test.py'),
         J(
             'pylib',
@@ -45,6 +47,12 @@ def GetScopedUnitTests(input_api, build_android_dir, *, is_upload):
             'local_device_instrumentation_test_run_test.py',
         ),
         J('pylib', 'local', 'device', 'local_device_test_run_test.py'),
+        J(
+            'pylib',
+            'local',
+            'device',
+            'local_device_network_environment_test.py',
+        ),
         J('pylib', 'local', 'emulator', 'avd_test.py'),
         J('pylib', 'local', 'emulator', 'ini_test.py'),
         J('pylib', 'local', 'machine', 'local_machine_junit_test_run_test.py'),
@@ -62,6 +70,7 @@ def GetScopedUnitTests(input_api, build_android_dir, *, is_upload):
         J('pylib', 'utils', 'device_dependencies_test.py'),
         J('pylib', 'utils', 'dexdump_test.py'),
         J('pylib', 'utils', 'gold_utils_test.py'),
+        J('pylib', 'utils', 'test_data_sync_test.py'),
         J('pylib', 'utils', 'test_filter_test.py'),
     ]
     root_tests = [
@@ -135,72 +144,13 @@ def GetScopedUnitTests(input_api, build_android_dir, *, is_upload):
 
 def CommonChecks(input_api, output_api, *, is_upload):
     # These tools don't run on Windows so these tests don't work and give many
-    # verbose and cryptic failure messages. Linting the code is also skipped on
-    # Windows because it will fail due to os differences.
+    # verbose and cryptic failure messages.
     if input_api.sys.platform == 'win32':
         return []
 
     build_android_dir = input_api.PresubmitLocalPath()
 
-    def J(*dirs):
-        """Returns an absolute path under the presubmit directory."""
-        return input_api.os_path.join(build_android_dir, *dirs)
-
-    build_pys = [
-        r'gyp/.*\.py$',
-        r'.*create_unwind_table\.py',
-        r'.*create_unwind_table_tests\.py',
-    ]
     tests = []
-    # yapf likes formatting the extra_paths_list to be less readable.
-    # yapf: disable
-    tests.extend(
-      input_api.canned_checks.GetPylint(
-          input_api,
-          output_api,
-          pylintrc='pylintrc-3.2',
-          files_to_skip=[
-              r'.*_pb2\.py'
-          ] + build_pys,
-          extra_paths_list=[
-              J(),
-              J('gyp'),
-              J('buildbot'),
-              J('..'),
-              J('..', 'util'),
-              J('..', '..', 'third_party', 'catapult', 'common',
-                'py_trace_event'),
-              J('..', '..', 'third_party', 'catapult', 'common', 'py_utils'),
-              J('..', '..', 'third_party', 'catapult', 'devil'),
-              J('..', '..', 'third_party', 'catapult', 'tracing'),
-              J('..', '..', 'third_party', 'depot_tools'),
-              J('..', '..', 'third_party', 'colorama', 'src'),
-          ],
-          version='3.2'))
-    tests.extend(
-      input_api.canned_checks.GetPylint(
-          input_api,
-          output_api,
-          pylintrc='pylintrc-3.2',
-          files_to_check=build_pys,
-          files_to_skip=[
-              r'.*_pb2\.py',
-              r'.*_pb2\.py',
-              r'.*create_unwind_table\.py',
-              r'.*create_unwind_table_tests\.py',
-          ],
-          extra_paths_list=[
-              J(),
-              J('..'),
-              J('..', 'gn_ast'),
-              J('..', 'util'),
-              J('..', '..', 'google_apis'),
-              J('..', '..', 'third_party'),
-              J('gyp'),
-              J('gyp', 'util'),
-          ],
-          version='3.2'))
-    # yapf: enable
 
     pylib_test_env = dict(input_api.environ)
     pylib_test_env.update(

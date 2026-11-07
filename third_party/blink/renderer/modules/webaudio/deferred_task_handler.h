@@ -32,10 +32,10 @@
 #include "base/memory/weak_ptr.h"
 #include "base/synchronization/lock.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
+#include "third_party/blink/renderer/modules/webaudio/recursive_mutex.h"
 #include "third_party/blink/renderer/platform/wtf/hash_set.h"
 #include "third_party/blink/renderer/platform/wtf/thread_safe_ref_counted.h"
 #include "third_party/blink/renderer/platform/wtf/threading.h"
-#include "third_party/blink/renderer/platform/wtf/threading_primitives.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace base {
@@ -233,7 +233,7 @@ class MODULES_EXPORT LOCKABLE DeferredTaskHandler final
   bool TryLock() EXCLUSIVE_TRYLOCK_FUNCTION(true);
   void Unlock() UNLOCK_FUNCTION();
 
-  void UpdateAutomaticPullNodes();
+  void UpdateAutomaticPullNodes() EXCLUSIVE_LOCKS_REQUIRED(*this);
   void UpdateChangedChannelCountMode();
   void UpdateChangedChannelInterpretation();
   void HandleDirtyAudioSummingJunctions();
@@ -252,7 +252,8 @@ class MODULES_EXPORT LOCKABLE DeferredTaskHandler final
   // `rendering_automatic_pull_handlers_`. This storage will be copied from
   // `automatic_pull_handlers` by `UpdateAutomaticPullNodes()` at the beginning
   // or end of the render quantum.
-  HashSet<scoped_refptr<AudioHandler>> automatic_pull_handlers_;
+  HashSet<scoped_refptr<AudioHandler>> automatic_pull_handlers_
+      GUARDED_BY(*this);
   Vector<scoped_refptr<AudioHandler>> rendering_automatic_pull_handlers_
       GUARDED_BY(automatic_pull_handlers_lock_);
 
@@ -260,7 +261,7 @@ class MODULES_EXPORT LOCKABLE DeferredTaskHandler final
   HashSet<AudioHandler*> deferred_pull_status_updates_;
 
   // Keeps track if the `automatic_pull_handlers` storage is touched.
-  bool automatic_pull_handlers_need_updating_ = false;
+  bool automatic_pull_handlers_need_updating_ GUARDED_BY(*this) = false;
 
   // Number of frames to use when rendering the graph.  This is the frames to
   // process for each node.
@@ -330,6 +331,10 @@ class MODULES_EXPORT LOCKABLE DeferredTaskHandler final
   mutable base::Lock automatic_pull_handlers_lock_;
 
   std::atomic<base::PlatformThreadId> audio_thread_;
+
+  // Pre-bound WeakPtr initialized on the main thread so the audio thread can
+  // copy it without calling `GetWeakPtr()` on `weak_ptr_factory_`.
+  base::WeakPtr<DeferredTaskHandler> weak_this_;
 
   base::WeakPtrFactory<DeferredTaskHandler> weak_ptr_factory_{this};
 };

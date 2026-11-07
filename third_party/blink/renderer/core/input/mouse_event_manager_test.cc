@@ -89,8 +89,7 @@ TEST_F(MouseEventManagerTest, HoverEffectAfterNav) {
   // These navigations swap new documents into the existing LocalFrame.
   EXPECT_EQ(frame, MainFrame().GetFrame());
 
-  LayoutObject* b =
-      GetDocument().getElementById(AtomicString("b"))->GetLayoutObject();
+  LayoutObject* b = GetElementById("b")->GetLayoutObject();
 
   // We need the first frame to layout before we can hit test the mouse pos.
   Compositor().BeginFrame();
@@ -102,7 +101,7 @@ TEST_F(MouseEventManagerTest, HoverEffectAfterNav) {
   Compositor().BeginFrame();
 
   Color color =
-      b->StyleRef().VisitedDependentColor(GetCSSPropertyBackgroundColor());
+      b->Style().VisitedDependentColor(GetCSSPropertyBackgroundColor());
   EXPECT_EQ("rgb(255, 0, 0)", color.SerializeAsCSSColor());
 }
 
@@ -131,10 +130,9 @@ TEST_F(MouseEventManagerTest,
   GetEventHandler().MarkHoverStateDirty();
   GetEventHandler().RecomputeMouseHoverStateIfNeeded();
 
-  LayoutObject* target =
-      GetDocument().getElementById(AtomicString("target"))->GetLayoutObject();
+  LayoutObject* target = GetElementById("target")->GetLayoutObject();
   Color hover_color =
-      target->StyleRef().VisitedDependentColor(GetCSSPropertyBackgroundColor());
+      target->Style().VisitedDependentColor(GetCSSPropertyBackgroundColor());
   // :hover pseudo-class should match when the pointer is over the element.
   EXPECT_EQ("rgb(255, 0, 0)", hover_color.SerializeAsCSSColor());
 
@@ -147,7 +145,7 @@ TEST_F(MouseEventManagerTest,
   GetEventHandler().MarkHoverStateDirty();
   GetEventHandler().RecomputeMouseHoverStateIfNeeded();
   hover_color =
-      target->StyleRef().VisitedDependentColor(GetCSSPropertyBackgroundColor());
+      target->Style().VisitedDependentColor(GetCSSPropertyBackgroundColor());
   EXPECT_EQ("rgb(128, 128, 128)", hover_color.SerializeAsCSSColor());
 
   // Move mouse back over element but with page inactive.
@@ -159,7 +157,7 @@ TEST_F(MouseEventManagerTest,
   GetEventHandler().MarkHoverStateDirty();
   GetEventHandler().RecomputeMouseHoverStateIfNeeded();
   hover_color =
-      target->StyleRef().VisitedDependentColor(GetCSSPropertyBackgroundColor());
+      target->Style().VisitedDependentColor(GetCSSPropertyBackgroundColor());
   // Same behavior is expected regardless of Page Active state. Per
   // W3C Pointer Events, § 4.4.6 “mouseenter”
   EXPECT_EQ("rgb(255, 0, 0)", hover_color.SerializeAsCSSColor());

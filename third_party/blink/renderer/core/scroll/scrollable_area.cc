@@ -202,8 +202,9 @@ ProgrammaticScrollAnimator& ScrollableArea::GetProgrammaticScrollAnimator()
 }
 
 ScrollbarOrientation ScrollableArea::ScrollbarOrientationFromDirection(
-    ScrollDirectionPhysical direction) const {
-  return (direction == kScrollUp || direction == kScrollDown)
+    mojom::blink::ScrollDirectionPhysical direction) const {
+  return (direction == mojom::blink::ScrollDirectionPhysical::kUp ||
+          direction == mojom::blink::ScrollDirectionPhysical::kDown)
              ? kVerticalScrollbar
              : kHorizontalScrollbar;
 }
@@ -446,7 +447,7 @@ void ScrollableArea::ScrollToScrollInitialTarget(
     return;
   }
   cc::ScrollSnapAlign snap_alignment =
-      scroll_initial_target->StyleRef().GetScrollSnapAlign();
+      scroll_initial_target->Style().GetScrollSnapAlign();
   switch (snap_alignment.alignment_block) {
     case cc::SnapAlignment::kStart:
       align_y = ScrollAlignment::TopAlways();
@@ -769,7 +770,7 @@ void ScrollableArea::RecalculateOverlayScrollbarColorScheme() {
   // If there is a background color set on the scroller, use the lightness of
   // the background color for the scrollbar overlay color theme.
   if (GetLayoutBox()) {
-    Color background_color = GetLayoutBox()->StyleRef().VisitedDependentColor(
+    Color background_color = GetLayoutBox()->Style().VisitedDependentColor(
         GetCSSPropertyBackgroundColor());
     if (!background_color.IsFullyTransparent()) {
       const float lightness =
@@ -797,15 +798,8 @@ void ScrollableArea::SetScrollbarNeedsPaintInvalidation(
     if (auto* scrollbar = GetScrollbar(orientation)) {
       if (auto* compositor =
               box->GetFrameView()->GetPaintArtifactCompositor()) {
-        CompositorElementId element_id = GetScrollbarElementId(orientation);
-        if (scrollbar->IsSolidColor()) {
-          // This will call SetNeedsDisplay() if the color changes (which is
-          // the only reason for a SolidColorScrollbarLayer to update display).
-          if (compositor->SetScrollbarSolidColor(
-                  element_id, scrollbar->GetTheme().ThumbColor(*scrollbar))) {
-            scrollbar->ClearNeedsUpdateDisplay();
-          }
-        } else if (compositor->SetScrollbarNeedsDisplay(element_id)) {
+        if (compositor->SetScrollbarNeedsDisplay(
+                GetScrollbarElementId(orientation))) {
           scrollbar->ClearNeedsUpdateDisplay();
         }
       }
@@ -1246,7 +1240,8 @@ bool ScrollableArea::SnapForEndPosition(const gfx::PointF& end_position,
                          /*preserve_pinned_marker=*/false);
 }
 
-bool ScrollableArea::SnapForDirection(ScrollDirectionPhysical direction) {
+bool ScrollableArea::SnapForDirection(
+    mojom::blink::ScrollDirectionPhysical direction) {
   DCHECK(IsRootFrameViewport() || !GetLayoutBox()->IsGlobalRootScroller());
   ScrollOffset delta = ToScrollDelta(direction, 1);
   delta.Scale(LineStep(kHorizontalScrollbar), LineStep(kVerticalScrollbar));
@@ -1263,7 +1258,8 @@ bool ScrollableArea::SnapForDirection(ScrollDirectionPhysical direction) {
                          /*preserve_pinned_marker=*/false);
 }
 
-bool ScrollableArea::SnapForPageScroll(ScrollDirectionPhysical direction) {
+bool ScrollableArea::SnapForPageScroll(
+    mojom::blink::ScrollDirectionPhysical direction) {
   DCHECK(IsRootFrameViewport() || !GetLayoutBox()->IsGlobalRootScroller());
   std::unique_ptr<cc::SnapSelectionStrategy> strategy =
       PageScrollSnapStrategy(direction);
@@ -1274,13 +1270,16 @@ bool ScrollableArea::SnapForPageScroll(ScrollDirectionPhysical direction) {
                          /*preserve_pinned_marker=*/false);
 }
 
-bool ScrollableArea::SnapForDocumentScroll(ScrollDirectionPhysical direction) {
+bool ScrollableArea::SnapForDocumentScroll(
+    mojom::blink::ScrollDirectionPhysical direction) {
   ScrollOffset delta = ToScrollDelta(direction, 1);
   delta.Scale(DocumentStep(kHorizontalScrollbar),
               DocumentStep(kVerticalScrollbar));
   gfx::PointF end_position = ScrollPosition() + delta;
-  bool scrolled_x = direction == kScrollLeft || direction == kScrollRight;
-  bool scrolled_y = direction == kScrollUp || direction == kScrollDown;
+  bool scrolled_x = direction == mojom::blink::ScrollDirectionPhysical::kLeft ||
+                    direction == mojom::blink::ScrollDirectionPhysical::kRight;
+  bool scrolled_y = direction == mojom::blink::ScrollDirectionPhysical::kUp ||
+                    direction == mojom::blink::ScrollDirectionPhysical::kDown;
   // Only called for Home/End key press scrolls, which are absolute scrolls.
   // https://drafts.csswg.org/css-scroll-snap-1/#scroll-types
   return SnapForEndPosition(end_position, scrolled_x, scrolled_y,
@@ -1289,7 +1288,7 @@ bool ScrollableArea::SnapForDocumentScroll(ScrollDirectionPhysical direction) {
 
 std::unique_ptr<cc::SnapSelectionStrategy>
 ScrollableArea::PageScrollSnapStrategy(
-    ScrollDirectionPhysical direction) const {
+    mojom::blink::ScrollDirectionPhysical direction) const {
   return cc::SnapSelectionStrategy::CreateForPageScroll(
       ScrollPosition(), ToScrollDelta(direction, 1), PageSize(),
       RuntimeEnabledFeatures::FractionalScrollOffsetsEnabled());

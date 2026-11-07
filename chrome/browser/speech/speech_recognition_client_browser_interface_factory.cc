@@ -7,7 +7,6 @@
 #include "base/no_destructor.h"
 #include "build/build_config.h"
 #include "chrome/browser/accessibility/live_caption/live_caption_controller_factory.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/speech/speech_recognition_client_browser_interface.h"
 
@@ -17,6 +16,14 @@ SpeechRecognitionClientBrowserInterfaceFactory::GetForProfile(
     Profile* profile) {
   return static_cast<speech::SpeechRecognitionClientBrowserInterface*>(
       GetInstance()->GetServiceForBrowserContext(profile, true));
+}
+
+// static
+speech::SpeechRecognitionClientBrowserInterface*
+SpeechRecognitionClientBrowserInterfaceFactory::GetForProfileIfExists(
+    Profile* profile) {
+  return static_cast<speech::SpeechRecognitionClientBrowserInterface*>(
+      GetInstance()->GetServiceForBrowserContext(profile, /*create=*/false));
 }
 
 // static
@@ -43,7 +50,6 @@ SpeechRecognitionClientBrowserInterfaceFactory::
               .WithAshInternals(ProfileSelection::kOwnInstance)
               .Build()) {
   DependsOn(::captions::LiveCaptionControllerFactory::GetInstance());
-  DependsOn(OptimizationGuideKeyedServiceFactory::GetInstance());
 }
 
 SpeechRecognitionClientBrowserInterfaceFactory::

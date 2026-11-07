@@ -4,7 +4,6 @@
 
 import("//build/config/buildflags_paint_preview.gni")
 import("//chrome/common/features.gni")
-import("//chrome/common/request_header_integrity/buildflags.gni")
 import("//components/guest_view/buildflags/buildflags.gni")
 import("//components/offline_pages/buildflags/features.gni")
 import("//components/optimization_guide/features.gni")
@@ -17,8 +16,7 @@ import("//pdf/features.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
 import("//third_party/widevine/cdm/widevine.gni")
 import("//tools/grit/grit_rule.gni")
-
-assert(enable_supervised_users)
+import("//ui/webui/webui_features.gni")
 
 grit("resources") {
   source = "resources/renderer_resources.grd"
@@ -98,11 +96,6 @@ static_library("renderer") {
     "plugins/non_loadable_plugin_placeholder.h",
     "plugins/pdf_plugin_placeholder.cc",
     "plugins/pdf_plugin_placeholder.h",
-    "supervised_user/supervised_user_error_page_controller.cc",
-    "supervised_user/supervised_user_error_page_controller.h",
-    "supervised_user/supervised_user_error_page_controller_delegate.h",
-    "supervised_user/supervised_user_error_page_controller_delegate_impl.cc",
-    "supervised_user/supervised_user_error_page_controller_delegate_impl.h",
     "url_loader_throttle_provider_impl.cc",
     "url_loader_throttle_provider_impl.h",
     "v8_unwinder.cc",
@@ -115,9 +108,7 @@ static_library("renderer") {
 
   defines = []
 
-  public_deps = [
-    "//components/signin/public/base:signin_buildflags",
-  ]
+  public_deps = [ "//components/signin/public/base:signin_buildflags" ]
 
   deps = [
     ":process_state",
@@ -128,7 +119,6 @@ static_library("renderer") {
     "//chrome/common",
     "//chrome/common:mojo_bindings",
     "//chrome/common/net",
-    "//chrome/common/request_header_integrity:buildflags",
     "//chrome/services/speech/buildflags",
     "//components/base32",
     "//components/cdm/renderer",
@@ -138,22 +128,18 @@ static_library("renderer") {
     "//components/content_settings/renderer",
     "//components/continuous_search/renderer",
     "//components/country_codes",
+    "//components/crx_file",
     "//components/dom_distiller/content/renderer",
     "//components/google/core/common",
     "//components/guest_view/buildflags",
     "//components/heap_profiling/in_process",
-    "//components/history_clusters/core",
     "//components/language/core/common",
     "//components/metrics:child_call_stack_profile_builder",
     "//components/network_hints/renderer",
     "//components/no_state_prefetch/common",
     "//components/no_state_prefetch/renderer",
     "//components/omnibox/common",
-    "//components/optimization_guide/content/renderer",
     "//components/optimization_guide/core:features",
-    "//components/page_content_annotations/content/mojom",
-    "//components/page_content_annotations/content/renderer",
-    "//components/page_content_annotations/core:features",
     "//components/page_load_metrics/renderer",
     "//components/paint_preview/buildflags",
     "//components/pdf/common:constants",
@@ -175,7 +161,6 @@ static_library("renderer") {
     "//components/spellcheck:buildflags",
     "//components/subresource_filter/content/renderer",
     "//components/subresource_filter/core/common",
-    "//components/supervised_user/core/common:buildflags",
     "//components/surface_embed/common",
     "//components/surface_embed/renderer",
     "//components/visitedlink/renderer",
@@ -209,6 +194,7 @@ static_library("renderer") {
     "//third_party/re2",
     "//third_party/widevine/cdm:buildflags",
     "//ui/gfx/geometry",
+    "//ui/webui:buildflags",
     "//v8",
   ]
 
@@ -216,8 +202,6 @@ static_library("renderer") {
   }
 
   data_deps = [ "//tools/v8_context_snapshot" ]
-
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   if (enable_bound_session_credentials) {
     sources += [
@@ -241,10 +225,6 @@ static_library("renderer") {
       "//components/pdf/renderer",
       "//pdf:features",
     ]
-  }
-
-  if (enable_request_header_integrity) {
-    deps += [ "//chrome/common/request_header_integrity" ]
   }
 
   if (enable_widevine_cdm_component) {
@@ -323,7 +303,6 @@ static_library("renderer") {
     ]
 
     deps += [
-      "//components/crx_file",
       "//services/screen_ai/buildflags",
       "//services/strings",
       "//third_party/re2",

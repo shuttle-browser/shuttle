@@ -4,6 +4,7 @@
 
 #include "chrome/browser/ui/views/tabs/common/tab_group_header_view.h"
 
+#include "base/i18n/rtl.h"
 #include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
@@ -16,6 +17,7 @@
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/event_utils.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_style.h"
+#include "chrome/browser/ui/views/tabs/common/tab_strip_utils.h"
 #include "chrome/browser/ui/views/tabs/groups/tab_group_accessibility.h"
 #include "chrome/browser/ui/views/tabs/groups/tab_group_editor_bubble_tracker.h"
 #include "chrome/browser/ui/views/tabs/horizontal/horizontal_tab_closing_helper.h"
@@ -39,6 +41,7 @@
 #include "ui/views/border.h"
 #include "ui/views/controls/button/button_controller.h"
 #include "ui/views/controls/button/label_button.h"
+#include "ui/views/controls/button/label_button_border.h"
 #include "ui/views/controls/highlight_path_generator.h"
 #include "ui/views/controls/image_view.h"
 #include "ui/views/controls/label.h"
@@ -134,9 +137,10 @@ END_METADATA
 TabGroupHeaderView::TabGroupHeaderView(
     Delegate& delegate,
     TabStripOrientation orientation,
-    tabs::VerticalTabStripStateController* state_controller,
     const tab_groups::TabGroupVisualData* tab_group_visual_data)
     : HoverCardAnchorTarget(this),
+      delegate_(delegate),
+      orientation_(orientation),
       tab_group_visual_data_(*tab_group_visual_data),
       sync_icon_(AddChildView(std::make_unique<views::ImageView>())),
       group_header_label_(
@@ -150,18 +154,21 @@ TabGroupHeaderView::TabGroupHeaderView(
               : nullptr),
       collapse_icon_(orientation == TabStripOrientation::kVertical
                          ? AddChildView(std::make_unique<views::ImageView>())
-                         : nullptr),
-      delegate_(delegate),
-      orientation_(orientation),
-      editor_bubble_tracker_(state_controller) {
+                         : nullptr) {
   SetProperty(views::kElementIdentifierKey, kTabGroupHeaderElementId);
   attention_indicator_->SetProperty(views::kElementIdentifierKey,
                                     kTabGroupHeaderAttentionIndicatorElementId);
+  sync_icon_->SetCanProcessEventsWithinSubtree(false);
+  group_header_label_->SetCanProcessEventsWithinSubtree(false);
+  attention_indicator_->SetCanProcessEventsWithinSubtree(false);
+  if (collapse_icon_) {
+    collapse_icon_->SetCanProcessEventsWithinSubtree(false);
+  }
   SetNotifyEnterExitOnChild(true);
 
   if (editor_bubble_button_) {
     ConfigureEditorBubbleButton(editor_bubble_button_);
-    editor_bubble_button_->SetVisible(delegate_->IsGroupFocused());
+    UpdateEditorBubbleButtonVisibility(/*hovered=*/false);
   }
   editor_bubble_opened_subscription_ =
       editor_bubble_tracker_.RegisterOnBubbleOpened(base::BindRepeating(
@@ -171,7 +178,7 @@ TabGroupHeaderView::TabGroupHeaderView(
           &TabGroupHeaderView::OnBubbleClosed, base::Unretained(this)));
 
   SetCrossAxisAlignment(views::LayoutAlignment::kCenter);
-  SetInteriorMargin(gfx::Insets::VH(0, GetHorizontalInset()));
+  SetInteriorMargin(GetHeaderInsets());
   SetDefault(views::kFlexBehaviorKey,
              views::FlexSpecification(
                  views::MinimumFlexSizeRule::kScaleToMinimumSnapToZero,
@@ -250,7 +257,7 @@ gfx::Size TabGroupHeaderView::CalculatePreferredSize(
     non_label_width += attention_indicator_->GetPreferredSize().width() +
                        (margins ? margins->width() : 0);
   }
-  non_label_width += 2 * GetHorizontalInset();
+  non_label_width += GetHeaderInsets().width();
 
   int label_width =
       group_header_label_ ? group_header_label_->GetPreferredSize().width() : 0;
@@ -261,10 +268,22 @@ gfx::Size TabGroupHeaderView::CalculatePreferredSize(
                              sync_icon_width_with_margin;
   label_width = std::min(label_width, text_max_width);
 
-  const int empty_chip_size = TabGroupStyle::GetEmptyChipSize();
-  size.set_width(std::max(empty_chip_size, non_label_width + label_width));
-  size.set_height(empty_chip_size);
+  const int chip_height = delegate_->IsGroupFocused()
+                              ? TabGroupStyle::GetFocusedChipHeight()
+                              : TabGroupStyle::GetEmptyChipSize();
+  size.set_width(std::max(chip_height, non_label_width + label_width));
+  size.set_height(chip_height);
   return size;
+}
+
+gfx::Rect TabGroupHeaderView::GetAnchorBoundsInScreen() const {
+  gfx::Rect bounds = View::GetAnchorBoundsInScreen();
+  if (orientation_ == TabStripOrientation::kHorizontal && parent()) {
+    gfx::Rect parent_bounds = parent()->GetAnchorBoundsInScreen();
+    bounds.set_y(parent_bounds.y());
+    bounds.set_height(parent_bounds.height());
+  }
+  return bounds;
 }
 
 bool TabGroupHeaderView::OnKeyPressed(const ui::KeyEvent& event) {
@@ -363,6 +382,13 @@ void TabGroupHeaderView::OnGestureEvent(ui::GestureEvent* event) {
       event->SetHandled();
       break;
 
+    case ui::EventType::kGestureScrollBegin:
+      if (!CanScrollAlongAxis(this, orientation_, *event)) {
+        delegate_->InitHeaderDrag(*event);
+        event->SetHandled();
+      }
+      break;
+
     case ui::EventType::kGestureLongPress:
       delegate_->InitHeaderDrag(*event);
       event->SetHandled();
@@ -390,13 +416,19 @@ void TabGroupHeaderView::OnMouseEntered(const ui::MouseEvent& event) {
 }
 
 void TabGroupHeaderView::OnMouseExited(const ui::MouseEvent& event) {
+  UpdateEditorBubbleButtonVisibility(
 #if BUILDFLAG(IS_LINUX)
-  // Bypasses the synchronous IsMouseHovered() check which can be stale on Linux
-  // Wayland/X11 due to asynchronous cursor updates during mouse exit events.
-  SetEditorBubbleButtonVisibilityOnHover(/*is_hovered=*/false);
+      // Bypasses the synchronous IsMouseHovered() check which can be stale on
+      // Linux Wayland/X11 due to asynchronous cursor updates during mouse exit
+      // events.
+      /*hovered=*/false
 #else
-  UpdateEditorBubbleButtonVisibility();
+      std::nullopt
 #endif
+  );
+  if (delegate_->IsGroupFocused()) {
+    delegate_->HideHoverCard(TabSlotController::HoverCardUpdateType::kHover);
+  }
 }
 
 void TabGroupHeaderView::OnFocus() {
@@ -406,7 +438,7 @@ void TabGroupHeaderView::OnFocus() {
 
 void TabGroupHeaderView::OnBlur() {
   UpdateEditorBubbleButtonVisibility();
-  if (!delegate_->IsFocusInTabStrip()) {
+  if (!delegate_->IsFocusInTabStrip() || delegate_->IsUnfocusButtonFocused()) {
     delegate_->HideHoverCard(TabSlotController::HoverCardUpdateType::kFocus);
   }
 }
@@ -429,7 +461,8 @@ void TabGroupHeaderView::OnWillChangeFocus(views::View* focused_before,
     // If navigating upward from below, the button is initially hidden and gets
     // skipped. We detect reverse focus traversal (from a view physically below
     // this one) and manually forward the focus to the button.
-    if (focused_now == this && focused_before &&
+    if (focused_now == this && delegate_->CanShowEditorBubbleButton() &&
+        focused_before &&
         focused_before->GetBoundsInScreen().y() > GetBoundsInScreen().y()) {
       base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
           FROM_HERE,
@@ -505,7 +538,10 @@ views::BubbleAnchor TabGroupHeaderView::GetAnchor() {
 }
 
 views::BubbleBorder::Arrow TabGroupHeaderView::GetAnchorPosition() const {
-  return views::BubbleBorder::LEFT_TOP;
+  if (orientation_ == TabStripOrientation::kHorizontal) {
+    return views::BubbleBorder::Arrow::TOP_LEFT;
+  }
+  return views::BubbleBorder::Arrow::LEFT_TOP;
 }
 
 tab_groups::TabGroupId TabGroupHeaderView::group() const {
@@ -523,6 +559,7 @@ void TabGroupHeaderView::OnDataChanged(
     group_header_label_->SetText(tab_group_visual_data_.title());
   }
 
+  SetInteriorMargin(GetHeaderInsets());
   UpdateColors();
   if (GetColorProvider()) {
     UpdateAttentionState(false);
@@ -656,26 +693,47 @@ void TabGroupHeaderView::UpdateColors() {
 
   // Update background.
   SetBackground(
-      views::CreateRoundedRectBackground(background_color, GetCornerRadius()));
+      views::CreateRoundedRectBackground(background_color, GetCornerRadii()));
 }
 
-void TabGroupHeaderView::UpdateEditorBubbleButtonVisibility() {
+void TabGroupHeaderView::UpdateEditorBubbleButtonVisibility(
+    std::optional<bool> hovered) {
   // The editor bubble button only exists in the vertical orientation.
   if (!editor_bubble_button_) {
     return;
   }
-  views::FocusManager* focus_manager = GetFocusManager();
-  if (!focus_manager) {
-    return;
-  }
 
-  SetEditorBubbleButtonVisibilityOnHover(
-      IsMouseHovered() || Contains(focus_manager->GetFocusedView()));
+  const bool is_hovered_or_focused =
+      hovered.value_or(IsMouseHovered()) ||
+      (GetFocusManager() && Contains(GetFocusManager()->GetFocusedView()));
+  const bool is_focused = delegate_->IsGroupFocused();
+  editor_bubble_button_->SetBorder(
+      is_focused ? views::CreateEmptyBorder(gfx::Insets())
+                 : std::unique_ptr<views::Border>(
+                       editor_bubble_button_->CreateDefaultBorder()));
+  editor_bubble_button_->SetProperty(
+      views::kFlexBehaviorKey,
+      views::FlexSpecification(
+          is_focused ? views::MinimumFlexSizeRule::kPreferred
+                     : views::MinimumFlexSizeRule::kScaleToMinimumSnapToZero,
+          is_focused ? views::MaximumFlexSizeRule::kUnbounded
+                     : views::MaximumFlexSizeRule::kPreferred)
+          .WithAlignment(views::LayoutAlignment::kEnd));
+  // In focus mode, the button is always visible. It should never be visible in
+  // the collapsed state. Otherwise it is visible on hover or when the editor
+  // bubble is open.
+  editor_bubble_button_->SetVisible(
+      is_focused ||
+      (delegate_->CanShowEditorBubbleButton() &&
+       (editor_bubble_tracker_.is_open() || is_hovered_or_focused)));
 }
 
 void TabGroupHeaderView::OnBubbleOpened() {
   if (!expand_on_hover_lock_) {
     expand_on_hover_lock_ = delegate_->AcquireExpandOnHoverLock();
+  }
+  if (!hover_card_hide_lock_) {
+    hover_card_hide_lock_ = delegate_->AcquireHoverCardHideLock();
   }
   if (auto* closing_helper = delegate_->GetTabClosingHelper()) {
     closing_helper->PauseMouseWatcher();
@@ -687,21 +745,12 @@ void TabGroupHeaderView::OnBubbleOpened() {
 
 void TabGroupHeaderView::OnBubbleClosed() {
   expand_on_hover_lock_.reset();
+  hover_card_hide_lock_.reset();
   if (auto* closing_helper = delegate_->GetTabClosingHelper()) {
     closing_helper->ResumeMouseWatcher();
   }
   UpdateEditorBubbleButtonVisibility();
   UpdateColors();
-}
-
-void TabGroupHeaderView::SetEditorBubbleButtonVisibilityOnHover(
-    bool is_hovered) {
-  if (!editor_bubble_button_) {
-    return;
-  }
-  editor_bubble_button_->SetVisible(delegate_->IsGroupFocused() ||
-                                    editor_bubble_tracker_.is_open() ||
-                                    is_hovered);
 }
 
 void TabGroupHeaderView::ShowEditorBubble() {
@@ -717,11 +766,35 @@ void TabGroupHeaderView::ShowEditorBubble() {
 }
 
 int TabGroupHeaderView::GetCornerRadius() const {
-  return TabGroupStyle::GetChipCornerRadius(orientation_);
+  return delegate_->IsGroupFocused()
+             ? TabGroupStyle::GetFocusedChipCornerRadius(orientation_)
+             : TabGroupStyle::GetChipCornerRadius(orientation_);
+}
+
+gfx::RoundedCornersF TabGroupHeaderView::GetCornerRadii() const {
+  const float radius = GetCornerRadius();
+  if (!delegate_->IsGroupFocused()) {
+    return gfx::RoundedCornersF(radius);
+  }
+  constexpr float kFlatRadius = 2.0f;
+  if (orientation_ == TabStripOrientation::kVertical) {
+    return gfx::RoundedCornersF(kFlatRadius, kFlatRadius, radius, radius);
+  }
+  return base::i18n::IsRTL()
+             ? gfx::RoundedCornersF(radius, kFlatRadius, kFlatRadius, radius)
+             : gfx::RoundedCornersF(kFlatRadius, radius, radius, kFlatRadius);
 }
 
 int TabGroupHeaderView::GetHorizontalInset() const {
   return TabGroupStyle::GetInsetsForHeaderChip(orientation_).left();
+}
+
+gfx::Insets TabGroupHeaderView::GetHeaderInsets() const {
+  if (orientation_ == TabStripOrientation::kHorizontal &&
+      delegate_->IsGroupFocused()) {
+    return TabGroupStyle::GetInsetsForFocusedHeaderChip();
+  }
+  return gfx::Insets::VH(0, GetHorizontalInset());
 }
 
 BEGIN_METADATA(TabGroupHeaderView)

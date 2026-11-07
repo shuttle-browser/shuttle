@@ -23,7 +23,6 @@
 #include "cc/metrics/ukm_dropped_frames_data.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
-#include "chrome/browser/history_clusters/history_clusters_tab_helper.h"
 #include "chrome/browser/performance_manager/public/user_tuning/user_tuning_utils.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_manager_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -226,12 +225,6 @@ UkmPageLoadMetricsObserver::ObservePolicy UkmPageLoadMetricsObserver::OnStart(
     bool started_in_foreground) {
   content::WebContents* web_contents = navigation_handle->GetWebContents();
   browser_context_ = web_contents->GetBrowserContext();
-  navigation_id_ = navigation_handle->GetNavigationId();
-  if (auto* clusters_helper =
-          HistoryClustersTabHelper::FromWebContents(web_contents)) {
-    clusters_helper->TagNavigationAsExpectingUkmNavigationComplete(
-        navigation_id_);
-  }
 
   start_url_is_default_search_ =
       IsDefaultSearchEngine(browser_context_, navigation_handle->GetURL());
@@ -354,14 +347,8 @@ UkmPageLoadMetricsObserver::ObservePolicy UkmPageLoadMetricsObserver::OnCommit(
         response_headers->HasHeaderValue("cache-control", "no-store");
   }
 
-  navigation_trigger_type_ =
-      page_load_metrics::NavigationHandleUserData::kInitiatorLocationOther;
-  auto* navigation_userdata =
-      page_load_metrics::NavigationHandleUserData::GetForNavigationHandle(
-          *navigation_handle);
-  if (navigation_userdata) {
-    navigation_trigger_type_ = navigation_userdata->navigation_type();
-  }
+  navigation_initiator_id_ =
+      page_load_metrics::GetNavigationInitiator(*navigation_handle).id();
 
   // The PageTransition for the navigation may be updated on commit.
   page_transition_ = navigation_handle->GetPageTransition();
@@ -1469,34 +1456,6 @@ void UkmPageLoadMetricsObserver::RecordAbortMetrics(
               total_foreground_duration_.InMilliseconds()));
 }
 
-void UkmPageLoadMetricsObserver::RecordMemoriesMetrics(
-    ukm::builders::PageLoad& builder,
-    const page_load_metrics::PageEndReason page_end_reason) {
-  content::WebContents* web_contents = GetDelegate().GetWebContents();
-  DCHECK(web_contents);
-  HistoryClustersTabHelper* clusters_helper =
-      HistoryClustersTabHelper::FromWebContents(web_contents);
-  if (!clusters_helper)
-    return;
-  const history::VisitContextAnnotations context_annotations =
-      clusters_helper->OnUkmNavigationComplete(
-          navigation_id_, total_foreground_duration_, page_end_reason);
-  // Send ALL Memories signals to UKM at page end. This is to harmonize with
-  // the fact that they may only be recorded into History at page end, when
-  // we can be sure that the visit row already exists.
-  //
-  // Please note: We don't record everything in |context_annotations| into UKM,
-  // because some of these signals are already recorded elsewhere.
-  builder.SetOmniboxUrlCopied(context_annotations.omnibox_url_copied);
-  builder.SetIsExistingPartOfTabGroup(
-      context_annotations.is_existing_part_of_tab_group);
-  builder.SetIsPlacedInTabGroup(context_annotations.is_placed_in_tab_group);
-  builder.SetIsExistingBookmark(context_annotations.is_existing_bookmark);
-  builder.SetIsNewBookmark(context_annotations.is_new_bookmark);
-  builder.SetIsNTPCustomLink(context_annotations.is_ntp_custom_link);
-  builder.SetDurationSinceLastVisitSeconds(
-      context_annotations.duration_since_last_visit.InSeconds());
-}
 
 void UkmPageLoadMetricsObserver::RecordPageLoadTimestampMetrics(
     ukm::builders::PageLoad& builder) {
@@ -1516,8 +1475,7 @@ void UkmPageLoadMetricsObserver::RecordPageEndMetrics(
   // page_transition_ fits in a uint32_t, so we can safely cast to int64_t.
   builder.SetNavigation_PageTransition(static_cast<int64_t>(page_transition_));
 
-  builder.SetNavigation_InitiatorLocation(
-      static_cast<int64_t>(navigation_trigger_type_));
+  builder.SetNavigation_InitiatorLocation(navigation_initiator_id_);
 
   // GetDelegate().GetPageEndReason() fits in a uint32_t, so we can safely cast
   // to int64_t.
@@ -1538,8 +1496,6 @@ void UkmPageLoadMetricsObserver::RecordPageEndMetrics(
       is_user_initiated_navigation);
   if (timing)
     RecordAbortMetrics(*timing, page_end_time, &builder);
-
-  RecordMemoriesMetrics(builder, page_end_reason);
 
   builder.Record(ukm::UkmRecorder::Get());
 

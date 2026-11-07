@@ -171,8 +171,8 @@ void ChromeSpeechRecognitionService::LaunchIfNotRunning() {
 
   PrefService* profile_prefs = user_prefs::UserPrefs::Get(context_);
   PrefService* global_prefs = g_browser_process->local_state();
-  DCHECK(profile_prefs);
-  DCHECK(global_prefs);
+  CHECK(profile_prefs, base::NotFatalUntil::M162);
+  CHECK(global_prefs, base::NotFatalUntil::M162);
 
   // TODO(crbug.com/40162502): Language pack path should be configurable per
   // SpeechRecognitionRecognizer to allow multiple features to use Speech
@@ -197,11 +197,17 @@ void ChromeSpeechRecognitionService::LaunchIfNotRunning() {
     return;
   }
 
+  content::ServiceProcessHost::Options options;
+  options.WithDisplayName(IDS_UTILITY_PROCESS_SPEECH_RECOGNITION_SERVICE_NAME);
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  // libsoda.so has to be dlopen()ed before the sandbox is engaged, so tell the
+  // utility process which binary it is going to be asked to load below.
+  options.WithExtraCommandLineSwitchKeyValues(
+      {{speech::kSodaBinaryPathSwitch, binary_path.value()}});
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+
   content::ServiceProcessHost::Launch(
-      speech_recognition_service_.BindNewPipeAndPassReceiver(),
-      content::ServiceProcessHost::Options()
-          .WithDisplayName(IDS_UTILITY_PROCESS_SPEECH_RECOGNITION_SERVICE_NAME)
-          .Pass());
+      speech_recognition_service_.BindNewPipeAndPassReceiver(), options.Pass());
 
   // Ensure that if the interface is ever disconnected (e.g. the service
   // process crashes) or goes idle for a short period of time -- meaning there

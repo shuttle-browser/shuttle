@@ -86,6 +86,7 @@
 #include "third_party/blink/renderer/platform/blob/blob_data.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/self_keep_alive.h"
+#include "third_party/blink/renderer/platform/loader/cors/cors.h"
 #include "third_party/blink/renderer/platform/loader/fetch/fetch_initiator_info.h"
 #include "third_party/blink/renderer/platform/loader/fetch/fetch_initiator_type_names.h"
 #include "third_party/blink/renderer/platform/loader/fetch/memory_cache.h"
@@ -113,7 +114,6 @@
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_utf8_adaptor.h"
 #include "third_party/boringssl/src/include/openssl/ssl.h"
-#include "third_party/blink/renderer/platform/heap/self_keep_alive.h"
 #include "third_party/inspector_protocol/crdtp/json.h"
 
 using crdtp::SpanFrom;
@@ -164,6 +164,12 @@ bool LoadsFromCacheOnly(const ResourceRequest& request) {
       return true;
   }
   NOTREACHED();
+}
+
+bool IsSameOriginRequest(const ResourceRequest& request) {
+  const SecurityOrigin* requestor_origin = request.RequestorOrigin().get();
+  return requestor_origin && requestor_origin->IsSameOriginWith(
+                                 SecurityOrigin::Create(request.Url()).get());
 }
 
 protocol::Network::CertificateTransparencyCompliance
@@ -822,9 +828,10 @@ InspectorNetworkAgent::URLPatternMatcher::Create(const String& pattern,
 void InspectorNetworkAgent::Init(CoreProbeSink* instrumenting_agents,
                                  protocol::UberDispatcher* dispatcher,
                                  InspectorSessionState* session_state,
-                                 V8SessionHolder v8_session) {
+                                 V8SessionHolder v8_session,
+                                 ClientIsTrusted client_is_trusted) {
   InspectorBaseAgent::Init(instrumenting_agents, dispatcher, session_state,
-                           v8_session);
+                           v8_session, client_is_trusted);
   extra_request_headers_.clear();
   const auto* reattach_state = session_state->ReattachState();
   if (reattach_state && reattach_state->browser_originating_session_state) {
@@ -1335,7 +1342,7 @@ void InspectorNetworkAgent::DidBlockRequest(
   // worked out fine, we mark the request as successful, as to not confuse devs.
   if (reason == ResourceRequestBlockedReason::kConversionRequest) {
     GetFrontend()->loadingFinished(
-        request_id, base::TimeTicks::Now().since_origin().InSecondsF(), 0);
+        request_id, base::TimeTicks::Now().since_origin().InSecondsF(), 0, 0);
     return;
   }
 
@@ -1554,10 +1561,28 @@ void InspectorNetworkAgent::PrepareRequest(DocumentLoader* loader,
       // TODO: Should we store the referrer header somewhere other than
       // |extra_request_headers_|?
       if (EqualIgnoringAsciiCase(header_name, http_names::kReferer)) {
+        // Untrusted clients may not spoof the Referer to other origins.
+        if (!client_is_trusted_) {
+          continue;
+        }
         request.SetReferrerString(value);
         request.SetReferrerPolicy(network::mojom::ReferrerPolicy::kAlways);
       } else {
+        // No-cors requests skip the CORS preflight that would let the target
+        // origin reject headers from untrusted clients.
+        if (!client_is_trusted_ &&
+            ((!IsSameOriginRequest(request) &&
+              request.GetMode() == network::mojom::RequestMode::kNoCors) ||
+             cors::IsForbiddenRequestHeader(key, value))) {
+          continue;
+        }
         request.SetHttpHeaderField(header_name, AtomicString(value));
+        // Untrusted no-cors requests reaching here are same-origin; record the
+        // header so ResourceLoader removes it on a cross-origin redirect.
+        if (!client_is_trusted_ &&
+            request.GetMode() == network::mojom::RequestMode::kNoCors) {
+          request.AddUntrustedDevToolsHeader(key);
+        }
       }
     }
   }
@@ -1772,6 +1797,7 @@ void InspectorNetworkAgent::DidFinishLoading(
     DocumentLoader* loader,
     base::TimeTicks monotonic_finish_time,
     int64_t encoded_data_length,
+    uint64_t encoded_body_length,
     int64_t decoded_body_length) {
   String request_id = RequestId(loader, identifier);
   streaming_request_ids_.erase(request_id);
@@ -1801,10 +1827,10 @@ void InspectorNetworkAgent::DidFinishLoading(
   if (monotonic_finish_time.is_null())
     monotonic_finish_time = base::TimeTicks::Now();
 
-  // TODO(npm): Use base::TimeTicks in Network.h.
+  // TODO: Use base::TimeTicks in Network.h.
   GetFrontend()->loadingFinished(
       request_id, monotonic_finish_time.since_origin().InSecondsF(),
-      encoded_data_length);
+      encoded_data_length, encoded_body_length);
 }
 
 void InspectorNetworkAgent::DidReceiveCorsRedirectResponse(
@@ -1815,7 +1841,8 @@ void InspectorNetworkAgent::DidReceiveCorsRedirectResponse(
   // Update the response and finish loading
   DidReceiveResourceResponse(identifier, loader, response, resource);
   DidFinishLoading(identifier, loader, base::TimeTicks(),
-                   URLLoaderClient::kUnknownEncodedDataLength, 0);
+                   URLLoaderClient::kUnknownEncodedDataLength,
+                   response.EncodedBodyLength(), 0);
 }
 
 void InspectorNetworkAgent::DidFailLoading(
@@ -1834,7 +1861,7 @@ void InspectorNetworkAgent::DidFailLoading(
   if (error.IsTrustTokenCacheHit()) {
     GetFrontend()->requestServedFromCache(request_id);
     GetFrontend()->loadingFinished(
-        request_id, base::TimeTicks::Now().since_origin().InSecondsF(), 0);
+        request_id, base::TimeTicks::Now().since_origin().InSecondsF(), 0, 0);
     return;
   }
 
@@ -2378,16 +2405,22 @@ void InspectorNetworkAgent::DirectUDPSocketChunkReceived(
 
 void InspectorNetworkAgent::DirectUDPSocketJoinedMulticastGroup(
     uint64_t identifier,
-    const String& ipAddress) {
+    const String& group_address,
+    const String& source_address) {
   GetFrontend()->directUDPSocketJoinedMulticastGroup(
-      IdentifiersFactory::SubresourceRequestId(identifier), ipAddress);
+      IdentifiersFactory::SubresourceRequestId(identifier), group_address,
+      source_address.IsNull() ? std::nullopt
+                              : std::make_optional(source_address));
 }
 
 void InspectorNetworkAgent::DirectUDPSocketLeftMulticastGroup(
     uint64_t identifier,
-    const String& ipAddress) {
+    const String& group_address,
+    const String& source_address) {
   GetFrontend()->directUDPSocketLeftMulticastGroup(
-      IdentifiersFactory::SubresourceRequestId(identifier), ipAddress);
+      IdentifiersFactory::SubresourceRequestId(identifier), group_address,
+      source_address.IsNull() ? std::nullopt
+                              : std::make_optional(source_address));
 }
 
 protocol::Response InspectorNetworkAgent::enable(
@@ -2838,7 +2871,8 @@ String InspectorNetworkAgent::NavigationInitiatorInfo(LocalFrame* frame) {
 
 InspectorNetworkAgent::InspectorNetworkAgent(
     InspectedFrames* inspected_frames,
-    WorkerOrWorkletGlobalScope* worker_or_worklet_global_scope)
+    WorkerOrWorkletGlobalScope* worker_or_worklet_global_scope,
+    bool client_is_trusted)
     : inspected_frames_(inspected_frames),
       worker_or_worklet_global_scope_(worker_or_worklet_global_scope),
       resources_data_(MakeGarbageCollected<NetworkResourcesData>(
@@ -2848,6 +2882,7 @@ InspectorNetworkAgent::InspectorNetworkAgent(
           worker_or_worklet_global_scope_
               ? worker_or_worklet_global_scope_->GetParentDevToolsToken()
               : inspected_frames->Root()->GetDevToolsFrameToken()),
+      client_is_trusted_(client_is_trusted),
       enabled_(&agent_state_, /*default_value=*/false),
       cache_disabled_(&agent_state_, /*default_value=*/false),
       bypass_service_worker_(&agent_state_, /*default_value=*/false),

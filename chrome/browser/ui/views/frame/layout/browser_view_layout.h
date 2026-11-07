@@ -22,8 +22,6 @@ class MultiContentsView;
 class OrganizerTrayView;
 class TabStrip;
 class TabStripRegionView;
-class VerticalTabStripRegionView;
-class VerticalTabStripBackgroundBlurBackdrop;
 
 namespace views {
 class View;
@@ -59,11 +57,6 @@ struct BrowserViewLayoutViews {
   raw_ptr<views::View> main_background_region = nullptr;
   raw_ptr<views::View> top_container = nullptr;
   raw_ptr<TabStripRegionView> horizontal_tab_strip_region_view = nullptr;
-  raw_ptr<VerticalTabStripRegionView> vertical_tab_strip_region_view = nullptr;
-  raw_ptr<VerticalTabStripBackgroundBlurBackdrop>
-      vertical_tab_strip_background_blur_backdrop = nullptr;
-  raw_ptr<CustomFloatingCorner> vertical_tab_strip_bottom_corner = nullptr;
-  raw_ptr<CustomFloatingCorner> vertical_tab_strip_top_corner = nullptr;
   raw_ptr<OrganizerTrayView> organizer_tray = nullptr;
   raw_ptr<views::View> toolbar = nullptr;
   raw_ptr<InfoBarContainerView> infobar_container = nullptr;

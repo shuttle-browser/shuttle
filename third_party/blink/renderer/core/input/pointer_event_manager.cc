@@ -13,6 +13,7 @@
 #include "third_party/blink/renderer/core/event_type_names.h"
 #include "third_party/blink/renderer/core/events/mouse_event.h"
 #include "third_party/blink/renderer/core/frame/event_handler_registry.h"
+#include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/html/canvas/html_canvas_element.h"
@@ -159,7 +160,10 @@ WebInputEventResult PointerEventManager::DispatchPointerEvent(
   bool should_filter = ShouldFilterEvent(pointer_event);
   // We are about to dispatch this event. It has to be trusted at this point.
   pointer_event->SetTrusted(true);
-  UIEventTiming event_timing(frame_, *pointer_event);
+  Node* target_node = target->ToNode();
+  LocalFrame* target_frame =
+      target_node ? target_node->GetDocument().GetFrame() : nullptr;
+  UIEventTiming event_timing(frame_.Get(), target_frame, *pointer_event);
 
   if (event_type == event_type_names::kPointerdown ||
       event_type == event_type_names::kPointerover ||
@@ -171,7 +175,7 @@ WebInputEventResult PointerEventManager::DispatchPointerEvent(
     }
   }
 
-  if (Node* target_node = target->ToNode()) {
+  if (target_node) {
     if (RuntimeEnabledFeatures::LightDismissFromClickEnabled()) {
       if (event_type == event_type_names::kPointerdown) {
         pointer_event_factory_->SetPointerDownTarget(

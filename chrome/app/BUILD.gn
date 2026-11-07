@@ -81,13 +81,18 @@ if (is_win) {
     testonly = true
     sources = [
       "chrome_crash_reporter_client_win_unittest.cc",
+      "chrome_main_delegate_win_unittest.cc",
       "exit_code_watcher_win_unittest.cc",
     ]
     deps = [
       ":exit_code_watcher",
+      ":test_support",
       "//base",
       "//base/test:test_support",
       "//chrome/chrome_elf:crash",
+      "//chrome/common:non_code_constants",
+      "//components/version_info",
+      "//testing/gmock",
       "//testing/gtest",
     ]
   }

@@ -112,8 +112,6 @@ pub mod ffi {
         /// Increments the group controller's ref-count.
         fn AddRef(self: &RustAssociatedGroupController);
 
-        // TODO(crbug.com/472552387): Tweak `cxx` to make this `allow` obsolete.
-        #[allow(clippy::missing_safety_doc)]
         /// Decrements the group controller's ref-count, possibly destroying it.
         ///
         /// # Safety
@@ -128,7 +126,6 @@ pub mod ffi {
         /// `handles` must contain only live, unowned raw handle values.
         /// Ownership of those handles is transferred to C++.
         /// Its type really should be Vec<UntypedHandle>, but cxx won't have it
-        #[allow(clippy::missing_safety_doc)]
         unsafe fn CreateOutgoingMessage(payload: &[u8], handles: Vec<usize>) -> UniquePtr<Message>;
 
         /// Constructs a C++ `mojo::Message` from an existing incoming message,
@@ -138,7 +135,6 @@ pub mod ffi {
         /// `handles` must contain only live, unowned raw handle values.
         /// Ownership of those handles is transferred to C++.
         /// Its type really should be Vec<UntypedHandle>, but cxx won't have it
-        #[allow(clippy::missing_safety_doc)]
         unsafe fn CreateIncomingMessage(
             raw_handle: UniquePtr<ScopedMessageHandleWrapper>,
             handles: Vec<usize>,
@@ -155,6 +151,17 @@ pub mod ffi {
             controller: Pin<&mut RustAssociatedGroupController>,
             interface_id: u32,
         ) -> UniquePtr<AssociatedEndpointRustAdapter>;
+
+        /// Returns true if the endpoint is already associated with a router.
+        fn is_associated(self: &AssociatedEndpointRustAdapter) -> bool;
+
+        /// Associates the peer of this unassociated C++ adapter with a Rust
+        /// router's group controller.
+        fn AssociatePeerWithRustController(
+            self: Pin<&mut AssociatedEndpointRustAdapter>,
+            controller: Pin<&mut RustAssociatedGroupController>,
+            interface_id: u32,
+        );
 
         /// Binds the endpoint to a sequence and starts routing incoming
         /// messages to Rust.
@@ -176,6 +183,13 @@ pub mod ffi {
             self: &AssociatedEndpointRustAdapter,
             interface_id: u32,
         ) -> UniquePtr<AssociatedEndpointRustAdapter>;
+
+        /// Associates an unassociated endpoint with this adapter's group
+        /// controller.
+        fn AssociateInterface(
+            self: &AssociatedEndpointRustAdapter,
+            endpoint: UniquePtr<AssociatedEndpointRustAdapter>,
+        ) -> u32;
 
         /// Called by Rust when an incoming message arrives for a C++ associated
         /// endpoint. Returns true if the message passed validation and was
@@ -209,6 +223,13 @@ pub mod ffi {
             self: &MojoResponderWrapper,
             interface_id: u32,
         ) -> UniquePtr<AssociatedEndpointRustAdapter>;
+
+        /// Associates an unassociated endpoint with the responder's
+        /// underlying group controller.
+        fn AssociateInterface(
+            self: &MojoResponderWrapper,
+            endpoint: UniquePtr<AssociatedEndpointRustAdapter>,
+        ) -> u32;
     }
 }
 

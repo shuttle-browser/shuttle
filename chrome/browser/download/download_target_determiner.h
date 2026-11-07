@@ -362,6 +362,10 @@ class DownloadTargetDeterminer : public download::DownloadItem::Observer {
   // Returns the timestamp of the last download bypass.
   std::optional<base::Time> GetLastDownloadBypassTimestamp() const;
 
+  // Returns true if dangerous file warnings should be suppressed because Safe
+  // Browsing is disabled and not restricted by policy.
+  bool ShouldSuppressDangerousFileWarning() const;
+
   // Generates the download file name based on information from URL, response
   // headers and sniffed mime type.
   base::FilePath GenerateFileName() const;
@@ -376,7 +380,8 @@ class DownloadTargetDeterminer : public download::DownloadItem::Observer {
 
   // state
   State next_state_;
-  DownloadConfirmationReason confirmation_reason_;
+  DownloadConfirmationReason confirmation_reason_ =
+      DownloadConfirmationReason::NONE;
   bool should_notify_extensions_;
   bool create_target_directory_;
   download::DownloadPathReservationTracker::FilenameConflictAction

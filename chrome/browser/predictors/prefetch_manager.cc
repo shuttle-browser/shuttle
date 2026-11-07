@@ -11,8 +11,6 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
-#include "base/metrics/histogram_functions.h"
-#include "base/metrics/histogram_macros.h"
 #include "base/task/single_thread_task_runner.h"
 #include "chrome/browser/predictors/perform_network_context_prefetch.h"
 #include "chrome/browser/predictors/predictors_features.h"
@@ -102,8 +100,8 @@ struct PrefetchInfo {
       : url(url),
         stats(std::make_unique<PrefetchStats>(url)),
         manager(&manager) {
-    DCHECK(url.is_valid());
-    DCHECK(url.SchemeIsHTTPOrHTTPS());
+    CHECK(url.is_valid(), base::NotFatalUntil::M162);
+    CHECK(url.SchemeIsHTTPOrHTTPS(), base::NotFatalUntil::M162);
   }
 
   ~PrefetchInfo() = default;
@@ -138,10 +136,9 @@ struct PrefetchJob {
   PrefetchJob(PrefetchRequest prefetch_request, PrefetchInfo& info)
       : url(prefetch_request.url),
         destination(prefetch_request.destination),
-        creation_time(base::TimeTicks::Now()),
         info(info.weak_factory.GetWeakPtr()) {
-    DCHECK(url.is_valid());
-    DCHECK(url.SchemeIsHTTPOrHTTPS());
+    CHECK(url.is_valid(), base::NotFatalUntil::M162);
+    CHECK(url.SchemeIsHTTPOrHTTPS(), base::NotFatalUntil::M162);
     info.OnJobCreated();
   }
 
@@ -155,7 +152,6 @@ struct PrefetchJob {
 
   GURL url;
   network::mojom::RequestDestination destination;
-  base::TimeTicks creation_time;
 
   // PrefetchJob lives until the URL load completes, so it can outlive the
   // PrefetchManager and therefore the PrefetchInfo.
@@ -172,8 +168,8 @@ PrefetchManager::PrefetchManager(base::WeakPtr<Delegate> delegate,
       profile_(profile),
       use_network_context_prefetch_(base::FeatureList::IsEnabled(
           features::kPrefetchManagerUseNetworkContextPrefetch)) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(profile_);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK(profile_, base::NotFatalUntil::M162);
 }
 
 PrefetchManager::~PrefetchManager() = default;
@@ -183,7 +179,7 @@ void PrefetchManager::Start(const GURL& url,
   CHECK(
       base::FeatureList::IsEnabled(features::kLoadingPredictorPrefetch) ||
       base::FeatureList::IsEnabled(blink::features::kLCPPPrefetchSubresource));
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (use_network_context_prefetch_) {
     PerformNetworkContextPrefetch(profile_, url, std::move(requests));
@@ -228,7 +224,7 @@ void PrefetchManager::Start(const GURL& url,
 }
 
 void PrefetchManager::Stop(const GURL& url) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (use_network_context_prefetch_) {
     // The NetworkContext Prefetch() functionality does its own cleanup so
@@ -261,8 +257,8 @@ void PrefetchManager::PrefetchUrl(
     std::unique_ptr<PrefetchJob> job,
     scoped_refptr<network::SharedURLLoaderFactory> factory) {
   CHECK(!use_network_context_prefetch_);
-  DCHECK(job);
-  DCHECK(job->info);
+  CHECK(job, base::NotFatalUntil::M162);
+  CHECK(job->info, base::NotFatalUntil::M162);
 
   PrefetchInfo& info = *job->info;
   url::Origin top_frame_origin = url::Origin::Create(info.url);
@@ -353,9 +349,6 @@ void PrefetchManager::PrefetchUrl(
     options |= network::mojom::kURLLoadOptionReadAndDiscardBody;
   }
 
-  base::UmaHistogramBoolean("Navigation.Prefetch.IsHttps",
-                            request.url.SchemeIsCryptographic());
-
   std::unique_ptr<blink::ThrottlingURLLoader> loader =
       blink::ThrottlingURLLoader::CreateLoaderAndStart(
           std::move(factory), std::move(throttles),
@@ -382,29 +375,11 @@ void PrefetchManager::OnPrefetchFinished(
     std::unique_ptr<blink::ThrottlingURLLoader> loader,
     std::unique_ptr<network::mojom::URLLoaderClient> client,
     const network::URLLoaderCompletionStatus& status) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   PrefetchInfo& info = *job->info;
   if (observer_for_testing_)
     observer_for_testing_->OnPrefetchFinished(info.url, job->url, status);
-
-  // TODO(ricea): Remove these histograms in October 2024 and make a note of the
-  // results in https://crbug.com/335524391.
-  if (status.error_code == net::OK &&
-      status.decoded_body_length.InBytes() > 0) {
-    if (status.decoded_body_length > status.encoded_body_length) {
-      // Assume it was compressed.
-      base::UmaHistogramCounts10000(
-          "Navigation.Prefetch.CompressedBodySize",
-          static_cast<int>(status.encoded_body_length.InBytes() / 1024));
-    } else {
-      // The cast to int will overflow if we prefetch a resource over a terabyte
-      // in size, but I'm hoping that will never happen.
-      base::UmaHistogramCounts10000(
-          "Navigation.Prefetch.UncompressedBodySize",
-          static_cast<int>(status.encoded_body_length.InBytes() / 1024));
-    }
-  }
 
   // Cannot access the fields of `status` after this point.
   loader.reset();
@@ -416,12 +391,7 @@ void PrefetchManager::OnPrefetchFinished(
 }
 
 void PrefetchManager::TryToLaunchPrefetchJobs() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-
-  // We assume that the number of jobs in the queue will be relatively small at
-  // any given time. We can revisit this as needed.
-  UMA_HISTOGRAM_COUNTS_100("Navigation.Prefetch.PrefetchJobQueueLength",
-                           queued_jobs_.size());
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (queued_jobs_.empty() || inflight_jobs_count_ >= kMaxInflightPrefetches) {
     return;
@@ -441,12 +411,7 @@ void PrefetchManager::TryToLaunchPrefetchJobs() {
     queued_jobs_.pop_front();
     base::WeakPtr<PrefetchInfo> info = job->info;
     // |this| owns all infos.
-    DCHECK(info);
-
-    // Note: PrefetchJobs are put into |queued_jobs_| immediately on creation,
-    // so their creation time is also the time at which they started queueing.
-    UMA_HISTOGRAM_TIMES("Navigation.Prefetch.PrefetchJobQueueingTime",
-                        base::TimeTicks::Now() - job->creation_time);
+    CHECK(info, base::NotFatalUntil::M162);
 
     if (job->url.is_valid() && factory && !info->was_canceled)
       PrefetchUrl(std::move(job), factory);
@@ -454,10 +419,10 @@ void PrefetchManager::TryToLaunchPrefetchJobs() {
 }
 
 void PrefetchManager::AllPrefetchJobsForUrlFinished(PrefetchInfo& info) {
-  DCHECK(info.is_done());
+  CHECK(info.is_done(), base::NotFatalUntil::M162);
   auto it = prefetch_info_.find(info.url);
   CHECK(it != prefetch_info_.end());
-  DCHECK(&info == it->second.get());
+  CHECK(&info == it->second.get(), base::NotFatalUntil::M162);
 
   if (delegate_)
     delegate_->PrefetchFinished(std::move(info.stats));

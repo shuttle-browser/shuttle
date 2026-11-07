@@ -32,10 +32,8 @@
 #include "base/version_info/version_info.h"
 #include "build/chromeos_buildflags.h"
 #include "components/crx_file/id_util.h"
-#include "components/enterprise/browser/reporting/common_pref_names.h"
 #include "components/keyed_service/content/browser_context_keyed_service_shutdown_notifier_factory.h"
 #include "components/keyed_service/core/keyed_service_shutdown_notifier.h"
-#include "components/policy/core/common/cloud/cloud_policy_manager.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
 #include "components/safe_browsing/buildflags.h"
@@ -61,7 +59,6 @@
 #include "extensions/browser/install_tracker.h"
 #include "extensions/browser/pref_names.h"
 #include "extensions/browser/scoped_active_install.h"
-#include "extensions/browser/supervised_user_extensions_delegate.h"
 #include "extensions/browser/ui_util.h"
 #include "extensions/buildflags/buildflags.h"
 #include "extensions/common/constants.h"
@@ -83,7 +80,6 @@
 #include "url/gurl.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "components/enterprise/browser/promotion/promotion_prefs.h"
 #include "components/enterprise/promotion_types.h"
 #endif  //! BUILDFLAG(IS_ANDROID)
 
@@ -186,8 +182,7 @@ class PendingApprovals {
   }
 
   void MaybeAddShutdownSubscription(content::BrowserContext* context) {
-    if (shutdown_subscriptions_.find(context) ==
-        shutdown_subscriptions_.end()) {
+    if (!shutdown_subscriptions_.contains(context)) {
       shutdown_subscriptions_[context] =
           PendingApprovalsShutdownNotifierFactory::GetInstance()
               ->Get(context)
@@ -333,62 +328,6 @@ ConvertExtensionInstallStatusForAPI(ExtensionInstallStatus status) {
       return api::webstore_private::ExtensionInstallStatus::kCorrupted;
   }
   return api::webstore_private::ExtensionInstallStatus::kNone;
-}
-
-// Requests extension by adding the id into the pending list in Profile Prefs if
-// available. Returns |kRequestPending| if the request has been added
-// successfully. Otherwise, returns the initial extension install status.
-ExtensionInstallStatus AddExtensionToPendingList(
-    const ExtensionId& id,
-    content::BrowserContext* browser_context,
-    const std::string& justification) {
-  // There is no need to check whether the extension's required permissions or
-  // manifest type are blocked  by the enterprise policy because extensions
-  // blocked by those are still requestable.
-  ExtensionInstallStatus status =
-      GetWebstoreExtensionInstallStatus(id, browser_context);
-  // We put the |id| into the pending request list if it can be requested.
-  // Ideally we should not get here if the status is not |kCanRequest|. However
-  // policy might be updated between the client calling |requestExtension| or
-  // |beginInstallWithManifest3| and us checking the status here. Handle
-  // approvals and rejections for this case by adding the |id| into the pending
-  // list. ExtensionRequestObserver will observe this update and show the
-  // notificaion immediately.
-  // Please note that only the |id| that can be requested will be uploaded to
-  // the server and ExtensionRequestObserver will also show notifications once
-  // it's approved or rejected.
-  // |id| will be removed from the pending list once the notification is
-  // confirmed or closed by the user.
-  if (status != kCanRequest && status != kInstallable &&
-      status != kBlockedByPolicy && status != kForceInstalled) {
-    return status;
-  }
-
-  PrefService* prefs = user_prefs::UserPrefs::Get(browser_context);
-  ScopedDictPrefUpdate pending_requests_update(
-      prefs, enterprise_reporting::kCloudExtensionRequestIds);
-  DCHECK(!pending_requests_update->Find(id));
-  base::DictValue request_data;
-  request_data.Set(extension_misc::kExtensionRequestTimestamp,
-                   ::base::TimeToValue(base::Time::Now()));
-  if (!justification.empty()) {
-    request_data.Set(extension_misc::kExtensionWorkflowJustification,
-                     justification);
-  }
-  pending_requests_update->Set(id, std::move(request_data));
-  // Query the new extension install status again. It should be changed from
-  // |kCanRequest| to |kRequestPending| if the id has been added into pending
-  // list successfully. Otherwise, it shouldn't be changed.
-  ExtensionInstallStatus new_status =
-      GetWebstoreExtensionInstallStatus(id, browser_context);
-#if DCHECK_IS_ON()
-  if (status == kCanRequest) {
-    DCHECK_EQ(kRequestPending, new_status);
-  } else {
-    DCHECK_EQ(status, new_status);
-  }
-#endif  // DCHECK_IS_ON()
-  return new_status;
 }
 
 // Creates the URLLoaderFactory for fetching the install-confirmation icon whose
@@ -671,247 +610,14 @@ void WebstorePrivateBeginInstallWithManifest3Function::OnInstallStatusCheckDone(
         dummy_extension_.get(), &icon_);
   } else {
     ReportWebStoreInstallEsbAllowlistParameter(details().esb_allowlist);
-#if BUILDFLAG(IS_ANDROID)
-    auto* supervised_user_extensions_delegate =
-        ManagementAPI::GetFactoryInstance()
-            ->Get(browser_context())
-            ->GetSupervisedUserExtensionsDelegate();
-#endif  // BUILDFLAG(IS_ANDROID)
-
     if (ShouldShowFrictionDialog(browser_context_)) {
       ShowInstallFrictionDialog(web_contents);
-#if BUILDFLAG(IS_ANDROID)
-    } else if (supervised_user_extensions_delegate->IsChild() &&
-               !supervised_user_extensions_delegate
-                    ->CanSkipExtensionParentApprovals()) {
-      supervised_user_extensions_delegate->RecordAskParentDialogUmaMetrics(
-          SupervisedUserExtensionsDelegate::AskParentDialogState::kOpened);
-
-      // This install requires parent permission, so show the Ask Parent dialog.
-      ExtensionsAPIClient::Get()
-          ->GetWebstorePrivateAPIDelegate()
-          ->ShowExtensionInstallAskParentDialog(
-              web_contents,
-              base::BindOnce(&WebstorePrivateBeginInstallWithManifest3Function::
-                                 OnRequestParentApprovalPromptCancelled,
-                             this),
-              base::BindOnce(&WebstorePrivateBeginInstallWithManifest3Function::
-                                 RequestExtensionApproval,
-                             this, web_contents));
-#endif  // BUILDFLAG(IS_ANDROID)
     } else {
       ShowInstallDialog(web_contents);
     }
   }
   // Control flow finishes up in OnInstallPromptDone, OnRequestPromptDone,
-  // OnBlockByPolicyPromptDone, or OnRequestParentApprovalPromptCancelled.
-}
-
-void WebstorePrivateBeginInstallWithManifest3Function::RequestExtensionApproval(
-    content::WebContents* web_contents) {
-  if (!web_contents) {
-    // The browser window has gone away. This may be due to the user closing
-    // the window, or something in the background could have closed the web
-    // contents.
-    Respond(BuildResponse(api::webstore_private::Result::kUserCancelled,
-                          kWebstoreUserCancelledError));
-
-    return;
-  }
-
-  SupervisedUserExtensionsDelegate* supervised_user_extensions_delegate =
-      ManagementAPI::GetFactoryInstance()
-          ->Get(browser_context_)
-          ->GetSupervisedUserExtensionsDelegate();
-  CHECK(supervised_user_extensions_delegate);
-
-#if !BUILDFLAG(IS_ANDROID)
-  auto extension_approval_callback =
-      base::BindOnce(&WebstorePrivateBeginInstallWithManifest3Function::
-                         OnExtensionApprovalDone,
-                     this);
-#else
-  supervised_user_extensions_delegate->RecordAskParentDialogUmaMetrics(
-      SupervisedUserExtensionsDelegate::AskParentDialogState::kApproved);
-
-  auto extension_approval_callback =
-      base::BindOnce(&WebstorePrivateBeginInstallWithManifest3Function::
-                         OnParentAuthenticationDone,
-                     this, web_contents);
-#endif
-
-  supervised_user_extensions_delegate->RequestToAddExtensionOrShowError(
-      *dummy_extension_, web_contents,
-      gfx::ImageSkia::CreateFrom1xBitmap(icon_),
-      std::move(extension_approval_callback));
-}
-
-#if BUILDFLAG(IS_ANDROID)
-void WebstorePrivateBeginInstallWithManifest3Function::
-    OnParentAuthenticationDone(content::WebContents* web_contents,
-                               SupervisedExtensionApprovalResult result) {
-  if (!web_contents) {
-    // The browser window has gone away.
-    Respond(BuildResponse(api::webstore_private::Result::kUserCancelled,
-                          kWebstoreUserCancelledError));
-
-    return;
-  }
-
-  if (result != SupervisedExtensionApprovalResult::kApproved) {
-    OnExtensionApprovalDone(result);
-    return;
-  }
-
-  auto dialog_callback = base::BindOnce(
-      [](base::OnceCallback<void(SupervisedExtensionApprovalResult)> callback,
-         ExtensionInstallPromptClient::DoneCallbackPayload payload) {
-        switch (payload.result) {
-          case ExtensionInstallPromptClient::Result::ACCEPTED:
-            std::move(callback).Run(
-                SupervisedExtensionApprovalResult::kApproved);
-            break;
-          case ExtensionInstallPromptClient::Result::USER_CANCELED:
-          case ExtensionInstallPromptClient::Result::ABORTED:
-            std::move(callback).Run(
-                SupervisedExtensionApprovalResult::kBlocked);
-            break;
-          case ExtensionInstallPromptClient::Result::
-              ACCEPTED_WITH_WITHHELD_PERMISSIONS:
-            // Parent approval dialog doesn't support
-            // `ACCEPTED_WITH_WITHHELD_PERMISSIONS` result.
-            NOTREACHED();
-        }
-      },
-      base::BindOnce(&WebstorePrivateBeginInstallWithManifest3Function::
-                         OnExtensionApprovalDone,
-                     this));
-
-  SupervisedUserExtensionsDelegate* supervised_user_extensions_delegate =
-      ManagementAPI::GetFactoryInstance()
-          ->Get(browser_context_)
-          ->GetSupervisedUserExtensionsDelegate();
-  CHECK(supervised_user_extensions_delegate);
-
-  auto prompt = std::make_unique<InstallPromptData>(
-      InstallPromptData::EXTENSION_PARENT_APPROVAL_PROMPT);
-  prompt->AddObserver(
-      supervised_user_extensions_delegate->GetInstallPromptObserver());
-
-  install_prompt_ = ExtensionsBrowserClient::Get()->CreateInstallPrompt(
-      web_contents, std::move(prompt));
-  install_prompt_->ShowInstallDialog(std::move(dialog_callback),
-                                     dummy_extension_.get(), &icon_);
-}
-#endif  // BUILDFLAG(IS_ANDROID)
-
-void WebstorePrivateBeginInstallWithManifest3Function::OnExtensionApprovalDone(
-    SupervisedExtensionApprovalResult result) {
-#if BUILDFLAG(IS_ANDROID)
-  auto* supervised_user_extensions_delegate =
-      ManagementAPI::GetFactoryInstance()
-          ->Get(browser_context())
-          ->GetSupervisedUserExtensionsDelegate();
-  if (result != SupervisedExtensionApprovalResult::kApproved &&
-      supervised_user_extensions_delegate->IsChild() &&
-      !supervised_user_extensions_delegate->CanSkipExtensionParentApprovals()) {
-    supervised_user_extensions_delegate->RecordEnablementUmaMetrics(
-        SupervisedUserExtensionsDelegate::EnablementState::kFailedToEnable);
-  }
-#endif  // BUILDFLAG(IS_ANDROID)
-
-  switch (result) {
-    case SupervisedExtensionApprovalResult::kApproved:
-      OnExtensionApprovalApproved();
-      break;
-    case SupervisedExtensionApprovalResult::kCanceled:
-      OnExtensionApprovalCanceled();
-      break;
-    case SupervisedExtensionApprovalResult::kFailed:
-      OnExtensionApprovalFailed();
-      break;
-    case SupervisedExtensionApprovalResult::kBlocked:
-      OnExtensionApprovalBlocked();
-      break;
-  }
-}
-
-void WebstorePrivateBeginInstallWithManifest3Function::
-    OnExtensionApprovalApproved() {
-  SupervisedUserExtensionsDelegate* supervised_user_extensions_delegate =
-      ManagementAPI::GetFactoryInstance()
-          ->Get(browser_context_)
-          ->GetSupervisedUserExtensionsDelegate();
-  CHECK(supervised_user_extensions_delegate);
-  supervised_user_extensions_delegate->AddExtensionApproval(*dummy_extension_);
-
-  HandleInstallProceed();
-}
-
-void WebstorePrivateBeginInstallWithManifest3Function::
-    OnExtensionApprovalCanceled() {
-  if (test_delegate) {
-    test_delegate->OnExtensionInstallFailure(
-        dummy_extension_->id(),
-        l10n_util::GetStringUTF8(
-            IDS_EXTENSIONS_SUPERVISED_USER_PARENTAL_PERMISSION_FAILURE),
-        WebstoreInstaller::FailureReason::FAILURE_REASON_CANCELLED);
-  }
-
-  HandleInstallAbort(true /* user_initiated */);
-}
-
-void WebstorePrivateBeginInstallWithManifest3Function::
-    OnExtensionApprovalFailed() {
-  if (test_delegate) {
-    test_delegate->OnExtensionInstallFailure(
-        dummy_extension_->id(),
-        l10n_util::GetStringUTF8(
-            IDS_EXTENSIONS_SUPERVISED_USER_PARENTAL_PERMISSION_FAILURE),
-        WebstoreInstaller::FailureReason::FAILURE_REASON_OTHER);
-  }
-
-  Respond(BuildResponse(
-      api::webstore_private::Result::kUnknownError,
-      l10n_util::GetStringUTF8(
-          IDS_EXTENSIONS_SUPERVISED_USER_PARENTAL_PERMISSION_FAILURE)));
-}
-
-void WebstorePrivateBeginInstallWithManifest3Function::
-    OnExtensionApprovalBlocked() {
-  if (test_delegate) {
-    test_delegate->OnExtensionInstallFailure(
-        dummy_extension_->id(),
-        l10n_util::GetStringUTF8(
-            IDS_EXTENSIONS_SUPERVISED_USER_PARENTAL_PERMISSION_FAILURE),
-        WebstoreInstaller::FailureReason::FAILURE_REASON_CANCELLED);
-  }
-
-  Respond(BuildResponse(api::webstore_private::Result::kBlockedForChildAccount,
-                        l10n_util::GetStringUTF8(
-                            IDS_EXTENSIONS_SUPERVISED_USER_BLOCKED_BY_PARENT)));
-}
-
-bool WebstorePrivateBeginInstallWithManifest3Function::
-    PromptForParentApproval() {
-  DCHECK(ManagementAPI::GetFactoryInstance()
-             ->Get(browser_context())
-             ->GetSupervisedUserExtensionsDelegate()
-             ->IsChild());
-  content::WebContents* web_contents = GetSenderWebContents();
-  if (!web_contents) {
-    // The browser window has gone away.
-    Respond(BuildResponse(api::webstore_private::Result::kUserCancelled,
-                          kWebstoreUserCancelledError));
-    return false;
-  }
-  // Assume that the block dialog will not be shown by the
-  // SupervisedUserExtensionsDelegate, because if permissions for extensions
-  // were disabled, the block dialog would have been shown at the install prompt
-  // step.
-  RequestExtensionApproval(web_contents);
-
-  return true;
+  // or OnBlockByPolicyPromptDone.
 }
 
 void WebstorePrivateBeginInstallWithManifest3Function::OnFrictionPromptDone(
@@ -948,27 +654,6 @@ void WebstorePrivateBeginInstallWithManifest3Function::OnInstallPromptDone(
     case ExtensionInstallPromptClient::Result::ACCEPTED:
     case ExtensionInstallPromptClient::Result::
         ACCEPTED_WITH_WITHHELD_PERMISSIONS: {
-      auto* supervised_user_extensions_delegate =
-          ManagementAPI::GetFactoryInstance()
-              ->Get(browser_context())
-              ->GetSupervisedUserExtensionsDelegate();
-      // TODO(b/202064235): The only user of this branch is ChromeOs v1 flow.
-      // Handle parent permission for child accounts on ChromeOS.
-      // Parent permission not required for theme installation.
-      if (!dummy_extension_->is_theme() &&
-          ExtensionsBrowserClient::Get()->IsValidContext(browser_context()) &&
-          supervised_user_extensions_delegate->IsChild() &&
-          !supervised_user_extensions_delegate
-               ->CanSkipExtensionParentApprovals()) {
-        if (PromptForParentApproval()) {
-          // If we are showing parent permission dialog, return instead of
-          // break, so that we don't release the ref below.
-          return;
-        } else {
-          // An error occurred, break so that we release the ref below.
-          break;
-        }
-      }
       bool withhold_permissions = payload.result ==
                                   ExtensionInstallPromptClient::Result::
                                       ACCEPTED_WITH_WITHHELD_PERMISSIONS;
@@ -988,9 +673,7 @@ void WebstorePrivateBeginInstallWithManifest3Function::OnRequestPromptDone(
     ExtensionInstallPromptClient::DoneCallbackPayload payload) {
   switch (payload.result) {
     case ExtensionInstallPromptClient::Result::ACCEPTED:
-      AddExtensionToPendingList(details().id, browser_context_,
-                                payload.justification);
-      break;
+      // Shuttle: cloud extension requests are removed; nothing to record.
     case ExtensionInstallPromptClient::Result::USER_CANCELED:
     case ExtensionInstallPromptClient::Result::ABORTED:
       break;
@@ -1007,27 +690,6 @@ void WebstorePrivateBeginInstallWithManifest3Function::
     OnBlockByPolicyPromptDone() {
   Respond(BuildResponse(api::webstore_private::Result::kBlockedByPolicy,
                         kWebstoreBlockByPolicy));
-}
-
-void WebstorePrivateBeginInstallWithManifest3Function::
-    OnRequestParentApprovalPromptCancelled() {
-  if (test_delegate) {
-    test_delegate->OnExtensionInstallFailure(
-        dummy_extension_->id(),
-        l10n_util::GetStringUTF8(
-            IDS_EXTENSIONS_SUPERVISED_USER_PARENTAL_PERMISSION_FAILURE),
-        WebstoreInstaller::FailureReason::FAILURE_REASON_CANCELLED);
-  }
-
-  auto* supervised_user_extensions_delegate =
-      ManagementAPI::GetFactoryInstance()
-          ->Get(browser_context())
-          ->GetSupervisedUserExtensionsDelegate();
-  supervised_user_extensions_delegate->RecordAskParentDialogUmaMetrics(
-      SupervisedUserExtensionsDelegate::AskParentDialogState::kCanceled);
-
-  Respond(BuildResponse(api::webstore_private::Result::kUserCancelled,
-                        kWebstoreUserCancelledError));
 }
 
 void WebstorePrivateBeginInstallWithManifest3Function::HandleInstallProceed(
@@ -1164,42 +826,6 @@ void WebstorePrivateBeginInstallWithManifest3Function::ShowInstallDialog(
     content::WebContents* contents) {
   auto prompt =
       std::make_unique<InstallPromptData>(InstallPromptData::INSTALL_PROMPT);
-
-  if (!dummy_extension_->is_theme()) {
-    auto* supervised_user_extensions_delegate =
-        ManagementAPI::GetFactoryInstance()
-            ->Get(browser_context())
-            ->GetSupervisedUserExtensionsDelegate();
-    const bool requires_parent_permission =
-        supervised_user_extensions_delegate->IsChild() &&
-        !supervised_user_extensions_delegate->CanSkipExtensionParentApprovals();
-    // We don't prompt for parent permission for themes, so no need
-    // to configure the install prompt to indicate that this is a child
-    // asking a parent for installation permission.
-    prompt->set_requires_parent_permission(requires_parent_permission);
-    // Record metrics for supervised users that are in "Skip parent
-    // approval"-mode and use the Extension install dialog (that is used by
-    // non-supervised users).
-    if (supervised_user_extensions_delegate->IsChild()) {
-      prompt->AddObserver(
-          supervised_user_extensions_delegate->GetInstallPromptObserver());
-    }
-    if (requires_parent_permission) {
-      // Bypass the install prompt dialog if V2 is enabled. The
-      // ParentAccessDialog handles both the blocked and install use case.
-#if BUILDFLAG(IS_CHROMEOS)
-      RequestExtensionApproval(contents);
-      return;
-#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-      // Shows a parental permission dialog directly bypassing the extension
-      // install dialog view. The parental permission dialog contains a superset
-      // of data from the extension install dialog: requested extension
-      // permissions and also parent's password input.
-      PromptForParentApproval();
-      return;
-#endif  // BUILDFLAG(IS_CHROMEOS)
-    }
-  }
 
   install_prompt_ = ExtensionsBrowserClient::Get()->CreateInstallPrompt(
       contents, std::move(prompt));
@@ -1429,30 +1055,9 @@ WebstorePrivateIsPendingCustodianApprovalFunction::Run() {
       IsPendingCustodianApproval::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
-  if (!ManagementAPI::GetFactoryInstance()
-           ->Get(browser_context())
-           ->GetSupervisedUserExtensionsDelegate()
-           ->IsChild()) {
-    return RespondNow(BuildResponse(false));
-  }
-  ExtensionRegistry* registry = ExtensionRegistry::Get(browser_context());
-  const Extension* extension =
-      registry->GetExtensionById(params->id, ExtensionRegistry::EVERYTHING);
-  if (!extension) {
-    return RespondNow(BuildResponse(false));
-  }
-
-  ExtensionPrefs* extensions_prefs = ExtensionPrefs::Get(browser_context());
-
-  if (extensions_prefs->HasDisableReason(
-          params->id, disable_reason::DISABLE_PERMISSIONS_INCREASE)) {
-    return RespondNow(BuildResponse(true));
-  }
-
-  bool is_pending_approval = extensions_prefs->HasDisableReason(
-      params->id, disable_reason::DISABLE_CUSTODIAN_APPROVAL_REQUIRED);
-
-  return RespondNow(BuildResponse(is_pending_approval));
+  // Shuttle: no supervised (child) accounts, so nothing is ever pending
+  // custodian approval.
+  return RespondNow(BuildResponse(false));
 }
 
 ExtensionFunction::ResponseValue
@@ -1628,88 +1233,13 @@ WebstorePrivateShouldShowEnterprisePromotionBannerFunction::
 WebstorePrivateShouldShowEnterprisePromotionBannerFunction::
     ~WebstorePrivateShouldShowEnterprisePromotionBannerFunction() = default;
 
-void WebstorePrivateShouldShowEnterprisePromotionBannerFunction::
-    SetFakePromotionEligibilityCheckerForTesting(
-        std::unique_ptr<enterprise_promotion::PromotionEligibilityChecker>
-            checker) {
-  promotion_eligibility_checker_ = std::move(checker);
-}
-
 ExtensionFunction::ResponseAction
 WebstorePrivateShouldShowEnterprisePromotionBannerFunction::Run() {
-  PrefService* prefs = user_prefs::UserPrefs::Get(browser_context());
-  // To reduce server requests, use cache result if it is valid.
-  const base::Time expiration_time =
-      prefs->GetTime(pref_names::kEnterprisePromotionExpirationTime);
-  if (!expiration_time.is_null() && base::Time::Now() <= expiration_time) {
-    std::string promotion_type_string =
-        api::webstore_private::ToString(WebstorePromotionBannerPrefToApiResult(
-            static_cast<enterprise::PromotionType>(prefs->GetInteger(
-                enterprise_promotion::kEnterprisePromotionEligibility))));
-    return RespondNow(WithArguments(promotion_type_string));
-  }
-
-  // If multiples tags are opened at the same time without valid cache, only the
-  // first page will be checked and potential get banner.
-  enterprise::PromotionType default_pref =
-      enterprise::PromotionType::kUnspecified;
-  prefs->SetInteger(enterprise_promotion::kEnterprisePromotionEligibility,
-                    static_cast<int>(default_pref));
-  prefs->SetTime(pref_names::kEnterprisePromotionExpirationTime,
-                 base::Time::Now() + base::Days(1));
-
-  // A fake checker may be created ahead of time in test.
-  if (!promotion_eligibility_checker_) {
-    promotion_eligibility_checker_ =
-        ExtensionsAPIClient::Get()
-            ->GetWebstorePrivateAPIDelegate()
-            ->CreatePromotionEligibilityChecker(
-                browser_context(),
-                prefs->GetBoolean(pref_names::kHasDismissedEnterprisePromotion),
-                base::FeatureList::IsEnabled(
-                    extensions_features::kEnableShouldShowPromotion));
-
-    // If checker can't be created, return the default response for the
-    // unspecified.
-    if (!promotion_eligibility_checker_) {
-      return RespondNow(WithArguments(api::webstore_private::ToString(
-          WebstorePromotionBannerPrefToApiResult(default_pref))));
-    }
-  }
-
-  promotion_eligibility_checker_->MaybeCheckPromotionEligibility(base::BindOnce(
-      &WebstorePrivateShouldShowEnterprisePromotionBannerFunction::
-          OnPromotionEligibilityDetermined,
-      this));
-
-  return RespondLater();
-}
-
-void WebstorePrivateShouldShowEnterprisePromotionBannerFunction::
-    OnPromotionEligibilityDetermined(
-        enterprise_management::GetUserEligiblePromotionsResponse response) {
-  enterprise::PromotionType pref_promotion_type;
-
-  switch (response.promotions().cws_privacy_details_promotion()) {
-    case enterprise_management::CHROME_ENTERPRISE_CORE:
-      pref_promotion_type = enterprise::PromotionType::kChromeEnterpriseCore;
-      break;
-    case enterprise_management::CHROME_ENTERPRISE_PREMIUM:
-      pref_promotion_type = enterprise::PromotionType::kChromeEnterprisePremium;
-      break;
-    default:
-      pref_promotion_type = enterprise::PromotionType::kUnspecified;
-      break;
-  }
-
-  PrefService* prefs = user_prefs::UserPrefs::Get(browser_context());
-  prefs->SetInteger(enterprise_promotion::kEnterprisePromotionEligibility,
-                    static_cast<int>(pref_promotion_type));
-  prefs->SetTime(pref_names::kEnterprisePromotionExpirationTime,
-                 base::Time::Now() + base::Days(1));
-
-  Respond(WithArguments(api::webstore_private::ToString(
-      WebstorePromotionBannerPrefToApiResult(pref_promotion_type))));
+  // Shuttle: the enterprise promotion eligibility check (DM server) is
+  // removed; never show the banner.
+  return RespondNow(WithArguments(api::webstore_private::ToString(
+      WebstorePromotionBannerPrefToApiResult(
+          enterprise::PromotionType::kUnspecified))));
 }
 
 WebstorePrivateLogEnterprisePromoShownFunction::
@@ -1731,8 +1261,6 @@ ExtensionFunction::ResponseAction
 WebstorePrivateOnEnterprisePromoClickFunction::Run() {
   PrefService* prefs = user_prefs::UserPrefs::Get(browser_context());
   prefs->SetBoolean(pref_names::kHasDismissedEnterprisePromotion, true);
-  prefs->SetInteger(enterprise_promotion::kEnterprisePromotionEligibility,
-                    static_cast<int>(enterprise::PromotionType::kUnspecified));
 
   base::UmaHistogramEnumeration("Enterprise.CwsPromotionBannerEvent",
                                 enterprise::CwsPromotionBannerEvent::kClicked);

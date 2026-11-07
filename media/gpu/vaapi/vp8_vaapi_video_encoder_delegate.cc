@@ -14,6 +14,7 @@
 #include "base/bits.h"
 #include "base/compiler_specific.h"
 #include "base/memory/ref_counted_memory.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/strings/string_number_conversions.h"
 #include "build/build_config.h"
 #include "media/base/media_switches.h"
@@ -59,11 +60,11 @@ uint8_t QindexToQuantizer(uint8_t q_index) {
       82, 85, 88, 91, 94, 97, 100, 103, 106, 109, 112, 115, 118, 121, 124, 127,
   });
 
-  for (size_t q = 0; q < std::size(kQuantizerToQindex); ++q) {
+  for (size_t q = 0; q < kQuantizerToQindex.size(); ++q) {
     if (kQuantizerToQindex[q] >= q_index)
       return q;
   }
-  return std::size(kQuantizerToQindex) - 1;
+  return kQuantizerToQindex.size() - 1;
 }
 
 // The return value is expressed as a percentage of the average. For example,
@@ -180,10 +181,12 @@ bool UpdateFrameHeaderForTemporalLayerEncoding(
     metadata.layer_sync = false;
     buffer_flags.fill(kUpdate);
   } else {
-    constexpr std::pair<Vp8Metadata,
-                        std::array<BufferFlags, kNumVp8ReferenceBuffers>>
-        kFrameConfigs[][kTemporalLayerCycle] = {
-            {
+    using FrameConfig =
+        std::pair<Vp8Metadata,
+                  std::array<BufferFlags, kNumVp8ReferenceBuffers>>;
+    static constexpr std::array<std::array<FrameConfig, kTemporalLayerCycle>, 2>
+        kFrameConfigs = {{
+            {{
                 // For two temporal layers.
                 {{.non_reference = false,
                   .temporal_idx = 0,
@@ -197,8 +200,8 @@ bool UpdateFrameHeaderForTemporalLayerEncoding(
                  {kReferenceAndUpdate, kNone, kNone}},
                 {{.non_reference = true, .temporal_idx = 1, .layer_sync = true},
                  {kReference, kNone, kNone}},
-            },
-            {
+            }},
+            {{
                 // For three temporal layers.
                 {{.non_reference = false,
                   .temporal_idx = 0,
@@ -214,12 +217,12 @@ bool UpdateFrameHeaderForTemporalLayerEncoding(
                   .temporal_idx = 2,
                   .layer_sync = false},
                  {kNone, kReference, kNone}},
-            },
-        };
+            }},
+        }};
 
     std::tie(metadata, buffer_flags) =
-        UNSAFE_TODO(kFrameConfigs[num_layers - kMinSupportedVP8TemporalLayers]
-                                 [frame_num % kTemporalLayerCycle]);
+        kFrameConfigs[num_layers - kMinSupportedVP8TemporalLayers]
+                     [frame_num % kTemporalLayerCycle];
   }
 
   frame_hdr.frame_type =
@@ -312,9 +315,11 @@ bool VP8VaapiVideoEncoderDelegate::Initialize(
   }
 
   visible_size_ = config.input_visible_size;
-  coded_size_ = gfx::Size(
-      base::bits::AlignUpDeprecatedDoNotUse(visible_size_.width(), 16),
-      base::bits::AlignUpDeprecatedDoNotUse(visible_size_.height(), 16));
+  coded_size_ =
+      gfx::Size(base::bits::AlignUp(
+                    base::checked_cast<uint32_t>(visible_size_.width()), 16u),
+                base::bits::AlignUp(
+                    base::checked_cast<uint32_t>(visible_size_.height()), 16u));
 
   current_params_ = EncodeParams();
   reference_frames_.Clear();

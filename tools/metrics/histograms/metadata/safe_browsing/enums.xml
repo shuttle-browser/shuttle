@@ -35,17 +35,6 @@ chromium-metrics-reviews@google.com.
   <int value="4" label="An ad was found but data collection was rejected"/>
 </enum>
 
-<enum name="AdvancedProtectionEnabledStatus">
-  <int value="0" label="Advanced Protection enabled status unknown"/>
-  <int value="1" label="User not signed-in or isn't under Advanced Protection"/>
-  <int value="2" label="User is signed in and under Advanced Protection"/>
-  <int value="3"
-      label="User was under Advanced Protection but disabled it or signed out"/>
-  <int value="4"
-      label="User was signed out or wasn't under Advanced Protection but now
-             is"/>
-</enum>
-
 <!-- LINT.IfChange(AllowlistAsyncMatchResult) -->
 
 <enum name="AllowlistAsyncMatchResult">
@@ -97,17 +86,6 @@ chromium-metrics-reviews@google.com.
   <int value="7" label="SENT"/>
   <int value="8" label="NOT_SENT_UNCONSENTED"/>
 </enum>
-
-<!-- LINT.IfChange(ApplicationAdvancedProtectionEvent) -->
-
-<enum name="ApplicationAdvancedProtectionEvent">
-  <int value="0" label="Detector initialized"/>
-  <int value="1" label="Profile added"/>
-  <int value="2" label="Profile removed"/>
-  <int value="3" label="Profile Advanced Protection status changed"/>
-</enum>
-
-<!-- LINT.ThenChange(//chrome/browser/safe_browsing/application_advanced_protection_status_detector.h:ApplicationAdvancedProtectionEvent)-->
 
 <enum name="BooleanBackoff">
   <int value="0" label="No backoff"/>

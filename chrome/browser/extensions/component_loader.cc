@@ -66,6 +66,7 @@
 #include "ui/accessibility/accessibility_features.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
+#include "ui/webui/buildflags.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/constants/ash_extension_constants.h"
@@ -92,6 +93,7 @@
 #include "chrome/browser/defaults.h"
 #endif
 
+
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 
 using content::BrowserThread;
@@ -101,7 +103,7 @@ namespace extensions {
 namespace {
 
 #if BUILDFLAG(ENABLE_HANGOUT_SERVICES_EXTENSION)
-BASE_FEATURE(kHangoutsExtensionV3, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kHangoutsExtensionV3, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kRemoveHangoutsExtension, base::FEATURE_DISABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(ENABLE_HANGOUT_SERVICES_EXTENSION)
 
@@ -184,7 +186,8 @@ std::optional<base::DictValue> LoadManifestOnFileThread(
     const base::FilePath& root_directory,
     const base::FilePath::CharType* manifest_filename,
     bool localize_manifest) {
-  DCHECK(GetExtensionFileTaskRunner()->RunsTasksInCurrentSequence());
+  CHECK(GetExtensionFileTaskRunner()->RunsTasksInCurrentSequence(),
+        base::NotFatalUntil::M161);
   std::string error;
   std::optional<base::DictValue> manifest(
       file_util::LoadManifest(root_directory, manifest_filename, &error));
@@ -422,17 +425,22 @@ void ComponentLoader::Load(const ComponentExtensionInfo& info) {
   registrar->AddComponentExtension(extension.get());
 }
 
-bool ComponentLoader::MaybeLoadStagedExtension(PrefService& local_state,
-                                               const ExtensionId& extension_id,
+bool ComponentLoader::MaybeLoadStagedExtension(const ExtensionId& extension_id,
                                                int manifest_resource_id) {
+  PrefService* local_state =
+      g_browser_process ? g_browser_process->local_state() : nullptr;
+  if (!local_state) {
+    return false;
+  }
+
   // Clear staged prefs on any failure return.
   base::ScopedClosureRunner clear_staged_prefs(
       base::BindOnce(&component_loader_prefs::ClearExtension,
-                     std::ref(local_state), extension_id));
+                     std::ref(*local_state), extension_id));
 
   std::optional<component_loader_prefs::StagedComponentExtensionInfo>
       staged_info =
-          component_loader_prefs::GetExtension(local_state, extension_id);
+          component_loader_prefs::GetExtension(*local_state, extension_id);
   if (!staged_info) {
     return false;
   }
@@ -646,7 +654,7 @@ void ComponentLoader::AddDefaultComponentExtensions(
 
   AddKeyboardApp();
 #else   // BUILDFLAG(IS_CHROMEOS)
-  DCHECK(!skip_session_components);
+  CHECK(!skip_session_components, base::NotFatalUntil::M161);
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
   if (!skip_session_components) {
@@ -733,7 +741,6 @@ void ComponentLoader::AddDefaultComponentExtensionsWithBackgroundPages(
           switches::kLoadGuestModeTestExtension));
       AddGuestModeTestExtension(path);
     }
-    AddImageLoaderExtension();
 
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
     // TODO(https://crbug.com/1005083): Force the off the record profile to be
@@ -797,7 +804,7 @@ void ComponentLoader::AddComponentFromDirWithManifestFilename(
     const base::FilePath::CharType* guest_manifest_file_name,
     base::OnceClosure done_cb,
     base::OnceClosure error_cb) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   CHECK(!IsPendingAdd(extension_id));
   pending_extension_ids_.emplace(extension_id);
@@ -823,7 +830,7 @@ void ComponentLoader::FinishAddComponentFromDir(
     base::OnceClosure done_cb,
     base::OnceClosure error_cb,
     std::optional<base::DictValue> manifest) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   // Extension is removed during loading. Skip adding in this case.
   if (!IsPendingAdd(extension_id)) {

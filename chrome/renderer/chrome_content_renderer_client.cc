@@ -20,7 +20,6 @@
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/user_metrics_action.h"
-#include "base/no_destructor.h"
 #include "base/notreached.h"
 #include "base/process/current_process.h"
 #include "base/profiler/thread_group_profiler.h"
@@ -45,7 +44,6 @@
 #include "chrome/common/profiler/chrome_thread_profiler_client.h"
 #include "chrome/common/profiler/core_unwinders.h"
 #include "chrome/common/profiler/thread_profiler_configuration.h"
-#include "chrome/common/request_header_integrity/buildflags.h"
 #include "chrome/common/secure_origin_allowlist.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/common/webui_url_constants.h"
@@ -67,7 +65,6 @@
 #include "chrome/renderer/plugins/non_loadable_plugin_placeholder.h"
 #include "chrome/renderer/plugins/pdf_plugin_placeholder.h"
 #include "chrome/renderer/process_state.h"
-#include "chrome/renderer/supervised_user/supervised_user_error_page_controller_delegate_impl.h"
 #include "chrome/renderer/url_loader_throttle_provider_impl.h"
 #include "chrome/renderer/v8_unwinder.h"
 #include "chrome/renderer/websocket_handshake_throttle_provider_impl.h"
@@ -88,16 +85,12 @@
 #include "components/grit/components_scaled_resources.h"
 #include "components/guest_view/buildflags/buildflags.h"
 #include "components/heap_profiling/in_process/heap_profiler_controller.h"
-#include "components/history_clusters/core/config.h"
 #include "components/metrics/call_stacks/call_stack_profile_builder.h"
 #include "components/network_hints/renderer/web_prescient_networking_impl.h"
 #include "components/no_state_prefetch/renderer/no_state_prefetch_client.h"
 #include "components/no_state_prefetch/renderer/no_state_prefetch_helper.h"
 #include "components/no_state_prefetch/renderer/no_state_prefetch_render_frame_observer.h"
 #include "components/no_state_prefetch/renderer/no_state_prefetch_utils.h"
-#include "components/optimization_guide/core/optimization_guide_features.h"
-#include "components/page_content_annotations/content/renderer/page_stability_monitor_manager.h"
-#include "components/page_content_annotations/core/page_content_annotations_features.h"
 #include "components/page_load_metrics/renderer/metrics_render_frame_observer.h"
 #include "components/paint_preview/buildflags/buildflags.h"
 #include "components/pdf/common/constants.h"
@@ -173,6 +166,7 @@
 #include "ui/base/page_transition_types.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/webui/jstemplate_builder.h"
+#include "ui/webui/buildflags.h"
 #include "url/origin.h"
 #include "v8/include/v8-isolate.h"
 
@@ -185,7 +179,6 @@
 #include "chrome/renderer/sandbox_status_extension_android.h"
 #include "chrome/renderer/wallet/boarding_pass_extractor.h"
 #else
-#include "components/search/ntp_features.h"  // nogncheck
 #endif
 
 #if BUILDFLAG(ENABLE_SPEECH_SERVICE)
@@ -203,6 +196,7 @@
 #include "extensions/common/constants.h"
 #include "extensions/common/context_data.h"
 #include "extensions/common/extension_urls.h"
+#include "extensions/common/manifest_handlers/back_forward_cache_info.h"
 #include "extensions/common/manifest_handlers/csp_info.h"
 #include "extensions/common/manifest_handlers/web_accessible_resources_info.h"
 #include "extensions/common/switches.h"
@@ -243,12 +237,6 @@
 #include "components/spellcheck/renderer/spellcheck_panel.h"
 #endif  // BUILDFLAG(HAS_SPELLCHECK_PANEL)
 #endif  // BUILDFLAG(ENABLE_SPELLCHECK)
-
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-#include "chrome/common/request_header_integrity/chrome_companero.mojom.h"  // nogncheck
-#include "chrome/common/request_header_integrity/chrome_companero_loader.h"  // nogncheck
-#include "chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.h"  // nogncheck
-#endif
 
 #if BUILDFLAG(ENABLE_LIBRARY_CDMS) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID)
 #include "chrome/renderer/media/chrome_key_systems.h"
@@ -399,17 +387,6 @@ void ChromeContentRendererClient::RenderThreadStarted() {
       thread->GetIOTaskRunner(), std::move(module_event_sink));
 #endif
 
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-  if (request_header_integrity::RequestHeaderIntegrityURLLoaderThrottle::
-          IsFeatureEnabled()) {
-    mojo::PendingRemote<request_header_integrity::mojom::ChromeCompanero>
-        remote;
-    thread->BindHostReceiver(remote.InitWithNewPipeAndPassReceiver());
-    request_header_integrity::ChromeCompaneroLoader::GetInstance()
-        .SetMojoRemote(std::move(remote));
-  }
-#endif
-
   browser_interface_broker_ =
       blink::Platform::Current()->GetBrowserInterfaceBroker();
 
@@ -432,8 +409,6 @@ void ChromeContentRendererClient::RenderThreadStarted() {
 
   extensions_renderer_client->RenderThreadStarted();
   WebSecurityPolicy::RegisterURLSchemeAsExtension(
-      WebString::FromAscii(extensions::kExtensionScheme));
-  WebSecurityPolicy::RegisterURLSchemeAsCodeCacheWithHashing(
       WebString::FromAscii(extensions::kExtensionScheme));
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
@@ -507,9 +482,6 @@ void ChromeContentRendererClient::RenderThreadStarted() {
     WebSecurityPolicy::AddSchemeToSecureContextSafelist(
         WebString::FromAscii(scheme));
   }
-
-  WebSecurityPolicy::RegisterURLSchemeAsSupportingFetchAPI(
-      WebString::FromAscii(chrome::kChromeExperimentalSiteTokenProviderScheme));
 
   // This doesn't work in single-process mode.
   if (!base::CommandLine::ForCurrentProcess()->HasSwitch(
@@ -590,19 +562,10 @@ void ChromeContentRendererClient::RenderFrameCreated(
 
   GoogleAccountsPrivateApiExtension::Create(render_frame);
 
-  const bool search_result_extractor_enabled =
-      render_frame->IsMainFrame() &&
-      page_content_annotations::features::ShouldExtractRelatedSearches();
-  if (search_result_extractor_enabled) {
-    continuous_search::SearchResultExtractorImpl::Create(render_frame);
-  }
-
   new NetErrorHelper(render_frame);
 
   new security_interstitials::SecurityInterstitialPageControllerDelegateImpl(
       render_frame);
-
-  new SupervisedUserErrorPageControllerDelegateImpl(render_frame);
 
   if (!render_frame->IsMainFrame()) {
     auto* main_frame_no_state_prefetch_helper =
@@ -677,10 +640,6 @@ void ChromeContentRendererClient::RenderFrameCreated(
     new wallet::BoardingPassExtractor(render_frame, registry);
   }
 #endif
-
-  // Wire up the PageStabilityMonitorManager to allow components to
-  // request stability monitors for this frame.
-  new page_content_annotations::PageStabilityMonitorManager(render_frame);
 }
 
 void ChromeContentRendererClient::WebViewCreated(
@@ -1049,8 +1008,6 @@ void ChromeContentRendererClient::PrepareErrorPage(
   security_interstitials::SecurityInterstitialPageControllerDelegateImpl::Get(
       render_frame)
       ->PrepareForErrorPage();
-  SupervisedUserErrorPageControllerDelegateImpl::Get(render_frame)
-      ->PrepareForErrorPage();
 }
 
 void ChromeContentRendererClient::PrepareErrorPageForHttpStatusError(
@@ -1114,16 +1071,12 @@ bool ChromeContentRendererClient::AllowPopup() {
 }
 
 bool ChromeContentRendererClient::IsUnboundedElementAllowed(
-    content::RenderFrame* render_frame) {
+    const blink::WebSecurityOrigin& origin) {
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-  if (render_frame && render_frame->GetWebFrame()) {
-    const blink::WebSecurityOrigin origin =
-        render_frame->GetWebFrame()->GetSecurityOrigin();
-    if (!origin.IsNull() &&
-        origin.Protocol().Equals(extensions::kExtensionScheme) &&
-        origin.Host().Equals(extension_misc::kContextualTasksExtensionId)) {
-      return true;
-    }
+  if (!origin.IsNull() &&
+      origin.Protocol().Equals(extensions::kExtensionScheme) &&
+      origin.Host().Equals(extension_misc::kContextualTasksExtensionId)) {
+    return true;
   }
 #endif
   return false;
@@ -1338,9 +1291,18 @@ void ChromeContentRendererClient::
   if (IsStandaloneContentExtensionProcess()) {
     // These Web API features are exposed in extensions.
     blink::WebRuntimeFeatures::EnableWebUSBOnServiceWorkers(true);
-#if !BUILDFLAG(IS_ANDROID)
-    blink::WebRuntimeFeatures::EnableWebHIDOnServiceWorkers(true);
-#endif  // !BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(ENABLE_DESKTOP_ANDROID_EXTENSIONS)
+    if (base::FeatureList::IsEnabled(blink::features::kWebHID) &&
+        base::FeatureList::IsEnabled(
+            features::kWebHidOnDesktopAndroidServiceWorkers))
+#endif  // BUILDFLAG(ENABLE_DESKTOP_ANDROID_EXTENSIONS)
+    {
+      blink::WebRuntimeFeatures::EnableWebHIDOnServiceWorkers(true);
+    }
+    if (base::FeatureList::IsEnabled(
+            blink::features::kClipboardOnExtensionServiceWorker)) {
+      blink::WebRuntimeFeatures::EnableClipboardOnExtensionServiceWorker(true);
+    }
     blink::WebRuntimeFeatures::EnableAIPromptAPIForWorkers(true);
     blink::WebRuntimeFeatures::EnableAIPromptAPILegacyIdentifiers(true);
     blink::WebRuntimeFeatures::EnableAIPromptAPILegacyParams(true);
@@ -1481,6 +1443,21 @@ bool ChromeContentRendererClient::IsSafeRedirectTarget(
   return true;
 }
 
+bool ChromeContentRendererClient::ShouldUsePerBrowsingInstanceWindowAgent(
+    const url::Origin& origin) {
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  if (origin.scheme() == extensions::kExtensionScheme) {
+    scoped_refptr<const extensions::Extension> extension =
+        extensions::RendererExtensionRegistry::Get()
+            ->GetRefCountedExtensionOrAppByURL(origin.GetURL(),
+                                               /*include_guid=*/true);
+    return extension &&
+           extensions::BackForwardCacheInfo::IsSupported(*extension);
+  }
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  return false;
+}
+
 void ChromeContentRendererClient::DidSetUserAgent(
     const std::string& user_agent) {
 #if BUILDFLAG(ENABLE_PRINTING)
@@ -1513,11 +1490,13 @@ void ChromeContentRendererClient::AppendContentSecurityPolicy(
 
   // Append a minimum CSP to ensure the extension can't relax the default
   // applied CSP through means like Service Worker.
-  const std::string* default_csp = extensions::CSPInfo::GetMinimumCSPToAppend(
-      *extension, gurl.GetPath(),
-      /*is_service_worker=*/content::WorkerThread::GetCurrentId() != 0);
-  if (!default_csp)
+  std::optional<std::string_view> default_csp =
+      extensions::CSPInfo::GetMinimumCSPToAppend(
+          *extension, gurl.GetPath(),
+          /*is_service_worker=*/content::WorkerThread::GetCurrentId() != 0);
+  if (!default_csp) {
     return;
+  }
 
   csp->push_back({blink::WebString::FromUtf8(*default_csp),
                   network::mojom::ContentSecurityPolicyType::kEnforce,

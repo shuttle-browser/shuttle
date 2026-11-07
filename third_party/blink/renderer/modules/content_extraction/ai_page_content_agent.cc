@@ -5,14 +5,17 @@
 #include "third_party/blink/renderer/modules/content_extraction/ai_page_content_agent.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <ranges>
+#include <utility>
 
 #include "base/check.h"
-#include "base/containers/adapters.h"
 #include "base/containers/span.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/notreached.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "base/trace_event/trace_id_helper.h"
@@ -24,15 +27,25 @@
 #include "third_party/blink/renderer/core/accessibility/ax_object_cache.h"
 #include "third_party/blink/renderer/core/css/properties/longhands.h"
 #include "third_party/blink/renderer/core/display_lock/display_lock_document_state.h"
+#include "third_party/blink/renderer/core/dom/attribute.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/dom_node_ids.h"
+#include "third_party/blink/renderer/core/dom/dom_token_list.h"
+#include "third_party/blink/renderer/core/dom/element.h"
+#include "third_party/blink/renderer/core/dom/element_traversal.h"
 #include "third_party/blink/renderer/core/dom/events/event.h"
 #include "third_party/blink/renderer/core/dom/events/native_event_listener.h"
+#include "third_party/blink/renderer/core/dom/node.h"
+#include "third_party/blink/renderer/core/dom/qualified_name.h"
 #include "third_party/blink/renderer/core/dom/space_split_string.h"
+#include "third_party/blink/renderer/core/dom/text.h"
 #include "third_party/blink/renderer/core/dom/tree_scope.h"
 #include "third_party/blink/renderer/core/editing/editing_utilities.h"
 #include "third_party/blink/renderer/core/editing/frame_selection.h"
+#include "third_party/blink/renderer/core/editing/ime/edit_context.h"
+#include "third_party/blink/renderer/core/editing/ime/input_method_controller.h"
 #include "third_party/blink/renderer/core/editing/selection_template.h"
+#include "third_party/blink/renderer/core/editing/serializers/markup_formatter.h"
 #include "third_party/blink/renderer/core/exported/web_view_impl.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
@@ -48,10 +61,12 @@
 #include "third_party/blink/renderer/core/html/forms/option_list.h"
 #include "third_party/blink/renderer/core/html/forms/text_control_element.h"
 #include "third_party/blink/renderer/core/html/html_anchor_element.h"
+#include "third_party/blink/renderer/core/html/html_details_element.h"
 #include "third_party/blink/renderer/core/html/html_dialog_element.h"
 #include "third_party/blink/renderer/core/html/html_head_element.h"
 #include "third_party/blink/renderer/core/html/html_image_element.h"
 #include "third_party/blink/renderer/core/html/html_meta_element.h"
+#include "third_party/blink/renderer/core/html/html_summary_element.h"
 #include "third_party/blink/renderer/core/html/media/html_video_element.h"
 #include "third_party/blink/renderer/core/input/event_handler.h"
 #include "third_party/blink/renderer/core/keywords.h"
@@ -76,6 +91,9 @@
 #include "third_party/blink/renderer/core/layout/table/layout_table_row.h"
 #include "third_party/blink/renderer/core/layout/table/layout_table_section.h"
 #include "third_party/blink/renderer/core/loader/resource/image_resource_content.h"
+#include "third_party/blink/renderer/core/mathml/mathml_anchor_element.h"
+#include "third_party/blink/renderer/core/mathml/mathml_element.h"
+#include "third_party/blink/renderer/core/mathml_names.h"
 #include "third_party/blink/renderer/core/page/chrome_client.h"
 #include "third_party/blink/renderer/core/page/focus_controller.h"
 #include "third_party/blink/renderer/core/page/page.h"
@@ -85,6 +103,11 @@
 #include "third_party/blink/renderer/core/script_tools/model_context_supplement.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/core/style/computed_style_constants.h"
+#include "third_party/blink/renderer/core/svg/svg_element.h"
+#include "third_party/blink/renderer/core/svg_names.h"
+#include "third_party/blink/renderer/core/url/url_utils.h"
+#include "third_party/blink/renderer/core/xlink_names.h"
+#include "third_party/blink/renderer/modules/accessibility/ax_node_object.h"
 #include "third_party/blink/renderer/modules/accessibility/ax_object.h"
 #include "third_party/blink/renderer/modules/content_extraction/ai_page_content_debug_utils.h"
 #include "third_party/blink/renderer/platform/geometry/infinite_int_rect.h"
@@ -93,13 +116,17 @@
 #include "third_party/blink/renderer/platform/loader/fetch/resource_response.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
+#include "third_party/blink/renderer/platform/text/text_break_iterator.h"
 #include "third_party/blink/renderer/platform/web_test_support.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
 #include "third_party/blink/renderer/platform/widget/frame_widget.h"
 #include "third_party/blink/renderer/platform/wtf/shared_buffer.h"
+#include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 #include "third_party/blink/renderer/platform/wtf/text/character_names.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_view.h"
+#include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "ui/accessibility/ax_role_properties.h"
 #include "ui/gfx/geometry/point_conversions.h"
 #include "ui/gfx/geometry/rect_conversions.h"
@@ -475,7 +502,7 @@ mojom::blink::AIPageContentCssPosition ConvertCssPosition(
 mojom::blink::AIPageContentGeometryPtr ComputeNodeGeometry(
     const LayoutObject& object) {
   auto geometry = mojom::blink::AIPageContentGeometry::New();
-  geometry->css_position = ConvertCssPosition(object.StyleRef().GetPosition());
+  geometry->css_position = ConvertCssPosition(object.Style().GetPosition());
 
   gfx::RectF local_bounding_box;
   geometry->visible_bounding_box =
@@ -787,7 +814,7 @@ const LayoutIFrame* GetIFrame(const LayoutObject& object) {
 
 bool IsVisible(const LayoutObject& object) {
   // Don't add content when node is invisible.
-  return object.StyleRef().Visibility() == EVisibility::kVisible;
+  return object.Style().Visibility() == EVisibility::kVisible;
 }
 
 bool HasEmptyGeometry(const mojom::blink::AIPageContentNode* content_node) {
@@ -868,7 +895,9 @@ void AddClickabilityReasons(
     mojom::blink::AIPageContentNodeInteractionInfo& interaction_info) {
   using Reason = mojom::blink::AIPageContentClickabilityReason;
 
-  if (element.IsClickableFormControlNode()) {
+  const auto* summary = DynamicTo<HTMLSummaryElement>(element);
+  const bool is_main_summary = summary && summary->IsMainSummary();
+  if (element.IsClickableFormControlNode() || is_main_summary) {
     interaction_info.clickability_reasons.push_back(Reason::kClickableControl);
   }
 
@@ -876,14 +905,18 @@ void AddClickabilityReasons(
     interaction_info.clickability_reasons.push_back(Reason::kClickEvents);
   }
 
-  const bool has_mouse_hover =
-      element.HasJSBasedEventListeners(event_type_names::kMouseover) ||
+  const bool has_mouseenter =
       element.HasJSBasedEventListeners(event_type_names::kMouseenter);
+  const bool has_mouseover =
+      element.HasJSBasedEventListeners(event_type_names::kMouseover);
   const bool has_mouse_click =
       element.HasJSBasedEventListeners(event_type_names::kMouseup) ||
       element.HasJSBasedEventListeners(event_type_names::kMousedown);
-  if (has_mouse_hover) {
-    interaction_info.clickability_reasons.push_back(Reason::kMouseHover);
+  if (has_mouseenter) {
+    interaction_info.clickability_reasons.push_back(Reason::kMouseEnter);
+  }
+  if (has_mouseover) {
+    interaction_info.clickability_reasons.push_back(Reason::kMouseOver);
   }
   if (has_mouse_click) {
     interaction_info.clickability_reasons.push_back(Reason::kMouseClick);
@@ -937,6 +970,12 @@ void AddClickabilityReasons(
       interaction_info.clickability_reasons.push_back(
           Reason::kAriaExpandedFalse);
     }
+  } else if (is_main_summary) {
+    const HTMLDetailsElement* details = summary->DetailsElement();
+    CHECK(details);
+    const bool is_open = details->FastHasAttribute(html_names::kOpenAttr);
+    interaction_info.clickability_reasons.push_back(
+        is_open ? Reason::kAriaExpandedTrue : Reason::kAriaExpandedFalse);
   }
 
   const auto& autocomplete =
@@ -958,6 +997,7 @@ void AddClickabilityReasons(
 // rejection.
 bool AddInteractionDisabledReasons(
     const Element& element,
+    ax::mojom::blink::Role aria_role,
     bool is_aria_disabled,
     bool is_aria_hidden,
     mojom::blink::AIPageContentNodeInteractionInfo& interaction_info) {
@@ -981,8 +1021,7 @@ bool AddInteractionDisabledReasons(
 
   // ARIA treats role=presentation and role=none as the same role. Blink's raw
   // ARIA role resolver reports both as kNone.
-  if (AXObject::DetermineRawAriaRole(element) ==
-      ax::mojom::blink::Role::kNone) {
+  if (aria_role == ax::mojom::blink::Role::kNone) {
     // A presentational role hides the node's role from assistive technology,
     // but it does not require click rejection. Record the reason without
     // setting `is_disabled`.
@@ -1152,9 +1191,9 @@ void ProcessTextNode(const LayoutText& layout_text,
   DCHECK(!ShouldRedactSubtree(attributes.redaction_decision));
 
   auto text_style = mojom::blink::AIPageContentTextStyle::New();
-  text_style->text_size = GetTextSize(layout_text.StyleRef(), document_style);
-  text_style->has_emphasis = HasEmphasis(layout_text.StyleRef());
-  text_style->color = GetColor(layout_text.StyleRef());
+  text_style->text_size = GetTextSize(layout_text.Style(), document_style);
+  text_style->has_emphasis = HasEmphasis(layout_text.Style());
+  text_style->color = GetColor(layout_text.Style());
 
   auto text_info = mojom::blink::AIPageContentTextInfo::New();
   text_info->text_content =
@@ -1247,12 +1286,49 @@ bool IsImage(const LayoutObject& layout_object) {
          !layout_object.IsMedia();
 }
 
+// Replaces unpaired Unicode surrogates and preserves surrounding whitespace.
+// Treats whitespace-only text as empty so the next label source can be tried.
+String NormalizeLabelCandidate(const StringView& text) {
+  if (text.SubstringContainsOnlyWhitespaceOrEmpty(0, text.length())) {
+    return String();
+  }
+  return ReplaceUnpairedSurrogates(text.ToString());
+}
+
+// Reads the first <title> or <desc> child of this element. Does not use titles
+// or descriptions from nested elements.
+String GetSVGChildText(Element& element, const QualifiedName& tag) {
+  Element* child = ElementTraversal::FirstChild(element, HasTagName(tag));
+  if (!child) {
+    return String();
+  }
+  // <title> and <desc> are not rendered, so innerText returns their
+  // textContent.
+  return NormalizeLabelCandidate(child->GetInnerTextWithoutUpdate());
+}
+
+// Uses the first nonempty source: the element's <title>, then xlink:title for
+// SVG links, then <desc>.
+String GetSVGFallbackLabel(SVGElement& element) {
+  String label = GetSVGChildText(element, svg_names::kTitleTag);
+  if (label.empty() && element.HasTagName(svg_names::kATag)) {
+    // SVG <a> tags also support an xlink:title attribute.
+    label = NormalizeLabelCandidate(
+        element.FastGetAttribute(xlink_names::kTitleAttr));
+  }
+  // APC has no separate description field, so use the description as a
+  // possible fallback label.
+  if (label.empty()) {
+    label = GetSVGChildText(element, svg_names::kDescTag);
+  }
+  return label;
+}
+
 mojom::blink::AIPageContentImageInfoPtr GetImageInfo(
     const LayoutObject& layout_image,
     const ImageResourceContent* image_resource_content) {
   CHECK(IsImage(layout_image));
 
-  // TODO(b/468126774): Set caption for SVG <images> based on <title> elements.
   auto image_info = mojom::blink::AIPageContentImageInfo::New();
   if (auto* image_element =
           DynamicTo<HTMLImageElement>(layout_image.GetNode())) {
@@ -1260,6 +1336,11 @@ mojom::blink::AIPageContentImageInfoPtr GetImageInfo(
     // data which could be reused for this.
     image_info->image_caption =
         ReplaceUnpairedSurrogates(image_element->AltText());
+  } else if (RuntimeEnabledFeatures::
+                 AIPageContentLabelExpandFallbackSourcesEnabled()) {
+    if (auto* svg = DynamicTo<SVGElement>(layout_image.GetNode())) {
+      image_info->image_caption = GetSVGFallbackLabel(*svg);
+    }
   }
 
   image_info->source_origin =
@@ -1289,6 +1370,161 @@ mojom::blink::AIPageContentImageInfoPtr GetImageInfo(
   return image_info;
 }
 
+// When ARIA provides no text, try CSS alternative text, then the element's
+// alt, value, summary, or SVG title/description, then its tooltip.
+String GetFallbackLabel(Element& element) {
+  if (const String css_alt_text = AXNodeObject::GetCSSAltText(&element);
+      !css_alt_text.IsNull()) {
+    // An explicitly empty CSS alternative marks generated content as
+    // decorative, like <img alt="">. Leave the fallback label empty.
+    if (css_alt_text.empty()) {
+      return String();
+    }
+    String label = NormalizeLabelCandidate(css_alt_text);
+    if (!label.empty()) {
+      return label;
+    }
+  }
+
+  String label;
+  const auto* input = DynamicTo<HTMLInputElement>(element);
+  if (input &&
+      input->FormControlType() == mojom::blink::FormControlType::kInputImage) {
+    // APC treats loaded image buttons as images, so their alt or value must be
+    // read directly here. Ignore HTMLInputElement::AltText(), which defaults to
+    // a generic localized "Submit" string that might not be relevant.
+    label =
+        NormalizeLabelCandidate(element.FastGetAttribute(html_names::kAltAttr));
+    if (label.empty()) {
+      label = NormalizeLabelCandidate(input->Value());
+    }
+  } else if (element.HasTagName(html_names::kTableTag)) {
+    label = NormalizeLabelCandidate(
+        element.FastGetAttribute(html_names::kSummaryAttr));
+  } else if (auto* svg = DynamicTo<SVGElement>(element)) {
+    // SVG image titles and descriptions already supply the image caption.
+    if (!svg->HasTagName(svg_names::kImageTag)) {
+      label = GetSVGFallbackLabel(*svg);
+    }
+  }
+  if (!label.empty()) {
+    return label;
+  }
+
+  const String title =
+      NormalizeLabelCandidate(element.FastGetAttribute(html_names::kTitleAttr));
+  if (!title.empty()) {
+    if (const auto* image = DynamicTo<HTMLImageElement>(element)) {
+      const auto& alt = image->FastGetAttribute(html_names::kAltAttr);
+      // An empty alt marks the image as decorative. A missing alt already
+      // uses title as the image caption, so neither needs a fallback label.
+      if (alt.empty()) {
+        return String();
+      }
+    }
+    return title;
+  }
+
+  return String();
+}
+
+// Matches whole words or phrases at word boundaries, ignoring case. For
+// example, "lock" does not match "unlocked", but "Password" matches
+// "Password:".
+bool ContainsWholeWordLabel(const StringView& text,
+                            const String& folded_label) {
+  const String folded_text = text.ToString().FoldCase();
+  wtf_size_t position = folded_text.find(folded_label);
+  if (position == kNotFound) {
+    return false;
+  }
+  TextBreakIterator* words = WordBreakIterator(folded_text);
+  if (!words) {
+    return false;
+  }
+  while (position != kNotFound) {
+    if (words->isBoundary(base::checked_cast<int32_t>(position)) &&
+        words->isBoundary(
+            base::checked_cast<int32_t>(position + folded_label.length()))) {
+      return true;
+    }
+    position = folded_text.find(folded_label, position + 1);
+  }
+  return false;
+}
+
+// Returns whether attributes.label duplicates attributes.image_info's caption
+// or any text entry in subtree_texts (the trimmed text nodes in this node's
+// subtree). After trimming surrounding whitespace:
+// - With AIPageContentLabelRemoveRedundantWholeWordMatching disabled, matches
+//   must be exact and case-sensitive.
+// - With AIPageContentLabelRemoveRedundantWholeWordMatching enabled:
+//   - The label only needs to match all or part of the caption or text entry,
+//     as long as the match starts and ends at word boundaries.
+//   - Matching ignores case.
+bool IsRedundantLabel(const mojom::blink::AIPageContentAttributes& attributes,
+                      base::span<const StringView> subtree_texts) {
+  const StringView label = StringView(attributes.label).StripWhiteSpace();
+  if (label.empty()) {
+    return false;
+  }
+  const StringView image_caption =
+      attributes.image_info
+          ? StringView(attributes.image_info->image_caption).StripWhiteSpace()
+          : StringView();
+  if (image_caption == label || std::ranges::contains(subtree_texts, label)) {
+    return true;
+  }
+  // The whole-word flag also matches within longer text, ignoring case.
+  if (!RuntimeEnabledFeatures::
+          AIPageContentLabelRemoveRedundantWholeWordMatchingEnabled()) {
+    return false;
+  }
+  // Reuse the folded label for the caption and every text node in the subtree.
+  const String folded_label = label.ToString().FoldCase();
+  return (!image_caption.empty() &&
+          ContainsWholeWordLabel(image_caption, folded_label)) ||
+         std::ranges::any_of(subtree_texts, [&](const StringView& text) {
+           return ContainsWholeWordLabel(text, folded_label);
+         });
+}
+
+// Clears node's label if it is redundant with its image caption or any single
+// text node in its subtree (see IsRedundantLabel). frame_texts accumulates each
+// node's trimmed text content in DFS order. Each node checks only text from
+// itself and its descendants, excluding text from earlier siblings.
+void RemoveRedundantLabels(mojom::blink::AIPageContentNode& node,
+                           Vector<StringView>& frame_texts) {
+  auto& attributes = *node.content_attributes;
+  if (attributes.iframe_data) {
+    // Text in an embedded frame cannot replace labels in the containing frame.
+    Vector<StringView> child_frame_texts;
+    for (auto& child : node.children_nodes) {
+      RemoveRedundantLabels(*child, child_frame_texts);
+    }
+    return;
+  }
+
+  const wtf_size_t subtree_start = frame_texts.size();
+  if (attributes.text_info) {
+    const StringView text =
+        StringView(attributes.text_info->text_content).StripWhiteSpace();
+    if (!text.empty()) {
+      frame_texts.push_back(text);
+    }
+  }
+  for (auto& child : node.children_nodes) {
+    RemoveRedundantLabels(*child, frame_texts);
+  }
+
+  // After visiting all children, entries from subtree_start onward contain
+  // all text nodes in this subtree.
+  const auto subtree_texts = base::span(frame_texts).subspan(subtree_start);
+  if (IsRedundantLabel(attributes, subtree_texts)) {
+    attributes.label = g_empty_string;
+  }
+}
+
 void ProcessImageNode(const LayoutObject& layout_image,
                       mojom::blink::AIPageContentAttributes& attributes) {
   attributes.attribute_type = mojom::blink::AIPageContentAttributeType::kImage;
@@ -1300,7 +1536,8 @@ void ProcessImageNode(const LayoutObject& layout_image,
 }
 
 void ProcessSVGRoot(const LayoutSVGRoot& layout_svg,
-                    mojom::blink::AIPageContentAttributes& attributes) {
+                    mojom::blink::AIPageContentAttributes& attributes,
+                    bool actionable_mode) {
   attributes.attribute_type =
       mojom::blink::AIPageContentAttributeType::kSvgRoot;
   CHECK(IsVisible(layout_svg));
@@ -1311,10 +1548,15 @@ void ProcessSVGRoot(const LayoutSVGRoot& layout_svg,
   }
 
   auto svg_root_data = mojom::blink::AIPageContentSvgRootData::New();
-  // TODO(b/452908424): Consider removing this given that the inner text is
-  // available in the text nodes.
-  svg_root_data->inner_text =
-      ReplaceUnpairedSurrogates(element->GetInnerTextWithoutUpdate());
+  // TODO(b/452908424): In non-actionable mode, omit the root's copy of visible
+  // text once consumers can read that text from the SVG child nodes instead.
+
+  if (!actionable_mode ||
+      !RuntimeEnabledFeatures::AIPageContentLabelRemoveRedundantEnabled() ||
+      !RuntimeEnabledFeatures::AIPageContentIncludeSVGSubtreeEnabled()) {
+    svg_root_data->inner_text =
+        ReplaceUnpairedSurrogates(element->GetInnerTextWithoutUpdate());
+  }
   attributes.svg_root_data = std::move(svg_root_data);
 }
 
@@ -1343,19 +1585,254 @@ void ProcessVideoNode(const HTMLVideoElement& video_element,
   attributes.video_data = std::move(video_data);
 }
 
-void ProcessAnchorNode(const HTMLAnchorElement& anchor_element,
-                       mojom::blink::AIPageContentAttributes& attributes) {
+void ProcessAnchorNodeImpl(const UrlUtils& url_utils,
+                           const DOMTokenList& rel_list,
+                           const LayoutObject& layout_object,
+                           mojom::blink::AIPageContentAttributes& attributes) {
   attributes.attribute_type = mojom::blink::AIPageContentAttributeType::kAnchor;
-  if (!IsVisible(*anchor_element.GetLayoutObject())) {
+  if (!IsVisible(layout_object)) {
     return;
   }
 
   auto anchor_data = mojom::blink::AIPageContentAnchorData::New();
-  anchor_data->url = anchor_element.Url();
-  for (unsigned i = 0; i < anchor_element.relList().length(); ++i) {
-    anchor_data->rel.push_back(GetAnchorRel(anchor_element.relList().item(i)));
+  anchor_data->url = url_utils.Url();
+  for (unsigned i = 0; i < rel_list.length(); ++i) {
+    anchor_data->rel.push_back(GetAnchorRel(rel_list.item(i)));
   }
   attributes.anchor_data = std::move(anchor_data);
+}
+
+void ProcessAnchorNode(const HTMLAnchorElement& anchor_element,
+                       mojom::blink::AIPageContentAttributes& attributes) {
+  ProcessAnchorNodeImpl(anchor_element, anchor_element.relList(),
+                        *anchor_element.GetLayoutObject(), attributes);
+}
+
+void ProcessAnchorNode(const MathMLAnchorElement& anchor_element,
+                       mojom::blink::AIPageContentAttributes& attributes) {
+  CHECK(anchor_element.relList());
+  ProcessAnchorNodeImpl(anchor_element, *anchor_element.relList(),
+                        *anchor_element.GetLayoutObject(), attributes);
+}
+
+// Limits for MathML serialization:
+
+// Maximum UTF-8 size of `stripped_mathml`.
+constexpr size_t kMaxStrippedMathMLBytes = 65536;  // 64 KiB
+
+// Maximum DOM nesting depth before aborting recursive MathML serialization.
+constexpr int kMaxMathMLSerializationDepth = 64;
+
+// Escapes XML special characters ('&', '<', '>', and attribute quotes/control
+// chars per `entity_mask`) and '$' (for LLM LaTeX delimiter safety). Returns
+// false if the size limit is exceeded.
+bool AppendEscapedString(const StringView& text,
+                         EntityMask entity_mask,
+                         StringBuilder& builder) {
+  if (builder.length() + text.length() > kMaxStrippedMathMLBytes) {
+    return false;
+  }
+  bool is_first = true;
+  for (const StringView& part : text.Split('$')) {
+    if (!is_first) {
+      builder.Append("&#36;");
+    }
+    is_first = false;
+    MarkupFormatter::AppendCharactersReplacingEntities(part, entity_mask,
+                                                       builder);
+  }
+  return builder.length() <= kMaxStrippedMathMLBytes;
+}
+
+// Allowlists only un-namespaced MathML attributes that carry equation
+// meaning (`alttext`, which often holds the LaTeX source), symbol variant
+// (`mathvariant`), or matrix cell span (`rowspan`, `columnspan`), stripping
+// styling and general DOM/ARIA attributes.
+bool ShouldSerializeMathMLAttribute(const QualifiedName& name) {
+  if (!name.NamespaceURI().IsNull()) {
+    return false;
+  }
+  const AtomicString& local_name = name.LocalName();
+  return local_name == "alttext" ||
+         local_name == mathml_names::kMathvariantAttr.LocalName() ||
+         local_name == mathml_names::kRowspanAttr.LocalName() ||
+         local_name == mathml_names::kColumnspanAttr.LocalName();
+}
+
+// Returns true if `element` is an outermost <math> element (i.e. not nested
+// inside another <math> ancestor, such as via <mtext>).
+bool IsRootMathElement(const MathMLElement& element) {
+  if (!element.HasTagName(mathml_names::kMathTag)) {
+    return false;
+  }
+  for (const Element* ancestor = element.parentElement(); ancestor;
+       ancestor = ancestor->parentElement()) {
+    if (ancestor->HasTagName(mathml_names::kMathTag)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Recursively serializes `node` and its visible descendants into sanitized
+// MathML in `builder`. `depth` is 1-indexed from the root <math> element.
+// `should_preserve_whitespace` is true when inside token elements where
+// whitespace is significant (<mtext>, <ms>). Returns false to abort early if
+// depth or size limits are exceeded.
+bool SerializeMathMLNode(const Node& node,
+                         StringBuilder& builder,
+                         int depth,
+                         bool should_preserve_whitespace) {
+  if (builder.length() > kMaxStrippedMathMLBytes ||
+      depth > kMaxMathMLSerializationDepth) {
+    return false;
+  }
+
+  if (const auto* text = DynamicTo<Text>(node)) {
+    if (text->data().empty()) {
+      return true;
+    }
+    // Non-whitespace text must have a LayoutObject so unrendered stray text
+    // (e.g. directly inside <mrow> or <svg>) is skipped. Whitespace-only text
+    // cannot rely on GetLayoutObject() because <mtext> (display: block math)
+    // blockifies child elements, causing Blink to omit LayoutText for spaces
+    // in e.g. `<span> </span>` or after `</svg>`.
+    const bool should_keep_text = text->data().ContainsOnlyWhitespaceOrEmpty()
+                                      ? should_preserve_whitespace
+                                      : text->GetLayoutObject() != nullptr;
+    if (!should_keep_text) {
+      return true;
+    }
+    return AppendEscapedString(text->data(), kEntityMaskInPcdata, builder);
+  }
+
+  const auto* element = DynamicTo<Element>(node);
+  if (!element) {
+    return true;
+  }
+  // Drop <annotation>, <annotation-xml>, <script>, and <style> subtrees.
+  // Note that <script> and <style> directly inside <math> are parsed into the
+  // MathML namespace and receive layout objects from mathml.css.
+  if (element->HasTagName(mathml_names::kAnnotationTag) ||
+      element->HasTagName(mathml_names::kAnnotationXmlTag) ||
+      EqualIgnoringAsciiCase(element->localName(), "script") ||
+      EqualIgnoringAsciiCase(element->localName(), "style")) {
+    return true;
+  }
+  // Drop hidden or redacted subtrees (display:none, visibility:hidden,
+  // <mphantom>, or custom password CSS) so the serialized DOM matches visible
+  // layout extraction.
+  const LayoutObject* element_layout_object = element->GetLayoutObject();
+  if (!element_layout_object || !IsVisible(*element_layout_object) ||
+      ShouldRedactSubtree(GetRedactionDecision(*element_layout_object))) {
+    return true;
+  }
+
+  const auto* mathml_element = DynamicTo<MathMLElement>(element);
+  if (!mathml_element) {
+    // Unwrap foreign (HTML/SVG) elements (e.g. `<mtext>if <b>n</b></mtext>`)
+    // to keep their visible text without emitting non-MathML tags. Do not
+    // preserve whitespace inside `<svg>` so formatting whitespace between SVG
+    // tags (which has no LayoutObject) is not emitted.
+    const bool should_foreign_preserve_whitespace =
+        should_preserve_whitespace && !element->IsSVGElement();
+    for (Node* child = element->firstChild(); child;
+         child = child->nextSibling()) {
+      if (!SerializeMathMLNode(*child, builder, depth + 1,
+                               should_foreign_preserve_whitespace)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  const AtomicString& tag_name = mathml_element->localName();
+  builder.Append('<');
+  builder.Append(tag_name);
+  for (const auto& attribute : mathml_element->Attributes()) {
+    if (ShouldSerializeMathMLAttribute(attribute.GetName())) {
+      builder.Append(' ');
+      builder.Append(attribute.LocalName());
+      builder.Append("=\"");
+      if (!AppendEscapedString(attribute.Value(), kEntityMaskInAttributeValue,
+                               builder)) {
+        return false;
+      }
+      builder.Append('"');
+    }
+  }
+  builder.Append('>');
+  // Only preserve whitespace-only text nodes inside <mtext> (prose text)
+  // and <ms> (string literals), where spaces carry word/string separation
+  // (including across inline HTML children like `<span> </span>`); between
+  // other MathML tags, whitespace is source formatting ignored by layout.
+  const bool should_preserve_child_whitespace =
+      mathml_element->HasTagName(mathml_names::kMtextTag) ||
+      mathml_element->HasTagName(mathml_names::kMsTag);
+  for (Node* child = mathml_element->firstChild(); child;
+       child = child->nextSibling()) {
+    if (!SerializeMathMLNode(*child, builder, depth + 1,
+                             should_preserve_child_whitespace)) {
+      return false;
+    }
+  }
+  builder.Append("</");
+  builder.Append(tag_name);
+  builder.Append('>');
+  return builder.length() <= kMaxStrippedMathMLBytes;
+}
+
+void ProcessRootMathNode(const MathMLElement& mathml_element,
+                         mojom::blink::AIPageContentAttributes& attributes) {
+  attributes.attribute_type = mojom::blink::AIPageContentAttributeType::kMath;
+  const LayoutObject& layout_object = *mathml_element.GetLayoutObject();
+  if (!IsVisible(layout_object)) {
+    return;
+  }
+
+  auto math_data = mojom::blink::AIPageContentMathData::New();
+  math_data->is_block = !layout_object.IsInline();
+
+  StringBuilder builder;
+  if (SerializeMathMLNode(mathml_element, builder, /*depth=*/1,
+                          /*should_preserve_whitespace=*/false)) {
+    String serialized = ReplaceUnpairedSurrogates(builder.ToString());
+    const size_t byte_size = serialized.Utf8().length();
+    if (byte_size <= kMaxStrippedMathMLBytes) {
+      base::UmaHistogramCounts1M(
+          "OptimizationGuide.AIPageContent.MathSerializedSize",
+          base::saturated_cast<int>(byte_size));
+      math_data->stripped_mathml = std::move(serialized);
+    }
+  }
+  attributes.math_data = std::move(math_data);
+}
+
+bool ShouldProcessMathElement(const MathMLElement& mathml_element) {
+  if (!RuntimeEnabledFeatures::AIPageContentIncludeMathMLEnabled()) {
+    return false;
+  }
+  // Only MathML <a> links and the root <math> element generate specialized
+  // nodes. Non-root MathML descendants continue to fall through to the legacy
+  // layout walk (emitting child kText, kTable, and kAnchor nodes) for backward
+  // compatibility with consumers that do not yet read `stripped_mathml`.
+  return IsA<MathMLAnchorElement>(mathml_element) ||
+         IsRootMathElement(mathml_element);
+}
+
+void ProcessMathElement(const MathMLElement& mathml_element,
+                        mojom::blink::AIPageContentAttributes& attributes) {
+  if (const auto* mathml_anchor =
+          DynamicTo<MathMLAnchorElement>(mathml_element)) {
+    // Note: Also requires the MathMLAnchorElement feature to be enabled so the
+    // parser creates a MathMLAnchorElement instead of a generic MathMLElement.
+    ProcessAnchorNode(*mathml_anchor, attributes);
+    return;
+  }
+  // ShouldProcessMathElement() only accepts MathML <a> links (handled above)
+  // and root <math> elements.
+  CHECK(IsRootMathElement(mathml_element));
+  ProcessRootMathNode(mathml_element, attributes);
 }
 
 void ProcessTableNode(const LayoutTable& layout_table,
@@ -1468,7 +1945,7 @@ uint32_t ComputeDefaultLineHeightPx(const LocalFrame& frame) {
     if (const LayoutObject* layout_object =
             document_element->GetLayoutObject()) {
       // Prefer the <html> style because authors set the frame default there.
-      return ComputeDefaultLineHeightPx(layout_object->StyleRef());
+      return ComputeDefaultLineHeightPx(layout_object->Style());
     }
   }
 
@@ -1480,16 +1957,10 @@ uint32_t ComputeDefaultLineHeightPx(const LocalFrame& frame) {
 // Populates form control data for ARIA-based controls (e.g. role=checkbox).
 // Returns true if ARIA form control data should be emitted for this element.
 bool ProcessAriaFormControlNode(
-    const LayoutObject& object,
     const Element& element,
+    ax::mojom::blink::Role aria_role,
     mojom::blink::AIPageContentAttributes& attributes) {
-  // Use AXObject's raw role resolver so we only honor explicit ARIA roles and
-  // ignore implicit/native roles for ARIA-only control semantics.
-  ax::mojom::blink::Role aria_role = AXObject::DetermineRawAriaRole(element);
-  if (aria_role == ax::mojom::blink::Role::kUnknown) {
-    return false;
-  }
-
+  // Unknown and non-control roles are rejected by the mapping below.
   mojom::blink::FormControlType form_control_type;
   if (!FormControlTypeForAriaRole(aria_role, &form_control_type)) {
     return false;
@@ -1549,7 +2020,8 @@ bool ProcessAriaFormControlNode(
 
 // Returns a modal/modeless dialog attribute type if relevant.
 std::optional<mojom::blink::AIPageContentAttributeType> GetDialogAttributeType(
-    const Element* element) {
+    const Element* element,
+    ax::mojom::blink::Role aria_role) {
   using AttributeType = mojom::blink::AIPageContentAttributeType;
 
   // Layout objects without DOM elements cannot be dialogs.
@@ -1568,8 +2040,6 @@ std::optional<mojom::blink::AIPageContentAttributeType> GetDialogAttributeType(
   }
 
   // Map ARIA dialogs.
-  const ax::mojom::blink::Role aria_role =
-      AXObject::DetermineRawAriaRole(*element);
   if (!ui::IsDialog(aria_role)) {
     return std::nullopt;
   }
@@ -2213,33 +2683,31 @@ mojom::blink::AIPageContentPtr AIPageContentAgent::ContentBuilder::Build(
   //
   // TODO(crbug.com/387355768): Consider limiting the lock to nodes with
   // activation reason of FindInPage.
-  std::vector<DisplayLockDocumentState::ScopedForceActivatableDisplayLocks>
+  DisplayLockDocumentState::ScopedForceActivatableDisplayLocks
       forced_activatable_locks;
 
   // If we're doing this extraction as a part of the document lifecycle, we
   // can't invalidate style/layout.
   if (!document.InvalidationDisallowed()) {
-    forced_activatable_locks.emplace_back(
-        document.GetDisplayLockDocumentState()
-            .GetScopedForceActivatableLocks());
+    forced_activatable_locks.Add(document.GetDisplayLockDocumentState()
+                                     .GetScopedForceActivatableLocks());
     document.View()->ForAllChildLocalFrameViews(
         [&](LocalFrameView& frame_view) {
           if (!frame_view.GetFrame().GetDocument()) {
             return;
           }
 
-          forced_activatable_locks.emplace_back(
-              frame_view.GetFrame()
-                  .GetDocument()
-                  ->GetDisplayLockDocumentState()
-                  .GetScopedForceActivatableLocks());
+          forced_activatable_locks.Add(frame_view.GetFrame()
+                                           .GetDocument()
+                                           ->GetDisplayLockDocumentState()
+                                           .GetScopedForceActivatableLocks());
         });
   }
 
   UpdateLifecycle(document);
 
   auto* layout_view = document.GetLayoutView();
-  const auto& document_style = layout_view->StyleRef();
+  const auto& document_style = layout_view->Style();
 
   if (ShouldSkipNonSalientNode(*layout_view, *options_)) {
     return nullptr;
@@ -2263,6 +2731,7 @@ mojom::blink::AIPageContentPtr AIPageContentAgent::ContentBuilder::Build(
   auto root_node = MaybeGenerateContentNode(*layout_view, recursion_data);
   CHECK(root_node);
   WalkChildren(*layout_view, *root_node, recursion_data);
+  MaybeRemoveRedundantLabels(*root_node);
   page_content->root_node = std::move(root_node);
   page_content->visible_bounding_boxes_for_password_redaction =
       std::move(visible_bounding_boxes_for_redaction_);
@@ -2274,6 +2743,16 @@ mojom::blink::AIPageContentPtr AIPageContentAgent::ContentBuilder::Build(
   }
 
   return page_content;
+}
+
+void AIPageContentAgent::ContentBuilder::MaybeRemoveRedundantLabels(
+    mojom::blink::AIPageContentNode& root_node) const {
+  if (!actionable_mode() ||
+      !RuntimeEnabledFeatures::AIPageContentLabelRemoveRedundantEnabled()) {
+    return;
+  }
+  Vector<StringView> frame_texts;
+  RemoveRedundantLabels(root_node, frame_texts);
 }
 
 void AIPageContentAgent::ContentBuilder::UpdateLifecycle(Document& document) {
@@ -2356,7 +2835,7 @@ void AIPageContentAgent::ContentBuilder::AddMetaData(
 bool AIPageContentAgent::ContentBuilder::ShouldSkipSingleNode(
     const LayoutObject& object,
     const mojom::blink::AIPageContentAttributes& attributes) const {
-  if (object.StyleRef().GetPosition() == EPosition::kFixed) {
+  if (object.Style().GetPosition() == EPosition::kFixed) {
     // Fixed elements may implement blocking UI such as paywalls, so APC
     // normally preserves them. When enabled, the feature lets
     // pointer-transparent fixed wrappers be skipped via the normal rules for
@@ -2364,13 +2843,13 @@ bool AIPageContentAgent::ContentBuilder::ShouldSkipSingleNode(
     const bool should_preserve_as_fixed_overlay =
         !RuntimeEnabledFeatures::
             AIPageContentSkipUnclickableFixedOverlaysEnabled() ||
-        object.StyleRef().UsedPointerEvents() != EPointerEvents::kNone;
+        object.Style().UsedPointerEvents() != EPointerEvents::kNone;
     if (should_preserve_as_fixed_overlay) {
       return false;
     }
   }
 
-  if (object.StyleRef().GetPosition() == EPosition::kSticky) {
+  if (object.Style().GetPosition() == EPosition::kSticky) {
     return false;
   }
 
@@ -2384,7 +2863,7 @@ bool AIPageContentAgent::ContentBuilder::ShouldSkipSingleNode(
   //    based on the author making it scrollable.
   // TODO(khushalsagar): Consider removing this, no consumer relies on this
   // behaviour.
-  if (object.StyleRef().ScrollsOverflow()) {
+  if (object.Style().ScrollsOverflow()) {
     return false;
   }
 
@@ -2618,7 +3097,7 @@ void AIPageContentAgent::ContentBuilder::ProcessIframe(
 
   auto* child_layout_view = local_frame->ContentLayoutObject();
   if (child_layout_view) {
-    RecursionData child_recursion_data(child_layout_view->StyleRef());
+    RecursionData child_recursion_data(child_layout_view->Style());
     // The aria attribute values don't pierce frame boundaries.
     child_recursion_data.is_aria_disabled = false;
     child_recursion_data.stack_depth = recursion_data.stack_depth + 1;
@@ -2674,14 +3153,21 @@ AIPageContentAgent::ContentBuilder::MaybeGenerateContentNodeImpl(
   attributes.redaction_decision = GetRedactionDecision(object);
   // Compute state that is used to decide whether this node generates a
   // ContentNode before making the decision below.
-  AddAnnotatedRoles(object, attributes.annotated_roles);
+  const auto* element = DynamicTo<Element>(object.GetNode());
+  // Resolve the explicit role once for all node metadata, in both modes.
+  // Native or implicit roles must not supply ARIA-only semantics.
+  const ax::mojom::blink::Role aria_role =
+      element ? AXObject::DetermineRawAriaRole(*element)
+              : ax::mojom::blink::Role::kUnknown;
+  AddAnnotatedRoles(object, aria_role, attributes.annotated_roles);
   PopulateLabelForDomNodeId(object, attributes);
 
-  auto* element = DynamicTo<Element>(object.GetNode());
-  if (actionable_mode() && element) {
-    attributes.aria_role = AXObject::DetermineRawAriaRole(*element);
+  if (actionable_mode() && aria_role != ax::mojom::blink::Role::kUnknown) {
+    // Missing, empty, and invalid roles have no role metadata to serialize.
+    attributes.aria_role = aria_role;
   }
-  AddNodeInteractionInfo(object, attributes, recursion_data.is_aria_disabled,
+  AddNodeInteractionInfo(object, aria_role, attributes,
+                         recursion_data.is_aria_disabled,
                          recursion_data.is_aria_hidden);
 
   // Set the attribute type and add any special attributes if the attribute type
@@ -2716,7 +3202,7 @@ AIPageContentAgent::ContentBuilder::MaybeGenerateContentNodeImpl(
     if (!IsVisible(object)) {
       return nullptr;
     }
-    ProcessSVGRoot(To<LayoutSVGRoot>(object), attributes);
+    ProcessSVGRoot(To<LayoutSVGRoot>(object), attributes, actionable_mode());
   } else if (object.IsCanvas()) {
     // No content will be rendered if the canvas is hidden.
     if (!IsVisible(object)) {
@@ -2726,6 +3212,10 @@ AIPageContentAgent::ContentBuilder::MaybeGenerateContentNodeImpl(
   } else if (const auto* video_element =
                  DynamicTo<HTMLVideoElement>(object.GetNode())) {
     ProcessVideoNode(*video_element, attributes);
+  } else if (const auto* mathml_element =
+                 DynamicTo<MathMLElement>(object.GetNode());
+             mathml_element && ShouldProcessMathElement(*mathml_element)) {
+    ProcessMathElement(*mathml_element, attributes);
   } else if (const auto* anchor_element =
                  DynamicTo<HTMLAnchorElement>(object.GetNode())) {
     ProcessAnchorNode(*anchor_element, attributes);
@@ -2742,10 +3232,22 @@ AIPageContentAgent::ContentBuilder::MaybeGenerateContentNodeImpl(
   } else if (const auto* form_control =
                  DynamicTo<HTMLFormControlElement>(object.GetNode())) {
     ProcessFormControlNode(*form_control, attributes);
-  } else if (auto dialog_attribute_type = GetDialogAttributeType(element)) {
+  } else if (const auto* summary =
+                 DynamicTo<HTMLSummaryElement>(object.GetNode());
+             summary && summary->IsMainSummary()) {
+    attributes.attribute_type =
+        mojom::blink::AIPageContentAttributeType::kFormControl;
+    if (IsVisible(object)) {
+      attributes.form_control_data =
+          mojom::blink::AIPageContentFormControlData::New();
+      attributes.form_control_data->form_control_type =
+          mojom::blink::FormControlType::kButtonButton;
+    }
+  } else if (auto dialog_attribute_type =
+                 GetDialogAttributeType(element, aria_role)) {
     attributes.attribute_type = *dialog_attribute_type;
   } else if (element &&
-             ProcessAriaFormControlNode(object, *element, attributes)) {
+             ProcessAriaFormControlNode(*element, aria_role, attributes)) {
     // ProcessAriaFormControlNode sets the attribute type and data.
   } else if (element && IsHeadingTag(*element)) {
     attributes.attribute_type =
@@ -2853,39 +3355,41 @@ void AIPageContentAgent::ContentBuilder::AddLabel(
     return;
   }
 
-  // TODO(khushalsagar): Look at `AXNodeObject::TextAlternative` which has other
-  // sources for this.
   StringBuilder accumulated_text;
-  const auto& aria_label =
-      element->FastGetAttribute(html_names::kAriaLabelAttr);
-  if (!aria_label.GetString().ContainsOnlyWhitespaceOrEmpty()) {
+  const String aria_label = NormalizeLabelCandidate(
+      element->FastGetAttribute(html_names::kAriaLabelAttr));
+  if (!aria_label.empty()) {
     accumulated_text.Append(aria_label);
   }
 
+  // This lookup accepts both aria-labelledby and the older aria-labeledby.
   const GCedHeapVector<Member<Element>>* aria_labelledby_elements =
       element->ElementsFromAttributeOrInternals(
           html_names::kAriaLabelledbyAttr);
-  if (!aria_labelledby_elements) {
-    attributes.label = ReplaceUnpairedSurrogates(accumulated_text.ToString());
-    return;
+  if (aria_labelledby_elements) {
+    for (const auto& label_element : *aria_labelledby_elements) {
+      // Use textContent because aria-labelledby can refer to hidden elements.
+      const String text_content =
+          NormalizeLabelCandidate(label_element->textContent(true));
+      if (text_content.empty()) {
+        continue;
+      }
+
+      if (!accumulated_text.empty()) {
+        accumulated_text.Append(" ");
+      }
+
+      accumulated_text.Append(text_content);
+    }
   }
 
-  for (const auto& label_element : *aria_labelledby_elements) {
-    // We need to use textContent instead of innerText since aria labelled by
-    // nodes don't need to be in the layout.
-    auto text_content = label_element->textContent(true);
-    if (text_content.ContainsOnlyWhitespaceOrEmpty()) {
-      continue;
-    }
-
-    if (!accumulated_text.empty()) {
-      accumulated_text.Append(" ");
-    }
-
-    accumulated_text.Append(text_content);
+  // Try other label sources only when ARIA provides no text.
+  if (accumulated_text.empty() &&
+      RuntimeEnabledFeatures::
+          AIPageContentLabelExpandFallbackSourcesEnabled()) {
+    accumulated_text.Append(GetFallbackLabel(*element));
   }
-
-  attributes.label = ReplaceUnpairedSurrogates(accumulated_text.ToString());
+  attributes.label = accumulated_text.ToString();
 }
 
 void AIPageContentAgent::ContentBuilder::PopulateLabelForDomNodeId(
@@ -2915,8 +3419,9 @@ void AIPageContentAgent::ContentBuilder::PopulateLabelForDomNodeId(
 
 void AIPageContentAgent::ContentBuilder::AddAnnotatedRoles(
     const LayoutObject& object,
+    ax::mojom::blink::Role aria_role,
     Vector<mojom::blink::AIPageContentAnnotatedRole>& annotated_roles) const {
-  const auto& style = object.StyleRef();
+  const auto& style = object.Style();
   if (style.ContentVisibility() == EContentVisibility::kHidden) {
     annotated_roles.push_back(
         mojom::blink::AIPageContentAnnotatedRole::kContentHidden);
@@ -2927,10 +3432,6 @@ void AIPageContentAgent::ContentBuilder::AddAnnotatedRoles(
   if (!element) {
     return;
   }
-  // Use the ARIA role parser so role checks are case-insensitive and avoid
-  // re-implementing token parsing in APC.
-  const ax::mojom::blink::Role aria_role =
-      AXObject::DetermineRawAriaRole(*element);
   if (element->HasTagName(html_names::kHeaderTag) ||
       aria_role == ax::mojom::blink::Role::kBanner) {
     annotated_roles.push_back(
@@ -3093,7 +3594,8 @@ void AIPageContentAgent::ContentBuilder::ComputeHitTestableNodesInViewport(
   int32_t next_z_order = 1;
   // Use the list-based NodeSet directly to preserve insertion-order semantics
   // and duplicate filtering while avoiding intermediate storage.
-  for (const auto& member_node : base::Reversed(result.ListBasedTestResult())) {
+  for (const auto& member_node :
+       std::views::reverse(result.ListBasedTestResult())) {
     Node* node = member_node.Get();
     CHECK(node);
     if (!node->GetLayoutObject()) {
@@ -3178,8 +3680,39 @@ void AIPageContentAgent::ContentBuilder::AddFrameData(
 void AIPageContentAgent::ContentBuilder::AddFrameInteractionInfo(
     const LocalFrame& frame,
     mojom::blink::AIPageContentFrameInteractionInfo& frame_interaction_info) {
-  // Selection
-  if (!frame.SelectedText().empty()) {
+  // Selection. Editors using EditContext keep their text and selection in it
+  // rather than in the DOM, so if the focused element owns the active
+  // EditContext, use its selection. The offsets are into its text.
+  Element* focused_element = frame.GetDocument()->FocusedElement();
+  EditContext* edit_context =
+      focused_element ? focused_element->editContext() : nullptr;
+  if (edit_context != frame.GetInputMethodController().GetActiveEditContext()) {
+    edit_context = nullptr;
+  }
+  const String edit_context_text =
+      edit_context ? edit_context->text() : String();
+  const uint32_t edit_context_start =
+      edit_context ? std::min(edit_context->selectionStart(),
+                              edit_context->selectionEnd())
+                   : 0;
+  const uint32_t edit_context_end =
+      edit_context ? std::max(edit_context->selectionStart(),
+                              edit_context->selectionEnd())
+                   : 0;
+  if (edit_context_start < edit_context_end &&
+      edit_context_end <= edit_context_text.length()) {
+    frame_interaction_info.selection =
+        mojom::blink::AIPageContentSelection::New();
+    mojom::blink::AIPageContentSelection& selection =
+        *frame_interaction_info.selection;
+    selection.selected_text =
+        ReplaceUnpairedSurrogates(edit_context_text.substr(
+            edit_context_start, edit_context_end - edit_context_start));
+    selection.start_dom_node_id = AddInteractiveNode(*focused_element);
+    selection.end_dom_node_id = selection.start_dom_node_id;
+    selection.start_offset = edit_context_start;
+    selection.end_offset = edit_context_end;
+  } else if (!frame.SelectedText().empty()) {
     frame_interaction_info.selection =
         mojom::blink::AIPageContentSelection::New();
     mojom::blink::AIPageContentSelection& selection =
@@ -3268,10 +3801,11 @@ void AIPageContentAgent::ContentBuilder::MaybeAddPopupData(
   // popups because focus within transient popup windows is not tracked for
   // frame-level interactions.
   auto web_popup_root_node = MaybeGenerateContentNode(
-      *web_popup_layout_view, web_popup_layout_view->StyleRef());
+      *web_popup_layout_view, web_popup_layout_view->Style());
   CHECK(web_popup_root_node);
   WalkChildren(*web_popup_layout_view, *web_popup_root_node,
-               web_popup_layout_view->StyleRef());
+               web_popup_layout_view->Style());
+  MaybeRemoveRedundantLabels(*web_popup_root_node);
 
   // Currently the geometry for popup nodes is relative to the popup, offset to
   // relative to the main frame.
@@ -3327,10 +3861,11 @@ void AIPageContentAgent::ContentBuilder::AddInteractionInfoForHitTesting(
 
 void AIPageContentAgent::ContentBuilder::AddNodeInteractionInfo(
     const LayoutObject& object,
+    ax::mojom::blink::Role aria_role,
     mojom::blink::AIPageContentAttributes& attributes,
     bool is_aria_disabled,
     bool is_aria_hidden) {
-  const ComputedStyle& style = object.StyleRef();
+  const ComputedStyle& style = object.Style();
   if (style.UsedPointerEvents() == EPointerEvents::kNone) {
     // Treat nodes exposed through pointer-events:none as non-actionable. This
     // includes elements the author explicitly removed from hit testing and
@@ -3354,8 +3889,9 @@ void AIPageContentAgent::ContentBuilder::AddNodeInteractionInfo(
   auto* element = DynamicTo<Element>(object.GetNode());
   bool is_disabled = false;
   if (element) {
-    is_disabled = AddInteractionDisabledReasons(
-        *element, is_aria_disabled, is_aria_hidden, *node_interaction_info);
+    is_disabled =
+        AddInteractionDisabledReasons(*element, aria_role, is_aria_disabled,
+                                      is_aria_hidden, *node_interaction_info);
   }
 
   // Strongly disabled nodes are not valid action targets, so do not populate
@@ -3384,8 +3920,7 @@ void AIPageContentAgent::ContentBuilder::AddNodeInteractionInfo(
   }
 
   if (element) {
-    AddClickabilityReasons(*element, *attributes.aria_role,
-                           *node_interaction_info);
+    AddClickabilityReasons(*element, aria_role, *node_interaction_info);
     const bool element_is_focusable =
         element->IsFocusable(Element::UpdateBehavior::kAssertNoLayoutUpdates);
     node_interaction_info->is_focusable = element_is_focusable;

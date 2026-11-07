@@ -37,9 +37,6 @@
 #include "third_party/blink/public/common/features_generated.h"
 #include "url/origin.h"
 
-#if BUILDFLAG(IS_MAC)
-#endif
-
 namespace {
 
 BrowserWindowInterface* GetBrowser(content::WebContents* web_contents) {
@@ -75,7 +72,7 @@ bool IsFullScreenMode(content::WebContents* web_contents) {
 bool ShouldIgnorePermissionRequest(
     content::WebContents* web_contents,
     permissions::PermissionPrompt::Delegate* delegate) {
-  DCHECK(web_contents);
+  CHECK(web_contents, base::NotFatalUntil::M162);
 
   if (ShouldShowPermissionPromptEvenIfOmniboxEditedOrEmpty(web_contents)) {
     return false;
@@ -96,10 +93,31 @@ bool ShouldIgnorePermissionRequest(
   return !can_display_prompt;
 }
 
-bool ShouldUseChip(permissions::PermissionPrompt::Delegate* delegate) {
-  // Permission request chip should not be shown if `delegate->Requests()` were
-  // requested without a user gesture.
-  if (!permissions::PermissionUtil::HasUserGesture(delegate)) {
+bool IsAmbientLoginRequest(permissions::PermissionPrompt::Delegate* delegate) {
+  const auto& requests = delegate->Requests();
+  return requests.size() == 1 && requests.front()->request_type() ==
+                                     permissions::RequestType::kAmbientLogin;
+}
+
+bool ShouldUseChip(content::WebContents* web_contents,
+                   permissions::PermissionPrompt::Delegate* delegate) {
+  // Ambient login requests are made without a user gesture, but always display
+  // a permission chip in the omnibox.
+  if (IsAmbientLoginRequest(delegate)) {
+    return true;
+  }
+
+  // Otherwise, the permission request chip should not be shown if
+  // `delegate->Requests()` were requested without a user gesture. Secondary UI
+  // surfaces with their own location bar, such as the Contextual Tasks side
+  // panel, are exempt: their toolbar has no location icon for a chip-less
+  // prompt bubble to point at, so the request chip is always shown to identify
+  // the request and anchor the bubble. Some requests there never have a user
+  // gesture, e.g. voice search's microphone request via the Web Speech API.
+  // Note that this applies to any `WebContents` with `LocationBarOverrideData`,
+  // including web origins transferred from a tab into the side panel.
+  if (!permissions::PermissionUtil::HasUserGesture(delegate) &&
+      !::location_bar::LocationBarOverrideData::FromWebContents(web_contents)) {
     return false;
   }
 
@@ -175,7 +193,7 @@ bool CanCurrentRequestUseModalUI(
 std::unique_ptr<permissions::PermissionPrompt> CreateNormalPrompt(
     content::WebContents* web_contents,
     permissions::PermissionPrompt::Delegate* delegate) {
-  DCHECK(!delegate->ShouldCurrentRequestUseQuietUI());
+  CHECK(!delegate->ShouldCurrentRequestUseQuietUI(), base::NotFatalUntil::M162);
   if (ShouldCurrentRequestUseExclusiveAccessUI(delegate)) {
     return CanCurrentRequestUseModalUI(web_contents, delegate)
                ? std::make_unique<ExclusiveAccessPermissionPrompt>(web_contents,
@@ -190,7 +208,8 @@ std::unique_ptr<permissions::PermissionPrompt> CreateNormalPrompt(
                ? std::make_unique<EmbeddedPermissionPrompt>(web_contents,
                                                             delegate)
                : nullptr;
-  } else if (ShouldUseChip(delegate) && IsLocationBarDisplayed(web_contents)) {
+  } else if (ShouldUseChip(web_contents, delegate) &&
+             IsLocationBarDisplayed(web_contents)) {
     return std::make_unique<PermissionPromptChip>(web_contents, delegate);
   } else {
     return std::make_unique<PermissionPromptBubble>(web_contents, delegate);
@@ -206,7 +225,8 @@ std::unique_ptr<permissions::PermissionPrompt> CreateQuietPrompt(
     } else {
       // If LocationBar is not displayed (Fullscreen mode), display a default
       // bubble only for non-abusive origins.
-      DCHECK(!delegate->ShouldDropCurrentRequestIfCannotShowQuietly());
+      CHECK(!delegate->ShouldDropCurrentRequestIfCannotShowQuietly(),
+            base::NotFatalUntil::M162);
       return std::make_unique<PermissionPromptBubble>(web_contents, delegate);
     }
   } else {

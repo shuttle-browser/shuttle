@@ -42,12 +42,27 @@ using PlatformVoices = std::map<std::string, SPDChromeVoice>;
 
 constexpr int kInvalidUtteranceId = -1;
 constexpr int kInvalidMessageUid = -1;
+constexpr char kDefaultSpeechDispatcherLibrary[] = "libspeechd.so.2";
+
+std::string& SpeechDispatcherLibraryPath() {
+  static base::NoDestructor<std::string> library_path(
+      kDefaultSpeechDispatcherLibrary);
+  return *library_path;
+}
 
 }  // namespace
 
+base::AutoReset<std::string> SetSpeechDispatcherLibraryPathForTesting(
+    const std::string& library_path) {
+  CHECK(!library_path.empty());
+  return base::AutoReset<std::string>(&SpeechDispatcherLibraryPath(),
+                                      library_path);
+}
+
 class TtsPlatformImplBackgroundWorker {
  public:
-  TtsPlatformImplBackgroundWorker() = default;
+  explicit TtsPlatformImplBackgroundWorker(std::string library_path)
+      : library_path_(std::move(library_path)) {}
   TtsPlatformImplBackgroundWorker(const TtsPlatformImplBackgroundWorker&) =
       delete;
   TtsPlatformImplBackgroundWorker& operator=(
@@ -92,6 +107,7 @@ class TtsPlatformImplBackgroundWorker {
                                 SPDNotificationType state,
                                 char* index_mark);
 
+  const std::string library_path_;
   LibSpeechdLoader libspeechd_loader_;
   raw_ptr<SPDConnection> conn_ = nullptr;
   int msg_uid_ = kInvalidMessageUid;
@@ -250,7 +266,17 @@ void TtsPlatformImplBackgroundWorker::Shutdown() {
 }
 
 bool TtsPlatformImplBackgroundWorker::InitializeSpeechd() {
-  return libspeechd_loader_.Load("libspeechd.so.2");
+#if defined(MEMORY_SANITIZER)
+  // Speech Dispatcher is not built in //third_party/instrumented_libs, so
+  // loading the default system library under MSan dlopens the uninstrumented
+  // host libspeechd.so.2, which triggers false-positive MSan errors when it
+  // calls into instrumented GLib. Allow loading only when tests override the
+  // library path with an instrumented fake library.
+  if (library_path_ == kDefaultSpeechDispatcherLibrary) {
+    return false;
+  }
+#endif
+  return libspeechd_loader_.Load(library_path_);
 }
 
 void TtsPlatformImplBackgroundWorker::InitializeVoices(PlatformVoices* voices) {
@@ -401,7 +427,8 @@ void TtsPlatformImplBackgroundWorker::IndexMarkCallback(
 //
 
 TtsPlatformImplLinux::TtsPlatformImplLinux()
-    : worker_(base::ThreadPool::CreateSequencedTaskRunner({base::MayBlock()})) {
+    : worker_(base::ThreadPool::CreateSequencedTaskRunner({base::MayBlock()}),
+              SpeechDispatcherLibraryPath()) {
   CHECK(BrowserThread::CurrentlyOn(content::BrowserThread::UI),
         base::NotFatalUntil::M159);
   const base::CommandLine& command_line =
@@ -535,7 +562,9 @@ void TtsPlatformImplLinux::OnSpeakScheduled(
     bool success) {
   CHECK(BrowserThread::CurrentlyOn(content::BrowserThread::UI),
         base::NotFatalUntil::M159);
-  CHECK(is_speaking_, base::NotFatalUntil::M159);
+  // TODO(crbug.com/572669194): CHECK-exclusion: Convert to a CHECK once we
+  // are confident it won't be triggered.
+  DCHECK(is_speaking_);
 
   // If the utterance was not able to be emitted, stop the speaking. There
   // won't be any asynchronous TTS event to confirm the end of the speech.

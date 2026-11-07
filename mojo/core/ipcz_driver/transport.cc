@@ -187,7 +187,6 @@ bool EncodeHandle(PlatformHandle& handle,
 // INVALID_HANDLE_VALUE is one of the problematic handle values that a caller
 // might misinterpret.
 std::optional<PlatformHandle> DecodeHandle(HandleData data,
-                                           const base::Process& remote_process,
                                            HandleOwner handle_owner,
                                            Transport& from_transport) {
   const HANDLE handle = DataToHandle(data);
@@ -201,13 +200,10 @@ std::optional<PlatformHandle> DecodeHandle(HandleData data,
   }
 
   if (handle_owner == HandleOwner::kRecipient) {
-    // Senders can only duplicate handles into this (receiving) process in
-    // two scenarios:
-    // - The sender is at least as privileged as this process; see
-    //   Transport::CanAcceptReceiverOwnedHandles().
-    // - The sender is in the same process, i.e. for `mojo::DirectReceiver`.
-    if (!from_transport.CanAcceptReceiverOwnedHandles() &&
-        !remote_process.is_current()) {
+    // Senders can only duplicate handles into this (receiving) process if the
+    // sender is at least as privileged as this process; see
+    // Transport::CanAcceptReceiverOwnedHandles().
+    if (!from_transport.CanAcceptReceiverOwnedHandles()) {
       return std::nullopt;
     }
     // Verify that this is a handle to a valid object. We do not yet know the
@@ -219,6 +215,7 @@ std::optional<PlatformHandle> DecodeHandle(HandleData data,
     return PlatformHandle(base::win::ScopedHandle(handle));
   }
 
+  const base::Process& remote_process = from_transport.remote_process();
   if (!remote_process.IsValid()) {
     return std::nullopt;
   }
@@ -580,7 +577,7 @@ IpczResult Transport::DeserializeObject(
   platform_handles.resize(num_handles);
   for (size_t i = 0; i < num_handles; ++i) {
 #if BUILDFLAG(IS_WIN)
-    auto h = DecodeHandle(handle_data[i], remote_process_, handle_owner, *this);
+    auto h = DecodeHandle(handle_data[i], handle_owner, *this);
     if (!h.has_value()) {
       return IPCZ_RESULT_INVALID_ARGUMENT;
     }
@@ -666,6 +663,13 @@ bool Transport::Serialize(Transport& transmitter,
   }
 
   CHECK(inactive_endpoint_.is_valid());
+#if BUILDFLAG(IS_MAC)
+  // A peer process requirement is enforced only when the endpoint is activated
+  // locally. Serializing (relaying) the endpoint to another process would drop
+  // the requirement and silently disable peer authentication, so refuse to
+  // relay a requirement-bearing endpoint instead of weakening it.
+  CHECK(!inactive_endpoint_.has_peer_process_requirement());
+#endif
   handles[0] = inactive_endpoint_.TakePlatformHandle();
   return true;
 }
@@ -687,18 +691,21 @@ scoped_refptr<Transport> Transport::Deserialize(
 
   // A non-broker implicitly trusts its broker; otherwise the peer must be
   // explicitly trusted. When both endpoints are brokers, the peer being a
-  // broker does not by itself confer any trust on this end.
-  const bool is_source_trusted = from_transport.is_source_trusted();
+  // broker does not by itself confer any trust on this end. Additionally, an
+  // elevated endpoint does not trust a less-privileged peer (e.g. the broker
+  // which invited it) to vouch for other transports.
+  const bool is_source_at_least_as_privileged =
+      from_transport.is_source_trusted() && !from_transport.is_elevated();
 
   const bool is_new_peer_trusted = header.is_peer_trusted;
   const bool is_trusted_by_peer = header.is_trusted_by_peer;
 
-  if (is_new_peer_trusted && !is_source_trusted) {
+  if (is_new_peer_trusted && !is_source_at_least_as_privileged) {
     // Untrusted transports cannot send us trusted transports.
     return nullptr;
   }
 
-  if (header.destination_type == kBroker && !is_source_trusted) {
+  if (header.destination_type == kBroker && !is_source_at_least_as_privileged) {
     // Do not accept broker connections from untrusted transports.
     return nullptr;
   }
@@ -726,6 +733,10 @@ scoped_refptr<Transport> Transport::Deserialize(
   transport->set_is_peer_trusted(is_new_peer_trusted);
   transport->set_is_trusted_by_peer(is_trusted_by_peer);
 
+  // A transport adopted by an elevated endpoint is likewise elevated relative
+  // to its peer, which was introduced by a less-privileged node.
+  transport->set_is_elevated(from_transport.is_elevated());
+
   // Inherit the IO task used by the receiving Transport. Deserialized
   // transports are always adopted by the receiving node, and we want any given
   // node to receive all of its transports' I/O on the same thread.
@@ -743,7 +754,7 @@ void Transport::OnChannelMessage(
     size_t payload_size,
     std::vector<PlatformHandle> handles,
     scoped_refptr<ipcz_driver::Envelope> envelope) {
-  std::vector<IpczDriverHandle> driver_handles(handles.size());
+  absl::InlinedVector<IpczDriverHandle, 2> driver_handles(handles.size());
   for (size_t i = 0; i < handles.size(); ++i) {
     driver_handles[i] = TransmissiblePlatformHandle::ReleaseAsHandle(
         base::MakeRefCounted<TransmissiblePlatformHandle>(
@@ -781,11 +792,10 @@ void Transport::OnChannelDestroyed() {
 bool Transport::CanTransmitHandles() const {
 #if BUILDFLAG(IS_WIN)
   // On Windows, we can transmit handles only if at least one endpoint is a
-  // broker, or if we have a handle to the remote process, or if the both ends
-  // of the transport are held by the same process.
+  // broker, or if we have a handle to the remote process and are trusted by the
+  // peer.
   return destination_type() == kBroker || source_type() == kBroker ||
-         (remote_process_.IsValid() && is_trusted_by_peer()) ||
-         remote_process_.is_current();
+         (remote_process_.IsValid() && is_trusted_by_peer());
 #else
   return true;
 #endif

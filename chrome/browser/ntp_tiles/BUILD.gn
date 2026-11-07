@@ -22,18 +22,18 @@ source_set("impl") {
   deps = [
     "//base",
     "//chrome/browser:browser_process",
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/favicon",
     "//chrome/browser/history",
     "//chrome/browser/image_fetcher",
+    "//chrome/browser/search",
     "//chrome/browser/search_engines",
     "//chrome/browser/signin",
-    "//chrome/browser/supervised_user",
     "//components/history/core/browser",
     "//components/image_fetcher/core",
     "//components/ntp_tiles",
     "//content/public/browser",
     "//services/data_decoder/public/cpp",
+    "//ui/webui:buildflags",
   ]
 
   if (is_android) {
@@ -43,3 +43,4 @@ source_set("impl") {
 
 if (!is_android) {
 }
+

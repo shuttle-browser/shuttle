@@ -24,12 +24,101 @@ from tracing.value.diagnostics import generic_set
 from tracing.value.diagnostics import reserved_infos
 
 
-def _get_crossbench_json_paths(out_dir: pathlib.Path) -> List[pathlib.Path]:
+_CB_METADATA_COLUMNS = frozenset(
+  {'cb_browser', 'cb_story', 'cb_temperature', 'cb_run'}
+)
+
+
+def _get_metric_unit(metric: str) -> str:
+  lower_key = metric.lower()
+  if 'score' in lower_key:
+    return 'unitless_biggerIsBetter'
+  if lower_key.endswith('_bytes'):
+    return 'sizeInBytes_smallerIsBetter'
+  if lower_key.endswith('_count'):
+    return 'count_smallerIsBetter'
+  return 'ms_smallerIsBetter'
+
+
+def _trace_processor_query_csv_results(
+  out_dir: pathlib.Path,
+  default_story: Optional[str] = None,
+) -> tuple[histogram_set.HistogramSet, set[str]]:
+  """Extracts per-story histograms from trace_processor query CSV files.
+
+  Crossbench's TraceProcessorProbe writes per-row `cb_story` metadata to each
+  `<query>.csv` file, whereas `<query>.json` merges values across all stories
+  via MetricsMerger without `cb_story`. Reading the CSV files preserves
+  per-story attribution for multi-story benchmarks (e.g. `browser-startup`).
+  """
+  results = histogram_set.HistogramSet()
+  handled_stems: set[str] = set()
+
+  cb_results_json_path = out_dir / 'cb.results.json'
+  if not cb_results_json_path.exists():
+    return results, handled_stems
+
+  with cb_results_json_path.open() as f:
+    results_info = json.load(f)
+
+  browsers = (results_info.get('browsers') or {}).values()
+  csv_candidates = [
+    *_trace_processor_csvs(results_info.get('probes')),
+    *(p for b in browsers for p in _trace_processor_csvs(b.get('probes'))),
+  ]
+
+  for candidate in csv_candidates:
+    csv_path = pathlib.Path(candidate)
+    if csv_path.stem in handled_stems:
+      continue
+    try:
+      with csv_path.open() as f:
+        story_metrics: dict[str, dict[str, list[float]]] = (
+          collections.defaultdict(lambda: collections.defaultdict(list))
+        )
+        for row in csv.DictReader(f):
+          story_name = row.get('cb_story') or default_story or 'Default'
+          for col, val_str in row.items():
+            if not col or col in _CB_METADATA_COLUMNS or not val_str:
+              continue
+            try:
+              val = float(val_str.split()[0])
+            except ValueError:
+              continue
+            story_metrics[story_name][col].append(val)
+    except FileNotFoundError:
+      continue
+
+    if not story_metrics:
+      continue
+
+    handled_stems.add(csv_path.stem)
+    for story_name, metrics in story_metrics.items():
+      for metric, samples in metrics.items():
+        h = histogram.Histogram.Create(
+          metric, _get_metric_unit(metric), samples
+        )
+        h.diagnostics[reserved_infos.STORIES.name] = generic_set.GenericSet(
+          [story_name]
+        )
+        results.AddHistogram(h)
+
+  return results, handled_stems
+
+
+def _get_crossbench_json_paths(
+  out_dir: pathlib.Path,
+  ignore_trace_processor_stems: Optional[set[str]] = None,
+  allow_empty: bool = False,
+) -> List[pathlib.Path]:
   """Given a crossbench output directory, find the result json file.
 
   Args:
     out_dir: Crossbench output directory. This should be the value passed
         as --out-dir to crossbench.
+    ignore_trace_processor_stems: Optional set of trace_processor query stems
+        already converted from CSV files.
+    allow_empty: If True, do not raise ValueError when no JSON paths remain.
 
   Returns:
     A list of paths to the result json files created by crossbench probes.
@@ -70,7 +159,13 @@ def _get_crossbench_json_paths(out_dir: pathlib.Path) -> List[pathlib.Path]:
       candidates = probe_data.get('json', [])
       if probe == 'trace_processor':
         for candidate in candidates:
-          probe_json_paths.append(pathlib.Path(candidate))
+          candidate_path = pathlib.Path(candidate)
+          if (
+            ignore_trace_processor_stems
+            and candidate_path.stem in ignore_trace_processor_stems
+          ):
+            continue
+          probe_json_paths.append(candidate_path)
       else:
         if len(candidates) > 1:
           raise ValueError(
@@ -82,7 +177,7 @@ def _get_crossbench_json_paths(out_dir: pathlib.Path) -> List[pathlib.Path]:
   except AttributeError as e:
     raise AttributeError(f'debug_info={debug_info}') from e
 
-  if not probe_json_paths:
+  if not probe_json_paths and not allow_empty:
     raise ValueError(
       f'No output json file found in {cb_results_json_path}, '
       f'debug_info={debug_info}'
@@ -111,13 +206,19 @@ def convert(
     _web_power(crossbench_out_dir, out_filename, benchmark, results_label)
     return
 
-  crossbench_json_filenames = _get_crossbench_json_paths(crossbench_out_dir)
+  results, handled_tp_stems = _trace_processor_query_csv_results(
+    crossbench_out_dir, default_story=story
+  )
+  crossbench_json_filenames = _get_crossbench_json_paths(
+    crossbench_out_dir,
+    ignore_trace_processor_stems=handled_tp_stems,
+    allow_empty=bool(handled_tp_stems),
+  )
   crossbench_result = {}
   for filename in crossbench_json_filenames:
     with filename.open() as f:
       crossbench_result.update(json.load(f))
 
-  results = histogram_set.HistogramSet()
   for key, value in crossbench_result.items():
     metric = None
     key_parts = key.split('/')
@@ -126,12 +227,7 @@ def convert(
       if lower_key.startswith('iteration') or lower_key == 'geomean':
         continue
       metric = key
-      if 'score' in lower_key:
-        unit = 'unitless_biggerIsBetter'
-      elif lower_key.endswith('_bytes'):
-        unit = 'sizeInBytes_smallerIsBetter'
-      else:
-        unit = 'ms_smallerIsBetter'
+      unit = _get_metric_unit(key)
     elif len(key_parts) == 2:
       key = key_parts[1].lower()
       if key == 'total':
@@ -316,6 +412,76 @@ def _web_power_results(
   return results
 
 
+def _web_power_power_results(
+  power_rails_csv: pathlib.Path,
+) -> histogram_set.HistogramSet:
+  """Converts per-rail average power into one `soc_power` per story.
+
+  Each sample is one run's SoC power: the sum of all rails' avg_power_mw,
+  converted to watts. The rail set comes from the device model's crossbench
+  SQL, so values are not comparable across device models.
+  """
+  results = histogram_set.HistogramSet()
+  story_run_totals = collections.defaultdict(
+    lambda: collections.defaultdict(float)
+  )
+  browser_name = None
+
+  with power_rails_csv.open() as f:
+    for line in csv.DictReader(f):
+      power_mw_str = line.get('avg_power_mw')
+      if not power_mw_str:
+        continue
+      story_name = line.get('cb_story') or 'Default'
+      run_id = line.get('cb_run') or '0'
+      story_run_totals[story_name][run_id] += float(power_mw_str) / 1000
+      browser_name = browser_name or line.get('cb_browser')
+
+  for story_name, run_totals in story_run_totals.items():
+    h = histogram.Histogram.Create(
+      'soc_power', 'W_smallerIsBetter', list(run_totals.values())
+    )
+    h.diagnostics[reserved_infos.STORIES.name] = generic_set.GenericSet(
+      [story_name]
+    )
+    results.AddHistogram(h)
+
+  if browser_name:
+    results.AddSharedDiagnosticToAllHistograms(
+      'browser', generic_set.GenericSet([browser_name])
+    )
+
+  return results
+
+
+def _trace_processor_csvs(probes: Optional[dict]) -> list:
+  """Returns the trace_processor CSV paths in a `probes` dict.
+
+  Crossbench writes null for probes without results, so None is treated the
+  same as a missing entry.
+  """
+  trace_processor = (probes or {}).get('trace_processor') or {}
+  return trace_processor.get('csv') or []
+
+
+def _find_trace_processor_csv(
+  crossbench_result: dict, csv_name: str
+) -> Optional[pathlib.Path]:
+  """Returns the first trace_processor CSV named `csv_name`, or None.
+
+  Run-level probe results are searched before per-browser ones.
+  """
+  browsers = (crossbench_result.get('browsers') or {}).values()
+  candidates = [
+    *_trace_processor_csvs(crossbench_result.get('probes')),
+    *(p for b in browsers for p in _trace_processor_csvs(b.get('probes'))),
+  ]
+  for p in candidates:
+    if pathlib.Path(p).name == csv_name:
+      return pathlib.Path(p)
+  return None
+
+
 def _web_power(
   crossbench_out_dir: pathlib.Path,
   out_filename: pathlib.Path,
@@ -332,27 +498,21 @@ def _web_power(
   with crossbench_json_filename.open() as f:
     crossbench_result = json.load(f)
 
-  trace_processor_data = crossbench_result.get('probes', {}).get(
-    'trace_processor', {}
+  cpu_time_csv = _find_trace_processor_csv(
+    crossbench_result, 'web_power_cpu_time.csv'
   )
-  cpu_time_csvs = [
-    p
-    for p in trace_processor_data.get('csv', [])
-    if pathlib.Path(p).name == 'web_power_cpu_time.csv'
-  ]
-  if not cpu_time_csvs:
-    # Check browser-level probes as fallback.
-    for browser_info in crossbench_result.get('browsers', {}).values():
-      for p in (
-        browser_info.get('probes', {}).get('trace_processor', {}).get('csv', [])
-      ):
-        if pathlib.Path(p).name == 'web_power_cpu_time.csv':
-          cpu_time_csvs.append(p)
-
-  if not cpu_time_csvs:
+  if not cpu_time_csv:
     raise ValueError('Missing web_power_cpu_time.csv probe results')
 
-  results = _web_power_results(pathlib.Path(cpu_time_csvs[0]))
+  results = _web_power_results(cpu_time_csv)
+
+  # Power rails are optional: not every device exposes ODPM power rails, and
+  # their absence must not drop the CPU time results.
+  power_rails_csv = _find_trace_processor_csv(
+    crossbench_result, 'power_rails.csv'
+  )
+  if power_rails_csv:
+    results.Merge(_web_power_power_results(power_rails_csv))
 
   if benchmark:
     results.AddSharedDiagnosticToAllHistograms(

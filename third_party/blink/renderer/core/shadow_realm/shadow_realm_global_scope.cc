@@ -96,7 +96,9 @@ ResourceFetcher* ShadowRealmGlobalScope::Fetcher() {
   NOTREACHED();
 }
 
-void ShadowRealmGlobalScope::ExceptionThrown(ErrorEvent* error_event) {
+void ShadowRealmGlobalScope::ExceptionThrown(
+    ErrorEvent* error_event,
+    SanitizeScriptErrors sanitize_script_errors) {
   NOTREACHED();
 }
 
@@ -121,11 +123,11 @@ bool ShadowRealmGlobalScope::IsIsolatedContext() const {
 }
 
 ukm::UkmRecorder* ShadowRealmGlobalScope::UkmRecorder() {
-  NOTREACHED();
+  return nullptr;
 }
 
 ukm::SourceId ShadowRealmGlobalScope::UkmSourceID() const {
-  NOTREACHED();
+  return ukm::kInvalidSourceId;
 }
 
 ExecutionContextToken ShadowRealmGlobalScope::GetExecutionContextToken() const {

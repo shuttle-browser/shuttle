@@ -171,6 +171,9 @@ bool ImageInputType::ShouldRespectHeightAndWidthAttributes() {
 }
 
 unsigned ImageInputType::Height() const {
+  GetElement().GetDocument().UpdateStyleAndLayoutForNode(
+      &GetElement(), DocumentUpdateReason::kJavaScript);
+
   if (!GetElement().GetLayoutObject()) {
     // Check the attribute first for an explicit pixel value.
     unsigned height;
@@ -185,9 +188,6 @@ unsigned ImageInputType::Height() const {
     }
   }
 
-  GetElement().GetDocument().UpdateStyleAndLayoutForNode(
-      &GetElement(), DocumentUpdateReason::kJavaScript);
-
   LayoutBox* box = GetElement().GetLayoutBox();
   return box ? AdjustForAbsoluteZoom::AdjustInt(
                    box->PhysicalContentBoxRect().Height().ToInt(), box)
@@ -195,6 +195,9 @@ unsigned ImageInputType::Height() const {
 }
 
 unsigned ImageInputType::Width() const {
+  GetElement().GetDocument().UpdateStyleAndLayoutForNode(
+      &GetElement(), DocumentUpdateReason::kJavaScript);
+
   if (!GetElement().GetLayoutObject()) {
     // Check the attribute first for an explicit pixel value.
     unsigned width;
@@ -208,9 +211,6 @@ unsigned ImageInputType::Width() const {
       return image_loader->DensityCorrectedNaturalSize(1).width();
     }
   }
-
-  GetElement().GetDocument().UpdateStyleAndLayoutForNode(
-      &GetElement(), DocumentUpdateReason::kJavaScript);
 
   LayoutBox* box = GetElement().GetLayoutBox();
   return box ? AdjustForAbsoluteZoom::AdjustInt(
@@ -249,6 +249,9 @@ void ImageInputType::EnsurePrimaryContent() {
     return;
   use_fallback_content_ = false;
   if (!HasCreatedShadowSubtree()) {
+    return;
+  }
+  if (GetElement().GetDocument().InStyleRecalc()) {
     return;
   }
   if (ShadowRoot* root = GetElement().UserAgentShadowRoot())

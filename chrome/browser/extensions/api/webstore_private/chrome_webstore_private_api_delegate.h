@@ -44,10 +44,6 @@ class ChromeWebstorePrivateAPIDelegate : public WebstorePrivateAPIDelegate {
   GetSafeBrowsingNavigationObserverManager(
       content::BrowserContext* context) override;
 #endif
-  std::unique_ptr<enterprise_promotion::PromotionEligibilityChecker>
-  CreatePromotionEligibilityChecker(content::BrowserContext* context,
-                                    bool dismissed_banner_pref,
-                                    bool feature_enabled) override;
 };
 
 }  // namespace extensions

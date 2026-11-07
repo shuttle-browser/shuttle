@@ -139,7 +139,7 @@ bool EmbeddedPermissionPromptBaseView::ShowLoadingIcon() const {
 }
 
 void EmbeddedPermissionPromptBaseView::CreateWidget() {
-  DCHECK(GetNativeWindow());
+  CHECK(GetNativeWindow(), base::NotFatalUntil::M162);
   views::Widget* widget = views::BubbleDialogDelegateView::CreateBubble(this);
 
   widget->SetZOrderSublevel(ChromeWidgetSublevel::kSublevelSecurity);
@@ -164,7 +164,6 @@ EmbeddedPermissionPromptBaseView::CreateLoadingIcon() {
 }
 
 void EmbeddedPermissionPromptBaseView::AddedToWidget() {
-  StartTrackingPictureInPictureOcclusion();
 
   auto title_container = std::make_unique<views::FlexLayoutView>();
   title_container->SetOrientation(views::LayoutOrientation::kHorizontal);

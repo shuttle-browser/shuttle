@@ -47,7 +47,6 @@
 #include "base/strings/stringprintf.h"
 #include "base/strings/to_string.h"
 #include "base/strings/utf_string_conversions.h"
-#include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "base/timer/elapsed_timer.h"
@@ -131,8 +130,6 @@
 #include "content/browser/site_instance_impl.h"
 #include "content/browser/surface_embed/surface_embed_connector_impl.h"
 #include "content/browser/wake_lock/wake_lock_context_host.h"
-#include "content/browser/web_contents/drag_source_document_tracker.h"
-#include "content/browser/web_contents/drag_source_map.h"
 #include "content/browser/web_contents/file_chooser_impl.h"
 #include "content/browser/web_contents/java_script_dialog_commit_deferring_condition.h"
 #include "content/browser/web_contents/slow_web_preference_cache.h"
@@ -152,7 +149,6 @@
 #include "content/public/browser/device_service.h"
 #include "content/public/browser/disallow_activation_reason.h"
 #include "content/public/browser/document_picture_in_picture_window_controller.h"
-#include "content/public/browser/document_user_data.h"
 #include "content/public/browser/download_manager.h"
 #include "content/public/browser/file_select_listener.h"
 #include "content/public/browser/focused_node_details.h"
@@ -169,6 +165,7 @@
 #include "content/public/browser/preload_pipeline_info.h"
 #include "content/public/browser/render_widget_host_iterator.h"
 #include "content/public/browser/render_widget_host_observer.h"
+#include "content/public/browser/renderer_preferences_util.h"
 #include "content/public/browser/restore_type.h"
 #include "content/public/browser/scoped_accessibility_mode.h"
 #include "content/public/browser/site_isolation_policy.h"
@@ -698,9 +695,6 @@ RenderProcessHostPriority GetRenderProcessHostPriority(
 void RecordRendererUnresponsiveMetrics(
     bool web_contents_visible,
     RenderWidgetHostImpl* render_widget_host) {
-  base::UmaHistogramBoolean("Renderer.Unresponsive.Visibility",
-                            web_contents_visible);
-
   if (!web_contents_visible) {
     return;
   }
@@ -867,28 +861,6 @@ WebContents* WebContents::FromFrameTreeNodeId(
     return nullptr;
   }
   return WebContentsImpl::FromFrameTreeNode(frame_tree_node);
-}
-
-// static
-WebContents* WebContents::FromDragId(BrowserContext* browser_context,
-                                     const DragId& drag_id) {
-  auto* map = DragSourceMap::GetOrCreate(browser_context);
-  GlobalRenderFrameHostToken source_rfh_token = map->GetDragSource(drag_id);
-  if (source_rfh_token == GlobalRenderFrameHostToken()) {
-    return nullptr;
-  }
-
-  RenderFrameHost* rfh = RenderFrameHost::FromFrameToken(source_rfh_token);
-  if (!rfh || !rfh->IsActive()) {
-    return nullptr;
-  }
-
-  auto* tracker = DragSourceDocumentTracker::GetForCurrentDocument(rfh);
-  if (!tracker || !tracker->has_drag_id(drag_id)) {
-    return nullptr;
-  }
-
-  return WebContents::FromRenderFrameHost(rfh);
 }
 
 WebContentsImpl* WebContentsImpl::FromRenderWidgetHostImpl(
@@ -1225,6 +1197,28 @@ void WebContentsImpl::WebContentsObserverList::RemoveObserver(
   observers_.RemoveObserver(observer);
 }
 
+void WebContentsImpl::WebContentsObserverList::
+    NotifyObserversUntilNavigationDeleted(
+        NavigationObserverMethod observer_method,
+        NavigationHandle* navigation_handle) {
+  TRACE_EVENT0(
+      TRACE_DISABLED_BY_DEFAULT("content.verbose"),
+      "WebContentsObserverList::NotifyObserversUntilNavigationDeleted");
+  base::AutoReset<bool> scope(&is_notifying_observers_, true);
+  base::WeakPtr<NavigationRequest> weak_navigation_request =
+      NavigationRequest::From(navigation_handle)->GetWeakPtr();
+  for (WebContentsObserver& observer : observers_) {
+    TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("content.verbose"),
+                 "Dispatching WebContentsObserver callback");
+    (observer.*observer_method)(navigation_handle);
+    if (!weak_navigation_request) {
+      // An observer deleted the NavigationRequest. Don't notify the remaining
+      // observers, as they would get a dangling NavigationHandle.
+      return;
+    }
+  }
+}
+
 // WebContentsImpl -------------------------------------------------------------
 
 namespace {
@@ -1472,6 +1466,11 @@ WebContentsImpl::WebContentsImpl(BrowserContext* browser_context)
   renderer_preferences_.use_overlay_scrollbar =
       native_theme->use_overlay_scrollbar();
 #endif
+  if (GetContentClient()
+          ->browser()
+          ->ShouldUpdateFontRendererPreferencesFromSystemSettings()) {
+    UpdateFontRendererPreferencesFromSystemSettings(&renderer_preferences_);
+  }
 
   screen_change_monitor_ =
       std::make_unique<ScreenChangeMonitor>(base::BindRepeating(
@@ -2287,6 +2286,8 @@ void WebContentsImpl::SetPageBaseBackgroundColor(std::optional<SkColor> color) {
 }
 
 void WebContentsImpl::SetColorProviderSource(ui::ColorProviderSource* source) {
+  base::AutoReset<bool> setting_source(&is_setting_color_provider_source_,
+                                       true);
   ColorProviderSourceObserver::Observe(source);
 }
 
@@ -3316,6 +3317,13 @@ void WebContentsImpl::SetPrimaryPageImportance(
          "IsNotPerceptibleImportanceSupported() is false";
   CHECK(main_frame_importance >= subframe_importance);
 
+  RenderWidgetHostImpl* main_frame_rwh =
+      GetPrimaryMainFrame()->GetRenderWidgetHost();
+  if (subframe_importance == primary_subframe_importance_ &&
+      main_frame_rwh->importance() == main_frame_importance) {
+    return;
+  }
+
   // Batch service binding updates for the renderer processes of the main frame
   // and the subframes.
   base::android::ScopedServiceBindingBatch scoped_service_binding_batch;
@@ -3325,8 +3333,7 @@ void WebContentsImpl::SetPrimaryPageImportance(
     ApplyPrimaryPageSubframeImportance();
   }
 
-  GetPrimaryMainFrame()->GetRenderWidgetHost()->SetImportance(
-      main_frame_importance);
+  main_frame_rwh->SetImportance(main_frame_importance);
 }
 
 void WebContentsImpl::ApplyPrimaryPageSubframeImportance() {
@@ -3353,7 +3360,8 @@ Visibility WebContentsImpl::GetVisibility() {
   return visibility_;
 }
 
-bool WebContentsImpl::NeedToFireBeforeUnloadOrUnloadEvents() {
+bool WebContentsImpl::NeedToFirePageCloseEvents(
+    base::FunctionRef<bool(RenderFrameHostImpl&)> frame_needs_events) {
   if (!notify_disconnection_) {
     return false;
   }
@@ -3365,8 +3373,6 @@ bool WebContentsImpl::NeedToFireBeforeUnloadOrUnloadEvents() {
     return false;
   }
 
-  // Check whether any frame in the frame tree needs to run beforeunload or
-  // unload-time event handlers.
   for (FrameTreeNode* node : primary_frame_tree_.Nodes()) {
     RenderFrameHostImpl* rfh = node->current_frame_host();
 
@@ -3375,14 +3381,24 @@ bool WebContentsImpl::NeedToFireBeforeUnloadOrUnloadEvents() {
     if (!rfh->IsRenderFrameLive()) {
       continue;
     }
+    if (frame_needs_events(*rfh)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool WebContentsImpl::NeedToFireBeforeUnloadOrUnloadEvents() {
+  return NeedToFirePageCloseEvents([](RenderFrameHostImpl& rfh) {
     bool should_run_before_unload_handler =
-        rfh->GetSuddenTerminationDisablerState(
+        rfh.GetSuddenTerminationDisablerState(
             blink::mojom::SuddenTerminationDisablerType::kBeforeUnloadHandler);
-    bool should_run_unload_handler = rfh->GetSuddenTerminationDisablerState(
+    bool should_run_unload_handler = rfh.GetSuddenTerminationDisablerState(
         blink::mojom::SuddenTerminationDisablerType::kUnloadHandler);
-    bool should_run_page_hide_handler = rfh->GetSuddenTerminationDisablerState(
+    bool should_run_page_hide_handler = rfh.GetSuddenTerminationDisablerState(
         blink::mojom::SuddenTerminationDisablerType::kPageHideHandler);
-    auto* rvh = static_cast<RenderViewHostImpl*>(rfh->GetRenderViewHost());
+    auto* rvh = static_cast<RenderViewHostImpl*>(rfh.GetRenderViewHost());
     // If the tab is already hidden, we should not run visibilitychange
     // handlers.
     bool is_page_visible = rvh->GetPageLifecycleStateManager()
@@ -3390,16 +3406,19 @@ bool WebContentsImpl::NeedToFireBeforeUnloadOrUnloadEvents() {
                                ->visibility == PageVisibilityState::kVisible;
 
     bool should_run_visibility_change_handler =
-        is_page_visible && rfh->GetSuddenTerminationDisablerState(
+        is_page_visible && rfh.GetSuddenTerminationDisablerState(
                                blink::mojom::SuddenTerminationDisablerType::
                                    kVisibilityChangeHandler);
-    if (should_run_before_unload_handler || should_run_unload_handler ||
-        should_run_page_hide_handler || should_run_visibility_change_handler) {
-      return true;
-    }
-  }
+    return should_run_before_unload_handler || should_run_unload_handler ||
+           should_run_page_hide_handler || should_run_visibility_change_handler;
+  });
+}
 
-  return false;
+bool WebContentsImpl::NeedToFireBeforeUnload() {
+  return NeedToFirePageCloseEvents([](RenderFrameHostImpl& rfh) {
+    return rfh.GetSuddenTerminationDisablerState(
+        blink::mojom::SuddenTerminationDisablerType::kBeforeUnloadHandler);
+  });
 }
 
 void WebContentsImpl::DispatchBeforeUnload(bool auto_cancel) {
@@ -4060,7 +4079,7 @@ const blink::web_pref::WebPreferences WebContentsImpl::ComputeWebPreferences(
   prefs.inverted_colors = inverted_colors_;
 
   if (ChildProcessSecurityPolicyImpl::GetInstance()->HasWebUIBindings(
-          GetRenderViewHost()->GetProcess()->GetDeprecatedID())) {
+          GetRenderViewHost()->GetProcess()->GetID())) {
     prefs.loads_images_automatically = true;
     prefs.javascript_enabled = true;
   }
@@ -4835,6 +4854,33 @@ KeyboardEventProcessingResult WebContentsImpl::PreHandleKeyboardEvent(
                    : KeyboardEventProcessingResult::NOT_HANDLED;
 }
 
+bool WebContentsImpl::PreHandleMouseEvent(const blink::WebMouseEvent& event) {
+  OPTIONAL_TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("content.verbose"),
+                        "WebContentsImpl::PreHandleMouseEvent");
+  return delegate_ && delegate_->PreHandleMouseEvent(this, event);
+}
+
+bool WebContentsImpl::PreHandleGestureEvent(
+    const blink::WebGestureEvent& event) {
+  OPTIONAL_TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("content.verbose"),
+                        "WebContentsImpl::PreHandleGestureEvent");
+  if (ignore_zoom_gestures_) {
+    if (event.GetType() == blink::WebInputEvent::Type::kGestureDoubleTap) {
+      return true;
+    }
+
+    // Disable pinch zooming in app windows.
+    if (blink::WebInputEvent::IsPinchGestureEventType(event.GetType())) {
+      // Only suppress pinch events that cause a scale change. We still
+      // allow synthetic wheel events for touchpad pinch to go to the page.
+      return !(event.SourceDevice() == blink::WebGestureDevice::kTouchpad &&
+               event.NeedsWheelEvent());
+    }
+  }
+
+  return delegate_ && delegate_->PreHandleGestureEvent(this, event);
+}
+
 bool WebContentsImpl::HandleMouseEvent(const blink::WebMouseEvent& event) {
   OPTIONAL_TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("content.verbose"),
                         "WebContentsImpl::HandleMouseEvent");
@@ -4891,27 +4937,6 @@ bool WebContentsImpl::HandleWheelEvent(const blink::WebMouseWheelEvent& event) {
   }
 #endif
   return false;
-}
-
-bool WebContentsImpl::PreHandleGestureEvent(
-    const blink::WebGestureEvent& event) {
-  OPTIONAL_TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("content.verbose"),
-                        "WebContentsImpl::PreHandleGestureEvent");
-  if (ignore_zoom_gestures_) {
-    if (event.GetType() == blink::WebInputEvent::Type::kGestureDoubleTap) {
-      return true;
-    }
-
-    // Disable pinch zooming in app windows.
-    if (blink::WebInputEvent::IsPinchGestureEventType(event.GetType())) {
-      // Only suppress pinch events that cause a scale change. We still
-      // allow synthetic wheel events for touchpad pinch to go to the page.
-      return !(event.SourceDevice() == blink::WebGestureDevice::kTouchpad &&
-               event.NeedsWheelEvent());
-    }
-  }
-
-  return delegate_ && delegate_->PreHandleGestureEvent(this, event);
 }
 
 input::RenderWidgetHostInputEventRouter*
@@ -5220,8 +5245,8 @@ bool WebContentsImpl::GetResizable() {
   return GetDelegate() && GetDelegate()->GetCanResize();
 }
 
-bool WebContentsImpl::GetIsAlwaysOnTop() {
-  return GetDelegate() && GetDelegate()->GetIsAlwaysOnTop();
+bool WebContentsImpl::GetIsAlwaysOnTopPopup() {
+  return GetDelegate() && GetDelegate()->GetIsAlwaysOnTopPopup();
 }
 
 void WebContentsImpl::FullscreenFrameSetUpdated() {
@@ -5470,6 +5495,9 @@ bool WebContentsImpl::IsFullscreen() {
 }
 
 bool WebContentsImpl::ShouldShowStaleContentOnEviction() {
+  if (WasDiscarded()) {
+    return false;
+  }
   return GetDelegate() && GetDelegate()->ShouldShowStaleContentOnEviction(this);
 }
 
@@ -5705,7 +5733,7 @@ FrameTree* WebContentsImpl::CreateNewWindow(
   // that the OS currently prevents it (e.g., Android in app fullscreen).
   // `NEW_PICTURE_IN_PICTURE` is specific to Document PiP and does not affect
   // traditional video PiP or regular popups.
-  if (params.disposition == WindowOpenDisposition::NEW_PICTURE_IN_PICTURE &&
+  if (params.disposition == WindowOpenDisposition::kNewPictureInPicture &&
       delegate_ && delegate_->IsDocumentPictureInPictureBlockedBySystem()) {
     return nullptr;
   }
@@ -5753,12 +5781,12 @@ FrameTree* WebContentsImpl::CreateNewWindow(
       return nullptr;
     }
     web_contents_impl->is_popup_ =
-        params.disposition == WindowOpenDisposition::NEW_POPUP;
+        params.disposition == WindowOpenDisposition::kNewPopup;
     return &web_contents_impl->GetPrimaryFrameTree();
   }
 
   bool renderer_started_hidden =
-      params.disposition == WindowOpenDisposition::NEW_BACKGROUND_TAB;
+      params.disposition == WindowOpenDisposition::kNewBackgroundTab;
 
   bool is_guest =
       base::FeatureList::IsEnabled(features::kGuestViewMPArch)
@@ -5859,7 +5887,7 @@ FrameTree* WebContentsImpl::CreateNewWindow(
 
   auto* new_contents_impl = new_contents.get();
   new_contents_impl->is_popup_ =
-      params.disposition == WindowOpenDisposition::NEW_POPUP;
+      params.disposition == WindowOpenDisposition::kNewPopup;
 
   // Sets the newly created WebContents WindowOpenDisposition.
   new_contents_impl->original_window_open_disposition_ = params.disposition;
@@ -6984,7 +7012,7 @@ WebContents* WebContentsImpl::OpenURL(
 
   // Prevent frames that are not active (e.g. a prerendering page) from opening
   // new windows, tabs, popups, etc.
-  if (params.disposition != WindowOpenDisposition::CURRENT_TAB &&
+  if (params.disposition != WindowOpenDisposition::kCurrentTab &&
       source_render_frame_host && !source_render_frame_host->IsActive()) {
     return nullptr;
   }
@@ -7011,7 +7039,7 @@ WebContents* WebContentsImpl::OpenURL(
       // tree.
       if (frame_tree.is_prerendering() ||
           frame_tree_node->IsInFencedFrameTree()) {
-        DCHECK_EQ(params.disposition, WindowOpenDisposition::CURRENT_TAB);
+        DCHECK_EQ(params.disposition, WindowOpenDisposition::kCurrentTab);
         frame_tree.controller().LoadURLWithParams(
             NavigationController::LoadURLParams(params));
         return this;
@@ -7283,13 +7311,6 @@ void WebContentsImpl::ExecuteCustomContextMenuCommand(
   if (context_menu_client_) {
     context_menu_client_->CustomContextMenuAction(action);
   }
-}
-
-void WebContentsImpl::SetDragSource(
-    const DragId& drag_id,
-    const GlobalRenderFrameHostToken& source_rfh_token) {
-  DragSourceMap::GetOrCreate(GetBrowserContext())
-      ->SetDragSource(drag_id, source_rfh_token);
 }
 
 gfx::NativeView WebContentsImpl::GetNativeView() {
@@ -8063,8 +8084,10 @@ void WebContentsImpl::DidStartNavigation(NavigationHandle* navigation_handle) {
   const GURL url = navigation_handle->GetURL();
 
   base::ElapsedTimer duration;
-  observers_.NotifyObservers(&WebContentsObserver::DidStartNavigation,
-                             navigation_handle);
+  // On Android, a WebView app can delete the NavigationRequest here, e.g. by
+  // calling stopLoading() from onNavigationStarted().
+  observers_.NotifyObserversUntilNavigationDeleted(
+      &WebContentsObserver::DidStartNavigation, navigation_handle);
   // WARNING: DO NOT use |navigation_handle| after this point. An observer may
   // have destroyed the NavigationRequest, rendering the pointer invalid. See
   // crbug.com/504574017. We set `navigation_handle` to nullptr here to prevent
@@ -8115,8 +8138,10 @@ void WebContentsImpl::DidRedirectNavigation(
 
   {
     SCOPED_UMA_HISTOGRAM_TIMER("WebContentsObserver.DidRedirectNavigation");
-    observers_.NotifyObservers(&WebContentsObserver::DidRedirectNavigation,
-                               navigation_handle);
+    // On Android, a WebView app can delete the NavigationRequest here, e.g. by
+    // calling stopLoading() from onNavigationRedirected().
+    observers_.NotifyObserversUntilNavigationDeleted(
+        &WebContentsObserver::DidRedirectNavigation, navigation_handle);
   }
   // WARNING: DO NOT use |navigation_handle| after this point. An observer may
   // have destroyed the NavigationRequest, rendering the pointer invalid. See
@@ -8161,8 +8186,12 @@ void WebContentsImpl::ReadyToCommitNavigation(
     }
   }
 
-  observers_.NotifyObservers(&WebContentsObserver::ReadyToCommitNavigation,
-                             navigation_handle);
+  // Observers can also delete the NavigationRequest at this point on Android
+  // (which lacks `is_safe_to_delete_` protections), so use
+  // NotifyObserversUntilNavigationDeleted() instead of NotifyObservers() here
+  // as well.
+  observers_.NotifyObserversUntilNavigationDeleted(
+      &WebContentsObserver::ReadyToCommitNavigation, navigation_handle);
   // WARNING: DO NOT use |navigation_handle| after this point. An observer may
   // have destroyed the NavigationRequest, rendering the pointer invalid. See
   // crbug.com/504574017. We set `navigation_handle` to nullptr here to prevent
@@ -8212,40 +8241,9 @@ void WebContentsImpl::OnStartDragging(
     return;
   }
 
-  DragId drag_id(base::UnguessableToken::Create());
-
-  DragSourceDocumentTracker::GetOrCreateForCurrentDocument(source_frame)
-      ->AddDragId(drag_id);
-
-  active_drag_id_ = drag_id;
-  SetDragSource(drag_id, source_rfh_token);
-  drop_data->drag_id = drag_id.value();
-}
-
-void WebContentsImpl::OnDragSourceEnded() {
-  if (active_drag_id_) {
-    // We intentionally do not remove the drag source from DragSourceMap here.
-    // On macOS, the drag can end synchronously from the OS perspective before
-    // the async drop handling finishes, causing a race condition if we clear
-    // the mapping. The mapping will be cleaned up by the
-    // DragSourceDocumentTracker when the source document is destroyed.
-    // However, to prevent memory leaks on long-lived pages if a drag is
-    // cancelled or unconsumed, we post a deferred task to clean it up after 10
-    // seconds.
-    base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
-        FROM_HERE,
-        base::BindOnce(
-            [](base::WeakPtr<WebContentsImpl> web_contents, DragId drag_id) {
-              if (!web_contents) {
-                return;
-              }
-              DragSourceMap::Get(web_contents->GetBrowserContext())
-                  ->RemoveDragSource(drag_id);
-            },
-            weak_factory_.GetWeakPtr(), *active_drag_id_),
-        base::Seconds(10));
-    active_drag_id_.reset();
-  }
+  drop_data->drag_id = base::UnguessableToken::Create();
+  observers_.NotifyObservers(&WebContentsObserver::DidStartDrag, source_frame,
+                             *drop_data);
 }
 
 void WebContentsImpl::DidFinishNavigation(NavigationHandle* navigation_handle) {
@@ -8254,6 +8252,10 @@ void WebContentsImpl::DidFinishNavigation(NavigationHandle* navigation_handle) {
 
   {
     SCOPED_UMA_HISTOGRAM_TIMER("WebContentsObserver.DidFinishNavigation");
+    // All observers need this to clean up. Unlike in DidStartNavigation(), an
+    // observer can't delete the NavigationRequest here (even from
+    // onNavigationCompleted() in Android WebView apps), since this
+    // NavigationRequest's owner has already released it.
     observers_.NotifyObservers(&WebContentsObserver::DidFinishNavigation,
                                navigation_handle);
   }
@@ -8294,6 +8296,7 @@ void WebContentsImpl::DidFinishNavigation(NavigationHandle* navigation_handle) {
   // If we didn't end up on about:blank after setting this in DidStartNavigation
   // then don't focus the location bar.
   if (should_focus_location_bar_by_default_ &&
+      navigation_handle->IsInPrimaryMainFrame() &&
       navigation_handle->GetURL() != url::kAboutBlankURL) {
     should_focus_location_bar_by_default_ = false;
   }
@@ -8933,7 +8936,7 @@ void WebContentsImpl::ViewSource(RenderFrameHostImpl* frame) {
   constexpr bool kUserGesture = true;
   bool ignored_was_blocked;
   delegate_->AddNewContents(this, std::move(view_source_contents), url,
-                            WindowOpenDisposition::NEW_FOREGROUND_TAB,
+                            WindowOpenDisposition::kNewForegroundTab,
                             blink::mojom::WindowFeatures(), kUserGesture,
                             &ignored_was_blocked);
   // Note that the |delegate_| could have deleted |view_source_contents| during
@@ -8986,17 +8989,14 @@ std::optional<SkColor> WebContentsImpl::GetBaseBackgroundColor() {
   return page_base_background_color_;
 }
 
-blink::ColorProviderColorMaps WebContentsImpl::GetColorProviderColorMaps()
-    const {
+blink::ColorProviderColorMaps WebContentsImpl::GetColorProviderColorMaps() {
   const auto* color_mode_source = GetColorProviderSource();
 
-  // Unlike preferred color scheme, ForcedColors should always use the
-  // default color provider source, which reflects the NativeTheme web instance.
-  // This is because the Page colors feature only modifies the Forced colors
-  // mode for web without affecting the UI.
+  // Forced colors use the default web source so that browser UI theme
+  // customizations do not affect the renderer's forced-colors palette.
   const auto* forced_colors_source = DefaultColorProviderSource::GetInstance();
   ui::ColorProviderKey::ForcedColors forced_colors =
-      forced_colors_source->GetForcedColors();
+      GetContentClient()->browser()->GetForcedColorsForWebContents(*this);
   if (forced_colors == ui::ColorProviderKey::ForcedColors::kNone) {
     forced_colors = ui::ColorProviderKey::ForcedColors::kSystem;
   }
@@ -9118,8 +9118,8 @@ void WebContentsImpl::EnumerateDirectory(
   absl::Cleanup cancel_chooser = [&listener] {
     listener->FileSelectionCanceled();
   };
-  if (visibility_ == Visibility::HIDDEN) {
-    // Do not allow background tab to open file chooser.
+  if (visibility_ != Visibility::VISIBLE) {
+    // Do not allow background or occluded tab to open file chooser.
     return;
   }
   if (!delegate_->IsContentsActive(this)) {
@@ -9950,8 +9950,8 @@ void WebContentsImpl::RunFileChooser(
   absl::Cleanup cancel_chooser = [&listener] {
     listener->FileSelectionCanceled();
   };
-  if (visibility_ == Visibility::HIDDEN) {
-    // Do not allow background tab to open file chooser.
+  if (visibility_ != Visibility::VISIBLE) {
+    // Do not allow background or occluded tab to open file chooser.
     return;
   }
   if (delegate_ && !delegate_->IsContentsActive(this)) {
@@ -10549,7 +10549,10 @@ void WebContentsImpl::DidStartLoading(FrameTreeNode* frame_tree_node) {
 
   // Reset the focus state from DidStartNavigation to false if a new load starts
   // afterward, in case loading logic triggers a FocusLocationBarByDefault call.
-  should_focus_location_bar_by_default_ = false;
+  if (frame_tree_node->IsMainFrame() &&
+      frame_tree_node->frame_tree().is_primary()) {
+    should_focus_location_bar_by_default_ = false;
+  }
 
   // Notify accessibility that the user is navigating away from the
   // current document.
@@ -11327,7 +11330,7 @@ void WebContentsImpl::DidReceiveInputEvent(
       static_cast<const blink::WebMouseEvent&>(event).button ==
           blink::WebPointerProperties::Button::kBack) {
     BackNavigationLikely(content_preloading_predictor::kMouseBackButton,
-                         WindowOpenDisposition::CURRENT_TAB);
+                         WindowOpenDisposition::kCurrentTab);
   }
 
   HandleUserInteractionForInputEvent(render_widget_host, event);
@@ -11403,17 +11406,7 @@ void WebContentsImpl::FocusOwningWebContents(
   if (focused_widget != render_widget_host &&
       (!focused_widget ||
        focused_widget->delegate() != render_widget_host->delegate())) {
-#if BUILDFLAG(IS_ANDROID)
-    if (&GetPrimaryFrameTree() != GetFocusedFrameTree()) {
-      UMA_HISTOGRAM_BOOLEAN("Android.FocusChanged.FocusOwningWebContents",
-                            true);
-    }
-#endif
     SetAsFocusedWebContentsIfNecessary();
-  } else {
-#if BUILDFLAG(IS_ANDROID)
-    UMA_HISTOGRAM_BOOLEAN("Android.FocusChanged.FocusOwningWebContents", false);
-#endif
   }
 }
 
@@ -11627,6 +11620,10 @@ void WebContentsImpl::CreateRenderWidgetHostViewForRenderManager(
   OPTIONAL_TRACE_EVENT1(
       "content", "WebContentsImpl::CreateRenderWidgetHostViewForRenderManager",
       "render_view_host", render_view_host);
+
+  // Creating the view can run a nested message loop, and callers keep using
+  // `this` and the new view afterwards, so `this` must not be destroyed here.
+  base::AutoReset<bool> scope(&prevent_destruction_, true);
 
   bool is_inner_frame_tree = [&]() {
     FrameTree* frame_tree =
@@ -12034,13 +12031,8 @@ void WebContentsImpl::NotifyFindReply(int request_id,
   }
 
   observers_.NotifyObservers(&WebContentsObserver::DidReceiveFindReply,
-                             request_id, number_of_matches,
+                             request_id, number_of_matches, selection_rect,
                              active_match_ordinal, final_update);
-
-  if (delegate_) {
-    delegate_->FindReply(this, request_id, number_of_matches, selection_rect,
-                         active_match_ordinal, final_update);
-  }
 }
 
 void WebContentsImpl::IncrementBluetoothConnectedDeviceCount() {
@@ -12873,18 +12865,18 @@ void WebContentsImpl::SetVisibilityForChildViews(bool visible) {
 }
 
 void WebContentsImpl::ScheduleColorRelatedStateChanges() {
-  if (color_related_state_change_scheduled_) {
+  if (!scheduled_color_related_state_change_.IsCancelled()) {
     return;
   }
-  color_related_state_change_scheduled_ = true;
-  GetUIThreadTaskRunner({})->PostTask(
-      FROM_HERE,
+  scheduled_color_related_state_change_.Reset(
       base::BindOnce(&WebContentsImpl::HandleColorRelatedStateChanges,
                      weak_factory_.GetWeakPtr()));
+  GetUIThreadTaskRunner({})->PostTask(
+      FROM_HERE, scheduled_color_related_state_change_.callback());
 }
 
 void WebContentsImpl::HandleColorRelatedStateChanges() {
-  color_related_state_change_scheduled_ = false;
+  scheduled_color_related_state_change_.Cancel();
 
   // This can be reached re-entrantly during ~WebContentsImpl, after the
   // primary main frame has begun being destroyed. Bail out before
@@ -12977,7 +12969,8 @@ void WebContentsImpl::OnColorProviderChanged() {
 
   observers_.NotifyObservers(&WebContentsObserver::OnColorProviderChanged);
 
-  if (base::FeatureList::IsEnabled(features::kThemeChangeOptimization)) {
+  if (!is_setting_color_provider_source_ &&
+      base::FeatureList::IsEnabled(features::kThemeChangeOptimization)) {
     ScheduleColorRelatedStateChanges();
   } else {
     HandleColorRelatedStateChanges();
@@ -13263,7 +13256,7 @@ std::unique_ptr<PrefetchHandle> WebContentsImpl::StartPrefetch(
     PreloadingHoldbackStatus holdback_status_override,
     std::optional<base::TimeDelta> ttl,
     bool should_ignore_saver_modes,
-    bool is_ahead_of_actual_navigation) {
+    bool is_ahead_of_imminent_navigation) {
   PrefetchService* prefetch_service =
       BrowserContextImpl::From(GetBrowserContext())->GetPrefetchService();
   if (!prefetch_service) {
@@ -13277,7 +13270,7 @@ std::unique_ptr<PrefetchHandle> WebContentsImpl::StartPrefetch(
       referring_origin, std::move(no_vary_search_hint), std::move(priority),
       std::move(preload_pipeline_info), std::move(attempt),
       holdback_status_override, std::move(ttl), should_ignore_saver_modes,
-      is_ahead_of_actual_navigation);
+      is_ahead_of_imminent_navigation);
 
   return prefetch_service->AddPrefetchRequestWithHandle(std::move(request));
 }
@@ -13355,7 +13348,7 @@ void WebContentsImpl::BackNavigationLikely(PreloadingPredictor predictor,
   }
   last_back_navigation_hint_time_ = now;
 
-  if (disposition != WindowOpenDisposition::CURRENT_TAB) {
+  if (disposition != WindowOpenDisposition::kCurrentTab) {
     RecordPrerenderBackNavigationEligibility(
         predictor, PrerenderBackNavigationEligibility::kTargetingOtherWindow,
         nullptr);

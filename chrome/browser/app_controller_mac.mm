@@ -46,7 +46,6 @@
 #include "chrome/browser/command_updater_impl.h"
 #include "chrome/browser/download/download_core_service.h"
 #include "chrome/browser/download/download_core_service_factory.h"
-#include "chrome/browser/enterprise/isolated_mode/isolated_mode_settings_service_factory.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/first_run/first_run.h"
 #include "chrome/browser/global_keyboard_shortcuts_mac.h"
@@ -96,7 +95,6 @@
 #include "chrome/browser/ui/startup/url_util.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/color_provider_browser_helper.h"
 #include "chrome/browser/ui/webui/util/webui_util_desktop.h"
@@ -110,7 +108,6 @@
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/enterprise/browser/controller/chrome_browser_cloud_management_controller.h"
 #include "components/handoff/handoff_manager.h"
 #include "components/handoff/handoff_utility.h"
 #include "components/keep_alive_registry/keep_alive_registry.h"
@@ -182,7 +179,7 @@ void OpenAgentsWindow(Profile* profile) {
   base::AutoReset<bool> auto_reset_in_run(&g_is_opening_new_window, true);
   NavigateParams params(profile, GURL("chrome://agents/"),
                         ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
-  params.disposition = WindowOpenDisposition::NEW_WINDOW;
+  params.disposition = WindowOpenDisposition::kNewWindow;
   params.window_action = NavigateParams::WindowAction::kShowWindow;
   Navigate(&params);
 }
@@ -527,11 +524,6 @@ Profile* GetLastProfileMac() {
 // Reset `_keepAlive` if Chrome is running in hidden mode, recreating it when
 // Chrome is no longer hidden.
 - (void)resetKeepAliveWhileHidden;
-
-// A callback that updates the relevant commands in the tab menu that depend on
-// position of the tab strip.
-- (void)onVerticalTabStripModeChanged:
-    (tabs::VerticalTabStripStateController*)stateController;
 @end
 
 class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
@@ -690,10 +682,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   // By remembering this bit, Chromium knows whether to enable or disable
   // Cmd+Shift+T and the related "File > Reopen Closed Tab" entry.
   BOOL _tabRestoreWasEnabled;
-
-  // Callback subscription that notifies when the mode of the vertical tab strip
-  // state controller changes.
-  base::CallbackListSubscription _verticalTabSubscription;
 
   // The last active browser, used to query its ColorProvider on demand.
   // WeakPtr self-nulls on browser destruction.
@@ -1012,31 +1000,12 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   if (!browser)
     return;
 
-  // Since we may have different windows with different profiles, we clear the
-  // subscription each time a window becomes the main.
-  _verticalTabSubscription = {};
-
   if (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL) {
     if (!_tabMenuBridge) {
       _tabMenuBridge = std::make_unique<TabMenuBridge>(
           [[NSApp mainMenu] itemWithTag:IDC_TAB_MENU]);
     }
     _tabMenuBridge->SetTabStripModel(browser->GetTabStripModel());
-
-    if (auto* vertical_tab_strip_state_controller =
-            tabs::VerticalTabStripStateController::From(browser)) {
-      _verticalTabSubscription =
-          vertical_tab_strip_state_controller->RegisterOnModeChanged(
-              base::BindRepeating(
-                  [](AppController* controller,
-                     tabs::VerticalTabStripStateController* state_controller) {
-                    [controller onVerticalTabStripModeChanged:state_controller];
-                  },
-                  self));
-      // If the browser begins in VT mode, we want to ensure that we have the
-      // correct text.
-      [self onVerticalTabStripModeChanged:vertical_tab_strip_state_controller];
-    }
   } else if (_tabMenuBridge) {
     _tabMenuBridge->SetTabStripModel(nullptr);
   }
@@ -1045,56 +1014,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 
   _lastActiveBrowser = browser->GetWeakPtr();
   [self setLastProfile:profile];
-}
-
-- (void)onVerticalTabStripModeChanged:
-    (tabs::VerticalTabStripStateController*)stateController {
-  if (!_tabMenuBridge) {
-    return;
-  }
-
-  NSMenu* tabSubmenu = [[[NSApp mainMenu] itemWithTag:IDC_TAB_MENU] submenu];
-  if (!tabSubmenu) {
-    return;
-  }
-
-  bool enabled = stateController->ShouldDisplayVerticalTabs();
-
-  auto updateMenuState = ^(NSInteger tag, bool enableVerticalTabs) {
-    NSMutableArray<NSMenuItem*>* matchingItems = [NSMutableArray array];
-    for (NSMenuItem* item in [tabSubmenu itemArray]) {
-      if (item.tag == tag) {
-        [matchingItems addObject:item];
-      }
-    }
-
-    // There are 2 copies of "New Tab to Right" and "Close Tabs to Right"
-    // for horizontal and vertical tab modes.
-    CHECK_EQ(matchingItems.count, 2u);
-
-    NSMenuItem* horizontalItem = matchingItems[0];
-    NSMenuItem* verticalItem = matchingItems[1];
-
-    NSMenuItem* activeItem =
-        horizontalItem.hidden ? verticalItem : horizontalItem;
-    NSMenuItem* incomingItem =
-        enableVerticalTabs ? verticalItem : horizontalItem;
-
-    if (activeItem != incomingItem) {
-      incomingItem.keyEquivalent = activeItem.keyEquivalent;
-      incomingItem.keyEquivalentModifierMask =
-          activeItem.keyEquivalentModifierMask;
-
-      horizontalItem.hidden = enableVerticalTabs;
-      verticalItem.hidden = !enableVerticalTabs;
-    }
-  };
-
-  // Process "New Tab to the Right" / "New Tab Below" items.
-  updateMenuState(IDC_NEW_TAB_TO_RIGHT, enabled);
-
-  // Process "Close Tabs to the Right" / "Close Tabs Below" items.
-  updateMenuState(IDC_WINDOW_CLOSE_TABS_TO_RIGHT, enabled);
 }
 
 // Called when shutting down or logging out.
@@ -1174,14 +1093,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 // This is called after profiles have been loaded and preferences registered.
 // It is safe to access the default profile here.
 - (void)applicationDidFinishLaunching:(NSNotification*)notify {
-  if (g_browser_process->browser_policy_connector()
-          ->chrome_browser_cloud_management_controller()
-          ->IsEnterpriseStartupDialogShowing()) {
-    // As Chrome is not ready when the Enterprise startup dialog is being shown.
-    // Store the notification as it will be reposted when the dialog is closed.
-    return;
-  }
-
   [self setUpdateCheckInterval];
 
   // Dynamically update shortcuts for "Close Window" and "Close Tab" menu items.
@@ -2165,9 +2076,8 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 }
 
 - (BOOL)isProfileReady {
-  return !g_browser_process->browser_policy_connector()
-              ->chrome_browser_cloud_management_controller()
-              ->IsEnterpriseStartupDialogShowing();
+  // No enterprise startup (enrollment) dialog in Shuttle: always ready.
+  return YES;
 }
 
 #pragma mark - HandoffObserverDelegate
@@ -2337,17 +2247,6 @@ bool IsOpeningNewWindow() {
   return g_is_opening_new_window;
 }
 
-void EnterpriseStartupDialogClosed() {
-  CHECK(!g_browser_process->browser_policy_connector()
-             ->chrome_browser_cloud_management_controller()
-             ->IsEnterpriseStartupDialogShowing(),
-        base::NotFatalUntil::M155);
-  NSNotification* notify = [NSNotification
-      notificationWithName:NSApplicationDidFinishLaunchingNotification
-                    object:NSApp];
-  [AppController.sharedController applicationDidFinishLaunching:notify];
-}
-
 void RunInLastProfileSafely(
     base::OnceCallback<void(Profile*)> callback,
     app_controller_mac::ProfileLoadFailureBehavior on_failure) {
@@ -2425,7 +2324,7 @@ void TabRestorer::DoRestoreTab(Profile* profile, SessionID session_id) {
       browser ? BrowserLiveTabContext::From(browser) : nullptr;
   if (session_id.is_valid()) {
     service->RestoreEntryById(context, session_id,
-                              WindowOpenDisposition::UNKNOWN);
+                              WindowOpenDisposition::kUnknown);
   } else {
     service->RestoreMostRecentEntry(context);
   }

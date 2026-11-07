@@ -17,7 +17,7 @@ BUILD_DIR = os.path.join(CHROMIUM_ROOT, 'build')
 # //build imports.
 if BUILD_DIR not in sys.path:
   sys.path.insert(0, BUILD_DIR)
-import gn_helpers
+import gn_helpers  # noqa: E402
 
 
 # A list of filename regexes that are allowed to have static initializers.
@@ -63,7 +63,11 @@ FALLBACK_EXPECTED_MAC_SI_COUNT = 3
 # Similar to mac, iOS needs the iosstream and PartitionAlloc-Everywhere static
 # initializer (InitializeDefaultMallocZoneWithPartitionAlloc) to install a
 # malloc zone.
-FALLBACK_EXPECTED_IOS_SI_COUNT = 2
+# TODO(crbug.com/574100301): Restore to 2 once `crashpad_info.cc` no longer has
+# a static initializer. Since LLVM 57a637ad382b, the constructor of
+# `g_crashpad_info` is no longer constant-folded because the global is placed in
+# an explicit section.
+FALLBACK_EXPECTED_IOS_SI_COUNT = 3
 
 # For coverage builds, also allow 'IntrProfilingRuntime.cpp'
 COVERAGE_BUILD_FALLBACK_EXPECTED_MAC_SI_COUNT = 4

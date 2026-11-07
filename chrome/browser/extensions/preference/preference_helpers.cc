@@ -94,8 +94,8 @@ void DispatchEventToExtensionsImpl(Profile* profile,
         extension->permissions_data()->HasAPIPermission(permission) &&
         (!incognito || util::IsIncognitoEnabled(extension->id(), profile))) {
       // Inject level of control key-value.
-      DCHECK(!args.empty());
-      DCHECK(args[0].is_dict());
+      CHECK(!args.empty(), base::NotFatalUntil::M161);
+      CHECK(args[0].is_dict(), base::NotFatalUntil::M161);
 
       std::string level_of_control =
           level_getter.Run(profile, extension->id(), browser_pref, incognito);
@@ -123,10 +123,10 @@ void DispatchEventToExtensionsImpl(Profile* profile,
         }
       }
 
-      base::ListValue args_copy = args.Clone();
+      auto event_args = base::MakeRefCounted<EventArgs>(args.Clone());
       auto event =
           std::make_unique<Event>(histogram_value, event_name,
-                                  std::move(args_copy), restrict_to_profile);
+                                  std::move(event_args), restrict_to_profile);
       router->DispatchEventToExtension(extension->id(), std::move(event));
     }
   }

@@ -49,6 +49,7 @@
 #include "base/unguessable_token.h"
 #include "base/values.h"
 #include "build/build_config.h"
+#include "mojo/public/cpp/base/big_buffer.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "mojo/public/cpp/system/message_pipe.h"
 #include "services/network/public/cpp/features.h"
@@ -104,7 +105,6 @@
 #include "third_party/blink/renderer/core/core_initializer.h"
 #include "third_party/blink/renderer/core/core_probe_sink.h"
 #include "third_party/blink/renderer/core/css/background_color_paint_image_generator.h"
-#include "third_party/blink/renderer/core/css/box_shadow_paint_image_generator.h"
 #include "third_party/blink/renderer/core/css/clip_path_paint_image_generator.h"
 #include "third_party/blink/renderer/core/css/css_default_style_sheets.h"
 #include "third_party/blink/renderer/core/css/document_style_environment_variables.h"
@@ -177,6 +177,7 @@
 #include "third_party/blink/renderer/core/fullscreen/scoped_allow_fullscreen.h"
 #include "third_party/blink/renderer/core/html/canvas/html_canvas_element.h"
 #include "third_party/blink/renderer/core/html/html_frame_element_base.h"
+#include "third_party/blink/renderer/core/html/html_frame_owner_element.h"
 #include "third_party/blink/renderer/core/html/html_image_element.h"
 #include "third_party/blink/renderer/core/html/html_link_element.h"
 #include "third_party/blink/renderer/core/html/html_object_element.h"
@@ -228,7 +229,6 @@
 #include "third_party/blink/renderer/platform/bindings/source_location.h"
 #include "third_party/blink/renderer/platform/bindings/v8_binding.h"
 #include "third_party/blink/renderer/platform/bindings/v8_histogram_accumulator.h"
-#include "third_party/blink/renderer/platform/blob/blob_data.h"
 #include "third_party/blink/renderer/platform/graphics/image_data_buffer.h"
 #include "third_party/blink/renderer/platform/graphics/paint/drawing_recorder.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_canvas.h"
@@ -254,6 +254,7 @@
 #include "third_party/blink/renderer/platform/weborigin/scheme_registry.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 #include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_utf8_adaptor.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "ui/gfx/geometry/point.h"
 #include "ui/gfx/geometry/point_conversions.h"
@@ -305,15 +306,9 @@ inline float ParentCssZoomFactor(LocalFrame* frame) {
   return parent_local_frame ? parent_local_frame->CssZoomFactor() : 1;
 }
 
-// Convert a data url to a message pipe handle that corresponds to a remote
-// blob, so that it can be passed across processes.
-mojo::PendingRemote<mojom::blink::Blob> DataURLToBlob(const String& data_url) {
-  auto blob_data = std::make_unique<BlobData>();
+mojo_base::BigBuffer DataURLToBigBuffer(const String& data_url) {
   StringUtf8Adaptor data_url_utf8(data_url);
-  blob_data->AppendBytes(base::as_byte_span(data_url_utf8));
-  scoped_refptr<BlobDataHandle> blob_data_handle =
-      BlobDataHandle::Create(std::move(blob_data), data_url_utf8.size());
-  return blob_data_handle->CloneBlobRemote();
+  return mojo_base::BigBuffer(base::as_byte_span(data_url_utf8));
 }
 
 RemoteFrame* SourceFrameForOptionalToken(
@@ -501,22 +496,33 @@ void LocalFrame::CreateView(const gfx::Size& viewport_size,
     frame_view->SetParentVisible(true);
   }
 
-  // FIXME: Not clear what the right thing for OOPI is here.
-  if (OwnerLayoutObject()) {
-    HTMLFrameOwnerElement* owner = DeprecatedLocalOwner();
-    DCHECK(owner);
-    // FIXME: OOPI might lead to us temporarily lying to a frame and telling it
-    // that it's owned by a FrameOwner that knows nothing about it. If we're
-    // lying to this frame, don't let it clobber the existing
-    // EmbeddedContentView.
-    if (owner->ContentFrame() == this) {
-      owner->SetEmbeddedContentView(frame_view);
-    }
-  }
+  AttachViewToOwner();
 
   if (Owner()) {
     View()->SetCanHaveScrollbars(Owner()->ScrollbarMode() !=
                                  mojom::blink::ScrollbarMode::kAlwaysOff);
+  }
+}
+
+void LocalFrame::AttachViewToOwner() {
+  DCHECK(View());
+
+  // Attach our LocalFrameView to the frame owner element only if the owner
+  // itself is attached to layout. For example, a display:none <iframe> expects
+  // a null embedded_content_view_ (see HTMLFrameOwnerElement::IsDisplayNone())
+  // even though the LocalFrameView exists and is held by its LocalFrame.
+  if (!OwnerLayoutObject()) {
+    return;
+  }
+  // Since the frame has an owner layout object, this cast is guaranteed to
+  // succeed.
+  auto* owner = To<HTMLFrameOwnerElement>(Owner());
+  // FIXME: OOPI might lead to us temporarily lying to a frame and telling it
+  // that it's owned by a FrameOwner that knows nothing about it. If we're
+  // lying to this frame, don't let it clobber the existing
+  // EmbeddedContentView.
+  if (owner->ContentFrame() == this) {
+    owner->SetEmbeddedContentView(View());
   }
 }
 
@@ -562,7 +568,6 @@ void LocalFrame::Trace(Visitor* visitor) const {
   visitor->Trace(post_layout_snapshot_clients_);
   visitor->Trace(saved_scroll_offsets_);
   visitor->Trace(background_color_paint_image_generator_);
-  visitor->Trace(box_shadow_paint_image_generator_);
   visitor->Trace(clip_path_paint_image_generator_);
   visitor->Trace(lcpp_);
   visitor->Trace(v8_local_compile_hints_producer_);
@@ -828,9 +833,6 @@ bool LocalFrame::DetachImpl(FrameDetachType type) {
     if (background_color_paint_image_generator_) {
       background_color_paint_image_generator_->Shutdown();
     }
-    if (box_shadow_paint_image_generator_) {
-      box_shadow_paint_image_generator_->Shutdown();
-    }
     if (clip_path_paint_image_generator_) {
       clip_path_paint_image_generator_->Shutdown();
     }
@@ -921,21 +923,6 @@ void LocalFrame::SetBackgroundColorPaintImageGeneratorForTesting(
     BackgroundColorPaintImageGenerator* generator_for_testing) {
   LocalFrame& local_root = LocalFrameRoot();
   local_root.background_color_paint_image_generator_ = generator_for_testing;
-}
-
-BoxShadowPaintImageGenerator* LocalFrame::GetBoxShadowPaintImageGenerator() {
-  // There is no compositor thread in certain testing environment, and we should
-  // not composite background color animation in those cases.
-  if (!Thread::CompositorThread()) {
-    return nullptr;
-  }
-  LocalFrame& local_root = LocalFrameRoot();
-  // One box shadow paint worklet per root frame.
-  if (!local_root.box_shadow_paint_image_generator_) {
-    local_root.box_shadow_paint_image_generator_ =
-        BoxShadowPaintImageGenerator::Create(local_root);
-  }
-  return local_root.box_shadow_paint_image_generator_.Get();
 }
 
 ClipPathPaintImageGenerator* LocalFrame::GetClipPathPaintImageGenerator() {
@@ -2032,8 +2019,7 @@ LocalFrame::LocalFrame(
     const LocalFrameToken& frame_token,
     WindowAgentFactory* inheriting_agent_factory,
     InterfaceRegistry* interface_registry,
-    mojo::PendingRemote<mojom::blink::BrowserInterfaceBroker> interface_broker,
-    const base::TickClock* clock)
+    mojo::PendingRemote<mojom::blink::BrowserInterfaceBroker> interface_broker)
     : Frame(client,
             page,
             owner,
@@ -2123,7 +2109,7 @@ LocalFrame::LocalFrame(
     performance_monitor_ = LocalFrameRoot().performance_monitor_;
     script_observer_ = LocalFrameRoot().script_observer_;
   }
-  idleness_detector_ = MakeGarbageCollected<IdlenessDetector>(this, clock);
+  idleness_detector_ = MakeGarbageCollected<IdlenessDetector>(this);
   inspector_task_runner_->InitIsolate(isolate);
 
   if (IsOutermostMainFrame()) {
@@ -3074,8 +3060,8 @@ bool LocalFrame::HasTransientUserActivation(const LocalFrame* frame) {
 // static
 bool LocalFrame::ConsumeTransientUserActivation(
     LocalFrame* frame,
-    UserActivationUpdateSource update_source) {
-  return frame && frame->ConsumeTransientUserActivation(update_source);
+    UserActivationUpdateScope update_scope) {
+  return frame && frame->ConsumeTransientUserActivation(update_scope);
 }
 
 void LocalFrame::NotifyUserActivation(
@@ -3088,8 +3074,8 @@ void LocalFrame::NotifyUserActivation(
 }
 
 bool LocalFrame::ConsumeTransientUserActivation(
-    UserActivationUpdateSource update_source) {
-  if (update_source == UserActivationUpdateSource::kRenderer) {
+    UserActivationUpdateScope update_scope) {
+  if (update_scope == UserActivationUpdateScope::kDefault) {
     GetLocalFrameHostRemote().UpdateUserActivationState(
         mojom::blink::UserActivationUpdateType::kConsumeTransientActivation,
         mojom::blink::UserActivationNotificationType::kNone);
@@ -3153,7 +3139,7 @@ class FrameColorOverlay final : public FrameOverlay::Delegate {
                              DisplayItem::kFrameOverlay, view_rect);
     graphics_context.FillRect(
         view_rect, Color::FromSkColor(color_),
-        PaintAutoDarkMode(layout_view->StyleRef(),
+        PaintAutoDarkMode(layout_view->Style(),
                           DarkModeFilter::ElementRole::kBackground));
   }
 
@@ -3696,6 +3682,10 @@ void LocalFrame::ClosePageForTesting() {
   mojo_handler_->ClosePageForTesting();
 }
 
+void LocalFrame::FlushLocalFrameHostForTesting() {
+  mojo_handler_->FlushLocalFrameHostForTesting();
+}
+
 void LocalFrame::SetInitialFocus(bool reverse) {
   GetDocument()->ClearFocusedElement();
   GetPage()->GetFocusController().SetInitialFocus(
@@ -3937,7 +3927,7 @@ void LocalFrame::SaveImageAt(const gfx::Point& window_point) {
 
   auto params = mojom::blink::DownloadURLParams::New();
   params->should_prompt_for_save_location = true;
-  params->data_url_blob = DataURLToBlob(url);
+  params->data_url_buffer = DataURLToBigBuffer(url);
   GetLocalFrameHostRemote().DownloadURL(std::move(params));
 }
 
@@ -4076,10 +4066,9 @@ void LocalFrame::DownloadURL(
 
   auto params = mojom::blink::DownloadURLParams::New();
   const KURL& url = request.Url();
-  // Pass data URL through blob.
   if (url.ProtocolIs("data")) {
     params->url = KURL();
-    params->data_url_blob = DataURLToBlob(url.GetString());
+    params->data_url_buffer = DataURLToBigBuffer(url.GetString());
   } else {
     params->url = url;
   }

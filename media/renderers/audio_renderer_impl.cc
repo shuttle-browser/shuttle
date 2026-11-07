@@ -17,6 +17,7 @@
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/power_monitor/power_monitor.h"
 #include "base/task/bind_post_task.h"
 #include "base/task/sequenced_task_runner.h"
@@ -227,9 +228,7 @@ AudioRendererImpl::AudioRendererImpl(
       tick_clock_(base::DefaultTickClock::GetInstance()),
       last_audio_memory_usage_(0),
       last_decoded_sample_rate_(0),
-      last_decoded_channel_layout_(CHANNEL_LAYOUT_NONE),
       is_encrypted_(false),
-      last_decoded_channels_(0),
       volume_(1.0f),  // Default unmuted.
       playback_rate_(0.0),
       state_(kUninitialized),
@@ -339,10 +338,18 @@ void AudioRendererImpl::StopTicking() {
     return;
   }
 
-  StopRendering_Locked();
+  // When `rendered_end_of_stream_` is true, playback has finished rather than
+  // temporarily halting for data. Otherwise, because `playback_rate_` is
+  // non-zero here, the media element is still logically playing and only
+  // temporarily halting rendering waiting for data (e.g. during a seek flush or
+  // buffer underflow).
+  StopRendering_Locked(rendered_end_of_stream_
+                           ? AudioRendererSink::PauseReason::kPlaybackPaused
+                           : AudioRendererSink::PauseReason::kWaitingForData);
 }
 
-void AudioRendererImpl::StopRendering_Locked() {
+void AudioRendererImpl::StopRendering_Locked(
+    AudioRendererSink::PauseReason pause_reason) {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
   DCHECK(state_ == kPlaying || state_ == kReinitializingSink);
   DCHECK(sink_playing_);
@@ -355,9 +362,9 @@ void AudioRendererImpl::StopRendering_Locked() {
 
   base::AutoUnlock auto_unlock(lock_);
   if (volume_ || render_muted_audio_) {
-    sink_->Pause();
+    sink_->Pause(pause_reason);
   } else {
-    null_sink_->Pause();
+    null_sink_->Pause(pause_reason);
   }
 
   stop_rendering_time_ = last_render_time_;
@@ -751,12 +758,10 @@ void AudioRendererImpl::OnDeviceInfoReceived(
                                   AudioParameters::AUDIO_PREFETCH);
   }
 
-  last_decoded_channel_layout_ =
-      stream->audio_decoder_config().channel_layout();
+  last_decoded_channel_layout_config_ =
+      stream->audio_decoder_config().channel_layout_config();
 
   is_encrypted_ = stream->audio_decoder_config().is_encrypted();
-
-  last_decoded_channels_ = stream->audio_decoder_config().channels();
 
   {
     // Set the |audio_clock_| under lock in case this is a reinitialize and some
@@ -1047,10 +1052,10 @@ void AudioRendererImpl::DecodedAudioReady(
     }
     ChangeState_Locked(kReinitializingSink);
 
-    last_decoded_channel_layout_ = buffer->channel_layout();
-    last_decoded_channels_ = buffer->channel_count();
-    audio_parameters_.SetChannelLayoutConfig(last_decoded_channel_layout_,
-                                             last_decoded_channels_);
+    last_decoded_channel_layout_config_ =
+        ChannelLayoutConfig(buffer->channel_layout(), buffer->channel_count());
+    audio_parameters_.set_channel_layout_config(
+        last_decoded_channel_layout_config_);
 
     last_decoded_sample_rate_ = buffer->sample_rate();
     audio_parameters_.set_sample_rate(last_decoded_sample_rate_);
@@ -1106,7 +1111,8 @@ void AudioRendererImpl::DecodedAudioReady(
       }
       last_decoded_sample_rate_ = buffer->sample_rate();
 
-      if (last_decoded_channel_layout_ != buffer->channel_layout()) {
+      if (last_decoded_channel_layout_config_.channel_layout() !=
+          buffer->channel_layout()) {
         if (buffer->channel_layout() == CHANNEL_LAYOUT_DISCRETE) {
           MEDIA_LOG(ERROR, media_log_)
               << "Unsupported midstream configuration change! Discrete channel"
@@ -1114,8 +1120,8 @@ void AudioRendererImpl::DecodedAudioReady(
           HandleAbortedReadOrDecodeError(PIPELINE_ERROR_DECODE);
           return;
         } else {
-          last_decoded_channel_layout_ = buffer->channel_layout();
-          last_decoded_channels_ = buffer->channel_count();
+          last_decoded_channel_layout_config_ = ChannelLayoutConfig(
+              buffer->channel_layout(), buffer->channel_count());
           ConfigureChannelMask();
         }
       }
@@ -1339,7 +1345,7 @@ void AudioRendererImpl::SetPlaybackRate(double playback_rate) {
   }
 
   if (current_playback_rate != 0 && playback_rate == 0) {
-    StopRendering_Locked();
+    StopRendering_Locked(AudioRendererSink::PauseReason::kPlaybackPaused);
     return;
   }
 }
@@ -1382,6 +1388,8 @@ int AudioRendererImpl::Render(base::TimeDelta delay,
     base::AutoLock auto_lock(lock_);
     DCHECK_NE(state_, kReinitializingSink);
 
+    const base::TimeTicks prev_render_time =
+        stop_rendering_time_.is_null() ? last_render_time_ : base::TimeTicks();
     last_render_time_ = tick_clock_->NowTicks();
 
     int64_t frames_delayed = AudioTimestampHelper::TimeToFrames(
@@ -1397,6 +1405,16 @@ int AudioRendererImpl::Render(base::TimeDelta delay,
     // so we need to adjust the playback rate given to AudioClock to avoid a/v
     // sync issues over time.
     double effective_playback_rate = playback_rate_;
+
+    if (audio_bus->is_bitstream_format()) {
+      audio_bus->Zero();
+    }
+
+    // `audio_bus` is oversized for bitstream formats (see Initialize()), so
+    // only report the frames we actually write to `audio_clock_`.
+    if (is_passthrough_) {
+      frames_requested = 0;
+    }
 
     // Ensure Stop() hasn't destroyed our |algorithm_| on the pipeline thread.
     if (!algorithm_) {
@@ -1418,22 +1436,24 @@ int AudioRendererImpl::Render(base::TimeDelta delay,
       return 0;
     }
 
-    if (is_passthrough_ && algorithm_->BufferedFrames() > 0) {
-      DCHECK_EQ(playback_rate_, 1.0);
+    if (is_passthrough_) {
+      if (algorithm_->BufferedFrames() > 0) {
+        DCHECK_EQ(playback_rate_, 1.0);
 
-      // TODO(tsunghung): For compressed bitstream formats, play zeroed buffer
-      // won't generate delay. It could be discarded immediately. Need another
-      // way to generate audio delay.
-      const base::TimeDelta play_delay =
-          first_packet_timestamp_ - audio_clock_->back_timestamp();
-      if (play_delay.is_positive()) {
-        MEDIA_LOG(ERROR, media_log_)
-            << "Cannot add delay for compressed audio bitstream format."
-            << " Requested delay: " << play_delay;
+        // TODO(tsunghung): For compressed bitstream formats, play zeroed buffer
+        // won't generate delay. It could be discarded immediately. Need another
+        // way to generate audio delay.
+        const base::TimeDelta play_delay =
+            first_packet_timestamp_ - audio_clock_->back_timestamp();
+        if (play_delay.is_positive()) {
+          MEDIA_LOG(ERROR, media_log_)
+              << "Cannot add delay for compressed audio bitstream format."
+              << " Requested delay: " << play_delay;
+        }
+
+        frames_written += algorithm_->FillBuffer(
+            audio_bus, 0, audio_bus->frames(), playback_rate_);
       }
-
-      frames_written += algorithm_->FillBuffer(audio_bus, 0, frames_requested,
-                                               playback_rate_);
 
       // See Initialize(), the |audio_bus| should be bigger than we need in
       // bitstream cases. Fix |frames_requested| to avoid incorrect time
@@ -1508,9 +1528,30 @@ int AudioRendererImpl::Render(base::TimeDelta delay,
     int frames_after_end_of_stream = 0;
     if (frames_written == 0) {
       if (received_end_of_stream_) {
-        if (ended_timestamp_ == kInfiniteDuration)
+        if (ended_timestamp_ == kInfiniteDuration) {
           ended_timestamp_ = audio_clock_->back_timestamp();
-        frames_after_end_of_stream = frames_requested;
+        }
+        if (!is_passthrough_) {
+          frames_after_end_of_stream = frames_requested;
+        } else if (!prev_render_time.is_null()) {
+          // Some bitstream sinks may never report a zero `delay` after EOS, so
+          // drain the buffered audio in real time instead.
+          const int64_t elapsed_frames = AudioTimestampHelper::TimeToFrames(
+              last_render_time_ - prev_render_time,
+              audio_parameters_.sample_rate());
+          const int64_t buffered_frames = AudioTimestampHelper::TimeToFrames(
+              audio_clock_->back_timestamp() - audio_clock_->front_timestamp(),
+              audio_parameters_.sample_rate());
+          const int64_t frames_drained =
+              std::min(buffered_frames, elapsed_frames);
+          frames_delayed =
+              std::min(frames_delayed, buffered_frames - frames_drained);
+          if (frames_delayed == 0) {
+            frames_after_end_of_stream =
+                base::saturated_cast<int>(elapsed_frames - frames_drained);
+            frames_requested = frames_after_end_of_stream;
+          }
+        }
       } else if (state_ == kPlaying &&
                  buffering_state_ != BUFFERING_HAVE_NOTHING) {
         // Don't increase queue capacity if the queue latency is explicitly
@@ -1548,6 +1589,13 @@ int AudioRendererImpl::Render(base::TimeDelta delay,
     audio_clock_->WroteAudio(frames_written + frames_after_end_of_stream,
                              frames_requested, frames_delayed,
                              effective_playback_rate);
+    if (is_passthrough_ && frames_after_end_of_stream > 0) {
+      // In passthrough mode, `frames_after_end_of_stream` represents wall-clock
+      // time that has already elapsed since the previous `Render()` call rather
+      // than silence written to the sink for future playout, so flush it into
+      // `front_timestamp()` immediately.
+      audio_clock_->WroteAudio(0, 0, 0, effective_playback_rate);
+    }
 
     if (CanRead_Locked()) {
       task_runner_->PostTask(FROM_HERE,
@@ -1653,12 +1701,15 @@ void AudioRendererImpl::SetBufferingState_Locked(
 void AudioRendererImpl::ConfigureChannelMask() {
   DCHECK(algorithm_);
   DCHECK(audio_parameters_.IsValid());
-  DCHECK_NE(last_decoded_channel_layout_, CHANNEL_LAYOUT_NONE);
-  DCHECK_NE(last_decoded_channel_layout_, CHANNEL_LAYOUT_UNSUPPORTED);
+  DCHECK_NE(last_decoded_channel_layout_config_.channel_layout(),
+            CHANNEL_LAYOUT_NONE);
+  DCHECK_NE(last_decoded_channel_layout_config_.channel_layout(),
+            CHANNEL_LAYOUT_UNSUPPORTED);
 
   // If we're actually downmixing the signal, no mask is necessary, but ensure
   // we clear any existing mask if present.
-  if (last_decoded_channels_ >= audio_parameters_.channels()) {
+  if (last_decoded_channel_layout_config_.channels() >=
+      audio_parameters_.channels()) {
     algorithm_->SetChannelMask(
         std::vector<bool>(audio_parameters_.channels(), true));
     return;
@@ -1666,9 +1717,8 @@ void AudioRendererImpl::ConfigureChannelMask() {
 
   // Determine the matrix used to upmix the channels.
   std::vector<std::vector<float>> matrix;
-  ChannelMixingMatrix(
-      ChannelLayoutConfig(last_decoded_channel_layout_, last_decoded_channels_),
-      audio_parameters_.channel_layout_config())
+  ChannelMixingMatrix(last_decoded_channel_layout_config_,
+                      audio_parameters_.channel_layout_config())
       .CreateTransformationMatrix(&matrix);
 
   // All channels with a zero mix are muted and can be ignored.
@@ -1708,13 +1758,14 @@ void AudioRendererImpl::TranscribeAudio(
 
 void AudioRendererImpl::MaybeStartRealSink() {
   // Suspend null audio sink (does nothing if unused).
-  null_sink_->Pause();
+  null_sink_->Pause(AudioRendererSink::PauseReason::kPlaybackPaused);
 
   // Complete startup for the real sink if needed.
   if (real_sink_needs_start_) {
     sink_->Start();
     if (!sink_playing_) {
-      sink_->Pause();  // Sinks play on start.
+      // Sinks play on start.
+      sink_->Pause(AudioRendererSink::PauseReason::kPlaybackPaused);
     }
     real_sink_needs_start_ = false;
   }
@@ -1727,7 +1778,7 @@ void AudioRendererImpl::MaybeStartRealSink() {
 
 void AudioRendererImpl::SuspendRealSink() {
   // Suspend the real sink (does nothing if unused).
-  sink_->Pause();
+  sink_->Pause(AudioRendererSink::PauseReason::kPlaybackPaused);
 
   // Start fake sink playback if needed.
   if (sink_playing_) {

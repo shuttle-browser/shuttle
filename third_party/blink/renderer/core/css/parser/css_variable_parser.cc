@@ -25,6 +25,7 @@
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/core/html/parser/html_parser_idioms.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/wtf/wtf.h"
 
 namespace blink {
 
@@ -570,7 +571,7 @@ static bool ConsumeUnparsedValue(CSSParserTokenStream& stream,
           continue;
         case CSSValueID::kInherit:
           if (!RuntimeEnabledFeatures::CSSInheritFunctionEnabled()) {
-            return false;
+            break;
           }
           [[fallthrough]];
         case CSSValueID::kVar:
@@ -693,6 +694,10 @@ CSSVariableData* CSSVariableParser::ConsumeUnparsedDeclaration(
     bool comma_ends_declaration,
     bool& important,
     const CSSParserContext& context) {
+  // ConsumeUnparsedValue() may parse arbitrary CSS properties or selectors via
+  // if(supports(...)), which relies on main-thread-only state.
+  CHECK(IsMainThread());
+
   // Consume leading whitespace and comments, as required by the spec.
   stream.ConsumeWhitespace();
   stream.EnsureLookAhead();
@@ -779,7 +784,10 @@ StringView CSSVariableParser::StripTrailingWhitespaceAndComments(
   // (i.e. not CSSOM, where we just get a string), we know we can't
   // have unfinished comments, so consider piping that knowledge all
   // the way through here.
-  if (text.Is8Bit() && !std::ranges::contains(text.Span8(), '/')) {
+  const bool may_contain_comments =
+      text.Is8Bit() ? std::ranges::contains(text.Span8(), '/')
+                    : std::ranges::contains(text.Span16(), '/');
+  if (!may_contain_comments) {
     // No comments, so we can strip whitespace only.
     // SAFETY: empty strings short-circuited in &&-expression means that
     // the last character is valid.

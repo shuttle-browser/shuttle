@@ -6,9 +6,14 @@
 #define UI_DECORATION_DECORATION_UTIL_H_
 
 #include <cstddef>
+#include <optional>
+#include <tuple>
 
+#include "base/component_export.h"
+#include "base/export_template.h"
 #include "build/build_config.h"
 #include "ui/decoration/decoration_details.h"
+#include "ui/decoration/highlight_border_value.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/geometry/outsets.h"
 #include "ui/gfx/geometry/rect.h"
@@ -22,8 +27,8 @@ class Canvas;
 namespace ui::decoration {
 
 // Generator for shadow decoration rendering and insets.
-struct ShadowGenerator {
-  static gfx::Insets GetMargins(const gfx::ShadowValues& shadows);
+struct COMPONENT_EXPORT(UI_DECORATION) ShadowGenerator {
+  static gfx::Outsets GetMargins(const gfx::ShadowValues& shadows);
 
   // Returns the insets for the ninebox aperture given the shadows and corner
   // radius. Represents the total space need to draw the full range of blur and
@@ -39,6 +44,62 @@ struct ShadowGenerator {
 };
 
 using ShadowDetails = DecorationDetails<gfx::ShadowValues, ShadowGenerator>;
+
+// Instantiated in the ui/decoration component so that every module shares a
+// single shadow details cache in component builds.
+extern template class EXPORT_TEMPLATE_DECLARE(COMPONENT_EXPORT(UI_DECORATION))
+    internal::DecorationCache<gfx::ShadowValues, ShadowGenerator>;
+
+// Strokes a highlight border inside `bounds`: an outer `border_color` ring
+// and an inner `highlight_color` ring, each `thickness` physical pixels wide.
+// Paints the same rings as views::HighlightBorder.
+COMPONENT_EXPORT(UI_DECORATION)
+void DrawHighlightBorder(gfx::Canvas* canvas,
+                         const HighlightBorderValue& value,
+                         const gfx::RoundedCornersF& rounded_corners,
+                         const gfx::Rect& bounds);
+
+// Generator for highlight border decoration rendering and insets. Both rings
+// sit inside the content.
+struct COMPONENT_EXPORT(UI_DECORATION) HighlightBorderGenerator {
+  static gfx::Outsets GetMargins(const HighlightBorderValue& value);
+
+  // Returns the insets for the ninebox aperture given the border and corner
+  // radii.
+  static gfx::Insets GetNineboxApertureInsets(
+      const HighlightBorderValue& value,
+      const gfx::RoundedCornersF& rounded_corners);
+
+  static void Draw(gfx::Canvas* canvas,
+                   const HighlightBorderValue& value,
+                   const gfx::RoundedCornersF& rounded_corners,
+                   const gfx::Rect& content_rect);
+};
+
+using HighlightBorderDetails =
+    DecorationDetails<HighlightBorderValue, HighlightBorderGenerator>;
+
+// Instantiated in the ui/decoration component so that every module shares a
+// single highlight border details cache in component builds.
+extern template class EXPORT_TEMPLATE_DECLARE(COMPONENT_EXPORT(UI_DECORATION))
+    internal::DecorationCache<HighlightBorderValue, HighlightBorderGenerator>;
+
+// Visual specification, generator, and cached ninebox details for a drop
+// shadow combined with a highlight border. The shadow is listed first so that
+// the highlight border is painted on top of it.
+using ShadowWithHighlightBorderValue =
+    CompositeValue<gfx::ShadowValues, HighlightBorderValue>;
+using ShadowWithHighlightBorderGenerator =
+    CompositeGenerator<ShadowDetails, HighlightBorderDetails>;
+using ShadowWithHighlightBorderDetails =
+    DecorationDetails<ShadowWithHighlightBorderValue,
+                      ShadowWithHighlightBorderGenerator>;
+
+// Instantiated in the ui/decoration component so that every module shares a
+// single shadow-with-highlight-border details cache in component builds.
+extern template class EXPORT_TEMPLATE_DECLARE(COMPONENT_EXPORT(UI_DECORATION))
+    internal::DecorationCache<ShadowWithHighlightBorderValue,
+                              ShadowWithHighlightBorderGenerator>;
 
 // Returns the insets required to accommodate the corner radii.
 //
@@ -59,6 +120,7 @@ using ShadowDetails = DecorationDetails<gfx::ShadowValues, ShadowGenerator>;
 //                                                      ◄──►
 //                                          Right Inset =  max(r_UR, r_LR)
 //
+COMPONENT_EXPORT(UI_DECORATION)
 gfx::Insets GetInsetsForRoundedCorners(
     const gfx::RoundedCornersF& rounded_corners);
 

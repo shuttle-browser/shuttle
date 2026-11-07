@@ -21,7 +21,7 @@ import 'chrome://resources/cr_elements/icons.html.js';
 import 'chrome://resources/cr_elements/cr_action_menu/cr_action_menu.js';
 
 import type {CrActionMenuElement} from 'chrome://resources/cr_elements/cr_action_menu/cr_action_menu.js';
-import {addWebUiListener, sendWithPromise} from 'chrome://resources/js/cr.js';
+import {sendWithPromise} from 'chrome://resources/js/cr.js';
 import {FocusOutlineManager} from 'chrome://resources/js/focus_outline_manager.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
@@ -87,6 +87,15 @@ export class PolicyAppElement extends CrLitElement {
   override async connectedCallback() {
     super.connectedCallback();
 
+    // Listeners must be setup before any `await` calls. Otherwise, the initial
+    // data will be dropped.
+    BrowserProxy.listenForStatusUpdated(
+        (status: Record<string, Status>) => this.status_ = status);
+    BrowserProxy.listenForPoliciesUpdated(
+        (names: Record<string, PolicyGroupNames>,
+         groups: PolicyGroupsResponse) =>
+            this.onPoliciesReceived_(names, groups));
+
     if (this.policyPageMojoMigrationEnabled_) {
       const message = await BrowserProxy.getDebugString();
       console.info(message);
@@ -117,16 +126,9 @@ export class PolicyAppElement extends CrLitElement {
         loadTimeData.valueExists('hideUploadReportButton') &&
         loadTimeData.getBoolean('hideUploadReportButton');
 
-    BrowserProxy.listenForStatusUpdated(
-        (status: Record<string, Status>) => this.status_ = status);
-    // TODO(crbug.com/40897784): Once all policy providers implement the mojo
-    // version use BrowserProxy to listen for policies updated event.
-    addWebUiListener(
-        'policies-updated',
-        (names: Record<string, PolicyGroupNames>,
-         groups: PolicyGroupsResponse) =>
-            this.onPoliciesReceived_(names, groups));
-    sendWithPromise<void>('listenPoliciesUpdates');
+    if (!this.policyPageMojoMigrationEnabled_) {
+      sendWithPromise<void>('listenPoliciesUpdates');
+    }
   }
 
   override disconnectedCallback() {
@@ -183,21 +185,27 @@ export class PolicyAppElement extends CrLitElement {
         name: group.forSigninScreen ?
             `${group.name} [${loadTimeData.getString('signinProfile')}]` :
             group.name,
-        id: id,
+        // For Web Apps (PWAs), multiple subpath PWAs sharing the same origin
+        // are keyed by scope URL in `policyGroups` so their map keys (`id`)
+        // don't collide, while `group.id` holds the display origin.
+        id: (group.isWebApp && group.id) ? group.id : id,
         isExtension: group.isExtension,
+        isWebApp: group.isWebApp,
         policies,
         ...(group.precedenceOrder && {precedenceOrder: group.precedenceOrder}),
       };
     });
 
     // <if expr="not is_chromeos">
-    this.enableReportButton_ =
-        [
-          'CloudReportingEnabled',
-          'CloudProfileReportingEnabled',
-          'UserSecuritySignalsReporting',
-        ].map(p => !!policyGroups['chrome']?.policies[p]?.value)
-            .reduce((accumulator, current) => accumulator ||= current, false);
+    const isNonEmpty = (value: unknown) =>
+        Array.isArray(value) ? value.length > 0 : !!value;
+    this.enableReportButton_ = [
+      'CloudReportingEnabled',
+      'CloudProfileReportingEnabled',
+      'UserSecuritySignalsReporting',
+      'SaasUsageReportingDomainUrlsForBrowsers',
+      'SaasUsageReportingDomainUrlsForProfiles',
+    ].some(p => isNonEmpty(policyGroups['chrome']?.policies[p]?.value));
     // </if>
     this.reloadPoliciesDone_();
   }

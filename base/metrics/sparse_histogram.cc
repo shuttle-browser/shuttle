@@ -43,7 +43,9 @@ HistogramBase* SparseHistogram::FactoryGet(std::string_view name,
     PersistentMemoryAllocator::Reference histogram_ref = 0;
     std::unique_ptr<HistogramBase> tentative_histogram;
     PersistentHistogramAllocator* allocator = GlobalHistogramAllocator::Get();
-    if (allocator) {
+    const bool should_persist =
+        (flags & HistogramBase::kPersistentHistogramFlagsMask) != 0;
+    if (allocator && should_persist) {
       tentative_histogram = allocator->AllocateHistogram(
           SPARSE_HISTOGRAM, name, name_hash, /*minimum=*/0, /*maximum=*/0,
           /*bucket_ranges=*/nullptr, flags, &histogram_ref);
@@ -104,7 +106,9 @@ std::unique_ptr<HistogramBase> SparseHistogram::PersistentCreate(
 SparseHistogram::~SparseHistogram() = default;
 
 uint64_t SparseHistogram::name_hash() const {
-  return unlogged_samples_->id();
+  // Both the `unlogged_samples_` pointer and its `id()` are immutable after
+  // construction, so reading `id()` does not require acquiring `lock_`.
+  return TS_UNCHECKED_READ(unlogged_samples_)->id();
 }
 
 HistogramType SparseHistogram::GetHistogramType() const {
@@ -143,7 +147,7 @@ std::unique_ptr<HistogramSamples> SparseHistogram::SnapshotSamples() const {
   base::AutoLock auto_lock(lock_);
   snapshot->Add(*unlogged_samples_);
   snapshot->Add(*logged_samples_);
-  return std::move(snapshot);
+  return snapshot;
 }
 
 std::unique_ptr<HistogramSamples> SparseHistogram::SnapshotUnloggedSamples()
@@ -153,37 +157,41 @@ std::unique_ptr<HistogramSamples> SparseHistogram::SnapshotUnloggedSamples()
   base::AutoLock auto_lock(lock_);
   snapshot->Add(*unlogged_samples_);
 
-  return std::move(snapshot);
+  return snapshot;
 }
 
 void SparseHistogram::MarkSamplesAsLogged(const HistogramSamples& samples) {
-  DCHECK(!final_delta_created_);
-
   base::AutoLock auto_lock(lock_);
+#if DCHECK_IS_ON()
+  DCHECK(!final_delta_created_);
+#endif
+
   unlogged_samples_->Subtract(samples);
   logged_samples_->Add(samples);
 }
 
 std::unique_ptr<HistogramSamples> SparseHistogram::SnapshotDelta() {
-  DCHECK(!final_delta_created_);
-
   std::unique_ptr<SampleMap> snapshot =
       std::make_unique<SampleMap>(name_hash());
   base::AutoLock auto_lock(lock_);
+#if DCHECK_IS_ON()
+  DCHECK(!final_delta_created_);
+#endif
   snapshot->Extract(*unlogged_samples_);
   logged_samples_->Add(*snapshot);
-  return std::move(snapshot);
+  return snapshot;
 }
 
 std::unique_ptr<HistogramSamples> SparseHistogram::SnapshotFinalDelta() const {
-  DCHECK(!final_delta_created_);
-  final_delta_created_ = true;
-
   auto snapshot = std::make_unique<SampleMap>(name_hash());
   base::AutoLock auto_lock(lock_);
+#if DCHECK_IS_ON()
+  DCHECK(!final_delta_created_);
+  final_delta_created_ = true;
+#endif
   snapshot->Add(*unlogged_samples_);
 
-  return std::move(snapshot);
+  return snapshot;
 }
 
 bool SparseHistogram::AddSamples(const HistogramSamples& samples) {

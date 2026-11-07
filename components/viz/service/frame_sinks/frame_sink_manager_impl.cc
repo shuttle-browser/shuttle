@@ -15,6 +15,7 @@
 
 #include "base/check.h"
 #include "base/check_op.h"
+#include "base/command_line.h"
 #include "base/containers/map_util.h"
 #include "base/containers/queue.h"
 #include "base/debug/alias.h"
@@ -50,7 +51,10 @@
 #if BUILDFLAG(IS_MAC)
 #include "components/viz/service/frame_sinks/external_begin_frame_source_mojo_mac.h"
 #include "ui/display/display_features.h"
+#include "ui/display/mac/ca_display_link_mac.h"
+#include "ui/display/mac/display_link_mac.h"
 #include "ui/display/mac/vsync_provider_mac.h"
+#include "ui/gfx/switches.h"
 #endif
 
 namespace viz {
@@ -122,6 +126,31 @@ FrameSinkManagerImpl::FrameSinkManagerImpl(const InitParams& params)
   // is saved for VSyncProviderMac.
   if (ui::DisplayLinkMac::SupportsDisplayLinkMacInBrowser()) {
     ui::VSyncProviderMac::GetInstance();
+  }
+
+  // To support CADisplayLink in the GPU process, WindowServer events must be
+  // manually pumped because child processes lack the standard NSApplication
+  // event loop. We create a dedicated thread for this purpose. Note: Do not
+  // start WindowServerEventPumpThread in the browser process, as it will
+  // interfere with the standard event loop.
+  if (ui::DisplayLinkMac::SupportsCADisplayLinkInGPU()) {
+    base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+    bool in_process_or_headless_switch =
+        command_line->HasSwitch("in-process-gpu") ||
+        command_line->HasSwitch("single-process") ||
+        command_line->HasSwitch("single-process-tests") ||
+        command_line->HasSwitch(switches::kHeadless);
+    bool in_host_process = gpu_service_ && gpu_service_->in_host_process();
+    if (!in_process_or_headless_switch && !in_host_process &&
+        !ui::WindowServerEventPumpThread::NSAppInitialized()) {
+      auto update_vsync_displays_cb =
+          base::BindRepeating(&FrameSinkManagerImpl::UpdateVSyncDisplays,
+                              weak_factory_.GetWeakPtr());
+
+      window_server_event_thread_ =
+          std::make_unique<ui::WindowServerEventPumpThread>(
+              std::move(update_vsync_displays_cb));
+    }
   }
 #endif
 }

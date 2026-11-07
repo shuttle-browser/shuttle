@@ -57,7 +57,7 @@ void PerformanceHandler::OnJavascriptDisallowed() {
 }
 
 void PerformanceHandler::OnDeviceHasBatteryChanged(bool device_has_battery) {
-  DCHECK(IsJavascriptAllowed());
+  CHECK(IsJavascriptAllowed(), base::NotFatalUntil::M162);
   FireWebUIListener("device-has-battery-changed", device_has_battery);
 }
 

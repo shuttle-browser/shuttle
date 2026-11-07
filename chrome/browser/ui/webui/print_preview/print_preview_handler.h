@@ -35,7 +35,6 @@ namespace base {
 class TimeTicks;
 }  // namespace base
 
-
 namespace content {
 class WebContents;
 }
@@ -261,20 +260,6 @@ class PrintPreviewHandler : public content::WebUIMessageHandler {
   // |error|: The returned print job error. Useful for reporting a specific
   //     error. None type implies no error.
   void OnPrintResult(const std::string& callback_id, const base::Value& error);
-
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  // Called when enterprise policy returns a verdict.
-  // Calls FinishHandleDoPrint() if it's allowed or calls OnPrintResult() to
-  // report print not allowed.
-  void OnVerdictByEnterprisePolicy(UserActionBuckets user_action,
-                                   base::DictValue settings,
-                                   scoped_refptr<base::RefCountedMemory> data,
-                                   const std::string& callback_id,
-                                   bool allowed);
-
-  // Wrapper for OnHidePreviewDialog() from PrintPreviewUI.
-  void OnHidePreviewDialog();
-#endif  // BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
 
   // Whether we have already logged a failed print preview.
   bool reported_failed_preview_ = false;

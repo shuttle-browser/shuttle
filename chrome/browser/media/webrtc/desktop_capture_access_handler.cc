@@ -241,8 +241,9 @@ void DesktopCaptureAccessHandler::ProcessScreenCaptureAccessRequest(
     content::WebContents* web_contents,
     const extensions::Extension* extension,
     std::unique_ptr<PendingAccessRequest> pending_request) {
-  DCHECK_EQ(pending_request->request.video_type,
-            blink::mojom::MediaStreamType::GUM_DESKTOP_VIDEO_CAPTURE);
+  CHECK_EQ(pending_request->request.video_type,
+           blink::mojom::MediaStreamType::GUM_DESKTOP_VIDEO_CAPTURE,
+           base::NotFatalUntil::M161);
 
   UpdateExtensionTrusted(pending_request->request,
                          pending_request->is_allowlisted_extension);
@@ -349,7 +350,7 @@ void DesktopCaptureAccessHandler::HandleRequest(
     const content::MediaStreamRequest& request,
     content::MediaResponseCallback callback,
     const extensions::Extension* extension) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   const bool is_allowlisted_extension =
       IsExtensionAllowedForScreenCapture(extension);
@@ -510,9 +511,10 @@ void DesktopCaptureAccessHandler::HandleRequest(
 void DesktopCaptureAccessHandler::ProcessChangeSourceRequest(
     content::WebContents* web_contents,
     std::unique_ptr<PendingAccessRequest> pending_request) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK_EQ(pending_request->request.video_type,
-            blink::mojom::MediaStreamType::GUM_DESKTOP_VIDEO_CAPTURE);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
+  CHECK_EQ(pending_request->request.video_type,
+           blink::mojom::MediaStreamType::GUM_DESKTOP_VIDEO_CAPTURE,
+           base::NotFatalUntil::M161);
 
 #if BUILDFLAG(IS_MAC)
   if (request_approved_for_test_) {
@@ -555,7 +557,7 @@ void DesktopCaptureAccessHandler::UpdateMediaRequestState(
     int page_request_id,
     blink::mojom::MediaStreamType stream_type,
     content::MediaRequestState state) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   if (state != content::MEDIA_REQUEST_STATE_DONE &&
       state != content::MEDIA_REQUEST_STATE_CLOSING) {
@@ -577,7 +579,7 @@ void DesktopCaptureAccessHandler::UpdateMediaRequestState(
 void DesktopCaptureAccessHandler::ProcessQueuedAccessRequest(
     const RequestsQueue& queue,
     content::WebContents* web_contents) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   const PendingAccessRequest& pending_request = *queue.front();
 
@@ -596,7 +598,8 @@ void DesktopCaptureAccessHandler::ProcessQueuedAccessRequest(
   }
 
   if (!pending_request.picker) {
-    DCHECK(!pending_request.request.requested_video_device_ids.empty());
+    CHECK(!pending_request.request.requested_video_device_ids.empty(),
+          base::NotFatalUntil::M161);
     content::WebContentsMediaCaptureId web_contents_id;
     if (content::WebContentsMediaCaptureId::Parse(
             pending_request.request.requested_video_device_ids.front(),
@@ -681,8 +684,8 @@ void DesktopCaptureAccessHandler::ProcessQueuedAccessRequest(
 void DesktopCaptureAccessHandler::RejectRequest(
     content::WebContents* web_contents,
     blink::mojom::MediaStreamRequestResult result) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(web_contents);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
+  CHECK(web_contents, base::NotFatalUntil::M161);
 
   auto it = pending_requests_.find(web_contents);
   if (it == pending_requests_.end()) {
@@ -708,7 +711,7 @@ void DesktopCaptureAccessHandler::OnPickerDialogResults(
     const std::u16string& application_title,
     base::expected<content::DesktopMediaID,
                    blink::mojom::MediaStreamRequestResult> result) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   if (!web_contents) {
     // If `pending_requests_` contained the old value of `pending_requests_`
@@ -763,7 +766,7 @@ void DesktopCaptureAccessHandler::OnPickerDialogResults(
 
 void DesktopCaptureAccessHandler::WebContentsDestroyed(
     content::WebContents* web_contents) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   pending_requests_.erase(web_contents);
 }
@@ -791,8 +794,8 @@ void DesktopCaptureAccessHandler::AcceptRequest(
     std::unique_ptr<PendingAccessRequest> pending_request,
     const content::DesktopMediaID& media_id,
     bool capture_audio) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(web_contents);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
+  CHECK(web_contents, base::NotFatalUntil::M161);
 
   // TODO(crbug.com/40216442): Generalize to multiple streams.
   // Create the callback before `pending_request` is moved to ensure that we
@@ -825,12 +828,13 @@ void DesktopCaptureAccessHandler::OnDesktopCaptureDevicesObtained(
     const content::DesktopMediaID& media_id,
     blink::mojom::StreamDevices devices,
     std::unique_ptr<content::MediaStreamUI> ui) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   if (!web_contents) {
     return;
   }
 
-  DCHECK(devices.audio_device.has_value() || devices.video_device.has_value());
+  CHECK(devices.audio_device.has_value() || devices.video_device.has_value(),
+        base::NotFatalUntil::M161);
 
   UpdateExtensionTrusted(pending_request->request,
                          pending_request->is_allowlisted_extension);
@@ -853,7 +857,7 @@ void DesktopCaptureAccessHandler::OnDlpRestrictionChecked(
     const content::DesktopMediaID& media_id,
     bool capture_audio,
     bool is_dlp_allowed) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   if (!web_contents) {
     // No need to do anything since WebContents is already destroyed by the time

@@ -45,6 +45,9 @@ BASE_DECLARE_FEATURE(kLocalHistoryZeroSuggestBeyondNTP);
 BASE_DECLARE_FEATURE(kZeroSuggestPrefetchDebouncing);
 BASE_DECLARE_FEATURE(kZeroSuggestPrefetchingOnSRP);
 BASE_DECLARE_FEATURE(kZeroSuggestPrefetchingOnWeb);
+// Enables triggering zero-suggest prefetch when a page finishes loading on
+// Android, aligning with Desktop's page-load and tab-switch behavior.
+BASE_DECLARE_FEATURE(kZeroSuggestPrefetchOnPageLoadAndTabSwitch);
 
 // On Device Suggest.
 BASE_DECLARE_FEATURE(kOnDeviceHeadProviderIncognito);
@@ -76,6 +79,15 @@ inline constexpr base::FeatureParam<int>
         "omnibox_full_webui_defer_show_until_visual_state_ready_timeout_ms",
         250};
 BASE_DECLARE_FEATURE(kOmniboxAimDeferShowUntilVisualStateReadyWithFullWebUI);
+BASE_DECLARE_FEATURE(kOmniboxAimPopupDeferCreation);
+// When false, the deferred AIM popup content is not created after the browser
+// window's first presentation, only when something needs it (showing the popup,
+// the classic popup's context menu, a location bar action), so windows that
+// never open AI Mode never create its WebContents.
+inline constexpr base::FeatureParam<bool>
+    kOmniboxAimPopupCreateOnFirstPresentation{
+        &kOmniboxAimPopupDeferCreation, "create_on_first_presentation", true};
+BASE_DECLARE_FEATURE(kOmniboxWebUIPopupDeferCreation);
 BASE_DECLARE_FEATURE(kOmniboxWebUIDebounceResize);
 BASE_DECLARE_FEATURE(kOmniboxFullWebUIDebounceResize);
 BASE_DECLARE_FEATURE(kOmniboxWebUIHeightWorkarounds);
@@ -90,9 +102,11 @@ BASE_DECLARE_FEATURE(kOmniboxFullWebUIShadow);
 BASE_DECLARE_FEATURE(kOmniboxWebUISizeWebViewToPreferredHeight);
 BASE_DECLARE_FEATURE(kOmniboxFullWebUISizeWebViewToPreferredHeight);
 BASE_DECLARE_FEATURE(kOmniboxWebUIPopupHideOnCreation);
+BASE_DECLARE_FEATURE(kOmniboxWebUIPopupCreateWidgetOnShow);
 BASE_DECLARE_FEATURE(kOmniboxFullWebUIDestroyWidgetOnHide);
 BASE_DECLARE_FEATURE(kOmniboxAimDestroyWidgetOnHide);
 BASE_DECLARE_FEATURE(kOmniboxWebUIDestroyWidgetOnHide);
+BASE_DECLARE_FEATURE(kOmniboxAimPopupRequireEligibility);
 BASE_DECLARE_FEATURE(kWebUISearchboxWithoutModelController);
 
 // Omnibox UI - these affect the UI or function of the location bar (not the
@@ -103,6 +117,13 @@ BASE_DECLARE_FEATURE(kOmniboxDisableTabsForCanvas);
 
 // Enables popup variations (e.g. accordion menu) for mobile Fusebox.
 BASE_DECLARE_FEATURE(kOmniboxFuseboxPopupVariations);
+
+// Enables Fusebox user education features on Android.
+BASE_DECLARE_FEATURE(kOmniboxFuseboxUserEdModelSubtitles);
+BASE_DECLARE_FEATURE(kOmniboxFuseboxUserEdPlusButtonIph);
+BASE_DECLARE_FEATURE(kOmniboxFuseboxUserEdTabPickerIph);
+BASE_DECLARE_FEATURE(kOmniboxFuseboxUserEdFakeboxAnimation);
+BASE_DECLARE_FEATURE(kOmniboxFuseboxUserEdGuidedTour);
 
 // Navigation experiments.
 BASE_DECLARE_FEATURE(kDefaultTypedNavigationsToHttps);
@@ -135,6 +156,14 @@ BASE_DECLARE_FEATURE(kOmniboxPrefetchSelectedSuggestionsOmtAndroid);
 // Enables simultaneous prefetch and navigation on Enter KeyDown in Omnibox.
 BASE_DECLARE_FEATURE(kOmniboxSearchPrefetchOnEnterKeyDown);
 
+// Surfaces recent tabs, including tabs from other devices, as suggestions in
+// the Android Tab Search overlay.
+BASE_DECLARE_FEATURE(kAndroidTabSearchRecentTabs);
+
+// Shows a close button on open tab suggestions in the Android Tab Search
+// overlay, allowing users to close tabs directly from the suggestions list.
+BASE_DECLARE_FEATURE(kAndroidTabSearchCloseTabButton);
+
 // Site search/Keyword mode related features.
 BASE_DECLARE_FEATURE(kOmniboxSiteSearch);
 BASE_DECLARE_FEATURE(kStarterPackExpansion);
@@ -151,12 +180,10 @@ BASE_DECLARE_FEATURE(kTruncateSearchUrlQ);
 inline constexpr base::FeatureParam<int> kTruncateSearchUrlQLength{
     &kTruncateSearchUrlQ, "truncate_search_url_q_length", 2048};
 
-BASE_DECLARE_FEATURE(kOmniboxAsyncViewInflation);
-BASE_DECLARE_FEATURE(kUseFusedLocationProvider);
 
 BASE_DECLARE_FEATURE(kOmniboxMobileParityUpdate);
 BASE_DECLARE_FEATURE(kOmniboxMobileParityUpdateV2);
-BASE_DECLARE_FEATURE(kOmniboxXGeoPermissionGranularity);
+BASE_DECLARE_FEATURE(kOmniboxXGeoFailClosedOnPreciseLeak);
 BASE_DECLARE_FEATURE(kExactMatchFavicons);
 
 // Omnibox suggestions tuning
@@ -193,13 +220,13 @@ extern const base::FeatureParam<bool> kVoiceSearchCoherenceRealboxHelperText;
 #if BUILDFLAG(IS_ANDROID)
 BASE_DECLARE_FEATURE(kDiagnostics);
 BASE_DECLARE_FEATURE(kForceAndroidRealbox);
-BASE_DECLARE_FEATURE(kJumpStartOmnibox);
 BASE_DECLARE_FEATURE(kSuppressIntermediateACUpdatesOnLowEndDevices);
 // Delay focusTab to prioritize navigation (https://crbug.com/374852568).
 BASE_DECLARE_FEATURE(kPostDelayedTaskFocusTab);
 BASE_DECLARE_FEATURE(kResetSuggestionsScroll);
 BASE_DECLARE_FEATURE(kOmniboxSessionlessVoiceSearch);
 BASE_DECLARE_FEATURE(kSuppressStatusIconDuringHttpNavigation);
+BASE_DECLARE_FEATURE(kOmniboxAndroidIntranetRedirect);
 #endif  // BUILDFLAG(IS_ANDROID)
 
 // If enabled, X-Geo headers are sent for all search navigations on all

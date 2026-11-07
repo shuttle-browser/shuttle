@@ -2,6 +2,18 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+# NOTE: Please do not add new test source files (e.g. *_unittest.cc,
+# *_browsertest.cc, *_interactive_uitest.cc, *_test.mm) to this file. Instead,
+# add them to the BUILD.gn file of the directory that contains them, e.g.
+# chrome/browser/my_feature/BUILD.gn.
+#
+# That may mean adding a source_set("unit_tests"), source_set("browser_tests")
+# or source_set("interactive_ui_tests") target there, and adding it to the deps
+# of the corresponding test target in this file. For an example of a directory
+# with test_support, unit_tests, browser_tests and interactive_ui_tests
+# targets, see //chrome/browser/ui/views/tab_sharing/BUILD.gn and its reference
+# below.
+
 import("//build/cipd/cipd.gni")
 import("//build/config/buildflags_paint_preview.gni")
 import("//build/config/chrome_build.gni")
@@ -14,7 +26,6 @@ import("//build/toolchain/toolchain.gni")
 import("//chrome/browser/buildflags.gni")
 import("//chrome/browser/downgrade/buildflags.gni")
 import("//chrome/common/features.gni")
-import("//chrome/common/request_header_integrity/buildflags.gni")
 import("//chrome/services/speech/buildflags/buildflags.gni")
 import("//chrome/test/include_js_tests.gni")
 import("//components/allocation_recorder/testing/testing.gni")
@@ -54,10 +65,10 @@ import("//v8/gni/v8.gni")
 
 assert(!is_ios, "Chromium/iOS shouldn't use anything in //chrome")
 assert(!is_fuchsia, "Fuchsia shouldn't use anything in //chrome")
-assert(enable_supervised_users)
 
 if (is_android) {
   import("//build/config/android/rules.gni")
+  import("//build/config/locales.gni")
   import("//chrome/android/features/dev_ui/dev_ui_module.gni")
   import("//third_party/jni_zero/jni_zero.gni")
   import("//tools/perf/chrome_telemetry_build/android_browser_types.gni")
@@ -135,11 +146,6 @@ if (is_android) {
 }
 
 if (is_chromeos && is_chromeos_device) {
-  copy("crosier_metadata") {
-    sources = [ "base/chromeos/crosier/ash_integration_test_test.yaml" ]
-    outputs = [ "$root_out_dir/crosier_metadata/{{source_file_part}}" ]
-  }
-
   copy("crosier_js_helpers") {
     sources = [ "../browser/ash/accessibility/google_tts_test_support.js" ]
     outputs = [ "$root_out_dir/crosier_js_helpers/{{source_file_part}}" ]
@@ -177,27 +183,11 @@ if (is_chromeos && is_chromeos_device) {
   test("chromeos_integration_tests") {
     configs += [ "//build/config:precompiled_headers" ]
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [
-      "base/chromeos/crosier/chromeos_tests_main.cc",
-      "base/chromeos/crosier/demo_integration_test.cc",
-    ]
+    sources = [ "base/chromeos/crosier/chromeos_tests_main.cc" ]
     deps = [
       ":test_support",
       "//chrome/test/base/chromeos/crosier:test_support",
-      "//components/app_constants",
     ]
-
-    # Note: for each test case in the below list, add a metadata file
-    # in the `crosier_metadata` build rule above.
-    sources += [
-      "base/chromeos/crosier/ash_integration_test_test.cc",
-      "base/chromeos/crosier/helper/test_sudo_helper_client_test.cc",
-      "base/chromeos/crosier/upstart_test.cc",
-    ]
-
-    if (is_chrome_branded) {
-      sources += [ "base/chromeos/crosier/test_accounts_test.cc" ]
-    }
 
     data = [
     ]
@@ -217,7 +207,6 @@ if (is_chromeos && is_chromeos_device) {
 
     data_deps = [
       ":crosier_js_helpers",
-      ":crosier_metadata",
       "//chrome:packed_resources",
       "//chrome/test/base/chromeos/crosier/helper",
       "//chrome/test/base/chromeos/crosier/helper/fake_chrome",
@@ -231,10 +220,7 @@ if (is_chromeos && is_chromeos_device) {
 
 if (is_android) {
   test("android_browsertests") {
-    configs += [ "//build/config:precompiled_headers" ]
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
     use_default_launcher = false
-    product_config_java_packages = [ "org.chromium.chrome.browser" ]
     android_manifest =
         "${target_gen_dir}/android_browsertests_manifest/AndroidManifest.xml"
     android_manifest_dep = ":android_browsertests_manifest"
@@ -281,23 +267,13 @@ if (is_android) {
       "//chrome/browser/content_settings:content_settings_factory",
       "//chrome/browser/engagement",
       "//chrome/browser/engagement:android_browsertests",
-      "//chrome/browser/enterprise/data_controls",
-      "//chrome/browser/enterprise/data_controls:android_browsertests",
-      "//chrome/browser/enterprise/platform_auth:android_browsertests",
-      "//chrome/browser/enterprise/platform_auth:features",
-      "//chrome/browser/enterprise/platform_auth:test_utils",
-      "//chrome/browser/enterprise/reporting:android_browsertests",
-      "//chrome/browser/enterprise/signals:android_browsertests",
       "//chrome/browser/flags:flags_android",
       "//chrome/browser/history",
       "//chrome/browser/lifetime",
       "//chrome/browser/metrics:android_browsertests",
       "//chrome/browser/metrics:test_support",
       "//chrome/browser/offline_items_collection",
-      "//chrome/browser/optimization_guide",
       "//chrome/browser/origin_trials:browser_tests",
-      "//chrome/browser/page_content_annotations:android_browser_tests",
-      "//chrome/browser/page_content_annotations:extraction_service",
       "//chrome/browser/page_load_metrics:android_browsertests",
       "//chrome/browser/policy:android_browsertests",
       "//chrome/browser/policy:browser_tests",
@@ -310,12 +286,10 @@ if (is_android) {
       "//chrome/browser/profiles:android_browsertests",
       "//chrome/browser/safe_browsing:test_support",
       "//chrome/browser/search_engines",
-      "//chrome/browser/segmentation_platform:test_utils",
       "//chrome/browser/site_protection",
       "//chrome/browser/site_protection:utils",
       "//chrome/browser/ssl:android_browsertests",
       "//chrome/browser/ssl:cert_verifier_test_support",
-      "//chrome/browser/supervised_user:android_browser_tests",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/android/hats:browser_tests",
       "//chrome/browser/ui/browser_window",
@@ -324,7 +298,6 @@ if (is_android) {
       "//chrome/browser/ui/tabs:tab_enums",
       "//chrome/browser/ui/webui/policy",
       "//chrome/browser/user_agent:browser_tests",
-      "//chrome/browser/visited_url_ranking:browser_tests",
       "//chrome/browser/webauthn",
       "//chrome/browser/webid",
       "//chrome/browser/webid:android_browsertests",
@@ -339,11 +312,9 @@ if (is_android) {
       "//components/browsing_data/content:test_support",
       "//components/browsing_data/core",
       "//components/content_settings/browser",
-      "//components/device_signals/core/browser",
       "//components/enterprise",
       "//components/enterprise:test_support",
       "//components/enterprise/browser/identifiers",
-      "//components/enterprise/connectors/core:test_support",
       "//components/infobars/content",
       "//components/messages/android",
       "//components/messages/android:feature_flags",
@@ -362,15 +333,11 @@ if (is_android) {
       "//components/offline_pages/core/background:test_support",
       "//components/optimization_guide/core",
       "//components/optimization_guide/core:test_support",
-      "//components/page_content_annotations/content",
-      "//components/page_content_annotations/core",
-      "//components/page_content_annotations/core:test_support",
       "//components/page_load_metrics/browser:test_support",
       "//components/page_load_metrics/browser/observers/ad_metrics:test_support",
       "//components/policy:chrome_settings_proto_generated_compile",
       "//components/policy/core/browser:pref_mapping_test_support",
       "//components/policy/core/browser:test_support",
-      "//components/policy/test_support",
       "//components/privacy_sandbox",
       "//components/privacy_sandbox:privacy_sandbox_prefs",
       "//components/privacy_sandbox/privacy_sandbox_attestations",
@@ -382,17 +349,11 @@ if (is_android) {
       "//components/safe_browsing/content/common:interfaces",
       "//components/safe_browsing/core/browser/db:sb_database",
       "//components/safe_browsing/core/common",
-      "//components/safe_browsing/core/common/fbs:client_model",
       "//components/safe_browsing/core/common/proto:client_model_proto",
       "//components/safe_browsing/core/common/proto:csd_proto",
       "//components/security_interstitials/core:unsafe_resource",
       "//components/security_state/content",
       "//components/security_state/content/android",
-      "//components/segmentation_platform/embedder/default_model",
-      "//components/segmentation_platform/internal",
-      "//components/segmentation_platform/internal:test_support",
-      "//components/segmentation_platform/public",
-      "//components/segmentation_platform/public:test_support",
       "//components/session_proto_db",
       "//components/signin/public/identity_manager",
       "//components/signin/public/identity_manager:test_support",
@@ -408,7 +369,6 @@ if (is_android) {
       "//components/unified_consent",
       "//components/user_manager",
       "//components/variations/service",
-      "//components/visited_url_ranking/public",
       "//components/webapk:proto",
       "//components/webui/chrome_urls",
       "//content/test:android_test_message_pump_support",
@@ -440,12 +400,22 @@ if (is_android) {
     data_deps = [ "//testing/buildbot/filters:android_browsertests_filters" ]
 
     data = [
-      "$root_gen_dir/chrome/android/chrome_apk_paks/chrome_100_percent.pak",
-      "$root_gen_dir/chrome/android/chrome_apk_paks/locales/en-US.pak",
-      "$root_gen_dir/chrome/android/chrome_apk_paks/resources.pak",
-      "$root_gen_dir/components/components_resources.pak",
-      "$root_gen_dir/components/dev_ui_components_resources.pak",
-      "$root_out_dir/browser_tests.pak",
+    ]
+
+    # Exclude large test asset directories (WebGL conformance, WebVR samples,
+    # desktop perf/import/PDF suites) unreferenced by Android browser tests.
+    device_data_filters = [
+      "-//chrome/test/data/dromaeo/*",
+      "-//chrome/test/data/gpu/*",
+      "-//chrome/test/data/import/*",
+      "-//chrome/test/data/page_cycler/*",
+      "-//chrome/test/data/pdf_private/*",
+      "-//chrome/test/data/perf/*",
+      "-//chrome/test/data/pyauto_private/*",
+      "-//chrome/test/data/safari_import/*",
+      "-//chrome/test/data/xr/webvr_info/*",
+      "-//content/test/data/gpu/*",
+      "-//content/test/data/plugin/*",
     ]
 
     extra_args = []
@@ -503,7 +473,6 @@ if (is_android) {
       deps += [
         ":xr_android_emulator_tests_runner",
         ":xr_browser_tests_common",
-        "//chrome/browser/vr:vr_common",
         "//chrome/common:constants",
         "//components/content_settings/core/browser",
         "//components/webxr",
@@ -565,29 +534,21 @@ if (is_android) {
     }
 
     if (safe_browsing_mode != 0) {
-      sources += [
-        "../renderer/safe_browsing/phishing_classifier_browsertest.cc",
-        "../renderer/safe_browsing/phishing_dom_utils_browsertest.cc",
-      ]
-
       deps += [
         "//components/safe_browsing/content/browser:client_side_detection",
         "//components/safe_browsing/content/browser:client_side_detection_service",
-        "//components/safe_browsing/content/renderer/phishing_classifier",
-        "//components/safe_browsing/core/common/phishing_classifier",
       ]
     }
 
-    # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-    # enable the diagnostic by removing this line.
-    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+    # All android_browsertests sources have been migrated into per-feature
+    # targets. Do not add new sources to //chrome/test:android_browsertests.
+    sources = []
   }
 
   test("android_sync_integration_tests") {
     use_default_launcher = false
     android_manifest = "${target_gen_dir}/android_sync_integration_tests_manifest/AndroidManifest.xml"
     android_manifest_dep = ":android_sync_integration_tests_manifest"
-    product_config_java_packages = [ "org.chromium.chrome.browser" ]
 
     deps = [
     ]
@@ -607,6 +568,38 @@ if (is_android) {
     ]
   }
 
+  # Package only the subset of locale .pak files exercised by browser tests
+  # rather than all shipping Chrome locale .pak files (~55 MB uncompressed).
+  # If a test needs another locale, add it here.
+  android_assets("android_browsertests_locale_pak_assets") {
+    testonly = true
+    disable_compression = true
+    renaming_sources = []
+    renaming_destinations = []
+
+    foreach(_locale,
+            [
+              # RTL layout tests.
+              "ar",
+              "he",
+
+              # Default locale, plus en-GB as the "non-en-US" locale used by
+              # policy and management WebUI tests.
+              "en-US",
+              "en-GB",
+
+              # DevTools localization tests.
+              "es",
+            ]) {
+      foreach(_gender_suffix, gender_suffixes) {
+        renaming_sources += [ "$root_gen_dir/chrome/android/chrome_apk_paks/locales/${_locale}${_gender_suffix}.pak" ]
+        renaming_destinations += [ "locales/${_locale}${_gender_suffix}.pak" ]
+      }
+    }
+    treat_as_locale_paks = true
+    deps = [ "//chrome/android:chrome_apk_paks" ]
+  }
+
   android_assets("android_browsertests_assets") {
     testonly = true
     disable_compression = true
@@ -616,13 +609,21 @@ if (is_android) {
     # These are grit() rules so they are in $root_gen_dir.
     deps += [
       "//chrome:browser_tests_pak",
+      "//chrome/android:chrome_apk_paks",
       "//components/resources",
     ]
     sources += [
+      "$root_gen_dir/chrome/android/chrome_apk_paks/chrome_100_percent.pak",
+      "$root_gen_dir/chrome/android/chrome_apk_paks/resources.pak",
       "$root_gen_dir/components/components_resources.pak",
       "$root_gen_dir/components/dev_ui_components_resources.pak",
       "$root_out_dir/browser_tests.pak",
     ]
+    if (enable_hidpi) {
+      sources += [
+        "$root_gen_dir/chrome/android/chrome_apk_paks/chrome_200_percent.pak",
+      ]
+    }
 
     # These are assets rules so we can just depend on them.
     deps += [
@@ -792,6 +793,7 @@ template("performance_test_suite_template_base") {
 
     data_deps += [
       "//base:base_perftests",
+      "//base:partition_alloc_perftests",
       "//components:components_perftests",
       "//testing:run_perf_test",
       "//third_party/dawn/src/tint/cmd/bench:bench_cmd",
@@ -907,7 +909,7 @@ config("disable_thinlto_cache_flags") {
 if (!is_android) {
 
   proto_library("test_proto") {
-    sources = [ "../common/safe_browsing/ipc_protobuf_message_test.proto" ]
+    sources = []
   }
 
   if (is_chromeos) {
@@ -1002,7 +1004,9 @@ if (is_android) {
       "//components/signin/public/android:signin_java_test_support",
       "//components/sync/android:sync_java",
       "//components/tab_groups:tab_groups_java",
+      "//components/trusted_vault/android:java",
       "//content/public/test/android:content_java_test_support",
+      "//google_apis/gaia/android:java",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/jni_zero:jni_zero_java",
       "//third_party/junit",
@@ -1083,7 +1087,7 @@ if (!is_android) {
 } else {
   copy("xr_android_emulator_tests_runner") {
     testonly = true
-    sources = [ "//chrome/browser/vr/test/run_xr_android_emulator_tests.py" ]
+    sources = []
     outputs = [ "$root_out_dir/run_xr_android_emulator_tests.py" ]
   }
 }

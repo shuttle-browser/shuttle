@@ -15,9 +15,14 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/thread_annotations.h"
 #include "base/types/expected_macros.h"
+#include "base/types/pass_key.h"
+#include "components/origin_gating/core/decision.h"
+#include "components/origin_gating/core/decision_attribution.h"
+#include "components/origin_gating/core/decision_source.h"
+#include "components/origin_gating/core/gateable_event.h"
+#include "components/origin_gating/core/gating_decision.h"
 #include "components/origin_gating/core/origin_gating_cache.h"
 #include "components/origin_gating/core/origin_gating_configuration.h"
-#include "components/origin_gating/core/types.h"
 #include "net/base/url_util.h"
 #include "third_party/abseil-cpp/absl/functional/overload.h"
 #include "url/gurl.h"
@@ -113,11 +118,32 @@ DecisionAttribution MakeAttribution(const CustomPredicate& predicate) {
 
 }  // namespace
 
+// static
+std::unique_ptr<OriginGatingChecker> OriginGatingChecker::CreateForTesting(
+    base::WeakPtr<Delegate> delegate,
+    OriginGatingConfiguration config) {
+  return std::make_unique<OriginGatingChecker>(
+      base::PassKey<OriginGatingChecker>(), delegate, std::move(config));
+}
+
+OriginGatingChecker::OriginGatingChecker(base::PassKey<OriginGatingChecker>,
+                                         base::WeakPtr<Delegate> delegate,
+                                         OriginGatingConfiguration config)
+    : OriginGatingChecker(delegate, std::move(config)) {}
+
+OriginGatingChecker::OriginGatingChecker(base::PassKey<OriginGatingService>,
+                                         base::WeakPtr<Delegate> delegate,
+                                         OriginGatingConfiguration config)
+    : OriginGatingChecker(delegate, std::move(config)) {}
+
 OriginGatingChecker::OriginGatingChecker(base::WeakPtr<Delegate> delegate,
                                          OriginGatingConfiguration config)
     : delegate_(delegate),
       config_(std::move(config)),
-      cache_(config_.use_site_keyed_cache()) {}
+      cache_(config_.cache_scope().transform(
+          [](OriginGatingCache::CacheScope scope) {
+            return OriginGatingCache(scope);
+          })) {}
 
 OriginGatingChecker::~OriginGatingChecker() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -218,8 +244,8 @@ std::optional<Decision> OriginGatingChecker::EvaluateSinglePredicate(
       RunActionOrGetUserConfirmationInfo(
           context, current_and_rest, input, callback,
           [&]() VALID_CONTEXT_REQUIRED(sequence_checker_) {
-            decision = !input.requires_user_confirmation.value() &&
-                               cache_.IsNavigationAllowed(
+            decision = !input.requires_user_confirmation.value() && cache_ &&
+                               cache_->IsNavigationAllowed(
                                    input.source_origin.value_or(url::Origin()),
                                    input.destination_origin)
                            ? Decision::kAllowed
@@ -379,8 +405,9 @@ void OriginGatingChecker::RunActionOrGetUserConfirmationInfo(
 
 Decision OriginGatingChecker::IsCachedWithUserConfirmation(
     const url::Origin& origin) const {
-  return cache_.IsNavigationConfirmedByUser(origin) ? Decision::kAllowed
-                                                    : Decision::kNoDecision;
+  return cache_ && cache_->IsNavigationConfirmedByUser(origin)
+             ? Decision::kAllowed
+             : Decision::kNoDecision;
 }
 
 }  // namespace origin_gating

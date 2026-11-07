@@ -393,7 +393,7 @@ bool Navigator::CheckWebUIRendererDoesNotDisplayNormalURL(
     // TODO(nasko): Convert to CHECK() once it is confirmed this is not
     // violated in reality.
     if (!ChildProcessSecurityPolicyImpl::GetInstance()->HasWebUIBindings(
-            render_frame_host->GetProcess()->GetDeprecatedID())) {
+            render_frame_host->GetProcess()->GetID())) {
       base::debug::DumpWithoutCrashing();
     }
 
@@ -567,8 +567,7 @@ void Navigator::DidNavigate(
   //    - This is a navigation from the initial document (in cases where this is
   //      a brand new tab that didn't inherit another origin from an opener).
   //      This part helps with tests. See crbug.com/367623929.
-  //    - This is a same origin navigation (or we're not limiting cross-origin
-  //      paint holding)
+  //    - This is a same origin navigation.
   //    - There is a user activation. This means that the user interacted with
   //      the page. Commonly used attacks are done without user activation --
   //      which will not enable paint holding. However, if the user interacts
@@ -587,9 +586,7 @@ void Navigator::DidNavigate(
       (allow_paint_holding_for_initial_empty_document ||
        old_frame_origin.IsSameOriginWith(params.origin) ||
        old_frame_host->HasStickyUserActivation() ||
-       client->AllowNonActivatedCrossOriginPaintHolding() ||
-       !base::FeatureList::IsEnabled(
-           features::kLimitCrossOriginNonActivatedPaintHolding));
+       client->AllowNonActivatedCrossOriginPaintHolding());
 
   // Only allow subframe paint holding for same origin.
   const bool allow_subframe_paint_holding =
@@ -696,11 +693,13 @@ void Navigator::DidNavigate(
   int old_entry_count = controller_.GetEntryCount();
   LoadCommittedDetails details;
   base::TimeTicks start = base::TimeTicks::Now();
-  bool did_navigate = controller_.RendererDidNavigate(
-      render_frame_host, params, &details, was_within_same_document,
-      was_on_initial_empty_document,
-      previous_document_history_intervention_activation, caused_by_ad,
-      navigation_request.get());
+  NavigationControllerImpl::CommitResult commit_result =
+      controller_.RendererDidNavigate(
+          render_frame_host, params, &details, was_within_same_document,
+          was_on_initial_empty_document,
+          previous_document_history_intervention_activation, caused_by_ad,
+          navigation_request.get());
+  bool did_navigate = commit_result.did_navigate;
   if (!was_within_same_document) {
     base::UmaHistogramTimes(
         base::StrCat(
@@ -719,12 +718,8 @@ void Navigator::DidNavigate(
   // RenderFrameHostImpl::DidNavigate if that can be moved after
   // RendererDidNavigate, allowing us to avoid duplicating the URL and origin in
   // RenderFrameHost.
-  FrameNavigationEntry* frame_entry = nullptr;
-  if (controller_.GetLastCommittedEntry()) {
-    frame_entry =
-        controller_.GetLastCommittedEntry()->GetFrameEntry(frame_tree_node);
-  }
-  render_frame_host->set_last_committed_frame_entry(frame_entry);
+  render_frame_host->set_last_committed_frame_entry(
+      std::move(commit_result.frame_entry));
 
   // If the history length and/or index changed, update other renderers in the
   // FrameTree.
@@ -1111,18 +1106,21 @@ void Navigator::RequestOpenURL(
   // Send the navigation to the current FrameTreeNode if it's destined for a
   // subframe in the current tab.  We'll assume it's for the main frame
   // (possibly of a new or different WebContents) otherwise.
-  if (disposition == WindowOpenDisposition::CURRENT_TAB &&
+  if (disposition == WindowOpenDisposition::kCurrentTab &&
       render_frame_host->GetParentOrOuterDocument()) {
     frame_tree_node_id =
         render_frame_host->frame_tree_node()->frame_tree_node_id();
   }
 
-  // Prerendering frames need to have an FTN id set, so OpenURL() can find
-  // the correct frame tree for the navigation. Due to the above logic, that
-  // means this function currently can't be called for prerendering main frames.
-  DCHECK(render_frame_host->lifecycle_state() !=
-             RenderFrameHostLifecycleStateImpl::kPrerendering ||
-         frame_tree_node_id);
+  // Prerendering frames need an FTN id so OpenURL() can find the correct frame
+  // tree. Allow requests with an FTN id, such as WindowClient.navigate() on an
+  // iframe in a prerendering page. Ignore requests without one, which can occur
+  // after a synthetic click in a prerendering page.
+  if (render_frame_host->lifecycle_state() ==
+          RenderFrameHostLifecycleStateImpl::kPrerendering &&
+      !frame_tree_node_id) {
+    return;
+  }
 
   OpenURLParams params = OpenURLParams::CreateRendererInitiated(
       url, disposition, ui::PAGE_TRANSITION_LINK, referrer,

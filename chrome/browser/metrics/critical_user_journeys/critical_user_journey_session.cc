@@ -48,19 +48,51 @@ ui::InteractionSequence::Builder CriticalUserJourneySession::BuildSequence(
     const auto& step = journey->steps()[i];
     if (i == 0 && initial_element) {
       // If we have an initial element, use it to start the sequence.
-      builder.AddStep(ui::InteractionSequence::WithInitialElement(
+      // `WithInitialElement()` assumes a `kShown` step and sets
+      // `must_remain_visible = true`. Determine the actual trigger `StepType`
+      // so non-`kShown` triggers (e.g. a page action icon that hides as soon as
+      // it is activated) do not abort the sequence when the trigger element
+      // disappears before the next step.
+      // TODO(crbug.com/574458689): Consider whether `InteractionSequence`
+      // should auto-detect `must_remain_visible` for non-`kShown` initial
+      // triggers directly instead of handling this in CUJ.
+      ui::InteractionSequence::StepType trigger_type = step->type;
+      if (!step->branches.empty()) {
+        // When Step 0 is an `AddAnyOf()` group, `step->type` is `kSubsequence`
+        // and the trigger `StepType` lives on the matching branch's first step
+        // (matched by element ID, or by `first_step_metric_id` for custom
+        // event triggers).
+        for (const auto& branch : step->branches) {
+          if (!branch->steps().empty() &&
+              (branch->steps()[0]->id == initial_element->identifier() ||
+               (first_step_metric_id.has_value() &&
+                branch->steps()[0]->metric_id == *first_step_metric_id))) {
+            trigger_type = branch->steps()[0]->type;
+            break;
+          }
+        }
+      }
+
+      auto initial_step = ui::InteractionSequence::WithInitialElement(
           initial_element,
           base::BindOnce(
               [](base::WeakPtr<CriticalUserJourneySession> self, int metric_id,
-                 base::TimeDelta timeout, ui::InteractionSequence*,
+                 base::TimeDelta timeout, bool is_exit_branch,
+                 base::TimeDelta min_dwell_duration, ui::InteractionSequence*,
                  ui::TrackedElement*) {
                 if (self) {
-                  self->OnStepStarted(metric_id, timeout);
+                  self->OnStepStarted(metric_id, timeout, is_exit_branch,
+                                      min_dwell_duration);
                 }
               },
               weak_factory_.GetWeakPtr(),
               first_step_metric_id.value_or(step->metric_id),
-              step->time_out_duration)));
+              step->time_out_duration, step->is_exit_branch,
+              step->min_dwell_duration));
+      if (trigger_type != ui::InteractionSequence::StepType::kShown) {
+        initial_step->must_remain_visible = false;
+      }
+      builder.AddStep(std::move(initial_step));
       continue;
     }
 
@@ -71,13 +103,26 @@ ui::InteractionSequence::Builder CriticalUserJourneySession::BuildSequence(
       } else {
         step_builder.SetType(step->type);
         step_builder.SetElement(step->id);
+        if (step->type == ui::InteractionSequence::StepType::kHidden) {
+          step_builder.SetTransitionOnlyOnEvent(true);
+        }
       }
       step_builder.SetContext(step->context)
           .SetDescription(base::NumberToString(step->metric_id))
           .SetStartCallback(
               base::BindOnce(&CriticalUserJourneySession::OnStepStarted,
                              weak_factory_.GetWeakPtr(), step->metric_id,
-                             step->time_out_duration));
+                             step->time_out_duration, step->is_exit_branch,
+                             step->min_dwell_duration));
+      if (step->in_exit_branch_group) {
+        // All branches of an AnyOf start at the same time. When one of them
+        // is an exit branch, the completion branch's element (e.g. a button
+        // inside a dialog) may not be visible yet. Without this, that branch
+        // would abort immediately and only the exit branch could ever finish.
+        // Other steps keep the InteractionSequence defaults so existing
+        // journeys still abort when their element is missing.
+        step_builder.SetMustBeVisibleAtStart(false);
+      }
 
       builder.AddStep(std::move(step_builder));
     } else {
@@ -103,19 +148,31 @@ ui::InteractionSequence::Builder CriticalUserJourneySession::BuildSequence(
   return builder;
 }
 
-void CriticalUserJourneySession::OnStepStarted(int metric_id,
-                                               base::TimeDelta timeout) {
+void CriticalUserJourneySession::OnStepStarted(
+    int metric_id,
+    base::TimeDelta timeout,
+    bool is_exit_branch,
+    base::TimeDelta min_dwell_duration) {
   base::TimeTicks now = base::TimeTicks::Now();
 
   if (last_reached_metric_id_ == kNoMetricId) {
     journey_start_time_ = now;
   } else {
     base::TimeDelta step_duration = now - last_step_time_;
+    if (is_exit_branch && !min_dwell_duration.is_zero() &&
+        step_duration < min_dwell_duration) {
+      aborted_by_dwell_guardrail_ = true;
+      return;
+    }
     std::string histogram_name =
         base::StrCat({"CriticalUserJourney.", journey_->name(), ".Step",
                       base::NumberToString(last_reached_metric_id_), "ToStep",
                       base::NumberToString(metric_id), "Duration"});
     base::UmaHistogramMediumTimes(histogram_name, step_duration);
+  }
+
+  if (is_exit_branch) {
+    completed_via_exit_branch_ = true;
   }
 
   last_step_time_ = now;
@@ -163,6 +220,35 @@ void CriticalUserJourneySession::OnAborted(
 void CriticalUserJourneySession::OnCompleted() {
   timeout_timer_.Stop();
 
+  const std::string result_histogram =
+      base::StrCat({"CriticalUserJourney.", journey_->name(), ".Result"});
+
+  if (aborted_by_dwell_guardrail_) {
+    // The exit branch was reached too quickly to count as a deliberate
+    // abandonment. The InteractionSequence still completes because the exit
+    // subsequence finished, so the result is reported here.
+    base::UmaHistogramSparse(base::StrCat({"CriticalUserJourney.",
+                                           journey_->name(), ".StepAborted"}),
+                             last_reached_metric_id_);
+    base::UmaHistogramEnumeration(result_histogram,
+                                  JourneyResult::kAbandonedBelowDwell);
+    if (on_done_callback_) {
+      std::move(on_done_callback_).Run(JourneyResult::kAbandonedBelowDwell);
+    }
+    return;
+  }
+
+  if (completed_via_exit_branch_) {
+    // OverallDuration and the completion callback only describe successful
+    // journeys, so they are skipped for abandoned ones. `on_done_callback_`
+    // still runs so the service can launch the HaTS survey.
+    base::UmaHistogramEnumeration(result_histogram, JourneyResult::kAbandoned);
+    if (on_done_callback_) {
+      std::move(on_done_callback_).Run(JourneyResult::kAbandoned);
+    }
+    return;
+  }
+
   // Record overall duration
   if (!journey_start_time_.is_null()) {
     base::TimeDelta overall_duration =
@@ -173,9 +259,7 @@ void CriticalUserJourneySession::OnCompleted() {
         overall_duration);
   }
 
-  base::UmaHistogramEnumeration(
-      base::StrCat({"CriticalUserJourney.", journey_->name(), ".Result"}),
-      JourneyResult::kCompleted);
+  base::UmaHistogramEnumeration(result_histogram, JourneyResult::kCompleted);
 
   if (journey_->completion_callback()) {
     journey_->completion_callback().Run();

@@ -24,21 +24,35 @@ import {z, type ZodType} from 'zod';
 import type * as Protocol from '../protocol/protocol.js';
 import {InvalidArgumentException} from '../protocol/protocol.js';
 
+import * as WebDriverBidiAutofill from './generated/webdriver-bidi-autofill.js';
 import * as WebDriverBidiBluetooth from './generated/webdriver-bidi-bluetooth.js';
 import * as WebDriverBidiPermissions from './generated/webdriver-bidi-permissions.js';
 import * as WebDriverBidiUAClientHints from './generated/webdriver-bidi-ua-client-hints.js';
 import * as WebDriverBidiDigitalCredentials from './generated/webdriver-bidi-digital-credentials.js';
 import * as WebDriverBidi from './generated/webdriver-bidi.js';
 
-export function parseObject<T extends ZodType>(
+export function parseObject<T extends ZodType<object>>(
   obj: unknown,
   schema: T,
-): z.infer<T> {
+): Protocol.ChromiumBidi.WithGoogParams<z.infer<T>> {
   const parseResult = schema.safeParse(obj);
   if (parseResult.success) {
-    return parseResult.data;
+    // Move `goog:`-prefixed extension attributes stripped by Zod into
+    // `goog:params` with the `goog:` prefix stripped.
+    const googParams =
+      typeof obj === 'object' && obj !== null
+        ? Object.fromEntries(
+            Object.entries(obj)
+              .filter(([key]) => key.startsWith('goog:'))
+              .map(([key, value]) => [key.slice('goog:'.length), value]),
+          )
+        : {};
+    return {
+      ...parseResult.data,
+      'goog:params': googParams,
+    };
   }
-  const errorMessage = parseResult.error.errors
+  const errorMessage = parseResult.error.issues
     .map(
       (e) =>
         `${e.message} in ` +
@@ -739,6 +753,20 @@ export namespace DigitalCredentials {
         .SetVirtualWalletBehaviorParametersSchema,
     ) as Protocol.DigitalCredentials.SetVirtualWalletBehaviorParameters;
   }
+}
+
+/** @see https://wicg.github.io/autofill-event/#webdriver-bidi-module */
+export namespace Autofill {
+  // keep-sorted start block=yes
+  export function parseTriggerParams(
+    params: unknown,
+  ): Protocol.Autofill.TriggerParameters {
+    return parseObject(
+      params,
+      WebDriverBidiAutofill.Autofill.TriggerParametersSchema,
+    ) as Protocol.Autofill.TriggerParameters;
+  }
+  // keep-sorted end
 }
 
 /** @see https://w3c.github.io/webdriver-bidi/#module-webExtension */

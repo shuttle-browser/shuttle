@@ -10,6 +10,7 @@
 
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "chrome/browser/ui/page_action/page_action_controller.h"
 #include "chrome/browser/ui/page_action/page_action_model.h"
 #include "ui/base/accelerators/accelerator.h"
@@ -18,6 +19,9 @@
 #include "ui/base/models/image_model.h"
 #include "ui/events/event.h"
 #include "ui/events/keycodes/keyboard_codes.h"
+#include "ui/gfx/animation/slide_animation.h"
+#include "ui/gfx/geometry/rect.h"
+#include "ui/views/animation/animation_delegate_views.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
 #include "ui/views/controls/button/menu_button_controller.h"
 #include "ui/views/controls/menu/menu_runner.h"
@@ -28,6 +32,7 @@ class SimpleMenuModel;
 }
 
 namespace views {
+class AnimatingLayoutManager;
 class ImageButton;
 class ImageView;
 class Label;
@@ -43,7 +48,8 @@ class MultiIconButton;
 // AnchoredMessageBubbleView is the view displaying the anchored message for a
 // given page action. It is created and destroyed dynamically.
 class AnchoredMessageBubbleView : public views::BubbleDialogDelegate,
-                                  public views::View {
+                                  public views::View,
+                                  public views::AnimationDelegateViews {
   METADATA_HEADER(AnchoredMessageBubbleView, views::View)
  public:
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kAnchoredMessageBubbleId);
@@ -75,6 +81,7 @@ class AnchoredMessageBubbleView : public views::BubbleDialogDelegate,
   views::View* GetContentsView() override;
   bool CanActivate() const override;
   gfx::Rect GetAnchorRect() const override;
+  gfx::Rect GetBubbleBounds() override;
 
   // views::View:
   views::Widget* GetWidget() override;
@@ -83,17 +90,31 @@ class AnchoredMessageBubbleView : public views::BubbleDialogDelegate,
 
   void UpdateContent(const PageActionModelInterface& model);
 
+  // Slides and fades the bubble into view. Reverses an in-progress
+  // AnimateOut().
+  void AnimateIn();
+
+  // Slides and fades the bubble out of view, then closes its widget.
+  void AnimateOut();
+
+  bool is_closing() const { return is_closing_; }
+
   // views::BubbleDialogDelegate:
   void OnWidgetDestroying(views::Widget* widget) override;
 
  protected:
+  void AddedToWidget() override;
   void OnThemeChanged() override;
 
  private:
+  // views::AnimationDelegateViews:
+  void AnimationProgressed(const gfx::Animation* animation) override;
+
   void ChipCallback();
   void MenuButtonPressed();
   void OnMenuClosed();
   void OnExpandButtonPressed();
+  void CloseWidget();
 
   void UpdateExpandButtonIcon();
   void UpdateExpandButtonTooltip();
@@ -103,8 +124,10 @@ class AnchoredMessageBubbleView : public views::BubbleDialogDelegate,
   void UpdateActionButtons(const PageActionModelInterface& model);
   void UpdateExpandableContent(const PageActionModelInterface& model);
 
+  raw_ptr<views::AnimatingLayoutManager> animating_layout_ = nullptr;
   raw_ptr<views::View> top_row_ = nullptr;
   raw_ptr<views::View> bottom_container_ = nullptr;
+  raw_ptr<views::View> items_container_ = nullptr;
   raw_ptr<views::Label> label_ = nullptr;
   raw_ptr<MultiIconButton> expand_button_ = nullptr;
   raw_ptr<ChipContainerView> chip_container_ = nullptr;
@@ -118,8 +141,15 @@ class AnchoredMessageBubbleView : public views::BubbleDialogDelegate,
   std::unique_ptr<views::MenuRunner> menu_runner_;
   std::unique_ptr<views::MenuButtonController::PressedLock> pressed_lock_;
   bool expanded_ = false;
+  bool is_closing_ = false;
+  gfx::Rect closing_bounds_;
+  // Slides the widget, rather than its contents, so the widget's bounds don't
+  // clip the bubble.
+  gfx::SlideAnimation slide_animation_{this};
   std::optional<AnchoredMessageExpandableContent> expandable_content_;
   const raw_ref<Delegate> delegate_;
+
+  base::WeakPtrFactory<AnchoredMessageBubbleView> weak_factory_{this};
 };
 
 }  // namespace page_actions

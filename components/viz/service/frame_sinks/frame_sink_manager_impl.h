@@ -57,6 +57,12 @@
 #include "services/viz/privileged/mojom/compositing/frame_sinks_metrics_recorder.mojom.h"
 #include "services/viz/public/mojom/compositing/video_detector_observer.mojom.h"
 
+#if BUILDFLAG(IS_MAC)
+namespace ui {
+class WindowServerEventPumpThread;
+}
+#endif
+
 namespace viz {
 
 class CapturableFrameSink;
@@ -451,10 +457,11 @@ class VIZ_SERVICE_EXPORT FrameSinkManagerImpl
   GpuServiceImpl* GetGpuService();
 
 #if BUILDFLAG(IS_MAC)
-  // This is called after SetSupportedDisplayLinkId() in the browser process.
-  // Forces every RootCompositorFrameSink associated with the specified display
-  // to update its DisplayLinkMac. This ensures that frame sinks stay in sync
-  // with the display configuration when displays are added or removed.
+  // Forces every RootCompositorFrameSink to update its DisplayLinkMac. Called
+  // when the browser-side CADisplayLink for `display_id` changes validity
+  // (e.g. a display is added or removed), or when the GPU-side
+  // WindowServerEventPumpThread fails and all frame sinks must fall back to a
+  // timer. In the latter case `display_id` is ignored.
   void UpdateVSyncDisplays(int64_t display_id);
 #endif
 
@@ -711,6 +718,8 @@ class VIZ_SERVICE_EXPORT FrameSinkManagerImpl
   // Only one ExternalBeginFrameSourceMojoMac object is created and is
   // shared by all RootCompositorFrameSinks.
   std::unique_ptr<ExternalBeginFrameSourceMojoMac> external_begin_frame_source_;
+
+  std::unique_ptr<ui::WindowServerEventPumpThread> window_server_event_thread_;
 #endif
 
   // Counts frames for test.

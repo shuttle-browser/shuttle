@@ -69,13 +69,6 @@ class PrintJobWorker {
   // Cancels the job.
   virtual void Cancel();
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  // The job is canceled due to content analysis denying printing.  Called
-  // only from UI thread, before any platform calls are made for the job.
-  // Performs any extra cleanup for this particular case that can't be safely
-  // safely done from within Cancel().
-  virtual void CleanupAfterContentAnalysisDenial();
-#endif
 
   // Returns true if the thread has been started, and not yet stopped.
   bool IsRunning() const;
@@ -104,7 +97,8 @@ class PrintJobWorker {
 
   // Get the document.  Only to be called from the worker thread.
   PrintedDocument* document() {
-    DCHECK(task_runner_->RunsTasksInCurrentSequence());
+    CHECK(task_runner_->RunsTasksInCurrentSequence(),
+          base::NotFatalUntil::M162);
     return document_.get();
   }
 

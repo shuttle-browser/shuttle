@@ -73,7 +73,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.AdaptiveToolbarButton.ChosenRanking" units="rank"
-    expires_after="2027-01-24">
+    expires_after="2027-03-28">
   <owner>jinsukkiim@google.com</owner>
   <owner>clank-app-team@google.com</owner>
   <summary>
@@ -117,7 +117,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.AdaptiveToolbarButton.Shown"
-    enum="AdaptiveToolbarButtonVariant" expires_after="2027-02-07">
+    enum="AdaptiveToolbarButtonVariant" expires_after="2027-04-11">
   <owner>jinsukkiim@google.com</owner>
   <owner>clank-app-team@google.com</owner>
   <summary>
@@ -160,7 +160,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.AuthView.UrlParams" units="bit field"
-    expires_after="2027-01-24">
+    expires_after="2027-03-28">
   <owner>sinansahin@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -175,25 +175,8 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="CustomTabs.Branding.AppIdType"
-    enum="CustomTabsBrandingAppIdType" expires_after="2025-07-06">
-  <owner>jinsukkim@chromium.org</owner>
-  <owner>chrome-connective-tissue@google.com</owner>
-  <summary>
-    For every CCT launch, Chrome will start an async task in the background
-    checking the last time branding is shown for the client app. Each client app
-    is identified with a unique string. It was initially (and preferably) its
-    package name but is extended to be of any text string from the intent's
-    referrer if the package name is unavailable. An empty string is regarded as
-    invalid id.
-
-    Record the type of the id for a given CCT when the async task is finished.
-    Record for Android CCT only.
-  </summary>
-</histogram>
-
 <histogram name="CustomTabs.ClientAppId" enum="ClientAppId"
-    expires_after="2027-01-31">
+    expires_after="2027-04-04">
   <owner>yusufo@chromium.org</owner>
   <summary>
     Android: AppId declared by the launching application in EXTRA_APPLICATION_ID
@@ -236,36 +219,8 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="CustomTabs.ConnectionStatusOnReturn.GSA"
-    enum="CustomTabsConnection" expires_after="2025-03-09">
-  <owner>kgrosu@google.com</owner>
-  <owner>jinsukkim@chromium.org</owner>
-  <owner>cct-team@google.com</owner>
-  <summary>
-    Android: Recorded whenever user closes the custom tab by hitting the close
-    button or back to return to the caller app. Keeps track of the connection
-    status and whether the app was using a KeepAlive connection. Recorded only
-    for AGSA. Starting with M84 this is is also recorded for webapps/WebAPKs.
-    Filter the platform for just CCT/TWA data.
-  </summary>
-</histogram>
-
-<histogram name="CustomTabs.ConnectionStatusOnReturn.NonGSA"
-    enum="CustomTabsConnection" expires_after="2025-07-13">
-  <owner>kgrosu@google.com</owner>
-  <owner>jinsukkim@chromium.org</owner>
-  <owner>cct-team@google.com</owner>
-  <summary>
-    Android: Recorded whenever user closes the custom tab by hitting the close
-    button or back to return to the caller app. Keeps track of the connection
-    status and whether the app was using a KeepAlive connection. Recorded for
-    all apps other than AGSA. Starting with M84 this is is also recorded for
-    webapps/WebAPKs. Filter the platform for just CCT/TWA data.
-  </summary>
-</histogram>
-
 <histogram name="CustomTabs.ContextMenu.DisplayedContextualCustomActionType"
-    enum="ContextualCustomActionType" expires_after="2026-10-31">
+    enum="ContextualCustomActionType" expires_after="2027-10-31">
   <owner>adelm@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -277,7 +232,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.ContextMenu.SelectedContextualCustomActionType"
-    enum="ContextualCustomActionType" expires_after="2026-10-31">
+    enum="ContextualCustomActionType" expires_after="2027-10-31">
   <owner>adelm@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -285,19 +240,6 @@ chromium-metrics-reviews@google.com.
     Custom Tab, broken down by the type of content the action was for (e.g. Link
     or Image). This allows for tracking overall engagement with custom actions
     of different types.
-  </summary>
-</histogram>
-
-<histogram
-    name="CustomTabs.DetachedResourceRequest.Duration.{DetachedResourceRequestFinalStatus}{DetachedResourceRequestSource}"
-    units="ms" expires_after="2024-03-17">
-  <owner>lizeb@chromium.org</owner>
-  <owner>cct-team@google.com</owner>
-  <summary>
-    Time between the start of a detached resource request and its completion
-    (failure or success). Android only. Starting with M84 this is is also
-    recorded for webapps/WebAPKs. Filter the platform for just CCT/TWA data.
-    {DetachedResourceRequestFinalStatus} {DetachedResourceRequestSource}
   </summary>
 </histogram>
 
@@ -337,18 +279,6 @@ chromium-metrics-reviews@google.com.
     single large list of features and their percentage usage (one or more times
     per session) right in the UMA timeline. Recorded during a CCT Session.
     Android only.
-  </summary>
-</histogram>
-
-<histogram name="CustomTabs.GoogleBottomBar.Button.Clicked"
-    enum="GoogleBottomBarButtonEvent" expires_after="2025-05-16">
-  <owner>tivi@google.com</owner>
-  <owner>chrome-connective-tissue@google.com</owner>
-  <summary>
-    Recorded only on Android. Records clicks on GoogleBottomBar buttons in the
-    GoogleBottomBar. Logged when a button is clicked in the GoogleBottomBar
-    (when the GoogleBottomBar feature is enabled and visible at the bottom of
-    the CCT).
   </summary>
 </histogram>
 
@@ -444,30 +374,6 @@ chromium-metrics-reviews@google.com.
     forward and false if there have not been web contents interactions or the
     tab cannot go back / forward at the time of closing the CCT. If the tab is
     restored the previous form interactions will be reset.
-  </summary>
-</histogram>
-
-<histogram name="CustomTabs.HasNonSpoofablePackageName" enum="Boolean"
-    expires_after="2025-01-05">
-  <owner>katzz@google.com</owner>
-  <owner>chrome-connective-tissue@google.com</owner>
-  <summary>
-    Android only. Boolean histogram denoting whether the package name can be
-    retrieved in a non-spoofable way for Custom Tabs. When the histogram returns
-    true, it means we can confirm the package name was passed by the defined
-    host app. Emitted when the Custom Tab is launched.
-  </summary>
-</histogram>
-
-<histogram name="CustomTabs.IdentityShared" enum="Boolean"
-    expires_after="2025-04-27">
-  <owner>jinsukkim@google.com</owner>
-  <owner>chrome-connective-tissue@google.com</owner>
-  <summary>
-    Android only. Boolean histogram denoting whether the package name is
-    available by the sender sharing its identity using the new API introduced in
-    Android U. This means we can confirm the package name was passed by the
-    defined host app. Emitted when the Custom Tab is launched.
   </summary>
 </histogram>
 
@@ -603,7 +509,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.PageContent.Eligibility"
-    enum="CustomTabsPageContentEligibility" expires_after="2027-02-14">
+    enum="CustomTabsPageContentEligibility" expires_after="2027-04-18">
   <owner>jinsukkim@google.com</owner>
   <owner>tivi@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
@@ -615,7 +521,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.PageContent.Outcome"
-    enum="CustomTabsPageContentExtractionResult" expires_after="2027-02-14">
+    enum="CustomTabsPageContentExtractionResult" expires_after="2027-04-18">
   <owner>jinsukkim@google.com</owner>
   <owner>tivi@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
@@ -627,7 +533,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.PageContent.RequestedTypes"
-    enum="CustomTabsPageContentRequestedType" expires_after="2027-02-14">
+    enum="CustomTabsPageContentRequestedType" expires_after="2027-04-18">
   <owner>jinsukkim@google.com</owner>
   <owner>tivi@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
@@ -635,18 +541,6 @@ chromium-metrics-reviews@google.com.
     Records each content type (APC, Screenshot, or File) requested inside the
     custom bottom bar view click map from Embedder. Android only. Logged once
     per button click.
-  </summary>
-</histogram>
-
-<histogram name="CustomTabs.PageInsights.Event" enum="PageInsightsEvent"
-    expires_after="2024-12-08">
-  <owner>jinsukkim@chromium.org</owner>
-  <owner>chrome-connective-tissue@google.com</owner>
-  <summary>
-    Recorded only on Android. Holds the interaction that the user has with Page
-    Insights BottomSheet, such as invoking PIH manually or by being auto
-    triggered, the bottom sheet's states and when it is dismissed, and
-    interactions with xSurface views.
   </summary>
 </histogram>
 
@@ -796,42 +690,8 @@ chromium-metrics-reviews@google.com.
   </token>
 </histogram>
 
-<histogram name="CustomTabs.SessionDisconnectStatus"
-    enum="CustomTabsSessionDisconnectStatus" expires_after="2025-04-13">
-  <owner>kgrosu@google.com</owner>
-  <owner>chrome-connective-tissue@google.com</owner>
-  <summary>
-    Recorded only for Android. Record information about the state of the client
-    app, custom tab and system in the moment the connection between the client
-    and the custom tab is terminated. With this, we are trying to understand how
-    often a connection is terminated (the client app dies/is killed/is closed)
-    while a custom tab is in foreground. Also, if the EXTRA_KEEP_ALIVE is set,
-    we want to understand if it reduces the number of connections being
-    terminated. The aim is that CT_FOREGROUND and CT_FOREGROUND_KEEPALIVE are
-    logged as little as possible, while the rest of the states are expected ways
-    in which a connection may be terminated.
-
-    *CT_FOREGROUND*/*CT_BACKGROUND* - an enum value that contains this text
-    reflects if the custom tab was in the foreground/background when the
-    connection was terminated.
-
-    *KEEP_ALIVE* - an enum value that contains this text reflects that the
-    EXTRA_KEEP_ALIVE intent extra was specified and that the custom tab binds to
-    the service provided by it in order to increase the priority of the client
-    app to foreground.
-
-    *LOW_MEMORY* - an enum value that contains this text reflects that the
-    system was low on memory when the connection was terminated. This does not
-    mean that this was indeed the reason for the connection being terminated,
-    but it might be a good indicator of it.
-
-    UNKNOWN - if this is logged then there is probably a bug in the code as we
-    have a state we can be in that we don't currently account for.
-  </summary>
-</histogram>
-
 <histogram name="CustomTabs.SpareRenderer" enum="Boolean"
-    expires_after="2026-11-15">
+    expires_after="2027-11-15">
   <owner>adelm@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -902,7 +762,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.Startup.TimeToLargestContentfulPaint2.{suffix}"
-    units="ms" expires_after="2027-02-07">
+    units="ms" expires_after="2027-04-11">
   <owner>mthiesse@chromium.org</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>
@@ -953,7 +813,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.WarmupStateOnLaunch" enum="WarmupStateOnLaunch"
-    expires_after="2027-01-31">
+    expires_after="2027-04-04">
   <owner>lizeb@chromium.org</owner>
   <summary>
     Recorded only on Android. Reports whether warmup() has been called when a

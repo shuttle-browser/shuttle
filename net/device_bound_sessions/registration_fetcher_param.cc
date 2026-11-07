@@ -27,36 +27,6 @@ constexpr char kProviderUrlParamKey[] = "provider_url";
 constexpr char kProviderSessionIdParamKey[] = "provider_session_id";
 constexpr char kAikRequiredParamKey[] = "aik_required";
 
-constexpr char kES256[] = "ES256";
-constexpr char kRS256[] = "RS256";
-
-std::optional<crypto::sign::SignatureKind> AlgoFromString(
-    const std::string_view& algo) {
-  if (algo == kES256) {
-    return crypto::sign::ECDSA_SHA256;
-  }
-
-  if (algo == kRS256) {
-    return crypto::sign::RSA_PKCS1_SHA256;
-  }
-
-  return std::nullopt;
-}
-
-std::vector<crypto::sign::SignatureKind> ParseSupportedAlgorithms(
-    const std::vector<net::structured_headers::ParameterizedItem>& member) {
-  std::vector<crypto::sign::SignatureKind> supported_algos;
-  for (const auto& algo_token : member) {
-    if (const std::string* token = algo_token.item.GetIfToken()) {
-      std::optional<crypto::sign::SignatureKind> algo = AlgoFromString(*token);
-      if (algo) {
-        supported_algos.push_back(*algo);
-      }
-    }
-  }
-  return supported_algos;
-}
-
 GURL ResolveRegistrationEndpoint(const GURL& request_url,
                                  const std::string& path) {
   std::string unescaped_path = base::UnescapeURLComponent(
@@ -86,26 +56,22 @@ ProviderRegistrationParseResult ParseProviderRegistrationParams(
     std::optional<GURL> provider_url,
     std::optional<net::device_bound_sessions::Session::Id>
         provider_session_id) {
-  // `provider_key` and `provider_url` must either both be present or
-  // both be absent.
-  if (provider_key.has_value() != provider_url.has_value()) {
-    return {.is_valid = false};
+  // An SSO registration names a pre-provisioned key by `provider_key` alone.
+  // `provider_url` is ignored: the key is looked up by digest and RP origin
+  // (https://github.com/WICG/dbsc-sso/pull/18).
+  if (provider_key.has_value() && !provider_session_id.has_value() &&
+      base::FeatureList::IsEnabled(
+          net::features::kDeviceBoundSessionsForSingleSignOn)) {
+    return {.is_valid = true,
+            .params = net::device_bound_sessions::ProviderRegistrationParams{
+                .provider_key = std::move(*provider_key)}};
   }
 
-  if (base::FeatureList::IsEnabled(
-          net::features::kDeviceBoundSessionsForSingleSignOn)) {
-    // In SSO scenarios, `provider_session_id` can be absent.
-    // However, if `provider_session_id` is present, then `provider_key`
-    // (and by extension `provider_url`) must also be present.
-    if (provider_session_id.has_value() && !provider_key.has_value()) {
-      return {.is_valid = false};
-    }
-  } else {
-    // In non-SSO scenarios, `provider_session_id` must be present
-    // if and only if `provider_key` is present.
-    if (provider_session_id.has_value() != provider_key.has_value()) {
-      return {.is_valid = false};
-    }
+  // `provider_key`, `provider_url` and `provider_session_id` must either all
+  // be present (federated registration) or all be absent.
+  if (provider_key.has_value() != provider_url.has_value() ||
+      provider_key.has_value() != provider_session_id.has_value()) {
+    return {.is_valid = false};
   }
 
   if (provider_url.has_value() &&

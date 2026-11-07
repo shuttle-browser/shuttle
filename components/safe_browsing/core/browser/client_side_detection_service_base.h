@@ -10,8 +10,10 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "base/callback_list.h"
+#include "base/containers/span.h"
 #include "base/functional/callback_forward.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/read_only_shared_memory_region.h"
@@ -35,15 +37,9 @@ class File;
 
 class PrefService;
 
-namespace optimization_guide {
-class OptimizationGuideModelProvider;
-}  // namespace optimization_guide
-
 namespace safe_browsing {
 
-class ClientSidePhishingModel;
 enum class CSDModelType;
-struct TargetEmbedding;
 
 // Enum used to keep stats on classification using threshold comparison.
 // These values are persisted to logs. Entries should not be renumbered and
@@ -83,15 +79,12 @@ class ClientSideDetectionServiceBase : public KeyedService {
   static const int kNegativeCacheIntervalDays;
   static const int kPositiveCacheIntervalMinutes;
 
-  // Allows building a service instance with the given `prefs` and `opt_guide`
-  // (and no Delegate). For use in testing only.
+  // Allows building a service instance with the given `prefs` (and no
+  // Delegate). For use in testing only.
   static std::unique_ptr<ClientSideDetectionServiceBase> CreateForTesting(
-      PrefService* prefs,
-      optimization_guide::OptimizationGuideModelProvider* opt_guide);
+      PrefService* prefs);
 
-  ClientSideDetectionServiceBase(
-      std::unique_ptr<Delegate> delegate,
-      optimization_guide::OptimizationGuideModelProvider* opt_guide);
+  explicit ClientSideDetectionServiceBase(std::unique_ptr<Delegate> delegate);
 
   ClientSideDetectionServiceBase(const ClientSideDetectionServiceBase&) =
       delete;
@@ -159,12 +152,6 @@ class ClientSideDetectionServiceBase : public KeyedService {
   // implementation can override it.
   virtual CSDModelType GetModelType() const;
 
-  // Returns the visual TFLite model thresholds from the model class.
-  virtual const std::vector<TfLiteModelMetadata::Threshold>&
-  GetVisualTfLiteModelThresholds() const;
-
-  virtual const std::vector<TargetEmbedding>& GetTargetImageEmbeddings() const;
-
   // Checks whether the model class has a model available or not. Virtual so
   // that mock classes can override it.
   virtual bool IsModelAvailable() const;
@@ -183,23 +170,12 @@ class ClientSideDetectionServiceBase : public KeyedService {
   // |ClientPhishingRequest| when image embedding is called.
   int GetImageEmbeddingModelVersion() const;
 
-  bool IsSubscribedToImageEmbeddingModelUpdates() const;
-  bool IsSubscribedToImageClassifierModelUpdates() const;
-
-  // For testing the model in browser test.
-  void SetModelAndVisualTfLiteForTesting(const base::FilePath& model,
-                                         const base::FilePath& visual_tf_lite);
-  void SetTargetImageEmbeddingsForTesting(
-      std::vector<TargetEmbedding> target_embeddings);
-
   base::WeakPtr<ClientSideDetectionServiceBase> GetWeakPtr() {
     return weak_factory_.GetWeakPtr();
   }
 
  protected:
-  ClientSideDetectionServiceBase(
-      PrefService* prefs,
-      optimization_guide::OptimizationGuideModelProvider* opt_guide);
+  explicit ClientSideDetectionServiceBase(PrefService* prefs);
 
   friend class ClientSideDetectionServiceTest;
   friend class ClientSideDetectionServiceBaseTest;
@@ -296,16 +272,9 @@ class ClientSideDetectionServiceBase : public KeyedService {
   // is updated to match the state.
   void OnPrefsUpdated();
 
-  // Unsubscribes to model subscriptions. Currently we unsubscribe to the image
-  // embedding model as well as the on device model depending on user
-  // preferences.
-  void UnsubscribeToModelSubscription();
-
   Delegate* delegate() const { return delegate_.get(); }
 
   PrefService* prefs() const { return prefs_; }
-
-  std::unique_ptr<ClientSidePhishingModel> client_side_phishing_model_;
 
   std::map<const network::SimpleURLLoader*,
            std::unique_ptr<ClientPhishingReportInfo>>

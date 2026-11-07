@@ -13,7 +13,7 @@
 #include "base/containers/flat_set.h"
 #include "base/functional/callback_forward.h"
 #include "base/functional/function_ref.h"
-#include "base/memory/advanced_memory_safety_checks.h"
+#include "base/memory/sanitized_object.h"
 #include "base/values.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
@@ -49,6 +49,7 @@
 #include "third_party/blink/public/mojom/page/page_visibility_state.mojom-forward.h"
 #include "third_party/perfetto/include/perfetto/tracing/traced_value_forward.h"
 #include "ui/accessibility/ax_node_id_forward.h"
+#include "ui/base/ime/text_input_type.h"
 #include "ui/gfx/native_ui_types.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -162,7 +163,7 @@ class Page;
 class CONTENT_EXPORT RenderFrameHost : public IPC::Listener {
   // Do not remove this macro!
   // The macro is maintained by the memory safety team.
-  ADVANCED_MEMORY_SAFETY_CHECKS();
+  SANITIZED_OBJECT();
 
  public:
   // Returns the RenderFrameHost given its ID and the ID of its render process.
@@ -469,6 +470,16 @@ class CONTENT_EXPORT RenderFrameHost : public IPC::Listener {
 
   // Returns the editability level of the focused element in this frame.
   virtual EditableLevel GetFocusedEditableLevel() const = 0;
+
+  // Returns true if the focused editable element in this frame is a password or
+  // password-like field, per its text input state. Returns false if that state
+  // has not yet arrived for the currently focused element.
+  virtual bool IsFocusedElementPasswordLike() = 0;
+
+  // Returns the text input type (e.g. text area, plain text input, search box)
+  // of the focused editable element in this frame. Returns std::nullopt if no
+  // editable element is focused, or if its text input state hasn't arrived yet.
+  virtual std::optional<ui::TextInputType> GetFocusedElementTextInputType() = 0;
 
   // Used for devtools instrumentation and trace-ability. The token is
   // propagated to Blink's LocalFrame and both Blink and content/
@@ -1056,7 +1067,7 @@ class CONTENT_EXPORT RenderFrameHost : public IPC::Listener {
   // Prefer this over HasTransientUserActivation() when gating a privileged
   // operation on a user gesture, so that a single gesture cannot be replayed
   // into several such operations. Renderer code that also consumes the
-  // activation locally must pass UserActivationUpdateSource::kBrowser,
+  // activation locally must pass UserActivationUpdateScope::kCurrentRenderer,
   // otherwise the browser-side state is cleared before this is called.
   [[nodiscard]] virtual bool ConsumeTransientUserActivation() = 0;
 
@@ -1219,13 +1230,6 @@ class CONTENT_EXPORT RenderFrameHost : public IPC::Listener {
   // TODO(crbug.com/40615943): Remove this from the content public API when
   // RenderDocument is fully enabled.
   virtual bool ShouldChangeRenderFrameHostOnSameSiteNavigation() const = 0;
-
-  // The embedder calls this method when a prediction model believes that the
-  // user is likely to click on an anchor element and wants to report the
-  // likelihood of the click. The `score` is the probability that a user will
-  // click on the `url`, and it is a value between 0 and 1.
-  virtual void OnPreloadingHeuristicsModelDone(const GURL& url,
-                                               float score) = 0;
 
   // Checks if `seqno` is known to have originated from this RFH. `callback`
   // will only be called with true if `seqno` represents the last clipboard

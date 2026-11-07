@@ -6,6 +6,7 @@
 #define CHROME_BROWSER_EXTENSIONS_CHROME_CONTENT_BROWSER_CLIENT_EXTENSIONS_PART_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "base/auto_reset.h"
@@ -19,6 +20,7 @@
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 
 namespace content {
+class BrowserContext;
 class RenderFrameHost;
 class RenderProcessHost;
 class SecurityPrincipal;
@@ -94,6 +96,12 @@ class ChromeContentBrowserClientExtensionsPart
                                  const GURL& first_party_url,
                                  const GURL& script_url,
                                  content::BrowserContext* context);
+
+  // Returns whether a service worker with `origin` may be given a ClipboardHost
+  // at all. Answers only whether this class of context is ever eligible, not
+  // whether an individual clipboard call is allowed.
+  static bool IsClipboardAllowedForServiceWorker(const url::Origin& origin);
+
   static bool MayDeleteServiceWorkerRegistration(
       const GURL& scope,
       content::BrowserContext* browser_context);
@@ -152,11 +160,6 @@ class ChromeContentBrowserClientExtensionsPart
       std::vector<std::string>* additional_allowed_schemes) override;
   void GetURLRequestAutoMountHandlers(
       std::vector<storage::URLRequestAutoMountHandler>* handlers) override;
-  void GetAdditionalFileSystemBackends(
-      content::BrowserContext* browser_context,
-      const base::FilePath& storage_partition_path,
-      std::vector<std::unique_ptr<storage::FileSystemBackend>>*
-          additional_backends) override;
   void AppendExtraRendererCommandLineSwitches(
       base::CommandLine* command_line,
       content::RenderProcessHost& process) override;

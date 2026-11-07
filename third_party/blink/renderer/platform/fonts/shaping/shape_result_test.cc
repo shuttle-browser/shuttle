@@ -41,7 +41,7 @@ class ShapeResultTest : public FontTestBase {
   enum FontType {
     kLatinFont = 0,
     kArabicFont = 1,
-    kCJKFont = 2,
+    kCjkFont = 2,
   };
 
  protected:
@@ -83,6 +83,26 @@ class ShapeResultTest : public FontTestBase {
     return result.character_position_.size();
   }
 
+  static ShapeResultRun* InsertConstantAdvanceRun(ShapeResult* result,
+                                                  unsigned start_index,
+                                                  unsigned num_characters,
+                                                  TextRunLayoutUnit advance,
+                                                  bool compact) {
+    ShapeResultRun* run = result->InsertRunForTesting(
+        start_index, num_characters, result->Direction());
+    for (HarfBuzzRunGlyphData& glyph : run->glyph_data_.MutableGlyphs()) {
+      glyph.SetAdvance(advance);
+      glyph.SetSafeToBreakBefore(SafeToBreak::kSafe);
+    }
+    run->width_ = InlineLayoutUnit::FromRawValue(int64_t{advance.RawValue()} *
+                                                 num_characters)
+                      .ToFloat();
+    if (compact) {
+      EXPECT_TRUE(run->glyph_data_.TryMakeCompact(run->IsRtl()));
+    }
+    return run;
+  }
+
   ShapeResult* CreateShapeResult(TextDirection direction) const {
     return MakeGarbageCollected<ShapeResult>(0, 0, direction);
   }
@@ -96,31 +116,33 @@ class ShapeResultTest : public FontTestBase {
 };
 
 void ShapeResultTest::TestCopyRangesLatin(const ShapeResult* result) const {
-  const unsigned num_ranges = 4;
-  std::array<ShapeResult::ShapeRange, num_ranges> ranges = {{
+  constexpr wtf_size_t kNumRanges = 4;
+  std::array<ShapeResult::ShapeRange, kNumRanges> ranges = {{
       {0, 10, CreateShapeResult(TextDirection::kLtr)},
       {10, 20, CreateShapeResult(TextDirection::kLtr)},
       {20, 30, CreateShapeResult(TextDirection::kLtr)},
       {30, 38, CreateShapeResult(TextDirection::kLtr)},
   }};
-  result->CopyRanges(ranges.data(), num_ranges);
+  result->CopyRanges(ranges.data(), kNumRanges);
 
-  std::array<Vector<ShapeResultTestGlyphInfo>, num_ranges> glyphs;
-  for (unsigned i = 0; i < num_ranges; i++)
+  std::array<Vector<ShapeResultTestGlyphInfo>, kNumRanges> glyphs;
+  for (wtf_size_t i = 0; i < kNumRanges; ++i) {
     ComputeGlyphResults(*ranges[i].target, &glyphs[i]);
+  }
   EXPECT_EQ(glyphs[0].size(), 10u);
   EXPECT_EQ(glyphs[1].size(), 10u);
   EXPECT_EQ(glyphs[2].size(), 10u);
   EXPECT_EQ(glyphs[3].size(), 8u);
 
-  std::array<ShapeResult*, num_ranges> reference;
+  std::array<ShapeResult*, kNumRanges> reference;
   reference[0] = result->SubRange(0, 10);
   reference[1] = result->SubRange(10, 20);
   reference[2] = result->SubRange(20, 30);
   reference[3] = result->SubRange(30, 38);
-  std::array<Vector<ShapeResultTestGlyphInfo>, num_ranges> reference_glyphs;
-  for (unsigned i = 0; i < num_ranges; i++)
+  std::array<Vector<ShapeResultTestGlyphInfo>, kNumRanges> reference_glyphs;
+  for (wtf_size_t i = 0; i < kNumRanges; ++i) {
     ComputeGlyphResults(*reference[i], &reference_glyphs[i]);
+  }
   EXPECT_EQ(reference_glyphs[0].size(), 10u);
   EXPECT_EQ(reference_glyphs[1].size(), 10u);
   EXPECT_EQ(reference_glyphs[2].size(), 10u);
@@ -133,31 +155,33 @@ void ShapeResultTest::TestCopyRangesLatin(const ShapeResult* result) const {
 }
 
 void ShapeResultTest::TestCopyRangesArabic(const ShapeResult* result) const {
-  const unsigned num_ranges = 4;
-  std::array<ShapeResult::ShapeRange, num_ranges> ranges = {{
+  constexpr wtf_size_t kNumRanges = 4;
+  std::array<ShapeResult::ShapeRange, kNumRanges> ranges = {{
       {0, 4, CreateShapeResult(TextDirection::kRtl)},
       {4, 7, CreateShapeResult(TextDirection::kRtl)},
       {7, 10, CreateShapeResult(TextDirection::kRtl)},
       {10, 15, CreateShapeResult(TextDirection::kRtl)},
   }};
-  result->CopyRanges(ranges.data(), num_ranges);
+  result->CopyRanges(ranges.data(), kNumRanges);
 
-  std::array<Vector<ShapeResultTestGlyphInfo>, num_ranges> glyphs;
-  for (unsigned i = 0; i < num_ranges; i++)
+  std::array<Vector<ShapeResultTestGlyphInfo>, kNumRanges> glyphs;
+  for (wtf_size_t i = 0; i < kNumRanges; ++i) {
     ComputeGlyphResults(*ranges[i].target, &glyphs[i]);
+  }
   EXPECT_EQ(glyphs[0].size(), 4u);
   EXPECT_EQ(glyphs[1].size(), 3u);
   EXPECT_EQ(glyphs[2].size(), 3u);
   EXPECT_EQ(glyphs[3].size(), 5u);
 
-  std::array<ShapeResult*, num_ranges> reference;
+  std::array<ShapeResult*, kNumRanges> reference;
   reference[0] = result->SubRange(0, 4);
   reference[1] = result->SubRange(4, 7);
   reference[2] = result->SubRange(7, 10);
   reference[3] = result->SubRange(10, 17);
-  std::array<Vector<ShapeResultTestGlyphInfo>, num_ranges> reference_glyphs;
-  for (unsigned i = 0; i < num_ranges; i++)
+  std::array<Vector<ShapeResultTestGlyphInfo>, kNumRanges> reference_glyphs;
+  for (wtf_size_t i = 0; i < kNumRanges; ++i) {
     ComputeGlyphResults(*reference[i], &reference_glyphs[i]);
+  }
   EXPECT_EQ(reference_glyphs[0].size(), 4u);
   EXPECT_EQ(reference_glyphs[1].size(), 3u);
   EXPECT_EQ(reference_glyphs[2].size(), 3u);
@@ -284,8 +308,8 @@ static struct IsStartSafeToBreakData {
   bool expected;
   const char16_t* text;
   TextDirection direction = TextDirection::kLtr;
-  unsigned start_offset = 0;
-  unsigned end_offset = 0;
+  wtf_size_t start_offset = 0;
+  wtf_size_t end_offset = 0;
 } is_start_safe_to_break_data[] = {
     {true, u"XX", TextDirection::kLtr},
     {true, u"XX", TextDirection::kRtl},
@@ -324,13 +348,13 @@ TEST_P(IsStartSafeToBreakDataTest, IsStartSafeToBreakData) {
 TEST_F(ShapeResultTest, AddUnsafeToBreakLtr) {
   HarfBuzzShaper shaper(u"ABC\u3042DEFG");
   ShapeResult* result = shaper.Shape(GetFont(kLatinFont), TextDirection::kLtr);
-  Vector<unsigned> offsets{2, 5};
-  for (const unsigned offset : offsets) {
+  Vector<wtf_size_t> offsets{2, 5};
+  for (const wtf_size_t offset : offsets) {
     EXPECT_EQ(result->NextSafeToBreakOffset(offset), offset);
   }
   result->AddUnsafeToBreak(offsets);
   result->EnsurePositionData();
-  for (const unsigned offset : offsets) {
+  for (const wtf_size_t offset : offsets) {
     EXPECT_NE(result->NextSafeToBreakOffset(offset), offset);
     EXPECT_NE(result->CachedNextSafeToBreakOffset(offset), offset);
   }
@@ -339,13 +363,13 @@ TEST_F(ShapeResultTest, AddUnsafeToBreakLtr) {
 TEST_F(ShapeResultTest, AddUnsafeToBreakRtl) {
   HarfBuzzShaper shaper(u"\u05d0\u05d1\u05d2\u05d3\u05d4\u05d5");
   ShapeResult* result = shaper.Shape(GetFont(kArabicFont), TextDirection::kRtl);
-  Vector<unsigned> offsets{2, 5};
-  for (const unsigned offset : offsets) {
+  Vector<wtf_size_t> offsets{2, 5};
+  for (const wtf_size_t offset : offsets) {
     EXPECT_EQ(result->NextSafeToBreakOffset(offset), offset);
   }
   result->AddUnsafeToBreak(offsets);
   result->EnsurePositionData();
-  for (const unsigned offset : offsets) {
+  for (const wtf_size_t offset : offsets) {
     EXPECT_NE(result->NextSafeToBreakOffset(offset), offset);
     EXPECT_NE(result->CachedNextSafeToBreakOffset(offset), offset);
   }
@@ -356,13 +380,13 @@ TEST_F(ShapeResultTest, AddUnsafeToBreakRange) {
   HarfBuzzShaper shaper(string);
   ShapeResult* result = shaper.Shape(GetFont(kLatinFont), TextDirection::kLtr,
                                      1, string.length());
-  Vector<unsigned> offsets{2, 5, 7};
-  for (const unsigned offset : offsets) {
+  Vector<wtf_size_t> offsets{2, 5, 7};
+  for (const wtf_size_t offset : offsets) {
     EXPECT_EQ(result->NextSafeToBreakOffset(offset), offset);
   }
   result->AddUnsafeToBreak(offsets);
   result->EnsurePositionData();
-  for (const unsigned offset : offsets) {
+  for (const wtf_size_t offset : offsets) {
     EXPECT_NE(result->NextSafeToBreakOffset(offset), offset);
     EXPECT_NE(result->CachedNextSafeToBreakOffset(offset), offset);
   }
@@ -383,7 +407,7 @@ TEST_F(ShapeResultTest, UnsafeBreaksPreventPositionCompaction) {
 }
 
 TEST_F(ShapeResultTest, CompactPositionDataRebuildsFullTable) {
-  constexpr unsigned kNumCharacters = 8;
+  constexpr wtf_size_t kNumCharacters = 8;
   ShapeResult* result =
       MakeGarbageCollected<ShapeResult>(0, kNumCharacters, TextDirection::kLtr);
   result->InsertRunForTesting(0, kNumCharacters, TextDirection::kLtr,
@@ -391,17 +415,127 @@ TEST_F(ShapeResultTest, CompactPositionDataRebuildsFullTable) {
 
   result->EnsurePositionData(/*allow_compaction=*/true);
   ASSERT_EQ(1u, PositionDataSize(*result));
-  for (unsigned offset = 0; offset < kNumCharacters; ++offset) {
+  for (wtf_size_t offset = 0; offset < kNumCharacters; ++offset) {
     EXPECT_EQ(LayoutUnit(), result->CachedPositionForOffset(offset));
   }
 
   result->EnsurePositionData(/*allow_compaction=*/false);
   ASSERT_EQ(kNumCharacters, PositionDataSize(*result));
-  for (unsigned offset = 0; offset < kNumCharacters; ++offset) {
+  for (wtf_size_t offset = 0; offset < kNumCharacters; ++offset) {
     const ShapeResultCharacterData& data = result->CharacterData(offset);
     EXPECT_EQ(LayoutUnit(), data.x_position);
     EXPECT_TRUE(data.is_cluster_base);
     EXPECT_TRUE(data.safe_to_break_before);
+  }
+}
+
+TEST_F(ShapeResultTest, RtlCompactGlyphStorageBuildsPositionData) {
+  Font* font = test::CreateTestFont(
+      AtomicString("Noto Mono"),
+      test::BlinkWebTestsDir() +
+          "/third_party/NotoMono-hintedLocalizedFamilyName/"
+          "NotoMono-Regular.subset.ttf",
+      16);
+  ASSERT_TRUE(font->PrimaryFont()->IsFixedPitch());
+  const String string = To16Bit("Thequickbrownfoxjumpsoverthelazydog");
+
+  ShapeResult* full_result;
+  {
+    ScopedMonospaceGlyphCompactionForTest scoped_feature(false);
+    HarfBuzzShaper shaper(string);
+    full_result = shaper.Shape(font, TextDirection::kRtl);
+  }
+  ShapeResult* compact_result;
+  {
+    ScopedMonospaceGlyphCompactionForTest scoped_feature(true);
+    HarfBuzzShaper shaper(string);
+    compact_result = shaper.Shape(font, TextDirection::kRtl);
+  }
+  const auto* compact_test_info =
+      static_cast<const ShapeResultTestInfo*>(compact_result);
+  ASSERT_TRUE(compact_test_info->RunInfoForTesting(0)
+                  .GetGlyphDataRange()
+                  .IsCompactSource());
+
+  full_result->EnsurePositionData();
+  compact_result->EnsurePositionData();
+  ASSERT_EQ(string.length(), PositionDataSize(*full_result));
+  ASSERT_EQ(string.length(), PositionDataSize(*compact_result));
+  for (unsigned offset = 0; offset <= string.length(); ++offset) {
+    EXPECT_EQ(full_result->CachedPositionForOffset(offset),
+              compact_result->CachedPositionForOffset(offset));
+    EXPECT_EQ(full_result->CachedNextSafeToBreakOffset(offset),
+              compact_result->CachedNextSafeToBreakOffset(offset));
+    EXPECT_EQ(full_result->CachedPreviousSafeToBreakOffset(offset),
+              compact_result->CachedPreviousSafeToBreakOffset(offset));
+  }
+  for (unsigned offset = 0; offset < string.length(); ++offset) {
+    const LayoutUnit position = full_result->CachedPositionForOffset(offset);
+    EXPECT_EQ(full_result->CachedOffsetForPosition(position),
+              compact_result->CachedOffsetForPosition(position));
+  }
+  EXPECT_TRUE(compact_test_info->RunInfoForTesting(0)
+                  .GetGlyphDataRange()
+                  .IsCompactSource());
+
+  ShapeResultCursor cursor(compact_result);
+  for (unsigned offset = 0; offset < string.length(); ++offset) {
+    cursor.MoveToCharacter(offset);
+    EXPECT_EQ(offset, cursor.CharacterIndex());
+  }
+}
+
+TEST_F(ShapeResultTest, CompactRunsForceFullPositionData) {
+  constexpr unsigned kNumCharacters = 16;
+  ShapeResult* result =
+      MakeGarbageCollected<ShapeResult>(0, kNumCharacters, TextDirection::kLtr);
+  ShapeResultRun* run = InsertConstantAdvanceRun(
+      result, 0, kNumCharacters, TextRunLayoutUnit(10), /*compact=*/true);
+  result->EnsurePositionData(/*allow_compaction=*/false);
+  ASSERT_EQ(kNumCharacters, PositionDataSize(*result));
+  EXPECT_TRUE(run->GetGlyphDataRange().IsCompactSource());
+  for (unsigned offset = 0; offset < kNumCharacters; ++offset) {
+    const ShapeResultCharacterData& data = result->CharacterData(offset);
+    EXPECT_EQ(LayoutUnit(offset * 10), data.x_position);
+    EXPECT_TRUE(data.is_cluster_base);
+    EXPECT_TRUE(data.safe_to_break_before);
+  }
+  result->EnsurePositionData();
+  EXPECT_EQ(kNumCharacters, PositionDataSize(*result));
+}
+
+TEST_F(ShapeResultTest, CompactPositionDataWithGapsMatchesFullStorage) {
+  constexpr unsigned kStartIndex = 5;
+  constexpr unsigned kNumCharacters = 24;
+  for (TextDirection direction : {TextDirection::kLtr, TextDirection::kRtl}) {
+    SCOPED_TRACE(direction);
+    ShapeResult* full_result = MakeGarbageCollected<ShapeResult>(
+        kStartIndex, kNumCharacters, direction);
+    ShapeResult* compact_result = MakeGarbageCollected<ShapeResult>(
+        kStartIndex, kNumCharacters, direction);
+    for (ShapeResult* result : {full_result, compact_result}) {
+      InsertConstantAdvanceRun(result, kStartIndex + 2, 8,
+                               TextRunLayoutUnit(10),
+                               /*compact=*/result == compact_result);
+      InsertConstantAdvanceRun(result, kStartIndex + 13, 8,
+                               TextRunLayoutUnit(20),
+                               /*compact=*/result == compact_result);
+      result->EnsurePositionData(/*allow_compaction=*/false);
+      ASSERT_EQ(kNumCharacters, PositionDataSize(*result));
+    }
+
+    for (unsigned offset = kStartIndex; offset < kStartIndex + kNumCharacters;
+         ++offset) {
+      SCOPED_TRACE(offset);
+      const ShapeResultCharacterData& expected =
+          full_result->CharacterData(offset);
+      const ShapeResultCharacterData& actual =
+          compact_result->CharacterData(offset);
+      EXPECT_EQ(expected.x_position, actual.x_position);
+      EXPECT_EQ(expected.is_cluster_base, actual.is_cluster_base);
+      EXPECT_EQ(expected.safe_to_break_before, actual.safe_to_break_before);
+    }
+    EXPECT_EQ(full_result->Width(), compact_result->Width());
   }
 }
 
@@ -710,7 +844,7 @@ struct CaretPositionForOffsetTestData {
 #else
      {0, 12, 24, 36, 48, 60, 110, 150, 210, 234},
 #endif
-     ShapeResultTest::kCJKFont,
+     ShapeResultTest::kCjkFont,
      AdjustMidCluster::kToStart},
 
     // 13
@@ -722,7 +856,7 @@ struct CaretPositionForOffsetTestData {
 #else
      {0, 12, 24, 36, 48, 60, 110, 150, 210, 234},
 #endif
-     ShapeResultTest::kCJKFont,
+     ShapeResultTest::kCjkFont,
      AdjustMidCluster::kToEnd},
 
     // 14
@@ -734,7 +868,7 @@ struct CaretPositionForOffsetTestData {
 #else
      {234, 222, 210, 198, 186, 174, 124, 84, 24, 0},
 #endif
-     ShapeResultTest::kCJKFont,
+     ShapeResultTest::kCjkFont,
      AdjustMidCluster::kToStart},
 
     // 15
@@ -746,7 +880,7 @@ struct CaretPositionForOffsetTestData {
 #else
      {234, 222, 210, 198, 186, 174, 124, 84, 24, 0},
 #endif
-     ShapeResultTest::kCJKFont,
+     ShapeResultTest::kCjkFont,
      AdjustMidCluster::kToEnd},
 };
 class CaretPositionForOffsetTest
@@ -856,7 +990,7 @@ struct CaretOffsetForHitTestTestData {
       55, 66, 67, 78, 79, 90, 91, 99, 100, 102},
      {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9},
 #endif
-     ShapeResultTest::kCJKFont},
+     ShapeResultTest::kCjkFont},
 
     {u"楽しいドライブ、0",
      TextDirection::kRtl,
@@ -869,7 +1003,7 @@ struct CaretOffsetForHitTestTestData {
       50, 61, 62, 73, 74, 85, 86, 97, 98, 102},
      {9, 9, 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1, 0, 0},
 #endif
-     ShapeResultTest::kCJKFont},
+     ShapeResultTest::kCjkFont},
 };
 class CaretOffsetForHitTestTest
     : public ShapeResultTest,
@@ -993,10 +1127,10 @@ TEST_F(ShapeResultTest, ForEachGraphemeClustersBoundsCheck) {
   const String text = "0123456789";
 
   struct Context {
-    Vector<unsigned> called_indices;
+    Vector<wtf_size_t> called_indices;
   };
-  const auto callback = [](void* context_ptr, unsigned character_index,
-                           float total_advance, unsigned graphemes_in_cluster,
+  const auto callback = [](void* context_ptr, wtf_size_t character_index,
+                           float total_advance, wtf_size_t graphemes_in_cluster,
                            float cluster_advance,
                            CanvasRotationInVertical rotation) {
     auto* ctx = static_cast<Context*>(context_ptr);
@@ -1006,7 +1140,7 @@ TEST_F(ShapeResultTest, ForEachGraphemeClustersBoundsCheck) {
     Context context;
     result->ForEachGraphemeClusters(text, 0.0f, 0, 8, 0, callback, &context);
     EXPECT_EQ(context.called_indices.size(), 8u);
-    for (unsigned i = 0; i < context.called_indices.size(); ++i) {
+    for (wtf_size_t i = 0; i < context.called_indices.size(); ++i) {
       EXPECT_EQ(context.called_indices[i], i);
     }
   }
@@ -1015,7 +1149,7 @@ TEST_F(ShapeResultTest, ForEachGraphemeClustersBoundsCheck) {
     Context context;
     view->ForEachGraphemeClusters(text, 0.0f, 0, 8, 0, callback, &context);
     EXPECT_EQ(context.called_indices.size(), 8u);
-    for (unsigned i = 0; i < 8; ++i) {
+    for (wtf_size_t i = 0; i < 8; ++i) {
       EXPECT_EQ(context.called_indices[i], i);
     }
   }

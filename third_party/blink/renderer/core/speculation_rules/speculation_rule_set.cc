@@ -8,6 +8,7 @@
 
 #include "services/network/public/mojom/no_vary_search.mojom-shared.h"
 #include "services/network/public/mojom/referrer_policy.mojom-shared.h"
+#include "third_party/blink/public/common/dom/dom_node_id.h"
 #include "third_party/blink/public/mojom/speculation_rules/speculation_rules.mojom-shared.h"
 #include "third_party/blink/renderer/core/css/style_rule.h"
 #include "third_party/blink/renderer/core/dom/document.h"
@@ -29,6 +30,7 @@
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 #include "third_party/blink/renderer/platform/weborigin/security_policy.h"
 #include "third_party/blink/renderer/platform/wtf/text/character_visitor.h"
+#include "third_party/blink/renderer/platform/wtf/text/format.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_view.h"
 
 namespace blink {
@@ -59,8 +61,9 @@ void AddConsoleMessageForSpeculationRuleSetValidation(
         mojom::blink::ConsoleMessageSource::kOther,
         mojom::blink::ConsoleMessageLevel::kWarning, error_message);
     if (script_element) {
-      console_message->SetNodes(element_document.GetFrame(),
-                                {script_element->GetDOMNodeId()});
+      console_message->SetNodes(
+          element_document.GetFrame(),
+          {DOMNodeIdType(script_element->GetDOMNodeId())});
     }
     element_document.AddConsoleMessage(console_message);
   }
@@ -80,8 +83,9 @@ void AddConsoleMessageForSpeculationRuleSetValidation(
         mojom::blink::ConsoleMessageSource::kOther,
         mojom::blink::ConsoleMessageLevel::kWarning, warning_message);
     if (script_element) {
-      console_message->SetNodes(element_document.GetFrame(),
-                                {script_element->GetDOMNodeId()});
+      console_message->SetNodes(
+          element_document.GetFrame(),
+          {DOMNodeIdType(script_element->GetDOMNodeId())});
     }
     element_document.AddConsoleMessage(console_message);
   }
@@ -753,9 +757,10 @@ SpeculationRuleSet* SpeculationRuleSet::Parse(Source* source,
           // If prefetch/prerenderRule is not a map, then continue.
           JSONObject* input_rule = JSONObject::Cast(array->at(i));
           if (!input_rule) {
-            result->SetError(SpeculationRuleSetErrorType::kInvalidRulesSkipped,
-                             StrCat({"A rule must be an object: path = [\"",
-                                     key, "\"][", String::Number(i), "]"}));
+            result->SetError(
+                SpeculationRuleSetErrorType::kInvalidRulesSkipped,
+                Format("A rule must be an object: path = [\"{}\"][{}]", key,
+                       i));
             continue;
           }
 

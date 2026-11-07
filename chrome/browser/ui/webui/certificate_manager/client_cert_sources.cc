@@ -54,16 +54,6 @@
 #include "net/ssl/client_cert_store_mac.h"
 #endif  // BUILDFLAG(IS_MAC)
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-#include "chrome/browser/browser_process.h"
-#include "chrome/browser/enterprise/client_certificates/certificate_provisioning_service_factory.h"
-#include "chrome/browser/policy/chrome_browser_policy_connector.h"
-#include "components/enterprise/browser/controller/chrome_browser_cloud_management_controller.h"
-#include "components/enterprise/client_certificates/core/certificate_provisioning_service.h"
-#include "components/enterprise/client_certificates/core/client_certificates_service.h"
-#include "components/enterprise/client_certificates/core/features.h"
-#endif
-
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/constants/ash_features.h"
 #include "chrome/browser/ash/certificate_provider/certificate_provider_service.h"
@@ -168,55 +158,6 @@ std::unique_ptr<ClientCertStoreLoader> CreatePlatformClientCertLoader(
 }
 #endif
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-class ClientCertStoreFactoryProvisioned : public ClientCertStoreFactory {
- public:
-  explicit ClientCertStoreFactoryProvisioned(
-      client_certificates::CertificateProvisioningService*
-          profile_provisioning_service,
-      client_certificates::CertificateProvisioningService*
-          browser_provisioning_service)
-      : profile_provisioning_service_(profile_provisioning_service),
-        browser_provisioning_service_(browser_provisioning_service) {}
-
-  std::unique_ptr<net::ClientCertStore> CreateClientCertStore() override {
-    return client_certificates::ClientCertificatesService::Create(
-        profile_provisioning_service_, browser_provisioning_service_,
-        std::make_unique<net::ClientCertStoreEmpty>());
-  }
-
- private:
-  raw_ptr<client_certificates::CertificateProvisioningService>
-      profile_provisioning_service_;
-  raw_ptr<client_certificates::CertificateProvisioningService>
-      browser_provisioning_service_;
-};
-
-std::unique_ptr<ClientCertStoreLoader> CreateProvisionedClientCertLoader(
-    Profile* profile) {
-  client_certificates::CertificateProvisioningService*
-      profile_provisioning_service = nullptr;
-  if (profile) {
-    profile_provisioning_service = client_certificates::
-        CertificateProvisioningServiceFactory::GetForProfile(profile);
-  }
-
-  client_certificates::CertificateProvisioningService*
-      browser_provisioning_service =
-          g_browser_process->browser_policy_connector()
-              ->chrome_browser_cloud_management_controller()
-              ->GetCertificateProvisioningService();
-
-  if (!profile_provisioning_service && !browser_provisioning_service) {
-    return nullptr;
-  }
-
-  return std::make_unique<ClientCertStoreLoader>(
-      std::make_unique<ClientCertStoreFactoryProvisioned>(
-          profile_provisioning_service, browser_provisioning_service));
-}
-#endif
-
 void PopulateCertInfosFromCertificateList(
     CertificateManagerPageHandler::GetCertificatesCallback callback,
     const net::CertificateList& certs,
@@ -297,6 +238,9 @@ class ClientCertSource : public CertificateManagerPageHandler::CertSource {
   // Refresh list of cached certificates and run `callback` when done.
   void RefreshCachedCertificateList(base::OnceClosure callback) {
     if (!loader_) {
+      // Shuttle: no loader (e.g. the removed client certificate provisioning)
+      // means an empty list; ReplyToGetCertificatesCallback reads `certs_`.
+      certs_ = net::CertificateList();
       std::move(callback).Run();
       return;
     }
@@ -704,7 +648,7 @@ class WritableClientCertSource
 
   void GotImportPassword(std::vector<uint8_t> file_bytes,
                          const std::optional<std::string>& password) {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+    CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
     if (!password) {
       std::move(import_callback_).Run(nullptr);
       return;
@@ -727,7 +671,7 @@ class WritableClientCertSource
   static void GetCertDBOnIOThread(
       NssCertDatabaseGetter database_getter,
       base::OnceCallback<void(net::NSSCertDatabase*)> callback) {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::IO);
+    CHECK_CURRENTLY_ON(content::BrowserThread::IO, base::NotFatalUntil::M162);
 
     auto split_callback = base::SplitOnceCallback(std::move(callback));
 
@@ -748,7 +692,7 @@ class WritableClientCertSource
                               std::string password,
                               int nss_import_result)> finished_import_callback,
       net::NSSCertDatabase* cert_db) {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::IO);
+    CHECK_CURRENTLY_ON(content::BrowserThread::IO, base::NotFatalUntil::M162);
 
     crypto::ScopedPK11Slot slot;
     if (use_hardware_backed) {
@@ -773,7 +717,7 @@ class WritableClientCertSource
   void FinishedNSSImport(std::vector<uint8_t> file_bytes,
                          std::string password,
                          int nss_import_result) {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+    CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
 #if BUILDFLAG(IS_CHROMEOS)
     if (nss_import_result == net::OK) {
@@ -811,7 +755,7 @@ class WritableClientCertSource
   void FinishedKcerImport(
       int nss_import_result,
       base::expected<void, kcer::Error> /*kcer_import_result*/) {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+    CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
     // Just return the nss_import_result. Kcer will attempt to import only if
     // NSS succeeds and even if Kcer fails, the cert should be usable.
@@ -820,7 +764,7 @@ class WritableClientCertSource
 #endif
 
   void ReplyToImportCallback(int nss_import_result) {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+    CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
     if (nss_import_result == net::OK) {
       // Refresh the certificate list to include the newly imported cert, and
@@ -860,7 +804,7 @@ class WritableClientCertSource
       const std::string& sha256hash_hex,
       CertificateManagerPageHandler::DeleteCertificateCallback callback,
       bool confirmed) {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+    CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
     if (!confirmed) {
       std::move(callback).Run(nullptr);
       return;
@@ -896,7 +840,7 @@ class WritableClientCertSource
       ClientCertManagementAccessControls client_cert_policy,
       base::OnceCallback<void(bool nss_delete_result)> finished_delete_callback,
       net::NSSCertDatabase* cert_db) {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::IO);
+    CHECK_CURRENTLY_ON(content::BrowserThread::IO, base::NotFatalUntil::M162);
 
     net::ScopedCERTCertificate nss_cert =
         net::x509_util::CreateCERTCertificateFromX509Certificate(cert.get());
@@ -938,7 +882,7 @@ class WritableClientCertSource
   void FinishedDelete(
       CertificateManagerPageHandler::DeleteCertificateCallback callback,
       bool delete_result) {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+    CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
     if (delete_result) {
       // Refresh the certificate list to remove the deleted cert, and
@@ -1044,8 +988,9 @@ CreatePlatformClientCertSource(
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 std::unique_ptr<CertificateManagerPageHandler::CertSource>
 CreateProvisionedClientCertSource(Profile* profile) {
-  return std::make_unique<ClientCertSource>(
-      CreateProvisionedClientCertLoader(profile));
+  // Shuttle: client certificate provisioning is removed; the "from your
+  // administrator" list is always empty (and hidden by the page).
+  return std::make_unique<ClientCertSource>(nullptr);
 }
 #endif
 
@@ -1067,7 +1012,7 @@ ClientCertManagementAccessControls::ClientCertManagementAccessControls(
       client_cert_policy_(static_cast<ClientCertificateManagementPermission>(
           profile->GetPrefs()->GetInteger(
               prefs::kClientCertificateManagementAllowed))) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 }
 
 bool ClientCertManagementAccessControls::IsManagementAllowed(

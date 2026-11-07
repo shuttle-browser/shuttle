@@ -5,21 +5,31 @@
 
 import json
 import logging
+import re
+
+from requests.structures import CaseInsensitiveDict
 
 WPT_GH_ORG = 'web-platform-tests'
 WPT_GH_REPO_NAME = 'wpt'
 WPT_GH_URL = 'https://github.com/%s/%s/' % (WPT_GH_ORG, WPT_GH_REPO_NAME)
 WPT_GH_RANGE_URL_TEMPLATE = '%scompare/{}...{}' % WPT_GH_URL
 WPT_MIRROR_URL = 'https://chromium.googlesource.com/external/github.com/web-platform-tests/wpt.git'
-WPT_GH_SSH_URL_TEMPLATE = 'https://{}@github.com/%s/%s.git' % \
-    (WPT_GH_ORG, WPT_GH_REPO_NAME)
-WPT_REVISION_FOOTER = 'WPT-Export-Revision: '
-CHANGE_ID_FOOTER = 'Change-Id: '
-LINK_FOOTER = 'Link: '
+WPT_GH_SSH_URL_TEMPLATE = 'https://{}@github.com/%s/%s.git' % (
+    WPT_GH_ORG,
+    WPT_GH_REPO_NAME,
+)
+CHANGE_ID_KEY = 'Change-Id'
+LINK_KEY = 'Link'
+WPT_REVISION_KEY = 'WPT-Export-Revision'
+REVIEWED_ON_KEY = 'Reviewed-on'
+WPT_REVISION_FOOTER = f'{WPT_REVISION_KEY}: '
+_FOOTER_PATTERN = re.compile(r'\s*(?P<key>[\w-]+):\s*(?P<value>.*?)\s*')
 EXPORT_PR_LABEL = 'chromium-export'
 PROVISIONAL_PR_LABEL = 'do not merge yet'
 
-AUTOROLLER_EMAIL = 'wpt-autoroller@chops-service-accounts.iam.gserviceaccount.com'
+AUTOROLLER_EMAIL = (
+    'wpt-autoroller@chops-service-accounts.iam.gserviceaccount.com'
+)
 # These are only set in a new WPT checkout, and they should be consistent with
 # the bot's GitHub account (chromium-wpt-export-bot).
 DEFAULT_WPT_COMMITTER_NAME = 'Chromium WPT Sync'
@@ -33,6 +43,34 @@ EXPORT_DENYLIST = {
 LEGACY_MAIN_BRANCH_NAME = 'retsam'[::-1]
 
 _log = logging.getLogger(__name__)
+
+
+def parse_footers(message: str) -> CaseInsensitiveDict:
+    """Parse footer key-value pairs from a commit message or PR body.
+
+    Skips the subject line if present (to avoid potential Gerrit hashtags in the
+    subject). When a footer key appears multiple times, the last value takes
+    precedence.
+
+    Unlike `git footers --key`, which terminates backwards scanning at the
+    first blank line and therefore misses footers separated by blank lines
+    (e.g., when authors leave blank lines before landed footers), this
+    function scans across blank lines. It also avoids subprocess overhead.
+
+    Returns:
+        A CaseInsensitiveDict mapping normalized footer keys to their values.
+    """
+    footers = CaseInsensitiveDict()
+    lines = message.splitlines()
+    if len(lines) > 1 and lines[1] == '':
+        lines = lines[2:]
+    for line in lines:
+        if match := _FOOTER_PATTERN.fullmatch(line):
+            key = match.group('key')
+            if key.lower() in {'http', 'https'}:
+                continue
+            footers[key] = match.group('value')
+    return footers
 
 
 def read_credentials(host, credentials_json):
@@ -53,8 +91,7 @@ def read_credentials(host, credentials_json):
     if not credentials_json:
         return env_credentials
     if not host.filesystem.exists(credentials_json):
-        _log.warning('Credentials JSON file not found at %s.',
-                     credentials_json)
+        _log.warning('Credentials JSON file not found at %s.', credentials_json)
         return {}
     credentials = {}
     contents = json.loads(host.filesystem.read_text_file(credentials_json))
@@ -87,8 +124,11 @@ def is_basename_skipped(basename):
         'DIR_METADATA',  # https://crbug.com/1103374
         'PRESUBMIT.py',
     ]
-    return (basename in skipped_basenames or is_testharness_baseline(basename)
-            or basename.startswith('.'))
+    return (
+        basename in skipped_basenames
+        or is_testharness_baseline(basename)
+        or basename.startswith('.')
+    )
 
 
 def is_file_exportable(path, project_config):
@@ -98,5 +138,5 @@ def is_file_exportable(path, project_config):
         path: A relative path from the root of Chromium repository.
     """
     assert path.startswith(project_config.relative_tests_path)
-    basename = path[path.rfind('/') + 1:]
+    basename = path[path.rfind('/') + 1 :]
     return path not in EXPORT_DENYLIST and not is_basename_skipped(basename)

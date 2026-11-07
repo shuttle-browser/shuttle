@@ -281,8 +281,6 @@ class CORE_EXPORT HTMLInputElement
 
   void OnSearch();
 
-  void UpdateClearButtonVisibility();
-
   bool WillRespondToMouseClickEvents() override;
 
   // Returns the DataList element associated via the list attribute, if any.
@@ -355,6 +353,7 @@ class CORE_EXPORT HTMLInputElement
   HTMLImageLoader& EnsureImageLoader();
 
   bool SetupDateTimeChooserParameters(DateTimeChooserParameters&);
+  void ClosePopupView();
 
   bool SupportsInputModeAttribute() const;
 
@@ -373,8 +372,6 @@ class CORE_EXPORT HTMLInputElement
 
   bool IsPlaceholderVisible() const override { return is_placeholder_visible_; }
   void SetPlaceholderVisibility(bool) override;
-
-  unsigned SizeOfRadioGroup() const;
 
   bool SupportsPlaceholder() const final;
   String GetPlaceholderValue() const final;
@@ -543,9 +540,7 @@ class CORE_EXPORT HTMLInputElement
   void RemoveFromRadioButtonGroup();
   void AdjustStyle(ComputedStyleBuilder&) override;
 
-  void MaybeReportPiiMetrics();
-
-  void DidChangeIsInCanvasSubtree() final;
+  void DidChangeIsInCanvasSubtree(CanvasSubtreePropagation) final;
 
   AtomicString name_;
   // The value string in |value| value mode.

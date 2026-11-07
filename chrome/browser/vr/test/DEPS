@@ -1,4 +1,0 @@
-include_rules = [
-  "+device/vr/windows/d3d11_device_helpers.h",
-  "+mojo/core/embedder",
-]

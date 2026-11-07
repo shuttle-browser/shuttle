@@ -1,0 +1,25 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+module golden;
+
+interface Primary {
+  PassRemote(pending_associated_remote<RemoteFromJs> remote);
+  PassReceiver(pending_associated_receiver<ReceiverFromJs> receiver);
+  ReturnRemote() => (pending_associated_remote<RemoteFromBrowser> remote);
+  ReturnReceiver() => (pending_associated_receiver<ReceiverFromBrowser> receiver);
+
+  [Sync]
+  SyncReturnReceiver()
+      => (pending_associated_receiver<ReceiverFromBrowser> receiver);
+  [Sync]
+  SyncReturnRemote() => (pending_associated_remote<RemoteFromBrowser> remote);
+};
+
+interface RemoteFromJs {};
+
+interface ReceiverFromJs {};
+
+interface RemoteFromBrowser {};
+
+interface ReceiverFromBrowser {};

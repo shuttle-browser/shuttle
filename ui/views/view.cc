@@ -12,6 +12,7 @@
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <sstream>
 #include <string_view>
 #include <utility>
@@ -19,7 +20,6 @@
 #include "base/auto_reset.h"
 #include "base/check_op.h"
 #include "base/command_line.h"
-#include "base/containers/adapters.h"
 #include "base/containers/flat_set.h"
 #include "base/debug/crash_logging.h"
 #include "base/debug/dump_without_crashing.h"
@@ -87,6 +87,7 @@
 #include "ui/views/buildflags.h"
 #include "ui/views/context_menu_controller.h"
 #include "ui/views/controls/scroll_view.h"
+#include "ui/views/deprecated_layout_immediately_pass_key.h"
 #include "ui/views/drag_controller.h"
 #include "ui/views/focus/focus_manager.h"
 #include "ui/views/interaction/element_tracker_views.h"
@@ -115,6 +116,41 @@ enum class PropertyChangeReason;
 namespace views {
 
 namespace {
+
+// Returns true if `view` or any of its descendants owns a layer.
+bool SubtreeHasLayer(const View* view) {
+  if (view->layer()) {
+    return true;
+  }
+  return std::ranges::any_of(view->children(), &SubtreeHasLayer);
+}
+
+// Recursively collects direct child layers of `parent_layer` in Z-order.
+// Recurses through layerless views to find layer-owning descendants. Once a
+// view with a layer is reached, its layers are collected and recursion stops
+// because any deeper layers are parented to that view's layer.
+void CollectChildLayers(View* view,
+                        ui::Layer* parent_layer,
+                        std::vector<ui::Layer*>& layers) {
+  if (view->layer() && view->layer() != parent_layer) {
+    // TODO(crbug.com/565603740): Revert back to DCHECK_EQ and remove
+    // DUMP_WILL_BE_CHECK_EQ / early returns once confirmed no parent mismatch
+    // occurs.
+    DUMP_WILL_BE_CHECK_EQ(parent_layer, view->layer()->parent());
+    if (view->layer()->parent() == parent_layer) {
+      for (ui::Layer* l : view->GetLayersInOrder()) {
+        DUMP_WILL_BE_CHECK_EQ(parent_layer, l->parent());
+        if (l->parent() == parent_layer) {
+          layers.push_back(l);
+        }
+      }
+    }
+    return;
+  }
+  for (View* child : view->GetChildrenInZOrder()) {
+    CollectChildLayers(child, parent_layer, layers);
+  }
+}
 
 #if BUILDFLAG(IS_WIN)
 constexpr bool kContextMenuOnMousePress = false;
@@ -964,6 +1000,10 @@ void View::DeprecatedLayoutImmediately() {
   LayoutImmediately();
 }
 
+void View::DeprecatedLayoutImmediately(DeprecatedLayoutImmediatelyPassKey) {
+  LayoutImmediately();
+}
+
 void View::Layout(PassKey) {
   needs_layout_ = false;
 
@@ -1654,7 +1694,7 @@ View* View::GetTooltipHandlerForPoint(const gfx::Point& point) {
   // tightly encloses the specified point.
   View::Views children = GetChildrenInZOrder();
   DCHECK_EQ(children_.size(), children.size());
-  for (views::View* child : base::Reversed(children)) {
+  for (views::View* child : std::views::reverse(children)) {
     if (!child->GetVisible()) {
       continue;
     }
@@ -2736,9 +2776,7 @@ void View::AddLayerToRegionImpl(
 
   CreateOrDestroyLayer();
 
-  if (!layer()->AsSolidColor()) {
-    layer()->SetFillsBoundsOpaquely(false);
-  }
+  layer()->SetFillsBoundsOpaquely(false);
 }
 
 void View::SetLayerParent(ui::Layer* parent_layer) {
@@ -2759,6 +2797,28 @@ void View::SetLayerParent(ui::Layer* parent_layer) {
   }
 }
 
+void View::ReorderChildLayers(ui::Layer* parent_layer) {
+  std::vector<ui::Layer*> expected_layers;
+  CollectChildLayers(this, parent_layer, expected_layers);
+
+  // CollectChildLayers() only collects layers whose parent is `parent_layer`,
+  // so there cannot be more expected layers than actual children.
+  const auto& current_children = parent_layer->children();
+  DUMP_WILL_BE_CHECK_LE(expected_layers.size(), current_children.size());
+
+  // StackChildrenAtBottom() moves `expected_layers`, in order, to the front of
+  // `parent_layer`'s children. If they already form that prefix, the call
+  // would be a no-op, so skip it.
+  // TODO(crbug.com/565603740): Remove the size check once the above is a
+  // CHECK.
+  if (expected_layers.size() <= current_children.size() &&
+      std::equal(expected_layers.begin(), expected_layers.end(),
+                 current_children.begin())) {
+    return;
+  }
+
+  parent_layer->StackChildrenAtBottom(expected_layers);
+}
 bool View::GetNeedsNotificationWhenVisibleBoundsChangeImpl() const {
   return clip_layer_to_visible_bounds_ ||
          notify_observers_on_visible_bounds_change_ ||
@@ -2805,40 +2865,6 @@ void View::UpdateLayerClipForVisibleBounds(bool remove_layer_clip) {
 
   for (ui::Layer* layer : GetLayersInOrder(ViewLayer::kExclude)) {
     apply_clip_bounds(layer, clip_bounds);
-  }
-}
-
-void View::ReorderChildLayers(ui::Layer* parent_layer) {
-  if (layer() && layer() != parent_layer) {
-    // TODO(crbug.com/565603740): Revert back to DCHECK_EQ and remove
-    // DUMP_WILL_BE_CHECK_EQ / early returns once confirmed no parent mismatch
-    // occurs.
-    DUMP_WILL_BE_CHECK_EQ(parent_layer, layer()->parent());
-    if (layer()->parent() != parent_layer) {
-      return;
-    }
-    for (ui::Layer* layer_above : layers_above_) {
-      DUMP_WILL_BE_CHECK_EQ(parent_layer, layer_above->parent());
-      if (layer_above->parent() == parent_layer) {
-        parent_layer->StackAtBottom(layer_above);
-      }
-    }
-    parent_layer->StackAtBottom(layer());
-    for (ui::Layer* layer_below : layers_below_) {
-      DUMP_WILL_BE_CHECK_EQ(parent_layer, layer_below->parent());
-      if (layer_below->parent() == parent_layer) {
-        parent_layer->StackAtBottom(layer_below);
-      }
-    }
-  } else {
-    // Iterate backwards through the children so that a child with a layer
-    // which is further to the back is stacked above one which is further to
-    // the front.
-    View::Views children = GetChildrenInZOrder();
-    DCHECK_EQ(children_.size(), children.size());
-    for (views::View* child : base::Reversed(children)) {
-      child->ReorderChildLayers(parent_layer);
-    }
   }
 }
 
@@ -3308,7 +3334,19 @@ void View::AddChildViewAtImpl(View* view, size_t index) {
     widget->LayerTreeChanged();
   }
 
-  ReorderLayers();
+  // Layers and hosted native views are stacked according to the order of the
+  // views that own them, so adding a subtree that owns no layer cannot change
+  // that order: with kNativeViewHostManagesLayers a view hosting a native view
+  // owns a layer too. Skip the reorder in that case, since it walks the whole
+  // subtree of the nearest layer-backed ancestor and, through
+  // Widget::ReorderNativeViews(), the whole widget, which is quadratic when
+  // many children are added in a row, e.g. when a large session is restored
+  // into the tab strip. The legacy reorderer associates windows with
+  // arbitrary views via kHostViewKey, so it keeps the unconditional reorder.
+  if (SubtreeHasLayer(view) ||
+      !base::FeatureList::IsEnabled(features::kNativeViewHostManagesLayers)) {
+    ReorderLayers();
+  }
 
   // Make sure the visibility of the child layers are correct.
   // If any of the parent View is hidden, then the layers of the subtree
@@ -3667,7 +3705,7 @@ void View::UpdateEnabledInViewsSubtreeState() {
   GetViewAccessibility().SetIsEnabled(enabled_in_views_subtree_);
   AdvanceFocusIfNecessary();
   internal::ScopedChildrenLock lock(this);
-  for (views::View* child : base::Reversed(children_)) {
+  for (views::View* child : std::views::reverse(children_)) {
     child->UpdateEnabledInViewsSubtreeState();
   }
   OnPropertyChanged(&enabled_in_views_subtree_, PropertyEffects::kPaint);
@@ -3873,18 +3911,9 @@ void View::LayoutImmediately() {
   ++layouts_since_last_paint_;
   base::AutoReset performing_layout(&performing_layout_, true);
 
-  ++current_layout_call_depth_;
-  ++max_layout_call_depth_;
-
   Layout(PassKey());
   UMA_HISTOGRAM_COUNTS_100("Views.InvalidatesDuringLayout",
                            invalidates_during_layout_);
-  --current_layout_call_depth_;
-  if (current_layout_call_depth_ == 0) {
-    UMA_HISTOGRAM_EXACT_LINEAR("Views.LayoutCallDepth", max_layout_call_depth_,
-                               6);
-    max_layout_call_depth_ = 0;
-  }
 }
 
 // Input -----------------------------------------------------------------------
@@ -4006,7 +4035,18 @@ void View::UnregisterAccelerators(bool leave_data_intact) {
 
   if (GetWidget()) {
     if (auto* focus_manager = GetFocusManager()) {
-      focus_manager->UnregisterAccelerators(this);
+      // Only [0, registered_accelerator_count_) are registered with the
+      // FocusManager. Unregister just those rather than scanning every
+      // accelerator registered in the FocusManager. Accelerators registered
+      // for this view by other means would stay registered, so make sure
+      // there are none.
+#if DCHECK_IS_ON()
+      DCHECK_EQ(focus_manager->GetAcceleratorCountForTarget(this),
+                registered_accelerator_count_);
+#endif
+      for (size_t i = 0; i < registered_accelerator_count_; ++i) {
+        focus_manager->UnregisterAccelerator((*accelerators_)[i], this);
+      }
     }
     if (!leave_data_intact) {
       accelerators_->clear();
@@ -4062,7 +4102,7 @@ void View::AdvanceFocusIfNecessary() {
 void View::PropagateThemeChanged() {
   {
     internal::ScopedChildrenLock lock(this);
-    for (views::View* child : base::Reversed(children_)) {
+    for (views::View* child : std::views::reverse(children_)) {
       child->PropagateThemeChanged();
     }
   }
@@ -4089,7 +4129,7 @@ void View::PropagateDeviceScaleFactorChanged(float old_device_scale_factor,
                                              float new_device_scale_factor) {
   {
     internal::ScopedChildrenLock lock(this);
-    for (views::View* child : base::Reversed(children_)) {
+    for (views::View* child : std::views::reverse(children_)) {
       child->PropagateDeviceScaleFactorChanged(old_device_scale_factor,
                                                new_device_scale_factor);
     }

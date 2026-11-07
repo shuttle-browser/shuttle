@@ -205,12 +205,6 @@ static_library("browser") {
     "autocomplete_provider_listener.h",
     "autocomplete_result.cc",
     "autocomplete_result.h",
-    "autocomplete_scoring_model_executor.cc",
-    "autocomplete_scoring_model_executor.h",
-    "autocomplete_scoring_model_handler.cc",
-    "autocomplete_scoring_model_handler.h",
-    "autocomplete_scoring_model_service.cc",
-    "autocomplete_scoring_model_service.h",
     "autocomplete_scoring_signals_annotator.h",
     "base_search_provider.cc",
     "base_search_provider.h",
@@ -293,12 +287,6 @@ static_library("browser") {
     "on_device_head_provider.h",
     "on_device_model_update_listener.cc",
     "on_device_model_update_listener.h",
-    "on_device_tail_model_executor.cc",
-    "on_device_tail_model_executor.h",
-    "on_device_tail_model_service.cc",
-    "on_device_tail_model_service.h",
-    "on_device_tail_tokenizer.cc",
-    "on_device_tail_tokenizer.h",
     "open_tab_provider.cc",
     "open_tab_provider.h",
     "page_classification_functions.cc",
@@ -388,12 +376,10 @@ static_library("browser") {
     "//components/dom_distiller/core",
     "//components/favicon/core",
     "//components/favicon_base",
-    "//components/history_clusters/core",
     "//components/keyed_service/core",
     "//components/metrics",
     "//components/navigation_metrics",
     "//components/open_from_clipboard",
-    "//components/optimization_guide/core",
     "//components/optimization_guide/proto:optimization_guide_proto",
     "//components/pref_registry",
     "//components/prefs",
@@ -422,8 +408,6 @@ static_library("browser") {
     "//ui/base",
     "//ui/gfx",
   ]
-
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   if (is_android) {
     deps += [ "//components/location/android:settings" ]
@@ -488,12 +472,6 @@ static_library("browser") {
   }
 
   if (use_blink) {
-    sources += [
-      "actions/history_clusters_action.cc",
-      "actions/history_clusters_action.h",
-      "history_cluster_provider.cc",
-      "history_cluster_provider.h",
-    ]
     deps += [ "//content/public/common" ]
   }
 }
@@ -751,6 +729,7 @@ mojom("mojo_bindings") {
     "//mojo/public/mojom/base",
     "//ui/base/mojom",
     "//ui/gfx/mojom",
+    "//ui/gfx/range/mojom",
     "//url/mojom:url_mojom_gurl",
   ]
 
@@ -758,6 +737,31 @@ mojom("mojo_bindings") {
 
   if (!is_ios) {
     sources += [ "searchbox.mojom" ]
+    public_deps += [ ":suggest_template_info_mojo_bindings" ]
+  }
+}
+
+if (!is_ios) {
+  # Shuttle: without fusebox_action (composebox is removed).
+  mojom("suggest_template_info_mojo_bindings") {
+    sources = [ "suggest_template_info.mojom" ]
+    webui_module_path = "chrome://resources/mojo/components/omnibox/browser"
+    public_deps = [
+      "//mojo/public/mojom/base",
+      "//url/mojom:url_mojom_gurl",
+    ]
+  }
+
+  source_set("suggest_template_info_mojo_utils") {
+    sources = [
+      "suggest_template_info_mojo_utils.cc",
+      "suggest_template_info_mojo_utils.h",
+    ]
+    public_deps = [ ":suggest_template_info_mojo_bindings" ]
+    deps = [
+      ":browser",
+      "//third_party/omnibox_proto",
+    ]
   }
 }
 

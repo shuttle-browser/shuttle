@@ -23,7 +23,6 @@
 #include "third_party/blink/renderer/platform/audio/denormal_disabler.h"
 #include "third_party/blink/renderer/platform/audio/hrtf_database_loader.h"
 #include "third_party/blink/renderer/platform/scheduler/public/non_main_thread.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 
 namespace blink {
@@ -100,6 +99,7 @@ void OfflineAudioDestinationHandler::StartRendering() {
   DCHECK(IsMainThread());
   DCHECK(shared_render_target_);
   DCHECK(render_thread_task_runner_);
+  CHECK(Context()->IsDestinationInitialized());
 
   TRACE_EVENT(TRACE_DISABLED_BY_DEFAULT("webaudio.audionode"),
               "OfflineAudioDestinationHandler::StartRendering", "this",
@@ -145,11 +145,37 @@ void OfflineAudioDestinationHandler::EnsureOfflineRenderThreadInitialized() {
   PrepareTaskRunnerForRendering();
 }
 
+void OfflineAudioDestinationHandler::RequestRenderStop() {
+  DCHECK(IsMainThread());
+
+  stop_requested_.store(true, std::memory_order_relaxed);
+
+  if (!render_thread_task_runner_) {
+    NotifyRenderStopped();
+    return;
+  }
+
+  PostCrossThreadTask(
+      *render_thread_task_runner_, FROM_HERE,
+      CrossThreadBindOnce(
+          &OfflineAudioDestinationHandler::AcknowledgeRenderStop,
+          WrapRefCounted(this)));
+}
+
+void OfflineAudioDestinationHandler::StopRenderThread() {
+  DCHECK(IsMainThread());
+
+  render_thread_.reset();
+  render_thread_task_runner_.reset();
+  shared_render_target_.reset();
+  is_rendering_started_ = false;
+}
+
 void OfflineAudioDestinationHandler::SetSharedRenderTarget(
     AudioBuffer* render_target) {
   DCHECK(IsMainThread());
   CHECK(render_target);
-  DCHECK(!is_rendering_started_);
+  CHECK(!is_rendering_started_);
   // `DoOfflineRendering()` walks the target's channels while indexing into
   // `render_bus_`, so the two must always agree.
   CHECK_EQ(render_target->numberOfChannels(), number_of_channels_);
@@ -165,9 +191,6 @@ void OfflineAudioDestinationHandler::StartOfflineRendering() {
 
   frames_to_process_ = shared_render_target_->length();
   frames_processed_ = 0;
-
-  bool is_audio_context_initialized = Context()->IsDestinationInitialized();
-  DCHECK(is_audio_context_initialized);
 
   DCHECK_EQ(render_bus_->NumberOfChannels(),
             shared_render_target_->numberOfChannels());
@@ -190,6 +213,10 @@ void OfflineAudioDestinationHandler::DoOfflineRendering() {
   // do continue to render quanta. Then calling OfflineAudioContext.resume()
   // will pick up the render loop again from where it was suspended.
   while (frames_to_process_ > 0) {
+    if (WasStopRequested()) {
+      return;
+    }
+
     if (Context()->HasAllocationFailed()) {
       FinishOfflineRendering();
       return;
@@ -254,6 +281,16 @@ void OfflineAudioDestinationHandler::FinishOfflineRendering() {
                           GetWeakPtr()));
 }
 
+void OfflineAudioDestinationHandler::AcknowledgeRenderStop() {
+  DCHECK(!IsMainThread());
+  DCHECK(WasStopRequested());
+
+  PostCrossThreadTask(
+      *main_thread_task_runner_, FROM_HERE,
+      CrossThreadBindOnce(&OfflineAudioDestinationHandler::NotifyRenderStopped,
+                          GetWeakPtr()));
+}
+
 void OfflineAudioDestinationHandler::NotifySuspend(size_t frame) {
   DCHECK(IsMainThread());
 
@@ -266,8 +303,6 @@ void OfflineAudioDestinationHandler::NotifySuspend(size_t frame) {
 void OfflineAudioDestinationHandler::NotifyComplete() {
   DCHECK(IsMainThread());
 
-  render_thread_.reset();
-  render_thread_task_runner_.reset();
   shared_render_target_.reset();
   is_rendering_started_ = false;
 
@@ -280,7 +315,16 @@ void OfflineAudioDestinationHandler::NotifyComplete() {
   // The OfflineAudioContext might be gone.
   if (Context() && Context()->GetExecutionContext()) {
     auto* offline_context = static_cast<OfflineAudioContext*>(Context());
-    offline_context->FireCompletionEvent();
+    offline_context->OnChunkRendered();
+  }
+}
+
+void OfflineAudioDestinationHandler::NotifyRenderStopped() {
+  DCHECK(IsMainThread());
+
+  if (!IsExecutionContextDestroyed() && Context()) {
+    auto* offline_context = static_cast<OfflineAudioContext*>(Context());
+    offline_context->OnRenderStopped();
   }
 }
 

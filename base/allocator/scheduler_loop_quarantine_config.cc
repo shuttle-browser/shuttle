@@ -28,7 +28,8 @@ constexpr char kBranchTypeGlobalStr[] = "global";
 constexpr char kBranchTypeThreadLocalDefaultStr[] = "*";
 constexpr char kBranchTypeMainStr[] = "main";
 constexpr char kBranchTypeIOStr[] = "io";
-constexpr char kBranchTypeAdvancedMemorySafetyChecksStr[] = "amsc";
+// Named "amsc" (Advanced Memory Safety Checks) for historical reasons.
+constexpr char kBranchTypeSanitizedObjectStr[] = "amsc";
 constexpr char kBranchTypeVizCompositorStr[] = "viz-compositor";
 constexpr char kBranchTypeCompositorGpuStr[] = "compositor-gpu";
 
@@ -43,8 +44,8 @@ constexpr std::string_view GetSchedulerLoopQuarantineBranchTypeStr(
       return kBranchTypeMainStr;
     case SchedulerLoopQuarantineBranchType::kIO:
       return kBranchTypeIOStr;
-    case SchedulerLoopQuarantineBranchType::kAdvancedMemorySafetyChecks:
-      return kBranchTypeAdvancedMemorySafetyChecksStr;
+    case SchedulerLoopQuarantineBranchType::kSanitizedObject:
+      return kBranchTypeSanitizedObjectStr;
     case SchedulerLoopQuarantineBranchType::kVizCompositor:
       return kBranchTypeVizCompositorStr;
     case SchedulerLoopQuarantineBranchType::kCompositorGpu:
@@ -68,6 +69,7 @@ constexpr char kKeyPauseInBetweenTasks[] = "pause-in-between-tasks";
 constexpr char kKeyExcludeNonIpcTasks[] = "exclude-non-ipc-tasks";
 constexpr char kKeyBranchCapacityInBytes[] = "branch-capacity-in-bytes";
 constexpr char kKeyMaxQuarantineSize[] = "max-quarantine-size";
+constexpr char kKeyPurgeHeadroomPercent[] = "purge-headroom-percent";
 
 struct Match {
   const DictValue* dict;
@@ -185,8 +187,7 @@ GetSchedulerLoopQuarantineConfiguration(
     // Falls back to thread-local default unless global nor AMSC.
     if (!config_entry &&
         branch_type != SchedulerLoopQuarantineBranchType::kGlobal &&
-        branch_type !=
-            SchedulerLoopQuarantineBranchType::kAdvancedMemorySafetyChecks) {
+        branch_type != SchedulerLoopQuarantineBranchType::kSanitizedObject) {
       config_entry = config_process->FindDict(kBranchTypeThreadLocalDefaultStr);
     }
 
@@ -222,6 +223,14 @@ GetSchedulerLoopQuarantineConfiguration(
       config_entry->FindInt(kKeyMaxQuarantineSize).value_or(-1);
   if (0 < max_quarantine_size) {
     config.max_quarantine_size = static_cast<size_t>(max_quarantine_size);
+  }
+
+  int purge_headroom_percent =
+      config_entry->FindInt(kKeyPurgeHeadroomPercent).value_or(0);
+  if (0 < purge_headroom_percent) {
+    config.purge_headroom_percent =
+        std::min(static_cast<size_t>(purge_headroom_percent),
+                 ::partition_alloc::internal::kMaxPurgeHeadroomPercent);
   }
 #endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
 

@@ -8,6 +8,7 @@ source_set("page_action") {
   friend = [
     ":impl",
     ":unit_tests",
+    ":interactive_test_support",
     ":interactive_ui_tests",
     ":test_support",
   ]
@@ -22,7 +23,6 @@ source_set("page_action") {
 
   public_deps = [
     "//base",
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/profiles",
     "//chrome/browser/ui:browser_element_identifiers",
     "//chrome/browser/ui/actions:actions_headers",
@@ -54,8 +54,6 @@ source_set("impl") {
     "page_action_view.cc",
   ]
 
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
-
   deps = [
     ":page_action",
     "//base",
@@ -86,9 +84,5 @@ source_set("impl") {
     "//ui/gfx",
     "//ui/views",
   ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
 }
 

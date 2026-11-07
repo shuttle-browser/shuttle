@@ -14,8 +14,10 @@
 #include "services/webnn/public/cpp/ml_tensor_usage.h"
 #include "services/webnn/public/cpp/operand_descriptor.h"
 #include "services/webnn/public/mojom/webnn_tensor.mojom-blink.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_union_arraybufferallowshared_arraybufferviewallowshared.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_ml_tensor_descriptor.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/core/typed_arrays/dom_array_buffer_util.h"
 #include "third_party/blink/renderer/modules/ml/ml_context.h"
 #include "third_party/blink/renderer/modules/ml/webnn/ml_error.h"
 #include "third_party/blink/renderer/modules/ml/webnn/ml_graph_utils.h"
@@ -56,6 +58,7 @@ MLTensor::MLTensor(
     webnn::OperandDescriptor descriptor,
     webnn::MLTensorUsage usage,
     scoped_refptr<gpu::ClientSharedImage> shared_image,
+    std::unique_ptr<gpu::WebNNScopedAccess> webnn_scoped_access,
     GPUDevice* gpu_device,
     webnn::mojom::blink::CreateTensorSuccessPtr create_tensor_success,
     base::PassKey<MLContext> /*pass_key*/)
@@ -65,6 +68,7 @@ MLTensor::MLTensor(
       webnn_handle_(std::move(create_tensor_success->tensor_handle)),
       remote_tensor_(execution_context),
       shared_image_(std::move(shared_image)),
+      webnn_scoped_access_(std::move(webnn_scoped_access)),
       gpu_device_(gpu_device),
       fallback_to_sync_method_for_export_(
           IsFallbackToTensorExportSyncRequired()) {
@@ -171,7 +175,7 @@ ScriptPromise<DOMArrayBuffer> MLTensor::ReadTensorImpl(
 ScriptPromise<IDLUndefined> MLTensor::ReadTensorImpl(
     webnn::ScopedTrace scoped_trace,
     ScriptState* script_state,
-    AllowSharedBufferSource* dst_data,
+    V8AllowSharedBufferSource* dst_data,
     ExceptionState& exception_state) {
   // Remote context gets automatically unbound when the execution context
   // destructs.
@@ -181,7 +185,7 @@ ScriptPromise<IDLUndefined> MLTensor::ReadTensorImpl(
     return EmptyPromise();
   }
 
-  base::span<uint8_t> bytes = AsByteSpan(*dst_data);
+  base::span<uint8_t> bytes = AsSpan<SharedBufferPolicy::kAllow>(*dst_data);
   if (bytes.size() < PackedByteLength()) {
     exception_state.ThrowTypeError("The destination tensor is too small.");
     return EmptyPromise();
@@ -254,7 +258,7 @@ void MLTensor::OnDidReadTensor(
 void MLTensor::OnDidReadTensorByob(
     webnn::ScopedTrace scoped_trace,
     ScriptPromiseResolver<IDLUndefined>* resolver,
-    AllowSharedBufferSource* dst_data,
+    V8AllowSharedBufferSource* dst_data,
     base::ElapsedTimer read_tensor_timer,
     webnn::mojom::blink::ReadTensorResultPtr result) {
   pending_byob_resolvers_.erase(resolver);
@@ -267,7 +271,7 @@ void MLTensor::OnDidReadTensorByob(
     return;
   }
 
-  base::span<uint8_t> bytes = AsByteSpan(*dst_data);
+  base::span<uint8_t> bytes = AsSpan<SharedBufferPolicy::kAllow>(*dst_data);
   if (bytes.size() == 0) {
     if (result->get_buffer().size() == 0 &&
         ml_context_->read_tensor_consumer()) {
@@ -346,6 +350,7 @@ void MLTensor::WriteTensorImpl(base::span<const uint8_t> src_data,
 
 void MLTensor::OnConnectionError() {
   remote_tensor_.reset();
+  webnn_scoped_access_.reset();
 
   for (const auto& resolver : pending_resolvers_) {
     resolver->RejectWithDOMException(DOMExceptionCode::kInvalidStateError,
@@ -434,15 +439,21 @@ GPUBuffer* MLTensor::ExportToGPUImpl(
     return nullptr;
   }
 
-  gpu::SyncToken sync_token = ml_context_->GenerateVerifiedReleaseToken();
-  // If SyncPointGraphValidation is disabled, we need to flush the command
-  // buffer to ensure that the SyncToken has arrived on the GPU process before
-  // we attempt to export the tensor to WebGPU.
-  if (fallback_to_sync_method_for_export_) {
-    remote_tensor_->ExportTensorSync(flow_id, sync_token.release_count());
-  } else {
-    remote_tensor_->ExportTensor(flow_id, sync_token.release_count());
-  }
+  gpu::SyncToken sync_token = gpu::WebNNScopedAccess::EndAccess(
+      std::move(webnn_scoped_access_), [&]() {
+        gpu::SyncToken release_token =
+            ml_context_->GenerateVerifiedReleaseToken();
+        // If SyncPointGraphValidation is disabled, we need to flush the command
+        // buffer to ensure that the SyncToken has arrived on the GPU process
+        // before we attempt to export the tensor to WebGPU.
+        if (fallback_to_sync_method_for_export_) {
+          remote_tensor_->ExportTensorSync(flow_id,
+                                           release_token.release_count());
+        } else {
+          remote_tensor_->ExportTensor(flow_id, release_token.release_count());
+        }
+        return release_token;
+      });
 
   auto webgpu_finished_access_callback = blink::BindOnce(
       [](MLTensor* tensor, gpu::ClientSharedImage* shared_image, uint64_t flow_id,
@@ -461,7 +472,14 @@ GPUBuffer* MLTensor::ExportToGPUImpl(
 
         // WaitSyncToken(t3)
         // WebNNTensor::ImportTensor calls WaitSyncToken.
-        tensor->remote_tensor_->ImportTensor(flow_id, webgpu_finished_access_token);
+        shared_image->BeginWebNNAccess(
+            [&](std::unique_ptr<gpu::WebNNScopedAccess> scoped_access,
+                const std::vector<gpu::SyncToken>& sync_tokens) {
+              tensor->webnn_scoped_access_ = std::move(scoped_access);
+              tensor->remote_tensor_->ImportTensor(
+                  flow_id, Vector<gpu::SyncToken>(sync_tokens));
+            },
+            webgpu_finished_access_token);
 
         // Resume use of MLTensor.
         tensor->gpu_buffer_.Clear();

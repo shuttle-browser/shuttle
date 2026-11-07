@@ -31,6 +31,7 @@ group("api_implementations") {
   public_deps = [
     "//extensions/browser/api/alarms",
     "//extensions/browser/api/content_settings",
+    "//extensions/browser/api/cookies",
     "//extensions/browser/api/declarative_net_request",
     "//extensions/browser/api/dns",
     "//extensions/browser/api/file_handlers",
@@ -60,7 +61,6 @@ group("api_implementations") {
   if (enable_extensions) {
     public_deps += [
       "//extensions/browser:browser_sources",
-      "//extensions/browser/api/audio",
       "//extensions/browser/api/automation_internal",
       "//extensions/browser/api/mime_handler",
       "//extensions/browser/api/mime_handler_private",
@@ -77,6 +77,7 @@ group("api_implementations") {
 
     if (is_chromeos) {
       public_deps += [
+        "//extensions/browser/api/audio",
         "//extensions/browser/api/bluetooth",
         "//extensions/browser/api/bluetooth_low_energy",
         "//extensions/browser/api/bluetooth_socket",
@@ -110,8 +111,6 @@ source_set("api_keyed_service_factories") {
     "api_browser_context_keyed_service_factories.h",
   ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   deps = [
     "//build:chromeos_buildflags",
     "//extensions/browser/api",
@@ -127,8 +126,6 @@ source_set("api_provider") {
     "core_extensions_browser_api_provider.cc",
     "core_extensions_browser_api_provider.h",
   ]
-
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   deps = [
     "//extensions/browser:browser_sources",

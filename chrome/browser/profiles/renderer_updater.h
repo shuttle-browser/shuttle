@@ -7,6 +7,7 @@
 
 #include <vector>
 
+#include "base/callback_list.h"
 #include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
 #include "build/chromeos_buildflags.h"
@@ -22,6 +23,7 @@
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ash/login/signin/oauth2_login_manager.h"
 #endif
+
 
 
 class Profile;

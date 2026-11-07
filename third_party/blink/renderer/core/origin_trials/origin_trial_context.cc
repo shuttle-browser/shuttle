@@ -523,14 +523,6 @@ bool OriginTrialContext::CanEnableTrialFromName(const StringView& trial_name) {
     return base::FeatureList::IsEnabled(features::kAIProofreadingAPI);
   }
 
-  if (trial_name == "WebAppInstallation") {
-    return base::FeatureList::IsEnabled(blink::features::kWebAppInstallation);
-  }
-
-  if (trial_name == "InstallElement") {
-    return base::FeatureList::IsEnabled(blink::features::kInstallElement);
-  }
-
   if (trial_name == "WebMCP") {
     return base::FeatureList::IsEnabled(blink::features::kWebMCP);
   }
@@ -538,6 +530,13 @@ bool OriginTrialContext::CanEnableTrialFromName(const StringView& trial_name) {
   if (trial_name == "ConnectionAllowlistEmbeddedEnforcement") {
     return base::FeatureList::IsEnabled(
         blink::features::kConnectionAllowlistEmbeddedEnforcement);
+  }
+
+  // The browser process rejects RTCLoggingDispatcher messages as bad messages
+  // when kRTCDiagnosticLogging is disabled (e.g., it is disabled by default on
+  // Android), so the trial must not expose the API in that case.
+  if (trial_name == "RTCDiagnosticLogging") {
+    return base::FeatureList::IsEnabled(blink::features::kRTCDiagnosticLogging);
   }
   return true;
 }

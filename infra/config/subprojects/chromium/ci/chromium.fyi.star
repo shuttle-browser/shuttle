@@ -124,7 +124,8 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "release_builder",
-            "try_builder",
+            "dcheck_always_on",
+            "minimal_symbols",
             "remoteexec",
             "linux",
             "x64",
@@ -712,7 +713,6 @@ ci.builder(
             "12-x64-emulator",
             "emulator-8-cores",
             "linux-jammy",
-            "x86-64",
         ],
     ),
     targets_settings = targets.settings(
@@ -1130,57 +1130,6 @@ ci.builder(
     notifies = ["headless-owners"],
 )
 
-# TODO(crbug.com/40223366): Remove this builder after experimentation.
-ci.builder(
-    name = "linux-rel-no-external-ip",
-    description_html = "Experimental builder testing Chromium release builds on Linux bots without external IP addresses.",
-    builder_spec = builder_config.copy_from(
-        "ci/Linux Builder",
-    ),
-    gn_args = gn_args.config(
-        configs = [
-            "gpu_tests",
-            "release_builder",
-            "remoteexec",
-            "linux",
-            "x64",
-        ],
-    ),
-    targets = targets.bundle(
-        targets = [
-            "chromium_linux_gtests",
-            "chromium_linux_rel_isolated_scripts",
-        ],
-        mixins = [
-            targets.mixin(
-                swarming = targets.swarming(
-                    dimensions = {
-                        "pool": "chromium.tests.no-external-ip",
-                    },
-                    expiration_sec = 43200,
-                ),
-            ),
-            "isolate_profile_data",
-            "linux-jammy",
-        ],
-        per_test_modifications = {
-            "telemetry_perf_unittests": targets.mixin(
-                args = [
-                    "--xvfb",
-                    "--jobs=1",
-                ],
-            ),
-        },
-    ),
-    builderless = False,
-    os = os.LINUX_DEFAULT,
-    console_view_entry = consoles.console_view_entry(
-        category = "linux",
-    ),
-    # Limited test pool is likely to cause long build times.
-    execution_timeout = 24 * time.hour,
-)
-
 ci.builder(
     name = "win-perfetto-rel",
     description_html = "Builds and runs Perfetto tracing tests on Windows x64 release builds.",
@@ -1224,84 +1173,6 @@ ci.builder(
     console_view_entry = consoles.console_view_entry(
         category = "win",
     ),
-)
-
-# TODO(crbug.com/40223366): Remove this builder after experimentation.
-ci.builder(
-    name = "win10-rel-no-external-ip",
-    description_html = "Experimental builder testing Chromium release builds on Windows 10 bots without external IP addresses.",
-    builder_spec = builder_config.copy_from(
-        "ci/Win x64 Builder",
-    ),
-    builder_config_settings = builder_config.ci_settings(
-        retry_failed_shards = True,
-    ),
-    gn_args = gn_args.config(
-        configs = [
-            "gpu_tests",
-            "release_builder",
-            "remoteexec",
-            "minimal_symbols",
-            "win",
-            "x64",
-        ],
-    ),
-    targets = targets.bundle(
-        targets = [
-            "chromium_win10_gtests",
-            "chromium_win_rel_isolated_scripts",
-        ],
-        mixins = [
-            targets.mixin(
-                swarming = targets.swarming(
-                    dimensions = {
-                        "pool": "chromium.tests.no-external-ip",
-                    },
-                    expiration_sec = 43200,
-                ),
-            ),
-            "x86-64",
-            "win10",
-            "isolate_profile_data",
-        ],
-        per_test_modifications = {
-            "blink_web_tests": targets.mixin(
-                swarming = targets.swarming(
-                    shards = 12,
-                ),
-            ),
-            "blink_wpt_tests": targets.mixin(
-                swarming = targets.swarming(
-                    shards = 6,
-                ),
-            ),
-            "browser_tests_no_field_trial": targets.remove(
-                reason = "crbug.com/40630866",
-            ),
-            "components_browsertests_no_field_trial": targets.remove(
-                reason = "crbug.com/40630866",
-            ),
-            "interactive_ui_tests_no_field_trial": targets.remove(
-                reason = "crbug.com/40630866",
-            ),
-            "sync_integration_tests_no_field_trial": targets.remove(
-                reason = "crbug.com/40630866",
-            ),
-            "telemetry_perf_unittests": targets.remove(
-                reason = "crbug.com/40622135",
-            ),
-            "telemetry_unittests": targets.remove(
-                reason = "crbug.com/40622135",
-            ),
-        },
-    ),
-    builderless = False,
-    os = os.WINDOWS_ANY,
-    console_view_entry = consoles.console_view_entry(
-        category = "win",
-    ),
-    # Limited test pool is likely to cause long build times.
-    execution_timeout = 24 * time.hour,
 )
 
 ci.builder(
@@ -1585,7 +1456,8 @@ fyi_ios_builder(
     gn_args = gn_args.config(
         configs = [
             "release_builder_blink",
-            "try_builder",
+            "dcheck_always_on",
+            "minimal_symbols",
             "remoteexec",
             "ios_simulator",
             "arm64",
@@ -1643,7 +1515,8 @@ fyi_ios_builder(
     gn_args = gn_args.config(
         configs = [
             "release_builder_blink",
-            "try_builder",
+            "dcheck_always_on",
+            "minimal_symbols",
             "remoteexec",
             "ios_simulator",
             "arm64",
@@ -2159,7 +2032,8 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "release_builder",
-            "try_builder",
+            "dcheck_always_on",
+            "minimal_symbols",
             "remoteexec",
             "win",
             "x64",
@@ -2455,14 +2329,14 @@ fyi_mac_builder(
             "release_builder",
             "remoteexec",
             "mac",
-            "x64",
+            "arm64",
             "minimal_symbols",
         ],
     ),
     targets = targets.bundle(
         targets = ["trees_in_viz_disabled_tests"],
         mixins = [
-            "mac_15_x64",
+            "mac_26_arm64",
         ],
         per_test_modifications = {
             "blink_web_tests": targets.mixin(
@@ -2488,8 +2362,8 @@ fyi_mac_builder(
     ),
     builderless = True,
     cores = None,
-    # TODO(crbug.com/543006750): Revert to MAC_DEFAULT after arm migration.
-    os = os.MAC_15,
+    os = os.MAC_DEFAULT,
+    cpu = cpu.ARM64,
     console_view_entry = [
         consoles.console_view_entry(
             category = "treesinviz",
@@ -2694,14 +2568,9 @@ ci.builder(
             "emulator-8-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "android_browsertests": targets.mixin(
-                args = [
-                    # https://crbug.com/361042311
-                    "--gtest_filter=-All/SharedStorageChromeBrowserTest.CrossOriginWorklet_SelectURL_Success/*",
-                ],
                 swarming = targets.swarming(
                     shards = 12,
                 ),
@@ -2803,98 +2672,6 @@ ci.builder(
         ),
     ],
     contact_team_email = "chrome-gpu-team@google.com",
-)
-
-ci.builder(
-    name = "linux-webdriver-bidi-rel",
-    description_html = "Builder for WebDriver BiDi implementation",
-    schedule = "triggered",
-    triggered_by = [],
-    builder_spec = builder_config.copy_from("ci/Linux Builder"),
-    gn_args = "ci/Linux Builder",
-    targets = targets.bundle(
-        targets = [
-            "webdriver_bidi_e2e_tests",
-            "webdriver_bidi_unittests",
-        ],
-        mixins = [
-            "linux-jammy",
-        ],
-        per_test_modifications = {
-            "webdriver_bidi_e2e_tests": targets.mixin(
-                swarming = targets.swarming(
-                    shards = 8,
-                ),
-            ),
-        },
-    ),
-    console_view_entry = consoles.console_view_entry(
-        category = "webdriver",
-    ),
-    contact_team_email = "chrome-devtools@google.com",
-)
-
-ci.builder(
-    name = "mac-webdriver-bidi-rel",
-    description_html = "Builder for WebDriver BiDi implementation",
-    schedule = "triggered",
-    triggered_by = [],
-    builder_spec = builder_config.copy_from("ci/mac-arm64-rel"),
-    gn_args = "ci/mac-arm64-rel",
-    targets = targets.bundle(
-        targets = [
-            "webdriver_bidi_e2e_tests",
-            "webdriver_bidi_unittests",
-        ],
-        mixins = [
-            "mac_default_arm64",
-        ],
-        per_test_modifications = {
-            "webdriver_bidi_e2e_tests": targets.mixin(
-                swarming = targets.swarming(
-                    shards = 8,
-                ),
-            ),
-        },
-    ),
-    cores = None,
-    os = os.MAC_DEFAULT,
-    cpu = cpu.ARM64,
-    console_view_entry = consoles.console_view_entry(
-        category = "webdriver",
-    ),
-    contact_team_email = "chrome-devtools@google.com",
-)
-
-ci.builder(
-    name = "win-webdriver-bidi-rel",
-    description_html = "Builder for WebDriver BiDi implementation",
-    schedule = "triggered",
-    triggered_by = [],
-    builder_spec = builder_config.copy_from("ci/Win x64 Builder"),
-    gn_args = "ci/Win x64 Builder",
-    targets = targets.bundle(
-        targets = [
-            "webdriver_bidi_e2e_tests",
-            "webdriver_bidi_unittests",
-        ],
-        mixins = [
-            "win10",
-        ],
-        per_test_modifications = {
-            "webdriver_bidi_e2e_tests": targets.mixin(
-                swarming = targets.swarming(
-                    shards = 8,
-                ),
-            ),
-        },
-    ),
-    os = os.WINDOWS_DEFAULT,
-    ssd = None,
-    console_view_entry = consoles.console_view_entry(
-        category = "webdriver",
-    ),
-    contact_team_email = "chrome-devtools@google.com",
 )
 
 ci.builder(

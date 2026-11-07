@@ -183,7 +183,7 @@ enum class AccessPoint : int {
   // kAppsPageLink = 7, no longer used.
   kBookmarkBubble = 8,
   kBookmarkManager = 9,
-  kAvatarBubbleSignIn = 10,
+  // kAvatarBubbleSignIn = 10, no longer used.
   kUserManager = 11,
   // kDevicesPage = 12, no longer used.
   // kCloudPrint = 13, no longer used.
@@ -266,9 +266,9 @@ enum class AccessPoint : int {
   // reauthentication is necessary to sign in with or save a passkey from the
   // Google Password Manager.
   kWebauthnModalDialog = 65,
-  // Signin button from the profile menu that is labelled as a "Signin" button,
-  // but is followed by a Sync confirmation screen as a promo.
-  kAvatarBubbleSignInWithSyncPromo = 66,
+  // Signin, history sync promo, or reauth button from the profile menu (avatar
+  // bubble).
+  kProfileMenuPrimaryButton = 66,
   // Signin as part of switching accounts via the account menu.
   kAccountMenuSwitchAccount = 67,
   // Signin via Product Specifications.
@@ -592,7 +592,7 @@ enum class SourceForRefreshTokenOperation {
   kAccountReconcilor_Reconcile = 12,
   kDiceResponseHandler_Signin = 13,
   kDiceResponseHandler_Signout = 14,
-  kTurnOnSyncHelper_Abort = 15,
+  // DEPRECATED: kTurnOnSyncHelper_Abort = 15,
   kMachineLogon_CredentialProvider = 16,
   kTokenService_ExtractCredentials = 17,
   // DEPRECATED on 09/2021 (used for force migration to DICE)
@@ -664,6 +664,20 @@ enum class SyncButtonsType : int {
   kMaxValue = kHistorySyncEqualWeightedFromCapability,
 };
 
+// Event within the sign-in funnel flow.
+//
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// A Java counterpart will be generated for this enum.
+// GENERATED_JAVA_ENUM_PACKAGE: org.chromium.components.signin.metrics
+// LINT.IfChange(SigninFunnelEvent)
+enum class SigninFunnelEvent {
+  kPromoShownWithAccount = 0,
+  kPromoShownNoAccount = 1,
+  kMaxValue = kPromoShownNoAccount,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/signin/enums.xml:SigninFunnelEvent)
+
 #if BUILDFLAG(IS_IOS)
 // The reason an alert dialog is shown when the user is about to sign out.
 enum class SignoutDataLossAlertReason : int {
@@ -715,7 +729,8 @@ enum class ReauthAccessPoint : int {
   kAccountMenu = 0,
   kAccountSettings = 1,
   kRecentTabs = 2,
-  kMaxValue = kRecentTabs,
+  kReauthInfoBar = 3,
+  kMaxValue = kReauthInfoBar,
 };
 // LINT.ThenChange(//tools/metrics/histograms/metadata/signin/enums.xml:ReauthAccessPoint)
 #endif  // BUILDFLAG(IS_IOS)
@@ -748,6 +763,11 @@ void LogSignInStarted(AccessPoint access_point,
 // Logs that sign in was offered when the user is in SigninPending state.
 void LogSigninPendingOffered(AccessPoint access_point);
 
+// Logs an event reached in the sign-in funnel for a given access point.
+// `access_point` must be one of the access points supported by the funnel (the
+// ones that can show the fullscreen sign-in), otherwise this CHECKs.
+void LogSigninFunnelEvent(AccessPoint access_point, SigninFunnelEvent event);
+
 #if BUILDFLAG(IS_IOS)
 // Records the account type when the user signs in.
 void LogSigninWithAccountType(SigninAccountType account_type);
@@ -765,10 +785,6 @@ void LogSyncOptInOffered(AccessPoint access_point);
 // Logs a sync opt-in offered event (`Signin.HistorySyncOptIn.Offered`
 // histogram) and its associated access point.
 void LogHistorySyncOptInOffered(AccessPoint access_point);
-
-// Logs that the sync settings were opened at the end of the sync opt-in flow,
-// and the associated access points.
-void LogSyncSettingsOpened(AccessPoint access_point);
 
 // Logs to UMA histograms how many accounts are in the browser for this
 // profile.

@@ -16,9 +16,12 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/memory_coordinator/memory_coordinator_features.h"
 #include "base/memory_coordinator/test_memory_consumer_registry.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/thread_pool.h"
 #include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
+#include "base/threading/simple_thread.h"
 #include "base/trace_event/memory_usage_estimator.h"
 #include "base/tracing_buildflags.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -729,7 +732,7 @@ TEST(LRUCacheMemoryConsumerTest, DisabledByDefault) {
   EXPECT_EQ(10u, cache.size());
   EXPECT_EQ(10u, cache.max_size());
 
-  test_registry.NotifyUpdateMemoryLimit(50);
+  test_registry.NotifyUpdateMemoryLimit(MemoryLimit::FromPercent(50));
   EXPECT_EQ(10u, cache.max_size());
   EXPECT_EQ(10u, cache.size());
 }
@@ -750,7 +753,7 @@ TEST(LRUCacheMemoryConsumerTest, Scaling) {
 
   // Updating memory limit to 50% updates max_size() immediately, but
   // does not evict elements proactively while idle.
-  test_registry.NotifyUpdateMemoryLimit(50);
+  test_registry.NotifyUpdateMemoryLimit(MemoryLimit::FromPercent(50));
   ASSERT_TRUE(test::RunUntil([&]() { return cache.max_size() == 5u; }));
   EXPECT_EQ(10u, cache.size());
 
@@ -770,7 +773,7 @@ TEST(LRUCacheMemoryConsumerTest, Scaling) {
   }
 
   // Scaling up to 150%.
-  test_registry.NotifyUpdateMemoryLimit(150);
+  test_registry.NotifyUpdateMemoryLimit(MemoryLimit::FromPercent(150));
   ASSERT_TRUE(test::RunUntil([&]() { return cache.max_size() == 15u; }));
 
   for (int i = 11; i <= 20; ++i) {
@@ -793,7 +796,7 @@ TEST(LRUCacheMemoryConsumerTest, MinimumSizeIsOne) {
   EXPECT_EQ(5u, cache.size());
 
   // Limit of 0% sets target limit to 1.
-  test_registry.NotifyUpdateMemoryLimit(0);
+  test_registry.NotifyUpdateMemoryLimit(MemoryLimit::FromPercent(0));
   ASSERT_TRUE(test::RunUntil([&]() { return cache.max_size() == 1u; }));
   EXPECT_EQ(5u, cache.size());
 
@@ -820,7 +823,7 @@ TEST(LRUCacheMemoryConsumerTest, MoveAndSwap) {
   EXPECT_EQ(10u, cache2.size());
   ASSERT_TRUE(test::RunUntil([&]() { return test_registry.size() == 1u; }));
 
-  test_registry.NotifyUpdateMemoryLimit(50);
+  test_registry.NotifyUpdateMemoryLimit(MemoryLimit::FromPercent(50));
   ASSERT_TRUE(test::RunUntil([&]() { return cache2.max_size() == 5u; }));
   cache2.Put(10, 100);
   EXPECT_EQ(5u, cache2.size());
@@ -836,7 +839,7 @@ TEST(LRUCacheMemoryConsumerTest, MoveAndSwap) {
   ASSERT_TRUE(test::RunUntil([&]() { return test_registry.size() == 1u; }));
   EXPECT_EQ(5u, cache3.size());
 
-  test_registry.NotifyUpdateMemoryLimit(20);
+  test_registry.NotifyUpdateMemoryLimit(MemoryLimit::FromPercent(20));
   ASSERT_TRUE(test::RunUntil([&]() { return cache3.max_size() == 2u; }));
   cache3.Put(11, 110);
   EXPECT_EQ(2u, cache3.size());
@@ -850,7 +853,7 @@ TEST(LRUCacheMemoryConsumerTest, MoveAndSwap) {
   EXPECT_EQ(2u, cache4.size());
   EXPECT_EQ(1u, cache3.size());
 
-  test_registry.NotifyUpdateMemoryLimit(10);
+  test_registry.NotifyUpdateMemoryLimit(MemoryLimit::FromPercent(10));
   ASSERT_TRUE(test::RunUntil(
       [&]() { return cache4.max_size() == 1u && cache3.max_size() == 1u; }));
   EXPECT_EQ(1u, cache4.max_size());
@@ -870,7 +873,7 @@ TEST(LRUCacheMemoryConsumerTest, UpdateMaxSize) {
   EXPECT_EQ(20u, cache.max_size());
   ASSERT_TRUE(test::RunUntil([&]() { return test_registry.size() == 1u; }));
 
-  test_registry.NotifyUpdateMemoryLimit(50);
+  test_registry.NotifyUpdateMemoryLimit(MemoryLimit::FromPercent(50));
   ASSERT_TRUE(test::RunUntil([&]() { return cache.max_size() == 10u; }));
 
   // Updating baseline max size to 40 while under 50% memory limit scales to 20.
@@ -888,7 +891,7 @@ TEST(LRUCacheMemoryConsumerTest, UpdateMaxSize) {
   EXPECT_EQ(30u, no_evict_cache.max_size());
   ASSERT_TRUE(test::RunUntil([&]() { return test_registry.size() == 2u; }));
 
-  test_registry.NotifyUpdateMemoryLimit(50);
+  test_registry.NotifyUpdateMemoryLimit(MemoryLimit::FromPercent(50));
   ASSERT_TRUE(
       test::RunUntil([&]() { return no_evict_cache.max_size() == 15u; }));
 }
@@ -908,7 +911,7 @@ TEST(LRUCacheMemoryConsumerTest, EvictionOnPutUnderMemoryPressure) {
   ASSERT_TRUE(test::RunUntil([&]() { return test_registry.size() == 1u; }));
 
   // OnUpdateMemoryLimit is called with 50%. Max size becomes 50 immediately.
-  test_registry.NotifyUpdateMemoryLimit(50);
+  test_registry.NotifyUpdateMemoryLimit(MemoryLimit::FromPercent(50));
   ASSERT_TRUE(test::RunUntil([&]() { return cache.max_size() == 50u; }));
   // Existing elements remain in cache while idle.
   EXPECT_EQ(75u, cache.size());
@@ -924,6 +927,90 @@ TEST(LRUCacheMemoryConsumerTest, EvictionOnPutUnderMemoryPressure) {
   for (int i = 26; i <= 75; ++i) {
     EXPECT_TRUE(cache.Peek(i) != cache.end());
   }
+}
+
+TEST(LRUCacheMemoryConsumerTest, CrossSequenceConstructionAndDestruction) {
+  base::test::TaskEnvironment task_environment;
+  test::ScopedFeatureList feature_list(kLRUCacheMemoryConsumer);
+  TestMemoryConsumerRegistry test_registry;
+
+  auto background_task_runner = ThreadPool::CreateSequencedTaskRunner({});
+
+  // Construct the cache on the main sequence, but bind its deletion to a
+  // background sequence (matching patterns like HistoryBackend and
+  // OnDeviceTailModelExecutor).
+  std::unique_ptr<LRUCache<int, int>, OnTaskRunnerDeleter> cache(
+      new LRUCache<int, int>(100), OnTaskRunnerDeleter(background_task_runner));
+  ASSERT_TRUE(test::RunUntil([&]() { return test_registry.size() == 1u; }));
+
+  test_registry.NotifyUpdateMemoryLimit(MemoryLimit::FromPercent(50));
+  ASSERT_TRUE(test::RunUntil([&]() { return cache->max_size() == 50u; }));
+
+  // Access the cache on the background sequence, then destroy it on the
+  // background sequence.
+  background_task_runner->PostTask(
+      FROM_HERE,
+      BindOnce(
+          [](std::unique_ptr<LRUCache<int, int>, OnTaskRunnerDeleter> cache) {
+            EXPECT_EQ(50u, cache->max_size());
+            for (int i = 0; i < 60; ++i) {
+              cache->Put(i, i);
+            }
+            EXPECT_EQ(50u, cache->size());
+          },
+          std::move(cache)));
+
+  ASSERT_TRUE(test::RunUntil([&]() { return test_registry.size() == 0u; }));
+}
+
+namespace {
+
+class NonSequencedCacheWorkerThread : public SimpleThread {
+ public:
+  NonSequencedCacheWorkerThread() : SimpleThread("NonSequencedCacheWorker") {}
+
+  void Run() override {
+    EXPECT_FALSE(SequencedTaskRunner::HasCurrentDefault());
+    LRUCache<int, int> cache(10);
+    for (int i = 0; i < 15; ++i) {
+      cache.Put(i, i);
+    }
+    EXPECT_EQ(10u, cache.size());
+  }
+};
+
+}  // namespace
+
+TEST(LRUCacheMemoryConsumerTest, ConstructedOnNonSequencedThread) {
+  base::test::TaskEnvironment task_environment;
+  test::ScopedFeatureList feature_list(kLRUCacheMemoryConsumer);
+  TestMemoryConsumerRegistry test_registry;
+
+  NonSequencedCacheWorkerThread worker;
+  worker.Start();
+  worker.Join();
+}
+
+TEST(LRUCacheMemoryConsumerTest, CacheOutlivesRegistry) {
+  base::test::TaskEnvironment task_environment;
+  test::ScopedFeatureList feature_list(kLRUCacheMemoryConsumer);
+
+  std::optional<TestMemoryConsumerRegistry> test_registry;
+  test_registry.emplace();
+
+  // Create a cache that outlives the MemoryConsumerRegistry (matching
+  // base::NoDestructor<LRUCache<...>> singletons and base test fixture
+  // members).
+  LRUCache<int, int> cache(10);
+  ASSERT_TRUE(test::RunUntil([&]() { return test_registry->size() == 1u; }));
+
+  test_registry->NotifyUpdateMemoryLimit(MemoryLimit::FromPercent(50));
+  ASSERT_TRUE(test::RunUntil([&]() { return cache.max_size() == 5u; }));
+
+  // Destroying the registry while the cache is still alive should cleanly
+  // unregister without crashing.
+  test_registry.reset();
+  EXPECT_EQ(5u, cache.max_size());
 }
 
 }  // namespace base

@@ -174,10 +174,10 @@ Bus::Bus(Options options)
       connection_(nullptr),
       origin_thread_id_(base::PlatformThread::CurrentId()),
       async_operations_set_up_(false),
-      shutdown_completed_(false),
       num_pending_watches_(0),
       num_pending_timeouts_(0),
-      address_(options.address) {
+      address_(options.address),
+      on_disconnected_(std::move(options.disconnected_callback)) {
   // This is safe to call multiple times.
   dbus_threads_init_default();
   // The origin message loop is unnecessary if the client uses synchronous
@@ -445,6 +445,8 @@ void Bus::ShutdownAndBlock() {
 
   if (shutdown_completed_)
     return;  // Already shutdowned, just return.
+
+  shutting_down_ = true;
 
   // Unregister the exported objects.
   for (ExportedObjectTable::iterator iter = exported_object_table_.begin();
@@ -771,11 +773,15 @@ bool Bus::RemoveMatch(const std::string& match_rule, Error* error) {
   iter->second--;
   if (iter->second == 0) {
     internal::ScopedDBusError dbus_error;
-    dbus_bus_remove_match(connection_, match_rule.c_str(), dbus_error.get());
+    // Passing a non-null DBusError* makes dbus_bus_remove_match() block on a
+    // synchronous round-trip to dbus-daemon. During shutdown, pass nullptr so
+    // libdbus sends RemoveMatch without waiting for a reply.
+    dbus_bus_remove_match(connection_, match_rule.c_str(),
+                          shutting_down_ ? nullptr : dbus_error.get());
     if (dbus_error.is_set()) {
       *error = Error(dbus_error.name(), dbus_error.message());
     }
-    match_rules_added_.erase(match_rule);
+    match_rules_added_.erase(iter);
   }
   return true;
 }
@@ -1151,6 +1157,14 @@ void Bus::OnDispatchStatusChanged(DBusConnection* connection,
       FROM_HERE, base::BindOnce(&Bus::ProcessAllIncomingDataIfAny, this));
 }
 
+void Bus::OnConnectionDisconnected() {
+  AssertOnDBusThread();
+  if (!on_disconnected_) {
+    LOG(FATAL) << "D-Bus connection was disconnected. Aborting.";
+  }
+  GetOriginTaskRunner()->PostTask(FROM_HERE, std::move(on_disconnected_));
+}
+
 void Bus::OnServiceOwnerChanged(DBusMessage* message) {
   DCHECK(message);
   AssertOnDBusThread();
@@ -1238,11 +1252,9 @@ DBusHandlerResult Bus::OnConnectionDisconnectedFilter(
     DBusConnection* connection,
     DBusMessage* message,
     void* data) {
-  if (dbus_message_is_signal(message,
-                             DBUS_INTERFACE_LOCAL,
+  if (dbus_message_is_signal(message, DBUS_INTERFACE_LOCAL,
                              kDisconnectedSignal)) {
-    // Abort when the connection is lost.
-    LOG(FATAL) << "D-Bus connection was disconnected. Aborting.";
+    static_cast<Bus*>(data)->OnConnectionDisconnected();
   }
   return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }

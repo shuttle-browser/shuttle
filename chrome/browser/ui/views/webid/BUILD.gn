@@ -18,7 +18,6 @@ source_set("webid") {
 
   public_deps = [
     "//base",
-    "//chrome/browser/picture_in_picture",
     "//chrome/browser/ui/page_action",
     "//chrome/browser/ui/tabs:tab_strip_model_observer",
     "//chrome/browser/ui/tabs:tabs_public",
@@ -50,7 +49,9 @@ source_set("webid") {
     "//chrome/browser/ui/tabs:tab_strip",
     "//chrome/browser/ui/views/extensions:security_dialog_tracker",
     "//chrome/browser/ui/views/interaction",
+    "//chrome/browser/ui/webauthn",
     "//components/constrained_window",
+    "//components/permissions",
     "//components/url_formatter",
     "//components/web_modal",
     "//content/public/browser",

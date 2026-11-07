@@ -34,14 +34,15 @@ namespace extensions {
 
 ChromeExtensionCookies::ChromeExtensionCookies(Profile* profile)
     : profile_(profile) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   cookie_settings_ = CookieSettingsFactory::GetForProfile(profile);
   cookie_settings_observation_.Observe(cookie_settings_.get());
   HostContentSettingsMapFactory::GetForProfile(profile_)->AddObserver(this);
 
   std::optional<content::CookieStoreConfig> creation_config;
 
-  if (profile_->IsIncognitoProfile() || profile_->AsTestingProfile()) {
+  if (profile_->IsPrimaryOTRProfileWithRegularParent() ||
+      profile_->AsTestingProfile()) {
     creation_config.emplace(content::CookieStoreConfig());
   } else {
     creation_config.emplace(content::CookieStoreConfig(
@@ -63,8 +64,8 @@ ChromeExtensionCookies::ChromeExtensionCookies(Profile* profile)
 }
 
 ChromeExtensionCookies::~ChromeExtensionCookies() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(!io_data_);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
+  CHECK(!io_data_, base::NotFatalUntil::M161);
 }
 
 // static
@@ -78,7 +79,7 @@ void ChromeExtensionCookies::CreateRestrictedCookieManager(
     const net::IsolationInfo& isolation_info,
     bool prefer_bound_cookie_context,
     mojo::PendingReceiver<network::mojom::RestrictedCookieManager> receiver) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   if (!io_data_)
     return;
 
@@ -92,12 +93,12 @@ void ChromeExtensionCookies::CreateRestrictedCookieManager(
 
 void ChromeExtensionCookies::ClearCookies(const GURL& origin,
                                           base::OnceClosure done_callback) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   if (!io_data_)  // null after shutdown.
     return;
 
   auto callback_wrapper = [](base::OnceClosure done_callback, uint32_t result) {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::IO);
+    CHECK_CURRENTLY_ON(content::BrowserThread::IO, base::NotFatalUntil::M161);
     content::GetUIThreadTaskRunner({})->PostTask(FROM_HERE,
                                                  std::move(done_callback));
   };
@@ -110,8 +111,8 @@ void ChromeExtensionCookies::ClearCookies(const GURL& origin,
 }
 
 net::CookieStore* ChromeExtensionCookies::GetCookieStoreForTesting() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK_CURRENTLY_ON(content::BrowserThread::IO);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
+  CHECK_CURRENTLY_ON(content::BrowserThread::IO, base::NotFatalUntil::M161);
 
   if (!io_data_)  // null after shutdown.
     return nullptr;
@@ -128,7 +129,7 @@ ChromeExtensionCookies::IOData::IOData(
 }
 
 ChromeExtensionCookies::IOData::~IOData() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::IO);
+  CHECK_CURRENTLY_ON(content::BrowserThread::IO, base::NotFatalUntil::M161);
 }
 
 void ChromeExtensionCookies::IOData::CreateRestrictedCookieManager(
@@ -154,7 +155,7 @@ void ChromeExtensionCookies::IOData::CreateRestrictedCookieManager(
 void ChromeExtensionCookies::IOData::ClearCookies(
     const GURL& origin,
     net::CookieStore::DeleteCallback done_callback) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::IO);
+  CHECK_CURRENTLY_ON(content::BrowserThread::IO, base::NotFatalUntil::M161);
 
   net::CookieDeletionInfo delete_info;
   delete_info.host = origin.GetHost();
@@ -176,7 +177,7 @@ void ChromeExtensionCookies::IOData::OnThirdPartyCookieBlockingChanged(
 }
 
 net::CookieStore* ChromeExtensionCookies::IOData::GetOrCreateCookieStore() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::IO);
+  CHECK_CURRENTLY_ON(content::BrowserThread::IO, base::NotFatalUntil::M161);
   if (!cookie_store_) {
     cookie_store_ = content::CreateCookieStore(std::move(creation_config_),
                                                nullptr /* netlog */);
@@ -193,7 +194,7 @@ void ChromeExtensionCookies::OnContentSettingChanged(
     const ContentSettingsPattern& primary_pattern,
     const ContentSettingsPattern& secondary_pattern,
     ContentSettingsTypeSet content_type_set) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   if (!io_data_)  // null after shutdown.
     return;
 
@@ -213,7 +214,7 @@ void ChromeExtensionCookies::OnContentSettingChanged(
 
 void ChromeExtensionCookies::OnThirdPartyCookieBlockingChanged(
     bool block_third_party_cookies) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   if (!io_data_)  // null after shutdown.
     return;
 
@@ -225,7 +226,7 @@ void ChromeExtensionCookies::OnThirdPartyCookieBlockingChanged(
 }
 
 void ChromeExtensionCookies::Shutdown() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   HostContentSettingsMapFactory::GetForProfile(profile_)->RemoveObserver(this);
   cookie_settings_observation_.Reset();
   cookie_settings_ = nullptr;

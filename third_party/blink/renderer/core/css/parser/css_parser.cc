@@ -17,6 +17,7 @@
 #include "third_party/blink/renderer/core/css/parser/css_tokenizer.h"
 #include "third_party/blink/renderer/core/css/parser/css_variable_parser.h"
 #include "third_party/blink/renderer/core/css/properties/css_parsing_utils.h"
+#include "third_party/blink/renderer/core/css/properties/shorthands.h"
 #include "third_party/blink/renderer/core/css/style_color.h"
 #include "third_party/blink/renderer/core/css/style_rule.h"
 #include "third_party/blink/renderer/core/css/style_rule_keyframe.h"
@@ -39,11 +40,12 @@ bool CSSParser::ParseDeclarationList(const CSSParserContext* context,
 
 StyleRuleBase* CSSParser::ParseNestedDeclarationsRule(
     const CSSParserContext* context,
+    StyleSheetContents* style_sheet,
     CSSNestingType nesting_type,
     StyleRule* parent_rule_for_nesting,
     StringView text) {
   return CSSParserImpl::ParseNestedDeclarationsRule(
-      context, nesting_type, parent_rule_for_nesting, text);
+      context, style_sheet, nesting_type, parent_rule_for_nesting, text);
 }
 
 void CSSParser::ParseDeclarationListForInspector(
@@ -435,16 +437,13 @@ bool CSSParser::ParseColor(Color& color, const String& string, bool strict) {
 
 bool CSSParser::ParseSystemColor(Color& color,
                                  const String& color_string,
-                                 mojom::blink::ColorScheme color_scheme,
-                                 const ui::ColorProvider* color_provider,
-                                 bool can_expose_accent_color) {
+                                 const ColorThemeInfo& theme_info) {
   CSSValueID id = CssValueKeywordID(color_string);
   if (!StyleColor::IsSystemColorIncludingDeprecated(id)) {
     return false;
   }
 
-  color = LayoutTheme::GetTheme().SystemColor(id, color_scheme, color_provider,
-                                              can_expose_accent_color);
+  color = LayoutTheme::GetTheme().SystemColor(id, theme_info);
   return true;
 }
 
@@ -481,22 +480,28 @@ MutableCSSPropertyValueSet* CSSParser::ParseFont(
     const String& string,
     const ExecutionContext* execution_context) {
   DCHECK(ThreadState::Current()->IsAllocationAllowed());
-  auto* set =
-      MakeGarbageCollected<MutableCSSPropertyValueSet>(kHTMLStandardMode);
-  ParseValue(set, CSSPropertyID::kFont, string, true /* important */,
-             execution_context);
-  if (set->IsEmpty()) {
-    return nullptr;
+
+  LocalCSSParserContext context(execution_context
+                                    ? execution_context->GetSecureContextMode()
+                                    : SecureContextMode::kInsecureContext,
+                                static_cast<StyleSheetContents*>(nullptr),
+                                execution_context, kHTMLStandardMode);
+  CSSParserLocalContext local_context(CSSPropertyName(CSSPropertyID::kFont),
+                                      CSSPropertyID::kFont);
+  CSSParserTokenStream stream(string);
+  stream.ConsumeWhitespace();
+  HeapVector<CSSPropertyValue, 64> parsed_properties;
+
+  if (GetCSSPropertyFont().ParseShorthand(/*important=*/true, stream,
+                                          *context.GetParserContext(),
+                                          local_context, parsed_properties) &&
+      stream.AtEnd()) {
+    auto* set =
+        MakeGarbageCollected<MutableCSSPropertyValueSet>(kHTMLStandardMode);
+    set->AddParsedProperties(parsed_properties);
+    return set;
   }
-  const CSSValue* font_size =
-      set->GetPropertyCSSValue(CSSPropertyID::kFontSize);
-  if (!font_size || font_size->IsCSSWideKeyword()) {
-    return nullptr;
-  }
-  if (font_size->IsPendingSubstitutionValue()) {
-    return nullptr;
-  }
-  return set;
+  return nullptr;
 }
 
 }  // namespace blink

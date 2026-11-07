@@ -4,11 +4,15 @@
 
 #include "components/proxy_config/proxy_override_rules_policy_handler.h"
 
+#include <string>
 #include <variant>
 
 #include "base/check.h"
+#include "build/build_config.h"
 #include "components/policy/core/browser/configuration_policy_handler.h"
 #include "components/policy/core/browser/policy_error_map.h"
+#include "components/policy/core/common/policy_map.h"
+#include "components/policy/core/common/policy_types.h"
 #include "components/policy/core/common/schema.h"
 #include "components/policy/policy_constants.h"
 #include "components/prefs/pref_value_map.h"
@@ -28,18 +32,52 @@ policy::PolicyErrorPath CreateNewPath(
   return path;
 }
 
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-bool UnaffiliatedPolicyAllowed(const policy::PolicyMap& policies) {
-  const base::Value* enable_for_all_users_value =
-      policies.GetValue(policy::key::kEnableProxyOverrideRulesForAllUsers,
-                        base::Value::Type::INTEGER);
-  if (!enable_for_all_users_value) {
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
+    BUILDFLAG(IS_ANDROID)
+// Shuttle: upstream's enterprise_net::CheckUserAffiliatedProxyPolicy (in
+// components/enterprise/net, pruned with Enterprise Proxy), kept here.
+bool IsUnaffiliatedUserProxyPolicyAllowed(const policy::PolicyMap& policies) {
+  const policy::PolicyMap::Entry* entry =
+      policies.Get(policy::key::kEnableProxyOverrideRulesForAllUsers);
+  if (!entry || entry->scope != policy::POLICY_SCOPE_MACHINE) {
     return false;
   }
-
-  return enable_for_all_users_value->GetInt() == 1;
+  const base::Value* value = entry->value(base::Value::Type::INTEGER);
+  return value && value->GetInt() == 1;
 }
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+
+bool CheckUserAffiliatedProxyPolicy(const policy::PolicyMap& policies,
+                                    const std::string& policy_name,
+                                    policy::PolicyErrorMap* errors) {
+  if (errors &&
+      !errors->HasError(policy::key::kEnableProxyOverrideRulesForAllUsers)) {
+    policy::IntRangePolicyHandler enabled_for_all_users_handler(
+        policy::key::kEnableProxyOverrideRulesForAllUsers,
+        /*pref_path=*/nullptr,
+        /*min=*/0,
+        /*max=*/1,
+        /*clamp=*/false);
+    enabled_for_all_users_handler.CheckPolicySettings(policies, errors);
+  }
+
+  const policy::PolicyMap::Entry* entry = policies.Get(policy_name);
+  if (!entry) {
+    return true;
+  }
+
+  if (entry->scope == policy::PolicyScope::POLICY_SCOPE_USER &&
+      !policies.GetDeviceAffiliationIds().empty() &&
+      !policies.IsUserAffiliated() &&
+      !IsUnaffiliatedUserProxyPolicyAllowed(policies)) {
+    if (errors) {
+      errors->AddError(policy_name, IDS_POLICY_UNAFFILIATED_USER_ERROR);
+    }
+    return false;
+  }
+  return true;
+}
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) ||
+        // BUILDFLAG(IS_ANDROID)
 
 }  // namespace
 
@@ -48,48 +86,25 @@ ProxyOverrideRulesPolicyHandler::ProxyOverrideRulesPolicyHandler(
     : policy::SchemaValidatingPolicyHandler(
           policy::key::kProxyOverrideRules,
           schema.GetKnownProperty(policy::key::kProxyOverrideRules),
-          policy::SchemaOnErrorStrategy::SCHEMA_ALLOW_UNKNOWN)
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-      ,
-      enabled_for_all_users_handler_(
-          policy::key::kEnableProxyOverrideRulesForAllUsers,
-          /*pref_path=*/nullptr,
-          /*min=*/0,
-          /*max=*/1,
-          /*clamp*/ false)
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-{
-}
+          policy::SchemaOnErrorStrategy::SCHEMA_ALLOW_UNKNOWN) {}
 
 ProxyOverrideRulesPolicyHandler::~ProxyOverrideRulesPolicyHandler() = default;
 
 bool ProxyOverrideRulesPolicyHandler::CheckPolicySettings(
     const policy::PolicyMap& policies,
     policy::PolicyErrorMap* errors) {
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  // This code should run to set errors for
-  // `kEnableProxyOverrideRulesForAllUsers`, but the regular proxy override
-  // rules policy might still be valid so we ignore the returned boolean.
-  enabled_for_all_users_handler_.CheckPolicySettings(policies, errors);
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
+    BUILDFLAG(IS_ANDROID)
+  if (!CheckUserAffiliatedProxyPolicy(policies, policy_name(), errors)) {
+    return false;
+  }
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) ||
+        // BUILDFLAG(IS_ANDROID)
 
   if (!policy::SchemaValidatingPolicyHandler::CheckPolicySettings(policies,
                                                                   errors)) {
     return false;
   }
-
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  const policy::PolicyMap::Entry* proxy_override_rules_policy =
-      policies.Get(policy_name());
-  if (proxy_override_rules_policy &&
-      proxy_override_rules_policy->scope ==
-          policy::PolicyScope::POLICY_SCOPE_USER &&
-      !policies.GetDeviceAffiliationIds().empty() &&
-      !policies.IsUserAffiliated() && !UnaffiliatedPolicyAllowed(policies)) {
-    errors->AddError(policy_name(), IDS_POLICY_UNAFFILIATED_USER_ERROR);
-    return false;
-  }
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 
   const base::Value* value =
       policies.GetValue(policy_name(), base::Value::Type::LIST);
@@ -129,10 +144,12 @@ void ProxyOverrideRulesPolicyHandler::ApplyPolicySettings(
   prefs->SetValue(proxy_config::prefs::kProxyOverrideRules,
                   policy_value->Clone());
 
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
+    BUILDFLAG(IS_ANDROID)
   prefs->SetInteger(proxy_config::prefs::kProxyOverrideRulesScope,
                     policy->scope);
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) ||
+        // BUILDFLAG(IS_ANDROID)
 }
 
 bool ProxyOverrideRulesPolicyHandler::CheckRule(

@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -48,6 +49,7 @@
 #include "chrome/grit/generated_resources.h"
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/omnibox/browser/autocomplete_controller_emitter.h"
+#include "components/omnibox/browser/autocomplete_input.h"
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "components/omnibox/browser/autocomplete_result.h"
 #include "components/omnibox/browser/omnibox_client.h"
@@ -57,6 +59,7 @@
 #include "components/omnibox/browser/omnibox_pref_names.h"
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/omnibox/browser/searchbox_utils.h"
+#include "components/omnibox/browser/suggest_template_info_mojo_utils.h"
 #include "components/omnibox/browser/vector_icons.h"
 #include "extensions/buildflags/buildflags.h"
 #include "ui/base/window_open_disposition.h"
@@ -69,15 +72,17 @@
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_service.h"
 #include "components/search_engines/template_url_starter_pack_data.h"
+#include "components/security_state/core/security_state.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/variations/variations_client.h"
 #include "components/vector_icons/vector_icons.h"
 #include "content/public/browser/web_ui_data_source.h"
 #include "content/public/common/url_constants.h"
+#include "net/cert/cert_status_flags.h"
 #include "third_party/omnibox_proto/chrome_searchbox_stats.pb.h"
+#include "third_party/omnibox_proto/formatted_string.pb.h"
 #include "third_party/omnibox_proto/groups.pb.h"
 #include "third_party/omnibox_proto/input_type.pb.h"
-#include "third_party/omnibox_proto/rich_answer_template.pb.h"
 #include "third_party/omnibox_proto/rule_set.pb.h"
 #include "third_party/omnibox_proto/searchbox_config.pb.h"
 #include "third_party/omnibox_proto/suggest_template_info.pb.h"
@@ -88,10 +93,15 @@
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/vector_icon_types.h"
 #include "url/gurl.h"
+#include "url/url_constants.h"
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/tabs/tab_strip_model.h"         // nogncheck
 #endif  // !BUILDFLAG(IS_ANDROID)
+
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+#include "extensions/common/constants.h"  // nogncheck
+#endif                                    // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
 namespace searchbox_internal {
 
@@ -99,7 +109,8 @@ const char* kSearchSparkIconResourceName =
     "//resources/cr_components/searchbox/icons/search_spark.svg";
 const char* kReplyRotated180IconResourceName =
     "//resources/cr_components/searchbox/icons/reply_rotated180.svg";
-
+const char* kDockToRightIconResourceName =
+    "//resources/cr_components/searchbox/icons/dock_to_right.svg";
 }  // namespace searchbox_internal
 
 namespace {
@@ -126,23 +137,23 @@ constexpr char kCalculatorIconResourceName[] =
 constexpr char kDinoIconResourceName[] =
     "//resources/cr_components/searchbox/icons/dino_cr23.svg";
 constexpr char kDriveDocsIconResourceName[] =
-    "//resources/cr_components/searchbox/icons/drive_docs.svg";
+    "//resources/cr_components/searchbox/icons/drive_docs_custom.svg";
 constexpr char kDriveFolderIconResourceName[] =
-    "//resources/cr_components/searchbox/icons/drive_folder.svg";
+    "//resources/cr_components/searchbox/icons/drive_folder_custom.svg";
 constexpr char kDriveFormIconResourceName[] =
-    "//resources/cr_components/searchbox/icons/drive_form.svg";
+    "//resources/cr_components/searchbox/icons/drive_form_custom.svg";
 constexpr char kDriveImageIconResourceName[] =
-    "//resources/cr_components/searchbox/icons/drive_image.svg";
+    "//resources/cr_components/searchbox/icons/drive_image_custom.svg";
 constexpr char kDriveLogoIconResourceName[] =
     "//resources/cr_components/searchbox/icons/drive_logo.svg";
 constexpr char kDrivePdfIconResourceName[] =
-    "//resources/cr_components/searchbox/icons/drive_pdf.svg";
+    "//resources/cr_components/searchbox/icons/drive_pdf_custom.svg";
 constexpr char kDriveSheetsIconResourceName[] =
-    "//resources/cr_components/searchbox/icons/drive_sheets.svg";
+    "//resources/cr_components/searchbox/icons/drive_sheets_custom.svg";
 constexpr char kDriveSlidesIconResourceName[] =
-    "//resources/cr_components/searchbox/icons/drive_slides.svg";
+    "//resources/cr_components/searchbox/icons/drive_slides_custom.svg";
 constexpr char kDriveVideoIconResourceName[] =
-    "//resources/cr_components/searchbox/icons/drive_video.svg";
+    "//resources/cr_components/searchbox/icons/drive_video_custom.svg";
 constexpr char kEnterpriseIconResourceName[] =
     "//resources/cr_components/searchbox/icons/enterprise.svg";
 constexpr char kExtensionAppIconResourceName[] =
@@ -157,7 +168,7 @@ constexpr char kGoogleAgentspace25IconResourceName[] =
 constexpr char kGoogleGIconResourceName[] =
     "//resources/cr_components/searchbox/icons/google_g_cr23.svg";
 constexpr char kGoogleKeepNoteIconResourceName[] =
-    "//resources/cr_components/searchbox/icons/note.svg";
+    "//resources/cr_components/searchbox/icons/note_custom.svg";
 constexpr char kGoogleSitesIconResourceName[] =
     "//resources/cr_components/searchbox/icons/sites.svg";
 constexpr char kGoogleLensMonochromeLogoIcon[] =
@@ -222,6 +233,20 @@ bool MatchHasSideTypeAndRenderType(
          suggestion_groups_map.at(group_id).render_type() == render_type;
 }
 
+// Returns whether the secondary text of `match` has the URL classification.
+// The secondary text is the description, or the contents if they're swapped.
+bool SecondaryTextIsUrl(const AutocompleteMatch& match) {
+  const bool swap = match.swap_contents_and_description;
+  if ((swap ? match.contents : match.description).empty()) {
+    return false;
+  }
+  return std::ranges::any_of(
+      swap ? match.contents_class : match.description_class,
+      [](const ACMatchClassification& classification) {
+        return (classification.style & ACMatchClassification::URL) != 0;
+      });
+}
+
 std::string GetBase64UrlVariations(Profile* profile) {
   variations::VariationsClient* provider = profile->GetVariationsClient();
 
@@ -248,6 +273,23 @@ std::string GetBase64UrlVariations(Profile* profile) {
 
 BASE_FEATURE(kDropMismatchedSelections, base::FEATURE_ENABLED_BY_DEFAULT);
 
+// Returns the text to narrate for `match` in its a11y labels. Like the classic
+// omnibox, that's `fill_into_edit`, unless the server sent accessibility text
+// for the SuggestTemplateInfo primary text (e.g. for text with symbols that
+// screen readers don't read well). That text is only used as long as `contents`
+// still equals the primary text, since it describes that exact text.
+std::u16string GetNarratedMatchText(const AutocompleteMatch& match) {
+  if (match.suggest_template.has_value()) {
+    const omnibox::FormattedString& primary_text =
+        match.suggest_template->primary_text();
+    if (!primary_text.a11y_text().empty() &&
+        match.contents == base::UTF8ToUTF16(primary_text.text())) {
+      return base::UTF8ToUTF16(primary_text.a11y_text());
+    }
+  }
+  return match.fill_into_edit;
+}
+
 }  // namespace
 
 // static
@@ -259,6 +301,19 @@ base::DictValue SearchboxHandler::GetWebUIDataSourceDict(Profile* profile) {
 base::DictValue SearchboxHandler::GetWebUIDataSourceDict(
     Profile* profile,
     WebUIDataSourceOptions options) {
+  base::DictValue dict = GetProfileIndependentWebUIDataSourceDict(
+      {.enable_voice_search = options.enable_voice_search,
+       .enable_lens_search = options.enable_lens_search});
+  dict.Merge(GetProfileDependentWebUIDataSourceDict(
+      profile,
+      {.session_allows_drag_and_drop = options.session_allows_drag_and_drop,
+       .is_lens = options.is_lens}));
+  return dict;
+}
+
+// static
+base::DictValue SearchboxHandler::GetProfileIndependentWebUIDataSourceDict(
+    ProfileIndependentWebUIDataSourceOptions options) {
   base::DictValue dict;
 
   // The WebUI Omnibox code will override this to `true` to adjust various
@@ -275,11 +330,6 @@ base::DictValue SearchboxHandler::GetWebUIDataSourceDict(
   dict.Set("forceHideEllipsis", false);
   dict.Set("enableThumbnailSizingTweaks", false);
   dict.Set("enableCsbMotionTweaks", false);
-  dict.Set("keywordSpaceTriggeringEnabled",
-           profile && profile->GetPrefs()
-               ? profile->GetPrefs()->GetBoolean(
-                     omnibox::kKeywordSpaceTriggeringEnabled)
-               : true);
 
   static constexpr webui::LocalizedString kStrings[] = {
       {"lensSearchButtonLabel", IDS_TOOLTIP_LENS_SEARCH},
@@ -298,14 +348,13 @@ base::DictValue SearchboxHandler::GetWebUIDataSourceDict(
 
   dict.Set("searchboxVoiceSearch", options.enable_voice_search);
   dict.Set("searchboxLensSearch", options.enable_lens_search);
-  dict.Set("searchboxLensVariations", GetBase64UrlVariations(profile));
   dict.Set("searchboxCr23Theming",
            base::FeatureList::IsEnabled(ntp_features::kRealboxCr23Theming));
   dict.Set("searchboxCr23SteadyStateShadow",
            ntp_features::kNtpRealboxCr23SteadyStateShadow.Get());
-  dict.Set(
-      "realboxVirtualFocusNavigation",
-      base::FeatureList::IsEnabled(features::kRealboxVirtualFocusNavigation));
+  // Shuttle: no NTP realbox (WebUI NTP removed); the key stays for the shared
+  // searchbox component.
+  dict.Set("realboxVirtualFocusNavigation", false);
   dict.Set("lensOverlayVirtualFocusNavigation",
            base::FeatureList::IsEnabled(
                features::kLensOverlayVirtualFocusNavigation));
@@ -316,10 +365,28 @@ base::DictValue SearchboxHandler::GetWebUIDataSourceDict(
   return dict;
 }
 
-std::string SearchboxHandler::AutocompleteIconToResourceName(
-    const gfx::VectorIcon& icon) const {
+// static
+base::DictValue SearchboxHandler::GetProfileDependentWebUIDataSourceDict(
+    Profile* profile,
+    ProfileDependentWebUIDataSourceOptions options) {
+  base::DictValue dict;
+  dict.Set("keywordSpaceTriggeringEnabled",
+           profile && profile->GetPrefs()
+               ? profile->GetPrefs()->GetBoolean(
+                     omnibox::kKeywordSpaceTriggeringEnabled)
+               : true);
+  dict.Set("searchboxLensVariations", GetBase64UrlVariations(profile));
+
+  return dict;
+}
+
+// static
+std::string SearchboxHandler::VectorIconToResourceName(
+    const gfx::VectorIcon& icon) {
   if (icon.is_empty()) {
-    return "";  // An empty resource name is effectively a blank icon.
+    // Dropdown rows render blank for an empty resource name, while the
+    // searchbox input falls back to its default icon.
+    return "";
   }
 
   // Keep sorted alphabetically by `if` predicate. E.g.
@@ -539,6 +606,11 @@ std::string SearchboxHandler::AutocompleteIconToResourceName(
   return resource_name;
 }
 
+std::string SearchboxHandler::AutocompleteIconToResourceName(
+    const gfx::VectorIcon& icon) const {
+  return VectorIconToResourceName(icon);
+}
+
 searchbox::mojom::AutocompleteResultPtr
 SearchboxHandler::CreateAutocompleteResult(
     int32_t query_id,
@@ -591,6 +663,18 @@ SearchboxHandler::CreateAutocompleteMatches(
     auto mojom_match =
         CreateAutocompleteMatch(match, suggestion_groups_map, turl_service);
     if (mojom_match) {
+      std::u16string emphasis_text = match.fill_into_edit;
+      if (line == 0 && match.allowed_to_be_default_match &&
+          autocomplete_controller() &&
+          !autocomplete_controller()->input().text().empty() &&
+          !autocomplete_controller()->input().in_keyword_mode()) {
+        emphasis_text = autocomplete_controller()->input().text() +
+                        match.inline_autocompletion;
+      }
+      mojom_match.value()->url_emphasis = ComputeUrlEmphasis(
+          emphasis_text,
+          /*text_is_url=*/!mojom_match.value()->is_search_type,
+          /*include_security_style=*/false, client());
       PopulateAccessibilityLabels(result, line, turl_service,
                                   mojom_match.value().get());
       matches.push_back(std::move(mojom_match.value()));
@@ -607,16 +691,19 @@ void SearchboxHandler::PopulateAccessibilityLabels(
   // Use the same logic as the omnibox edit model so that screen readers
   // announce the same text regardless of which omnibox UI is in use. The
   // narrated match text mirrors the omnibox edit model, which narrates the
-  // temporary text shown in the input when a match is selected.
+  // temporary text shown in the input when a match is selected, unless the
+  // server sent accessibility text (see `GetNarratedMatchText()`).
   const AutocompleteMatch& match = result.match_at(line);
   const std::u16string header_text =
       autocomplete_controller()->GetSuggestionGroupHeaderText(
           match.suggestion_group_id);
+  const std::u16string narrated_text = GetNarratedMatchText(match);
   auto label_for_state = [&](OmniboxPopupSelection::LineState state) {
     const OmniboxPopupSelection selection(line, state);
     std::u16string label = searchbox::GetAccessibilityLabelForSelection(
-        result, selection, header_text, match.fill_into_edit,
-        /*include_positional_info=*/true, turl_service);
+        result, selection, header_text, narrated_text,
+        /*include_positional_info=*/true, turl_service,
+        autocomplete_controller()->autocomplete_provider_client());
     // Shuttle: no AIM button.
     label += searchbox::GetAccessibilityLabelForFollowingIphSuggestion(
         autocomplete_controller()->input(), result, selection,
@@ -688,29 +775,6 @@ SearchboxHandler::CreateAutocompleteMatch(
       searchbox::mojom::AutocompleteMatch::New();
   mojom_match->is_hidden = match.ShouldHideBasedOnStarterPack(turl_service);
   mojom_match->allowed_to_be_default_match = match.allowed_to_be_default_match;
-  // Resolve `swap_contents_and_description` here so the UI can always render
-  // `contents` as the primary text and `description` as the secondary text.
-  const bool swap = match.swap_contents_and_description;
-  const std::u16string& primary_text =
-      swap ? match.description : match.contents;
-  const ACMatchClassifications& primary_class =
-      swap ? match.description_class : match.contents_class;
-  const std::u16string& secondary_text =
-      swap ? match.contents : match.description;
-  const ACMatchClassifications& secondary_class =
-      swap ? match.contents_class : match.description_class;
-  mojom_match->contents = primary_text;
-  for (const auto& contents_class : primary_class) {
-    mojom_match->contents_class.push_back(
-        searchbox::mojom::ACMatchClassification::New(contents_class.offset,
-                                                     contents_class.style));
-  }
-  mojom_match->description = secondary_text;
-  for (const auto& description_class : secondary_class) {
-    mojom_match->description_class.push_back(
-        searchbox::mojom::ACMatchClassification::New(description_class.offset,
-                                                     description_class.style));
-  }
   mojom_match->destination_url = match.destination_url;
   mojom_match->suggestion_group_id =
       match.suggestion_group_id.value_or(omnibox::GROUP_INVALID);
@@ -739,27 +803,14 @@ SearchboxHandler::CreateAutocompleteMatch(
       mojom_match->icon_url = favicon_url;
     }
   }
-  mojom_match->image_dominant_color = match.image_dominant_color;
-  mojom_match->image_url = match.image_url.spec();
   mojom_match->fill_into_edit = match.fill_into_edit;
   mojom_match->inline_autocompletion = match.inline_autocompletion;
   mojom_match->is_search_type = AutocompleteMatch::IsSearchType(match.type);
   mojom_match->type = omnibox::AutocompleteMatchTypeToString(match.type);
   mojom_match->supports_deletion = match.SupportsDeletion();
-  mojom_match->is_two_row_suggestion =
-      !mojom_match->image_url.empty() ||
-      match.type == omnibox::AutocompleteMatchType::kCalculator ||
-      match.enterprise_search_aggregator_type ==
-          AutocompleteMatch::EnterpriseSearchAggregatorType::PEOPLE;
-  if (match.suggest_template) {
-    if (match.suggest_template->secondary_text_placement() ==
-        omnibox::SuggestTemplateInfo::BELOW_PRIMARY_TEXT) {
-      mojom_match->is_two_row_suggestion = true;
-    } else if (match.suggest_template->secondary_text_placement() ==
-               omnibox::SuggestTemplateInfo::IN_FRONT_OF_PRIMARY_TEXT) {
-      mojom_match->is_two_row_suggestion = false;
-    }
-  }
+  mojom_match->suggest_template =
+      suggest_template_info::CreateSuggestTemplateInfo(match);
+  mojom_match->secondary_text_is_url = SecondaryTextIsUrl(match);
   if (!match.from_keyword) {
     for (const auto& action : match.actions) {
 // TODO(b/544764632): Implement Pedals for Android.
@@ -787,10 +838,6 @@ SearchboxHandler::CreateAutocompleteMatch(
 
   mojom_match->tail_suggest_common_prefix = match.tail_suggest_common_prefix;
 
-  if (match.suggest_template && match.suggest_template->has_style()) {
-    mojom_match->suggest_style = static_cast<searchbox::mojom::SuggestStyle>(
-        match.suggest_template->style());
-  }
 
   if (SupportsKeywordMode()) {
     KeywordState keyword_state;
@@ -829,6 +876,87 @@ SearchboxHandler::CreateAutocompleteMatch(
   }
 
   return mojom_match;
+}
+
+// static
+searchbox::mojom::UrlEmphasisPtr SearchboxHandler::ComputeUrlEmphasis(
+    const std::u16string& text,
+    bool text_is_url,
+    bool include_security_style,
+    const OmniboxClient* client) {
+  auto emphasis = searchbox::mojom::UrlEmphasis::New();
+  emphasis->deemphasis_mode = searchbox::mojom::UrlDeemphasisMode::kNothing;
+  emphasis->text_is_url = false;
+  emphasis->scheme_strike_through = false;
+  emphasis->scheme_dangerous = false;
+
+  if (text.empty() || !client) {
+    return emphasis;
+  }
+
+  emphasis->text_is_url = text_is_url;
+  if (!text_is_url) {
+    return emphasis;
+  }
+
+  url::Component scheme;
+  url::Component host;
+  AutocompleteInput::ParseForEmphasizeComponents(
+      text, client->GetSchemeClassifier(), &scheme, &host);
+
+  const std::u16string_view url_scheme =
+      scheme.is_nonempty()
+          ? std::u16string_view(text).substr(scheme.begin, scheme.len)
+          : std::u16string_view();
+
+  const bool is_extension_url =
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+      base::EqualsASCII(url_scheme, extensions::kExtensionScheme);
+#else
+      false;
+#endif
+
+  // Extension IDs are not human-readable, so deemphasize everything to draw
+  // attention to the human-readable name in the location icon text.
+  // Data URLs are rarely human-readable and can be used for spoofing, so draw
+  // attention to the scheme to emphasize "this is just a bunch of data".
+  // For normal URLs, the host is the best proxy for "identity".
+  if (is_extension_url) {
+    emphasis->deemphasis_mode =
+        searchbox::mojom::UrlDeemphasisMode::kEverything;
+  } else if (url_scheme == url::kDataScheme16) {
+    emphasis->deemphasis_mode =
+        searchbox::mojom::UrlDeemphasisMode::kAllButScheme;
+  } else if (host.is_nonempty()) {
+    emphasis->deemphasis_mode =
+        searchbox::mojom::UrlDeemphasisMode::kAllButHost;
+  }
+
+  if (scheme.is_nonempty()) {
+    emphasis->scheme_range = gfx::Range(scheme.begin, scheme.end());
+
+    // Emphasize the scheme for security UI display purposes (if necessary).
+    //
+    // Do not style the scheme for non-http/https URLs. For such schemes,
+    // styling could be confusing or misleading. For example, the scheme isn't
+    // meaningful in about:blank URLs. Or in blob: or filesystem: URLs, which
+    // have an inner origin, the URL is likely too syntax-y to be able to
+    // meaningfully draw attention to any part of it.
+    if (include_security_style &&
+        client->GetNavigationEntryURL().SchemeIsHTTPOrHTTPS()) {
+      if (net::IsCertStatusError(client->GetCertStatus())) {
+        if (client->GetSecurityLevel() == security_state::DANGEROUS) {
+          emphasis->scheme_dangerous = true;
+        }
+        emphasis->scheme_strike_through = true;
+      }
+    }
+  }
+  if (host.is_nonempty()) {
+    emphasis->host_range = gfx::Range(host.begin, host.end());
+  }
+
+  return emphasis;
 }
 
 WindowOpenDisposition SearchboxHandler::ComputeWindowOpenDisposition(
@@ -1380,7 +1508,10 @@ void SearchboxHandler::OpenPopupSelection(
     AutocompleteMatch url_match = searchbox::GenerateDotComMatch(
         client(), autocomplete_controller(), input, text_for_tld);
     if (url_match.destination_url.is_valid()) {
-      OpenMatch(popup_selection, url_match, disposition, base::TimeTicks::Now(),
+      // `url_match` isn't in the result, so pass `kNoMatch` to log it as the
+      // only match, instead of logging the line that `popup_selection` is on.
+      OpenMatch(OmniboxPopupSelection(OmniboxPopupSelection::kNoMatch),
+                url_match, disposition, base::TimeTicks::Now(),
                 searchbox::MakeAutocompleteSnapshot(autocomplete_controller()));
       return;
     }
@@ -1453,7 +1584,7 @@ void SearchboxHandler::ActivateKeyword(
     uint8_t line,
     const GURL& url,
     base::TimeTicks match_selection_timestamp,
-    bool is_mouse_event) {
+    searchbox::mojom::KeywordActivationMethod activation_method) {
   // TODO(b/449785444): Allow embedders other than the Omnibox to activate
   // keyword mode.
   NOTREACHED();

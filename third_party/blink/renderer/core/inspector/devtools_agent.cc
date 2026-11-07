@@ -30,7 +30,6 @@
 #include "third_party/blink/renderer/platform/heap/persistent.h"
 #include "third_party/blink/renderer/platform/scheduler/public/main_thread.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_mojo.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/blink/renderer/platform/wtf/wtf.h"
 
@@ -185,6 +184,10 @@ void DevToolsAgent::Trace(Visitor* visitor) const {
   visitor->Trace(inspected_frames_);
   visitor->Trace(probe_sink_);
   visitor->Trace(sessions_);
+}
+
+bool DevToolsAgent::IsInterruptingExecution() {
+  return inspector_task_runner_->IsInterrupting();
 }
 
 void DevToolsAgent::Dispose() {

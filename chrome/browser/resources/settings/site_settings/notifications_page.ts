@@ -8,9 +8,7 @@
  * under Site Settings.
  */
 
-import '/shared/settings/prefs/prefs.js';
 import 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
-import 'chrome://resources/cr_elements/cr_button/cr_button.js';
 import 'chrome://resources/cr_elements/cr_hidden_style.css.js';
 import 'chrome://resources/cr_elements/cr_radio_button/cr_radio_button.js';
 import 'chrome://resources/cr_elements/cr_radio_group/cr_radio_group.js';
@@ -25,7 +23,6 @@ import '../privacy_icons.html.js';
 import '../settings_page/settings_subpage.js';
 import '../settings_shared.css.js';
 
-import {PrefsMixin} from '/shared/settings/prefs/prefs_mixin.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
 import {SettingsViewMixin} from '../settings_page/settings_view_mixin.js';
@@ -33,8 +30,7 @@ import {SettingsViewMixin} from '../settings_page/settings_view_mixin.js';
 import {ContentSetting, ContentSettingsTypes, SettingsState} from './constants.js';
 import {getTemplate} from './notifications_page.html.js';
 
-const NotificationsPageElementBase =
-    SettingsViewMixin(PrefsMixin(PolymerElement));
+const NotificationsPageElementBase = SettingsViewMixin(PolymerElement);
 
 export class NotificationsPageElement extends NotificationsPageElementBase {
   static get is() {
@@ -76,7 +72,6 @@ export class NotificationsPageElement extends NotificationsPageElementBase {
        * visibility of the additional CPSS options.
        */
       notificationSettingValue_: String,
-
     };
   }
 

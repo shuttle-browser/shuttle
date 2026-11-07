@@ -10,7 +10,6 @@
 #include "base/rand_util.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
-#include "components/enterprise/common/proto/connectors.pb.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/buildflags.h"
 #include "components/safe_browsing/core/browser/db/sb_protocol_manager_util.h"
@@ -124,23 +123,6 @@ bool RealTimeUrlLookupService::CanSendRTSampleRequest() const {
           base::RandDouble() <= kProbabilityForSendingSampledRequests);
 }
 
-std::string RealTimeUrlLookupService::GetUserEmail() const {
-  return "";
-}
-
-std::string RealTimeUrlLookupService::GetBrowserDMTokenString() const {
-  return "";
-}
-
-std::string RealTimeUrlLookupService::GetProfileDMTokenString() const {
-  return "";
-}
-
-std::unique_ptr<enterprise_connectors::ClientMetadata>
-RealTimeUrlLookupService::GetClientMetadata() const {
-  return nullptr;
-}
-
 std::string RealTimeUrlLookupService::GetContentAreaAccountEmail(
     const GURL& tab_url) const {
   return "";
@@ -198,11 +180,6 @@ RealTimeUrlLookupService::GetTrafficAnnotationTag() const {
             }
           }
         })");
-}
-
-std::optional<std::string> RealTimeUrlLookupService::GetDMTokenString() const {
-  // DM token should only be set for enterprise requests.
-  return std::nullopt;
 }
 
 std::string RealTimeUrlLookupService::GetMetricSuffix() const {

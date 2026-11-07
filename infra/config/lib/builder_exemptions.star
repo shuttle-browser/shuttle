@@ -6,77 +6,13 @@
 
 ************************************WARNING*************************************
 NOTHING in this file should be added to. The builders here are merely those that
-got grandfathered into being exempted from newer restrictions. So the amount of
+existed before newer restrictions and were exempted from them. So the amount of
 builders listed here should not grow, and should *only* decrease.
 ************************************WARNING*************************************
 
 """
 
-exempted_from_description_builders = {
-    "ci": set([]),
-    "codesearch": set([
-        "gen-android-try",
-        "gen-chromiumos-try",
-        "gen-fuchsia-try",
-        "gen-ios-try",
-        "gen-linux-try",
-        "gen-mac-try",
-        "gen-webview-try",
-        "gen-win-try",
-    ]),
-    "findit": set([
-        "gofindit-culprit-verification",
-        "test-single-revision",
-    ]),
-    "flaky-reproducer": set([
-        "runner",
-    ]),
-    "infra": set([
-        "autosharder",
-    ]),
-    "reviver": set([
-        "android-coverage-launcher",
-        "android-device-launcher",
-        "android-launcher",
-        "coverage-runner",
-        "fuchsia-coordinator",
-        "linux-launcher",
-        "mac-launcher",
-        "runner",
-        "win-launcher",
-    ]),
-    "try": set([
-        "3pp-linux-amd64-packager",
-        "3pp-mac-amd64-packager",
-        "android-binary-size",
-        "android-clang-tidy-rel",
-        "android-deterministic-dbg",
-        "android-deterministic-rel",
-        "android_blink_rel",
-        "branch-config-verifier",
-        "fuchsia-binary-size",
-        "fuchsia-clang-tidy-rel",
-        "fuchsia-deterministic-dbg",
-        "linux-chromeos-clang-tidy-rel",
-        "linux-clang-tidy-rel",
-        "linux_chromium_clobber_deterministic",
-        "linux_upload_clang",
-        "linux_upload_rust",
-        "mac-clang-tidy-rel",
-        "mac_upload_clang",
-        "mac_upload_clang_arm",
-        "mac_upload_rust",
-        "mac_upload_rust_arm",
-        "reclient-config-deployment-verifier",
-        "tricium-clang-tidy",
-        "tricium-metrics-analysis",
-        "tricium-oilpan-analysis",
-        "win-presubmit",
-        "win10-clang-tidy-rel",
-        "win_upload_clang",
-        "win_upload_rust",
-    ]),
-}
+exempted_from_description_builders = {}
 
 # This dict should NOT be added to. It contains a list of builders that are
 # exempted from needing a contact_team_email field.
@@ -131,7 +67,6 @@ exempted_from_contact_builders = {
         "linux-chromeos-code-coverage",
         "linux-code-coverage",
         "linux-fieldtrial-rel",
-        "linux-fuzz-coverage",
         "linux-headless-shell-rel",
         "linux-js-code-coverage",
         "linux-local-ssd-rel-dev",
@@ -183,7 +118,6 @@ exempted_from_contact_builders = {
         "fuchsia-code-coverage",
         "fuchsia-deterministic-dbg",
         "fuchsia-x64-accessibility-rel",
-        "ios-angle-try-intel",
         "ios-blink-rel-fyi",
         "ios-catalyst",
         "ios-device",
@@ -239,37 +173,6 @@ exempted_from_contact_builders = {
         "win10-code-coverage",
         "win_upload_clang",
         "win_upload_rust",
-    ],
-    "infra": [
-        "autosharder",
-    ],
-    "codesearch": [
-        "gen-android-try",
-        "gen-chromiumos-try",
-        "gen-fuchsia-try",
-        "gen-ios-try",
-        "gen-linux-try",
-        "gen-mac-try",
-        "gen-webview-try",
-        "gen-win-try",
-    ],
-    "findit": [
-        "gofindit-culprit-verification",
-        "test-single-revision",
-    ],
-    "flaky-reproducer": [
-        "runner",
-    ],
-    "reviver": [
-        "android-coverage-launcher",
-        "android-device-launcher",
-        "android-launcher",
-        "coverage-runner",
-        "fuchsia-coordinator",
-        "linux-launcher",
-        "mac-launcher",
-        "runner",
-        "win-launcher",
     ],
 }
 

@@ -12,11 +12,11 @@
 #include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
+#include "build/build_config.h"
 #include "components/omnibox/browser/autocomplete_grouper_groups.h"
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "components/omnibox/browser/autocomplete_match_type.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
-#include "components/omnibox/common/omnibox_feature_configs.h"
 #include "third_party/omnibox_proto/groups.pb.h"
 
 namespace {
@@ -219,19 +219,6 @@ AndroidNonZPSSection::AndroidNonZPSSection(
               },
               group_configs) {}
 
-void AndroidNonZPSSection::InitFromMatches(ACMatches& matches) {
-  auto rich_answer_match = std::ranges::find_if(
-      matches,
-      [&](const auto& match) { return match.answer_template.has_value(); });
-  bool has_rich_answer = rich_answer_match != matches.end();
-  if (!has_rich_answer) {
-    return;
-  }
-
-  auto& above_keyboard_group = groups_[1];
-  above_keyboard_group.set_limit(above_keyboard_group.limit() - 1);
-}
-
 /* static */ size_t AndroidComposeboxNonZPSSection::num_attachments_;
 /* static */ omnibox::ToolMode AndroidComposeboxNonZPSSection::tool_mode_;
 
@@ -256,16 +243,22 @@ AndroidHubZPSSection::AndroidHubZPSSection(
               },
               group_configs) {}
 
+// LINT.IfChange(TabSearchRecentlyClosedZPSSectionSlots)
 AndroidTabSearchZPSSection::AndroidTabSearchZPSSection(
     const omnibox::GroupConfigMap& group_configs)
-    : Section(35,
+    : Section(40,
               {
                   Group(35,
                         {
                             {omnibox::GROUP_MOBILE_OPEN_TABS, 35},
                         }),
+                  Group(5,
+                        {
+                            {omnibox::GROUP_RECENTLY_CLOSED_TABS, 5},
+                        }),
               },
               group_configs) {}
+// LINT.ThenChange(//components/omnibox/browser/recently_closed_tabs_provider.cc:TabSearchRecentlyClosedMaxMatches)
 
 AndroidHubNonZPSSection::AndroidHubNonZPSSection(
     const omnibox::GroupConfigMap& group_configs)
@@ -302,7 +295,7 @@ AndroidHubNonZPSSection::AndroidHubNonZPSSection(
 AndroidTabSearchNonZPSSection::AndroidTabSearchNonZPSSection(
     const omnibox::GroupConfigMap& group_configs)
     : Section(
-          35,
+          40,
           {
               // Reserve most of the spots for open tabs.
               Group(30,
@@ -310,6 +303,13 @@ AndroidTabSearchNonZPSSection::AndroidTabSearchNonZPSSection(
                         {omnibox::GROUP_MOBILE_OPEN_TABS, 30},
                     },
                     /*is_zps=*/false),
+              // LINT.IfChange(TabSearchRecentlyClosedNonZPSSectionSlots)
+              Group(5,
+                    {
+                        {omnibox::GROUP_RECENTLY_CLOSED_TABS, 5},
+                    },
+                    /*is_zps=*/false),
+              // LINT.ThenChange(//components/omnibox/browser/recently_closed_tabs_provider.cc:TabSearchRecentlyClosedMaxMatches)
               // LINT.IfChange(TabSearchHistorySectionSlots)
               Group(5,
                     {
@@ -327,13 +327,11 @@ void AndroidNTPZpsSection::InitFromMatches(ACMatches& matches) {
                omnibox::GROUP_MIA_RECOMMENDATIONS;
       });
 
-  if (omnibox_feature_configs::MiaZPS::Get()
-          .suppress_psuggest_backfill_with_mia &&
-      mia_suggestions_detected) {
+  if (mia_suggestions_detected) {
     // Hacky and delicate, but follows a pattern found in other sections of this
     // file.
     const_cast<Group::LimitAndCount&>(
-        groups_[1].group_id_limits_and_counts().at(
+        groups_[2].group_id_limits_and_counts().at(
             omnibox::GROUP_PERSONALIZED_ZERO_SUGGEST))
         .limit = 0;
   }
@@ -350,6 +348,10 @@ AndroidNTPZpsSection::AndroidNTPZpsSection(
               Group(1,
                     {
                         {omnibox::GROUP_MOBILE_CLIPBOARD, 1},
+                    }),
+              Group(1,
+                    {
+                        {omnibox::GROUP_CROSS_DEVICE_TABS, 1},
                     }),
               Group(OmniboxFieldTrial::kOmniboxNumNtpZpsRecentSearches.Get(),
                     {
@@ -393,6 +395,10 @@ AndroidSRPZpsSection::AndroidSRPZpsSection(
                     {
                         {omnibox::GROUP_MOBILE_CLIPBOARD, 1},
                     }),
+              Group(1,
+                    {
+                        {omnibox::GROUP_CROSS_DEVICE_TABS, 1},
+                    }),
               Group(OmniboxFieldTrial::kOmniboxNumSrpZpsRelatedSearches.Get(),
                     {
                         {omnibox::GROUP_PREVIOUS_SEARCH_RELATED,
@@ -434,6 +440,10 @@ AndroidWebZpsSection::AndroidWebZpsSection(
               Group(1,
                     {
                         {omnibox::GROUP_CONTEXTUAL_SEARCH_ACTION, 1},
+                    }),
+              Group(1,
+                    {
+                        {omnibox::GROUP_CROSS_DEVICE_TABS, 1},
                     }),
               Group(OmniboxFieldTrial::kOmniboxNumWebZpsRelatedSearches.Get(),
                     {
@@ -855,9 +865,7 @@ void IOSNTPZpsSection::InitFromMatches(ACMatches& matches) {
                omnibox::GROUP_MIA_RECOMMENDATIONS;
       });
 
-  if (omnibox_feature_configs::MiaZPS::Get()
-          .suppress_psuggest_backfill_with_mia &&
-      mia_suggestions_detected) {
+  if (mia_suggestions_detected) {
     // Hacky and delicate, but follows a pattern found in other sections of this
     // file.
     const_cast<Group::LimitAndCount&>(

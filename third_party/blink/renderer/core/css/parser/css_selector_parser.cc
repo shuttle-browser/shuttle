@@ -592,51 +592,6 @@ CSSSelectorList* CSSSelectorParser::ConsumeForgivingCompoundSelectorList(
   return CSSSelectorList::AdoptSelectorVector(reset_vector.AddedElements());
 }
 
-CSSSelectorList* CSSSelectorParser::ConsumeForgivingRelativeSelectorList(
-    CSSParserTokenStream& stream,
-    ResultFlags& result_flags) {
-  if (in_supports_parsing_) {
-    CSSSelectorList* selector_list =
-        ConsumeRelativeSelectorList(stream, result_flags);
-    if (!selector_list || !selector_list->IsValid()) {
-      return nullptr;
-    }
-    return selector_list;
-  }
-
-  ResetVectorAfterScope reset_vector(output_);
-  while (!stream.AtEnd()) {
-    base::AutoReset<bool> reset_failure(&failed_parsing_, false);
-    CSSParserTokenStream::BlockGuard guard(stream);
-    wtf_size_t subpos = output_.size();
-    base::span<CSSSelector> selector =
-        ConsumeRelativeSelector(stream, result_flags);
-
-    if (selector.empty() || failed_parsing_ ||
-        (!stream.AtEnd() && stream.Peek().GetType() != kCommaToken)) {
-      output_.resize(subpos);  // Drop what we parsed so far.
-      stream.SkipUntilPeekedTypeIs<kCommaToken>();
-    }
-    if (!stream.AtEnd()) {
-      stream.ConsumeIncludingWhitespace();
-    }
-  }
-
-  // :has() is not allowed in the pseudos accepting only compound selectors, or
-  // not allowed after pseudo-elements.
-  // (e.g. '::slotted(:has(.a))', '::part(foo):has(:hover)')
-  if (inside_compound_pseudo_ ||
-      restricting_pseudo_element_ != CSSSelector::kPseudoUnknown ||
-      reset_vector.AddedElements().empty()) {
-    // TODO(blee@igalia.com) Workaround to make :has() unforgiving to avoid
-    // JQuery :has() issue: https://github.com/w3c/csswg-drafts/issues/7676
-    // Should return empty CSSSelectorList. (return CSSSelectorList::Empty())
-    return nullptr;
-  }
-
-  return CSSSelectorList::AdoptSelectorVector(reset_vector.AddedElements());
-}
-
 CSSSelectorList* CSSSelectorParser::ConsumeRelativeSelectorList(
     CSSParserTokenStream& stream,
     ResultFlags& result_flags) {
@@ -1272,7 +1227,10 @@ bool IsSimpleSelectorValidAfterPseudoElement(
       }
       break;
     case CSSSelector::kPseudoSlotted:
-      return simple_selector.IsTreeAbidingPseudoElement();
+      if (simple_selector.IsTreeAbidingPseudoElement()) {
+        return true;
+      }
+      break;
     default:
       break;
   }
@@ -1305,6 +1263,11 @@ bool IsPseudoClassValidWithinHasArgument(CSSSelector& selector) {
   switch (selector.GetPseudoType()) {
     // Limited nested :has() to avoid increasing :has() invalidation complexity.
     case CSSSelector::kPseudoHas:
+      return false;
+    // Would allow a cycle, e.g. an overscroll container that stops being one
+    // when it has an open or closed overscroll area.
+    case CSSSelector::kPseudoOverscrollClosed:
+    case CSSSelector::kPseudoOverscrollOpen:
       return false;
     default:
       return true;

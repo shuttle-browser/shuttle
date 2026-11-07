@@ -27,6 +27,11 @@ class MacNotificationProviderFactory {
     return notification_style_;
   }
 
+  // Whether the service should be restarted indefinitely after unexpected
+  // disconnects, rather than giving up once the maximum restart delay is
+  // reached.
+  bool ShouldRetryIndefinitely() const;
+
  private:
   const mac_notifications::NotificationStyle notification_style_;
 };

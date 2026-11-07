@@ -508,8 +508,8 @@ void ChromeAppSorting::InitializePageOrdinalMap(
 
     // Ensure that the web store app still isn't found in this list, since
     // it is added after this loop.
-    DCHECK(*ext_it != kWebStoreAppId);
-    DCHECK(*ext_it != app_constants::kChromeAppId);
+    CHECK(*ext_it != kWebStoreAppId, base::NotFatalUntil::M161);
+    CHECK(*ext_it != app_constants::kChromeAppId, base::NotFatalUntil::M161);
   }
 
   // Include the Web Store App since it is displayed on the NTP.
@@ -601,7 +601,8 @@ void ChromeAppSorting::CreateDefaultOrdinals() {
 syncer::StringOrdinal ChromeAppSorting::ResolveCollision(
     const syncer::StringOrdinal& page_ordinal,
     const syncer::StringOrdinal& app_launch_ordinal) const {
-  DCHECK(page_ordinal.IsValid() && app_launch_ordinal.IsValid());
+  CHECK(page_ordinal.IsValid() && app_launch_ordinal.IsValid(),
+        base::NotFatalUntil::M161);
 
   auto page_it = ntp_ordinal_map_.find(page_ordinal);
   if (page_it == ntp_ordinal_map_.end())

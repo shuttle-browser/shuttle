@@ -48,7 +48,6 @@ if (toolkit_views) {
       ":style",
       "//base",
       "//chrome/browser/permissions/system",
-      "//chrome/browser/picture_in_picture",
       "//chrome/browser/ui:url_identity",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/content_settings",
@@ -63,8 +62,9 @@ if (toolkit_views) {
     ]
 
     if (!is_chromeos) {
-      # permission_prompt_bubble_one_origin_view.h guards both of these
-      # includes with the same #if !BUILDFLAG(IS_CHROMEOS) block:
+      # permission_prompt_base_view.h and
+      # permission_prompt_bubble_one_origin_view.h guard these includes
+      # with #if !BUILDFLAG(IS_CHROMEOS) blocks:
       # media_preview/permission_prompt_previews_coordinator.h and
       # media_effects/media_device_info.h. media_preview itself asserts
       # is_win || is_mac || is_linux (a strict subset of !is_chromeos on
@@ -134,6 +134,7 @@ if (toolkit_views) {
       "//chrome/browser/ui/views:device_chooser_content_view",
       "//chrome/browser/ui/views:layout_provider",
       "//chrome/browser/ui/views:title_origin_label",
+      "//chrome/browser/ui/views/controls",
       "//chrome/browser/ui/views/extensions:extensions_container_views",
       "//chrome/browser/ui/views/frame:browser_view_header",
       "//chrome/browser/ui/views/frame:contents_web_view",
@@ -142,11 +143,12 @@ if (toolkit_views) {
       "//chrome/browser/ui/views/omnibox",
       "//chrome/browser/ui/views/page_info",
       "//chrome/browser/ui/views/permissions:permission_prompt_observer",
-      "//chrome/browser/ui/views/picture_in_picture",
       "//chrome/browser/ui/views/tabs/common",
+      "//chrome/browser/ui/webauthn",
       "//chrome/browser/ui/webui:webui_util",
       "//chrome/browser/ui/window_metadata",
       "//chrome/common",
+      "//components/vector_icons",
       "//content/public/browser",
       "//ui/base",
       "//ui/views",

@@ -13,6 +13,7 @@
 #include <sys/mman.h>
 
 #include "base/compiler_specific.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/not_fatal_until.h"
@@ -194,7 +195,7 @@ class V4L2Buffer {
 
   const IoctlAsCallback ioctl_cb_;
   const MmapAsCallback mmap_cb_;
-  std::vector<void*> plane_mappings_;
+  std::vector<raw_ptr<void>> plane_mappings_;
 
   // V4L2 data as queried by QUERYBUF.
   struct v4l2_buffer v4l2_buffer_ = {};
@@ -450,7 +451,7 @@ class V4L2BufferRefBase {
   bool QueueBuffer(scoped_refptr<FrameResource> frame);
   void* GetPlaneMapping(const size_t plane);
 
-  const scoped_refptr<FrameResource>& GetFrameResource();
+  scoped_refptr<FrameResource> GetFrameResource();
   // Checks that the number of passed FDs is adequate for the current format
   // and buffer configuration. Only useful for DMABUF buffers.
   bool CheckNumFDsForFormat(const size_t num_fds) const;
@@ -524,14 +525,11 @@ void* V4L2BufferRefBase::GetPlaneMapping(const size_t plane) {
   return queue_->buffers_[BufferId()]->GetPlaneMapping(plane);
 }
 
-const scoped_refptr<FrameResource>& V4L2BufferRefBase::GetFrameResource() {
+scoped_refptr<FrameResource> V4L2BufferRefBase::GetFrameResource() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  // Used so we can return a const scoped_refptr& in all cases.
-  static const scoped_refptr<FrameResource> null_frame_resource;
-
   if (!queue_) {
-    return null_frame_resource;
+    return nullptr;
   }
 
   DCHECK_LE(BufferId(), queue_->buffers_.size());
@@ -1311,7 +1309,7 @@ class V4L2BufferRefFactory {
   }
 };
 
-CroStatus::Or<uint64_t> V4L2Queue::GetFreeSecureHandle() {
+base::expected<uint64_t, CroStatus> V4L2Queue::GetFreeSecureHandle() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   // Go through the list of secure buffers and find one that is not owned or
   // queued.
@@ -1321,7 +1319,7 @@ CroStatus::Or<uint64_t> V4L2Queue::GetFreeSecureHandle() {
       return buf.secure_handle;
     }
   }
-  return CroStatus::Codes::kSecureBufferPoolEmpty;
+  return base::unexpected(CroStatus::Codes::kSecureBufferPoolEmpty);
 }
 
 void V4L2Queue::ReleaseSecureHandle(uint64_t secure_handle) {

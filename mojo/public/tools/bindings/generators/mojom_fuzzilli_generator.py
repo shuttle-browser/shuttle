@@ -9,19 +9,22 @@ import mojom.generate.module as mojom
 from mojom.generate.template_expander import UseJinja
 from generators.mojom_js_generator import JavaScriptStylizer
 
+# Supported features, design decisions, trade-offs, and known quirks of the
+# generated Fuzzilli profiles are documented in
+# //testing/libfuzzer/research/fuzzilli_mojom_fuzzing/README.md.
+
 GENERATOR_PREFIX = "fuzzilli"
-# Map primitive predicates to (fuzzilli type representation, element type
-# prefix). The element type prefix refers to the name of the `ILType.object`
-# definition representing the primitive.
+# Map primitive predicates to (fuzzilli type representation, type name). Type
+# name refers to the name used for arrays and maps (e.g. jsInt64MojoArray).
 PRIMITIVES_MAPPING = {
   mojom.BOOL: ("boolean", "Bool"),
-  mojom.INT8: ("integer", "Int8"),
-  mojom.INT16: ("integer", "Int16"),
-  mojom.INT32: ("integer", "Int32"),
+  mojom.INT8: ("jsInt8", "Int8"),
+  mojom.INT16: ("jsInt16", "Int16"),
+  mojom.INT32: ("jsInt32", "Int32"),
   mojom.INT64: ("bigint", "Int64"),
-  mojom.UINT8: ("integer", "Uint8"),
-  mojom.UINT16: ("integer", "Uint16"),
-  mojom.UINT32: ("integer", "Uint32"),
+  mojom.UINT8: ("jsUint8", "Uint8"),
+  mojom.UINT16: ("jsUint16", "Uint16"),
+  mojom.UINT32: ("jsUint32", "Uint32"),
   # TODO(crbug.com/553587894): Determine a way to support uint64, as
   # `ILType.bigint` is currently internally represented as an int64.
   mojom.UINT64: ("bigint", "Uint64"),
@@ -29,13 +32,13 @@ PRIMITIVES_MAPPING = {
   mojom.DOUBLE: ("float", "Float"),  # no dedicated `.double` type
   mojom.STRING: ("string", "String"),
   mojom.NULLABLE_BOOL: ("boolean", "Bool"),
-  mojom.NULLABLE_INT8: ("integer", "Int8"),
-  mojom.NULLABLE_INT16: ("integer", "Int16"),
-  mojom.NULLABLE_INT32: ("integer", "Int32"),
+  mojom.NULLABLE_INT8: ("jsInt8", "Int8"),
+  mojom.NULLABLE_INT16: ("jsInt16", "Int16"),
+  mojom.NULLABLE_INT32: ("jsInt32", "Int32"),
   mojom.NULLABLE_INT64: ("bigint", "Int64"),
-  mojom.NULLABLE_UINT8: ("integer", "Uint8"),
-  mojom.NULLABLE_UINT16: ("integer", "Uint16"),
-  mojom.NULLABLE_UINT32: ("integer", "Uint32"),
+  mojom.NULLABLE_UINT8: ("jsUint8", "Uint8"),
+  mojom.NULLABLE_UINT16: ("jsUint16", "Uint16"),
+  mojom.NULLABLE_UINT32: ("jsUint32", "Uint32"),
   mojom.NULLABLE_UINT64: ("bigint", "Uint64"),
   mojom.NULLABLE_FLOAT: ("float", "Float"),
   mojom.NULLABLE_DOUBLE: ("float", "Float"),
@@ -83,15 +86,24 @@ class Generator(generator.Generator):
     self.primary_interface = None
     self.interface_remotes = {}
     self.interface_receivers = {}
+
+    # The following track which pending endpoint types are used from the JS
+    # side.
+    self.interface_pending_remotes = set()
+    self.interface_associated_pending_remotes = set()
+    self.interface_pending_receivers = set()
+    self.interface_associated_pending_receivers = set()
+
     self.arrays = {}
     self.maps = {}
     self.enums = {}
     self.unions = {}
     self.structs = {}
-    # Synchronous methods return JavaScript objects in the JavaScript bindings.
-    # Represent these return values as `mojom.Struct` objects, since we can then
-    # handle them the same way we handle Mojo structs in a few parts of the
-    # templates.
+    # Methods with a response return a Promise that resolves to a JavaScript
+    # object holding the response parameters. Represent these objects as
+    # `mojom.Struct` objects, since we can then handle them the same way we
+    # handle Mojo structs in a few parts of the templates. The lite bindings
+    # have no synchronous calls, so `[Sync]` methods also return a Promise.
     self.response_structs = {}
 
   def GetFilters(self):
@@ -101,7 +113,6 @@ class Generator(generator.Generator):
       "format_unique_name": self._FormatUniqueName,
       "fully_qualified_name": self._FullyQualifiedName,
       "is_array_kind": mojom.IsArrayKind,
-      "is_synchronous_method": self._IsSynchronousMethod,
       "namespace_as_array": self._NamespaceAsArray,
       "to_camel": generator.ToCamel,
     }
@@ -118,9 +129,18 @@ class Generator(generator.Generator):
 
     return {
       "module": self.module,
+      "mojo_scripts_page_path": self._GetMojoScriptsPagePath(),
       "primary": self.primary_interface,
       "interface_remotes": list(self.interface_remotes.values()),
       "interface_receivers": list(self.interface_receivers.values()),
+      "interface_pending_remotes": list(self.interface_pending_remotes),
+      "interface_associated_pending_remotes": list(
+        self.interface_associated_pending_remotes
+      ),
+      "interface_pending_receivers": list(self.interface_pending_receivers),
+      "interface_associated_pending_receivers": list(
+        self.interface_associated_pending_receivers
+      ),
       "arrays": list(self.arrays.values()),
       "maps": list(self.maps.values()),
       "enums": list(self.enums.values()),
@@ -196,33 +216,40 @@ class Generator(generator.Generator):
 
     interface = None
     if is_pending_remote or is_pending_receiver:
-      # TODO(crbug.com/522372048): add handling for non-associated interfaces
-      assert self._IsPendingAssociatedKind, (
-        "Only pending associated interfaces are supported."
-      )
       interface = kind.kind
     else:
       interface = kind
+    name = self._FormatUniqueName(interface)
+
+    # Track the pending endpoints used from the JS side. A pending remote passed
+    # from the browser side is used directly as a `Remote`, so it is not
+    # tracked.
+    if is_pending_receiver or (is_pending_remote and is_in_js):
+      self._TrackPendingInterfaces(kind)
 
     # TODO(crbug.com/522372048): this check prevents interfaces from being
     # registered as both remotes and receivers. Rewrite the logic to
     # support the edge case where an interface is used as both.
-    name = self._FormatUniqueName(interface)
     if name in self.interface_remotes or name in self.interface_receivers:
       return
 
-    if is_pending_remote or is_pending_receiver:
-      if is_pending_remote == is_in_js:
-        # Either (1) is pending remote used in JS side OR
-        #        (2) is pending receiver used in browser side
-        # In either case, JS side keeps a receiver
+    if is_pending_remote:
+      if is_in_js:
+        # Pending remote passed from JS side, JS keeps receiver
         self.interface_receivers[name] = interface
       else:
-        # Either (1) is pending remote used in browser side OR
-        #        (2) is pending receiver used in JS side
-        # In either case, JS side keeps a remote
+        # Pending remote passed from browser side, JS keeps remote
         self.interface_remotes[name] = interface
-      is_in_js = not is_in_js  # interface is used from other side
+      is_in_js = not is_in_js  # interface is used from the other side
+    elif is_pending_receiver:
+      if is_in_js:
+        # Pending receiver passed from JS side, JS keeps remote
+        self.interface_remotes[name] = interface
+      else:
+        # Pending receiver passed from browser side, JS keeps receiver
+        self.interface_receivers[name] = interface
+      # Do NOT flip is_in_js; the interface is used from the same side that
+      # passed the receiver to the other side.
     else:
       self.interface_remotes[name] = interface
 
@@ -246,14 +273,9 @@ class Generator(generator.Generator):
 
   # Formats a unique type identifier string across namespaces for a Mojom type
   # by combining the CamelCase namespace prefix with the type's local name.
-  # The `primitive_with_suffix` argument determines whether the name returned
-  # for primitives represents the primitive itself or a proxy `IL.object`
-  # type. These proxy types are identified by their `Element` suffix.
-  def _FormatUniqueName(self, kind, primitive_with_suffix=False):
+  def _FormatUniqueName(self, kind):
     if kind in PRIMITIVES_MAPPING:
-      il_type, element_prefix = PRIMITIVES_MAPPING[kind]
-      if primitive_with_suffix:
-        return f"{element_prefix}Element"
+      _, element_prefix = PRIMITIVES_MAPPING[kind]
       return element_prefix
 
     if kind in HANDLES_MAPPING:
@@ -271,14 +293,16 @@ class Generator(generator.Generator):
     if mojom.IsArrayKind(kind):
       # Despite the lack of a prefix, the element's unique name ensures that
       # the name of the array is unique within each profile. If two modules
-      # have the same array (e.g., `FooArray`), the name's will not collide
-      # as the `ILType` definitions are `fileprivate`.
-      return f"{self._FormatUniqueName(kind.kind)}Array"
+      # have the same array (e.g., `FooMojoArray`), the name's will not collide
+      # as the `ILType` definitions are `fileprivate`. The "Mojo" suffix ensures
+      # that the types do not collide with Fuzzilli internal types
+      # (e.g. jsUint8Array)
+      return f"{self._FormatUniqueName(kind.kind)}MojoArray"
 
     if mojom.IsMapKind(kind):
       return (
         f"{self._FormatUniqueName(kind.key_kind)}_"
-        f"{self._FormatUniqueName(kind.value_kind)}Map"
+        f"{self._FormatUniqueName(kind.value_kind)}MojoMap"
       )
 
     if self._IsAnyPendingRemoteKind(kind) or self._IsAnyPendingReceiverKind(
@@ -286,11 +310,13 @@ class Generator(generator.Generator):
     ):
       return f"{prefix}{self._FlattenKind(kind.kind)}"
 
-    if (
-      mojom.IsStructKind(kind)
-      or mojom.IsEnumKind(kind)
-      or mojom.IsUnionKind(kind)
-    ):
+    if mojom.IsUnionKind(kind):
+      # Fuzzilli union constructors combine the union name with the field name,
+      # creating the potential for collisions with other constructors generated
+      # by Fuzzilli.
+      return f"{prefix}{self._FlattenKind(kind)}Union"
+
+    if mojom.IsStructKind(kind) or mojom.IsEnumKind(kind):
       return f"{prefix}{self._FlattenKind(kind)}"
 
     if mojom.IsInterfaceKind(kind):
@@ -300,14 +326,9 @@ class Generator(generator.Generator):
 
   # Maps a Mojom kind to its corresponding Fuzzilli Intermediate Language (IL)
   # type name representation (e.g., "boolean", "jsFooStruct").
-  # The `primitive_with_suffix` argument determines whether the name returned
-  # for primitives represents the primitive itself or a proxy `IL.object`
-  # type. These proxy types are identified by their `Element` suffix.
-  def _ILTypeName(self, kind, primitive_with_suffix=False):
+  def _ILTypeName(self, kind):
     if kind in PRIMITIVES_MAPPING:
-      il_type, element_prefix = PRIMITIVES_MAPPING[kind]
-      if primitive_with_suffix:
-        return f"js{element_prefix}Element"
+      il_type, _ = PRIMITIVES_MAPPING[kind]
       return il_type
 
     if (
@@ -319,27 +340,34 @@ class Generator(generator.Generator):
       return f"js{self._FormatUniqueName(kind)}"
 
     if mojom.IsArrayKind(kind):
-      return (
-        f"js{self._FormatUniqueName(kind.kind, primitive_with_suffix=True)}"
-        "Array"
-      )
+      return f"js{self._FormatUniqueName(kind.kind)}MojoArray"
 
     if mojom.IsMapKind(kind):
       return (
-        "js"
-        f"{self._FormatUniqueName(kind.key_kind, primitive_with_suffix=True)}_"
-        f"{self._FormatUniqueName(kind.value_kind, primitive_with_suffix=True)}"
-        "Map"
+        f"js{self._FormatUniqueName(kind.key_kind)}_"
+        f"{self._FormatUniqueName(kind.value_kind)}MojoMap"
       )
 
     if mojom.IsInterfaceKind(kind):
       return f"js{self._FormatUniqueName(kind)}Remote"
 
+    # When JS implements the interface (i.e., it is a receiver), JS only passes
+    # remotes to the browser, so they are typed after their Mojom kind
+    # (`PendingRemote` / `PendingAssociatedRemote`). Remotes that JS calls into
+    # keep the `Remote` type, which carries the interface's methods.
     if self._IsAnyPendingRemoteKind(kind):
-      return f"js{self._FormatUniqueName(kind.kind)}Remote"
+      name = self._FormatUniqueName(kind.kind)
+      if name not in self.interface_receivers:
+        return f"js{name}Remote"
+      if mojom.IsPendingAssociatedRemoteKind(kind):
+        return f"js{name}PendingAssociatedRemote"
+      return f"js{name}PendingRemote"
 
-    if self._IsAnyPendingReceiverKind(kind):
+    if mojom.IsPendingReceiverKind(kind):
       return f"js{self._FormatUniqueName(kind.kind)}PendingReceiver"
+
+    if mojom.IsPendingAssociatedReceiverKind(kind):
+      return f"js{self._FormatUniqueName(kind.kind)}PendingAssociatedReceiver"
 
     assert False, f"Unsupported type: {kind}."
 
@@ -356,12 +384,51 @@ class Generator(generator.Generator):
   def _GenerateFuzzilliModule(self):
     return self._GetParameters()
 
+  def _GetMojoScriptsPagePath(self):
+    """Returns the path of the Mojo scripts page of the module, i.e. the page
+    loading the MojoJS bindings of the module, relative to the root gen
+    directory."""
+    return "%s-scripts-page.html" % self.module.path
+
+  def _CollectModuleDependencies(
+    self,
+    m: mojom.Module,
+    js_modules: dict[str, None],
+  ):
+    """Appends the lite bindings of |m| and of its transitive imports to
+    |js_modules|, in dependency order."""
+    js_path = f'gen/{m.path}-lite.js'
+    if js_path in js_modules:
+      return
+
+    for imported_module in m.imports:
+      self._CollectModuleDependencies(imported_module, js_modules)
+
+    js_modules[js_path] = None
+
+  @UseJinja("mojo_scripts_page.tmpl")
+  def _GenerateMojoScriptsPage(self):
+    js_modules: dict[str, None] = {}
+    self._CollectModuleDependencies(
+      self.module,
+      js_modules,
+    )
+    return {
+      "module": self.module,
+      "js_modules": js_modules,
+    }
+
   def GenerateFiles(self, unparsed_args):
     parser = argparse.ArgumentParser()
     parser.add_argument('--fuzzilli_primary_interface_name')
     args = parser.parse_args(unparsed_args)
 
+    self.Write(self._GenerateMojoScriptsPage(), self._GetMojoScriptsPagePath())
+
     primary_interface_name = args.fuzzilli_primary_interface_name
+    # GN doesn't provide primary interface when generating Mojo scripts page.
+    if not primary_interface_name:
+      return
     self.primary_interface = next(
       (
         i
@@ -378,10 +445,25 @@ class Generator(generator.Generator):
     file_name = "%s.MojoProfile.swift" % self.module.path
     self.WriteWithComment(self._GenerateFuzzilliModule(), file_name)
 
-  def _IsPendingAssociatedKind(self, kind):
-    return mojom.IsPendingAssociatedRemoteKind(
-      kind
-    ) or mojom.IsPendingAssociatedReceiverKind(kind)
+  # Stores the interface of a pending kind used from the JS side in the
+  # dictionary matching that pending kind.
+  #
+  # Note: takes the Mojom pending kind as it is used. So, this method should
+  # receive the kind `pending_remote<Foo>`, not the kind `Foo`.
+  def _TrackPendingInterfaces(self, pending_kind):
+    interface = pending_kind.kind
+    if mojom.IsPendingRemoteKind(pending_kind):
+      self.interface_pending_remotes.add(interface)
+    elif mojom.IsPendingAssociatedRemoteKind(pending_kind):
+      self.interface_associated_pending_remotes.add(interface)
+    elif mojom.IsPendingReceiverKind(pending_kind):
+      self.interface_pending_receivers.add(interface)
+    elif mojom.IsPendingAssociatedReceiverKind(pending_kind):
+      self.interface_associated_pending_receivers.add(interface)
+    else:
+      assert False, (
+        f"Expected pending interface kind, received: {pending_kind}."
+      )
 
   def _IsAnyPendingRemoteKind(self, kind):
     return mojom.IsPendingRemoteKind(
@@ -405,9 +487,6 @@ class Generator(generator.Generator):
       f"{self._FormatUniqueName(method.interface)}"
       f"{generator.ToCamel(method.name)}CallbackReceiver"
     )
-
-  def _IsSynchronousMethod(self, method):
-    return method.attributes and method.attributes['Sync']
 
   def _NamespaceAsArray(self, namespace):
     return namespace.split(".")

@@ -15,6 +15,8 @@ ui::ElementIdentifier GetElementIdentifierForAction(actions::ActionId id) {
       return kSharedTabGroupFeedbackElementId;
     case kActionSendTabToSelf:
       return kPinnedToolbarActionSendTabToSelfElementId;
+    case kActionShowDownloads:
+      return kToolbarDownloadButtonElementId;
     default:
       return ui::ElementIdentifier();
   }

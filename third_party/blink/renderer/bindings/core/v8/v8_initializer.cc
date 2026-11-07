@@ -66,6 +66,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_union_string_trustedscript.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_wasm_response_extensions.h"
 #include "third_party/blink/renderer/bindings/core/v8/worker_or_worklet_script_controller.h"
+#include "third_party/blink/renderer/core/ad_tracker/script_initiation_monitor.h"
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
 #include "third_party/blink/renderer/core/dom/events/event_dispatch_forbidden_scope.h"
 #include "third_party/blink/renderer/core/events/error_event.h"
@@ -81,6 +82,7 @@
 #include "third_party/blink/renderer/core/shadow_realm/shadow_realm_global_scope.h"
 #include "third_party/blink/renderer/core/timing/time_clamper.h"
 #include "third_party/blink/renderer/core/trustedtypes/trusted_types_util.h"
+#include "third_party/blink/renderer/core/typed_arrays/dom_array_buffer.h"
 #include "third_party/blink/renderer/core/workers/worker_global_scope.h"
 #include "third_party/blink/renderer/core/workers/worklet_global_scope.h"
 #include "third_party/blink/renderer/platform/bindings/active_script_wrappable_manager.h"
@@ -474,35 +476,17 @@ void V8Initializer::FailedAccessCheckCallbackInMainThread(
 static bool ContentSecurityPolicyCodeGenerationCheck(
     v8::Local<v8::Context> context,
     v8::Local<v8::String> source) {
-  if (ExecutionContext* execution_context = ToExecutionContext(context)) {
-    // Note this callback is only triggered for contexts which have eval
-    // disabled. Hence we don't need to handle the case of isolated world
-    // contexts with no CSP specified. (They should be exempt from the page CSP.
-    // See crbug.com/982388.)
-
-    if (ContentSecurityPolicy* policy =
-            execution_context->GetContentSecurityPolicyForCurrentWorld()) {
-      v8::Context::Scope scope(context);
-      return policy->AllowEval(ReportingDisposition::kReport,
-                               ContentSecurityPolicy::kWillThrowException,
-                               ToBlinkString(context, source, 0));
-    }
-  }
-  return false;
-}
-
-// Check whether Content Security Policy allows 'eval' in a Trusted Types
-// context, via the "script-src 'trusted-types-eval'" directive + keyword.
-static bool ContentSecurityPolicyTrustedTypesCodeGenerationCheck(
-    v8::Local<v8::Context> context) {
-  if (ExecutionContext* execution_context = ToExecutionContext(context)) {
-    if (ContentSecurityPolicy* policy =
-            execution_context->GetContentSecurityPolicyForCurrentWorld()) {
-      v8::Context::Scope scope(context);
-      return policy->AllowTrustedTypesEval(
-          ReportingDisposition::kReport,
-          ContentSecurityPolicy::kWillThrowException);
-    }
+  // Note this callback is only triggered for contexts which have eval
+  // disabled. Hence we don't need to handle the case of isolated world
+  // contexts with no CSP specified. (They should be exempt from the page CSP.
+  // See crbug.com/982388.)
+  if (ContentSecurityPolicy* policy =
+          ToExecutionContext(context)
+              ->GetContentSecurityPolicyForCurrentWorld()) {
+    v8::Context::Scope scope(context);
+    return policy->AllowEval(ReportingDisposition::kReport,
+                             ContentSecurityPolicy::kWillThrowException,
+                             ToBlinkString(context, source, 0));
   }
   return false;
 }
@@ -515,12 +499,6 @@ std::pair<bool, v8::MaybeLocal<v8::String>> TrustedTypesCodeGenerationCheck(
   // If the input is not a string or TrustedScript, pass it through.
   if (!source->IsString() && !is_code_like &&
       !V8TrustedScript::HasInstance(isolate, source)) {
-    return {true, v8::MaybeLocal<v8::String>()};
-  }
-
-  // If CSP allows eval in a Trusted Types environment ('trusted-types-eval'),
-  // then pass it through.
-  if (ContentSecurityPolicyTrustedTypesCodeGenerationCheck(context)) {
     return {true, v8::MaybeLocal<v8::String>()};
   }
 
@@ -568,10 +546,8 @@ V8Initializer::CodeGenerationCheckCallbackInMainThread(
     bool is_code_like) {
   // The code generation callback should only be installed on "normal" JS
   // contexts, which in turn should always have an associated ExecutionContext.
-  // If this invariant holds, we can simplify this code a little bit.
-  // We're probing this invariant to ensure it won't cause issues in practice.
   // See also: Discussion on crrev.com/c/7207201.
-  CHECK(ToExecutionContext(context), base::NotFatalUntil::M150);
+  CHECK(ToExecutionContext(context));
 
   // The TC39 "Dynamic Code Brand Check" feature is currently behind a flag.
   if (!RuntimeEnabledFeatures::TrustedTypesUseCodeLikeEnabled())
@@ -675,13 +651,12 @@ void ThrowRangeException(v8::Isolate* isolate, const char* message) {
 BASE_FEATURE(kWebAssemblyUnlimitedSyncCompilation,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-bool WasmModuleOverride(const v8::FunctionCallbackInfo<v8::Value>& args) {
+bool WasmModuleOverride(v8::Isolate* isolate, v8::Local<v8::Value> source) {
   // Return false if we want the base behavior to proceed.
-  if (!IsMainThread() || args.Length() < 1 ||
+  if (!IsMainThread() ||
       base::FeatureList::IsEnabled(kWebAssemblyUnlimitedSyncCompilation)) {
     return false;
   }
-  v8::Local<v8::Value> source = args[0];
   if ((source->IsArrayBuffer() &&
        v8::Local<v8::ArrayBuffer>::Cast(source)->ByteLength() >
            kWasmWireBytesLimit) ||
@@ -689,7 +664,7 @@ bool WasmModuleOverride(const v8::FunctionCallbackInfo<v8::Value>& args) {
        v8::Local<v8::ArrayBufferView>::Cast(source)->ByteLength() >
            kWasmWireBytesLimit)) {
     ThrowRangeException(
-        args.GetIsolate(),
+        isolate,
         "WebAssembly.Compile is disallowed on the main thread, "
         "if the buffer size is larger than 8MB. Use "
         "WebAssembly.compile, compile on a worker thread, or use the flag "
@@ -701,13 +676,12 @@ bool WasmModuleOverride(const v8::FunctionCallbackInfo<v8::Value>& args) {
   return false;
 }
 
-bool WasmInstanceOverride(const v8::FunctionCallbackInfo<v8::Value>& args) {
+bool WasmInstanceOverride(v8::Isolate* isolate, v8::Local<v8::Value> source) {
   // Return false if we want the base behavior to proceed.
-  if (!IsMainThread() || args.Length() < 1 ||
+  if (!IsMainThread() ||
       base::FeatureList::IsEnabled(kWebAssemblyUnlimitedSyncCompilation)) {
     return false;
   }
-  v8::Local<v8::Value> source = args[0];
   if (!source->IsWasmModuleObject())
     return false;
 
@@ -715,7 +689,7 @@ bool WasmInstanceOverride(const v8::FunctionCallbackInfo<v8::Value>& args) {
       v8::Local<v8::WasmModuleObject>::Cast(source)->GetCompiledModule();
   if (compiled_module.GetWireBytesRef().size() > kWasmWireBytesLimit) {
     ThrowRangeException(
-        args.GetIsolate(),
+        isolate,
         "WebAssembly.Instance is disallowed on the main thread, "
         "if the buffer size is larger than 8MB. Use "
         "WebAssembly.instantiate, or use the flag "
@@ -856,6 +830,14 @@ bool IsDOMExceptionWrapper(v8::Isolate* isolate, v8::Local<v8::Object> object) {
   return V8DOMException::HasInstance(isolate, object);
 }
 
+void DynamicScriptCompiledFromEmbedderCallback(v8::Local<v8::Context> context,
+                                               int script_id) {
+  if (auto* monitor = ScriptInitiationMonitor::FromExecutionContext(
+          ToExecutionContext(context))) {
+    monitor->DidRegisterDynamicScript(V8ScriptId(script_id));
+  }
+}
+
 void EmitDevToolsEvent(v8::Isolate* isolate) {
   TRACE_EVENT_INSTANT(
       TRACE_DISABLED_BY_DEFAULT("devtools.timeline"), "UpdateCounters", "data",
@@ -900,6 +882,9 @@ void V8Initializer::InitializeV8Common(v8::Isolate* isolate) {
   isolate->SetHostInitializeImportMetaObjectCallback(
       HostGetImportMetaProperties);
   isolate->SetIsJSApiWrapperNativeErrorCallback(IsDOMExceptionWrapper);
+  isolate->SetDynamicScriptCompiledFromEmbedderCallback(
+      DynamicScriptCompiledFromEmbedderCallback);
+  DOMArrayBuffer::SetArrayBufferDetachCallback(isolate);
   isolate->SetMetricsRecorder(std::make_shared<V8MetricsRecorder>(isolate));
 
 #if BUILDFLAG(IS_WIN)

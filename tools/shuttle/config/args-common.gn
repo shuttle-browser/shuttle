@@ -43,12 +43,11 @@ choice_screen_in_chrome = false
 enable_bound_session_credentials = false
 
 # Enterprise data-loss prevention
-# enterprise_cloud_content_analysis = false  # blocked: upstream asserts/unconditional deps on Mac; needs source surgery
+enterprise_cloud_content_analysis = false  # m157 wave B batch 2: sources removed
 enterprise_local_content_analysis = false
-# enterprise_data_controls = false  # blocked: upstream asserts/unconditional deps on Mac; needs source surgery
+enterprise_data_controls = false  # m157 wave B batch 2: sources removed
 enterprise_screenshot_protection = false
-# enterprise_watermark = false  # blocked: upstream asserts/unconditional deps on Mac; needs source surgery
-enterprise_telomere_reporting = false
+enterprise_watermark = false  # m157 wave B batch 2: sources removed
 enterprise_proxy = false  # m156 prune: policy-driven managed proxy + its error page
 
 # Chrome Apps (platform/hosted apps): removed (B3, 2026-10-11); normal extensions stay

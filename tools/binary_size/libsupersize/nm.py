@@ -102,7 +102,6 @@ def CollectAliasesByAddress(elf_path):
   # About 60mb of output, but piping takes ~30s, and loading it into RAM
   # directly takes 3s.
   args = [path_util.GetNmPath(), '--no-sort', '--defined-only', elf_path]
-  # pylint: disable=unexpected-keyword-arg
   proc = subprocess.Popen(
     args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, encoding='utf-8'
   )
@@ -134,6 +133,14 @@ def CollectAliasesByAddress(elf_path):
   for address, count in num_outlined_functions_at_address.items():
     name = '** outlined function' + (' * %d' % count if count > 1 else '')
     names_by_address[address].add(name)
+
+  # Pre-filter to aliased addresses before demangling to avoid demangling ~750k
+  # single-symbol addresses.
+  names_by_address = {
+    addr: names
+    for addr, names in names_by_address.items()
+    if len(names) > 1 or num_outlined_functions_at_address.get(addr, 0) > 1
+  }
 
   # Demangle all names.
   demangle.DemangleSetsInDictsInPlace(names_by_address)
@@ -168,7 +175,6 @@ def CreateUniqueSymbols(elf_path, section_ranges):
     '--print-size',
     elf_path,
   ]
-  # pylint: disable=unexpected-keyword-arg
   stdout = subprocess.check_output(
     args, stderr=subprocess.DEVNULL, encoding='utf-8'
   )

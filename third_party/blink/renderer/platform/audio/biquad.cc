@@ -644,7 +644,7 @@ static double RootFinder(double low,
   DCHECK(std::isfinite(f_high));
   DCHECK_LE(f_low * f_high, 0);
 
-  int iteration;
+  int iteration = 0;
   for (iteration = 0; iteration < kMaxIterations; ++iteration) {
     root = (f_low * high - f_high * low) / (f_low - f_high);
     if (fabs(high - low) < kAccuracyThreshold * fabs(high + low)) {
@@ -782,7 +782,7 @@ double Biquad::TailFrame(int coef_index, double max_frame) const {
   // this, we assume that we've reached the tail of the response.
   // Currently, this means that the impulse is less than 1 bit of a
   // 16-bit PCM value.
-  const double kMaxTailAmplitude = 1 / 32768.0;
+  constexpr double kMaxTailAmplitude = 1 / 32768.0;
 
   // Find the roots of 1+a1/z+a2/z^2 = 0.  Or equivalently,
   // z^2+a1*z+a2 = 0.  From the quadratic formula the roots are

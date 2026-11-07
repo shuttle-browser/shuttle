@@ -220,11 +220,19 @@ class BLINK_EXPORT WebAXObject {
                     const WebAXObject& focus_object,
                     int focus_offset) const;
   // Make this object visible by scrolling as many nested scrollable views as
-  // needed.
-  bool ScrollToMakeVisible() const;
-  // Same, but if the whole object can't be made visible, try for this subrect,
-  // in local coordinates. We also allow passing horizontal and vertical scroll
-  // alignments. These specify where in the content area to scroll the object.
+  // needed. Horizontal and vertical scroll alignments specify where in the
+  // content area to scroll the object.
+  bool ScrollToMakeVisible(
+      ax::mojom::ScrollAlignment horizontal_scroll_alignment =
+          ax::mojom::ScrollAlignment::kScrollAlignmentCenter,
+      ax::mojom::ScrollAlignment vertical_scroll_alignment =
+          ax::mojom::ScrollAlignment::kScrollAlignmentCenter,
+      ax::mojom::ScrollBehavior scroll_behavior =
+          ax::mojom::ScrollBehavior::kDoNotScrollIfVisible) const;
+  // Scrolls the given sub-rectangle (in node-local coordinates) into view by
+  // scrolling as many nested scrollable views as needed. Horizontal and
+  // vertical scroll alignments specify where in the content area to scroll the
+  // sub-rectangle.
   bool ScrollToMakeVisibleWithSubFocus(
       const gfx::Rect&,
       ax::mojom::ScrollAlignment horizontal_scroll_alignment =

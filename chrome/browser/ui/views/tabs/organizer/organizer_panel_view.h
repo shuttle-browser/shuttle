@@ -8,13 +8,15 @@
 #include <memory>
 
 #include "base/callback_list.h"
-#include "base/memory/raw_ptr.h"
-#include "base/memory/raw_ref.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/views/view.h"
 
 class BrowserWindowInterface;
+
+namespace gfx {
+class Point;
+}
 
 // Holds the organizer panel and clips it during animations.
 //
@@ -34,6 +36,10 @@ class OrganizerPanelView : public views::View {
   ~OrganizerPanelView() override;
 
   virtual bool IsInExtensionModeForTesting() const;
+
+  // Returns true if `point` is in an area that should be treated as window
+  // caption (for dragging the window).
+  virtual bool IsPositionInWindowCaption(const gfx::Point& point) const;
 
  protected:
   explicit OrganizerPanelView(BrowserWindowInterface& browser);

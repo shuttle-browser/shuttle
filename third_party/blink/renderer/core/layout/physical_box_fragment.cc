@@ -87,7 +87,7 @@ bool ShouldUsePositionForPointInBlockFlowDirection(
       !IsFlexibleBoxWithSingleChildElement(layout_object)) {
     return false;
   }
-  if (layout_object.StyleRef().SpecifiesColumns()) {
+  if (layout_object.Style().SpecifiesColumns()) {
     // Columns are laid out in inline direction.
     return false;
   }
@@ -214,8 +214,8 @@ const PhysicalBoxFragment* PhysicalBoxFragment::Create(
         scrollbar, padding, physical_size, writing_direction);
 
     if (FragmentItemsBuilder* items_builder = builder->ItemsBuilder()) {
-      calculator.AddItems(builder->GetLayoutObject(),
-                          items_builder->Items(physical_size));
+      items_builder->ConvertToPhysical(physical_size);
+      calculator.AddItems(builder->GetLayoutObject(), items_builder->Items());
     }
 
     for (auto& child : builder->children_) {
@@ -244,7 +244,7 @@ const PhysicalBoxFragment* PhysicalBoxFragment::Create(
   FragmentItemsBuilder* items_builder = builder->ItemsBuilder();
   bool has_fragment_items = items_builder && items_builder->Size();
 
-  size_t byte_size = AdditionalByteSize(has_fragment_items);
+  uint32_t byte_size = AdditionalByteSize(has_fragment_items);
 
   // We store the children list inline in the fragment as a flexible
   // array. Therefore, we need to make sure to allocate enough space for
@@ -263,7 +263,7 @@ const PhysicalBoxFragment* PhysicalBoxFragment::Create(
 const PhysicalBoxFragment* PhysicalBoxFragment::Clone(
     const PhysicalBoxFragment& other) {
   // The size of the new fragment shouldn't differ from the old one.
-  size_t byte_size = AdditionalByteSize(other.HasItems());
+  uint32_t byte_size = AdditionalByteSize(other.HasItems());
 
   return MakeGarbageCollected<PhysicalBoxFragment>(
       AdditionalBytes(byte_size), PassKey(), other,
@@ -280,7 +280,7 @@ const PhysicalBoxFragment* PhysicalBoxFragment::CloneWithPostLayoutFragments(
       scrollable_overflow != PhysicalRect({}, other.Size());
 
   // The size of the new fragment shouldn't differ from the old one.
-  size_t byte_size = AdditionalByteSize(other.HasItems());
+  uint32_t byte_size = AdditionalByteSize(other.HasItems());
 
   const auto* cloned_fragment = MakeGarbageCollected<PhysicalBoxFragment>(
       AdditionalBytes(byte_size), PassKey(), other, has_scrollable_overflow,
@@ -339,16 +339,16 @@ const PhysicalBoxFragment* PhysicalBoxFragment::CloneWithPostLayoutFragments(
 
 namespace {
 template <typename T>
-constexpr void AccountSizeAndPadding(size_t& current_size) {
-  const size_t current_size_with_padding =
-      base::bits::AlignUp(current_size, alignof(T));
+constexpr void AccountSizeAndPadding(uint32_t& current_size) {
+  const uint32_t current_size_with_padding =
+      base::bits::AlignUp(current_size, static_cast<uint32_t>(alignof(T)));
   current_size = current_size_with_padding + sizeof(T);
 }
 }  // namespace
 
 // static
-size_t PhysicalBoxFragment::AdditionalByteSize(bool has_fragment_items) {
-  size_t additional_size = 0;
+uint32_t PhysicalBoxFragment::AdditionalByteSize(bool has_fragment_items) {
+  uint32_t additional_size = 0;
   if (has_fragment_items) {
     AccountSizeAndPadding<FragmentItems>(additional_size);
   }
@@ -554,7 +554,7 @@ PhysicalOffset PhysicalBoxFragment::OffsetFromOwnerLayoutBox() const {
   // When LTR, compute the offset from the first fragment. The first fragment is
   // at the left top of the |LayoutBox| regardless of the writing mode.
   const auto* containing_block = owner_box->ContainingBlock();
-  const ComputedStyle& containing_block_style = containing_block->StyleRef();
+  const ComputedStyle& containing_block_style = containing_block->Style();
   if (IsLtr(containing_block_style.Direction())) {
     DCHECK_EQ(IsFirstForNode(), this == owner_box->GetPhysicalFragment(0));
     if (IsFirstForNode())
@@ -1820,7 +1820,7 @@ void PhysicalBoxFragment::CheckSameForSimplifiedLayout(
   DCHECK_EQ(type_, other.type_);
   DCHECK_EQ(sub_type_, other.sub_type_);
   DCHECK_EQ(style_variant_, other.style_variant_);
-  DCHECK_EQ(is_hidden_for_paint_, other.is_hidden_for_paint_);
+  DCHECK_EQ(is_hidden_due_to_layout_, other.is_hidden_due_to_layout_);
   DCHECK_EQ(is_opaque_, other.is_opaque_);
   DCHECK_EQ(is_block_in_inline_, other.is_block_in_inline_);
   DCHECK_EQ(is_math_fraction_, other.is_math_fraction_);

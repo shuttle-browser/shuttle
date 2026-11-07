@@ -11,6 +11,7 @@
 #include "base/apple/foundation_util.h"
 #include "base/base64.h"
 #include "base/feature_list.h"
+#include "base/functional/bind.h"
 #include "base/no_destructor.h"
 #include "base/numerics/ranges.h"
 #include "base/numerics/safe_conversions.h"
@@ -92,6 +93,7 @@ class BridgedNativeWidgetHostDummy
  private:
   void OnVisibilityChanged(bool visible) override {}
   void OnSpaceActivationChanged(bool is_space_active) override {}
+  void OnWindowOcclusionChanged(bool occluded) override {}
   void OnWindowNativeThemeChanged() override {}
   void OnViewSizeChanged(const gfx::Size& new_size) override {}
   void SetKeyboardAccessible(bool enabled) override {}
@@ -488,8 +490,6 @@ void NativeWidgetMacNSWindowHost::InitWindow(
     window_params->is_translucent =
         params.opacity == Widget::InitParams::WindowOpacity::kTranslucent;
     window_params->is_tooltip = is_tooltip;
-    window_params->prevent_stale_content_after_hide =
-        params.prevent_stale_content_after_hide;
 
     // macOS likes to put shadows on most things. However, frameless windows
     // (with styleMask = NSWindowStyleMaskBorderless) default to no shadow. So
@@ -720,6 +720,7 @@ void NativeWidgetMacNSWindowHost::UpdateCompositorProperties() {
 }
 
 void NativeWidgetMacNSWindowHost::DestroyCompositor() {
+  occlusion_hide_timer_.Stop();
   if (layer()) {
     // LayerOwner supports a change in ownership, e.g., to animate a closing
     // window, but that won't work as expected for the root layer in
@@ -1133,25 +1134,54 @@ void NativeWidgetMacNSWindowHost::UpdateCompositorVisibility() {
   if (!compositor_) {
     return;
   }
-  const bool visible = is_visible_ || video_capture_count_ > 0;
+  const bool notify_window = base::FeatureList::IsEnabled(
+      views::features::kNotifyCompositorOfWindowVisibilityOnMacOs);
+  const bool notify_space = base::FeatureList::IsEnabled(
+      views::features::kNotifyCompositorOfSpaceVisibilityOnMacOs);
+  const bool notify_occlusion = base::FeatureList::IsEnabled(
+      views::features::kNotifyCompositorOfWindowOcclusionOnMacOs);
+
+  // Space changes and occlusion only toggle `Compositor::SetVisible()` (when
+  // `notify_space` / `notify_occlusion` are enabled) rather than hiding the
+  // root layer or calling `compositor_->Suspend()`. `SetVisible(false)` already
+  // stops frame production in cc and tells Viz to release backbuffers, without
+  // acquiring an indefinite `ui::CompositorLock` or altering behavior when the
+  // features are disabled. Occlusion is debounced before it gets here (see
+  // `OnWindowOcclusionChanged()`).
+  const bool layer_visible = is_visible_ || video_capture_count_ > 0;
   const bool was_layer_visible = layer()->visible();
-  layer()->SetVisible(visible);
-  if (visible) {
-    if (base::FeatureList::IsEnabled(
-            views::features::kNotifyCompositorOfWindowVisibilityOnMacOs)) {
-      compositor_->compositor()->SetVisible(true);
+  const bool was_compositor_visible = compositor_->compositor()->IsVisible();
+  layer()->SetVisible(layer_visible);
+
+  const bool is_headless = display::Screen::Get()->IsHeadless();
+  if (!is_headless && (notify_window || notify_space || notify_occlusion)) {
+    // Note: AppKit sets `-[NSWindow isOnActiveSpace]` to NO when a window is
+    // hidden (`orderOut:`) or minimized (`miniaturize:`), so `notify_space`
+    // also hides the compositor on window hide/minimize even if `notify_window`
+    // is false.
+    const bool window_visible = !notify_window || is_visible_;
+    const bool space_visible = !notify_space || is_on_active_space_;
+    // TODO(crbug.com/560122536): Window capture (ScreenCaptureKit / CGWindow)
+    // doesn't take a video capture lock on Mac, so the browser UI of an
+    // occluded window freezes in a window capture stream.
+    const bool occlusion_visible = !notify_occlusion || !is_occluded_;
+    const bool should_be_visible =
+        (window_visible && space_visible && occlusion_visible) ||
+        video_capture_count_ > 0;
+    if (should_be_visible != was_compositor_visible) {
+      compositor_->compositor()->SetVisible(should_be_visible);
     }
+  }
+
+  if (layer_visible) {
     compositor_->Unsuspend();
-    if (!was_layer_visible) {
+    if (compositor_->compositor()->IsVisible() &&
+        (!was_layer_visible || !was_compositor_visible)) {
       layer()->SchedulePaint(layer()->bounds());
     }
   } else {
-    if (!display::Screen::Get()->IsHeadless()) {
+    if (!is_headless) {
       compositor_->Suspend();
-    }
-    if (base::FeatureList::IsEnabled(
-            views::features::kNotifyCompositorOfWindowVisibilityOnMacOs)) {
-      compositor_->compositor()->SetVisible(false);
     }
   }
 }
@@ -1167,6 +1197,15 @@ void NativeWidgetMacNSWindowHost::OnVisibilityChanged(bool window_visible) {
   }
   const bool was_visible_on_screen = IsVisibleOnScreen();
   is_visible_ = window_visible;
+  // On hide, cancel a pending hide; occluded reports are ignored while hidden
+  // (see OnWindowOcclusionChanged()), while an already-applied state is kept.
+  // Becoming visible (show, restore from minimize) invalidates any occlusion
+  // state computed while the window was hidden; WebContentsOcclusionCheckerMac
+  // will report the current state on its next update pass.
+  occlusion_hide_timer_.Stop();
+  if (window_visible) {
+    ResetOcclusion(/*update_compositor=*/false);
+  }
   UpdateCompositorVisibility();
 
   Widget* widget = GetWidget();
@@ -1183,6 +1222,7 @@ void NativeWidgetMacNSWindowHost::OnVisibilityChanged(bool window_visible) {
 
 void NativeWidgetMacNSWindowHost::OnSpaceActivationChanged(
     bool is_on_active_space) {
+  TRACE_EVENT("ui", __PRETTY_FUNCTION__);
   if (is_on_active_space_ == is_on_active_space) {
     return;
   }
@@ -1190,10 +1230,67 @@ void NativeWidgetMacNSWindowHost::OnSpaceActivationChanged(
   is_on_active_space_ = is_on_active_space;
   const bool is_visible_on_screen = IsVisibleOnScreen();
 
+  UpdateCompositorVisibility();
+
   if (Widget* widget = GetWidget()) {
     if (was_visible_on_screen != is_visible_on_screen) {
       widget->OnNativeWidgetVisibilityOnScreenChanged(is_visible_on_screen);
     }
+  }
+}
+
+void NativeWidgetMacNSWindowHost::OnWindowOcclusionChanged(bool occluded) {
+  // Note: WebContentsOcclusionCheckerMac sends `occluded = true` on every
+  // update pass while the window is occluded, so redundant `true` calls are
+  // expected here.
+  if (!base::FeatureList::IsEnabled(
+          views::features::kNotifyCompositorOfWindowOcclusionOnMacOs)) {
+    return;
+  }
+  if (!occluded) {
+    ResetOcclusion(/*update_compositor=*/true);
+    return;
+  }
+  // Ignore occluded reports while the window is hidden (e.g. minimized windows
+  // are reported as occluded on every pass): window visibility already covers
+  // that case. Becoming visible resets the state, and the checker's next pass
+  // reports it again if the window is still covered.
+  if (!is_visible_) {
+    return;
+  }
+  if (is_occluded_ || occlusion_hide_timer_.IsRunning()) {
+    return;
+  }
+  TRACE_EVENT("ui", "NativeWidgetMacNSWindowHost::StartOcclusionHideTimer");
+  // The hide delay should stay longer than the delay WebContentsViewCocoa uses
+  // before marking web contents occluded (`kOcclusionUpdateDelayInSeconds`,
+  // 1s), with some margin since the two timers are independent. Renderers then
+  // stop producing frames before the display stops drawing: otherwise their
+  // frames are wasted, and tiles from the last drawn frame are not returned to
+  // the renderer until the next draw.
+  constexpr base::TimeDelta kOcclusionHideDelay = base::Milliseconds(1500);
+  // Unretained is safe because `this` owns the timer.
+  occlusion_hide_timer_.Start(
+      FROM_HERE, kOcclusionHideDelay,
+      base::BindOnce(&NativeWidgetMacNSWindowHost::ApplyOcclusion,
+                     base::Unretained(this)));
+}
+
+void NativeWidgetMacNSWindowHost::ApplyOcclusion() {
+  TRACE_EVENT("ui", __PRETTY_FUNCTION__);
+  is_occluded_ = true;
+  UpdateCompositorVisibility();
+}
+
+void NativeWidgetMacNSWindowHost::ResetOcclusion(bool update_compositor) {
+  occlusion_hide_timer_.Stop();
+  if (!is_occluded_) {
+    return;
+  }
+  TRACE_EVENT("ui", __PRETTY_FUNCTION__);
+  is_occluded_ = false;
+  if (update_compositor) {
+    UpdateCompositorVisibility();
   }
 }
 
@@ -1334,6 +1431,16 @@ void NativeWidgetMacNSWindowHost::OnIsFirstResponderChanged(
   }
 
   if (is_first_responder) {
+    // If the window isn't key, this first responder change wasn't initiated by
+    // the user (clicks make the window key first), e.g. it came from
+    // FocusManager::ClearNativeFocus() during a tab switch. Restoring focus now
+    // would activate the window (see FocusManager::SetFocusedViewWithReason()),
+    // so defer it until the window becomes key, which restores focus anyway.
+    if (!IsWindowKey() &&
+        base::FeatureList::IsEnabled(
+            views::features::kMacActivateWidgetOnFocusRequest)) {
+      return;
+    }
     focus_manager->RestoreFocusedView();
   } else {
     // Do not call ClearNativeFocus because that will re-make the

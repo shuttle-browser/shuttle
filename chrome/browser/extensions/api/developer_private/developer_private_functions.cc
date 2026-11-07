@@ -40,7 +40,6 @@
 #include "chrome/browser/extensions/webstore_reinstaller.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/supervised_user/supervised_user_browser_utils.h"
 #include "chrome/browser/ui/extensions/extension_multiple_uninstall_dialog.h"
 #include "chrome/browser/ui/select_file_policy/chrome_select_file_policy.h"
 #include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
@@ -153,9 +152,6 @@ namespace {
 constexpr char kUnpackedAppsFolder[] = "apps_target";
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-const char kCannotUpdateChildAccountProfileSettingsError[] =
-    "Cannot change settings for a child account profile.";
-
 ui::FileInfo* g_drop_file_for_testing = nullptr;
 
 std::string ReadFileToString(const base::FilePath& path) {
@@ -217,7 +213,7 @@ void PerformVerificationCheck(content::BrowserContext* context) {
 }
 
 std::string GetETldPlusOne(const GURL& site) {
-  DCHECK(site.is_valid());
+  CHECK(site.is_valid(), base::NotFatalUntil::M161);
   std::string etld_plus_one =
       net::registry_controlled_domains::GetDomainAndRegistry(
           site, net::registry_controlled_domains::INCLUDE_PRIVATE_REGISTRIES);
@@ -342,7 +338,7 @@ base::expected<void, std::string> SetDroppedPath(
     file_info = &drop_data->filenames.front();
   }
 
-  DCHECK(file_info);
+  CHECK(file_info, base::NotFatalUntil::M161);
   // Note(devlin): we don't do further validation that the file is a directory
   // here. This is validated in the JS, but if that fails, then trying to load
   // the file as an unpacked extension will also fail (reasonably gracefully).
@@ -519,6 +515,8 @@ DeveloperPrivateGetExtensionInfoFunction::Run() {
 
 void DeveloperPrivateGetExtensionInfoFunction::OnInfosGenerated(
     ExtensionInfoGenerator::ExtensionInfoList list) {
+  // TODO(crbug.com/577180920): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK_LE(1u, list.size());
   Respond(list.empty() ? NoSuchExtensionError()
                        : WithArguments(list[0].ToValue()));
@@ -588,9 +586,6 @@ DeveloperPrivateUpdateProfileConfigurationFunction::Run() {
   CHECK(profile);
 
   if (update.in_developer_mode) {
-    if (supervised_user::AreExtensionsPermissionsEnabled(profile)) {
-      return RespondNow(Error(kCannotUpdateChildAccountProfileSettingsError));
-    }
     util::SetDeveloperModeForProfile(profile, *update.in_developer_mode);
   }
 
@@ -640,7 +635,7 @@ DeveloperPrivateOpenReviewPageFunction::Run() {
   GURL review_url = util::GetCWSWritingReviewUrl(
       params->extension_id, util::CWSReviewSource::kExtensionsPage);
 
-  ExtensionTabUtil::NavigateToURL(WindowOpenDisposition::NEW_FOREGROUND_TAB,
+  ExtensionTabUtil::NavigateToURL(WindowOpenDisposition::kNewForegroundTab,
                                   web_contents, review_url, base::DoNothing());
 
   return RespondNow(NoArguments());
@@ -887,10 +882,6 @@ ExtensionFunction::ResponseAction DeveloperPrivateLoadUnpackedFunction::Run() {
   }
 
   Profile* profile = Profile::FromBrowserContext(browser_context());
-  if (profile && supervised_user::AreExtensionsPermissionsEnabled(profile)) {
-    return RespondNow(
-        Error("Child account users cannot load unpacked extensions."));
-  }
   PrefService* prefs = profile->GetPrefs();
   if (!prefs->GetBoolean(prefs::kExtensionsUIDeveloperMode)) {
     return RespondNow(
@@ -939,7 +930,7 @@ ExtensionFunction::ResponseAction DeveloperPrivateLoadUnpackedFunction::Run() {
 }
 
 void DeveloperPrivateLoadUnpackedFunction::ShowSelectFileDialog() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   // Start or cancel the file load without showing the select file dialog for
   // tests that require it.
@@ -1037,7 +1028,7 @@ void DeveloperPrivateLoadUnpackedFunction::OnGotManifestError(
     const std::u16string& error,
     size_t line_number,
     const std::string& manifest) {
-  DCHECK(!retry_guid_.empty());
+  CHECK(!retry_guid_.empty(), base::NotFatalUntil::M161);
   Finish(WithArguments(
       CreateLoadError(file_path, error, line_number, manifest, retry_guid_)
           .ToValue()));
@@ -2254,6 +2245,8 @@ DeveloperPrivateShowSiteSettingsFunction::Run() {
 ExtensionFunction::ResponseAction DeveloperPrivateLoadDirectoryFunction::Run() {
   // In theory `extension()` can be null when an ExtensionFunction is invoked
   // from WebUI, but this should never be the case for this particular API.
+  // TODO(crbug.com/576392566): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(extension());
 
   // TODO(grv) : add unittests.

@@ -12,11 +12,13 @@ build_webui_tests("build") {
 
   files = [
     "chrome_histograms_test.ts",
+    "chrome_request_presentation_time_test.ts",
     "chrome_timeticks_test.ts",
   ]
 
   ts_definitions = [
     "//tools/typescript/definitions/chrome_histograms.d.ts",
+    "//tools/typescript/definitions/chrome_request_presentation_time.d.ts",
     "//tools/typescript/definitions/chrome_timeticks.d.ts",
   ]
 }

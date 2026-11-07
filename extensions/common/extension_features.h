@@ -37,6 +37,14 @@ namespace extensions_features {
 // NOTE(devlin): If there are consistently enough of these in flux, it might
 // make sense to have their own file.
 
+// Controls the return value of alarms.clearAll() API. If enabled,
+// alarms.clearAll() returns undefined, matching the new proposed behavior.
+// If disabled, alarms.clearAll() always returns true, matching legacy Chrome
+// behavior.
+// TODO(crbug.com/541711725): Remove after M160 and update alarms.clearAll()
+// in extensions/common/api/alarms.webidl to return Promise<undefined>.
+BASE_DECLARE_FEATURE(kApiAlarmsClearAllReturnUndefined);
+
 // Controls the availability of SplitView Extension APIs.
 BASE_DECLARE_FEATURE(kApiTabsSplitView);
 
@@ -126,9 +134,9 @@ BASE_DECLARE_FEATURE(kApiDesktopAndroidNativeMessagingBypassExtensionAllowlist);
 
 // For historical reasons, this includes some APIs. Please don't add more APIs.
 
-// Enables the UI in the install prompt which lets a user choose to withhold
-// requested host permissions by default.
-BASE_DECLARE_FEATURE(kAllowWithholdingExtensionPermissionsOnInstall);
+// Controls whether opted-in component extension frames are permitted to
+// enter BackForwardCache instead of being unconditionally disabled.
+BASE_DECLARE_FEATURE(kBackForwardCacheForComponentExtensionFrames);
 
 // If enabled, navigations and window.open calls to URLs outside a hosted app's
 // web extent in background contents are blocked and not persisted to prefs.
@@ -146,9 +154,25 @@ BASE_DECLARE_FEATURE(kCheckingNoExtensionIdInExtensionIpcs);
 // URLs in worker scripts and subresources.
 BASE_DECLARE_FEATURE(kComponentExtensionAllowWorkerChromeResources);
 
+// When enabled (the default), `CrxInstaller::ReloadExtensionAfterInstall`
+// verifies that the manifest reloaded from the final install directory matches
+// the unpacked manifest validated in `OnUnpackSuccess`, failing the install
+// on mismatch (or falling back to a local install on ChromeOS if a shared copy
+// mismatched), and cleans up `version_dir` under `install_directory_` on
+// post-install reload failures (`CANT_LOAD_EXTENSION` and
+// `MANIFEST_MISMATCH_AFTER_INSTALL`).
+BASE_DECLARE_FEATURE(kCrxInstallerVerifyReloadedManifest);
+
 // Gates native UI affordances for leaving reviews on installed Chrome Web Store
 // extensions.
 BASE_DECLARE_FEATURE(kCWSReviewPromptingNativeUI);
+
+// If enabled, declarative net request rules that match on the values of
+// response headers (other than CORS-safelisted response headers and
+// Content-Encoding) only match requests that the extension has host permissions
+// for. If disabled (kill switch), rule matching conditions can match against
+// requests the extension does not have host permissions for.
+BASE_DECLARE_FEATURE(kDeclarativeNetRequestRestrictResponseHeaderValueMatching);
 
 // If enabled, <webview>s will be allowed to request permission from an
 // embedding Chrome App to request access to Human Interface Devices.
@@ -182,12 +206,23 @@ BASE_DECLARE_FEATURE(kExtensionAutoRejectIncognitoConnectability);
 // See https://developer.chrome.com/blog/debugger-enterprise-policy-restrictions.
 BASE_DECLARE_FEATURE(kExtensionDebuggerStrictPolicyRestrictions);
 
+// If enabled (the default), ExtensionDownloader decides whether to require Web
+// Store publisher proof based on the update URLs of the tasks requesting a
+// download. If disabled (kill switch), it reverts to checking the CRX download
+// URL from the update manifest. Note that disabling this feature has security
+// implications.
+BASE_DECLARE_FEATURE(kExtensionDownloaderPublisherProofByUpdateUrl);
+
 // Allow e.g. .css files to use default_locale messages in WAR files via GUID.
 // TODO(crbug.com/435609878): Remove after m142. It's for safe m141 back merge.
 BASE_DECLARE_FEATURE(kExtensionLocalizationGuid);
 
 // A replacement key for declaring icons, in addition to supporting dark mode.
 BASE_DECLARE_FEATURE(kExtensionIconVariants);
+
+// Enables the "Allow site access" section in the extension install dialog which
+// lets the user choose site permissions.
+BASE_DECLARE_FEATURE(kExtensionInstallSiteAccessOptions);
 
 // If enabled, allows an extension to specify protocol_handlers keys in the
 // Manifest, registering a group of custom handlers so that the browser can
@@ -350,6 +385,12 @@ BASE_DECLARE_FEATURE(kWebRequestPerContextEventDispatch);
 
 // If enabled, `HashedExtensionId` uses SHA-256 hashes instead of SHA-1.
 BASE_DECLARE_FEATURE(kUseSha256ForExtensionHashes);
+
+// When enabled, generated paths (e.g. _favicon and the generated background
+// page) are excluded from wildcard web_accessible_resources entries. _favicon
+// must be explicitly listed to be web accessible, and the generated background
+// page is never web accessible.
+BASE_DECLARE_FEATURE(kRestrictGeneratedPathsInWebAccessibleResources);
 
 }  // namespace extensions_features
 

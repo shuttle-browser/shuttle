@@ -32,6 +32,7 @@
 #include <memory>
 #include <optional>
 
+#include "base/byte_size.h"
 #include "base/check.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/scoped_refptr.h"
@@ -86,7 +87,6 @@ class MemoryManagedPaintCanvas;
 class Path2D;
 class SVGResource;
 class Canvas2DResourceProvider;
-class Canvas2DBitmapProvider;
 enum class FlushReason;
 enum class PredefinedColorSpace;
 
@@ -94,8 +94,7 @@ class MODULES_EXPORT CanvasRenderingContext2D final
     : public ScriptWrappable,
       public BaseRenderingContext2D,
       public SVGResourceClient,
-      public CanvasHibernationHandler::Delegate,
-      public FlushForImageObserver {
+      public CanvasHibernationHandler::Delegate {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
@@ -134,7 +133,6 @@ class MODULES_EXPORT CanvasRenderingContext2D final
   void SetShouldAntialias(bool);
 
   void setFontForTesting(const String& new_font) override;
-  void fillTextForTesting(const String& text, double x, double y) override;
 
   void drawFocusIfNeeded(Element*);
   void drawFocusIfNeeded(Path2D*, Element*);
@@ -151,9 +149,6 @@ class MODULES_EXPORT CanvasRenderingContext2D final
   // SVGResourceClient implementation
   void ResourceContentChanged(SVGResource*) override;
 
-  // FlushForImageObserver implementation
-  void OnFlushForImage(cc::PaintImage::ContentId content_id) override;
-
   void UpdateFilterReferences(const FilterOperations&);
   void ClearFilterReferences();
 
@@ -162,19 +157,16 @@ class MODULES_EXPORT CanvasRenderingContext2D final
   void SetOriginTainted() final;
   void DisableAcceleration() override;
   bool ShouldDisableAccelerationBecauseOfReadback() const override;
-  void RecordingCleared() override;
 
   // CanvasHibernationHandler::Delegate implementation
-  Canvas2DResourceProvider* GetSharedImageProvider() const override;
-  Canvas2DBitmapProvider* GetBitmapProviderForTesting() const {
-    return bitmap_provider_.get();
-  }
-  bool HasResourceProvider() const override;
+  bool HasBacking() const override;
+  bool IsBackingValid() const override;
+  bool IsBackingAccelerated() const override;
   bool IsContextLost() const override { return isContextLost(); }
   bool IsPageVisible() const override {
     return canvas() && canvas()->IsPageVisible();
   }
-  void ResetResourceProvider() override;
+  void ResetBacking() override;
   void SetNeedsCompositingUpdate() override {
     if (canvas()) {
       canvas()->SetNeedsCompositingUpdate();
@@ -185,21 +177,17 @@ class MODULES_EXPORT CanvasRenderingContext2D final
       canvas()->ClearCanvas2DLayerTexture();
     }
   }
+  scoped_refptr<StaticBitmapImage> Snapshot() override;
 
   // CanvasRenderingContext implementation
   bool IsComposited() const override;
   bool Is2DCanvasAccelerated() const override;
-  scoped_refptr<CanvasResource> PaintRenderingResultsToResource(
-      SourceDrawingBuffer source_buffer,
-      FlushReason reason) override;
-  scoped_refptr<StaticBitmapImage> PaintRenderingResultsToSnapshot(
-      SourceDrawingBuffer source_buffer) override;
   const std::optional<cc::PaintRecord>& GetLastRecording() override;
 
   int Width() const final;
   int Height() const final;
 
-  bool CanCreateResourceProvider() final;
+  bool CanCreateBacking() final;
 
   RespectImageOrientationEnum RespectImageOrientation() const final;
 
@@ -243,15 +231,8 @@ class MODULES_EXPORT CanvasRenderingContext2D final
 
   void SendContextLostEventIfNeeded() override;
 
-  bool InitializeResourceProvider() override;
-  void SetCanvas2DResourceProviderForTesting(
-      std::unique_ptr<Canvas2DResourceProvider> provider,
-      const gfx::Size& size);
-  void SetBitmapProviderForTesting(
-      std::unique_ptr<Canvas2DBitmapProvider> provider,
-      const gfx::Size& size);
-  void SetCanvas2DResourceProviderForTesting(std::nullptr_t,
-                                             const gfx::Size& size);
+  bool InitializeBacking() override;
+  void CreateSoftwareSurfaceForTesting();
 
   // TODO(crbug.com/352263194): Migrate canvas_rendering_context_2d_test.cc
   // callsites and make this method private.
@@ -260,12 +241,9 @@ class MODULES_EXPORT CanvasRenderingContext2D final
   void EnableAccelerationIfPossible() override;
   base::ByteSize AllocatedBufferSize() const override;
 
-  bool IsResourceProviderValid() const;
-
  protected:
   HTMLCanvasElement* HostAsHTMLCanvasElement() const final;
   UniqueFontSelector* GetFontSelector() const final;
-  void SizeChanged() final;
 
   bool WritePixels(const SkImageInfo& orig_info,
                    const void* pixels,
@@ -284,10 +262,11 @@ class MODULES_EXPORT CanvasRenderingContext2D final
                            PrepareMailboxWhenContextIsLostWithFailedRestore);
 
   void ResetInternal() override;
+  void Reshape(gfx::Size old_size, gfx::Size new_size) override;
 
   void Dispose() override;
 
-  void CreateProvider();
+  void CreateBacking();
 
   void PruneLocalFontCache(size_t target_size);
 
@@ -309,12 +288,14 @@ class MODULES_EXPORT CanvasRenderingContext2D final
 
   void ColorSchemeMayHaveChanged() override;
 
-  // If the ResourceProvider currently exists, replaces it with a newly-created
-  // resource provider.
-  void DropAndRecreateExistingResourceProvider();
+  // If the backing currently exists, replaces it with a newly-created
+  // backing.
+  void DropAndRecreateExistingBacking();
 
-  // This method should be called only when both providers are null.
-  void RecreateResourceProvider();
+  // This method should be called only when there is no existing backing.
+  void RecreateBacking();
+
+  void RestoreBackBuffer(const cc::PaintImage&);
 
   void WakeUpFromHibernation();
 
@@ -324,12 +305,10 @@ class MODULES_EXPORT CanvasRenderingContext2D final
   LinkedHashSet<String> font_lru_list_;
 
   std::unique_ptr<CanvasHibernationHandler> hibernation_handler_;
-  std::unique_ptr<Canvas2DResourceProvider> shared_image_provider_;
-  std::unique_ptr<Canvas2DBitmapProvider> bitmap_provider_;
 
-  // `did_fail_to_create_resource_provider_` prevents repeated attempts in
+  // `did_fail_to_create_backing_` prevents repeated attempts in
   // allocating resources after the first attempt failed.
-  bool did_fail_to_create_resource_provider_ = false;
+  bool did_fail_to_create_backing_ = false;
 
   // For privacy reasons we need to delay contextLost events until the page is
   // visible. In order to do this we will hold on to a bool here

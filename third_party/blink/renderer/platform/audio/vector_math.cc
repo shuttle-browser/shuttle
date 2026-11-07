@@ -59,36 +59,28 @@ void PrepareFilterForConv(base::span<const float> filter,
                           AudioFloatArray& prepared_filter) {
   // Only contiguous convolution is implemented by all implementations.
 #if defined(ARCH_CPU_X86_FAMILY) && !BUILDFLAG(IS_MAC)
-  const float* filter_p = &filter.back();
-  x86::PrepareFilterForConv(filter_p, filter.size(), &prepared_filter);
+  x86::PrepareFilterForConv(filter, &prepared_filter);
 #endif
 }
 
 void Conv(base::span<const float> source,
           base::span<const float> filter,
           base::span<float> dest,
-          size_t frames_to_process,
           const AudioFloatArray& prepared_filter) {
   // Only contiguous convolution is implemented by all implementations.
-  const float* filter_p = &filter.back();
-  impl::Conv(source, filter_p, dest, frames_to_process, filter.size(),
-             &prepared_filter);
+  impl::Conv(source, filter, dest, prepared_filter.as_span());
 }
 
 void Vadd(base::span<const float> source1,
           base::span<const float> source2,
-          base::span<float> dest,
-          size_t frames_to_process) {
-  impl::Vadd(source1.first(frames_to_process), source2.first(frames_to_process),
-             dest.first(frames_to_process));
+          base::span<float> dest) {
+  impl::Vadd(source1, source2, dest);
 }
 
 void Vsub(base::span<const float> source1,
           base::span<const float> source2,
-          base::span<float> dest,
-          size_t frames_to_process) {
-  impl::Vsub(source1.first(frames_to_process), source2.first(frames_to_process),
-             dest.first(frames_to_process));
+          base::span<float> dest) {
+  impl::Vsub(source1, source2, dest);
 }
 
 void Vclip(base::span<const float> source,
@@ -98,8 +90,8 @@ void Vclip(base::span<const float> source,
 #if DCHECK_IS_ON()
   // Do the same DCHECKs that |ClampTo| would do so that optimization paths do
   // not have to do them.
-  for (size_t i = 0u; i < dest.size(); ++i) {
-    DCHECK(!std::isnan(source[i]));
+  for (float sample : source) {
+    DCHECK(!std::isnan(sample));
   }
   // This also ensures that thresholds are not NaNs.
   DCHECK_LE(low_threshold, high_threshold);
@@ -108,59 +100,30 @@ void Vclip(base::span<const float> source,
   impl::Vclip(source, low_threshold, high_threshold, dest);
 }
 
-void Vclip(base::span<const float> source,
-           float low_threshold,
-           float high_threshold,
-           base::span<float> dest,
-           size_t frames_to_process) {
-#if DCHECK_IS_ON()
-  // Do the same DCHECKs that |ClampTo| would do so that optimization paths do
-  // not have to do them.
-  for (size_t i = 0u; i < frames_to_process; ++i) {
-    DCHECK(!std::isnan(source[i]));
-  }
-  // This also ensures that thresholds are not NaNs.
-  DCHECK_LE(low_threshold, high_threshold);
-#endif
-
-  impl::Vclip(source.first(frames_to_process), low_threshold, high_threshold,
-              dest.first(frames_to_process));
-}
-
 float Vmaxmgv(base::span<const float> source) {
   return impl::Vmaxmgv(source);
 }
 
 void Vmul(base::span<const float> source1,
           base::span<const float> source2,
-          base::span<float> dest,
-          size_t frames_to_process) {
-  impl::Vmul(source1.first(frames_to_process), source2.first(frames_to_process),
-             dest.first(frames_to_process));
+          base::span<float> dest) {
+  impl::Vmul(source1, source2, dest);
 }
 
-void Vsma(base::span<const float> source,
-          float scale,
-          base::span<float> dest,
-          size_t frames_to_process) {
-  impl::Vsma(source.first(frames_to_process), scale,
-             dest.first(frames_to_process));
+void Vsma(base::span<const float> source, float scale, base::span<float> dest) {
+  impl::Vsma(source, scale, dest);
 }
 
 void Vsmul(base::span<const float> source,
            float scale,
-           base::span<float> dest,
-           size_t frames_to_process) {
-  impl::Vsmul(source.first(frames_to_process), scale,
-              dest.first(frames_to_process));
+           base::span<float> dest) {
+  impl::Vsmul(source, scale, dest);
 }
 
 void Vsadd(base::span<const float> source,
            float addend,
-           base::span<float> dest,
-           size_t frames_to_process) {
-  impl::Vsadd(source.first(frames_to_process), addend,
-              dest.first(frames_to_process));
+           base::span<float> dest) {
+  impl::Vsadd(source, addend, dest);
 }
 
 float Vsvesq(base::span<const float> source) {
@@ -172,10 +135,8 @@ void Zvmul(base::span<const float> real1,
            base::span<const float> real2,
            base::span<const float> imag2,
            base::span<float> real_dest,
-           base::span<float> imag_dest,
-           size_t frames_to_process) {
-  impl::Zvmul(real1.data(), imag1.data(), real2.data(), imag2.data(),
-              real_dest.data(), imag_dest.data(), frames_to_process);
+           base::span<float> imag_dest) {
+  impl::Zvmul(real1, imag1, real2, imag2, real_dest, imag_dest);
 }
 
 }  // namespace blink::vector_math

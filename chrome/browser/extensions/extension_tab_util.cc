@@ -365,7 +365,7 @@ api::tabs::Tab ExtensionTabUtil::CreateTabObject(
   tabs::TabInterface* tab_interface =
       tab_list ? tab_list->GetTab(tab_index) : nullptr;
 
-  bool is_active = tab_interface && tab_interface->IsActivated();
+  bool is_active = tab_interface ? tab_interface->IsActivated() : true;
   tab_object.active = is_active;
   tab_object.selected = is_active;
   tab_object.highlighted = tab_interface && tab_interface->IsSelected();
@@ -634,7 +634,7 @@ bool ExtensionTabUtil::GetTabById(int tab_id,
   Profile* profile = Profile::FromBrowserContext(browser_context);
 
   for (WindowController* window : *WindowControllerList::GetInstance()) {
-    bool is_alive = window->GetBrowserWindowInterface() &&
+    bool is_alive = !window->GetBrowserWindowInterface() ||
                     !window->GetBrowserWindowInterface()->IsDeleteScheduled();
     bool profile_matches = window->profile() == profile;
     if (!is_alive || !profile_matches) {
@@ -729,7 +729,9 @@ int ExtensionTabUtil::GetSplitId(const split_tabs::SplitTabId& id) {
 
 // static
 bool ExtensionTabUtil::SupportsTabGroups(BrowserWindowInterface* browser) {
-  CHECK(browser);
+  if (!browser) {
+    return false;
+  }
 #if BUILDFLAG(IS_ANDROID)
   // Android only supports tab groups for normal browser windows.
   return browser->GetType() == BrowserWindowInterface::TYPE_NORMAL;
@@ -1148,7 +1150,9 @@ bool ExtensionTabUtil::OpenOptionsPageFromWebContents(
   const bool open_in_tab = ShouldOpenInTab(extension);
   BrowserWindowInterface* browser =
       browser_window_util::GetBrowserForTabContents(*web_contents);
-  CHECK(browser);
+  if (!browser) {
+    return false;
+  }
   return WindowControllerFromBrowser(browser)->OpenOptionsPage(extension, *url,
                                                                open_in_tab);
 }
@@ -1160,6 +1164,20 @@ WindowController* ExtensionTabUtil::GetWindowControllerOfTab(
       browser_window_util::GetBrowserForTabContents(*web_contents);
   if (browser) {
     return BrowserExtensionWindowController::From(browser);
+  }
+  // For non-Browser window controllers (which do not have a
+  // BrowserWindowInterface), IdForWindowContainingTab() consistently returns
+  // the owning window's SessionID. Note that this fallback also matches
+  // transiently detached browser tabs (e.g. tabs mid-drag between windows), for
+  // which IdForWindowContainingTab() returns the SessionID of the window the
+  // tab was previously attached to rather than returning nullptr.
+  SessionID window_id =
+      sessions::SessionTabHelper::IdForWindowContainingTab(web_contents);
+  if (window_id.is_valid()) {
+    const auto& controllers = *WindowControllerList::GetInstance();
+    auto it = std::ranges::find(controllers, window_id.id(),
+                                &WindowController::GetWindowId);
+    return it != controllers.end() ? *it : nullptr;
   }
   return nullptr;
 }

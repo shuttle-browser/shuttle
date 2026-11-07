@@ -73,8 +73,6 @@ source_set("core_keyed_service_factories") {
     "core_browser_context_keyed_service_factories.h",
   ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   deps = [
     "//components/guest_view/buildflags",
     "//extensions/browser:browser_sources",
@@ -234,6 +232,8 @@ source_set("browser_sources") {
     "bookmark_app_util.cc",
     "bookmark_app_util.h",
     "browser_context_keyed_api_factory.h",
+    "browser_context_lifetime_observer.h",
+    "browser_context_lifetime_tracker.h",
     "browser_frame_context_data.cc",
     "browser_frame_context_data.h",
     "browser_process_context_data.cc",
@@ -574,8 +574,6 @@ source_set("browser_sources") {
     "suggest_permission_util.cc",
     "suggest_permission_util.h",
     "supervised_extension_approval_result.h",
-    "supervised_user_extensions_delegate.cc",
-    "supervised_user_extensions_delegate.h",
     "task_queue_util.cc",
     "task_queue_util.h",
     "ui_util.cc",
@@ -645,8 +643,6 @@ source_set("browser_sources") {
     "//components/services/unzip/public/cpp",
     "//components/sessions",
     "//components/strings:components_strings",
-    "//components/supervised_user/core/common",
-    "//components/supervised_user/core/common:buildflags",
     "//components/ukm/content",
     "//components/update_client",
     "//components/url_pattern_index",
@@ -679,6 +675,7 @@ source_set("browser_sources") {
     "//services/device/public/mojom",
     "//services/metrics/public/cpp:metrics_cpp",
     "//services/metrics/public/cpp:ukm_builders",
+    "//services/network/public/cpp",
     "//services/network/public/mojom",
     "//services/preferences/public/cpp",
     "//services/service_manager/public/cpp",
@@ -860,10 +857,7 @@ source_set("browser_sources") {
     deps += [ "//components/resources:components_resources_grit" ]
   }
 
-  configs += [
-    "//build/config:precompiled_headers",
-    "//build/config/compiler:wexit_time_destructors",
-  ]
+  configs += [ "//build/config:precompiled_headers" ]
 }
 
 source_set("keepalive") {

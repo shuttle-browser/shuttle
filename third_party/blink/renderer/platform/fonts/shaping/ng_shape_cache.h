@@ -76,8 +76,8 @@ struct ShapeCacheKey {
  public:
   ShapeCacheKey() = default;
   ShapeCacheKey(const String& text,
-                unsigned start_offset,
-                unsigned end_offset,
+                wtf_size_t start_offset,
+                wtf_size_t end_offset,
                 const AtomicString& locale,
                 base::span<const FontFeatureRange> font_features,
                 TextDirection direction)
@@ -100,7 +100,7 @@ struct ShapeCacheKey {
     AddIntToHash(hash, end_offset_);
     AddIntToHash(hash, locale_ ? blink::GetHash(locale_) : 0);
     AddIntToHash(hash, HashMemory32(base::as_byte_span(font_features_)));
-    AddIntToHash(hash, static_cast<unsigned>(direction_));
+    AddIntToHash(hash, static_cast<uint32_t>(direction_));
     return hash;
   }
 
@@ -115,8 +115,8 @@ struct ShapeCacheKey {
 
  private:
   String text_;
-  unsigned start_offset_ = 0u;
-  unsigned end_offset_ = 0u;
+  wtf_size_t start_offset_ = 0u;
+  wtf_size_t end_offset_ = 0u;
   AtomicString locale_;
   Vector<FontFeatureRange, 1> font_features_;
   TextDirection direction_ = TextDirection::kLtr;
@@ -130,8 +130,8 @@ class NGShapeCache : public GarbageCollected<NGShapeCache>,
   USING_PRE_FINALIZER(NGShapeCache, Dispose);
 
  public:
-  static constexpr unsigned kMaxTextLengthOfEntries = 30;
-  static constexpr unsigned kMaxSize = 2048;
+  static constexpr wtf_size_t kMaxTextLengthOfEntries = 30;
+  static constexpr wtf_size_t kMaxSize = 2048;
 
   explicit NGShapeCache(const SimpleFontData* primary_font)
       : primary_font_(primary_font) {
@@ -191,8 +191,8 @@ class NGShapeCache : public GarbageCollected<NGShapeCache>,
   static constexpr base::MemoryConsumerTraits kNGShapeCacheTraits{
       // Bounded entries of short strings; footprint under 10MB.
       base::MemoryConsumerTraits::EstimatedMemoryUsage::kSmall,
-      // Clearing maps requires traversing hash map structures.
-      base::MemoryConsumerTraits::ReleaseMemoryCost::kRequiresTraversal,
+      // Clearing the maps reads the entries being freed.
+      base::MemoryConsumerTraits::ReleaseMemoryDataAccess::kReads,
       // Results can be shaped again if cleared.
       base::MemoryConsumerTraits::InformationRetention::kLossless,
       // Synchronously clears maps.
@@ -229,7 +229,7 @@ class NGShapeCache : public GarbageCollected<NGShapeCache>,
       const bool has_private_or_non_characters =
           !key.GetText().Is8Bit() &&
           std::ranges::any_of(key.GetText().Span16(), [](UChar32 c) {
-            return Character::IsPrivateUse(c) || Character::IsNonCharacter(c);
+            return unicode::IsPrivateUse(c) || unicode::IsNonCharacter(c);
           });
       // The shape-result call might try and reuse previous shape-results, we
       // can't check for equality in this case.

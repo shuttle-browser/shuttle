@@ -24,9 +24,10 @@
 
 class MetricsReporter;
 class OmniboxController;
+class Profile;
 
 namespace content {
-class WebUI;
+class WebContents;
 }  // namespace content
 
 // Handles bidirectional communication between NTP realbox JS and the browser.
@@ -47,10 +48,11 @@ class WebuiOmniboxHandler : public SearchboxHandler,
   ~WebuiOmniboxHandler() override;
 
   // searchbox::mojom::PageHandler:
-  void ActivateKeyword(uint8_t line,
-                       const GURL& url,
-                       base::TimeTicks match_selection_timestamp,
-                       bool is_mouse_event) override;
+  void ActivateKeyword(
+      uint8_t line,
+      const GURL& url,
+      base::TimeTicks match_selection_timestamp,
+      searchbox::mojom::KeywordActivationMethod activation_method) override;
   void OnThumbnailRemoved() override {}
   // Queries autocomplete matches from the browser:
   // - When the WebUI Omnibox full popup is enabled:

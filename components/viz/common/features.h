@@ -22,6 +22,9 @@ namespace features {
 #if BUILDFLAG(IS_ANDROID)
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kAndroidDumpForBadCompositedUiState);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kAndroidSurfaceControlHdrOverlays);
+// Controls whether Android window occlusion state is propagated from the
+// browser client compositor to Viz display visibility.
+VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kPropagateOcclusionToVizAndroid);
 #endif  // BUILDFLAG(IS_ANDROID)
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kBufferQueuePerRenderPass);
 
@@ -117,6 +120,7 @@ VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kEnableADPFSeparateRendererMainSession);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kEnableADPFWorkloadReset);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kEnableADPFScrollNoRendererMain);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kEnableADPFAsyncSetThreads);
+VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kEnableADPFPendingRendererMain);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kSelectFutureFrameDeadline);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kAllowMultipleSwapsPerVsync);
 
@@ -157,6 +161,8 @@ VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kVizNullHypothesis);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kCrosContentAdjustedRefreshRate);
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
+VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kSkipDisabledGLContextOnDrDC);
+
 VIZ_COMMON_EXPORT extern const char kDraw1Point12Ms[];
 VIZ_COMMON_EXPORT extern const char kDraw2Points6Ms[];
 VIZ_COMMON_EXPORT extern const char kDraw1Point6Ms[];
@@ -175,13 +181,24 @@ VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kNoLateBeginFrames);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kNoCompositorFrameAcks);
 VIZ_COMMON_EXPORT extern const base::FeatureParam<int>
     kNumberPendingFramesUntilThrottle;
+// Kill switch. When enabled, a client isn't throttled for undrawn frames while
+// an embedder's active frame references a surface of that client that its
+// latest active surface doesn't cover.
+// TODO(crbug.com/40893974): Remove once this has shipped to stable.
+VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(
+    kNoUndrawnFrameThrottleWhileEmbedderWaits);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kDisplaySchedulerAsClient);
 
-VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kRpdqFilterLookupOptimizations);
+VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kRenderPassBackingLogicalBounds);
 
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kBypassOutdatedSurfaceActivation);
 
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kRenderNonMergedSurfaceAtBackingScale);
+
+VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kSoftwareReadbackIntoBlitDestination);
+
+VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(
+    kUseSrcOverForFirstQuadInTransparentPass);
 
 VIZ_COMMON_EXPORT int DrawQuadSplitLimit();
 VIZ_COMMON_EXPORT bool IsRenderPassDrawQuadCullingOptimizationEnabled();

@@ -74,8 +74,8 @@ def _ValidateSwarmingDimension(builder_name, swarming_dimensions):
         raise ValueError('Invalid perf pool %s in %s' % (v, builder_name))
       if k == 'os' and v == 'Android':
         if (
-          not 'device_type' in dimension.keys()
-          or not 'device_os_flavor' in dimension.keys()
+          'device_type' not in dimension.keys()
+          or 'device_os_flavor' not in dimension.keys()
         ):
           raise ValueError(
             'Invalid android dimensions %s in %s' % (v, builder_name)
@@ -205,13 +205,12 @@ def ValidatePerfConfigFile(file_handle, is_main_perf_waterfall):
       continue
     if _IsTestingBuilder(builder_name=key, builder_data=value):
       ValidateTestingBuilder(builder_name=key, builder_data=value)
-      try:
-        trigger_script = value['isolated_scripts'][-1]['trigger_script'][
-          'script'
-        ]
-      except KeyError:
-        continue
-      if trigger_script == '//testing/trigger_scripts/perf_device_trigger.py':
+      last_test = value['isolated_scripts'][-1]
+      trigger_script = last_test.get('trigger_script', {}).get('script')
+      if (
+        trigger_script == '//testing/trigger_scripts/perf_device_trigger.py'
+        or last_test.get('test') in _PERFORMANCE_TEST_SUITES
+      ):
         perf_testing_builder_names.add(key)
   if (
     is_main_perf_waterfall

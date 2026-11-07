@@ -172,8 +172,6 @@ ADDITIONAL_PATHS_FILENAME = 'additional_readme_paths.json'
 ADDITIONAL_PATHS = (
   os.path.join('chrome', 'test', 'chromeos', 'autotest'),
   os.path.join('chrome', 'test', 'data'),
-  os.path.join('native_client'),
-  os.path.join('third_party', 'android_deps', 'autorolled'),
   os.path.join('third_party', 'boringssl', 'src', 'third_party', 'fiat'),
   os.path.join(
     'third_party', 'devtools-frontend', 'src', 'front_end', 'third_party'
@@ -198,24 +196,11 @@ ADDITIONAL_PATHS = (
 # any metadata files with errors and if you encounter a parsing issue,
 # please file a bug.
 SPECIAL_CASES = {
-  os.path.join('native_client'): {
-    "Name": "native client",
-    "URL": "https://code.google.com/p/nativeclient",
-    "Shipped": "yes",
-    "License": "BSD",
-    "License File": ["//native_client/LICENSE"],
-  },
-  os.path.join('third_party', 'angle'): {
-    "Name": "Almost Native Graphics Layer Engine",
-    "URL": "https://chromium.googlesource.com/angle/angle/",
-    "Shipped": "yes",
-    "License": "BSD",
-  },
   os.path.join('third_party', 'cros_system_api'): {
     "Name": "Chromium OS system API",
     "URL": "https://www.chromium.org/chromium-os",
     "Shipped": "yes",
-    "License": "BSD",
+    "License": "BSD-3-Clause",
     # Absolute path here is resolved as relative to the source root.
     "License File": ["//LICENSE.chromium_os"],
   },
@@ -223,21 +208,21 @@ SPECIAL_CASES = {
     "Name": "ipcz",
     "URL": ("https://chromium.googlesource.com/chromium/src/third_party/ipcz"),
     "Shipped": "yes",
-    "License": "BSD",
+    "License": "BSD-3-Clause",
     "License File": ["//third_party/ipcz/LICENSE"],
   },
   os.path.join('third_party', 'lss'): {
     "Name": "linux-syscall-support",
     "URL": "https://chromium.googlesource.com/linux-syscall-support/",
     "Shipped": "yes",
-    "License": "BSD",
+    "License": "BSD-3-Clause",
     "License File": ["//third_party/lss/LICENSE"],
   },
   os.path.join('third_party', 'openscreen', 'src', 'third_party', 'abseil'): {
     "Name": "abseil",
     "URL": "https://github.com/abseil/abseil-cpp/",
     "Shipped": "yes",
-    "License": "Apache 2.0",
+    "License": "Apache-2.0",
     "License File": ["//third_party/abseil-cpp/LICENSE"],
   },
   os.path.join(
@@ -246,7 +231,7 @@ SPECIAL_CASES = {
     "Name": "BoringSSL",
     "URL": "https://boringssl.googlesource.com/boringssl/",
     "Shipped": "yes",
-    "License": "BSDish",
+    "License": "Apache-2.0, BSD-3-Clause",
     "License File": ["//third_party/boringssl/src/LICENSE"],
   },
   os.path.join('third_party', 'openscreen', 'src', 'third_party', 'jsoncpp'): {
@@ -256,47 +241,11 @@ SPECIAL_CASES = {
     "License": "MIT",
     "License File": ["//third_party/jsoncpp/LICENSE"],
   },
-  os.path.join('third_party', 'openscreen', 'src', 'third_party', 'mozilla'): {
-    "Name": "mozilla",
-    "URL": "https://github.com/mozilla",
-    "Shipped": "yes",
-    "License": "MPL 1.1/GPL 2.0/LGPL 2.1",
-    "License File": ["LICENSE.txt"],
-  },
   os.path.join('third_party', 'pdfium'): {
     "Name": "PDFium",
     "URL": "https://pdfium.googlesource.com/pdfium/",
     "Shipped": "yes",
-    "License": "BSD",
-  },
-  os.path.join('third_party', 'ppapi'): {
-    "Name": "ppapi",
-    "URL": "https://code.google.com/p/ppapi/",
-    "Shipped": "yes",
-  },
-  os.path.join(
-    'third_party', 'crashpad', 'crashpad', 'third_party', 'getopt'
-  ): {
-    "Name": "getopt",
-    "URL": "https://sourceware.org/ml/newlib/2005/msg00758.html",
-    "Shipped": "yes",
-    "License": "Public domain",
-    "License File": [
-      "//third_party/crashpad/crashpad/third_party/getopt/LICENSE",
-    ],
-  },
-  os.path.join('third_party', 'crashpad', 'crashpad', 'third_party', 'xnu'): {
-    "Name": "xnu",
-    "URL": "https://opensource.apple.com/source/xnu/",
-    "Shipped": "yes",
-    "License": "Apple Public Source License 2.0",
-    "License File": ["APPLE_LICENSE"],
-  },
-  os.path.join('third_party', 'v8-i18n'): {
-    "Name": "Internationalization Library for v8",
-    "URL": "https://code.google.com/p/v8-i18n/",
-    "Shipped": "yes",
-    "License": "Apache 2.0",
+    "License": "Apache-2.0, BSD-3-Clause",
   },
   os.path.join('third_party', 'blink'): {
     # about:credits doesn't show "Blink" but "WebKit".
@@ -306,7 +255,7 @@ SPECIAL_CASES = {
     "Name": "WebKit",
     "URL": "https://webkit.org/",
     "Shipped": "yes",
-    "License": "BSD and LGPL v2 and LGPL v2.1",
+    "License": "BSD-2-Clause, BSD-3-Clause, LGPL-2.0, LGPL-2.1",
     # Absolute path here is resolved as relative to the source root.
     "License File": ["//third_party/blink/LICENSE_FOR_ABOUT_CREDITS"],
   },
@@ -314,13 +263,13 @@ SPECIAL_CASES = {
     "Name": "V8 JavaScript Engine",
     "URL": "https://v8.dev/",
     "Shipped": "yes",
-    "License": "BSD",
+    "License": "BSD-3-Clause",
   },
   os.path.join('v8', 'strongtalk'): {
     "Name": "Strongtalk",
     "URL": "https://www.strongtalk.org/",
     "Shipped": "yes",
-    "License": "BSD",
+    "License": "BSD-3-Clause",
     # Absolute path here is resolved as relative to the source root.
     "License File": ["//v8/LICENSE.strongtalk"],
   },
@@ -328,7 +277,7 @@ SPECIAL_CASES = {
     "Name": "fdlibm",
     "URL": "https://www.netlib.org/fdlibm/",
     "Shipped": "yes",
-    "License": "Freely Distributable",
+    "License": "SunPro",
     # Absolute path here is resolved as relative to the source root.
     "License File": ["//v8/LICENSE.fdlibm"],
     "License Android Compatible": "yes",
@@ -337,7 +286,7 @@ SPECIAL_CASES = {
     "Name": "SwiftShader",
     "URL": "https://swiftshader.googlesource.com/SwiftShader",
     "Shipped": "yes",
-    "License": "Apache 2.0 and compatible licenses",
+    "License": "Apache-2.0",
     "License Android Compatible": "yes",
     "License File": ["//third_party/swiftshader/LICENSE.txt"],
   },
@@ -345,7 +294,7 @@ SPECIAL_CASES = {
     "Name": "SPIRV-Tools",
     "URL": "https://github.com/KhronosGroup/SPIRV-Tools",
     "Shipped": "yes",
-    "License": "Apache 2.0",
+    "License": "Apache-2.0",
     "License File": [
       "//third_party/swiftshader/third_party/SPIRV-Tools/LICENSE",
     ],
@@ -354,24 +303,17 @@ SPECIAL_CASES = {
     "Name": "SPIRV-Headers",
     "URL": "https://github.com/KhronosGroup/SPIRV-Headers",
     "Shipped": "yes",
-    "License": "Apache 2.0",
+    "License": "Khronos, MIT, CC-BY-4.0",
     "License File": [
       "//third_party/swiftshader/third_party/SPIRV-Headers/LICENSE",
     ],
-  },
-  os.path.join('third_party', 'dawn', 'third_party', 'khronos'): {
-    "Name": "khronos_platform",
-    "URL": "https://registry.khronos.org/EGL/",
-    "Shipped": "yes",
-    "License": "Apache 2.0",
-    "License File": ["//third_party/dawn/third_party/khronos/LICENSE"],
   },
   # This entry is for the integration tests.
   os.path.join('third_party', 'sample3'): {
     "Name": "Sample 3",
     "URL": "https://sample3",
     "Shipped": "yes",
-    "License": "Apache 2.0",
+    "License": "Apache-2.0",
     "License File": ["//third_party/sample3/the_license"],
   },
 }
@@ -459,7 +401,6 @@ KNOWN_NON_IOS_LIBRARIES = set(
     os.path.join('third_party', 'iaccessible2'),
     os.path.join('third_party', 'isimpledom'),
     os.path.join('third_party', 'jsoncpp'),
-    os.path.join('third_party', 'khronos'),
     os.path.join('third_party', 'libcxx', 'libc++'),
     os.path.join('third_party', 'libcxx', 'libc++abi'),
     os.path.join('third_party', 'libevent'),
@@ -474,7 +415,6 @@ KNOWN_NON_IOS_LIBRARIES = set(
     os.path.join('third_party', 'npapi'),
     os.path.join('third_party', 'ots'),
     os.path.join('third_party', 'perfetto'),
-    os.path.join('third_party', 'ppapi'),
     os.path.join('third_party', 're2'),
     os.path.join('third_party', 'safe_browsing'),
     os.path.join('third_party', 'smhasher'),
@@ -482,7 +422,6 @@ KNOWN_NON_IOS_LIBRARIES = set(
     os.path.join('third_party', 'swig'),
     os.path.join('third_party', 'talloc'),
     os.path.join('third_party', 'usb_ids'),
-    os.path.join('third_party', 'v8-i18n'),
     os.path.join('third_party', 'wtl'),
     os.path.join('third_party', 'yasm'),
     os.path.join('v8', 'strongtalk'),
@@ -1441,6 +1380,7 @@ def GenerateLicenseFileCsv(
         readme_dir,
         is_open_source_project=is_open_source,
         android_compatible=m.get("License Android Compatible"),
+        is_shipped=(m.get("Shipped", "yes").lower() == "yes"),
       )
     except Exception as e:
       logging.warning(

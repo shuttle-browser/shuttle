@@ -80,11 +80,7 @@ ComputeInterstitialState(content::WebContents* web_contents, const GURL& url) {
   if (base::FeatureList::IsEnabled(features::kHttpsFirstModeIncognito) &&
       profile->IsPrimaryOTRProfileWithRegularParent() && prefs &&
       prefs->GetBoolean(prefs::kHttpsFirstModeIncognito)) {
-    if (profile->IsEnterpriseIsolatedModeProfile()) {
-      interstitial_state.enabled_by_isolated_mode = true;
-    } else {
-      interstitial_state.enabled_by_incognito = true;
-    }
+    interstitial_state.enabled_by_incognito = true;
   }
 
   StatefulSSLHostStateDelegate* state =

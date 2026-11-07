@@ -27,9 +27,6 @@
 #include "ui/message_center/public/cpp/notification.h"
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-#if BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/enterprise/reporting/extension_request/extension_request_notification_handler_android.h"
-#endif
 #include "chrome/browser/extensions/api/notifications/extension_notification_handler.h"
 #endif
 
@@ -41,9 +38,6 @@
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/notifications/muted_notification_handler.h"
 #include "chrome/browser/notifications/screen_capture_notification_blocker.h"
-#endif
-
-#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #endif
 
 // static
@@ -75,12 +69,6 @@ NotificationDisplayServiceImpl::NotificationDisplayServiceImpl(Profile* profile)
     AddNotificationHandler(
         NotificationHandler::Type::EXTENSION,
         std::make_unique<extensions::ExtensionNotificationHandler>());
-#if BUILDFLAG(IS_ANDROID)
-    AddNotificationHandler(
-        NotificationHandler::Type::EXTENSION_REQUEST,
-        std::make_unique<
-            enterprise_reporting::ExtensionRequestNotificationHandler>());
-#endif
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -128,7 +116,7 @@ void NotificationDisplayServiceImpl::ProcessNotificationOperation(
     const std::optional<bool>& is_suspicious,
     base::OnceClosure on_completed_cb) {
   NotificationHandler* handler = GetNotificationHandler(notification_type);
-  DCHECK(handler);
+  CHECK(handler, base::NotFatalUntil::M161);
   if (!handler) {
     LOG(ERROR) << "Unable to find a handler for "
                << static_cast<int>(notification_type);
@@ -142,7 +130,7 @@ void NotificationDisplayServiceImpl::ProcessNotificationOperation(
                        std::move(on_completed_cb));
       break;
     case NotificationOperation::kClose:
-      DCHECK(by_user.has_value());
+      CHECK(by_user.has_value(), base::NotFatalUntil::M161);
       handler->OnClose(profile_, origin, notification_id, by_user.value(),
                        std::move(on_completed_cb));
       for (auto& observer : observers_)
@@ -175,8 +163,9 @@ void NotificationDisplayServiceImpl::ProcessNotificationOperation(
 void NotificationDisplayServiceImpl::AddNotificationHandler(
     NotificationHandler::Type notification_type,
     std::unique_ptr<NotificationHandler> handler) {
-  DCHECK(handler);
-  DCHECK_EQ(notification_handlers_.count(notification_type), 0u);
+  CHECK(handler, base::NotFatalUntil::M161);
+  CHECK_EQ(notification_handlers_.count(notification_type), 0u,
+           base::NotFatalUntil::M161);
   notification_handlers_[notification_type] = std::move(handler);
 }
 
@@ -199,7 +188,7 @@ void NotificationDisplayServiceImpl::Display(
   // TODO(estade): in the future, the reverse should also be true: a
   // non-TRANSIENT type implies no delegate.
   if (notification_type == NotificationHandler::Type::TRANSIENT)
-    DCHECK(notification.delegate());
+    CHECK(notification.delegate(), base::NotFatalUntil::M161);
 
   CHECK(profile_ || notification_type == NotificationHandler::Type::TRANSIENT);
 
@@ -326,13 +315,14 @@ void NotificationDisplayServiceImpl::
 void NotificationDisplayServiceImpl::OverrideNotificationHandlerForTesting(
     NotificationHandler::Type notification_type,
     std::unique_ptr<NotificationHandler> handler) {
-  DCHECK(handler);
-  DCHECK_EQ(1u, notification_handlers_.count(notification_type));
+  CHECK(handler, base::NotFatalUntil::M161);
+  CHECK_EQ(1u, notification_handlers_.count(notification_type),
+           base::NotFatalUntil::M161);
   notification_handlers_[notification_type] = std::move(handler);
 }
 
 void NotificationDisplayServiceImpl::OnNotificationPlatformBridgeReady() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   bridge_delegator_initialized_ = true;
 
   // Flush any pending actions that have yet to execute.
@@ -347,7 +337,7 @@ void NotificationDisplayServiceImpl::OnGetDisplayed(
     DisplayedNotificationsCallback callback,
     std::set<std::string> notification_ids,
     bool supports_synchronization) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   std::set<std::string> queued =
       origin.has_value()

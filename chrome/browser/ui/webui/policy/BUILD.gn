@@ -19,7 +19,6 @@ source_set("policy") {
     "//chrome/browser:browser_process_platform_part",
     "//chrome/browser/download",
     "//chrome/browser/enterprise",
-    "//chrome/browser/enterprise:browser_launch_reporting",
     "//chrome/browser/lifetime",
     "//chrome/browser/policy",
     "//chrome/browser/profiles:profile",
@@ -28,7 +27,6 @@ source_set("policy") {
     "//chrome/common",
     "//components/crx_file",
     "//components/embedder_support:user_agent",
-    "//components/enterprise/browser/promotion",
     "//components/policy/core/browser",
     "//components/policy/core/common",
     "//components/policy/resources/webui:resources",
@@ -68,14 +66,12 @@ if (is_android) {
     ]
     deps = [
       ":policy",
-      "//chrome/browser/enterprise:browser_launch_reporting",
       "//chrome/browser/lifetime",
       "//chrome/browser/policy",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/ui:ui_features",
       "//chrome/test:test_support",
       "//components/policy/core/common",
-      "//components/policy/test_support",
       "//content/test:test_support",
       "//testing/gtest",
     ]

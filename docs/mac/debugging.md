@@ -248,7 +248,7 @@ To launch Chromium via launch services, use the `open(1)` command:
 
 To pass command line arguments:
 
-    open ./out/debug/Chromium.app -- --enable-features=MyCoolFeature
+    open ./out/debug/Chromium.app --args --enable-features=MyCoolFeature
 
 ## Taking CPU Samples
 
@@ -315,7 +315,7 @@ Yes, you need to run this for both the normal user and the admin user.
 
 If you get a Google Chrome crash report caught by ReportCrash/macOS, it will not
 have symbols (every frame will be ChromeMain). To get a symbolized stack trace,
-use the internal [crsym](httsp://goto.google.com/crsym) tool by simply pasting
+use the internal [crsym](https://goto.google.com/crsym) tool by simply pasting
 the contents of an entire Apple crash report.
 
 ## Testing Other Locales

@@ -4,7 +4,9 @@
 
 #include "partition_alloc/scheduler_loop_quarantine.h"
 
+#include <algorithm>
 #include <atomic>
+#include <optional>
 
 #include "partition_alloc/buildflags.h"
 #include "partition_alloc/internal/partition_root_internal.h"
@@ -13,6 +15,7 @@
 #include "partition_alloc/partition_alloc_base/compiler_specific.h"
 #include "partition_alloc/partition_alloc_base/threading/platform_thread.h"
 #include "partition_alloc/partition_alloc_check.h"
+#include "partition_alloc/partition_alloc_public_constants.h"
 #include "partition_alloc/partition_page.h"
 #include "partition_alloc/scheduler_loop_quarantine_support.h"
 #include "partition_alloc/slot_start.h"
@@ -120,13 +123,13 @@ BatchFreeQueue<QuarantineTarget::kSanitizedObjects>::Purge() {
 #if PA_BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT)
     if (root_->brp_enabled()) {
       auto* metadata =
-          InSlotMetadata::From({entry.slot_start, size_details.slot_size});
+          InSlotMetadata::From({entry.slot_start, size_details.slot_size()});
       if (metadata->IsAlive()) {
         // Since `FreeNoHooksImmediateInternal()` checks double-free, see if
         // the object is still alive.
         root_->FreeNoHooksImmediateInternal<
             FreeFlags::kSchedulerLoopQuarantine | FreeFlags::kNoHooks>(
-            entry.slot_start.Tag(), entry.slot_span, {}, size_details);
+            entry.slot_start.Tag(), entry.slot_span, size_details);
       } else {
         // We will check whether the object's refcount is equal to zero or not.
         // If the refcount is equal to zero, provide the object for miracle
@@ -152,6 +155,67 @@ BatchFreeQueue<QuarantineTarget::kSanitizedObjects>::Purge() {
 #endif
   } while (size_);
 }
+
+namespace {
+
+// Releases a single dequarantined slot for `PurgeInternal()`: into the thread
+// cache if it takes it, otherwise batched in `queue`.
+//
+// `queue` amortizes the root lock over `kQueueSize` slots and is constructed
+// lazily on first use.
+// `tcache` is the cache owning this branch, and is null unless `thread_bound`.
+template <bool thread_bound, QuarantineTarget quarantine_target>
+PA_ALWAYS_INLINE void ReleaseDequarantinedSlot(
+    PartitionRoot* root,
+    UntaggedSlotStart slot_start,
+    size_t bucket_index,
+    size_t slot_size,
+    std::optional<BatchFreeQueue<quarantine_target>>& queue,
+    ThreadCache* tcache) {
+#if PA_BUILDFLAG(HAS_MEMORY_TAGGING)
+  root->RetagSlotIfNeeded(slot_start, slot_size);
+#endif
+  if constexpr (!thread_bound) {
+    // Assuming that ThreadCache is not available as this is not thread-bound.
+    // Going to `RawFree()` directly.
+    if (!queue.has_value()) {
+      queue.emplace(root);
+    }
+    queue->Queue(slot_start);
+    return;
+  } else {
+    std::optional<size_t> slot_size_opt =
+        tcache->MaybePutInCache(slot_start, bucket_index);
+
+    if (slot_size_opt.has_value()) [[likely]] {
+      PA_DCHECK(slot_size_opt.value() == slot_size);
+      // This is a fast path, avoid calling GetSlotUsableSize() in Release
+      // builds as it is costlier. Copy its small bucket path instead.
+      const size_t usable_size =
+          root->AdjustSizeForExtrasSubtract(slot_size_opt.value());
+
+#if PA_BUILDFLAG(DCHECKS_ARE_ON)
+      auto* slot_span = SlotSpanMetadata::FromSlotStart(slot_start, root);
+      PA_DCHECK(!slot_span->CanStoreRawSize());
+      PA_DCHECK(usable_size == root->GetSlotUsableSize(slot_span));
+#endif
+      tcache->RecordDeallocation(usable_size);
+      // Now ThreadCache is responsible for freeing the allocation.
+      return;
+    }
+
+    // ThreadCache refused to take ownership of the allocation, hence we free
+    // it.
+    const size_t usable_size = root->AdjustSizeForExtrasSubtract(slot_size);
+    tcache->RecordDeallocation(usable_size);
+    if (!queue.has_value()) {
+      queue.emplace(root);
+    }
+    queue->Queue(slot_start);
+  }
+}
+
+}  // namespace
 
 template <bool thread_bound, QuarantineTarget quarantine_target>
 SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::
@@ -188,7 +252,6 @@ void SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::Configure(
   }
 
   ScopedGuardIfNeeded<kThreadBound> guard(lock_);
-  config_for_testing_ = config;
 
   if (enable_quarantine_) {
     // Already enabled, explicitly purging an existing instance.
@@ -201,6 +264,8 @@ void SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::Configure(
   enable_quarantine_ = config.enable_quarantine;
   enable_zapping_ = config.enable_zapping;
   leak_on_destruction_ = config.leak_on_destruction;
+  purge_headroom_percent_ = static_cast<uint8_t>(
+      std::min(config.purge_headroom_percent, kMaxPurgeHeadroomPercent));
   bool old_pause_in_between_tasks = pause_in_between_tasks_;
   bool old_exclude_non_ipc_tasks = exclude_non_ipc_tasks_;
   bool old_purge_control_enabled = enable_task_controlled_purge_ ||
@@ -272,15 +337,15 @@ bool SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::
 
 template <bool thread_bound, QuarantineTarget quarantine_target>
 bool SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::
-    IsQuarantineTarget(const internal::BucketSizeDetails& size_details) const {
+    IsQuarantineTarget(internal::BucketSizeDetails size_details) const {
   if (!enable_quarantine_ || pause_quarantine_) [[unlikely]] {
     return false;
   }
-  if (size_details.slot_size > BucketIndexLookup::kMaxBucketSize ||
-      largest_bucket_index_ < size_details.bucket_index) [[unlikely]] {
+  if (size_details.slot_size() > BucketIndexLookup::kMaxBucketSize ||
+      largest_bucket_index_ < size_details.bucket_index()) [[unlikely]] {
     return false;
   }
-  const size_t slot_size = size_details.slot_size;
+  const size_t slot_size = size_details.slot_size();
   const size_t capacity_in_bytes =
       branch_capacity_in_bytes_.load(std::memory_order_relaxed);
   if (capacity_in_bytes < slot_size) [[unlikely]] {
@@ -317,7 +382,7 @@ template <bool thread_bound, QuarantineTarget quarantine_target>
 void SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::Quarantine(
     SlotStart slot_start,
     SlotSpanMetadata* slot_span,
-    const internal::BucketSizeDetails& size_details) {
+    internal::BucketSizeDetails size_details) {
 #if PA_BUILDFLAG(DCHECKS_ARE_ON)
   PA_DCHECK(!being_destructed_);
 #endif  // PA_BUILDFLAG(DCHECKS_ARE_ON)
@@ -325,8 +390,8 @@ void SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::Quarantine(
     return allocator_root_->RawFreeWithThreadCache(slot_start, size_details,
                                                    slot_span);
   }
-  if (size_details.slot_size > BucketIndexLookup::kMaxBucketSize ||
-      largest_bucket_index_ < size_details.bucket_index) [[unlikely]] {
+  if (size_details.slot_size() > BucketIndexLookup::kMaxBucketSize ||
+      largest_bucket_index_ < size_details.bucket_index()) [[unlikely]] {
     // The allocation is direct-mapped or larger than `largest_bucket_index_`.
     return allocator_root_->RawFreeWithThreadCache(slot_start, size_details,
                                                    slot_span);
@@ -337,7 +402,7 @@ void SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::Quarantine(
       slot_span->bucket <=
           PA_UNSAFE_TODO(&allocator_root_->buckets_[largest_bucket_index_]));
 
-  const size_t slot_size = size_details.slot_size;
+  const size_t slot_size = size_details.slot_size();
   const size_t capacity_in_bytes =
       branch_capacity_in_bytes_.load(std::memory_order_relaxed);
   if (capacity_in_bytes < slot_size) [[unlikely]] {
@@ -352,13 +417,21 @@ void SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::Quarantine(
   ScopedGuardIfNeeded<kThreadBound> guard(lock_);
 
   // Dequarantine some entries as required.
-  PurgeInternal(capacity_in_bytes - slot_size);
+  size_t target_size_in_bytes = capacity_in_bytes - slot_size;
+  if (purge_headroom_percent_ && branch_size_in_bytes_ > target_size_in_bytes) {
+    // The branch is full: make room for subsequent entries as well, so that
+    // the next quarantined entries don't each need to dequarantine entries.
+    const size_t headroom_in_bytes =
+        capacity_in_bytes / 100 * purge_headroom_percent_;
+    target_size_in_bytes -= std::min(target_size_in_bytes, headroom_in_bytes);
+  }
+  PurgeInternal(target_size_in_bytes);
 
   // Put the entry onto the list.
   branch_size_in_bytes_ += slot_size;
   slots_.push_back({
       .slot_start = slot_start,
-      .bucket_index = size_details.bucket_index,
+      .bucket_index = size_details.bucket_index(),
   });
 
   // Swap randomly so that the quarantine list remain shuffled.
@@ -366,12 +439,13 @@ void SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::Quarantine(
   const size_t random_index = random_.RandUint32() % slots_.size();
   std::swap(slots_[random_index], slots_.back());
 
-  // Update stats (not locked).
-  root_->count_.fetch_add(1, std::memory_order_relaxed);
-  root_->size_in_bytes_.fetch_add(slot_size, std::memory_order_relaxed);
-  root_->cumulative_count_.fetch_add(1, std::memory_order_relaxed);
-  root_->cumulative_size_in_bytes_.fetch_add(slot_size,
-                                             std::memory_order_relaxed);
+  // Update stats.
+  ++unpublished_stats_.quarantined_count;
+  unpublished_stats_.quarantined_size_in_bytes += slot_size;
+  if (unpublished_stats_.quarantined_count >= kMaxUnpublishedCount)
+      [[unlikely]] {
+    PublishStats();
+  }
 
   if (enable_zapping_) {
     internal::SecureMemset(
@@ -389,10 +463,24 @@ SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::PurgeInternal(
     return;
   }
 
-  int64_t freed_count = 0;
-  int64_t freed_size_in_bytes = 0;
+  // This is the common case when called from `Quarantine()` while the branch
+  // is not full, or at the end of a task that didn't quarantine anything.
+  if (branch_size_in_bytes_ <= target_size_in_bytes) {
+    // A full purge (e.g. at the end of a task) is a good time to publish stats.
+    if (target_size_in_bytes == 0) {
+      PublishStats();
+    }
+    return;
+  }
 
-  BatchFreeQueue<quarantine_target> queue(allocator_root_);
+  size_t freed_count = 0;
+  size_t freed_size_in_bytes = 0;
+
+  // Only needed for entries that the thread cache doesn't take: all entries of
+  // a global branch, and entries larger than the thread cache's size limit for
+  // a thread-bound branch. Constructed lazily, as constructing it
+  // zero-initializes its storage.
+  std::optional<BatchFreeQueue<quarantine_target>> queue;
 
   // Dequarantine some entries as required.
   while (target_size_in_bytes < branch_size_in_bytes_) {
@@ -402,19 +490,18 @@ SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::PurgeInternal(
     // to picking random entry.
     SlotStart slot_start = slots_.back().slot_start;
     const size_t bucket_index = slots_.back().bucket_index;
-    size_t slot_size = 0;
+    const size_t slot_size = BucketIndexLookup::GetBucketSize(bucket_index);
 
-#if PA_BUILDFLAG(HAS_MEMORY_TAGGING)
-    allocator_root_->RetagSlotIfNeeded(
-        slot_start.Untag(), BucketIndexLookup::GetBucketSize(bucket_index));
-    slot_start = slot_start.Untag().Tag();
-#endif
-    if constexpr (!kThreadBound) {
-      // Assuming that ThreadCache is not available as this is not thread-bound.
-      // Going to `RawFree()` directly.
-      slot_size = BucketIndexLookup::GetBucketSize(bucket_index);
-      queue.Queue(slot_start.Untag());
-    } else {
+    // Take the entry off the list before releasing it, so that anything the
+    // release runs that re-enters `PurgeInternal()` finds neither this entry
+    // nor its bytes.
+    slots_.pop_back();
+    ++freed_count;
+    PA_DCHECK(slot_size > 0);
+    freed_size_in_bytes += slot_size;
+    branch_size_in_bytes_ -= slot_size;
+
+    if constexpr (kThreadBound) {
       // Unless during its destruction, we can assume ThreadCache is valid
       // because this branch is embedded inside ThreadCache.
 #if PA_BUILDFLAG(DCHECKS_ARE_ON)
@@ -423,47 +510,47 @@ SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::PurgeInternal(
       PA_DCHECK(being_destructed_ ||
                 allocator_root_->GetThreadCache() == tcache_);
 #endif  // PA_BUILDFLAG(DCHECKS_ARE_ON)
-
-      std::optional<size_t> slot_size_opt =
-          tcache_->MaybePutInCache(slot_start.Untag(), bucket_index);
-
-      if (slot_size_opt.has_value()) [[likely]] {
-        slot_size = slot_size_opt.value();
-        // This is a fast path, avoid calling GetSlotUsableSize() in Release
-        // builds as it is costlier. Copy its small bucket path instead.
-        const size_t usable_size =
-            allocator_root_->AdjustSizeForExtrasSubtract(slot_size);
-
-#if PA_BUILDFLAG(DCHECKS_ARE_ON)
-        auto* slot_span = SlotSpanMetadata::FromSlotStart(slot_start.Untag(),
-                                                          allocator_root_);
-        PA_DCHECK(!slot_span->CanStoreRawSize());
-        PA_DCHECK(usable_size == allocator_root_->GetSlotUsableSize(slot_span));
-#endif
-        tcache_->RecordDeallocation(usable_size);
-        // Now ThreadCache is responsible for freeing the allocation.
-      } else {
-        // ThreadCache refused to take ownership of the allocation, hence we
-        // free it.
-        slot_size = BucketIndexLookup::GetBucketSize(bucket_index);
-        const size_t usable_size =
-            allocator_root_->AdjustSizeForExtrasSubtract(slot_size);
-        tcache_->RecordDeallocation(usable_size);
-        queue.Queue(slot_start.Untag());
-      }
     }
 
-    ++freed_count;
-    PA_DCHECK(slot_size > 0);
-    freed_size_in_bytes += slot_size;
-    branch_size_in_bytes_ -= slot_size;
-
-    slots_.pop_back();
+    ReleaseDequarantinedSlot<kThreadBound, quarantine_target>(
+        allocator_root_, slot_start.Untag(), bucket_index, slot_size, queue,
+        tcache_);
   }
 
-  root_->size_in_bytes_.fetch_sub(freed_size_in_bytes,
-                                  std::memory_order_relaxed);
-  root_->count_.fetch_sub(freed_count, std::memory_order_relaxed);
+  unpublished_stats_.dequarantined_count += freed_count;
+  unpublished_stats_.dequarantined_size_in_bytes += freed_size_in_bytes;
+  if (target_size_in_bytes == 0) {
+    PublishStats();
+  }
+}
+
+template <bool thread_bound, QuarantineTarget quarantine_target>
+void SchedulerLoopQuarantineBranch<thread_bound,
+                                   quarantine_target>::PublishStats() {
+  UnpublishedStats& stats = unpublished_stats_;
+  if (!stats.quarantined_count && !stats.dequarantined_count) {
+    return;
+  }
+  // The difference wraps around if more entries were dequarantined than
+  // quarantined since the last publication, which is fine: unsigned arithmetic
+  // is modular, and the final values are non-negative.
+  root_->count_.fetch_add(stats.quarantined_count - stats.dequarantined_count,
+                          std::memory_order_relaxed);
+  root_->size_in_bytes_.fetch_add(
+      stats.quarantined_size_in_bytes - stats.dequarantined_size_in_bytes,
+      std::memory_order_relaxed);
+  root_->cumulative_count_.fetch_add(stats.quarantined_count,
+                                     std::memory_order_relaxed);
+  root_->cumulative_size_in_bytes_.fetch_add(stats.quarantined_size_in_bytes,
+                                             std::memory_order_relaxed);
+  stats = UnpublishedStats();
+}
+
+template <bool thread_bound, QuarantineTarget quarantine_target>
+void SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::
+    PublishStatsForTesting() {
+  ScopedGuardIfNeeded<kThreadBound> guard(lock_);
+  PublishStats();
 }
 
 // static
@@ -471,13 +558,6 @@ template <bool thread_bound, QuarantineTarget quarantine_target>
 void SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::
     DangerouslyDisablePurge() {
   g_no_purge.store(true, std::memory_order_relaxed);
-}
-
-template <bool thread_bound, QuarantineTarget quarantine_target>
-const SchedulerLoopQuarantineConfig&
-SchedulerLoopQuarantineBranch<thread_bound,
-                              quarantine_target>::GetConfigurationForTesting() {
-  return config_for_testing_;
 }
 
 template class PA_EXPORT_TEMPLATE_DEFINE(PA_COMPONENT_EXPORT(PARTITION_ALLOC))

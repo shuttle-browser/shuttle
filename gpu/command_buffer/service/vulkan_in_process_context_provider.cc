@@ -43,8 +43,8 @@ constexpr uint32_t kSyncCpuMemoryLimitAtMemoryPressureCritical = 0;
 constexpr base::MemoryConsumerTraits kMemoryConsumerTraits(
     // Deferred Vulkan resources can accumulate to a moderate amount of memory.
     base::MemoryConsumerTraits::EstimatedMemoryUsage::kMedium,
-    // Callback only updates atomics without traversing structures.
-    base::MemoryConsumerTraits::ReleaseMemoryCost::kFreesPagesWithoutTraversal,
+    // Callback only updates atomics; the deferred resources are not read.
+    base::MemoryConsumerTraits::ReleaseMemoryDataAccess::kNone,
     // Syncing GPU work does not lose user state or cached data.
     base::MemoryConsumerTraits::InformationRetention::kLossless,
     // Pre-determined by AsyncMemoryConsumerRegistration on the GPU thread.
@@ -313,6 +313,17 @@ void VulkanInProcessContextProvider::MarkContextLost(
 
 bool VulkanInProcessContextProvider::IsContextLost() const {
   return context_lost_.load(std::memory_order::relaxed);
+}
+
+void VulkanInProcessContextProvider::ReportProgress() {
+  // TODO(crbug.com/552951905): Implement ProgressReporter hook.
+}
+
+base::OnceClosure
+VulkanInProcessContextProvider::CreateSubmitCleanupCallback() {
+  // Associate all cleanup tasks enqueued so far with the upcoming submit so
+  // they run once the GPU has finished with the resources they reference.
+  return device_queue_->GetFenceHelper()->CreateExternalCallback();
 }
 
 std::optional<uint32_t> VulkanInProcessContextProvider::GetSyncCpuMemoryLimit()

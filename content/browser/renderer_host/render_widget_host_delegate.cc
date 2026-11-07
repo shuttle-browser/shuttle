@@ -18,6 +18,16 @@ KeyboardEventProcessingResult RenderWidgetHostDelegate::PreHandleKeyboardEvent(
   return KeyboardEventProcessingResult::NOT_HANDLED;
 }
 
+bool RenderWidgetHostDelegate::PreHandleMouseEvent(
+    const blink::WebMouseEvent& event) {
+  return false;
+}
+
+bool RenderWidgetHostDelegate::PreHandleGestureEvent(
+    const blink::WebGestureEvent& event) {
+  return false;
+}
+
 bool RenderWidgetHostDelegate::HandleMouseEvent(
     const blink::WebMouseEvent& event) {
   return false;
@@ -39,11 +49,6 @@ bool RenderWidgetHostDelegate::ShouldIgnoreWebInputEvents(
 }
 
 bool RenderWidgetHostDelegate::ShouldIgnoreInputEvents() {
-  return false;
-}
-
-bool RenderWidgetHostDelegate::PreHandleGestureEvent(
-    const blink::WebGestureEvent& event) {
   return false;
 }
 
@@ -120,7 +125,7 @@ bool RenderWidgetHostDelegate::GetResizable() {
 #endif
 }
 
-bool RenderWidgetHostDelegate::GetIsAlwaysOnTop() {
+bool RenderWidgetHostDelegate::GetIsAlwaysOnTopPopup() {
   return false;
 }
 

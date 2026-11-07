@@ -165,6 +165,7 @@
 #include "third_party/blink/renderer/core/testing/mock_hyphenation.h"
 #include "third_party/blink/renderer/core/testing/nadc_attribute_test.h"
 #include "third_party/blink/renderer/core/testing/origin_trials_test.h"
+#include "third_party/blink/renderer/core/testing/pass_as_span_test.h"
 #include "third_party/blink/renderer/core/testing/record_test.h"
 #include "third_party/blink/renderer/core/testing/scoped_mock_overlay_scrollbars.h"
 #include "third_party/blink/renderer/core/testing/sequence_test.h"
@@ -195,8 +196,6 @@
 #include "third_party/blink/renderer/platform/testing/url_test_helpers.h"
 #include "third_party/blink/renderer/platform/text/layout_locale.h"
 #include "third_party/blink/renderer/platform/weborigin/scheme_registry.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_std.h"
 #include "third_party/blink/renderer/platform/wtf/dtoa.h"
 #include "third_party/blink/renderer/platform/wtf/text/format.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_buffer.h"
@@ -1781,8 +1780,14 @@ void Internals::setSuggestedValue(Element* element,
     textarea->SetSuggestedValue(value);
 
   if (auto* select = DynamicTo<HTMLSelectElement>(*element)) {
-    // A Null string resets the suggested value.
-    select->SetSuggestedValue(value.empty() ? String() : value);
+    // Pass `value` directly so that an empty string can still match an
+    // `<option value="">` (and resets the suggestion if no option matches).
+    // Return early because HTMLSelectElement::SetSuggestedValue() already
+    // updates the autofill state based on whether a matching option was found,
+    // and calling SetAutofillState(kNotFilled) below for an empty `value`
+    // would clear a matched `<option value="">` suggestion.
+    select->SetSuggestedValue(value);
+    return;
   }
 
   To<HTMLFormControlElement>(element)->SetAutofillState(
@@ -2795,6 +2800,10 @@ NADCAttributeTest* Internals::nadcAttributeTest() const {
   return MakeGarbageCollected<NADCAttributeTest>();
 }
 
+PassAsSpanTest* Internals::passAsSpanTest() const {
+  return MakeGarbageCollected<PassAsSpanTest>();
+}
+
 Vector<String> Internals::getReferencedFilePaths() const {
   if (!GetFrame())
     return Vector<String>();
@@ -3284,6 +3293,16 @@ void Internals::setDarkPreferredRootScrollbarColorScheme(Document* document) {
       mojom::blink::PreferredColorScheme::kDark);
 }
 
+void Internals::setAccentColor(const String& color_value) {
+#if BUILDFLAG(IS_MAC)
+  NOTREACHED() << "Accent color customization not supported on Mac.";
+#else   // BUILDFLAG(IS_MAC)
+  if (InternalSettings* internal_settings = settings()) {
+    internal_settings->setAccentColor(color_value);
+  }
+#endif  // BUILDFLAG(IS_MAC)
+}
+
 void Internals::setShouldRevealPassword(Element* element,
                                         bool reveal,
                                         ExceptionState& exception_state) {
@@ -3727,8 +3746,7 @@ String Internals::getAgentId(DOMWindow* window) {
   // This serializes a pointer as a decimal number, which is a bit ugly, but
   // it works. Is there any utility to dump a number in a hexadecimal form?
   // I couldn't find one in WTF.
-  return StrCat(
-      {String::Number(process_id), ":", String::Number(agent_address)});
+  return Format("{}:{}", process_id, agent_address);
 }
 
 void Internals::useMockOverlayScrollbars() {

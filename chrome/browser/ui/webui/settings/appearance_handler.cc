@@ -14,8 +14,9 @@
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_metrics.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
+#include "chrome/browser/ui/webui/settings/settings_element_ids.h"
+#include "chrome/browser/ui/webui/settings/settings_utils.h"
 #include "chrome/common/pref_names.h"
 #include "content/public/browser/web_ui.h"
 #include "ui/actions/actions.h"
@@ -63,8 +64,11 @@ void AppearanceHandler::RegisterMessages() {
 
 void AppearanceHandler::HandleUseTheme(ui::SystemTheme system_theme,
                                        const base::ListValue& args) {
-  DCHECK(system_theme != ui::SystemTheme::kDefault || !profile_->IsChild());
+  CHECK(system_theme != ui::SystemTheme::kDefault || !profile_->IsChild(),
+        base::NotFatalUntil::M162);
   ThemeServiceFactory::GetForProfile(profile_)->UseTheme(system_theme);
+  settings_utils::MaybeNotifySettingsCustomEvent(
+      web_ui(), settings::kAppearanceThemeChangedId);
 }
 
 void AppearanceHandler::ResetPinnedToolbarActions(const base::ListValue& args) {
@@ -84,10 +88,7 @@ void AppearanceHandler::PinnedToolbarActionsAreDefault(
 
 void AppearanceHandler::HandleRecordVerticalTabStripModeChanged(
     const base::ListValue& args) {
-  CHECK_EQ(1U, args.size());
-  const bool is_vertical = args[0].GetBool();
-  tabs::RecordVerticalTabStripModeChanged(
-      is_vertical, tabs::VerticalTabStripEntryPoint::kSettings);
+  // Vertical tabs are not supported in Shuttle; nothing to record.
 }
 
 }  // namespace settings

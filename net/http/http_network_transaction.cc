@@ -1660,9 +1660,13 @@ int HttpNetworkTransaction::DoReadHeadersComplete(int result) {
       early_response_headers_callback_.Run(std::move(response_.headers));
     }
 
-    // Reset response headers for the final response.
-    response_.headers =
-        base::MakeRefCounted<HttpResponseHeaders>(std::string());
+    // Clear response headers before reading the final response, so that if the
+    // connection is closed before the final response is received, the
+    // ERR_CONNECTION_CLOSED logic above doesn't treat the request as
+    // successful. This also puts us in the same state whether we passed
+    // ownership of headers to `early_response_headers_callback_` or not.
+    response_.headers = nullptr;
+    received_informational_response_ = true;
     next_state_ = STATE_READ_HEADERS;
     return OK;
   }
@@ -1721,8 +1725,10 @@ int HttpNetworkTransaction::DoReadHeadersComplete(int result) {
   //  * This is a WebSocket request, in which case we pass it on up.
   if (response_.headers->response_code() / 100 == 1 &&
       !ForWebSocketHandshake()) {
-    response_.headers =
-        base::MakeRefCounted<HttpResponseHeaders>(std::string());
+    // As in the 103 Early Hints case above, clear headers so a connection close
+    // before the final response results in an error.
+    response_.headers = nullptr;
+    received_informational_response_ = true;
     next_state_ = STATE_READ_HEADERS;
     return OK;
   }
@@ -2300,12 +2306,12 @@ int HttpNetworkTransaction::HandleIOError(int error) {
       ResetConnectionAndRequestForResend(*retry_reason);
       return OK;
     case RetryReason::kQuicProtocolError:
-      if (HasExceededMaxRetries() || GetResponseHeaders() != nullptr ||
+      if (HasExceededMaxRetries() || HasReceivedResponse() ||
           !stream_->GetAlternativeService(&retried_alternative_service_)) {
-        // If the response headers have already been received and passed up
-        // then the request can not be retried. Also, if there was no
-        // alternative service used for this request, then there is no
-        // alternative service to be disabled.
+        // If any response headers (including informational ones) have already
+        // been received and passed up then the request can not be retried.
+        // Also, if there was no alternative service used for this request,
+        // then there is no alternative service to be disabled.
         return error;
       }
 
@@ -2361,6 +2367,7 @@ void HttpNetworkTransaction::ResetStateForAuthRestart() {
   read_buf_ = nullptr;
   read_buf_len_ = 0;
   headers_valid_ = false;
+  received_informational_response_ = false;
   request_headers_.Clear();
   response_ = HttpResponseInfo();
   SetProxyInfoInResponse(proxy_info_, &response_);
@@ -2385,14 +2392,17 @@ HttpResponseHeaders* HttpNetworkTransaction::GetResponseHeaders() const {
   return response_.headers.get();
 }
 
+bool HttpNetworkTransaction::HasReceivedResponse() const {
+  return GetResponseHeaders() != nullptr || received_informational_response_;
+}
+
 bool HttpNetworkTransaction::ShouldResendRequest() const {
   bool connection_is_proven = stream_->IsConnectionReused();
-  bool has_received_headers = GetResponseHeaders() != nullptr;
 
   // NOTE: we resend a request only if we reused a keep-alive connection.
   // This automatically prevents an infinite resend loop because we'll run
   // out of the cached keep-alive connections eventually.
-  return connection_is_proven && !has_received_headers;
+  return connection_is_proven && !HasReceivedResponse();
 }
 
 bool HttpNetworkTransaction::HasExceededMaxRetries() const {
@@ -2619,21 +2629,31 @@ void HttpNetworkTransaction::RecordStreamRequestResult(int result) {
         create_stream_end_time_ - create_stream_start_time_;
 
     const std::string_view histogram_base_name =
-        ForWebSocketHandshake() ? "CreateWebSocketStreamTime4"
-                                : "CreateHttpStreamTime4";
+        ForWebSocketHandshake() ? "CreateWebSocketStreamTime"
+                                : "CreateHttpStreamTime";
     const std::string_view host_suffix =
         IsGoogleHostWithAlpnH3(url_.host()) ? ".GoogleHost" : "";
     const std::string_view protocol_suffix =
         NegotiatedProtocolToHistogramSuffixCoalesced(negotiated_protocol_);
-    std::string histogram_name =
-        base::StrCat({"Net.NetworkTransaction.", histogram_base_name,
-                      host_suffix, ".", protocol_suffix});
-    base::UmaHistogramTimes(histogram_name, create_time);
-
     const std::string_view address_suffix =
         AddressFamilyToString(endpoint.GetFamily());
-    base::UmaHistogramTimes(base::StrCat({histogram_name, ".", address_suffix}),
-                            create_time);
+
+    // TODO(crbug.com/531975349): Remove version 4 histograms once ongoing
+    // experiments have migrated to version 5.
+    std::string deprecated_histogram_name =
+        base::StrCat({"Net.NetworkTransaction.", histogram_base_name, "4",
+                      host_suffix, ".", protocol_suffix});
+    base::UmaHistogramTimes(deprecated_histogram_name, create_time);
+    base::UmaHistogramTimes(
+        base::StrCat({deprecated_histogram_name, ".", address_suffix}),
+        create_time);
+
+    std::string histogram_name =
+        base::StrCat({"Net.NetworkTransaction.", histogram_base_name, "5",
+                      host_suffix, ".", protocol_suffix});
+    base::UmaHistogramMediumTimes(histogram_name, create_time);
+    base::UmaHistogramMediumTimes(
+        base::StrCat({histogram_name, ".", address_suffix}), create_time);
 
     CHECK(stream_request_completion_details_.has_value());
     if (stream_request_completion_details_->session_source.has_value()) {

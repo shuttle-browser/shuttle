@@ -49,10 +49,6 @@ struct VariableLengthTransformResult {
   TextOffsetMap offset_map;
 };
 
-using SVGTextDescendantsMap =
-    HeapHashMap<WeakMember<const LayoutBlock>,
-                Member<GCedHeapHashSet<Member<LayoutSVGText>>>>;
-
 // LayoutView is the root of the layout tree and the Document's LayoutObject.
 //
 // It corresponds to the CSS concept of 'initial containing block' (or ICB).
@@ -213,6 +209,16 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
 
   PhysicalRect DocumentRect() const;
 
+  const std::optional<PhysicalRect>& ScrollableOverflowWithoutPaddingBox()
+      const {
+    NOT_DESTROYED();
+    return scrollable_overflow_without_padding_box_;
+  }
+  void SetScrollableOverflowWithoutPaddingBox(const PhysicalRect& rect) {
+    NOT_DESTROYED();
+    scrollable_overflow_without_padding_box_ = rect;
+  }
+
   // FIXME: This is a work around because the current implementation of counters
   // requires walking the entire tree repeatedly and most pages don't actually
   // use either feature so we shouldn't take the performance hit when not
@@ -346,11 +352,6 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
 
   PhysicalSize InitialContainingBlockSize() const;
 
-  SVGTextDescendantsMap& SvgTextDescendantsMap() {
-    NOT_DESTROYED();
-    return svg_text_descendants_;
-  }
-
   // Manage rare data of LayoutText.
   void RegisterVariableLengthTransformResult(
       const LayoutText& text,
@@ -409,12 +410,6 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
   unsigned layout_counter_count_ = 0;
   unsigned layout_list_item_count_ = 0;
 
-  // This map keeps track of SVG <text> descendants.
-  // LayoutSVGText needs to do re-layout on transform changes of any ancestor
-  // because LayoutSVGText's layout result depends on scaling factors
-  // computed with ancestor transforms.
-  SVGTextDescendantsMap svg_text_descendants_;
-
   HeapHashMap<WeakMember<const LayoutText>, VariableLengthTransformResult>
       text_to_variable_length_transform_result_;
 
@@ -440,6 +435,7 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
   std::optional<CachedScrollDimensions> cached_scroll_dimensions_;
 
   mutable PhysicalRect previous_background_rect_;
+  std::optional<PhysicalRect> scrollable_overflow_without_padding_box_;
 
   int vertical_scrollbar_width_for_viewport_units_ = 0;
   int horizontal_scrollbar_height_for_viewport_units_ = 0;

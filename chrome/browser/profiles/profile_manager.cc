@@ -51,7 +51,6 @@
 #include "chrome/browser/buildflags.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/navigation_predictor/navigation_predictor_keyed_service_factory.h"
-#include "chrome/browser/navigation_predictor/preloading_model_keyed_service_factory.h"
 #include "chrome/browser/profiles/delete_profile_helper.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/profile_attributes_entry.h"
@@ -65,7 +64,6 @@
 #include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/signin_util.h"
-#include "chrome/browser/supervised_user/child_accounts/child_account_service_factory.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/channel_info.h"
@@ -91,10 +89,6 @@
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/primary_account_mutator.h"
 #include "components/signin/public/identity_manager/tribool.h"
-#include "components/supervised_user/core/browser/child_account_service.h"
-#include "components/supervised_user/core/browser/supervised_user_service.h"
-#include "components/supervised_user/core/common/pref_names.h"
-#include "components/supervised_user/core/common/supervised_user_constants.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/storage_partition.h"
@@ -301,7 +295,7 @@ size_t GetEnabledAppCount(Profile* profile) {
 
   extensions::ExtensionRegistry* registry =
       extensions::ExtensionRegistry::Get(profile);
-  DCHECK(registry);
+  CHECK(registry, base::NotFatalUntil::M162);
 
   size_t installed_apps = 0u;
   const extensions::ExtensionSet& extensions = registry->enabled_extensions();
@@ -381,7 +375,7 @@ std::ostream& operator<<(
 
 #if BUILDFLAG(IS_CHROMEOS)
 void UpdateSupervisedUserPref(Profile* profile, bool is_child) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M162);
   if (is_child) {
     profile->GetPrefs()->SetString(prefs::kSupervisedUserId,
                                    supervised_user::kChildAccountSUID);
@@ -523,8 +517,8 @@ Profile* ProfileManager::GetLastUsedProfileAllowedByPolicy() {
 std::vector<Profile*> ProfileManager::GetLastOpenedProfiles() {
   ProfileManager* profile_manager = g_browser_process->profile_manager();
   PrefService* local_state = g_browser_process->local_state();
-  DCHECK(profile_manager);
-  DCHECK(local_state);
+  CHECK(profile_manager, base::NotFatalUntil::M162);
+  CHECK(local_state, base::NotFatalUntil::M162);
 
   std::vector<Profile*> to_return;
   if (local_state->HasPrefPath(prefs::kProfilesLastActive)) {
@@ -603,7 +597,7 @@ void ProfileManager::CreateProfileAsync(
     const base::FilePath& profile_path,
     base::OnceCallback<void(Profile*)> initialized_callback,
     base::OnceCallback<void(Profile*)> created_callback) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   TRACE_EVENT1("browser,startup", "ProfileManager::CreateProfileAsync",
                "profile_path", profile_path.AsUTF8Unsafe());
 
@@ -700,7 +694,7 @@ base::FilePath ProfileManager::GetLastUsedProfileDir() {
 // static
 base::FilePath ProfileManager::GetLastUsedProfileBaseName() {
   PrefService* local_state = g_browser_process->local_state();
-  DCHECK(local_state);
+  CHECK(local_state, base::NotFatalUntil::M162);
   base::FilePath last_used_profile_base_name =
       local_state->GetFilePath(prefs::kProfileLastUsed);
   if (!last_used_profile_base_name.empty()) {
@@ -801,8 +795,11 @@ void ProfileManager::CreateMultiProfileAsync(
   do {
     new_path = profile_manager->GenerateNextProfileDirectoryPath();
     // The generated path should be unused and free to use.
+    // TODO(crbug.com/577271507): CHECK-exclusion: Convert to a CHECK once we
+    // are confident it won't be triggered.
     DCHECK_EQ(profile_manager->GetProfileByPath(new_path), nullptr);
-    DCHECK(profile_manager->CanCreateProfileAtPath(new_path));
+    CHECK(profile_manager->CanCreateProfileAtPath(new_path),
+          base::NotFatalUntil::M162);
 
     entry = storage.GetProfileAttributesWithPath(new_path);
   } while (entry != nullptr);
@@ -846,8 +843,8 @@ void ProfileManager::CreateMultiProfileAsync(
 
 base::FilePath ProfileManager::GenerateNextProfileDirectoryPath() {
   PrefService* local_state = g_browser_process->local_state();
-  DCHECK(local_state);
-  DCHECK(profiles::IsMultipleProfilesEnabled());
+  CHECK(local_state, base::NotFatalUntil::M162);
+  CHECK(profiles::IsMultipleProfilesEnabled(), base::NotFatalUntil::M162);
   int next_directory = local_state->GetInteger(prefs::kProfilesNumCreated);
   base::FilePath new_path = GetNextExpectedProfileDirectoryPath();
   local_state->SetInteger(prefs::kProfilesNumCreated, ++next_directory);
@@ -856,9 +853,9 @@ base::FilePath ProfileManager::GenerateNextProfileDirectoryPath() {
 
 base::FilePath ProfileManager::GetNextExpectedProfileDirectoryPath() {
   PrefService* local_state = g_browser_process->local_state();
-  DCHECK(local_state);
+  CHECK(local_state, base::NotFatalUntil::M162);
 
-  DCHECK(profiles::IsMultipleProfilesEnabled());
+  CHECK(profiles::IsMultipleProfilesEnabled(), base::NotFatalUntil::M162);
 
   // Create the next profile in the next available directory slot.
   int next_directory = local_state->GetInteger(prefs::kProfilesNumCreated);
@@ -886,7 +883,7 @@ void ProfileManager::AutoloadProfiles() {
   // If running in the background is disabled for the browser, do not autoload
   // any profiles.
   PrefService* local_state = g_browser_process->local_state();
-  DCHECK(local_state);
+  CHECK(local_state, base::NotFatalUntil::M162);
   if (!local_state->HasPrefPath(prefs::kBackgroundModeEnabled) ||
       !local_state->GetBoolean(prefs::kBackgroundModeEnabled)) {
     return;
@@ -982,7 +979,6 @@ void ProfileManager::InitProfileUserPrefs(Profile* profile) {
 
   size_t avatar_index;
   std::string profile_name;
-  std::string supervised_user_id;
   {
     ProfileAttributesEntry* entry =
         storage.GetProfileAttributesWithPath(profile->GetPath());
@@ -991,7 +987,6 @@ void ProfileManager::InitProfileUserPrefs(Profile* profile) {
     if (entry) {
       avatar_index = entry->GetAvatarIconIndex();
       profile_name = base::UTF16ToUTF8(entry->GetLocalProfileName());
-      supervised_user_id = entry->GetSupervisedUserId();
     } else {
       avatar_index = 0;
 #if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
@@ -1010,11 +1005,6 @@ void ProfileManager::InitProfileUserPrefs(Profile* profile) {
 
   if (!profile->GetPrefs()->HasPrefPath(prefs::kProfileName)) {
     profile->GetPrefs()->SetString(prefs::kProfileName, profile_name);
-  }
-
-  if (!profile->GetPrefs()->HasPrefPath(prefs::kSupervisedUserId)) {
-    profile->GetPrefs()->SetString(prefs::kSupervisedUserId,
-                                   supervised_user_id);
   }
 }
 
@@ -1042,9 +1032,9 @@ std::unique_ptr<Profile> ProfileManager::CreateProfileAsyncHelper(
 
 bool ProfileManager::HasKeepAliveForTesting(Profile* profile,
                                             ProfileKeepAliveOrigin origin) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M162);
   ProfileInfo* info = GetProfileInfoByPath(profile->GetPath());
-  DCHECK(info);
+  CHECK(info, base::NotFatalUntil::M162);
   return info->keep_alives[origin] > 0;
 }
 
@@ -1071,7 +1061,8 @@ void ProfileManager::RecordZombieMetrics() {
 
 bool ProfileManager::AddKeepAlive(Profile* profile,
                                   ProfileKeepAliveOrigin origin) {
-  DCHECK_NE(ProfileKeepAliveOrigin::kWaitingForFirstBrowserWindow, origin);
+  CHECK_NE(ProfileKeepAliveOrigin::kWaitingForFirstBrowserWindow, origin,
+           base::NotFatalUntil::M162);
 
   CHECK(profile);
   CHECK(!profile->IsOffTheRecord());
@@ -1128,7 +1119,8 @@ bool ProfileManager::AddKeepAlive(Profile* profile,
 
 void ProfileManager::RemoveKeepAlive(Profile* profile,
                                      ProfileKeepAliveOrigin origin) {
-  DCHECK_NE(ProfileKeepAliveOrigin::kWaitingForFirstBrowserWindow, origin);
+  CHECK_NE(ProfileKeepAliveOrigin::kWaitingForFirstBrowserWindow, origin,
+           base::NotFatalUntil::M162);
 
   CHECK(profile);
   CHECK(!profile->IsOffTheRecord());
@@ -1154,7 +1146,7 @@ void ProfileManager::RemoveKeepAlive(Profile* profile,
     return;
   }
 
-  DCHECK(info->keep_alives.contains(origin));
+  CHECK(info->keep_alives.contains(origin), base::NotFatalUntil::M162);
 
 #if !BUILDFLAG(IS_ANDROID)
   // When removing the last keep alive of an ephemeral profile, schedule the
@@ -1172,7 +1164,7 @@ void ProfileManager::RemoveKeepAlive(Profile* profile,
 #endif
 
   info->keep_alives[origin]--;
-  DCHECK_LE(0, info->keep_alives[origin]);
+  CHECK_LE(0, info->keep_alives[origin], base::NotFatalUntil::M162);
 
   VLOG(1) << "RemoveKeepAlive(" << profile->GetDebugName() << ", " << origin
           << "). keep_alives=" << info->keep_alives;
@@ -1185,7 +1177,7 @@ void ProfileManager::ClearFirstBrowserWindowKeepAlive(Profile* profile) {
   CHECK(!profile->IsOffTheRecord());
 
   ProfileInfo* info = GetProfileInfoByPath(profile->GetPath());
-  DCHECK(info);
+  CHECK(info, base::NotFatalUntil::M162);
 
   int& waiting_for_first_browser_window =
       info->keep_alives[ProfileKeepAliveOrigin::kWaitingForFirstBrowserWindow];
@@ -1259,13 +1251,17 @@ void ProfileManager::DoFinalInit(ProfileInfo* profile_info) {
 
   // Delete browsing data specified by the ClearBrowsingDataOnExitList policy
   // if they were not properly deleted on the last browser shutdown.
-  auto* browsing_data_lifetime_manager =
-      ChromeBrowsingDataLifetimeManagerFactory::GetForProfile(profile);
-  if (browsing_data_lifetime_manager && !profile->IsOffTheRecord() &&
+  if (!profile->IsOffTheRecord() &&
       profile->GetPrefs()->GetBoolean(
           browsing_data::prefs::kClearBrowsingDataOnExitDeletionPending)) {
-    browsing_data_lifetime_manager->ClearBrowsingDataForOnExitPolicy(
-        /*keep_browser_alive=*/false);
+    // This may be expensive so only do it after other conditions are
+    // checked.
+    auto* browsing_data_lifetime_manager =
+        ChromeBrowsingDataLifetimeManagerFactory::GetForProfile(profile);
+    if (browsing_data_lifetime_manager) {
+      browsing_data_lifetime_manager->ClearBrowsingDataForOnExitPolicy(
+          /*keep_browser_alive=*/false);
+    }
   }
 }
 
@@ -1304,21 +1300,10 @@ void ProfileManager::DoFinalInitForServices(Profile* profile) {
     ::chromeos::DeskApiExtensionManagerFactory::GetForProfile(profile);
   }
 #endif
-
-  // After the ManagementPolicy has been set, update it for the Supervised User
-  // Extension Delegate, which has been created before the profile
-  // initialization and needs to obtain the new policies.
-  extensions::ManagementAPI::GetFactoryInstance()
-      ->Get(profile)
-      ->GetSupervisedUserExtensionsDelegate()
-      ->UpdateManagementPolicyRegistration();
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
   // Ensure NavigationPredictorKeyedService is started.
   NavigationPredictorKeyedServiceFactory::GetForProfile(profile);
-
-  // Ensure PreloadingModelKeyedService is started.
-  PreloadingModelKeyedServiceFactory::GetForProfile(profile);
 
   IdentityManagerFactory::GetForProfile(profile)->OnNetworkInitialized();
 #if BUILDFLAG(IS_ANDROID)
@@ -1388,8 +1373,8 @@ ProfileManager::ProfileInfo::~ProfileInfo() {
   // Regardless of sync or async creation, we always take ownership right after
   // Profile::CreateProfile(). So we should always own the Profile by this
   // point.
-  DCHECK(owned_profile_);
-  DCHECK_EQ(owned_profile_.get(), unowned_profile_);
+  CHECK(owned_profile_, base::NotFatalUntil::M162);
+  CHECK_EQ(owned_profile_.get(), unowned_profile_, base::NotFatalUntil::M162);
   unowned_profile_ = nullptr;
 
   if (destroy_profile_callback_) {
@@ -1411,14 +1396,14 @@ void ProfileManager::ProfileInfo::TakeOwnershipOfProfile(
     std::unique_ptr<Profile> profile,
     base::OnceCallback<void(std::unique_ptr<Profile>)>
         destroy_profile_callback) {
-  DCHECK_EQ(unowned_profile_, profile.get());
-  DCHECK(!owned_profile_);
+  CHECK_EQ(unowned_profile_, profile.get(), base::NotFatalUntil::M162);
+  CHECK(!owned_profile_, base::NotFatalUntil::M162);
   owned_profile_ = std::move(profile);
   destroy_profile_callback_ = std::move(destroy_profile_callback);
 }
 
 void ProfileManager::ProfileInfo::MarkProfileAsCreated(Profile* profile) {
-  DCHECK_EQ(GetRawProfile(), profile);
+  CHECK_EQ(GetRawProfile(), profile, base::NotFatalUntil::M162);
   created_ = true;
   SetCrashKeysForAsyncProfileCreation(profile, /*creation_complete=*/true);
 }
@@ -1428,7 +1413,8 @@ Profile* ProfileManager::ProfileInfo::GetCreatedProfile() const {
 }
 
 Profile* ProfileManager::ProfileInfo::GetRawProfile() const {
-  DCHECK(owned_profile_ == nullptr || owned_profile_.get() == unowned_profile_);
+  CHECK(owned_profile_ == nullptr || owned_profile_.get() == unowned_profile_,
+        base::NotFatalUntil::M162);
   return unowned_profile_;
 }
 
@@ -1436,7 +1422,7 @@ Profile* ProfileManager::ProfileInfo::GetRawProfile() const {
 void ProfileManager::UnloadProfile(const base::FilePath& profile_dir) {
   TRACE_EVENT0("browser", "ProfileManager::UnloadProfile");
 
-  DCHECK(profiles_info_.contains(profile_dir));
+  CHECK(profiles_info_.contains(profile_dir), base::NotFatalUntil::M162);
 
   bool ephemeral =
       IsRegisteredAsEphemeral(&GetProfileAttributesStorage(), profile_dir);
@@ -1514,7 +1500,7 @@ Profile* ProfileManager::CreateAndInitializeProfile(
   // Place the unique_ptr inside ProfileInfo, which was added by
   // OnProfileCreationStarted().
   info = GetProfileInfoByPath(profile->GetPath());
-  DCHECK(info);
+  CHECK(info, base::NotFatalUntil::M162);
   TakeOwnershipOfProfile(std::move(profile), info);
   info->MarkProfileAsCreated(info->GetRawProfile());
   Profile* profile_ptr = info->GetCreatedProfile();
@@ -1527,7 +1513,7 @@ void ProfileManager::OnProfileCreationFinished(Profile* profile,
                                                Profile::CreateMode create_mode,
                                                bool success,
                                                bool is_new_profile) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   auto iter = profiles_info_.find(profile->GetPath());
   CHECK(iter != profiles_info_.end());
@@ -1733,9 +1719,6 @@ void ProfileManager::AddProfileToStorage(Profile* profile) {
   // Shuttle: there is no profile avatar UI, the index is always 0.
   init_params.icon_index = 0;
 
-  init_params.supervised_user_id =
-      profile->GetPrefs()->GetString(prefs::kSupervisedUserId);
-
 #if BUILDFLAG(IS_CHROMEOS)
   user_manager::User* user =
       ash::ProfileHelper::Get()->GetUserByProfile(profile);
@@ -1756,7 +1739,7 @@ void ProfileManager::AddProfileToStorage(Profile* profile) {
 
 void ProfileManager::SaveActiveProfiles() {
   PrefService* local_state = g_browser_process->local_state();
-  DCHECK(local_state);
+  CHECK(local_state, base::NotFatalUntil::M162);
   ScopedListPrefUpdate update(local_state, prefs::kProfilesLastActive);
   base::ListValue& profile_list = update.Get();
 
@@ -1883,9 +1866,9 @@ void ProfileManager::UnblockAsyncLoading() {
 
 #if !BUILDFLAG(IS_ANDROID)
 void ProfileManager::OnBrowserOpened(BrowserWindowInterface* browser) {
-  DCHECK(browser);
+  CHECK(browser, base::NotFatalUntil::M162);
   Profile* profile = browser->GetProfile();
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M162);
 
   if (!profile->IsOffTheRecord() &&
       !IsRegisteredAsEphemeral(&GetProfileAttributesStorage(),
@@ -1904,7 +1887,7 @@ void ProfileManager::OnBrowserOpened(BrowserWindowInterface* browser) {
 
 void ProfileManager::OnBrowserClosed(BrowserWindowInterface* browser) {
   Profile* profile = browser->GetProfile();
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M162);
   if (!profile->IsOffTheRecord() &&
       browser->GetType() != BrowserWindowInterface::Type::TYPE_APP &&
       --browser_counts_[profile] == 0) {

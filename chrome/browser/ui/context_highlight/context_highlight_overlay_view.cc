@@ -5,14 +5,20 @@
 #include "chrome/browser/ui/context_highlight/context_highlight_overlay_view.h"
 
 #include "cc/paint/paint_flags.h"
-#include "components/page_content_annotations/core/tracked_element_feature.h"
 #include "components/viz/common/surfaces/tracked_element_rects.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/compositor/layer.h"
 #include "ui/gfx/canvas.h"
 
-using ::page_content_annotations::TrackedElementFeature;
+namespace {
+// Shuttle: was page_content_annotations::TrackedElementFeature::kAIHighlight
+// (component removed); the first browser-level viz tracked element feature.
+constexpr int32_t kAIHighlightFeatureValue =
+    static_cast<int32_t>(
+        viz::TrackedElementFeature::kTrackedElementFeatureEnd) +
+    1;
+}  // namespace
 
 ContextHighlightOverlayView::ContextHighlightOverlayView() {
   // This view should not process events, allowing them to pass through to the
@@ -33,8 +39,8 @@ void ContextHighlightOverlayView::UpdateHighlightRects(
   highlight_rects_.clear();
   float dip_scale = 1.0 / device_scale_factor;
 
-  const auto kAIHighlightFeature = static_cast<viz::TrackedElementFeature>(
-      TrackedElementFeature::kAIHighlight);
+  const auto kAIHighlightFeature =
+      static_cast<viz::TrackedElementFeature>(kAIHighlightFeatureValue);
   if (rects.contains(kAIHighlightFeature)) {
     for (const auto& rect : rects.at(kAIHighlightFeature)) {
       gfx::Rect transformed_rect =

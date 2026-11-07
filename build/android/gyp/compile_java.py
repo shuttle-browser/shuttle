@@ -11,6 +11,7 @@ import logging
 import argparse
 import os
 import pathlib
+import platform
 import re
 import shlex
 import shutil
@@ -34,6 +35,11 @@ _JAVAC_EXTRACTOR = os.path.join(
     'common',
     'framework',
     'javac_extractor.jar',
+)
+
+# A GraalVM native-image of javac. Exists only for linux-x64 hosts.
+_JAVAC_GRAALVM_PATH = os.path.join(
+    build_utils.JAVA_HOME, 'bin', 'javac-graalvm'
 )
 
 # These warnings cannot be suppressed even for third party code. Deprecation
@@ -79,7 +85,7 @@ def CreateJarFile(
         with zipfile.ZipFile(f.name, 'w') as z:
             path_transform = None
             if filter_func:
-                path_transform = lambda p: p if filter_func(p) else None
+                path_transform = lambda p: p if filter_func(p) else None  # noqa: E731
             zip_helpers.zip_directory(
                 z, classes_dir, path_transform=path_transform
             )
@@ -426,6 +432,10 @@ def _RunCompiler(
                     and not changes.HasStringChanges()
                     and os.path.exists(jar_path)
                     and (jar_info_path is None or os.path.exists(jar_info_path))
+                    and (
+                        not options.filtered_jar
+                        or os.path.exists(options.filtered_jar)
+                    )
                 ):
                     # Log message is used by tests to determine whether partial javac
                     # optimization was used.
@@ -451,6 +461,10 @@ def _RunCompiler(
 
                     # Extracts .class as well as META-INF/services.
                     build_utils.ExtractAll(jar_path, classes_dir)
+                    if options.filtered_jar:
+                        build_utils.ExtractAll(
+                            options.filtered_jar, classes_dir
+                        )
 
         if intermediates_out_dir is None:
             intermediates_out_dir = temp_dir
@@ -498,7 +512,7 @@ def _RunCompiler(
             start = time.time()
             before_join_callback = None
             if parse_java_files:
-                before_join_callback = lambda: (
+                before_join_callback = lambda: (  # noqa: E731
                     metadata_parser.ParseAndWriteInfoFile(
                         jar_info_path, java_files, kt_files
                     )
@@ -700,7 +714,22 @@ def main(
     argv = build_utils.ExpandFileArgs(argv)
     options, java_files, kt_files = _ParseOptions(argv)
 
-    javac_cmd = [build_utils.JAVAC_PATH]
+    # The native-image javac does not support plugins (Error Prone), and
+    # --print-javac-command-line is used by tools that expect a JVM javac.
+    use_javac_graalvm = (
+        sys.platform == 'linux'
+        and platform.machine() == 'x86_64'
+        and not use_errorprone
+        and not options.print_javac_command_line
+    )
+    if use_javac_graalvm:
+        javac_cmd = [_JAVAC_GRAALVM_PATH]
+    else:
+        javac_cmd = [
+            build_utils.JAVAC_PATH,
+            # https://crbug.com/1441023
+            '-J-XX:+PerfDisableSharedMem',
+        ]
 
     javac_args = [
         '-g',
@@ -708,10 +737,15 @@ def main(
         '-parameters',
         # Jacoco does not currently support a higher value.
         '--release',
-        # Keep consistent with javac_cmd in //build/android/gyp/turbine.py.
+        # Keep consistent with javac_cmd in //build/android/gyp/turbine.py and
+        # -jvm-target in //build/android/gyp/compile_kt.py.
         # LINT.IfChange
         '25',
-        # LINT.ThenChange(//depot/chromium/components/cronet/gn2bp/templates/Android.extras.bp.template)
+        # LINT.ThenChange(
+        #     //build/android/gyp/compile_kt.py,
+        #     //build/android/gyp/turbine.py,
+        #     //components/cronet/gn2bp/templates/Android.extras.bp.template
+        # )
         # Chromium only allows UTF8 source files.  Being explicit avoids
         # javac pulling a default encoding from the user's environment.
         '-encoding',
@@ -726,8 +760,6 @@ def main(
         # Do not warn about finalize() methods. Android still intends to support
         # them.
         '-Xlint:-removal',
-        # https://crbug.com/1441023
-        '-J-XX:+PerfDisableSharedMem',
         # Disable all annotation processors (we run them via Turbine).
         '-proc:none',
     ]
@@ -748,7 +780,7 @@ def main(
 
     javac_args.extend(options.javac_arg)
 
-    do_it = lambda changes: _OnStaleMd5(
+    do_it = lambda changes: _OnStaleMd5(  # noqa: E731
         changes,
         options,
         javac_cmd,
@@ -796,7 +828,7 @@ def main(
     else:
         # Files that are already inputs in GN should go in input_paths.
         input_paths = (
-            [build_utils.JAVAC_PATH]
+            [javac_cmd[0]]
             + classpath_jars
             + options.java_srcjars
             + java_files

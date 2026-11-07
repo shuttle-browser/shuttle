@@ -11,7 +11,6 @@
 #include "base/functional/callback.h"
 #include "build/build_config.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/policy/policy_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/pref_names.h"
@@ -74,16 +73,6 @@ bool IsOriginInList(const GURL& request_origin,
 AllowedScreenCaptureLevel GetAllowedCaptureLevel(
     const GURL& request_origin,
     content::WebContents* capturer_web_contents) {
-  // Since the UI for capture doesn't clip against picture in picture windows
-  // properly on all platforms, and since it's not clear that we actually want
-  // to support this anyway, turn it off for now.  Note that direct calls into
-  // `GetAllowedCaptureLevel(..., PrefService)` will miss this check.
-  if (!base::FeatureList::IsEnabled(media::kDocumentPictureInPictureCapture) &&
-      PictureInPictureWindowManager::IsChildWebContents(
-          capturer_web_contents)) {
-    return AllowedScreenCaptureLevel::kDisallowed;
-  }
-
   // If we can't get the PrefService, then we won't apply any restrictions.
   Profile* profile =
       Profile::FromBrowserContext(capturer_web_contents->GetBrowserContext());
@@ -176,18 +165,16 @@ DesktopMediaList::WebContentsFilter GetIncludableWebContentsFilter(
     case AllowedScreenCaptureLevel::kSameOrigin:
       return base::BindRepeating(
           [](const GURL& request_origin, content::WebContents* web_contents) {
-            DCHECK(web_contents);
-            return !PictureInPictureWindowManager::IsChildWebContents(
-                       web_contents) &&
-                   url::IsSameOriginWith(request_origin,
+            CHECK(web_contents, base::NotFatalUntil::M161);
+            return url::IsSameOriginWith(request_origin,
                                          web_contents->GetLastCommittedURL()
                                              .DeprecatedGetOriginAsURL());
           },
           request_origin);
     default:
       return base::BindRepeating([](content::WebContents* web_contents) {
-        DCHECK(web_contents);
-        return !PictureInPictureWindowManager::IsChildWebContents(web_contents);
+        CHECK(web_contents, base::NotFatalUntil::M161);
+        return true;
       });
   }
 }

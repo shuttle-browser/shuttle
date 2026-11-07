@@ -19,7 +19,6 @@ import run_performance_tests
 from run_performance_tests import TelemetryCommandGenerator
 
 # Protected access is allowed for unittests.
-# pylint: disable=protected-access
 
 # The path where the output of a wpt run was written. This is the file that
 # gets processed by BaseWptScriptAdapter.
@@ -154,7 +153,6 @@ class TelemetryCommandGeneratorTest(unittest.TestCase):
     self.assertEqual(content['foo'], 1)
     mock_copy_map_file_to_out_dir.assert_called_with(mock.ANY, 'dir')
 
-  # pylint: disable=no-self-use
   @mock.patch.object(os.path, 'exists')
   @mock.patch.object(shutil, 'copyfile')
   def testCopyMapFileToOutDirSuccess(self, mock_copyfile, mock_exists):
@@ -164,8 +162,6 @@ class TelemetryCommandGeneratorTest(unittest.TestCase):
     mock_copyfile.assert_called_with(
       'file', str(pathlib.Path('dir/benchmarks_shard_map.json'))
     )
-
-  # pylint: enable=no-self-use
 
   @mock.patch.object(
     run_performance_tests.CrossbenchTest, 'execute_benchmark', return_value=0
@@ -202,7 +198,7 @@ class TelemetryCommandGeneratorTest(unittest.TestCase):
     mock_convert,
     mock_run_command,
   ):
-    del mock_open, mock_exists, mock_upload, mock_setup, mock_run_command
+    del mock_open, mock_exists, mock_setup, mock_run_command
     fake_args = _create_crossbench_args() + ['--ignore-benchmark-exit-code']
     options = run_performance_tests.parse_arguments(fake_args)
 
@@ -210,6 +206,10 @@ class TelemetryCommandGeneratorTest(unittest.TestCase):
 
     self.assertEqual(rc, 0)
     mock_convert.assert_called()
+    mock_upload.assert_called_once_with(
+      3, 'speedometer3.crossbench', duration=mock.ANY
+    )
+    self.assertIsInstance(mock_upload.call_args.kwargs['duration'], float)
 
   def testCrossbenchTestBenchmarksException(self):
     fake_args = ['./cb.py', '--isolated-script-test-output=output']
@@ -401,6 +401,23 @@ class TelemetryCommandGeneratorTest(unittest.TestCase):
     network_dict = json.loads(crosebench_test.network[0].split('=', 1)[1])
     self.assertDictEqual(network_dict, expected_dict)
 
+  def testCrossbenchGetImplicitFileServerOnDarwin(self):
+    fake_args = _create_crossbench_args()
+    options = run_performance_tests.parse_arguments(fake_args)
+    src_dir = run_performance_tests.CHROMIUM_SRC_DIR
+    local_fileserver = str(src_dir / 'third_party/speedometer/v3.0')
+    expected_dict = {
+      'type': 'local',
+      'path': local_fileserver,
+      'url': 'http://localhost:0',
+    }
+
+    with mock.patch.object(sys, 'platform', 'darwin'):
+      crossbench_test = run_performance_tests.CrossbenchTest(options, 'dir')
+
+    network_dict = json.loads(crossbench_test.network[0].split('=', 1)[1])
+    self.assertDictEqual(network_dict, expected_dict)
+
   def testCrossbenchGetTargetFileServer(self):
     fake_args = _create_crossbench_args() + ['--fileserver=foo']
     options = run_performance_tests.parse_arguments(fake_args)
@@ -509,6 +526,30 @@ class TelemetryCommandGeneratorTest(unittest.TestCase):
     expected_browser = crossbench_test.CHROME_BROWSER % expected_hjson
     self.assertEqual(crossbench_test.browser, expected_browser)
 
+  @mock.patch.object(run_performance_tests.browser_finder, 'FindBrowser')
+  def testCrossbenchAndroidDefaultPowerMode(self, _):
+    fake_args = _create_crossbench_args('android-chrome-bundle')
+    options = run_performance_tests.parse_arguments(fake_args)
+
+    crossbench_test = run_performance_tests.CrossbenchTest(options, 'dir')
+
+    self.assertEqual(
+      crossbench_test.env, ['--env={"cpu_power_mode":"performance"}']
+    )
+
+  @mock.patch.object(run_performance_tests.browser_finder, 'FindBrowser')
+  def testCrossbenchAndroidWebPowerUsesSchedPixel(self, _):
+    fake_args = _create_crossbench_args(
+      'android-chrome-bundle', benchmarks='web-power'
+    )
+    options = run_performance_tests.parse_arguments(fake_args)
+
+    crossbench_test = run_performance_tests.CrossbenchTest(options, 'dir')
+
+    self.assertEqual(
+      crossbench_test.env, ['--env={"cpu_power_mode":"sched_pixel"}']
+    )
+
   def testCrossbenchOfficialBrowser(self):
     fake_args = _create_crossbench_args()
     fake_args.append('--official-browser=chrome-stable-1.2.3.4')
@@ -547,11 +588,11 @@ class TelemetryCommandGeneratorTest(unittest.TestCase):
     self.assertEqual(command_list[pos + 1 :], expected_list)
 
 
-def _create_crossbench_args(browser='./chrome'):
+def _create_crossbench_args(browser='./chrome', benchmarks='speedometer_3.0'):
   return [
     './cb.py',
     '--isolated-script-test-output=output',
-    '--benchmarks=speedometer_3.0',
+    f'--benchmarks={benchmarks}',
     '--benchmark-display-name=speedometer3.crossbench',
     f'--browser={browser}',
   ]
@@ -613,6 +654,116 @@ class ArgumentParserTest(unittest.TestCase):
     with mock.patch('sys.stderr', new_callable=io.StringIO):
       with self.assertRaises(SystemExit):
         run_performance_tests.parse_arguments(fake_args)
+
+
+class UploadSimpleTestResultsTest(unittest.TestCase):
+  _FAKE_LUCI_CONTEXT = (
+    '{"result_sink": {"address": "localhost:1234", "auth_token": "tok"}}'
+  )
+
+  @mock.patch.object(run_performance_tests.requests, 'post')
+  @mock.patch.dict(os.environ, {'LUCI_CONTEXT': '/fake/luci_context.json'})
+  @mock.patch(
+    'builtins.open',
+    new_callable=mock.mock_open,
+    read_data=_FAKE_LUCI_CONTEXT,
+  )
+  def testUploadSimpleTestResultsWithDuration(self, mock_open, mock_post):
+    del mock_open
+    run_performance_tests.upload_simple_test_results(
+      0, 'speedometer3.crossbench', duration=42.125
+    )
+
+    mock_post.assert_called_once()
+    payload = json.loads(mock_post.call_args.kwargs['data'])
+    self.assertEqual(len(payload['testResults']), 1)
+    test_result = payload['testResults'][0]
+    self.assertEqual(test_result['testId'], 'speedometer3.crossbench')
+    self.assertEqual(test_result['status'], 'PASS')
+    self.assertTrue(test_result['expected'])
+    self.assertEqual(test_result['duration'], '42.125000000s')
+
+  @mock.patch.object(run_performance_tests.requests, 'post')
+  @mock.patch.dict(os.environ, {'LUCI_CONTEXT': '/fake/luci_context.json'})
+  @mock.patch(
+    'builtins.open',
+    new_callable=mock.mock_open,
+    read_data=_FAKE_LUCI_CONTEXT,
+  )
+  def testUploadSimpleTestResultsWithoutDuration(self, mock_open, mock_post):
+    del mock_open
+    run_performance_tests.upload_simple_test_results(1, 'base_perftests')
+
+    mock_post.assert_called_once()
+    payload = json.loads(mock_post.call_args.kwargs['data'])
+    self.assertEqual(len(payload['testResults']), 1)
+    test_result = payload['testResults'][0]
+    self.assertEqual(test_result['testId'], 'base_perftests')
+    self.assertEqual(test_result['status'], 'FAIL')
+    self.assertFalse(test_result['expected'])
+    self.assertNotIn('duration', test_result)
+
+  @mock.patch.object(run_performance_tests.requests, 'post')
+  @mock.patch.dict(os.environ, {'LUCI_CONTEXT': '/fake/luci_context.json'})
+  @mock.patch(
+    'builtins.open',
+    new_callable=mock.mock_open,
+    read_data=_FAKE_LUCI_CONTEXT,
+  )
+  def testUploadSimpleTestResultsClampsNegativeDuration(
+    self, mock_open, mock_post
+  ):
+    del mock_open
+    # Simulate a negative duration caused by a non-monotonic clock adjustment.
+    run_performance_tests.upload_simple_test_results(
+      0, 'speedometer3.crossbench', duration=-5.25
+    )
+
+    mock_post.assert_called_once()
+    payload = json.loads(mock_post.call_args.kwargs['data'])
+    self.assertEqual(len(payload['testResults']), 1)
+    test_result = payload['testResults'][0]
+    self.assertEqual(test_result['duration'], '0.000000000s')
+
+  @mock.patch.object(run_performance_tests, 'upload_simple_test_results')
+  @mock.patch.object(run_performance_tests, 'write_simple_test_results')
+  @mock.patch.object(
+    run_performance_tests.test_env,
+    'run_command_output_to_handle',
+    return_value=0,
+  )
+  def testExecuteGtestPerfTestPassesDurationToUpload(
+    self, mock_run_command, mock_write_results, mock_upload
+  ):
+    del mock_run_command, mock_write_results
+
+    class FakeCommandGenerator(object):
+      def __init__(self):
+        self.executable_name = 'fake_perftests'
+        self.ignore_shard_env_vars = False
+
+      def generate(self, unused_path):
+        return [self.executable_name]
+
+    tempdir = tempfile.mkdtemp()
+    try:
+      output_paths = run_performance_tests.OutputFilePaths(
+        tempdir, 'fake_perftests'
+      ).SetUp()
+      with open(output_paths.perf_results, 'w') as fh:
+        fh.write('[]')
+      # Simulate a non-monotonic time.time() clock stepping backward from
+      # 100.0s to 95.0s during execution to verify duration is clamped to 0.0.
+      with mock.patch.object(
+        run_performance_tests.time, 'time', side_effect=[100.0, 95.0, 95.0]
+      ):
+        rc = run_performance_tests.execute_gtest_perf_test(
+          FakeCommandGenerator(), output_paths, is_unittest=False
+        )
+      self.assertEqual(rc, 0)
+      mock_upload.assert_called_once_with(0, 'fake_perftests', duration=0.0)
+    finally:
+      shutil.rmtree(tempdir)
 
 
 if __name__ == '__main__':

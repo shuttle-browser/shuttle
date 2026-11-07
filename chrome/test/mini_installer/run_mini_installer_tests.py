@@ -20,9 +20,9 @@ if TYP_DIR not in sys.path:
     sys.path.insert(0, TYP_DIR)
 del SRC_DIR, TYP_DIR
 
-import typ
+import typ  # noqa: E402
 
-from argument_parser import ArgumentParser
+from argument_parser import ArgumentParser  # noqa: E402
 
 
 def _prepare_env_for_subprocesses(parser, args):
@@ -53,6 +53,12 @@ def _prepare_env_for_subprocesses(parser, args):
         os.environ['CMI_CHROMEDRIVER_PATH'] = args.chromedriver_path
     if args.config != parser.get_default('config'):
         os.environ['CMI_CONFIG'] = args.config
+    # mini_installer_tests is configured with module_scheme = "flat" in
+    # infra/config/targets/binaries.star. On builders that do not wrap
+    # isolated scripts with result_adapter (e.g., non-Swarming builders using
+    # LocalIsolatedScriptTest), typ uploads directly to ResultSink and defaults
+    # to the "pyunit" scheme unless RESULTDB_MODULE_SCHEME is set.
+    os.environ.setdefault('RESULTDB_MODULE_SCHEME', 'flat')
 
 
 def main(args):

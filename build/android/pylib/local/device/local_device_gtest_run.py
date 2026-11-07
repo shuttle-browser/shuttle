@@ -24,7 +24,6 @@ from devil.android.ndk import abis
 from devil.android.tools import system_app
 from devil.android.sdk import version_codes
 from devil.utils import reraiser_thread
-from incremental_install import installer
 from lib.common import google_storage_helper
 from lib.proto import exception_recorder
 from lib.proto import measures
@@ -40,6 +39,7 @@ from pylib.symbols import stack_symbolizer
 from pylib.utils import code_coverage_utils
 from pylib.utils import device_dependencies
 from pylib.utils import logdog_helper
+from pylib.utils import test_data_sync
 from py_trace_event import trace_event
 from py_utils import contextlib_ext
 from py_utils import tempfile_ext
@@ -75,6 +75,8 @@ _EXTRA_TEST_LIST = (
 _GTEST_PRETEST_PREFIX = 'PRE_'
 
 _SECONDS_TO_NANOS = int(1e9)
+
+_ANIMATION_SCALE_SETTINGS = local_device_environment.ANIMATION_SCALE_SETTINGS
 
 
 # No-op context manager. If we used Python 3, we could change this to
@@ -227,9 +229,6 @@ class _ApkDelegate:
         self._activity = test_instance.activity
         self._additional_apks = test_instance.additional_apks
         self._apk_helper = test_instance.apk_helper
-        self._test_apk_incremental_install_json = (
-            test_instance.test_apk_incremental_install_json
-        )
         self._package = test_instance.package
         self._runner = test_instance.runner
         self._permissions = test_instance.permissions
@@ -244,7 +243,6 @@ class _ApkDelegate:
         self._use_existing_test_data = test_instance.use_existing_test_data
 
     def GetTestDataRoot(self, device):
-        # pylint: disable=no-self-use
         return posixpath.join(
             device.GetExternalStoragePath(), 'chromium_tests_root'
         )
@@ -253,25 +251,26 @@ class _ApkDelegate:
         if self._use_existing_test_data:
             return
 
+        install_timeout = device.INSTALL_DEFAULT_TIMEOUT * math.ceil(
+            _GetDeviceTimeoutMultiplier() / 10
+        )
         for additional_apk in self._additional_apks:
-            device.Install(additional_apk, allow_downgrade=True, reinstall=True)
-
-        if self._test_apk_incremental_install_json:
-            installer.Install(
-                device,
-                self._test_apk_incremental_install_json,
-                apk=self._apk_helper,
-                permissions=self._permissions,
-            )
-        else:
             device.Install(
-                self._apk_helper,
+                additional_apk,
                 allow_downgrade=True,
                 reinstall=True,
-                permissions=self._permissions,
+                timeout=install_timeout,
             )
 
-    def ResultsDirectory(self, device):  # pylint: disable=no-self-use
+        device.Install(
+            self._apk_helper,
+            allow_downgrade=True,
+            reinstall=True,
+            permissions=self._permissions,
+            timeout=install_timeout,
+        )
+
+    def ResultsDirectory(self, device):
         return device.GetExternalStoragePath()
 
     def Run(self, test, device, flags=None, **kwargs):
@@ -435,8 +434,6 @@ class _ExeDelegate:
         self._coverage_lock = threading.Lock()
 
     def GetTestDataRoot(self, device):
-        # pylint: disable=no-self-use
-        # pylint: disable=unused-argument
         return posixpath.join(
             constants.TEST_EXECUTABLE_DIR, 'chromium_tests_root'
         )
@@ -451,8 +448,6 @@ class _ExeDelegate:
         )
 
     def ResultsDirectory(self, device):
-        # pylint: disable=no-self-use
-        # pylint: disable=unused-argument
         return constants.TEST_EXECUTABLE_DIR
 
     def Run(self, test, device, flags=None, **kwargs):
@@ -567,17 +562,36 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
         @trace_event.traced
         def individual_device_set_up(device, host_device_tuples):
 
+            @measures.timed_func('device_setup', 'disable_system_animations')
+            @trace_event.traced
+            def disable_system_animations(dev):
+                put_cmds = [
+                    f'settings put global {s} 0'
+                    for s in _ANIMATION_SCALE_SETTINGS
+                ]
+                cmd = ' && '.join(put_cmds)
+                dev.RunShellCommand(cmd, shell=True, check_return=True)
+
             @measures.timed_func('device_setup', 'install_apk')
             def install_apk(dev):
                 # Install test APK.
                 try:
                     self._delegate.Install(dev)
                 except device_errors.CommandFailedError as e:
-                    raise test_exception.InstallationFailedError(e) from e
+                    exception_recorder.register(
+                        test_exception.InstallationFailedError(e)
+                    )
+                    raise
                 except device_errors.CommandTimeoutError as e:
-                    raise test_exception.InstallationTimeoutError(e) from e
+                    exception_recorder.register(
+                        test_exception.InstallationTimeoutError(e)
+                    )
+                    raise
                 except base_error.BaseError as e:
-                    raise test_exception.InstallationError(e) from e
+                    exception_recorder.register(
+                        test_exception.InstallationError(e)
+                    )
+                    raise
 
             @measures.timed_func('device_setup', 'push_test_data')
             def push_test_data(dev):
@@ -590,6 +604,16 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
                         host_device_tuples, device_root
                     )
                 )
+                commit_sync = test_data_sync.PreparePush(
+                    dev,
+                    device_root,
+                    resolved_host_device_tuples,
+                    enabled=self._env.enable_test_data_cache,
+                    as_root=self._env.force_main_user,
+                )
+                # Cache up to date.
+                if not commit_sync:
+                    return
                 dev.PlaceNomediaFile(device_root)
                 dev.PushChangedFiles(
                     resolved_host_device_tuples,
@@ -613,11 +637,24 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
                         check_return=True,
                         as_root=self._env.force_main_user,
                     )
+                if self._env.force_main_user:
+                    # Pushing directly to /data/media/<user> bypasses the
+                    # /storage/emulated/<user> FUSE mount, leaving stale
+                    # dentries, inode sizes, and page-cache pages in the kernel
+                    # VFS cache when tests read via /sdcard.
+                    dev.RunShellCommand(
+                        'sync && echo 3 > /proc/sys/vm/drop_caches',
+                        shell=True,
+                        check_return=True,
+                        as_root=True,
+                    )
+                # Commit the new stamp.
+                commit_sync()
 
             def bind_crash_handler(step, dev):
                 return lambda: crash_handler.RetryOnSystemCrash(step, dev)
 
-            steps = [install_apk]
+            steps = [install_apk, disable_system_animations]
             if not self._test_instance.use_existing_test_data:
                 steps.append(push_test_data)
 
@@ -649,9 +686,7 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
                         device_openxr_runtime_path, as_root=True
                     ):
                         logging.exception(
-                            'Could not locate OpenXr runtime on device. '
-                            'Note that openxr deployment seems to fail with '
-                            'incremental_install=True'
+                            'Could not locate OpenXr runtime on device.'
                         )
                         sys.exit(1)
 
@@ -813,7 +848,7 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
                 tests = gtest_test_instance.ParseGTestListTests(raw_test_list)
                 if not tests:
                     logging.info('No tests found. Output:')
-                    for l in raw_test_list:
+                    for l in raw_test_list:  # noqa: E741
                         logging.info('  %s', l)
                 else:
                     with tempfile_ext.NamedTemporaryDirectory() as temp_dir:
@@ -876,7 +911,7 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
         if self._test_instance.run_pre_tests:
             all_tests = pre_tests + other_tests
 
-        return self._SortTests(all_tests)
+        return all_tests
 
     def _UploadTestArtifacts(self, device, test_artifacts_device_dir):
         # TODO(jbudorick): Reconcile this with the output manager once
@@ -1208,7 +1243,7 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
         if not self._env.skip_clear_data:
             self._delegate.Clear(device)
 
-        for l in output:
+        for l in output:  # noqa: E741
             logging.info(l)
 
         # Parse the output.

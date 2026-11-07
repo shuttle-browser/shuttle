@@ -34,8 +34,6 @@
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/renderer/modules/mediastream/video_track_adapter_settings.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_gfx.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_media.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/blink/renderer/platform/wtf/thread_safe_ref_counted.h"
 
@@ -189,17 +187,19 @@ bool RequiresEvenAlignment(media::VideoPixelFormat format) {
 scoped_refptr<media::VideoFrame> MaybeCropFrameForTrack(
     scoped_refptr<media::VideoFrame> frame,
     const base::Token& sub_capture_target) {
-  const bool is_gpu_cropped = frame->metadata().region_capture_rect.has_value();
+  const bool is_gpu_cropped =
+      frame->metadata().capture.region_capture_rect.has_value();
 
   if (sub_capture_target.is_zero()) {
     // Uncropped track: deliver the frame as-is only if it is an uncropped
     // full frame. Never deliver a GPU-cropped frame to an uncropped track.
     // Restricted (Element Capture) tracks also take this path; their frames
-    // never carry `region_capture_rect`, which Viz only sets for crop targets.
+    // never carry `capture.region_capture_rect`, which Viz only sets for crop
+    // targets.
     return is_gpu_cropped ? nullptr : frame;
   }
 
-  const auto& bounds_map = frame->metadata().region_capture_bounds;
+  const auto& bounds_map = frame->metadata().capture.region_capture_bounds;
   auto it = bounds_map.find(sub_capture_target);
   if (it == bounds_map.end()) {
     // Either:
@@ -208,9 +208,9 @@ scoped_refptr<media::VideoFrame> MaybeCropFrameForTrack(
     //
     // Case 1 follows from how FrameSinkVideoCapturerImpl populates the
     // metadata. When it physically crops on the GPU it publishes exactly one
-    // entry in `region_capture_bounds`: the target it cropped to, mapped onto
-    // the whole of `frame->visible_rect()`, because after cropping that target
-    // occupies the entire frame. Had this frame been cropped to
+    // entry in `capture.region_capture_bounds`: the target it cropped to,
+    // mapped onto the whole of `frame->visible_rect()`, because after cropping
+    // that target occupies the entire frame. Had this frame been cropped to
     // `sub_capture_target`, the lookup above would therefore have succeeded, so
     // a miss means the frame was cropped to some other track's target.
     //
@@ -367,6 +367,9 @@ class VideoTrackAdapter::VideoFrameResolutionAdapter
   // registered in AddCallbacks.
   const scoped_refptr<base::SingleThreadTaskRunner> renderer_task_runner_;
   const bool is_video_desktop_capture_type_;
+  // Cached value of features::kRegionCaptureOfClonedTracks. When false, frames
+  // are delivered as-is instead of being cropped or dropped per track.
+  const bool is_per_track_cropping_enabled_;
   const VideoTrackAdapterSettings settings_;
 
   // The target timestamp delta between video frames, corresponding to the max
@@ -401,6 +404,8 @@ VideoTrackAdapter::VideoFrameResolutionAdapter::VideoFrameResolutionAdapter(
     bool is_video_desktop_capture_type)
     : renderer_task_runner_(reader_task_runner),
       is_video_desktop_capture_type_(is_video_desktop_capture_type),
+      is_per_track_cropping_enabled_(
+          base::FeatureList::IsEnabled(features::kRegionCaptureOfClonedTracks)),
       settings_(ReturnSettingsMaybeOverrideMaxFps(settings)),
       target_delta_(settings_.max_frame_rate()
                         ? std::make_optional(base::Seconds(
@@ -661,8 +666,13 @@ void VideoTrackAdapter::VideoFrameResolutionAdapter::DeliverFrame(
     }
 
     if (!found_in_cache) {
+      // When !is_per_track_cropping_enabled_, every track on the source shares
+      // one target, and Viz already crops frames to it on the GPU, so no
+      // per-track crop is needed.
       scoped_refptr<media::VideoFrame> track_frame =
-          MaybeCropFrameForTrack(video_frame, target_token);
+          is_per_track_cropping_enabled_
+              ? MaybeCropFrameForTrack(video_frame, target_token)
+              : video_frame;
       if (track_frame) {
         adapted_frame =
             AdaptFrameResolution(std::move(track_frame), is_device_rotated);
@@ -783,12 +793,13 @@ void VideoTrackAdapter::VideoFrameResolutionAdapter::MaybeUpdateTrackSettings(
                    &track_settings.prev_frame_timestamp);
   if (MaybeUpdateFrameRate(&track_settings) ||
       frame.natural_size() != track_settings.frame_size ||
-      frame.metadata().source_size !=
+      frame.metadata().capture.source_size !=
           track_settings.metadata_frame_source_size ||
       frame.metadata().device_scale_factor !=
           track_settings.device_scale_factor) {
     track_settings.frame_size = frame.natural_size();
-    track_settings.metadata_frame_source_size = frame.metadata().source_size;
+    track_settings.metadata_frame_source_size =
+        frame.metadata().capture.source_size;
     track_settings.device_scale_factor = frame.metadata().device_scale_factor;
     track_params.callbacks.settings_callback.Run(
         track_settings.frame_size, track_settings.frame_rate,
@@ -1176,7 +1187,7 @@ void VideoTrackAdapter::DeliverBlackFrameOnVideoTaskRunner(
   // MediaStreamVideoTrack::FrameDeliverer discards frames whose capture version
   // is older than the latest one it has seen, which a default-constructed one
   // generally is.
-  black_frame->metadata().capture_version = capture_version;
+  black_frame->metadata().capture.version = capture_version;
 
   DeliverFrameOnVideoTaskRunner(std::move(black_frame), estimated_capture_time);
 }

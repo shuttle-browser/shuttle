@@ -22,6 +22,7 @@ proto_library("policy_common_definitions_compile_proto") {
   visibility = [
     ":proto_internal",
     ":proto_internal_gen",
+    "//chrome/browser/ash/policy/tools:*",
     "//chrome/browser/privacy:chrome_settings",
     "//chrome/browser/privacy:chrome_settings_gen",
     "//components/policy:chrome_settings_proto_generated_compile_proto",
@@ -46,8 +47,6 @@ proto_library("proto_internal") {
 
   sources = [
     "device_management_backend.proto",
-    "policy_signing_key.proto",
-    "secure_connect.proto",
   ]
 
   if (is_chromeos) {
@@ -55,10 +54,6 @@ proto_library("proto_internal") {
       "chrome_device_policy.proto",
       "install_attributes.proto",
     ]
-  }
-
-  if ((!is_android || enable_extensions_core) && !is_ios) {
-    sources += [ "chrome_extension_policy.proto" ]
   }
 
   extra_configs =

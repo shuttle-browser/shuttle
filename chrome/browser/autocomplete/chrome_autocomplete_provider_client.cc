@@ -18,10 +18,8 @@
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/autocomplete/autocomplete_classifier_factory.h"
-#include "chrome/browser/autocomplete/autocomplete_scoring_model_service_factory.h"
 #include "chrome/browser/autocomplete/document_suggestions_service_factory.h"
 #include "chrome/browser/autocomplete/in_memory_url_index_factory.h"
-#include "chrome/browser/autocomplete/on_device_tail_model_service_factory.h"
 #include "chrome/browser/autocomplete/provider_state_service_factory.h"
 #include "chrome/browser/autocomplete/remote_suggestions_service_factory.h"
 #include "chrome/browser/autocomplete/shortcuts_backend_factory.h"
@@ -32,7 +30,6 @@
 #include "chrome/browser/global_features.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/history/top_sites_factory.h"
-#include "chrome/browser/history_clusters/history_clusters_service_factory.h"
 #include "chrome/browser/omnibox/geolocation_header_service_factory.h"
 #include "chrome/browser/preloading/prefetch/search_prefetch/search_prefetch_service.h"
 #include "chrome/browser/preloading/prefetch/search_prefetch/search_prefetch_service_factory.h"
@@ -40,6 +37,7 @@
 #include "chrome/browser/profiles/profile_key.h"
 #include "chrome/browser/search/search.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
+#include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/omnibox/omnibox_pedal_implementations.h"
@@ -52,20 +50,16 @@
 #include "components/history/core/browser/history_service.h"
 #include "components/history/core/browser/top_sites.h"
 #include "components/history/core/common/pref_names.h"
-#include "components/history_clusters/core/features.h"
 #include "components/language/core/browser/pref_names.h"
 #include "components/omnibox/browser/actions/omnibox_pedal_provider.h"
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/omnibox/browser/autocomplete_match.h"
-#include "components/omnibox/browser/autocomplete_scoring_model_service.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
 #include "components/omnibox/browser/omnibox_triggered_feature_service.h"
-#include "components/omnibox/browser/on_device_tail_model_service.h"
 #include "components/omnibox/browser/shortcuts_backend.h"
 #include "components/omnibox/browser/tab_matcher.h"
 #include "components/omnibox/common/omnibox_feature_configs.h"
 #include "components/omnibox/common/omnibox_features.h"
-#include "components/optimization_guide/core/feature_registry/feature_registration.h"
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
@@ -209,11 +203,6 @@ ChromeAutocompleteProviderClient::GetAutocompleteClassifier() {
 history::HistoryService* ChromeAutocompleteProviderClient::GetHistoryService() {
   return HistoryServiceFactory::GetForProfile(
       profile_, ServiceAccessType::EXPLICIT_ACCESS);
-}
-
-history_clusters::HistoryClustersService*
-ChromeAutocompleteProviderClient::GetHistoryClustersService() {
-  return HistoryClustersServiceFactory::GetForBrowserContext(profile_);
 }
 
 scoped_refptr<history::TopSites>
@@ -380,19 +369,14 @@ signin::IdentityManager* ChromeAutocompleteProviderClient::GetIdentityManager()
   return IdentityManagerFactory::GetForProfile(profile_);
 }
 
-AutocompleteScoringModelService*
-ChromeAutocompleteProviderClient::GetAutocompleteScoringModelService() const {
-  return AutocompleteScoringModelServiceFactory::GetForProfile(profile_);
-}
-
-OnDeviceTailModelService*
-ChromeAutocompleteProviderClient::GetOnDeviceTailModelService() const {
-  return OnDeviceTailModelServiceFactory::GetForProfile(profile_);
-}
-
 ProviderStateService*
 ChromeAutocompleteProviderClient::GetProviderStateService() const {
   return ProviderStateServiceFactory::GetForProfile(profile_);
+}
+
+sessions::TabRestoreService*
+ChromeAutocompleteProviderClient::GetTabRestoreService() const {
+  return TabRestoreServiceFactory::GetForProfile(profile_);
 }
 
 bool ChromeAutocompleteProviderClient::IsOffTheRecord() const {
@@ -455,7 +439,7 @@ void ChromeAutocompleteProviderClient::Classify(
     AutocompleteMatch* match,
     GURL* alternate_nav_url) {
   AutocompleteClassifier* classifier = GetAutocompleteClassifier();
-  DCHECK(classifier);
+  CHECK(classifier, base::NotFatalUntil::M161);
   classifier->Classify(text, in_keyword_mode, allow_exact_keyword_match,
                        page_classification, match, alternate_nav_url);
 }

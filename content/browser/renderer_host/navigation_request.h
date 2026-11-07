@@ -14,6 +14,7 @@
 
 #include "base/check.h"
 #include "base/check_op.h"
+#include "base/containers/span.h"
 #include "base/debug/crash_logging.h"
 #include "base/functional/callback.h"
 #include "base/functional/callback_forward.h"
@@ -244,6 +245,32 @@ class CONTENT_EXPORT NavigationRequest
     kMaxValue = kNotExplicitlyRequestedAndOriginKeyed
   };
 
+  // The result of the ad exclusion for
+  // features::kExcludeAdsFromOriginIsolation, recorded at ReadyToCommit. This
+  // enum is used in UMA histograms, so do not reorder or remove values.
+  // LINT.IfChange(AdExclusionResult)
+  enum class AdExclusionResult {
+    // The ad decision was true, and the navigation got a site-keyed process.
+    kAdSiteKeyed = 0,
+    // The ad decision was true, but the BrowsingInstance already had an
+    // origin-keyed state for the origin. Thus, the navigation got an
+    // origin-keyed process.
+    kAdOriginKeyedByExistingState = 1,
+    // The ad decision was false, but the navigation became an ad after
+    // FreezeExcludeAdFromOriginKeyedProcess() made the decision. The navigation
+    // got an origin-keyed process, which the ad exclusion would have prevented.
+    kAdTagAfterDecisionOriginKeyed = 2,
+    // The ad decision was false, but the navigation became an ad after
+    // FreezeExcludeAdFromOriginKeyedProcess() made the decision. The navigation
+    // got a site-keyed process because of an existing BrowsingInstance state.
+    kAdTagAfterDecisionSiteKeyed = 3,
+    // The navigation was not an excluded ad at the ad decision, and it was
+    // not an excluded ad at ReadyToCommit.
+    kNotAdExcluded = 4,
+    kMaxValue = kNotAdExcluded,
+  };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/navigation/enums.xml:OriginAgentClusterAdExclusionResult)
+
   // If this navigation is a browser-initiated error page navigation, this enum
   // describes the scenario that triggered the navigation, and how session
   // history will be affected as a result.
@@ -397,7 +424,7 @@ class CONTENT_EXPORT NavigationRequest
   size_t GetIgnoredDuplicateNavigationCount() const override;
   bool IsInMainFrame() const override;
   bool IsInPrimaryMainFrame() const override;
-  const std::optional<base::UnguessableToken>& GetScriptToolInvocationId()
+  const std::optional<blink::ToolInvocationToken>& GetScriptToolInvocationId()
       const override;
   bool IsInOutermostMainFrame() const override;
   bool IsInPrerenderedMainFrame() const override;
@@ -489,7 +516,7 @@ class CONTENT_EXPORT NavigationRequest
   const std::optional<GURL>& GetInitiatorBaseUrl() override;
   scoped_refptr<InitiatorNavigationState> GetInitiatorNavigationState()
       override;
-  const std::vector<std::string>& GetDnsAliases() override;
+  base::span<const std::string> GetDnsAliases() override;
   bool IsSameProcess() override;
   ProcessSelectionUserData& GetProcessSelectionUserData() override;
   NavigationEntry* GetNavigationEntry() const override;
@@ -1213,14 +1240,16 @@ class CONTENT_EXPORT NavigationRequest
   // Store a console message, which will be sent to the final RenderFrameHost
   // immediately after requesting the navigation to commit.
   //
+  // If `required_origin` is set, the message is only sent if the navigation
+  // commits a document whose origin is `required_origin`, or commits an error
+  // page in an isolated error page process. Otherwise, it is dropped.
+  //
   // /!\ WARNING /!\: Beware of not leaking cross-origin information to a
   // potentially compromised renderer when using this method.
-  void AddDeferredConsoleMessage(blink::mojom::ConsoleMessageLevel level,
-                                 std::string message);
-
-  bool is_deferred_on_fenced_frame_url_mapping_for_testing() const {
-    return is_deferred_on_fenced_frame_url_mapping_;
-  }
+  void AddDeferredConsoleMessage(
+      blink::mojom::ConsoleMessageLevel level,
+      std::string message,
+      std::optional<url::Origin> required_origin = std::nullopt);
 
   base::WeakPtr<NavigationRequest> GetWeakPtr();
 
@@ -1253,6 +1282,17 @@ class CONTENT_EXPORT NavigationRequest
   const std::optional<base::UnguessableToken> ComputeFencedFrameNonce() const;
 
   void RenderFallbackContentForObjectTag();
+
+  // Records that `feature` was used during the navigation. Recording is
+  // delayed until the new document commits, and the feature is attributed to
+  // that document. Nothing is recorded if the navigation doesn't commit.
+  //
+  // If `response_origin` is set to the origin of the response that used the
+  // feature, and the navigation is then redirected to a different origin, the
+  // feature is not attributed to the committed document and is dropped.
+  void AddWebFeatureToLog(
+      blink::mojom::WebFeature feature,
+      std::optional<url::Origin> response_origin = std::nullopt);
 
   // Returns the vector of web features used during the navigation, whose
   // recording was delayed until the new document that used them commits.
@@ -1977,6 +2017,14 @@ class CONTENT_EXPORT NavigationRequest
   struct ConsoleMessage {
     blink::mojom::ConsoleMessageLevel level;
     std::string message;
+    // See AddDeferredConsoleMessage().
+    std::optional<url::Origin> required_origin;
+  };
+
+  struct WebFeatureToLog {
+    blink::mojom::WebFeature feature;
+    // See AddWebFeatureToLog().
+    std::optional<url::Origin> response_origin;
   };
 
   NavigationRequest(
@@ -2038,9 +2086,39 @@ class CONTENT_EXPORT NavigationRequest
   // or OnFencedFrameURLMappingComplete().
   void BeginNavigationImpl();
 
-  // Checks if the response requests an isolated origin via the
-  // Origin-Agent-Cluster header, and if so opts in the origin to be isolated.
-  void CheckForIsolationOptIn(const GURL& url);
+  // Calculates the ad decision one time and keeps it in
+  // `exclude_ad_from_origin_keyed_process_`. Called from OnResponseStarted()
+  // before MaybeRegisterExistingOriginAsHavingDefaultIsolation().
+  void FreezeExcludeAdFromOriginKeyedProcess();
+
+  // Records a new isolation request for the origin of `url`. A request is an
+  // opt-in or opt-out Origin-Agent-Cluster header, or an ad that gets a
+  // site-keyed process despite origin-keyed processes being the default. For a
+  // new request, it does a global walk to find any existing instances of the
+  // origin and to record that they should remain default-isolated in their
+  // existing BrowsingInstances.
+  void MaybeRegisterExistingOriginAsHavingDefaultIsolation(const GURL& url);
+
+  // Returns whether the ad exclusion from origin-keyed processes can apply. If
+  // not, no navigation is an excluded ad.
+  bool IsAdExclusionFromOriginKeyedProcessesEnabled(
+      BrowserContext* browser_context);
+
+  // Uses the current inputs to calculate if this navigation is an ad that must
+  // get a site-keyed process when origin-keyed processes are turned on by
+  // default. The ad inputs can change asynchronously. Thus, only
+  // FreezeExcludeAdFromOriginKeyedProcess() uses this function's dynamic result
+  // for isolation decisions. All other isolation code uses the frozen
+  // `exclude_ad_from_origin_keyed_process_`.
+  bool CalculateExcludeAdFromOriginKeyedProcess(
+      BrowserContext* browser_context);
+
+  // Records Navigation.OriginAgentCluster.AdExclusionResult. This function
+  // compares `exclude_ad_from_origin_keyed_process_` with the committed
+  // SiteInstance and with the current ad inputs. This must be called at
+  // ready-to-commit time, after the WillProcessResponse throttle events are
+  // processed, so that the ad host filter tag is final.
+  void RecordAdExclusionResultHistogram();
 
   // Returns whether this navigation request is requesting opt-in
   // origin-isolation.
@@ -2625,7 +2703,10 @@ class CONTENT_EXPORT NavigationRequest
 
   // Called just after a navigation commits (also in case of error): it
   // sends all console messages to the final RenderFrameHost.
-  void SendDeferredConsoleMessages();
+  // `origin_to_commit` is the origin of the committed document, or
+  // std::nullopt if an error page is committed.
+  void SendDeferredConsoleMessages(
+      const std::optional<url::Origin>& origin_to_commit);
 
   bool ShouldRenderFallbackContentForResponse(
       const net::HttpResponseHeaders& response_head) const;
@@ -2925,6 +3006,10 @@ class CONTENT_EXPORT NavigationRequest
   // Whether devtools overrides were applied on the Accept-Language request
   // header.
   bool devtools_accept_language_override_ = false;
+
+  // The request headers before devtools overrides were applied, used to revert
+  // them on redirects to URLs the overriding session may not attach to.
+  std::string headers_before_devtools_overrides_;
 
   // The type of RenderFrameHost associated with this navigation.
   AssociatedRenderFrameHostType associated_rfh_type_ =
@@ -3421,15 +3506,6 @@ class CONTENT_EXPORT NavigationRequest
   // running.
   bool is_running_potential_prerender_activation_checks_ = false;
 
-  // Set to true before the fenced frame url mapping. Reset to false when the
-  // mapping finishes. If the initial mapping state of the urn:uuid is pending,
-  // the mapping will finish asynchronously; otherwise, the mapping will finish
-  // synchronously.
-  bool is_deferred_on_fenced_frame_url_mapping_ = false;
-
-  // The start time of fenced frame url mapping.
-  base::TimeTicks fenced_frame_url_mapping_start_time_;
-
   // The id of the prerendered page. This will be a valid PrerenderHostId value
   // when this navigation will activate a prerendered page. For all other
   // navigations this will be an invalid FrameTreeNodeId. We only know whether
@@ -3479,7 +3555,7 @@ class CONTENT_EXPORT NavigationRequest
   // The list of web features that were used by the new document during
   // navigation. These can only be logged once the document commits, so they are
   // held in this vector until then.
-  std::vector<blink::mojom::WebFeature> web_features_to_log_;
+  std::vector<WebFeatureToLog> web_features_to_log_;
 
   // Messages to be printed on the console in the target RenderFrameHost of this
   // NavigationRequest.
@@ -3729,6 +3805,17 @@ class CONTENT_EXPORT NavigationRequest
   // Tracks whether the embedder indicated this navigation is being used for
   // advertising purposes.
   AdStatus ad_status_ = AdStatus::kNone;
+
+  // This member keeps the ad decision for
+  // features::kExcludeAdsFromOriginIsolation. It has no value until
+  // FreezeExcludeAdFromOriginKeyedProcess() runs for the final response, and
+  // then it does not change. The global walk, the process selection, the
+  // site-keyed record in the BrowsingInstance, and the commit validation all
+  // use this one value.
+  // Thus, a late ad tag cannot cause a site-keyed record without a global walk.
+  // For example, the ad tag can occur while the browser defers process
+  // selection.
+  std::optional<bool> exclude_ad_from_origin_keyed_process_;
 
   // This is the origin to commit value calculated at request time for data: URL
   // navigations. It is stored so that the opaque origin nonce can be maintained

@@ -20,10 +20,9 @@ BASE_EXPORT BASE_DECLARE_FEATURE(kFeatureParamWithCache);
 
 BASE_EXPORT BASE_DECLARE_FEATURE(kFastFilePathIsParent);
 
-BASE_EXPORT BASE_DECLARE_FEATURE_PARAM(bool,
-                                       kUseRustJsonParserInCurrentSequence);
-
 BASE_EXPORT BASE_DECLARE_FEATURE(kHeapProfilerIncludeResidency);
+
+BASE_EXPORT BASE_DECLARE_FEATURE(kI18nOptimizations);
 
 BASE_EXPORT BASE_DECLARE_FEATURE(kLowEndMemoryExperiment);
 
@@ -77,6 +76,10 @@ BASE_EXPORT BASE_DECLARE_FEATURE(kUserBlockingAboveNormalPriority);
 BASE_EXPORT BASE_DECLARE_FEATURE(kRetryCreateFileMappingOnCommitLimit);
 
 BASE_EXPORT BASE_DECLARE_FEATURE(kPreventReparsePointTraversal);
+
+// Controls whether FilePersistentMemoryAllocator calls ::FlushFileBuffers()
+// on the underlying file handle for synchronous flushes.
+BASE_EXPORT BASE_DECLARE_FEATURE(kFlushFileBuffersOnSyncFlush);
 #endif
 
 #if BUILDFLAG(IS_POSIX)
@@ -87,6 +90,11 @@ BASE_EXPORT BASE_DECLARE_FEATURE_PARAM(int, kSpinCountX86);
 BASE_EXPORT BASE_DECLARE_FEATURE_PARAM(int, kSpinCountArm);
 #endif  // defined(ARCH_CPU_X86_FAMILY)
 #endif  // BUILDFLAG(IS_POSIX)
+
+// Returns whether `kI18nOptimizations` is enabled. Reads experiment state from
+// a global atomic updated in `Init()`, so it is safe to call before
+// `FeatureList` initialization.
+BASE_EXPORT bool IsI18nOptimizationsEnabled();
 
 // Initializes global variables that depend on `FeatureList`. Must be invoked
 // early on process startup, but after `FeatureList` initialization. Different

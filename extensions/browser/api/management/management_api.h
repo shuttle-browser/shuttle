@@ -19,7 +19,6 @@
 #include "extensions/browser/extension_function.h"
 #include "extensions/browser/extension_registry_observer.h"
 #include "extensions/browser/preload_check.h"
-#include "extensions/browser/supervised_user_extensions_delegate.h"
 #include "extensions/buildflags/buildflags.h"
 #include "extensions/common/extension_id.h"
 
@@ -38,7 +37,7 @@ class ManagementGetAllFunction : public ExtensionFunction {
   DECLARE_EXTENSION_FUNCTION("management.getAll", MANAGEMENT_GETALL)
 
  protected:
-  ~ManagementGetAllFunction() override {}
+  ~ManagementGetAllFunction() override = default;
 
   // ExtensionFunction:
   ResponseAction Run() override;
@@ -49,7 +48,7 @@ class ManagementGetFunction : public ExtensionFunction {
   DECLARE_EXTENSION_FUNCTION("management.get", MANAGEMENT_GET)
 
  protected:
-  ~ManagementGetFunction() override {}
+  ~ManagementGetFunction() override = default;
 
   // ExtensionFunction:
   ResponseAction Run() override;
@@ -60,7 +59,7 @@ class ManagementGetSelfFunction : public ExtensionFunction {
   DECLARE_EXTENSION_FUNCTION("management.getSelf", MANAGEMENT_GETSELF)
 
  protected:
-  ~ManagementGetSelfFunction() override {}
+  ~ManagementGetSelfFunction() override = default;
 
   // ExtensionFunction:
   ResponseAction Run() override;
@@ -72,7 +71,7 @@ class ManagementGetPermissionWarningsByIdFunction : public ExtensionFunction {
                              MANAGEMENT_GETPERMISSIONWARNINGSBYID)
 
  protected:
-  ~ManagementGetPermissionWarningsByIdFunction() override {}
+  ~ManagementGetPermissionWarningsByIdFunction() override = default;
 
   // ExtensionFunction:
   ResponseAction Run() override;
@@ -85,7 +84,7 @@ class ManagementGetPermissionWarningsByManifestFunction
                              MANAGEMENT_GETPERMISSIONWARNINGSBYMANIFEST)
 
  protected:
-  ~ManagementGetPermissionWarningsByManifestFunction() override {}
+  ~ManagementGetPermissionWarningsByManifestFunction() override = default;
 
   // ExtensionFunction:
   ResponseAction Run() override;
@@ -96,7 +95,7 @@ class ManagementLaunchAppFunction : public ExtensionFunction {
   DECLARE_EXTENSION_FUNCTION("management.launchApp", MANAGEMENT_LAUNCHAPP)
 
  protected:
-  ~ManagementLaunchAppFunction() override {}
+  ~ManagementLaunchAppFunction() override = default;
 
   // ExtensionFunction:
   ResponseAction Run() override;
@@ -119,10 +118,6 @@ class ManagementSetEnabledFunction : public ExtensionFunction {
   ResponseAction Run() override;
 
  private:
-  // Called when supervised extension approval flow is completed.
-  void OnSupervisedExtensionApprovalDone(
-      SupervisedExtensionApprovalResult result);
-
   // Verifies if `extension` has supported requirements. When requirements are
   // checked, finishes the enable checks if there are any errors. Otherwise,
   // continues with the enable checks.
@@ -150,10 +145,6 @@ class ManagementSetEnabledFunction : public ExtensionFunction {
 
   // Returns whether `extension_id` has any unsupported requirements.
   bool HasUnsupportedRequirements(const ExtensionId& extension_id) const;
-
-  // Returns whether `target_extension` needs supervised approval.
-  bool IsSupervisedExtensionApprovalFlowRequired(
-      const Extension* target_extension) const;
 
   // Returns the extension corresponding to `extension_id_`. This could be null
   // if extension was uninstalled.
@@ -241,7 +232,7 @@ class ManagementSetLaunchTypeFunction : public ExtensionFunction {
                              MANAGEMENT_SETLAUNCHTYPE)
 
  protected:
-  ~ManagementSetLaunchTypeFunction() override {}
+  ~ManagementSetLaunchTypeFunction() override = default;
 
   ResponseAction Run() override;
 };
@@ -337,19 +328,8 @@ class ManagementAPI : public BrowserContextKeyedAPI,
   // Returns the ManagementAPI delegate.
   const ManagementAPIDelegate* GetDelegate() const { return delegate_.get(); }
 
-  // Returns the SupervisedUserService delegate, which might be null depending
-  // on the extensions embedder.
-  SupervisedUserExtensionsDelegate* GetSupervisedUserExtensionsDelegate()
-      const {
-    return supervised_user_extensions_delegate_.get();
-  }
-
   void set_delegate_for_test(std::unique_ptr<ManagementAPIDelegate> delegate) {
     delegate_ = std::move(delegate);
-  }
-  void set_supervised_user_extensions_delegate_for_test(
-      std::unique_ptr<SupervisedUserExtensionsDelegate> delegate) {
-    supervised_user_extensions_delegate_ = std::move(delegate);
   }
 
  private:
@@ -366,8 +346,6 @@ class ManagementAPI : public BrowserContextKeyedAPI,
   std::unique_ptr<ManagementEventRouter> management_event_router_;
 
   std::unique_ptr<ManagementAPIDelegate> delegate_;
-  std::unique_ptr<SupervisedUserExtensionsDelegate>
-      supervised_user_extensions_delegate_;
 };
 
 }  // namespace extensions

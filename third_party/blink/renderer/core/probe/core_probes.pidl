@@ -70,6 +70,7 @@ interface CoreProbes {
   class XMLHttpRequest;
   using PropertyName = std::variant<const char*, String>;
   using ScriptException = std::optional<std::pair<ScriptValue, ScriptState*>>;
+  using ToolInvocationToken = base::TokenType<class ToolInvocationTokenTypeMarker>;
 
   void DidClearDocumentOfWindowObject([Keep] LocalFrame*);
   void DidCreateMainWorldContext([Keep] LocalFrame*);
@@ -115,7 +116,7 @@ interface CoreProbes {
   void DidReceiveData(CoreProbeSink*, uint64_t identifier, DocumentLoader*, base::SpanOrSize<const char> data);
   void DidReceiveBlob(CoreProbeSink*, uint64_t identifier, DocumentLoader*, BlobDataHandle*);
   void DidReceiveEncodedDataLength(CoreProbeSink*, DocumentLoader* loader, uint64_t identifier, size_t encoded_data_length);
-  void DidFinishLoading(CoreProbeSink*, uint64_t identifier, DocumentLoader*, base::TimeTicks finish_time, int64_t encoded_data_length, int64_t decoded_body_length);
+  void DidFinishLoading(CoreProbeSink*, uint64_t identifier, DocumentLoader*, base::TimeTicks finish_time, int64_t encoded_data_length, uint64_t encoded_body_length, int64_t decoded_body_length);
   void DidReceiveCorsRedirectResponse(ExecutionContext*, uint64_t identifier, DocumentLoader*, const ResourceResponse&, Resource*);
   void DidFailLoading([Keep] CoreProbeSink*, uint64_t identifier, DocumentLoader*, const ResourceError&, const base::UnguessableToken&);
   void WillSendEventSourceRequest(ExecutionContext*);
@@ -168,8 +169,8 @@ interface CoreProbes {
   void DirectUDPSocketClosed(ExecutionContext*, uint64_t identifier);
   void DirectUDPSocketChunkSent(ScriptState&, uint64_t identifier, base::span<const uint8_t> data, std::optional<String> remote_addr, std::optional<uint16_t> remote_port);
   void DirectUDPSocketChunkReceived(ScriptState&, uint64_t identifier, base::span<const uint8_t> data, std::optional<String> remote_addr, std::optional<uint16_t> remote_port);
-  void DirectUDPSocketJoinedMulticastGroup(ExecutionContext*, uint64_t identifier, const String& ipAddress);
-  void DirectUDPSocketLeftMulticastGroup(ExecutionContext*, uint64_t identifier, const String& ipAddress);
+  void DirectUDPSocketJoinedMulticastGroup(ExecutionContext*, uint64_t identifier, const String& group_address, const String& source_address);
+  void DirectUDPSocketLeftMulticastGroup(ExecutionContext*, uint64_t identifier, const String& group_address, const String& source_address);
   void WillCreateP2PSocketUdp(ExecutionContext*, std::optional<base::UnguessableToken>* devtools_token);
   /* This is for pre-BlinkGenPropertyTrees. TODO(wangxianzhu): Remove this function for BlinkGenPropertyTrees. */
   void LayerTreeDidChange(LocalFrame*);
@@ -207,6 +208,7 @@ interface CoreProbes {
   ParseHTML(Document* document, HTMLDocumentParser* parser);
   void ForcePseudoState([Keep] Element* element, CSSSelector::PseudoType pseudo_state, bool* result);
   void ForceStartingStyle([Keep] Element* element, bool* result);
+  void ForcePositionTryOption([Keep] Element* element, std::optional<wtf_size_t>* forced_index);
   void ShouldForceCorsPreflight(ExecutionContext*, bool* result);
   void ShouldBlockRequest(CoreProbeSink*, const KURL&, bool* result);
   void ShouldBypassServiceWorker(ExecutionContext* context, bool* result);
@@ -251,7 +253,7 @@ interface CoreProbes {
   void UpdateAffectedByStartingStylesFlag([Keep] Node* node, std::optional<bool> override_flag);
   void WebMCPToolAdded([Keep] Document* document, const ToolData& tool);
   void WebMCPToolRemoved([Keep] Document* document, const ToolData& tool);
-  void WebMCPToolExecuted([Keep] Document* document, const String& name, const String& input_arguments, const base::UnguessableToken& invocation_id);
-  void WebMCPToolResponded([Keep] Document* document, const String& result, const base::UnguessableToken& invocation_id);
-  void WebMCPToolFailed([Keep] Document* document, const ScriptToolError& result, const base::UnguessableToken& invocation_id, ScriptException exception);
+  void WebMCPToolExecuted([Keep] Document* document, const String& name, const String& input_arguments, const ToolInvocationToken& invocation_id);
+  void WebMCPToolResponded([Keep] Document* document, const String& result, const ToolInvocationToken& invocation_id);
+  void WebMCPToolFailed([Keep] Document* document, const ScriptToolError& result, const ToolInvocationToken& invocation_id, ScriptException exception);
 }

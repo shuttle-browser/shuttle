@@ -18,8 +18,6 @@ source_set("actions_headers") {
     "//ui/base/metadata",
     "//ui/events",
   ]
-
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 }
 
 component("actions") {
@@ -29,6 +27,6 @@ component("actions") {
 
   public_deps = [ ":actions_headers" ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
+  deps = [ "//ui/gfx" ]
 }
 

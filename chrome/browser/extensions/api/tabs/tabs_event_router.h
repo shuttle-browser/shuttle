@@ -13,6 +13,7 @@
 
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_multi_source_observation.h"
 #include "base/values.h"
@@ -27,6 +28,7 @@
 #include "content/public/browser/web_contents_observer.h"
 #include "extensions/browser/event_router.h"
 #include "extensions/browser/extension_event_histogram_value.h"
+#include "extensions/common/event_args.h"
 #include "url/gurl.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -192,12 +194,14 @@ class TabsEventRouter : public favicon::FaviconDriverObserver,
   void DispatchEvent(Profile* profile,
                      events::HistogramValue histogram_value,
                      const std::string& event_name,
-                     base::ListValue args,
+                     scoped_refptr<const EventArgs> args,
                      EventRouter::UserGestureState user_gesture);
 
-  // Updates the last known indices recorded in `tab_entries_` for the tabs in
-  // `tab_list`.
-  void UpdateTabIndices(TabListInterface& tab_list);
+  // Refreshes the last known index of the tabs in `tab_list` at `first_index`
+  // and after it. `first_index` is a performance optimization: an insertion,
+  // removal or move only changes the indices of the tabs from that position
+  // on, so the tabs before it are skipped. Pass 0 to refresh every tab.
+  void UpdateTabIndices(TabListInterface& tab_list, int first_index);
 
   // TabListInterfaceObserver:
   void OnTabAdded(TabListInterface& tab_list,

@@ -21,9 +21,6 @@ class ShareThisTabSourceView : public views::View {
   METADATA_HEADER(ShareThisTabSourceView, views::View)
 
  public:
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  static bool IsTabSharingBlocked(content::WebContents* web_contents);
-#endif
 
   explicit ShareThisTabSourceView(
       base::WeakPtr<content::WebContents> web_contents);

@@ -5,6 +5,7 @@
 #include "third_party/blink/renderer/core/inspector/inspector_log_agent.h"
 
 #include "base/format_macros.h"
+#include "third_party/blink/public/common/dom/dom_node_id.h"
 #include "third_party/blink/renderer/core/dom/dom_node_ids.h"
 #include "third_party/blink/renderer/core/frame/performance_monitor.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
@@ -15,7 +16,6 @@
 #include "third_party/blink/renderer/platform/bindings/source_location.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/text/format.h"
-#include "third_party/blink/renderer/platform/wtf/text/strcat.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
@@ -143,10 +143,10 @@ void InspectorLogAgent::ConsoleMessageAdded(ConsoleMessage* message) {
     ScriptForbiddenScope::AllowUserAgentScript allow_script;
     auto remote_objects = std::make_unique<
         protocol::Array<v8_inspector::protocol::Runtime::API::RemoteObject>>();
-    for (DOMNodeId node_id : message->Nodes()) {
+    for (DOMNodeIdType node_id : message->Nodes()) {
       std::unique_ptr<v8_inspector::protocol::Runtime::API::RemoteObject>
           remote_object;
-      Node* node = DOMNodeIds::NodeForId(node_id);
+      Node* node = DOMNodeIds::NodeForId(node_id.value());
       if (node) {
         remote_object =
             ResolveNode(V8Session().get(), node, "console", std::nullopt);
@@ -181,8 +181,8 @@ void InspectorLogAgent::InnerEnable() {
         protocol::Log::LogEntry::create()
             .setSource(protocol::Log::LogEntry::SourceEnum::Other)
             .setLevel(protocol::Log::LogEntry::LevelEnum::Warning)
-            .setText(StrCat({String::Number(storage_->ExpiredCount()),
-                             " log entries are not shown."}))
+            .setText(Format("{} log entries are not shown.",
+                            storage_->ExpiredCount()))
             .setTimestamp(0)
             .build();
     GetFrontend()->entryAdded(std::move(expired));

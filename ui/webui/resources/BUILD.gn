@@ -52,15 +52,12 @@ generate_grd("build_grd") {
   if ((!is_android && !is_ios) || is_desktop_android) {
     public_deps += [
       "cr_components/app_management:build_grdp",
-      "cr_components/color_change_listener:build_grdp",
       "cr_components/cr_lottie:build_grdp",
       "cr_components/cr_shortcut_input:build_grdp",
       "cr_components/customize_color_scheme_mode:build_grdp",
       "cr_components/history:build_grdp",
-      "cr_components/history_clusters:build_grdp",
       "cr_components/managed_dialog:build_grdp",
       "cr_components/managed_footnote:build_grdp",
-      "cr_components/page_image_service:build_grdp",
       "cr_components/searchbox:build_grdp",
       "cr_components/theme_color_picker:build_grdp",
       "//third_party/d3:build_grdp",
@@ -71,13 +68,10 @@ generate_grd("build_grd") {
       "$root_gen_dir/third_party/d3/d3_resources.grdp",
       "$root_gen_dir/third_party/lottie/resources.grdp",
       "$root_gen_dir/third_party/polymer/v3_0/polymer_3_0_resources.grdp",
-      "$root_gen_dir/ui/webui/resources/cr_components/color_change_listener/resources.grdp",
-      "$root_gen_dir/ui/webui/resources/cr_components/page_image_service/resources.grdp",
       "$target_gen_dir/cr_components/app_management/resources.grdp",
       "$target_gen_dir/cr_components/cr_lottie/resources.grdp",
       "$target_gen_dir/cr_components/cr_shortcut_input/resources.grdp",
       "$target_gen_dir/cr_components/customize_color_scheme_mode/resources.grdp",
-      "$target_gen_dir/cr_components/history_clusters/resources.grdp",
       "$target_gen_dir/cr_components/history/resources.grdp",
       "$target_gen_dir/cr_components/managed_dialog/resources.grdp",
       "$target_gen_dir/cr_components/managed_footnote/resources.grdp",
@@ -87,6 +81,8 @@ generate_grd("build_grd") {
   }
 
   if (!is_ios) {
+    public_deps += [ "cr_components/color_change_listener:build_grdp" ]
+
     # TODO(crbug.com/527601593): Revert by moving these components back into the
     # main desktop block at L53 if we disable composebox on Android phones.
     public_deps += [
@@ -94,13 +90,19 @@ generate_grd("build_grd") {
       "cr_components/searchbox/icons:build_grdp",
     ]
     grdp_files += [
+      "$root_gen_dir/ui/webui/resources/cr_components/color_change_listener/resources.grdp",
       "$target_gen_dir/cr_components/localized_link/resources.grdp",
       "$target_gen_dir/cr_components/searchbox/icons/resources.grdp",
     ]
     if (is_chrome_branded) {
-      public_deps +=
-          [ "cr_components/searchbox/icons:chrome_branded_build_grdp" ]
-      grdp_files += [ "$target_gen_dir/cr_components/searchbox/icons/chrome_branded_resources.grdp" ]
+      public_deps += [
+        "cr_components/searchbox/icons:chrome_branded_build_grdp",
+        "cr_components/searchbox/icons:chrome_branded_google_logo_26_grdp",
+      ]
+      grdp_files += [
+        "$target_gen_dir/cr_components/searchbox/icons/chrome_branded_resources.grdp",
+        "$target_gen_dir/cr_components/searchbox/icons/chrome_branded_google_logo_26_resources.grdp",
+      ]
     }
   }
 

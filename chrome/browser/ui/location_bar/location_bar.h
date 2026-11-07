@@ -14,6 +14,7 @@
 #include "base/observer_list.h"
 #include "base/scoped_observation_traits.h"
 #include "base/time/time.h"
+#include "ui/base/interaction/element_identifier.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/gfx/geometry/rect.h"
@@ -59,7 +60,7 @@ class LocationBar {
   // Holds the details necessary to open the omnibox match via browser commands.
   struct NavigationParams {
     GURL destination_url;
-    WindowOpenDisposition disposition{WindowOpenDisposition::CURRENT_TAB};
+    WindowOpenDisposition disposition{WindowOpenDisposition::kCurrentTab};
     ui::PageTransition transition{ui::PAGE_TRANSITION_TYPED |
                                   ui::PAGE_TRANSITION_FROM_ADDRESS_BAR};
     base::TimeTicks match_selection_timestamp;
@@ -163,6 +164,10 @@ class LocationBar {
   // Warning: this may be null if the location bar is not visible.
   // Gets an anchor for the entire location bar.
   virtual ui::TrackedElement* GetAnchorOrNull() = 0;
+
+  // Returns the ElementContext used to look up tracked elements in this
+  // location bar.
+  virtual ui::ElementContext GetElementContext() const;
 
   // Returns true if the location bar is currently in the middle of a popup
   // state transition.

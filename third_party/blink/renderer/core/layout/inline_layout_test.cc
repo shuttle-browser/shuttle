@@ -19,8 +19,8 @@ namespace blink {
 class InlineLayoutTest : public SimTest {
  public:
   ConstraintSpace ConstraintSpaceForElement(LayoutBlockFlow* block_flow) {
-    ConstraintSpaceBuilder builder(block_flow->StyleRef().GetWritingMode(),
-                                   block_flow->StyleRef().GetWritingDirection(),
+    ConstraintSpaceBuilder builder(block_flow->Style().GetWritingMode(),
+                                   block_flow->Style().GetWritingDirection(),
                                    /* is_new_fc */ false);
     builder.SetAvailableSize(LogicalSize(LayoutUnit(), LayoutUnit()));
     builder.SetPercentageResolutionSize(
@@ -38,7 +38,7 @@ TEST_F(InlineLayoutTest, BlockWithSingleTextNode) {
   Compositor().BeginFrame();
   ASSERT_FALSE(Compositor().NeedsBeginFrame());
 
-  Element* target = GetDocument().getElementById(AtomicString("target"));
+  Element* target = GetElementById("target");
   auto* block_flow = To<LayoutBlockFlow>(target->GetLayoutObject());
   ConstraintSpace constraint_space = ConstraintSpaceForElement(block_flow);
   BlockNode node(block_flow);
@@ -64,7 +64,7 @@ TEST_F(InlineLayoutTest, BlockWithTextAndAtomicInline) {
   Compositor().BeginFrame();
   ASSERT_FALSE(Compositor().NeedsBeginFrame());
 
-  Element* target = GetDocument().getElementById(AtomicString("target"));
+  Element* target = GetElementById("target");
   auto* block_flow = To<LayoutBlockFlow>(target->GetLayoutObject());
   ConstraintSpace constraint_space = ConstraintSpaceForElement(block_flow);
   BlockNode node(block_flow);

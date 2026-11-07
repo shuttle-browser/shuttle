@@ -32,6 +32,8 @@
 #include "base/callback_list.h"
 #include "base/memory/weak_ptr.h"
 #include "chrome/common/buildflags.h"
+#include "components/safe_browsing/buildflags.h"
+#include "components/site_engagement/content/site_engagement_service.h"
 #include "content/public/common/buildflags.h"
 #include "extensions/buildflags/buildflags.h"
 #include "rlz/buildflags/buildflags.h"
@@ -43,6 +45,7 @@ class ConnectionHelpTabHelper;
 class CookieControlsPageActionController;
 class ExternalProtocolObserver;
 class FileSystemAccessPageActionController;
+class FileSystemAccessPermissionRequestManager;
 class FocusTabAfterNavigationHelper;
 class FontPrewarmerTabHelper;
 class FramebustBlockTabHelper;
@@ -64,6 +67,52 @@ class TabUIHelper;
 class ThumbnailTabHelper;
 class UMABrowsingActivityTabHelper;
 class ZeroSuggestPrefetchTabHelper;
+class ChainedBackNavigationTracker;
+class CoreTabHelper;
+class FileSystemAccessTabHelper;
+class MixedContentSettingsTabHelper;
+class OneTimePermissionsTrackerHelper;
+class RecentlyAudibleHelper;
+class SearchEngineTabHelper;
+class TabDialogs;
+
+namespace blocked_content {
+class PopupBlockerTabHelper;
+class PopupOpenerTabHelper;
+}  // namespace blocked_content
+
+namespace chrome_browser_net {
+class NetErrorTabHelper;
+}  // namespace chrome_browser_net
+
+namespace client_hints {
+class ClientHintsWebContentsObserver;
+}  // namespace client_hints
+
+namespace history {
+class WebContentsTopSitesObserver;
+}  // namespace history
+
+namespace metrics {
+class MetricsServicesWebContentsObserver;
+}  // namespace metrics
+
+namespace predictors {
+class LoadingPredictorTabHelper;
+}  // namespace predictors
+
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+namespace extensions {
+class AppTabHelper;
+}  // namespace extensions
+#endif
+
+#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
+namespace safe_browsing {
+class SafeBrowsingTabObserver;
+class TriggerCreator;
+}  // namespace safe_browsing
+#endif
 
 namespace site_protection {
 class SiteProtectionMetricsObserver;
@@ -72,15 +121,6 @@ class SiteProtectionMetricsObserver;
 namespace back_to_opener {
 class BackToOpenerController;
 }  // namespace back_to_opener
-
-
-namespace enterprise_data_protection {
-class DataProtectionNavigationController;
-}  // namespace enterprise_data_protection
-
-namespace enterprise_reporting {
-class SaasUsageNavigationObserver;
-}  // namespace enterprise_reporting
 
 namespace content {
 class WebContents;
@@ -108,10 +148,6 @@ namespace prerender {
 class NoStatePrefetchTabHelper;
 }  // namespace prerender
 
-namespace v8_compile_hints {
-class V8CompileHintsTabHelper;
-}  // namespace v8_compile_hints
-
 namespace page_actions {
 class PageActionController;
 }  // namespace page_actions
@@ -130,16 +166,11 @@ class ChromeRLZTrackerWebContentsObserver;
 class PluginObserver;
 #endif
 
-namespace multistep_filter {
-class ChromeFilterNavigationObserver;
-class FilterUiController;
-}  // namespace multistep_filter
-
 namespace tabs {
 
+class ChildTabAlertHelper;
 class ContextHighlightTabFeature;
 class InactiveWindowMouseEventController;
-class PageContextEligibilityHelper;
 class TabAlertController;
 class TabAttachmentTracker;
 class TabCreationMetricsController;
@@ -160,15 +191,10 @@ class TabFeatures {
   TabFeatures(const TabFeatures&) = delete;
   TabFeatures& operator=(const TabFeatures&) = delete;
 
-  enterprise_data_protection::DataProtectionNavigationController*
-  data_protection_controller() {
-    return data_protection_tab_controller_.get();
-  }
 
   permissions::PermissionIndicatorsTabData* permission_indicators_tab_data() {
     return permission_indicators_tab_data_.get();
   }
-
 
   TabDialogManager* tab_dialog_manager() { return tab_dialog_manager_.get(); }
 
@@ -200,16 +226,8 @@ class TabFeatures {
   TabAlertController* SetTabAlertControllerForTesting(
       std::unique_ptr<TabAlertController> tab_alert_controller);
 
-  TabCreationMetricsController* tab_creation_metrics_controller() {
-    return tab_creation_metrics_controller_.get();
-  }
-
-  AskBeforeHttpDialogController* ask_before_http_dialog_controller() {
-    return ask_before_http_dialog_controller_.get();
-  }
-
-  back_to_opener::BackToOpenerController* back_to_opener_controller() {
-    return back_to_opener_controller_.get();
+  site_engagement::SiteEngagementService::Helper* site_engagement_helper() {
+    return site_engagement_helper_.get();
   }
 
   // Called exactly once to initialize features.
@@ -234,7 +252,6 @@ class TabFeatures {
   std::unique_ptr<permissions::PermissionIndicatorsTabData>
       permission_indicators_tab_data_;
 
-
   // Responsible for managing the read anything (Reading mode) feature.
 
   // The tab-scoped extension side-panel manager. There is a separate
@@ -246,10 +263,6 @@ class TabFeatures {
 
   // Manages various tab modal dialogs.
   std::unique_ptr<TabDialogManager> tab_dialog_manager_;
-
-  std::unique_ptr<
-      enterprise_data_protection::DataProtectionNavigationController>
-      data_protection_tab_controller_;
 
   // Holds subscriptions for TabInterface callbacks.
   std::vector<base::CallbackListSubscription> tab_subscriptions_;
@@ -297,6 +310,10 @@ class TabFeatures {
   // server HTTP auth.
   std::unique_ptr<HttpAuthCacheStatus> http_auth_cache_status_;
 
+  std::unique_ptr<RecentlyAudibleHelper> recently_audible_helper_;
+
+  std::unique_ptr<ChildTabAlertHelper> child_tab_alert_helper_;
+
   std::unique_ptr<TabAlertController> tab_alert_controller_;
 
   std::unique_ptr<ContextHighlightTabFeature> context_highlight_tab_feature_;
@@ -318,19 +335,10 @@ class TabFeatures {
   std::unique_ptr<back_to_opener::BackToOpenerController>
       back_to_opener_controller_;
 
-  std::unique_ptr<tabs::PageContextEligibilityHelper>
-      page_context_eligibility_helper_;
-
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   std::unique_ptr<metrics::DesktopSessionDurationObserver>
       desktop_session_duration_observer_;
 #endif
-
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
-    BUILDFLAG(IS_CHROMEOS)
-  std::unique_ptr<enterprise_reporting::SaasUsageNavigationObserver>
-      saas_usage_navigation_observer_;
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(IS_WIN)
   std::unique_ptr<CommitLimitOOMRecoveryTracker>
@@ -347,14 +355,14 @@ class TabFeatures {
   std::unique_ptr<PluginObserver> plugin_observer_;
 #endif
 
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+  std::unique_ptr<extensions::AppTabHelper> app_tab_helper_;
+#endif
+
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   std::unique_ptr<extensions::NavigationExtensionEnabler>
       navigation_extension_enabler_;
 #endif
-
-  std::unique_ptr<multistep_filter::FilterUiController> filter_ui_controller_;
-  std::unique_ptr<multistep_filter::ChromeFilterNavigationObserver>
-      filter_navigation_observer_;
 
   std::unique_ptr<TabAttachmentTracker> tab_attachment_tracker_;
 
@@ -366,15 +374,11 @@ class TabFeatures {
   // feature that needs thumbnails is enabled.
   std::unique_ptr<ThumbnailTabHelper> thumbnail_tab_helper_;
 
-
   std::unique_ptr<UMABrowsingActivityTabHelper>
       uma_browsing_activity_tab_helper_;
 
   std::unique_ptr<TabCaptureContentsBorderHelper>
       tab_capture_contents_border_helper_;
-
-  std::unique_ptr<v8_compile_hints::V8CompileHintsTabHelper>
-      v8_compile_hints_tab_helper_;
 
   std::unique_ptr<StorageAccessAPITabHelper> storage_access_api_tab_helper_;
 
@@ -391,10 +395,58 @@ class TabFeatures {
   std::unique_ptr<site_protection::SiteProtectionMetricsObserver>
       site_protection_metrics_observer_;
 
+#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
+  std::unique_ptr<safe_browsing::SafeBrowsingTabObserver>
+      safe_browsing_tab_observer_;
+  std::unique_ptr<safe_browsing::TriggerCreator> trigger_creator_;
+#endif
+
   std::unique_ptr<SoundContentSettingObserver> sound_content_setting_observer_;
 
   std::unique_ptr<download::DownloadNavigationObserver>
       download_navigation_observer_;
+
+  std::unique_ptr<history::WebContentsTopSitesObserver>
+      web_contents_top_sites_observer_;
+
+  std::unique_ptr<client_hints::ClientHintsWebContentsObserver>
+      client_hints_web_contents_observer_;
+
+  std::unique_ptr<ChainedBackNavigationTracker>
+      chained_back_navigation_tracker_;
+
+  std::unique_ptr<FileSystemAccessTabHelper> file_system_access_tab_helper_;
+
+  std::unique_ptr<SearchEngineTabHelper> search_engine_tab_helper_;
+
+  std::unique_ptr<chrome_browser_net::NetErrorTabHelper> net_error_tab_helper_;
+
+  std::unique_ptr<TabDialogs> tab_dialogs_;
+
+  std::unique_ptr<metrics::MetricsServicesWebContentsObserver>
+      metrics_services_web_contents_observer_;
+
+  std::unique_ptr<blocked_content::PopupBlockerTabHelper>
+      popup_blocker_tab_helper_;
+  std::unique_ptr<blocked_content::PopupOpenerTabHelper>
+      popup_opener_tab_helper_;
+
+  std::unique_ptr<CoreTabHelper> core_tab_helper_;
+
+  std::unique_ptr<MixedContentSettingsTabHelper>
+      mixed_content_settings_tab_helper_;
+
+  std::unique_ptr<OneTimePermissionsTrackerHelper>
+      one_time_permissions_tracker_helper_;
+
+  std::unique_ptr<predictors::LoadingPredictorTabHelper>
+      loading_predictor_tab_helper_;
+
+  std::unique_ptr<site_engagement::SiteEngagementService::Helper>
+      site_engagement_helper_;
+
+  std::unique_ptr<FileSystemAccessPermissionRequestManager>
+      file_system_access_permission_request_manager_;
 
   // Must be the last member.
   base::WeakPtrFactory<TabFeatures> weak_factory_{this};

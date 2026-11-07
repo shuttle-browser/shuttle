@@ -383,9 +383,106 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   (snapshot on top, ~15 min incl. V8) had 211 modify/delete + 4 content conflicts. V8 moves with it (new V8
   snapshot + merge in `v8/`, push `upstream` + a branch to shuttle-browser/v8 before building on another
   machine: its `gclient sync` fetches V8 from GitHub).
+- **157 merge (156.0.8078.48 → 157.0.8103.39, 2026-11-04, in progress; Mac dev build green + smoke-all 14/14 on 11-05 after 6 rounds)**: 34,982 upstream files; 15,502
+  modify/delete + 621 content conflicts; 115 files by script, 506 files / ~1,355 hunks by 6 agents (4 Sonnet + 2
+  Opus, ~20 min, ~1.66M tokens). `gn gen` green ~1 h after the merge commit. Gotchas new with 157:
+  - **Upstream deleted `//chrome/browser/ui:ui`** and moved its deps onto consumers ("leaf targets"): fork targets
+    that depended on it (`//chrome/browser/shuttle:impl`) list the leaf targets they include; upstream's moved deps
+    point at targets the fork removed inside live dirs (incognito dialogs, tab search, intent picker), which
+    gn-fix-loop refuses ("the fork didn't remove" the dir) → drop them by hand.
+  - **prune-tests deleted live typemap headers**: viz `*_test_region_*_mojom_traits.h` and
+    `fake_bluetooth_mojom_traits.h` match the test-name pattern, and typemaps list traits headers as `"//path"`, which
+    the referenced-check didn't see. Fixed: any absolute `"//path"` in a .gn/.gni counts as a reference.
+  - **New upstream registries can bring back removed UI**: 157's infobar registry (`browser_infobar_registry.cc`)
+    and chrome://infobar-internals carried the remote-debugging "controlled by automation" infobar (fork 16). Sweep
+    for undefined IDS_ new vs main finds them (12 in 157).
+  - **Directory listings via gitiles hit HTTP 429** after a few hundred requests; for "what's new" use the commit
+    log between the two tags (`+log/<old>..<new>?format=JSON&n=1000`, ~12 requests) instead of crawling trees.
+  - **Every remote compile fails with `Unknown clang plugin argument: check-raw-ptr-in-blink`** (or another new
+    plugin arg): the sccache-dist toolchain archive still has the old clang. Clang changed with every merge so far
+    (154 → 157: `init-3796-27`, `init-7747-27`, `-53`, `-67`). Rebuild the archive on the build host after its
+    `gclient sync` and install it on the Mac before the first build.
+  - **Mechanical prunes come back to bite:** "files the macOS build never reads" (e.g. the WebNN compiler service,
+    Windows-only in 156) are needed once upstream enables them on Apple. Restore from `chromium` when only the
+    platform condition changed; it is not a feature decision.
+  - **`enable_webui_ntp` is still true** although the WebUI NTP is gone, so merged code keeps
+    `#if BUILDFLAG(ENABLE_WEBUI_NTP)` include blocks of removed files (3 in 157).
+  - **Clean merges can drop live code next to fork deletions**: hunks the fork removed (OCR in the PDF builder,
+    HaTS forward decls) took adjacent new upstream code with them (`current_graphic`, `namespace tabs`). Compare
+    the failing file with `chromium` outside the fork's own removals.
+  - **Blink bindings generators** each start a `cpu_count()` multiprocessing pool; 11 of them in parallel ran ~96
+    Python processes (Mac load 70). They now share a depth-1 GN pool (`third_party/blink/renderer/bindings/BUILD.gn`).
+  - **The merge can drop whole dep blocks and `gn gen` stays green**: chrome/browser/BUILD.gn lost upstream's
+    block of `*_impl` deps for the dissolved `ui` target (and the views/win/chromeos blocks). Unreferenced targets
+    are no error, so it only showed as ~20+ undefined symbols when linking `libchrome_dll`. Check after `gn gen`:
+    `gn desc <out> //chrome:chrome_dll deps --all` must reach upstream's new `:impl`/`*_impl` targets, and upstream
+    labels missing from merged BUILD.gn files whose target still exists in the fork are merge losses.
+  - **Files split upstream lose their new half**: 157 split `devtools/protocol/page_handler.cc` into
+    `page_handler_desktop.cc` / `_android.cc`; the merge kept the fork's sources list (undefined `PageHandler` ctor).
+  - **Member order in feature-holder classes**: `TabFeatures` kept the fork's 156 member order, so
+    `TabAlertController` was destroyed after the VR/audible helpers it observes (upstream 157 moved it after them):
+    SIGSEGV on every tab close (intermittent smoke failures). Compare the member order of `TabFeatures` /
+    `BrowserWindowFeatures` with upstream after a merge (longest-increasing-subsequence of common members; 0 out of
+    place is the goal).
+  - **m157 prune (2026-11-06)**: `prune.py --apply` refuses a dirty tree, so commit the manifest edit first (a
+    `shuttle/:` commit). `keep <path>` lines override `remove` (used for carve-outs: the CDP
+    `Page.getAnnotatedPageContent` path inside optimization_guide). Restoring a deleted target later is a trap:
+    `gn-fix-loop.py` / `fix-gn-refs.py` already dropped every dep on it and `gn gen` stays green without them. After
+    a restore, list the removed dep lines (`git diff -U0 -- '*.gn' '*.gni'`, `^-` lines naming the target) and put
+    them back (26 lines for `components/language_detection` + the TFLite op resolver). Before deleting a component,
+    grep content/, blink, services/ and media/ for it: engine code there (LanguageDetector, WebRTC voice isolation)
+    needs it, and we keep engine code close to upstream.
+    Wave B batch 1 build (2026-11-06, 3 runs): a `.proto` still imported a removed component's proto
+    (`filter_execution_metadata.proto` -> multistep_filter; protoc fails and blocks ~17k steps, so scan proto
+    imports for missing absolute paths before building), and a kept .cc compiled only because a removed target
+    supplied TFLite include dirs (`client_side_detection_service.cc`, unused `image_embedder.h` include).
+- **158 merge (157.0.8103.39 → 158.0.8127.18, 2026-11-06, into the open 157 branch, in progress)**: 35,554 upstream
+  files; 16,146 modify/delete + 516 content conflicts (55 auto, 461 by 6 agents with a shared brief, ~25 min wall).
+  Gotchas:
+  - **Sub-agents can't write report files** (the harness refuses: "return findings as text"): have them reply with
+    the report and save it yourself. One agent "resolved" a file by deleting it from the work tree (still `UU` in
+    the index): after the agents, check every listed file exists, not only that no markers are left.
+  - **Upstream splits a target (`components/omnibox/common:features`, `password_manager/core/common:features`)**:
+    gn-fix-loop calls the missing label "not removed by the fork" and stops; point the dep at the fork's
+    combined target instead of restoring the split.
+  - **A target disappearing upstream** (`//chrome/browser:browser_public_dependencies`, gone in 158) breaks
+    fork-only BUILD files the merge never touched: grep fork BUILD files (`chrome/browser/shuttle/`) for labels
+    missing upstream.
+  - **New clang ⇒ new sccache-dist toolchain archive** (158: llvmorg-24-init-14453): remote compiles fail with
+    "unknown warning option" and sccache silently compiles on the Mac. Check the first minutes of the build
+    (buildmon remote count, `local:N(+M)` in siso's line) and stop at once; 158 deleted
+    `tools/clang/alloc_token/ignores_apple.txt` from the toolchain file list.
+  - **gitleaks blocks the merge commit on upstream extension manifests** (`"key"` in
+    `new_tab_page_extension/manifest.json`): the gatekeeper hook scans the staged state before the command runs,
+    so `git rm` and `git commit` must be separate commands.
+  - **DIR_METADATA mixins into pruned dirs** came back with new upstream test data / histogram metadata (5 in 158):
+    the location-tags hook aborts `gclient runhooks`. Sweep: `git grep -h -o 'mixins: "//[^"]*"' -- '*DIR_METADATA'`
+    and test each path.
+  - **Merge damage that `gn gen` can't see, found only by the build** (158, 4 rounds, ~5 h): a `<message>` nested
+    inside another in `generated_resources.grd` (grit `update_resource_ids` fails in the first seconds and blocks
+    every grit dependent while the rest of the build runs on for an hour: read the first FAILED line, not only the
+    count), orphan string fragments (`"delay.";`) in `flag_descriptions.h`, unbalanced `#if`/`#endif`, a fork include
+    swapped for two upstream ones. Before the first build, scan the merge-touched files: nested `<message>` in
+    `*.grd*`, `#if`/`#endif` balance in `*.h/*.cc/*.mm`, and run the resource-id step by hand
+    (`grit.py update_resource_ids -o /tmp/x --input ../../tools/gritsettings/resource_ids.spec` from the out dir).
+  - **Upstream moving code between files loses the fork's half**: 158 deleted `chrome/browser/ui/tab_helpers.cc` and
+    moved its helpers into `tab_features.cc`; the merge took the deletion and kept the fork's `tab_features.cc`, so
+    session/zoom/infobar helpers were never created and the browser crashed at startup (`CanZoomIn`, null
+    ZoomController) with a green build. For every upstream-deleted file the fork had modified, find where upstream
+    moved its contents.
+  - **Removed features come back through kept code**: most of the ~50 compile errors were upstream 158 code in kept
+    files calling removed features (web apps, user education, HaTS, sync, supervised user, enterprise net /
+    connectors, indigo, screen_ai, vertical tabs, OTR profiles). Default: restore the fork's pre-merge function or
+    file (`git show "<merge>^1:<path>"`) and re-apply only the upstream API renames (158: `WindowOpenDisposition`
+    `NEW_*` → `kNew*`, also in fork-only code); two Opus agents per area with the error list worked well.
+  - **sccache-dist path limit**: a few compiles fail remotely with "provided value is too long when setting path"
+    (deep gen paths in the input tar) and sccache compiles them on the Mac; harmless at 3 per 14k.
 
 ## Gotchas
 
+- **Killing a build's shell leaves `out/.<Dir>.build-lock` behind** (2026-11-04): the next build refuses with
+  "stale lock (owner N not running)". Remove the lock when no `siso ninja` runs. Stop builds with
+  `pkill -INT -f 'siso ninja'` instead: siso exits cleanly and the script removes the lock.
 - **`smoke-all` launch FAIL on a fresh dev build** (2026-10-29): the first launch of a freshly built component build
   on a loaded Mac can take longer than the 30 s startup deadline (`browser not ready`, empty log). Rerun with
   `SHUTTLE_SMOKE_READY_S=120`; it is not a regression unless the log shows a crash.
@@ -717,6 +814,19 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   `codesign --strict` fails on any copy of the app from the DMG (`hdiutil makehybrid` sets
   `com.apple.FinderInfo`; installed Google Chrome fails the same way); Gatekeeper accepts it, so verify without
   `--strict`. Timing: small change ~45 s release build + ~5 min sign/notarize (two Apple round trips).
+- **Smoke flakes under load (2026-11-06):** with the Mac at load ~18, `smoke-all.sh` failed one different probe per
+  run (`session-cdp` "foreign tab created during auto-attach is not stalled", `home-tab` "Runtime.evaluate: no reply
+  in 20000 ms"); the third run passed 14/14. Rerun once before debugging a single smoke failure.
+- **sccache-dist stale job slots after a network drop (2026-11-06):** when the build host loses Wi-Fi mid-build
+  (adapter reset), jobs whose state POST failed stay counted: `sccache --dist-status` showed `in_progress` 11 with 1
+  clang running, and the client fell back to local compiles ("Insufficient capacity across 2 available servers").
+  Restarting `sccache-dist-scheduler` on the host clears it (servers re-register within ~15 s). MAGWIN's Wi-Fi
+  receive rate was 52 Mbit/s until adapter power saving was turned off (then ~700): a slow host link makes the
+  build upload-bound and adds 300-500 ms LAN latency for everyone on MAGWIN.
+  The scheduler/server ports are allowed by Hyper-V firewall rules pinned to the Mac's LAN IP
+  (`Get-NetFirewallHyperVRule`, `SH-Sccache-LAN`): after the Mac got a new DHCP address the build hung at
+  `sccache --dist-status` (ssh still worked). Fix: `Set-NetFirewallHyperVRule -Name SH-Sccache-LAN -RemoteAddresses
+  <mac ip>` (admin PowerShell) or a DHCP reservation for the Mac.
 - **`smoke-mcp.mjs` timing flake (2026-10-11):** on a fresh profile the first one or two runs can fail "cookies
   isolated" / "opened tabs join the session" (fixed 1.5-2 s sleeps); reruns pass. Poll instead of sleeping.
 - **en-US-only UI (B3, 2026-10-11):** `scripts/prune-locales.py` keeps `lang="en-US"` and `lang="en"` grit elements

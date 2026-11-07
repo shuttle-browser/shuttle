@@ -162,7 +162,6 @@ source_set("base") {
     "session_authz_service_client_factory.h",
     "session_options.cc",
     "session_options.h",
-    "session_options_constants.cc",
     "session_options_constants.h",
     "source_location.cc",
     "source_location.h",
@@ -184,10 +183,7 @@ source_set("base") {
     "weighted_samples.h",
   ]
 
-  configs += [
-    "//build/config/compiler:wexit_time_destructors",
-    "//remoting/build/config:version",
-  ]
+  configs += [ "//remoting/build/config:version" ]
 
   public_deps = [
     ":authentication_method",
@@ -245,7 +241,11 @@ source_set("base") {
   }
 
   if (is_win) {
-    sources += [ "scoped_sc_handle_win.h" ]
+    sources += [
+      "registry_util_win.cc",
+      "registry_util_win.h",
+      "scoped_sc_handle_win.h",
+    ]
     libs = [ "crypt32.lib" ]  # For CryptoAPI functions in certificate_helpers
   } else if (is_linux || is_chromeos) {
     sources += [
@@ -310,10 +310,7 @@ source_set("authorization") {
     "passthrough_oauth_token_getter.h",
   ]
 
-  configs += [
-    "//build/config/compiler:wexit_time_destructors",
-    "//remoting/build/config:version",
-  ]
+  configs += [ "//remoting/build/config:version" ]
 
   deps = [
     ":logging",
@@ -422,6 +419,13 @@ static_library("test_support") {
     "//testing/gtest",
     "//third_party/protobuf:protobuf_lite",
   ]
+
+  if (is_win) {
+    sources += [
+      "registry_test_helper_win.cc",
+      "registry_test_helper_win.h",
+    ]
+  }
 }
 
 proto_library("test_proto") {
@@ -527,6 +531,11 @@ source_set("unit_tests") {
   if (is_linux || is_win) {
     sources += [ "crash/crashpad_database_manager_unittest.cc" ]
     deps += [ "//remoting/base/crash:crashpad_db_mgr" ]
+  }
+
+  if (is_win) {
+    sources += [ "registry_util_win_unittest.cc" ]
+    deps += [ "//base/test:test_support" ]
   }
 
   if (is_linux) {

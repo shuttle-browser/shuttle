@@ -109,6 +109,7 @@ component("input") {
       "stylus_handwriting_handler_win.cc",
       "stylus_handwriting_handler_win.h",
     ]
+    deps += [ "//components/stylus_handwriting/win" ]
   }
   if (is_android) {
     sources += [

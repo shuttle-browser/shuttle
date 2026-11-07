@@ -18,7 +18,6 @@
 
 #include "base/check.h"
 #include "base/feature_list.h"
-#include "base/not_fatal_until.h"
 #include "base/sequence_checker.h"
 #include "chrome/browser/android/tab_android.h"
 #include "chrome/browser/flags/android/chrome_feature_list.h"
@@ -113,7 +112,7 @@ class ActiveTabObserver : public TabModelListObserver {
   void OnTabModelRemoved(TabModel* tab_model) override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     auto tracker_iter = tracker_map_.find(tab_model);
-    CHECK(tracker_iter != tracker_map_.end(), base::NotFatalUntil::M140)
+    CHECK(tracker_iter != tracker_map_.end())
         << "Untracked TabModel by ActiveTabObserver is removed";
     if (tracker_iter == tracker_map_.end()) {
       return;
@@ -239,6 +238,20 @@ class PageLiveStateDecoratorHelper::WebContentsObserver
     PageLiveStateDecorator::OnCapabilityTypesChanged(web_contents(),
                                                      capability_type, used);
   }
+
+#if BUILDFLAG(IS_ANDROID)
+  // On desktop, this is updated by TabLifecycleUnit.
+  // TODO(crbug.com/394889323): Unify the desktop and Android implementations.
+  void WasDiscarded() override {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    PageLiveStateDecorator::SetIsDiscarded(web_contents(), true);
+  }
+
+  void PrimaryPageChanged(content::Page& page) override {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    PageLiveStateDecorator::SetIsDiscarded(web_contents(), false);
+  }
+#endif  // BUILDFLAG(IS_ANDROID)
 
   void WebContentsDestroyed() override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);

@@ -106,9 +106,18 @@ def doomed_files(tgt, D, used, tracked):
         return False
 
     gn_text = {}
+    abs_refs = None
 
     def listed_in_build_gn(f):
-        """True if an enclosing BUILD.gn names f: the scan only sees this platform's targets."""
+        """True if an enclosing BUILD.gn names f (the scan only sees this platform's targets), or any .gn/.gni
+        names it as "//f" (mojom typemaps: traits_headers = [ "//services/.../x_test_region_mojom_traits.h" ])."""
+        nonlocal abs_refs
+        if abs_refs is None:
+            out = subprocess.run(["git", "grep", "-h", "-o", '"//[^":]*"', "--", "*.gn", "*.gni"],
+                                 cwd=SRC, capture_output=True, text=True).stdout
+            abs_refs = {line.strip('"')[2:] for line in out.split()}
+        if f in abs_refs:
+            return True
         d, rel = f, ""
         while "/" in d:
             d, base = d.rsplit("/", 1)

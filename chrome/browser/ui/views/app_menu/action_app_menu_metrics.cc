@@ -18,6 +18,8 @@
 namespace {
 
 constexpr char kMenuActionHistogram[] = "WrenchMenu.MenuAction";
+constexpr char kMenuHeightPercentageHistogram[] =
+    "WrenchMenu.MenuHeightPercentage";
 constexpr char kTimeToActionHistogram[] = "WrenchMenu.TimeToAction";
 constexpr char kTimeToActionPrefix[] = "WrenchMenu.TimeToAction.";
 
@@ -80,6 +82,19 @@ void ActionAppMenuMetrics::LogMenuAction(actions::BaseAction* base_action) {
       return;
     }
   }
+}
+
+void ActionAppMenuMetrics::RecordMenuHeightPercentage(int menu_height,
+                                                      int screen_height) {
+  if (screen_height <= 0 || menu_height <= 0) {
+    return;
+  }
+  const int percentage = menu_height * 100 / screen_height;
+  base::UmaHistogramPercentage(kMenuHeightPercentageHistogram, percentage);
+}
+
+void ActionAppMenuMetrics::SetTimerForTesting(base::ElapsedTimer timer) {
+  menu_opened_timer_ = std::move(timer);
 }
 
 void ActionAppMenuMetrics::RecordAction(
@@ -378,6 +393,10 @@ void ActionAppMenuMetrics::LogMenuActionWithId(actions::ActionId action_id) {
     case kActionSetBrowserAsDefault:
       RecordAction(MENU_ACTION_SET_BROWSER_AS_DEFAULT, "SetBrowserAsDefault");
       break;
+    case kActionScheduledRestartDialog:
+      RecordAction(MENU_ACTION_SCHEDULED_RESTART_DIALOG,
+                   "ScheduledRestartDialog");
+      break;
     case kActionSafetyHubShowPasswordCheckup:
       RecordAction(MENU_ACTION_SAFETY_HUB_SHOW_PASSWORD_CHECKUP,
                    "SafetyHubNotificationPasswordCheck");
@@ -391,46 +410,100 @@ void ActionAppMenuMetrics::LogMenuActionWithId(actions::ActionId action_id) {
                    "SafetyHubNotificationManageExtensions");
       break;
 
-    // Actions present in the menu that do not have a per-action TimeToAction
-    // variant in histograms.xml, but still record the overall
-    // WrenchMenu.TimeToAction histogram (and WrenchMenu.MenuAction if defined).
-    // TODO(crbug.com/565832018): Add TimeToAction and MenuAction entries for
-    // each of these.
     case kActionUpgradeDialog:
-      RecordTimeToAction();
-      LogMenuActionHistogram(MENU_ACTION_UPGRADE_DIALOG);
+      RecordAction(MENU_ACTION_UPGRADE_DIALOG, "UpgradeDialog");
       break;
+
     case kActionNewIsolatedWindow:
-      RecordTimeToAction();
-      LogMenuActionHistogram(MENU_ACTION_NEW_ISOLATED_WINDOW);
+      RecordAction(MENU_ACTION_NEW_ISOLATED_WINDOW, "NewIsolatedWindow");
       break;
+
+    // Saved tab groups submenu.
     case kActionCreateNewTabGroup:
       base::RecordAction(base::UserMetricsAction(
           "TabGroups_SavedTabGroups_"
           "CreateNewGroupTriggeredFromTabGroupsAppMenu"));
-      RecordTimeToAction();
+      RecordAction(MENU_ACTION_CREATE_NEW_TAB_GROUP, "CreateNewTabGroup");
       break;
+
     case kActionTabGroupDelete:
+      base::RecordAction(base::UserMetricsAction(
+          "TabGroups_SavedTabGroups_OpenedFromAppMenu"));
+      RecordAction(MENU_ACTION_SAVED_TAB_GROUP_DELETE, "SavedTabGroupDelete");
+      break;
     case kActionTabGroupOpenInBrowser:
+      base::RecordAction(base::UserMetricsAction(
+          "TabGroups_SavedTabGroups_OpenedFromAppMenu"));
+      RecordAction(MENU_ACTION_SAVED_TAB_GROUP_OPEN_IN_BROWSER,
+                   "SavedTabGroupOpenInBrowser");
+      break;
     case kActionTabGroupOpenInNewWindow:
+      base::RecordAction(base::UserMetricsAction(
+          "TabGroups_SavedTabGroups_OpenedFromAppMenu"));
+      RecordAction(MENU_ACTION_SAVED_TAB_GROUP_OPEN_IN_NEW_WINDOW,
+                   "SavedTabGroupOpenInNewWindow");
+      break;
     case kActionTabGroupPin:
+      base::RecordAction(base::UserMetricsAction(
+          "TabGroups_SavedTabGroups_OpenedFromAppMenu"));
+      RecordAction(MENU_ACTION_SAVED_TAB_GROUP_PIN, "SavedTabGroupPin");
+      break;
+    case kActionCloseTabGroup:
+    case kActionToggleTabGroupFocus:
       base::RecordAction(base::UserMetricsAction(
           "TabGroups_SavedTabGroups_OpenedFromAppMenu"));
       RecordTimeToAction();
       break;
+
+    // Bookmark bar visibility submenu.
     case kActionBookmarkBarSubmenuAlwaysHide:
+      RecordAction(MENU_ACTION_BOOKMARK_BAR_ALWAYS_HIDE,
+                   "BookmarkBarAlwaysHide");
+      break;
     case kActionBookmarkBarSubmenuAlwaysShow:
+      RecordAction(MENU_ACTION_BOOKMARK_BAR_ALWAYS_SHOW,
+                   "BookmarkBarAlwaysShow");
+      break;
     case kActionBookmarkBarSubmenuOnlyOnNtp:
+      RecordAction(MENU_ACTION_BOOKMARK_BAR_ONLY_ON_NTP,
+                   "BookmarkBarOnlyOnNtp");
+      break;
+
     case kActionGlobalError:
-    case kActionNameWindow:
-    case kActionReportUnsafeSite:
-    case kActionSharingHubScreenshot:
-    case kActionShowManagementPage:
+      RecordAction(MENU_ACTION_GLOBAL_ERROR, "GlobalError");
+      break;
     case kActionShowSyncPassphraseDialog:
-    case kActionTabSearch:
+      RecordAction(MENU_ACTION_SHOW_SYNC_PASSPHRASE_DIALOG,
+                   "ShowSyncPassphraseDialog");
+      break;
+
+    case kActionShowManagementPage:
+      RecordAction(MENU_ACTION_SHOW_MANAGEMENT_PAGE, "ShowManagementPage");
+      break;
+    case kActionChromeEnterpriseReleaseNotes:
+      RecordAction(MENU_ACTION_CHROME_ENTERPRISE_RELEASE_NOTES,
+                   "ChromeEnterpriseReleaseNotes");
+      break;
+    case kActionReportUnsafeSite:
+      RecordAction(MENU_ACTION_REPORT_UNSAFE_SITE, "ReportUnsafeSite");
+      break;
+
+    case kActionSharingHubScreenshot:
+      RecordAction(MENU_ACTION_SHARING_HUB_SCREENSHOT, "SharingHubScreenshot");
+      break;
     case kActionTakeScreenshot:
-    case kActionToggleVerticalTabs:
-      RecordTimeToAction();
+      RecordAction(MENU_ACTION_TAKE_SCREENSHOT, "TakeScreenshot");
+      break;
+
+    case kActionTabSearch:
+      RecordAction(MENU_ACTION_TAB_SEARCH, "TabSearch");
+      break;
+    case kActionNameWindow:
+      RecordAction(MENU_ACTION_NAME_WINDOW, "NameWindow");
+      break;
+
+    case kActionManageSkills:
+      RecordAction(MENU_ACTION_MANAGE_SKILLS, "ManageSkills");
       break;
 
     default:

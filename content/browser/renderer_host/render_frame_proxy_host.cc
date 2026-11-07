@@ -32,6 +32,7 @@
 #include "content/browser/renderer_host/ipc_utils.h"
 #include "content/browser/renderer_host/navigation_metrics_utils.h"
 #include "content/browser/renderer_host/navigator.h"
+#include "content/browser/renderer_host/page_lifecycle_state_manager.h"
 #include "content/browser/renderer_host/policy_container_host.h"
 #include "content/browser/renderer_host/render_frame_host_delegate.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
@@ -53,6 +54,7 @@
 #include "services/network/public/cpp/web_sandbox_flags.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/frame/frame_owner_properties.mojom.h"
 #include "third_party/blink/public/mojom/messaging/transferable_message.mojom.h"
@@ -512,10 +514,13 @@ void RenderFrameProxyHost::Detach() {
   RenderFrameHostImpl* current_rfh = frame_tree_node_->current_frame_host();
   if (current_rfh->IsInBackForwardCache()) {
     if (render_view_host_ &&
-        render_view_host_->DidReceiveBackForwardCacheAck()) {
+        !render_view_host_->GetPageLifecycleStateManager()
+             ->RendererExpectedToSendChannelAssociatedIpcs()) {
       bad_message::ReceivedBadMessage(GetProcess(),
                                       bad_message::RFH_DETACH_WHILE_BFCACHED);
     } else {
+      // See RenderFrameHostImpl::Detach() for when the renderer can
+      // legitimately send this while the page is in BFCache.
       current_rfh->IsInactiveAndDisallowActivation(
           DisallowActivationReasonId::kDetach);
     }
@@ -671,6 +676,18 @@ void RenderFrameProxyHost::RouteMessageEvent(
 
   if (message.delegated_capability !=
       blink::mojom::DelegatedCapability::kNone) {
+    // The popup capability can only be delegated by a Service Worker to one of
+    // its window clients (see
+    // ServiceWorkerContainerHostForClient::PostMessageToClient); frames can
+    // never delegate it. Reject it here, before the message is routed to the
+    // target renderer.
+    if (message.delegated_capability ==
+        blink::mojom::DelegatedCapability::kPopup) {
+      bad_message::ReceivedBadMessage(
+          GetProcess(),
+          bad_message::RFPH_POST_MESSAGE_INVALID_DELEGATED_CAPABILITY);
+      return;
+    }
     if (!source_frame_token) {
       bad_message::ReceivedBadMessage(
           GetProcess(),
@@ -1024,7 +1041,7 @@ void RenderFrameProxyHost::OpenURL(blink::mojom::OpenURLParamsPtr params) {
 
   // Since this navigation targeted a specific RenderFrameProxy, it should stay
   // in the current tab.
-  CHECK_EQ(WindowOpenDisposition::CURRENT_TAB, params->disposition,
+  CHECK_EQ(WindowOpenDisposition::kCurrentTab, params->disposition,
            base::NotFatalUntil::M152);
 
   // Augment |download_policy| for situations that were not covered on the
@@ -1201,6 +1218,17 @@ void RenderFrameProxyHost::BindRemoteFrameInterfaces(
 
   if (g_observer_for_testing)
     g_observer_for_testing->OnRemoteFrameBound(this);
+}
+
+void RenderFrameProxyHost::RebindRemoteFrameInterfaces(
+    mojo::PendingAssociatedRemote<blink::mojom::RemoteFrame> remote_frame,
+    mojo::PendingAssociatedReceiver<blink::mojom::RemoteFrameHost>
+        remote_frame_host_receiver) {
+  CHECK(base::FeatureList::IsEnabled(blink::features::kPersistentWidgetAPI));
+  remote_frame_.reset();
+  remote_frame_host_receiver_.reset();
+  BindRemoteFrameInterfaces(std::move(remote_frame),
+                            std::move(remote_frame_host_receiver));
 }
 
 void RenderFrameProxyHost::BindRemoteMainFrameInterfaces(

@@ -46,9 +46,6 @@
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "components/keyed_service/core/simple_dependency_manager.h"
 #include "components/keyed_service/core/simple_factory_key.h"
-#include "components/policy/core/common/cloud/cloud_external_data_manager.h"
-#include "components/policy/core/common/cloud/user_cloud_policy_manager.h"
-#include "components/policy/core/common/cloud/user_cloud_policy_store.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
 #include "components/variations/service/variations_service.h"
@@ -181,11 +178,6 @@ StartupData::TakeSchemaRegistryService() {
   return std::move(schema_registry_service_);
 }
 
-std::unique_ptr<policy::UserCloudPolicyManager>
-StartupData::TakeUserCloudPolicyManager() {
-  return std::move(user_cloud_policy_manager_);
-}
-
 std::unique_ptr<policy::ProfilePolicyConnector>
 StartupData::TakeProfilePolicyConnector() {
   return std::move(profile_policy_connector_);
@@ -260,18 +252,12 @@ void StartupData::CreateServicesInternal() {
       browser_policy_connector->GetExtensionInstallPolicySchema(),
       browser_policy_connector->GetSchemaRegistry());
 
-  user_cloud_policy_manager_ = policy::UserCloudPolicyManager::Create(
-      path, schema_registry_service_->registry(),
-      true /* force_immediate_policy_load */, io_task_runner,
-      base::BindRepeating(&content::GetNetworkConnectionTracker));
-
   profile_policy_connector_ = policy::CreateAndInitProfilePolicyConnector(
       schema_registry_service_->registry(),
       static_cast<policy::ChromeBrowserPolicyConnector*>(
           browser_policy_connector),
-      user_cloud_policy_manager_.get(),
-      user_cloud_policy_manager_->core()->store(),
-      true /* force_immediate_policy_load*/, nullptr /* user */);
+      /*policy_provider=*/nullptr, true /* force_immediate_policy_load*/,
+      nullptr /* user */);
 
   RegisterProfilePrefs(false /* is_signin_profile */,
                        chrome_feature_list_creator()->actual_locale(),
@@ -280,14 +266,14 @@ void StartupData::CreateServicesInternal() {
   mojo::PendingRemote<prefs::mojom::TrackedPreferenceValidationDelegate>
       pref_validation_delegate;
   // The preference tracking and protection is not required on Android.
-  DCHECK(!ProfilePrefStoreManager::kPlatformSupportsPreferenceTracking);
+  CHECK(!ProfilePrefStoreManager::kPlatformSupportsPreferenceTracking,
+        base::NotFatalUntil::M162);
 
   prefs_ = ::CreateProfilePrefService(
       pref_registry_, nullptr /* extension_pref_store */,
       profile_policy_connector_->policy_service(), browser_policy_connector,
       std::move(pref_validation_delegate), io_task_runner, key_.get(), path,
-      false /* async_prefs*/, g_browser_process->os_crypt_async(),
-      g_browser_process->device_parental_controls());
+      false /* async_prefs*/, g_browser_process->os_crypt_async());
 }
 #endif
 

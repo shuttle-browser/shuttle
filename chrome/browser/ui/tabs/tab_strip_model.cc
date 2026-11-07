@@ -67,12 +67,13 @@
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
 #include "chrome/browser/ui/tabs/tab_utils.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_metrics.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/thumbnails/thumbnail_tab_helper.h"
+#include "chrome/browser/ui/toasts/api/toast_id.h"
+#include "chrome/browser/ui/toasts/toast_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/webui_url_constants.h"
+#include "chrome/grit/generated_resources.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings.h"
 #include "components/content_settings/core/common/content_settings_types.h"
@@ -85,6 +86,7 @@
 #include "components/tabs/public/split_tab_collection.h"
 #include "components/tabs/public/split_tab_data.h"
 #include "components/tabs/public/tab_collection_types.h"
+#include "components/tabs/public/tab_group.h"
 #include "components/tabs/public/tab_group_tab_collection.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/tabs/public/tab_strip_collection.h"
@@ -101,6 +103,7 @@
 #include "media/base/media_switches.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 #include "third_party/perfetto/include/perfetto/tracing/traced_value.h"
+#include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/list_selection_model.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/gfx/range/range.h"
@@ -174,7 +177,7 @@ void RecordToggleFocusGroupMetrics(bool is_unfocus,
 }  // namespace
 
 TabGroupModelFactory::TabGroupModelFactory() {
-  DCHECK(!factory_instance);
+  CHECK(!factory_instance, base::NotFatalUntil::M162);
   factory_instance = this;
 }
 
@@ -256,7 +259,7 @@ TabStripModel::TabStripModel(TabStripModelDelegate* delegate,
                              Profile* profile,
                              TabGroupModelFactory* group_model_factory)
     : delegate_(delegate), profile_(profile), selection_model_(this) {
-  DCHECK(delegate_);
+  CHECK(delegate_, base::NotFatalUntil::M162);
 
   contents_data_ = std::make_unique<tabs::TabStripCollection>(false);
 
@@ -273,7 +276,7 @@ TabStripModel::~TabStripModel() {
 }
 
 void TabStripModel::SetTabStripUI(TabStripModelObserver* observer) {
-  DCHECK(!tab_strip_ui_was_set_);
+  CHECK(!tab_strip_ui_was_set_, base::NotFatalUntil::M162);
 
   std::vector<TabStripModelObserver*> new_observers{observer};
   for (auto& old_observer : observers_) {
@@ -1376,7 +1379,7 @@ void TabStripModel::SetOpenerOfTabAt(int index, tabs::TabInterface* opener) {
 
 int TabStripModel::GetIndexOfLastWebContentsOpenedBy(const WebContents* opener,
                                                      int start_index) const {
-  DCHECK(opener);
+  CHECK(opener, base::NotFatalUntil::M162);
   CHECK(ContainsIndex(start_index));
 
   absl::flat_hash_set<const WebContents*> opener_and_descendants;
@@ -1427,7 +1430,9 @@ void TabStripModel::SetTabBlocked(int index, bool blocked) {
     return;
   }
   tab_model->SetBlocked(blocked);
-  NotifyTabChanged(tab_model, TabChangeType::kBlockedOnly);
+  for (auto& observer : observers_) {
+    observer.OnTabBlockedStateChanged(tab_model);
+  }
 }
 
 int TabStripModel::SetTabPinned(int index, bool pinned) {
@@ -1453,7 +1458,7 @@ bool TabStripModel::IsTabCollapsed(int index) const {
 
 bool TabStripModel::IsGroupCollapsed(
     const tab_groups::TabGroupId& group) const {
-  DCHECK(group_model_);
+  CHECK(group_model_, base::NotFatalUntil::M162);
 
   return group_model()->ContainsTabGroup(group) &&
          group_model()->GetTabGroup(group)->visual_data()->is_collapsed();
@@ -1711,10 +1716,6 @@ std::unique_ptr<ScopedTabStripModalUI> TabStripModel::ShowModalUI() {
   return std::make_unique<ScopedTabStripModalUIImpl>(this);
 }
 
-void TabStripModel::ForceShowingModalUIForTesting(bool showing) {
-  showing_modal_ui_ = showing;
-}
-
 void TabStripModel::AddWebContents(
     std::unique_ptr<WebContents> contents,
     int index,
@@ -1843,9 +1844,12 @@ void TabStripModel::AddTab(std::unique_ptr<tabs::TabModel> tab,
 void TabStripModel::CloseSelectedTabs() {
   auto get_tabs = base::BindRepeating(
       [](const tabs::TabStripModelSelectionState* selection_model) {
-        return std::vector<tabs::TabInterface*>(
-            selection_model->selected_tabs().begin(),
-            selection_model->selected_tabs().end());
+        std::vector<tabs::TabHandle> handles;
+        handles.reserve(selection_model->selected_tabs().size());
+        for (tabs::TabInterface* tab : selection_model->selected_tabs()) {
+          handles.push_back(tab->GetHandle());
+        }
+        return handles;
       },
       &selection_model_);
 
@@ -2064,8 +2068,9 @@ void TabStripModel::AddToExistingGroup(const std::vector<int> indices,
   CHECK(SupportsTabGroups());
 
   // Ensure that the indices are sorted and unique.
-  DCHECK(std::ranges::is_sorted(indices));
-  DCHECK(std::ranges::adjacent_find(indices) == indices.end());
+  CHECK(std::ranges::is_sorted(indices), base::NotFatalUntil::M162);
+  CHECK(std::ranges::adjacent_find(indices) == indices.end(),
+        base::NotFatalUntil::M162);
   CHECK(ContainsIndex(*(indices.begin())));
   CHECK(ContainsIndex(*(indices.rbegin())));
 
@@ -2080,7 +2085,7 @@ void TabStripModel::AddToGroupForRestore(const std::vector<int>& indices,
                                          const tab_groups::TabGroupId& group) {
   ReentrancyCheck reentrancy_check(&reentrancy_guard_);
 
-  DCHECK(group_model_);
+  CHECK(group_model_, base::NotFatalUntil::M162);
   if (!group_model_) {
     return;
   }
@@ -2107,6 +2112,7 @@ void TabStripModel::RemoveFromGroupImpl(const std::vector<int>& indices) {
   // Tab groups sync may call this function on indices that contain only part of
   // a split. In that case, unsplit those split tabs.
   MaybeRemoveSplitsForUpdate(indices);
+  MaybeExitFocusModeForUpdate(indices);
 
   std::map<tab_groups::TabGroupId, std::vector<int>> indices_per_tab_group;
 
@@ -2125,12 +2131,6 @@ void TabStripModel::RemoveFromGroupImpl(const std::vector<int>& indices) {
     tabs::TabInterface* first_tab_in_group = group->GetFirstTab();
     CHECK(first_tab_in_group);
     int first_tab_index = GetIndexOfTab(first_tab_in_group);
-
-    if (selection_model_.focused_group() == immutable_group_id &&
-        static_cast<int>(immutable_group_indices.size()) ==
-            group->tab_count()) {
-      ExitFocusMode(TabGroupFocusExitReason::kGroupUngrouped);
-    }
 
     tabs::TabInterface* last_tab_in_group = group->GetLastTab();
     int last_tab_index = GetIndexOfTab(last_tab_in_group);
@@ -2218,7 +2218,8 @@ void TabStripModel::EnterFocusMode(const tab_groups::TabGroupId& group) {
     tabs::TabStripModelSelectionState new_selection_model = selection_model_;
     new_selection_model.set_focused_group(group);
 
-    CHECK(group_model_->GetTabGroup(group)->tab_count() > 0);
+    TabGroup* const tab_group = group_model_->GetTabGroup(group);
+    CHECK(tab_group->tab_count() > 0);
 
     // Copy the previous selection model, but remove tabs not part of the
     // tab_group in the list of selected tabs.
@@ -2237,8 +2238,7 @@ void TabStripModel::EnterFocusMode(const tab_groups::TabGroupId& group) {
     if (!new_selection_model.active_tab() ||
         (new_selection_model.active_tab() &&
          new_selection_model.active_tab()->GetGroup() != group)) {
-      tabs::TabInterface* first_in_group =
-          group_model_->GetTabGroup(group)->GetFirstTab();
+      tabs::TabInterface* first_in_group = tab_group->GetFirstTab();
       if (first_in_group->IsSplit()) {
         for (tabs::TabInterface* split_tab :
              GetSplitData(first_in_group->GetSplit().value())->ListTabs()) {
@@ -2254,11 +2254,19 @@ void TabStripModel::EnterFocusMode(const tab_groups::TabGroupId& group) {
       new_selection_model.SetAnchorTab(new_selection_model.active_tab());
     }
 
-    DCHECK(!new_selection_model.empty());
+    CHECK(!new_selection_model.empty(), base::NotFatalUntil::M162);
 
     SetSelection(new_selection_model, TabStripModelObserver::CHANGE_REASON_NONE,
                  /*triggered_by_other_operation=*/false);
     NotifyTabGroupFocusChanged(old_focused_group);
+
+    // Ephemeral tab groups do not trigger a browser theme change upon entering
+    // focus mode, so we manually update the visual data here to ensure
+    // correctness.
+    if (tab_group->is_ephemeral()) {
+      tab_group->SetVisualData(*tab_group->visual_data(),
+                               tab_group->IsCustomized());
+    }
   }
 }
 
@@ -2276,7 +2284,21 @@ void TabStripModel::ExitFocusMode(
   selection_model_.set_focused_group(std::nullopt);
   NotifyTabGroupFocusChanged(old_focused_group);
 
-  if (!closing_all_ && IsEphemeralTabGroup(old_focused_group.value())) {
+  const bool is_ephemeral = IsEphemeralTabGroup(old_focused_group.value());
+  if (reason == TabGroupFocusExitReason::kTabOutsideGroupActivated) {
+    if (ToastController* const toast_controller =
+            ToastController::From(delegate_->GetBrowserWindowInterface())) {
+      ToastParams params(ToastId::kTabGroupFocusExited);
+      if (is_ephemeral) {
+        params.body_string_override = l10n_util::GetPluralStringFUTF16(
+            IDS_NON_GROUP_FOCUS_EXITED_TOAST_BODY,
+            group_model_->GetTabGroup(old_focused_group.value())->tab_count());
+      }
+      toast_controller->MaybeShowToast(std::move(params));
+    }
+  }
+
+  if (!closing_all_ && is_ephemeral) {
     if (const gfx::Range tabs =
             group_model_->GetTabGroup(old_focused_group.value())->ListTabs();
         !tabs.is_empty()) {
@@ -2633,6 +2655,7 @@ bool TabStripModel::IsContextMenuCommandEnabled(
   if (!ContainsIndex(context_index)) {
     return false;
   }
+  tabs::TabHandle context_tab = GetTabAtIndex(context_index)->GetHandle();
 
   // Shuttle: the home tab can't be closed, unpinned, grouped, split,
   // duplicated or moved to another window.
@@ -2669,7 +2692,7 @@ bool TabStripModel::IsContextMenuCommandEnabled(
 
     case CommandCloseOtherTabs:
     case CommandCloseTabsToRight: {
-      return !GetIndicesClosedByCommand(context_index, command_id).empty();
+      return HasTabsClosedByCommand(context_tab, command_id);
     }
     case CommandDuplicate: {
       std::vector<int> indices = GetIndicesForCommand(context_index);
@@ -2722,23 +2745,26 @@ bool TabStripModel::IsContextMenuCommandEnabled(
         return false;
       }
 
-      std::vector<int> indices = GetIndicesForCommand(context_index);
-      if (indices.empty()) {
+      std::vector<tabs::TabHandle> tabs = GetTabsForCommand(context_tab);
+      if (tabs.empty()) {
         return false;
       }
 
-      for (int index : indices) {
-        if (IsTabPinned(index)) {
+      for (tabs::TabHandle tab : tabs) {
+        tabs::TabInterface* tab_ptr = tab.Get();
+        if (!tab_ptr ||
+            static_cast<tabs::TabModel*>(tab_ptr)->owning_model() != this ||
+            tab_ptr->IsPinned()) {
           return false;
         }
       }
 
-      if (GetCommonGroupForIndices(indices).has_value()) {
+      if (GetCommonGroupForTabs(tabs).has_value()) {
         return true;
       }
 
       return base::FeatureList::IsEnabled(features::kNonGroupFocus) &&
-             AreAllUngrouped(indices);
+             AreAllUngrouped(tabs);
     }
 
     case CommandMoveToExistingWindow:
@@ -2756,18 +2782,21 @@ bool TabStripModel::IsContextMenuCommandEnabled(
     case CommandGlicCreateNewChat:
     case CommandGlicSwitchToRecentConversation:
     case CommandGlicUnshare:
+    case CommandAiModeShare:
+    case CommandAiModeCreateNewThread:
+    case CommandAiModeUnshare:
       return false;
 
     case CommandCopyURL:
-      DCHECK(delegate()->IsForWebApp());
+      CHECK(delegate()->IsForWebApp(), base::NotFatalUntil::M162);
       return true;
 
     case CommandGoBack:
-      DCHECK(delegate()->IsForWebApp());
+      CHECK(delegate()->IsForWebApp(), base::NotFatalUntil::M162);
       return delegate()->CanGoBack(GetWebContentsAt(context_index));
 
     case CommandCloseAllTabs:
-      DCHECK(delegate()->IsForWebApp());
+      CHECK(delegate()->IsForWebApp(), base::NotFatalUntil::M162);
       return true;
 
     case CommandToggleVertical:
@@ -2784,6 +2813,7 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
   if (!ContainsIndex(context_index)) {
     return;
   }
+  tabs::TabHandle context_tab = GetTabAtIndex(context_index)->GetHandle();
   switch (command_id) {
     case CommandNewTabToRight: {
       base::UmaHistogramCounts1000(
@@ -2850,7 +2880,7 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
 
       ExecuteCloseTabsCommand(
           base::BindRepeating(&TabStripModel::GetTabsForCommand,
-                              base::Unretained(this), context_index),
+                              base::Unretained(this), context_tab),
           /*delete_groups=*/true);
       break;
     }
@@ -2862,8 +2892,7 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
       base::RecordAction(UserMetricsAction("TabContextMenu_CloseOtherTabs"));
       ExecuteCloseTabsCommand(
           base::BindRepeating(&TabStripModel::GetTabsClosedByCommand,
-                              base::Unretained(this), context_index,
-                              command_id),
+                              base::Unretained(this), context_tab, command_id),
           /*delete_groups=*/false);
       break;
     }
@@ -2875,8 +2904,7 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
       base::RecordAction(UserMetricsAction("TabContextMenu_CloseTabsToRight"));
       ExecuteCloseTabsCommand(
           base::BindRepeating(&TabStripModel::GetTabsClosedByCommand,
-                              base::Unretained(this), context_index,
-                              command_id),
+                              base::Unretained(this), context_tab, command_id),
           /*delete_groups=*/false);
       break;
     }
@@ -3109,6 +3137,9 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
     case CommandGlicCreateNewChat:
     case CommandGlicSwitchToRecentConversation:
     case CommandGlicUnshare:
+    case CommandAiModeShare:
+    case CommandAiModeCreateNewThread:
+    case CommandAiModeUnshare:
       break;
 
     case CommandCopyURL: {
@@ -3134,14 +3165,17 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
       // Closes all tabs except the pinned home tab.
       base::RecordAction(UserMetricsAction("TabContextMenu_CloseAllTabs"));
 
-      base::RepeatingCallback<std::vector<tabs::TabInterface*>()>
+      base::RepeatingCallback<std::vector<tabs::TabHandle>()>
           get_all_except_pinned_home_tab = base::BindRepeating(
               [](base::RepeatingCallback<tabs::TabCollection::TabIterator()>
                      begin,
                  base::RepeatingCallback<tabs::TabCollection::TabIterator()>
                      end) {
-                return std::vector<tabs::TabInterface*>(++begin.Run(),
-                                                        end.Run());
+                std::vector<tabs::TabHandle> tab_handles;
+                for (auto it = ++begin.Run(); it != end.Run(); ++it) {
+                  tab_handles.push_back((*it)->GetHandle());
+                }
+                return tab_handles;
               },
               base::BindRepeating(&TabStripModel::begin,
                                   base::Unretained(this)),
@@ -3153,23 +3187,9 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
                               /*delete_groups=*/true);
       break;
     }
-    case CommandToggleVertical: {
-      base::UmaHistogramCounts1000(
-          "Tab.ContextMenu.ToggleVertical.SelectedTabsCount",
-          selection_model_.size());
-      BrowserWindowInterface* const browser =
-          GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-              GetWebContentsAt(context_index));
-      if (auto* controller =
-              tabs::VerticalTabStripStateController::From(browser)) {
-        const bool is_vertical = !controller->ShouldDisplayVerticalTabs();
-        tabs::RecordVerticalTabStripModeChanged(
-            is_vertical, tabs::VerticalTabStripEntryPoint::kTabContextMenu);
-      }
-      chrome::BrowserCommandController::From(browser)->ExecuteCommand(
-          IDC_TOGGLE_VERTICAL_TABS);
+    case CommandToggleVertical:
+      // Vertical tabs are not supported; the command is never offered.
       break;
-    }
     case CommandAddToNewGroupFromMenuItem: {
       base::UmaHistogramCounts1000(
           "Tab.ContextMenu.AddToNewGroupFromMenuItem.SelectedTabsCount",
@@ -3370,20 +3390,22 @@ TabStripModel::GetGroupsDestroyedFromRemovingTabs(
 }
 
 void TabStripModel::ExecuteCloseTabs(
-    base::RepeatingCallback<std::vector<tabs::TabInterface*>()>
-        get_tabs_to_close,
+    base::RepeatingCallback<std::vector<tabs::TabHandle>()> get_tabs_to_close,
     uint32_t close_types) {
   ReentrancyCheck reentrancy_check(&reentrancy_guard_);
-  const std::vector<tabs::TabInterface*> tabs_to_close =
+  const std::vector<tabs::TabHandle> tab_handles_to_close =
       std::move(get_tabs_to_close).Run();
 
-  CreateHistoricalSplitIfClosing(tabs_to_close, close_types);
-
+  std::vector<tabs::TabInterface*> tabs_to_close;
   std::vector<content::WebContents*> web_contents_to_close;
-  for (tabs::TabInterface* t : tabs_to_close) {
-    web_contents_to_close.push_back(t->GetContents());
+  for (tabs::TabHandle handle : tab_handles_to_close) {
+    if (tabs::TabInterface* t = handle.Get()) {
+      tabs_to_close.push_back(t);
+      web_contents_to_close.push_back(t->GetContents());
+    }
   }
 
+  CreateHistoricalSplitIfClosing(tabs_to_close, close_types);
   CloseTabs(web_contents_to_close, close_types);
 }
 
@@ -3397,12 +3419,17 @@ void TabStripModel::MarkTabGroupsForClosing(
 }
 
 void TabStripModel::ExecuteCloseTabsCommand(
-    base::RepeatingCallback<std::vector<tabs::TabInterface*>()>
-        get_tabs_to_close,
+    base::RepeatingCallback<std::vector<tabs::TabHandle>()> get_tabs_to_close,
     bool delete_groups) {
-  std::vector<tabs::TabInterface*> tabs_to_close = get_tabs_to_close.Run();
+  std::vector<tabs::TabHandle> tab_handles_to_close = get_tabs_to_close.Run();
+  std::vector<tabs::TabInterface*> tabs_to_close;
+  for (tabs::TabHandle handle : tab_handles_to_close) {
+    if (tabs::TabInterface* t = handle.Get()) {
+      tabs_to_close.push_back(t);
+    }
+  }
   std::vector<tab_groups::TabGroupId> groups_to_delete =
-      GetGroupsDestroyedFromRemovingTabs(get_tabs_to_close.Run());
+      GetGroupsDestroyedFromRemovingTabs(tabs_to_close);
 
   MarkTabGroupsForClosing(groups_to_delete);
   // If there are groups that will be deleted by closing tabs from the context
@@ -3448,7 +3475,7 @@ bool TabStripModel::WillContextMenuGroup(int index) {
   }
 
   std::vector<int> indices = GetIndicesForCommand(index);
-  DCHECK(!indices.empty());
+  CHECK(!indices.empty(), base::NotFatalUntil::M162);
 
   // If all tabs are in the same group, then we ungroup, otherwise we group.
   std::optional<tab_groups::TabGroupId> group = GetTabGroupForTab(indices[0]);
@@ -3464,29 +3491,43 @@ bool TabStripModel::WillContextMenuGroup(int index) {
   return false;
 }
 
-std::optional<tab_groups::TabGroupId> TabStripModel::GetCommonGroupForIndices(
-    const std::vector<int>& indices) const {
-  if (indices.empty()) {
+std::optional<tab_groups::TabGroupId> TabStripModel::GetCommonGroupForTabs(
+    const std::vector<tabs::TabHandle>& tabs) const {
+  if (tabs.empty() || !tabs.front().Get()) {
+    return std::nullopt;
+  }
+  tabs::TabInterface* first_tab = tabs.front().Get();
+  if (static_cast<tabs::TabModel*>(first_tab)->owning_model() != this) {
     return std::nullopt;
   }
   const std::optional<tab_groups::TabGroupId> first_group =
-      GetTabGroupForTab(indices.front());
+      first_tab->GetGroup();
   if (!first_group.has_value()) {
     return std::nullopt;
   }
   return std::ranges::all_of(
-             indices,
-             [&](int index) { return GetTabGroupForTab(index) == first_group; })
+             tabs,
+             [&](tabs::TabHandle tab) {
+               tabs::TabInterface* tab_ptr = tab.Get();
+               return tab_ptr &&
+                      static_cast<tabs::TabModel*>(tab_ptr)->owning_model() ==
+                          this &&
+                      tab_ptr->GetGroup() == first_group;
+             })
              ? first_group
              : std::nullopt;
 }
 
-bool TabStripModel::AreAllUngrouped(const std::vector<int>& indices) const {
-  if (indices.empty()) {
+bool TabStripModel::AreAllUngrouped(
+    const std::vector<tabs::TabHandle>& tabs) const {
+  if (tabs.empty()) {
     return false;
   }
-  for (int index : indices) {
-    if (GetTabGroupForTab(index).has_value()) {
+  for (tabs::TabHandle tab : tabs) {
+    tabs::TabInterface* tab_ptr = tab.Get();
+    if (!tab_ptr ||
+        static_cast<tabs::TabModel*>(tab_ptr)->owning_model() != this ||
+        tab_ptr->GetGroup().has_value()) {
       return false;
     }
   }
@@ -3716,81 +3757,54 @@ std::vector<int> TabStripModel::GetIndicesForCommand(int index) const {
   return std::vector<int>(sel.begin(), sel.end());
 }
 
-std::vector<tabs::TabInterface*> TabStripModel::GetTabsForCommand(
-    int index) const {
-  if (!ContainsIndex(index)) {
+std::vector<tabs::TabHandle> TabStripModel::GetTabsForCommand(
+    tabs::TabHandle context_tab) const {
+  tabs::TabInterface* tab = context_tab.Get();
+  if (!tab || static_cast<tabs::TabModel*>(tab)->owning_model() != this) {
     return {};
   }
-  tabs::TabInterface* tab = GetTabAtIndex(index);
 
   if (!selection_model_.IsSelected(tab)) {
     std::optional<split_tabs::SplitTabId> split = tab->GetSplit();
     if (split.has_value()) {
-      return GetSplitData(split.value())->ListTabs();
+      std::vector<tabs::TabInterface*> split_tabs =
+          GetSplitData(split.value())->ListTabs();
+      std::vector<tabs::TabHandle> handles;
+      handles.reserve(split_tabs.size());
+      for (tabs::TabInterface* split_tab : split_tabs) {
+        handles.push_back(split_tab->GetHandle());
+      }
+      return handles;
     }
-    return {tab};
+    return {context_tab};
   }
 
-  return std::vector<tabs::TabInterface*>(
-      selection_model_.selected_tabs().begin(),
-      selection_model_.selected_tabs().end());
+  std::vector<tabs::TabHandle> handles;
+  handles.reserve(selection_model_.selected_tabs().size());
+  for (tabs::TabInterface* selected_tab : selection_model_.selected_tabs()) {
+    handles.push_back(selected_tab->GetHandle());
+  }
+  return handles;
 }
 
-std::vector<int> TabStripModel::GetIndicesClosedByCommand(
-    int index,
-    ContextMenuCommand id) const {
-  std::vector<int> indices;
-  if (!ContainsIndex(index)) {
-    return indices;
-  }
-  DCHECK(id == CommandCloseTabsToRight || id == CommandCloseOtherTabs);
-  bool is_selected = IsTabSelected(index);
-  int last_unclosed_tab = -1;
-  if (id == CommandCloseTabsToRight) {
-    last_unclosed_tab = is_selected ? *selection_model()
-                                           .GetListSelectionModel()
-                                           .selected_indices()
-                                           .rbegin()
-                                    : index;
-  }
-
-  // If the tab that the context menu command is invoked on is not selected and
-  // also in a split, also exclude tabs from that split from being closed. We
-  // don't have to worry about the case when a split is selected, because all
-  // indices in that split are guaranteed to be part of the selection model.
-  tabs::TabInterface* invoked_tab = GetTabAtIndex(index);
-  gfx::Range indices_to_exclude =
-      invoked_tab->IsSplit()
-          ? GetIndexRangeOfSplit(invoked_tab->GetSplit().value())
-          : gfx::Range(index, index + 1);
-
-  // NOTE: callers expect the vector to be sorted in descending order.
-  std::optional<tab_groups::TabGroupId> focused_group = GetFocusedGroup();
-  for (int i = count() - 1; i > last_unclosed_tab; --i) {
-    // Skip tabs that are not part of the focused group.
-    if (focused_group.has_value() && GetTabGroupForTab(i) != focused_group) {
-      continue;
-    }
-    if (!indices_to_exclude.Contains(gfx::Range(i, i + 1)) && !IsTabPinned(i) &&
-        (!is_selected || !IsTabSelected(i))) {
-      indices.push_back(i);
-    }
-  }
-  return indices;
+bool TabStripModel::HasTabsClosedByCommand(tabs::TabHandle context_tab,
+                                           ContextMenuCommand id) const {
+  return !GetTabsClosedByCommand(context_tab, id).empty();
 }
 
-std::vector<tabs::TabInterface*> TabStripModel::GetTabsClosedByCommand(
-    int index,
+std::vector<tabs::TabHandle> TabStripModel::GetTabsClosedByCommand(
+    tabs::TabHandle context_tab,
     ContextMenuCommand id) const {
-  if (!ContainsIndex(index)) {
+  tabs::TabInterface* invoked_tab = context_tab.Get();
+  if (!invoked_tab ||
+      static_cast<tabs::TabModel*>(invoked_tab)->owning_model() != this) {
     return {};
   }
 
-  DCHECK(id == CommandCloseTabsToRight || id == CommandCloseOtherTabs);
+  CHECK(id == CommandCloseTabsToRight || id == CommandCloseOtherTabs,
+        base::NotFatalUntil::M162);
 
-  tabs::TabInterface* invoked_tab = GetTabAtIndex(index);
-
-  std::vector<tabs::TabInterface*> tabs_to_close;
+  std::vector<tabs::TabHandle> tabs_to_close;
 
   auto start_it = begin();
 
@@ -3829,7 +3843,7 @@ std::vector<tabs::TabInterface*> TabStripModel::GetTabsClosedByCommand(
       continue;
     }
 
-    tabs_to_close.push_back(tab);
+    tabs_to_close.push_back(tab->GetHandle());
   }
 
   return tabs_to_close;
@@ -4053,14 +4067,6 @@ tabs::TabInterface* TabStripModel::GetFirstSelectedTab() const {
   return GetTabAtIndex(static_cast<int>(*selected_indices.begin()));
 }
 
-tabs::TabInterface* TabStripModel::GetLastSelectedTab() const {
-  ui::ListSelectionModel::SelectedIndices selected_indices =
-      selection_model_.GetListSelectionModel().selected_indices();
-  CHECK(selected_indices.size() > 0);
-  std::reverse(selected_indices.begin(), selected_indices.end());
-  return GetTabAtIndex(static_cast<int>(*selected_indices.begin()));
-}
-
 tabs::TabStripModelSelectionState TabStripModel::GetSelectionStateFrom(
     const ui::ListSelectionModel& source) {
   const ui::ListSelectionModel::SelectedIndices& sel =
@@ -4201,7 +4207,7 @@ TabStripSelectionChange TabStripModel::SetSelection(
           !tabs::TabStripModelSelectionState::IsTabValidInFocusedGroup(
               new_model.active_tab(), focused_group);
       if (exited_focus) {
-        ExitFocusMode(TabGroupFocusExitReason::kActiveTabGroupOperation);
+        ExitFocusMode(TabGroupFocusExitReason::kTabOutsideGroupActivated);
       }
     }
   }
@@ -4272,8 +4278,8 @@ TabStripSelectionChange TabStripModel::SetSelection(
       }
     }
 
-    TabStripModelChange change;
-    OnChange(change, selection);
+    OnChange(TabStripModelChange(TabStripModelChange::SelectionOnly()),
+             selection);
   }
 
   return selection;
@@ -4293,6 +4299,8 @@ void TabStripModel::SelectRelativeTab(TabRelativeDirection direction,
 
   // Ensure the active tab is not in a collapsed group so the while loop can
   // fallback on activating the active tab.
+  // TODO(crbug.com/577979740): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(!start_group.has_value() || !IsGroupCollapsed(start_group.value()));
 
   std::optional<tab_groups::TabGroupId> focused_group = GetFocusedGroup();
@@ -4555,8 +4563,8 @@ split_tabs::SplitTabId TabStripModel::AddToSplitImpl(
     TabStripSelectionChange selection(
         GetActiveTab(), old_selection_model.GetListSelectionModel());
     selection.new_model = selection_model().GetListSelectionModel();
-    TabStripModelChange change;
-    OnChange(change, selection);
+    OnChange(TabStripModelChange(TabStripModelChange::SelectionOnly()),
+             selection);
   }
 
   NotifySplitTabCreated(split_id, tabs_with_indices, reason, visual_data);
@@ -4586,13 +4594,13 @@ void TabStripModel::RemoveSplitImpl(
   if (old_selection_model != selection_model_) {
     TabStripSelectionChange selection(
         GetActiveTab(), old_selection_model.GetListSelectionModel());
-    TabStripModelChange change;
     selection.new_tab = GetActiveTab();
     selection.new_contents = GetActiveWebContents();
     selection.new_model = selection_model().GetListSelectionModel();
     selection.reason = TabStripModelObserver::CHANGE_REASON_NONE;
 
-    OnChange(change, selection);
+    OnChange(TabStripModelChange(TabStripModelChange::SelectionOnly()),
+             selection);
   }
 
   NotifySplitTabRemoved(split_id, tabs_with_indices, reason);
@@ -4706,14 +4714,16 @@ void TabStripModel::AddToNewGroupImpl(const std::vector<int>& indices,
   // Verify that the group id is not being used by any existing group. Group ids
   // are generated randomly but a conflict should be almost impossible in
   // practice.
-  DCHECK([&]() {
-    for (const tabs::TabInterface* tab : *this) {
-      if (tab->GetGroup() == new_group) {
-        return false;
-      }
-    }
-    return true;
-  }());
+  CHECK(
+      [&]() {
+        for (const tabs::TabInterface* tab : *this) {
+          if (tab->GetGroup() == new_group) {
+            return false;
+          }
+        }
+        return true;
+      }(),
+      base::NotFatalUntil::M162);
 
   ExitFocusMode(TabGroupFocusExitReason::kGroupCreated);
 
@@ -5594,12 +5604,15 @@ void TabStripModel::FixOpeners(int index) {
 
   // Sanity check that none of the tabs' openers refer `old_tab` or
   // themselves.
-  DCHECK([&]() {
-    return std::none_of(begin(), end(), [&](tabs::TabInterface* tab) {
-      tabs::TabInterface* opener = static_cast<tabs::TabModel*>(tab)->opener();
-      return opener == old_tab || opener == tab;
-    });
-  }());
+  CHECK(
+      [&]() {
+        return std::none_of(begin(), end(), [&](tabs::TabInterface* tab) {
+          tabs::TabInterface* opener =
+              static_cast<tabs::TabModel*>(tab)->opener();
+          return opener == old_tab || opener == tab;
+        });
+      }(),
+      base::NotFatalUntil::M162);
 }
 
 std::optional<tab_groups::TabGroupId> TabStripModel::GetGroupToAssign(
@@ -5704,7 +5717,7 @@ void TabStripModel::OnActiveTabChanged(
       }
     }
   }
-  DCHECK(selection.new_model.active().has_value());
+  CHECK(selection.new_model.active().has_value(), base::NotFatalUntil::M162);
   const tabs::TabInterface* const new_opener =
       GetOpenerOfTabAt(selection.new_model.active().value());
 
@@ -6080,6 +6093,33 @@ void TabStripModel::MaybeRemoveSplitsForUpdate(
       RemoveSplitImpl(split,
                       SplitTabChange::SplitTabRemoveReason::kSplitTabRemoved);
     }
+  }
+}
+
+void TabStripModel::MaybeExitFocusModeForUpdate(
+    const std::vector<int>& indices) {
+  std::optional<tab_groups::TabGroupId> focused_group = GetFocusedGroup();
+  if (!focused_group.has_value()) {
+    return;
+  }
+
+  int focused_tabs_in_update = 0;
+  bool active_tab_in_update = false;
+  for (int index : indices) {
+    if (GetTabGroupForTab(index) != focused_group) {
+      continue;
+    }
+    focused_tabs_in_update++;
+    if (GetTabAtIndex(index) == selection_model_.active_tab()) {
+      active_tab_in_update = true;
+    }
+  }
+
+  const TabGroup* group = group_model_->GetTabGroup(*focused_group);
+  if (focused_tabs_in_update == group->tab_count()) {
+    ExitFocusMode(TabGroupFocusExitReason::kGroupUngrouped);
+  } else if (active_tab_in_update) {
+    ExitFocusMode(TabGroupFocusExitReason::kActiveTabGroupOperation);
   }
 }
 

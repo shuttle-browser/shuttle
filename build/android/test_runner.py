@@ -27,9 +27,8 @@ import unittest
 # Import _strptime before threaded code. datetime.datetime.strptime is
 # threadsafe except for the initial import of the _strptime module.
 # See http://crbug.com/724524 and https://bugs.python.org/issue7980.
-import _strptime  # pylint: disable=unused-import
+import _strptime  # noqa: F401
 
-# pylint: disable=ungrouped-imports
 from pylib.constants import host_paths
 
 if host_paths.DEVIL_PATH not in sys.path:
@@ -46,6 +45,7 @@ from pylib.base import output_manager
 from pylib.base import output_manager_factory
 from pylib.base import test_instance_factory
 from pylib.base import test_run_factory
+from pylib.local.device import local_device_test_run
 from pylib.results import json_results
 from pylib.results import report_results
 from pylib.results.presentation import test_results_presentation
@@ -117,6 +117,14 @@ def AddTestLauncherOptions(parser):
         help='Index of the external shard to run.',
     )
     parser.add_argument(
+        '--sharding-strategy',
+        choices=local_device_test_run.SHARDING_STRATEGIES,
+        default=local_device_test_run.SHARDING_STRATEGY_BOUNDED_LOAD,
+        help='How tests are assigned to external shards. "hash" is the legacy '
+        'name-hash assignment; "bounded-load" keeps the hash assignment '
+        'unless it would overload a shard (default: %(default)s).',
+    )
+    parser.add_argument(
         '--test-launcher-total-shards',
         type=int,
         default=os.environ.get('GTEST_TOTAL_SHARDS', 1),
@@ -178,6 +186,14 @@ def AddTracingOptions(parser):
 
 def AddCommonOptions(parser):
     """Adds all common options to |parser|."""
+    parser.add_argument(
+        '--test-location-for-bug-routing',
+        help=(
+            'Path to a DIR_METADATA file (or a file in the same directory) '
+            'to report to ResultDB for bug routing. If specified, this '
+            'overrides any class-to-file mapping from size-info.'
+        ),
+    )
     parser.add_argument(
         "-q", "--quiet", action="store_true", help="Minimize output."
     )
@@ -261,6 +277,7 @@ def AddCommonOptions(parser):
         def __call__(self, parser, namespace, values, option_string=None):
             namespace.enable_concurrent_adb = True
             namespace.enable_device_cache = True
+            namespace.enable_test_data_cache = True
             namespace.extract_test_list_from_filter = True
             namespace.local_output = True
             namespace.num_retries = 0
@@ -272,7 +289,7 @@ def AddCommonOptions(parser):
         nargs=0,
         action=FastLocalDevAction,
         help='Alias for: --num-retries=0 --enable-device-cache '
-        '--enable-concurrent-adb --skip-clear-data '
+        '--enable-test-data-cache --enable-concurrent-adb --skip-clear-data '
         '--extract-test-list-from-filter --local-output',
     )
 
@@ -404,9 +421,22 @@ def AddDeviceOptions(parser):
         help='Cache device state to disk between runs',
     )
     parser.add_argument(
+        '--enable-test-data-cache',
+        action='store_true',
+        help='Skip pushing gtest data dependencies when a stamp of the host '
+        'files matches the one recorded on the device by the last push',
+    )
+    parser.add_argument(
         '--list-data',
         action='store_true',
         help='List files pushed to device and exit.',
+    )
+    parser.add_argument(
+        '--device-data-filter',
+        action='append',
+        dest='device_data_filters',
+        default=[],
+        help='Device data filter (e.g. +//chrome/test/data/*)',
     )
     parser.add_argument(
         '--skip-clear-data',
@@ -420,6 +450,12 @@ def AddDeviceOptions(parser):
         action='store_true',
         help='Attempt to recover devices prior to the final retry. Warning: '
         'this will cause all devices to reboot.',
+    )
+    parser.add_argument(
+        '--device-retries',
+        type=int,
+        help='Default number of retries for device (adb) commands. Defaults '
+        'to the value of --num-retries.',
     )
 
     parser.add_argument(
@@ -609,11 +645,6 @@ def AddGTestOptions(parser):
         help='Executable name of the test suite to run.',
     )
     parser.add_argument(
-        '--test-apk-incremental-install-json',
-        type=os.path.realpath,
-        help='Path to install json for the test apk.',
-    )
-    parser.add_argument(
         '--test-launcher-batch-limit',
         dest='test_launcher_batch_limit',
         type=int,
@@ -729,13 +760,6 @@ def AddInstrumentationTestOptions(parser):
         dest='additional_locales',
         help='Specify locales in addition to the device locale to install splits '
         'for when --apk-under-test is an Android App Bundle.',
-    )
-    parser.add_argument(
-        '--device-data-filter',
-        action='append',
-        dest='device_data_filters',
-        default=[],
-        help='Device data filter (e.g. +//chrome/test/data/*)',
     )
     parser.add_argument(
         '--coverage-dir',
@@ -925,17 +949,6 @@ def AddInstrumentationTestOptions(parser):
         'com.android.package:www.example.com',
     )
 
-    # These arguments are suppressed from the help text because they should
-    # only ever be specified by an intermediate script.
-    parser.add_argument(
-        '--apk-under-test-incremental-install-json', help=argparse.SUPPRESS
-    )
-    parser.add_argument(
-        '--test-apk-incremental-install-json',
-        type=os.path.realpath,
-        help=argparse.SUPPRESS,
-    )
-
 
 def AddSkiaGoldTestOptions(parser):
     """Adds Skia Gold test options to |parser|."""
@@ -1105,11 +1118,11 @@ def AddJUnitTestOptions(parser):
         '--json-config', help='Runs only tests listed in this config.'
     )
     parser.add_argument(
-        '--shards',
+        '-j',
+        '--jobs',
         type=int,
-        help='Number of shards to run junit tests in parallel on. Only 1 shard '
-        'is supported when test-filter is specified. Values less than 1 will '
-        'use auto select.',
+        help='Number of concurrent worker processes to run JUnit tests. '
+        'Values less than 1 will use auto select.',
     )
     parser.add_argument(
         '--shard-filter', help='Comma separated list of shard indices to run.'
@@ -1213,13 +1226,13 @@ def AddPythonTestOptions(parser):
     )
 
 
-def _CreateClassToFileNameDict(test_apk):
-    """Creates a dict mapping classes to file names from size-info apk."""
+def _CreateClassToFileNameDict(suite_name_or_path):
+    """Creates a dict mapping classes to file names from size-info."""
     constants.CheckOutputDirectory()
     test_apk_size_info = os.path.join(
         constants.GetOutDirectory(),
         'size-info',
-        os.path.basename(test_apk) + '.jar.info',
+        os.path.basename(suite_name_or_path) + '.jar.info',
     )
 
     class_to_file_dict = {}
@@ -1227,7 +1240,7 @@ def _CreateClassToFileNameDict(test_apk):
     # tests. This means the apk may not have been built by the system and hence
     # no size info file exists.
     if not os.path.exists(test_apk_size_info):
-        logging.debug('Apk size file not found. %s', test_apk_size_info)
+        logging.debug('Size info file not found. %s', test_apk_size_info)
         return class_to_file_dict
 
     with open(test_apk_size_info, 'r') as f:
@@ -1240,6 +1253,19 @@ def _CreateClassToFileNameDict(test_apk):
                 )
 
     return class_to_file_dict
+
+
+def _GetTestFileName(test_name, class_to_file_dict):
+    """Returns the source file for |test_name|, or None if unknown.
+
+    Args:
+      test_name: e.g. org.chromium.chrome.page_info.PageInfoViewTest#testFoo
+      class_to_file_dict: Result of _CreateClassToFileNameDict().
+    """
+    test_class = test_name.split('#', 1)[0]
+    # .jar.info only lists top-level classes, so fall back to the outer class
+    # for tests defined in nested classes (Outer$Inner).
+    return class_to_file_dict.get(test_class.split('$', 1)[0])
 
 
 def _RunPythonTests(args):
@@ -1504,7 +1530,7 @@ def UploadTestScriptRecords(result_sink_client, exc_recorder, mm_recorder):
             exc_recorder.clear()
             mm_recorder.clear()
             break
-        except Exception as e:  # pylint: disable=W0703
+        except Exception as e:
             logging.error("Got error %s when uploading test script records.", e)
             # Upload can fail due to record size being too big.
             # In this case, let's try to reduce the size.
@@ -1544,7 +1570,6 @@ def RunTestsInPlatformMode(args, result_sink_client=None):
             'Received SIGTERM. Shutting down.',
         ]
         for live_thread in threading.enumerate():
-            # pylint: disable=protected-access
             thread_stack = ''.join(
                 traceback.format_stack(sys._current_frames()[live_thread.ident])
             )
@@ -1619,27 +1644,29 @@ def RunTestsInPlatformMode(args, result_sink_client=None):
                 )
 
             test_class_to_file_name_dict = {}
-            # Test Location is only supported for instrumentation tests as it
-            # requires the size-info file.
+            # Test Location requires the size-info file, which is generated
+            # for instrumentation and junit tests.
             if test_instance.TestType() == 'instrumentation':
                 test_class_to_file_name_dict = _CreateClassToFileNameDict(
                     args.test_apk
+                )
+            elif test_instance.TestType() == 'junit':
+                test_class_to_file_name_dict = _CreateClassToFileNameDict(
+                    test_instance.suite
                 )
 
             if result_sink_client:
                 for run in all_raw_results:
                     for results in run:
                         for r in results.GetAll():
-                            # Matches chrome.page_info.PageInfoViewTest#testChromePage
-                            match = re.search(r'^(.+\..+)#', r.GetName())
-                            test_file_name = (
-                                test_class_to_file_name_dict.get(match.group(1))
-                                if match
-                                else None
+                            test_file_name = _GetTestFileName(
+                                r.GetName(), test_class_to_file_name_dict
                             )
                             _SinkTestResult(
                                 r,
-                                test_file_name or r.GetTestFile(),
+                                args.test_location_for_bug_routing
+                                or test_file_name
+                                or r.GetTestFile(),
                                 test_instance,
                                 result_sink_client,
                             )
@@ -1891,7 +1918,7 @@ def _LogRerunStatement(failed_tests, wrapper_arg_str):
     try:
         constants.CheckOutputDirectory()
     # constants.CheckOutputDirectory throws bare exceptions.
-    except:  # pylint: disable=bare-except
+    except:  # noqa: E722
         logging.exception(
             'Output directory not found. Unable to generate failing '
             'test filter file.'
@@ -2077,7 +2104,7 @@ def main():
         if e.is_infra_error:
             return constants.INFRA_EXIT_CODE
         return constants.ERROR_EXIT_CODE
-    except Exception:  # pylint: disable=W0703
+    except Exception:
         logging.exception('Unrecognized error occurred.')
         return constants.ERROR_EXIT_CODE
 
@@ -2093,6 +2120,6 @@ if __name__ == '__main__':
         # to avoid the hang.
         sys.stdout.flush()
         sys.stderr.flush()
-        os._exit(exit_code)  # pylint: disable=protected-access
+        os._exit(exit_code)
     else:
         sys.exit(exit_code)

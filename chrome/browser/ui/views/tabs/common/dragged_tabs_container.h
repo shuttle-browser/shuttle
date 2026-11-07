@@ -21,10 +21,6 @@
 class TabCollectionNode;
 class TabDragHandler;
 
-namespace tabs {
-enum class VerticalTabStripCollapseState;
-}  // namespace tabs
-
 namespace views {
 class View;
 struct ProposedLayout;
@@ -122,8 +118,6 @@ class DraggedTabsContainer : public TabDragTarget,
   TabDragHandler& GetDragHandler();
   const TabDragHandler& GetDragHandler() const;
 
-  tabs::VerticalTabStripCollapseState GetTabStripCollapseState() const;
-
  private:
   // Returns the scroll view for the container.
   virtual views::ScrollView* GetScrollViewForContainer() const = 0;
@@ -186,6 +180,10 @@ class DraggedTabsContainer : public TabDragTarget,
 
   bool IsHorizontalDragSupported() const;
   bool IsVerticalDragSupported() const;
+
+  // Returns the bounds in `host_view_` coordinates to which dragged views
+  // should be clamped.
+  gfx::Rect GetDraggingViewsClampingBounds() const;
 
   // Returns the bounds of the box containing all dragged views, adjusted to
   // the point `point_in_container` and clamped to the bounds of the

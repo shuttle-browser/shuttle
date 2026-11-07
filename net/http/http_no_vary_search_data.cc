@@ -7,8 +7,10 @@
 #include <algorithm>
 #include <optional>
 #include <string_view>
+#include <variant>
 
 #include "base/containers/flat_set.h"
+#include "base/containers/map_util.h"
 #include "base/debug/crash_logging.h"
 #include "base/debug/dump_without_crashing.h"
 #include "base/feature_list.h"
@@ -16,6 +18,7 @@
 #include "base/strings/escape.h"
 #include "base/strings/string_util.h"
 #include "base/types/expected.h"
+#include "base/types/expected_macros.h"
 #include "net/base/features.h"
 #include "net/base/pickle.h"
 #include "net/base/url_search_params.h"
@@ -23,6 +26,7 @@
 #include "net/base/url_util.h"
 #include "net/http/http_response_headers.h"
 #include "net/http/structured_headers.h"
+#include "third_party/abseil-cpp/absl/functional/overload.h"
 #include "url/gurl.h"
 
 namespace net {
@@ -196,12 +200,12 @@ bool HttpNoVarySearchData::HasBooleanParamsMember(
   if (!dict.has_value()) {
     return false;
   }
-  auto it = dict->find(keys::kParams);
-  if (it == dict->end()) {
+  const structured_headers::ParameterizedMember* member =
+      base::FindOrNull(*dict, keys::kParams);
+  if (!member) {
     return false;
   }
-  const net::structured_headers::ParameterizedItem* item =
-      it->second.GetIfItem();
+  const structured_headers::ParameterizedItem* item = member->GetIfItem();
   if (!item) {
     return false;
   }
@@ -249,10 +253,9 @@ HttpNoVarySearchData::ParseNoVarySearchDictionary(
   }
 
   // Populate `vary_on_key_order` based on the `key-order` key.
-  if (auto keyorder_it = dict.find(keys::kKeyOrder);
-      keyorder_it != dict.end()) {
-    const net::structured_headers::ParameterizedItem* item =
-        keyorder_it->second.GetIfItem();
+  if (const structured_headers::ParameterizedMember* member =
+          base::FindOrNull(dict, keys::kKeyOrder)) {
+    const structured_headers::ParameterizedItem* item = member->GetIfItem();
     const bool* boolean = item ? item->item.GetIfBoolean() : nullptr;
     if (!boolean) {
       return base::unexpected(ParseErrorEnum::kNonBooleanKeyOrder);
@@ -261,23 +264,24 @@ HttpNoVarySearchData::ParseNoVarySearchDictionary(
   }
 
   // Populate `affected_params` or `vary_by_default` based on the "params" key.
-  if (auto params_it = dict.find(keys::kParams); params_it != dict.end()) {
-    const auto& params = params_it->second;
-    if (const net::structured_headers::InnerList* inner_list =
-            params.GetIfInnerList()) {
-      auto keys = ParseStringList(inner_list->items);
-      if (!keys.has_value()) {
-        return base::unexpected(ParseErrorEnum::kParamsNotStringList);
-      }
-      affected_params = std::move(*keys);
-    } else if (const net::structured_headers::ParameterizedItem* item =
-                   params.GetIfItem()) {
-      if (const bool* boolean = item->item.GetIfBoolean()) {
-        vary_by_default = !*boolean;
-      } else {
-        return base::unexpected(ParseErrorEnum::kParamsNotStringList);
-      }
-    } else {
+  if (const structured_headers::ParameterizedMember* member =
+          base::FindOrNull(dict, keys::kParams)) {
+    const bool valid = member->Visit(absl::Overload{
+        [&](const structured_headers::InnerList& inner_list) -> bool {
+          ASSIGN_OR_RETURN(affected_params, ParseStringList(inner_list.items),
+                           [] { return false; });
+          return true;
+        },
+        [&](const structured_headers::ParameterizedItem& item) {
+          if (const bool* boolean = item.item.GetIfBoolean()) {
+            vary_by_default = !*boolean;
+            return true;
+          }
+          return false;
+        },
+        [](std::monostate) { return false; },
+    });
+    if (!valid) {
       return base::unexpected(ParseErrorEnum::kParamsNotStringList);
     }
   }
@@ -285,13 +289,12 @@ HttpNoVarySearchData::ParseNoVarySearchDictionary(
   // Populate `affected_params` based on the "except" key.
   // This should be present only if "params" was true
   // (i.e., params don't vary by default).
-  if (auto except_it = dict.find(keys::kExcept); except_it != dict.end()) {
-    const auto& excepted_params = except_it->second;
+  if (const structured_headers::ParameterizedMember* member =
+          base::FindOrNull(dict, keys::kExcept)) {
     if (vary_by_default) {
       return base::unexpected(ParseErrorEnum::kExceptWithoutTrueParams);
     }
-    const net::structured_headers::InnerList* inner_list =
-        excepted_params.GetIfInnerList();
+    const structured_headers::InnerList* inner_list = member->GetIfInnerList();
     if (!inner_list) {
       return base::unexpected(ParseErrorEnum::kExceptNotStringList);
     }
@@ -415,42 +418,30 @@ std::optional<std::string> HttpNoVarySearchData::SerializeToString() const {
   std::vector<structured_headers::DictionaryMember> members;
 
   if (!vary_on_key_order_) {
-    members.emplace_back(keys::kKeyOrder,
-                         structured_headers::ParameterizedMember(
-                             structured_headers::Item(true), {}));
+    members.emplace_back(keys::kKeyOrder, structured_headers::Item(true));
   }
 
   if (vary_by_default_) {
     if (!affected_params_.empty()) {
       std::vector<structured_headers::ParameterizedItem> param_items;
       for (const auto& param : affected_params_) {
-        param_items.push_back(structured_headers::ParameterizedItem(
-            structured_headers::Item(
-                structured_headers::Item::string,
-                base::EscapeQueryParamValue(param, /*use_plus=*/true)),
-            {}));
+        param_items.emplace_back(structured_headers::Item(
+            structured_headers::Item::string,
+            base::EscapeQueryParamValue(param, /*use_plus=*/true)));
       }
-      members.emplace_back(
-          keys::kParams,
-          structured_headers::ParameterizedMember(std::move(param_items), {}));
+      members.emplace_back(keys::kParams, std::move(param_items));
     }
   } else {
-    members.emplace_back(keys::kParams,
-                         structured_headers::ParameterizedMember(
-                             structured_headers::Item(true), {}));
+    members.emplace_back(keys::kParams, structured_headers::Item(true));
 
     if (!affected_params_.empty()) {
       std::vector<structured_headers::ParameterizedItem> except_items;
       for (const auto& param : affected_params_) {
-        except_items.push_back(structured_headers::ParameterizedItem(
-            structured_headers::Item(
-                structured_headers::Item::string,
-                base::EscapeQueryParamValue(param, /*use_plus=*/true)),
-            {}));
+        except_items.emplace_back(structured_headers::Item(
+            structured_headers::Item::string,
+            base::EscapeQueryParamValue(param, /*use_plus=*/true)));
       }
-      members.emplace_back(
-          keys::kExcept,
-          structured_headers::ParameterizedMember(std::move(except_items), {}));
+      members.emplace_back(keys::kExcept, std::move(except_items));
     }
   }
 

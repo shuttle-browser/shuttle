@@ -60,7 +60,6 @@ generates a bar.typemap containing
 import argparse
 import json
 import os
-import re
 import sys
 
 sys.path.insert(
@@ -89,7 +88,6 @@ def CheckCppTypemapConfigs(target_name, config_filename):
       'mojom',
       'cpp',
       'copyable_pass_by_value',
-      'force_serialize',
       'hashable',
       'move_only',
       'non_const_ref',
@@ -181,7 +179,6 @@ def LoadCppTypemapConfig(path):
           'traits_headers': config.get('traits_private_headers', []),
           'copyable_pass_by_value': entry.get('copyable_pass_by_value', False),
           'default_constructible': entry.get('default_constructible', True),
-          'force_serialize': entry.get('force_serialize', False),
           'hashable': entry.get('hashable', False),
           'move_only': entry.get('move_only', False),
           'non_const_ref': entry.get('non_const_ref', False),

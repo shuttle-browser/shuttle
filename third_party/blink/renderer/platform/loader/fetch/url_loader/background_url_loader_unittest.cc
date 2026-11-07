@@ -53,10 +53,6 @@
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 #include "third_party/blink/renderer/platform/weborigin/scheme_registry.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_mojo.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_std.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
@@ -311,7 +307,8 @@ class FakeURLLoaderClient : public URLLoaderClient {
     will_follow_callbacks_.pop_front();
     return std::move(will_follow_callback).Run(new_url);
   }
-  void DidSendData(uint64_t bytesSent, uint64_t totalBytesToBeSent) override {
+  void DidSendData(uint64_t bytes_sent,
+                   uint64_t total_bytes_to_be_sent) override {
     NOTREACHED();
   }
   void DidReceiveResponse(
@@ -335,18 +332,18 @@ class FakeURLLoaderClient : public URLLoaderClient {
     DCHECK(unfreezable_task_runner_->BelongsToCurrentThread());
     transfer_size_diffs_.push_back(transfer_size_diff);
   }
-  void DidFinishLoading(base::TimeTicks finishTime,
-                        int64_t totalEncodedDataLength,
-                        uint64_t totalEncodedBodyLength,
-                        int64_t totalDecodedBodyLength) override {
+  void DidFinishLoading(base::TimeTicks finish_time,
+                        int64_t total_encoded_data_length,
+                        uint64_t total_encoded_body_length,
+                        int64_t total_decoded_body_length) override {
     DCHECK(unfreezable_task_runner_->BelongsToCurrentThread());
     did_finish_ = true;
   }
   void DidFail(const WebURLError& error,
-               base::TimeTicks finishTime,
-               int64_t totalEncodedDataLength,
-               uint64_t totalEncodedBodyLength,
-               int64_t totalDecodedBodyLength) override {
+               base::TimeTicks finish_time,
+               int64_t total_encoded_data_length,
+               uint64_t total_encoded_body_length,
+               int64_t total_decoded_body_length) override {
     DCHECK(unfreezable_task_runner_->BelongsToCurrentThread());
     EXPECT_FALSE(did_finish_);
     error_ = error;

@@ -5,6 +5,8 @@
 #include <stdint.h>
 
 #include "base/compiler_specific.h"
+#include "base/functional/callback.h"
+#include "base/test/bind.h"
 #include "gpu/command_buffer/common/shared_image_info.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "gpu/command_buffer/service/gles2_cmd_decoder.h"
@@ -14,6 +16,7 @@
 #include "gpu/command_buffer/service/shared_image/test_image_backing.h"
 #include "ui/gl/gl_context.h"
 #include "ui/gl/gl_surface.h"
+#include "ui/gl/gl_surface_egl.h"
 #include "ui/gl/gl_utils.h"
 #include "ui/gl/init/gl_factory.h"
 #include "ui/gl/scoped_gl_framebuffer.h"
@@ -22,7 +25,8 @@ namespace gpu {
 namespace gles2 {
 namespace {
 
-std::unique_ptr<TestImageBacking> AllocateTextureAndCreateSharedImage(
+template <typename BackingType = TestImageBacking>
+std::unique_ptr<BackingType> AllocateTextureAndCreateSharedImage(
     const Mailbox& mailbox,
     viz::SharedImageFormat format,
     const gfx::Size& size,
@@ -38,12 +42,59 @@ std::unique_ptr<TestImageBacking> AllocateTextureAndCreateSharedImage(
   glTexImage2D(GL_TEXTURE_2D, 0, format_desc.image_internal_format,
                size.width(), size.height(), 0, format_desc.data_format,
                format_desc.data_type, nullptr /* data */);
-  return std::make_unique<TestImageBacking>(
+  return std::make_unique<BackingType>(
       mailbox,
       SharedImageInfo(format, size, color_space, surface_origin, alpha_type,
                       usage, "TestLabel"),
       0 /* estimated_size */, service_id);
 }
+
+// Representation which raises a GL error when access begins.
+class GLErrorOnAccessRepresentation
+    : public GLTexturePassthroughImageRepresentation {
+ public:
+  GLErrorOnAccessRepresentation(
+      SharedImageManager* manager,
+      SharedImageBacking* backing,
+      MemoryTypeTracker* tracker,
+      std::unique_ptr<GLTexturePassthroughImageRepresentation> inner)
+      : GLTexturePassthroughImageRepresentation(manager, backing, tracker),
+        inner_(std::move(inner)) {}
+
+  const scoped_refptr<TexturePassthrough>& GetTexturePassthrough(
+      size_t plane_index) override {
+    return inner_->GetTexturePassthrough(plane_index);
+  }
+  bool BeginAccess(GLenum mode) override {
+    inner_access_ = inner_->BeginScopedAccess(
+        mode, SharedImageRepresentation::AllowUnclearedAccess::kYes);
+    if (!inner_access_) {
+      return false;
+    }
+    glEnable(GL_NONE);
+    return true;
+  }
+  void EndAccess() override { inner_access_.reset(); }
+
+ private:
+  std::unique_ptr<GLTexturePassthroughImageRepresentation> inner_;
+  std::unique_ptr<GLTexturePassthroughImageRepresentation::ScopedAccess>
+      inner_access_;
+};
+
+class GLErrorOnAccessTestImageBacking : public TestImageBacking {
+ public:
+  using TestImageBacking::TestImageBacking;
+
+ protected:
+  std::unique_ptr<GLTexturePassthroughImageRepresentation>
+  ProduceGLTexturePassthrough(SharedImageManager* manager,
+                              MemoryTypeTracker* tracker) override {
+    return std::make_unique<GLErrorOnAccessRepresentation>(
+        manager, this, tracker,
+        TestImageBacking::ProduceGLTexturePassthrough(manager, tracker));
+  }
+};
 
 }  // namespace
 
@@ -87,6 +138,58 @@ TEST_F(GLES2DecoderPassthroughTest, CreateAndTexStorage2DSharedImageCHROMIUM) {
   EXPECT_EQ(0u, GetPassthroughResources()->texture_shared_image_map.count(
                     kNewClientId));
 
+  shared_image.reset();
+}
+
+// The lazy clear of an uncleared shared image succeeds without errors.
+TEST_F(GLES2DecoderPassthroughTest,
+       CreateAndTexStorage2DSharedImageCHROMIUMClearsImage) {
+  MemoryTypeTracker memory_tracker(nullptr);
+  Mailbox mailbox = Mailbox::Generate();
+  auto backing = AllocateTextureAndCreateSharedImage(
+      mailbox, viz::SinglePlaneFormat::kRGBA_8888, gfx::Size(10, 10),
+      gfx::ColorSpace(), kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType,
+      {SHARED_IMAGE_USAGE_GLES2_READ, SHARED_IMAGE_USAGE_GLES2_WRITE});
+  TestImageBacking* backing_ptr = backing.get();
+  EXPECT_FALSE(backing_ptr->IsCleared());
+  std::unique_ptr<SharedImageRepresentationFactoryRef> shared_image =
+      GetSharedImageManager()->Register(std::move(backing), &memory_tracker);
+
+  auto& cmd = *GetImmediateAs<
+      cmds::CreateAndTexStorage2DSharedImageINTERNALImmediate>();
+  cmd.Init(kNewClientId, mailbox.name);
+  EXPECT_EQ(error::kNoError, ExecuteImmediateCmd(cmd, sizeof(mailbox.name)));
+  EXPECT_EQ(GL_NO_ERROR, GetGLError());
+  EXPECT_TRUE(backing_ptr->IsCleared());
+
+  DoDeleteTexture(kNewClientId);
+  shared_image.reset();
+}
+
+// A GL error raised during the lazy clear of a shared image must leave the
+// image uncleared, and the error must still be reported to the client.
+TEST_F(GLES2DecoderPassthroughTest,
+       CreateAndTexStorage2DSharedImageCHROMIUMClearError) {
+  MemoryTypeTracker memory_tracker(nullptr);
+  Mailbox mailbox = Mailbox::Generate();
+  auto backing =
+      AllocateTextureAndCreateSharedImage<GLErrorOnAccessTestImageBacking>(
+          mailbox, viz::SinglePlaneFormat::kRGBA_8888, gfx::Size(10, 10),
+          gfx::ColorSpace(), kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType,
+          {SHARED_IMAGE_USAGE_GLES2_READ, SHARED_IMAGE_USAGE_GLES2_WRITE});
+  TestImageBacking* backing_ptr = backing.get();
+  EXPECT_FALSE(backing_ptr->IsCleared());
+  std::unique_ptr<SharedImageRepresentationFactoryRef> shared_image =
+      GetSharedImageManager()->Register(std::move(backing), &memory_tracker);
+
+  auto& cmd = *GetImmediateAs<
+      cmds::CreateAndTexStorage2DSharedImageINTERNALImmediate>();
+  cmd.Init(kNewClientId, mailbox.name);
+  EXPECT_EQ(error::kNoError, ExecuteImmediateCmd(cmd, sizeof(mailbox.name)));
+  EXPECT_EQ(GL_INVALID_ENUM, GetGLError());
+  EXPECT_FALSE(backing_ptr->IsCleared());
+
+  DoDeleteTexture(kNewClientId);
   shared_image.reset();
 }
 
@@ -339,6 +442,188 @@ TEST_F(GLES2DecoderPassthroughTest,
   glDeleteTextures(1, &dummy_texture);
   DoDeleteTexture(kNewClientId);
   shared_image.reset();
+}
+
+// With check_graphics_reset_status_after_readback enabled and no reset
+// reported, the shared-image readback path must behave exactly as without the
+// workaround: no context loss, no denial. The rejection leg requires a driver
+// that latches a reset and is exercised on-device; ANGLE's NULL backend cannot
+// forge one.
+class GLES2DecoderPassthroughReadbackResetCheckTest
+    : public GLES2DecoderPassthroughTest {
+ public:
+  GLES2DecoderPassthroughReadbackResetCheckTest() {
+    workarounds_for_test_.check_graphics_reset_status_after_readback = true;
+  }
+};
+
+// Tests that the shared-image ReadbackARGB path does not deny on a healthy
+// driver with the workaround enabled; the gate polls the lazy shared
+// context's reset status.
+TEST_F(GLES2DecoderPassthroughReadbackResetCheckTest,
+       ReadbackARGBImagePixelsWithResetCheckWorkaroundDoesNotDeny) {
+  MemoryTypeTracker memory_tracker(nullptr);
+  Mailbox mailbox = Mailbox::Generate();
+  auto shared_image = GetSharedImageManager()->Register(
+      AllocateTextureAndCreateSharedImage(
+          mailbox, viz::SinglePlaneFormat::kRGBA_8888, gfx::Size(4, 4),
+          gfx::ColorSpace::CreateSRGB(), kTopLeft_GrSurfaceOrigin,
+          kPremul_SkAlphaType, SHARED_IMAGE_USAGE_GLES2_READ),
+      &memory_tracker);
+
+  // Shm layout at kSharedMemoryOffset: Result, then the mailbox, then the
+  // pixel destination. color_space_offset == mailbox_offset encodes "no
+  // color space".
+  using Cmd = cmds::ReadbackARGBImagePixelsINTERNAL;
+  constexpr uint32_t kMailboxOffset = 16;
+  constexpr uint32_t kPixelsOffset = 32;
+  constexpr GLuint kDstWidth = 2;
+  constexpr GLuint kDstHeight = 2;
+  constexpr GLuint kRowBytes = 8;
+
+  auto* result = GetSharedMemoryAs<Cmd::Result*>();
+  *result = 0;
+  // SAFETY: shared memory extends past kMailboxOffset by a full mailbox.
+  UNSAFE_BUFFERS(base::span(GetSharedMemoryAs<uint8_t*>() + kMailboxOffset,
+                            sizeof(mailbox.name)))
+      .copy_from(base::as_byte_span(mailbox.name));
+
+  Cmd cmd;
+  cmd.Init(/*src_x=*/0, /*src_y=*/0, /*plane_index=*/0, kDstWidth, kDstHeight,
+           kRowBytes, kRGBA_8888_SkColorType, kPremul_SkAlphaType,
+           shared_memory_id_, kSharedMemoryOffset,
+           /*color_space_offset=*/kMailboxOffset, kPixelsOffset,
+           kMailboxOffset);
+
+  // The gate must not deny on a healthy (NULL-backend) driver: the command
+  // may fail for unrelated backend reasons, but never with kLostContext,
+  // and the context must survive.
+  error::Error err = ExecuteCmd(cmd);
+  EXPECT_NE(error::kLostContext, err);
+  EXPECT_FALSE(GetDecoder()->WasContextLost());
+
+  shared_image.reset();
+}
+
+namespace {
+
+// A pbuffer surface whose OnMakeCurrent() can be made to fail, causing
+// GLContext::MakeCurrent() with this surface to fail.
+class FailableMakeCurrentSurface : public gl::PbufferGLSurfaceEGL {
+ public:
+  FailableMakeCurrentSurface()
+      : gl::PbufferGLSurfaceEGL(gl::GLSurfaceEGL::GetGLDisplayEGL(),
+                                gfx::Size(4, 4)) {}
+
+  void set_fail_make_current(bool fail) { fail_make_current_ = fail; }
+
+  bool OnMakeCurrent(gl::GLContext* context) override {
+    return !fail_make_current_ &&
+           gl::PbufferGLSurfaceEGL::OnMakeCurrent(context);
+  }
+
+ private:
+  ~FailableMakeCurrentSurface() override = default;
+
+  bool fail_make_current_ = false;
+};
+
+// A TestImageBacking that runs `callback` when a Skia representation is
+// requested, then fails to produce one.
+class CallbackOnProduceSkiaTestImageBacking : public TestImageBacking {
+ public:
+  CallbackOnProduceSkiaTestImageBacking(const Mailbox& mailbox,
+                                        const SharedImageInfo& si_info,
+                                        base::OnceClosure callback)
+      : TestImageBacking(mailbox, si_info, /*estimated_size=*/0),
+        callback_(std::move(callback)) {}
+
+ protected:
+  std::unique_ptr<SkiaGaneshImageRepresentation> ProduceSkiaGanesh(
+      SharedImageManager* manager,
+      MemoryTypeTracker* tracker,
+      scoped_refptr<SharedContextState> context_state) override {
+    if (callback_) {
+      std::move(callback_).Run();
+    }
+    return nullptr;
+  }
+
+ private:
+  base::OnceClosure callback_;
+};
+
+SharedImageInfo MakeTestSharedImageInfo() {
+  return SharedImageInfo(
+      viz::SinglePlaneFormat::kRGBA_8888, gfx::Size(10, 10), gfx::ColorSpace(),
+      kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType,
+      {SHARED_IMAGE_USAGE_GLES2_READ, SHARED_IMAGE_USAGE_GLES2_WRITE},
+      "TestLabel");
+}
+
+}  // namespace
+
+// Commands that temporarily switch to the decoder's shared context must leave
+// the decoder's context current afterwards.
+TEST_F(GLES2DecoderPassthroughTest, SharedContextCommandRestoresContext) {
+  gl::GLContext* decoder_context = gl::GLContext::GetCurrent();
+  ASSERT_TRUE(decoder_context);
+
+  // Unknown mailboxes; the copy fails, but only after switching contexts.
+  Mailbox mailboxes[2] = {Mailbox::Generate(), Mailbox::Generate()};
+  auto& cmd = *GetImmediateAs<cmds::CopySharedImageINTERNALImmediate>();
+  cmd.Init(0, 0, 0, 0, 1, 1, reinterpret_cast<const GLbyte*>(mailboxes));
+  EXPECT_EQ(error::kNoError, ExecuteImmediateCmd(cmd, sizeof(mailboxes)));
+  EXPECT_NE(static_cast<GLenum>(GL_NO_ERROR),
+            static_cast<GLenum>(GetGLError()));
+
+  EXPECT_FALSE(GetDecoder()->WasContextLost());
+  EXPECT_EQ(decoder_context, gl::GLContext::GetCurrent());
+  EXPECT_TRUE(decoder_context->IsCurrent(nullptr));
+}
+
+// If the decoder's context can't be made current again after a command used
+// the shared context, the decoder must lose its context.
+TEST_F(GLES2DecoderPassthroughTest, ContextLostWhenSharedContextRestoreFails) {
+  scoped_refptr<gl::GLContext> decoder_context = gl::GLContext::GetCurrent();
+  scoped_refptr<gl::GLSurface> decoder_surface = gl::GLSurface::GetCurrent();
+  ASSERT_TRUE(decoder_context);
+  ASSERT_TRUE(decoder_surface);
+
+  // Make the decoder's context current on a surface that can fail
+  // OnMakeCurrent(), so the restore at the end of the command can be made to
+  // fail.
+  auto failable_surface = base::MakeRefCounted<FailableMakeCurrentSurface>();
+  ASSERT_TRUE(failable_surface->Initialize(gl::GLSurfaceFormat()));
+  decoder_context->ReleaseCurrent(decoder_surface.get());
+  ASSERT_TRUE(decoder_context->MakeCurrent(failable_surface.get()));
+  ASSERT_EQ(failable_surface.get(), gl::GLSurface::GetCurrent());
+
+  bool produce_skia_called = false;
+  MemoryTypeTracker memory_tracker(nullptr);
+  Mailbox src_mailbox = Mailbox::Generate();
+  Mailbox dst_mailbox = Mailbox::Generate();
+  std::unique_ptr<SharedImageRepresentationFactoryRef> dst_shared_image =
+      GetSharedImageManager()->Register(
+          std::make_unique<CallbackOnProduceSkiaTestImageBacking>(
+              dst_mailbox, MakeTestSharedImageInfo(),
+              base::BindLambdaForTesting([&]() {
+                produce_skia_called = true;
+                failable_surface->set_fail_make_current(true);
+              })),
+          &memory_tracker);
+
+  Mailbox mailboxes[2] = {src_mailbox, dst_mailbox};
+  auto& cmd = *GetImmediateAs<cmds::CopySharedImageINTERNALImmediate>();
+  cmd.Init(0, 0, 0, 0, 1, 1, reinterpret_cast<const GLbyte*>(mailboxes));
+  EXPECT_EQ(error::kLostContext, ExecuteImmediateCmd(cmd, sizeof(mailboxes)));
+  EXPECT_TRUE(produce_skia_called);
+  EXPECT_TRUE(GetDecoder()->WasContextLost());
+
+  // Restore the decoder's original context and surface for teardown.
+  failable_surface->set_fail_make_current(false);
+  ASSERT_TRUE(decoder_context->MakeCurrent(decoder_surface.get()));
+  dst_shared_image.reset();
 }
 
 namespace {

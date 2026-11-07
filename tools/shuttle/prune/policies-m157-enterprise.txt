@@ -1,0 +1,53 @@
+# m157 wave B batch 2 (2026-11-06): policies to delete with scripts/prune-policies.py.
+# Enterprise connectors, cloud reporting, device trust/signals, data controls, watermark, isolated mode,
+# client cert provisioning, platform SSO, idle timeout, profile separation, header injection, cache
+# encryption, CBCM enrollment / cloud policy refresh. No C++ users left (handlers removed).
+BrowserContextAwareAccessSignalsAllowlist
+CacheEncryptionEnabled
+ChromeDataRegionSetting
+CloudExtensionRequestEnabled
+CloudManagementEnrollmentMandatory
+CloudManagementEnrollmentToken
+CloudProfileReportingEnabled
+CloudReportingEnabled
+CloudReportingUploadFrequency
+CopyPreventionSettings
+DataControlsRules
+EnterpriseRealTimeUrlCheckMode
+ExtensibleEnterpriseSSOBlocklist
+ExtensionDOMActivityLoggingEnabled
+ExtensionInstallCloudPolicyChecksEnabled
+HttpHeaderInjection
+IdleTimeout
+IdleTimeoutActions
+IsolatedModeSettings
+LegacyTechReportAllowlist
+MachineLevelUserCloudPolicyEnrollmentToken
+ManagedClientCertificateForBrowserConfig
+ManagedClientCertificateForUserConfig
+MaxInvalidationFetchDelay
+OnBulkDataEntryEnterpriseConnector
+OnDataCopiedEnterpriseConnector
+OnFileAttachedEnterpriseConnector
+OnFileDownloadedEnterpriseConnector
+OnNetworkRequestEnterpriseConnector
+OnPrintEnterpriseConnector
+OnSecurityEventEnterpriseConnector
+PolicyRefreshRate
+ProfileSeparationDataMigrationSettings
+ProfileSeparationSettings
+ProvisionManagedClientCertificateForBrowser
+ProvisionManagedClientCertificateForUser
+ReportExtensionsAndPluginsData
+ReportMachineIDData
+ReportPolicyData
+ReportUserIDData
+ReportVersionData
+SaasUsageReportingDomainUrlsForBrowsers
+SaasUsageReportingDomainUrlsForProfiles
+SecuritySignalsClientCertificatesSelectors
+UnmanagedDeviceSignalsConsentFlowEnabled
+UserContextAwareAccessSignalsAllowlist
+UserSecurityAuthenticatedReporting
+UserSecuritySignalsReporting
+WatermarkStyle

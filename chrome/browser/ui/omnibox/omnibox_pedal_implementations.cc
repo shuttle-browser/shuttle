@@ -6,6 +6,7 @@
 
 #include "base/feature_list.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/strings/strcat.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
@@ -236,7 +237,8 @@ class OmniboxPedalUpdateChrome : public OmniboxPedal {
                          IDS_OMNIBOX_PEDAL_UPDATE_CHROME_SUGGESTION_CONTENTS,
                          IDS_ACC_OMNIBOX_PEDAL_UPDATE_CHROME_SUFFIX,
                          IDS_ACC_OMNIBOX_PEDAL_UPDATE_CHROME),
-            GURL("chrome://settings/help")) {}
+            GURL(base::StrCat(
+                {chrome::kChromeUISettingsURL, chrome::kHelpSubPage}))) {}
 
   std::vector<SynonymGroupSpec> SpecifySynonymGroups(
       bool locale_is_english) const override {
@@ -1521,7 +1523,8 @@ class OmniboxPedalManageChromeAccessibility : public OmniboxPedal {
                 IDS_OMNIBOX_PEDAL_MANAGE_CHROME_ACCESSIBILITY_SUGGESTION_CONTENTS,
                 IDS_ACC_OMNIBOX_PEDAL_MANAGE_CHROME_ACCESSIBILITY_SUFFIX,
                 IDS_ACC_OMNIBOX_PEDAL_MANAGE_CHROME_ACCESSIBILITY),
-            GURL("chrome://settings/accessibility")) {}
+            GURL(base::StrCat({chrome::kChromeUISettingsURL,
+                               chrome::kAccessibilitySubPage}))) {}
 
   std::vector<SynonymGroupSpec> SpecifySynonymGroups(
       bool locale_is_english) const override {
@@ -1616,7 +1619,8 @@ class OmniboxPedalCustomizeChromeFonts : public OmniboxPedal {
                 IDS_OMNIBOX_PEDAL_CUSTOMIZE_CHROME_FONTS_SUGGESTION_CONTENTS,
                 IDS_ACC_OMNIBOX_PEDAL_CUSTOMIZE_CHROME_FONTS_SUFFIX,
                 IDS_ACC_OMNIBOX_PEDAL_CUSTOMIZE_CHROME_FONTS),
-            GURL("chrome://settings/fonts")) {}
+            GURL(base::StrCat(
+                {chrome::kChromeUISettingsURL, chrome::kFontsSubPage}))) {}
 
   std::vector<SynonymGroupSpec> SpecifySynonymGroups(
       bool locale_is_english) const override {
@@ -1847,7 +1851,7 @@ GetPedalImplementations(OmniboxPedalProfileType profile_type,
             .insert(
                 std::make_pair(pedal->PedalId(), base::WrapRefCounted(pedal)))
             .second;
-    DCHECK(inserted);
+    CHECK(inserted, base::NotFatalUntil::M162);
   };
 
   const bool otr =

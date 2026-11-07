@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//base/allocator/partition_allocator/partition_alloc.gni")
 import("//build/buildflag_header.gni")
 import("//build/config/avx512.gni")
 import("//build/config/compiler/compiler.gni")
@@ -9,6 +10,7 @@ import("//build/config/features.gni")
 import("//build/config/freetype/freetype.gni")
 import("//build/config/rust.gni")
 import("//build/config/sanitizers/sanitizers.gni")
+import("//build/rust/cargo_crate.gni")
 import("//build/rust/rust_static_library.gni")
 import("//gpu/vulkan/features.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
@@ -46,8 +48,8 @@ rust_static_library("bridge_rust_side") {
   deps = [
     ":path_bridge",
     "//third_party/rust/font_types/v0_12:lib",
-    "//third_party/rust/read_fonts/v0_43:lib",
-    "//third_party/rust/skrifa/v0_46:lib",
+    "//third_party/rust/read_fonts/v0_45:lib",
+    "//third_party/rust/skrifa/v0_48:lib",
   ]
   configs -= [ "//build/config/compiler:chromium_code" ]
   configs += [
@@ -503,11 +505,15 @@ component("skia") {
     ":skia_opts",
     ":skia_switches",
     "//base",
+    "//base/allocator/partition_allocator:buildflags",
     "//base/allocator/partition_allocator:raw_ptr",
     "//third_party/libwebp",
     "//third_party/libwebp:libwebp_webp",
     "//ui/base:features",
   ]
+  if (use_partition_alloc_as_malloc) {
+    deps += [ "//base/allocator/partition_allocator:partition_alloc" ]
+  }
   public_deps = [
     ":buildflags",
     ":rust_bmp_ffi",
@@ -632,7 +638,6 @@ component("skia") {
   # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
   # enable the diagnostic by removing this line.
   configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-  check_includes_strict = CHECK_INCLUDES_STRICT_PUBLIC_INCLUDES_PRIVATE
 }
 
 component("skia_switches") {
@@ -647,7 +652,7 @@ component("skia_switches") {
   deps = [ "//base" ]
 }
 
-rust_static_library("rust_common_ffi") {
+cargo_crate("rust_common_ffi") {
   visibility = [ ":*" ]
   crate_name = "skia_rust_common"
   allow_unsafe = true  # For FFI
@@ -655,12 +660,12 @@ rust_static_library("rust_common_ffi") {
   sources = skia_rust_common_ffi_rs_srcs
   cxx_bindings = skia_rust_common_ffi_cxx_bridge_srcs
   public_deps = [ ":rust_common_ffi_cpp" ]
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [
+  library_configs -= [ "//build/config/compiler:chromium_code" ]
+  library_configs += [
     ":skia_config",
     "//build/config/compiler:no_chromium_code",
   ]
-  no_clippy = true  # TODO(https://crbug.com/472355480)
+  build_native_rust_unit_tests = false
 }
 
 source_set("rust_common_ffi_cpp") {

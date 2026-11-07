@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "base/callback_list.h"
+#include "base/feature_list.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
@@ -17,18 +18,13 @@
 #include "components/enterprise/buildflags/buildflags.h"
 #include "components/enterprise/common/files_scan_data.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/web_contents_based_canceller.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "net/base/directory_lister.h"
 #include "third_party/blink/public/mojom/choosers/file_chooser.mojom.h"
 #include "ui/shell_dialogs/select_file_dialog.h"
 
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-#include "chrome/browser/enterprise/connectors/analysis/content_analysis_delegate.h"
-#endif
-
 class Profile;
-class ScopedDisallowPictureInPicture;
-class ScopedTuckPictureInPicture;
 
 namespace content {
 class FileSelectListener;
@@ -116,6 +112,8 @@ class FileSelectHelper : public base::RefCountedThreadSafe<
   FRIEND_TEST_ALL_PREFIXES(
       FileSelectHelperTest,
       ContentAnalysisCompletionCallback_FolderUpload_OKBad);
+  FRIEND_TEST_ALL_PREFIXES(FileSelectHelperTest,
+                           ContentAnalysisCompletionCallback_ContentUriFile);
   FRIEND_TEST_ALL_PREFIXES(FileSelectHelperTest, GetFileTypesFromAcceptType);
   FRIEND_TEST_ALL_PREFIXES(FileSelectHelperTest, MultipleFileExtensionsForMime);
   FRIEND_TEST_ALL_PREFIXES(FileSelectHelperTest, ConfirmationDialog);
@@ -153,9 +151,11 @@ class FileSelectHelper : public base::RefCountedThreadSafe<
                               content::RenderFrameHost* new_host) override;
   void RenderFrameDeleted(content::RenderFrameHost* render_frame_host) override;
   void WebContentsDestroyed() override;
+  void OnVisibilityChanged(content::Visibility visibility) override;
 
   void InitLifecycleObserver(content::WebContents* web_contents);
   void OnTabDeactivated(tabs::TabInterface* tab);
+  void OnCancelledByWindowSize();
 
   void EnumerateDirectoryImpl(
       content::WebContents* tab,
@@ -240,14 +240,6 @@ class FileSelectHelper : public base::RefCountedThreadSafe<
   // ChromeOS.
   base::FilePath MaybeSubstituteFuseboxFilePath(
       const blink::mojom::FileSystemFileInfo& file_system_info);
-
-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
-  // Callback used to receive the results of a content analysis scan.
-  void ContentAnalysisCompletionCallback(
-      std::vector<blink::mojom::FileChooserFileInfoPtr> list,
-      const enterprise_connectors::ContentAnalysisDelegate::Data& data,
-      enterprise_connectors::ContentAnalysisDelegate::Result& result);
-#endif
 
   // Finish the PerformContentAnalysisIfNeeded() handling after the
   // deep scanning checks have been performed.  Deep scanning may change the
@@ -345,14 +337,8 @@ class FileSelectHelper : public base::RefCountedThreadSafe<
 
   base::CallbackListSubscription tab_deactivated_subscription_;
 
-#if !BUILDFLAG(IS_ANDROID)
-  // When not null, this prevents picture-in-picture windows from opening.
-  std::unique_ptr<ScopedDisallowPictureInPicture>
-      scoped_disallow_picture_in_picture_;
-
-  // When not null, this tucks picture-in-picture windows out of the way.
-  std::unique_ptr<ScopedTuckPictureInPicture> scoped_tuck_picture_in_picture_;
-#endif  // !BUILDFLAG(IS_ANDROID)
+  std::unique_ptr<content::WebContentsBasedCanceller>
+      web_contents_based_canceller_;
 
   base::WeakPtrFactory<FileSelectHelper> weak_ptr_factory_{this};
 };

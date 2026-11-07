@@ -42,6 +42,7 @@ enum class CompositingReason {
   kBackdropFilter,
   kBackdropFilterMask,
   kFixedBackdropInOverscrollAreaParent,
+  kOverscrollContainer,
   kRootScroller,
   kViewport,
   kWillChangeTransform,
@@ -91,7 +92,7 @@ enum class CompositingReason {
   kCaret,
   kVideo,
   kCanvas,
-  kCanvasChild,
+  kCanvasDrawableElement,
   kPlugin,
   kScrollbar,
   kLinkHighlight,
@@ -123,7 +124,7 @@ class CompositingReasonCombos {
           kUndoOverscroll,
           kVideo,
           kCanvas,
-          kCanvasChild,
+          kCanvasDrawableElement,
           kPlugin,
           kIFrame,
           kAffectedBySafeAreaBottom,
@@ -155,8 +156,8 @@ class CompositingReasonCombos {
       k3DTranslate, kWillChangeTranslate, kActiveTranslateAnimation};
 
   static constexpr CompositingReasons
-      kDirectReasonsForScrollTranslationProperty = {kRootScroller,
-                                                    kOverflowScrolling};
+      kDirectReasonsForScrollTranslationProperty = {
+          kRootScroller, kOverflowScrolling, kOverscrollContainer};
 
   static constexpr CompositingReasons kDirectReasonsForEffectProperty = {
       kActiveOpacityAnimation,
@@ -168,7 +169,7 @@ class CompositingReasonCombos {
       kViewTransitionPseudoElement,
       kTransform3DSceneLeaf,
       kElementCapture,
-      kCanvasChild,
+      kCanvasDrawableElement,
       kUnboundedElement};
   static constexpr CompositingReasons kDirectReasonsForFilterProperty = {
       kActiveFilterAnimation, kWillChangeFilter};

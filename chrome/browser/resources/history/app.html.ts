@@ -40,33 +40,28 @@ export function getHtml(this: HistoryAppElement) {
           .selectedTab="${this.selectedTab_}"
           @selected-tab-changed="${this.onSelectedTabChanged_}"
           .footerInfo="${this.footerInfo}"
-          ?history-clusters-enabled="${this.historyClustersEnabled_}"
-          ?history-clusters-visible="${this.historyClustersVisible_}"
-          @history-clusters-visible-changed="${this.onHistoryClustersVisibleChanged_}"
           ?hidden="${this.hasDrawer_}">
       </history-side-bar>
       <cr-page-selector id="content" attr-for-selected="path"
           selected="${this.contentPage_}"
           @iron-select="${this.onContentIronSelect_}">
         <div id="tabsContainer" path="history">
-          ${this.showTabs_ ? html`
-            <div id="tabs">
-              <cr-tabs .tabNames="${this.tabsNames_}"
-                  .tabIcons="${this.tabsIcons_}"
-                  selected="${this.selectedTab_}"
-                  @selected-changed="${this.onTabsSelectedChanged_}">
-              </cr-tabs>
-            </div>` : ''}
           ${this.showFilterChips_() ? html`
             <history-filter-chips
                 id="historyFilterChips"
+                .devices="${this.devices_}"
+                .timePeriodOptions="${this.timePeriodOptions_}"
+                .showActorFilter="${this.showActorFilter_()}"
+                .showDeviceFilter="${this.showDeviceFilter_()}"
+                .showTimePeriodFilter="${this.showTimePeriodFilter_()}"
                 .userVisits="${this.includeUserVisits_}"
                 .actorVisits="${this.includeActorVisits_}"
+                .clientIds="${this.clientIds_}"
                 @filter-changed="${this.onFilterChanged_}">
             </history-filter-chips>
           ` : ''}
           <div id="tabsScrollContainer" class="cr-scrollable">
-            <div class="cr-scrollable-top-shadow" ?hidden="${this.showTabs_}"></div>
+            <div class="cr-scrollable-top-shadow"></div>
             <cr-page-selector id="tabsContent" attr-for-selected="path"
                 selected="${this.tabsContentPage_}"
                 @iron-select="${this.onTabsContentIronSelect_}">
@@ -79,15 +74,6 @@ export function getHtml(this: HistoryAppElement) {
                   .scrollTarget="${this.scrollTarget_}"
                   .scrollOffset="${this.tabContentScrollOffset_}">
               </history-list>
-              ${this.historyClustersSelected_() ? html`
-                <history-clusters id="history-clusters"
-                    ?is-active="${this.getShowResultsByGroup_()}"
-                    .query="${this.queryState_.searchTerm}"
-                    .timeRangeStart="${this.queryStateAfterDate_}"
-                    path="grouped"
-                    .scrollTarget="${this.scrollTarget_}"
-                    .scrollOffset="${this.tabContentScrollOffset_}">
-                </history-clusters>`: ''}
             </cr-page-selector>
           </div>
         </div>
@@ -101,9 +87,6 @@ export function getHtml(this: HistoryAppElement) {
             @selected-page-changed="${this.onSelectedPageChanged_}"
             .selectedTab="${this.selectedTab_}"
             @selected-tab-changed="${this.onSelectedTabChanged_}"
-            ?history-clusters-enabled="${this.historyClustersEnabled_}"
-            ?history-clusters-visible="${this.historyClustersVisible_}"
-            @history-clusters-visible-changed="${this.onHistoryClustersVisibleChanged_}"
             .footerInfo="${this.footerInfo}">
         </history-side-bar>
       </cr-drawer>`}'>

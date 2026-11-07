@@ -86,6 +86,11 @@ class MEDIA_EXPORT AudioManager {
   // AudioManager instance must not be deleted if shutdown failed.
   virtual bool Shutdown();
 
+  // Asynchronously closes all cached idle output streams on the audio thread
+  // so physical streams can be torn down before Shutdown() blocks on stopping
+  // the audio thread.
+  virtual void CloseIdleStreams() {}
+
   // Log callback used for sending log messages from a stream to the object
   // that manages the stream.
   using LogCallback = base::RepeatingCallback<void(const std::string&)>;
@@ -123,6 +128,15 @@ class MEDIA_EXPORT AudioManager {
   virtual AudioOutputStream* MakeAudioOutputStreamProxy(
       const AudioParameters& params,
       const std::string& device_id) = 0;
+
+  // Returns true if the output stream selected for `params` enqueues buffers
+  // into an OS-managed playback queue (for example
+  // `AVSampleBufferAudioRenderer`) instead of pulling one buffer per real-time
+  // hardware period. Such streams request data whenever their queue has room,
+  // so the playout delay cannot be predicted from the previous callback and
+  // may be non-zero when starting or resuming. Callers must use the `delay`
+  // reported by `OnMoreData()` instead of prefetching at zero delay.
+  virtual bool UsesQueuedOutputStream(const AudioParameters& params) const;
 
   // Factory to create audio recording streams.
   // |channels| can be 1 or 2.

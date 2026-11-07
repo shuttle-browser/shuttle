@@ -6,6 +6,7 @@
 #define CHROME_BROWSER_NET_PROFILE_NETWORK_CONTEXT_SERVICE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -20,7 +21,6 @@
 #include "base/timer/timer.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
-#include "chrome/browser/enterprise/encryption/cache_encryption_provider_impl.h"
 #include "chrome/browser/net/proxy_config_monitor.h"
 #include "chrome/browser/ssl/ssl_config_overlay.h"
 #include "chrome/common/buildflags.h"
@@ -123,6 +123,11 @@ class ProfileNetworkContextService
   void FlushCachedClientCertIfNeeded(
       const net::HostPortPair& host,
       const scoped_refptr<net::X509Certificate>& certificate);
+
+  // Returns true if an explicit proxy is configured for this profile, false if
+  // direct (or only WPAD auto-detect), or std::nullopt if the proxy
+  // configuration is pending/unknown.
+  std::optional<bool> IsProxyConfigured() const;
 
   // Flushes all pending proxy configuration changes.
   void FlushProxyConfigMonitorForTesting();
@@ -231,14 +236,6 @@ class ProfileNetworkContextService
   void OnThirdPartyCookieBlockingChanged(
       bool block_third_party_cookies) override;
 
-#if BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
-  void SaveEncryptedCachePrimaryKey(
-      const std::vector<uint8_t>& encrypted_primary_key);
-
-  // Returns the encrypted cache primary key stored in the profile prefs.
-  // Returns an empty vector if the key is not set or cannot be decoded.
-  std::vector<uint8_t> GetEncryptedCachePrimaryKey();
-#endif  // BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
 
   // KeyedService:
   void Shutdown() override;
@@ -277,10 +274,6 @@ class ProfileNetworkContextService
   base::RepeatingCallback<std::unique_ptr<net::ClientCertStore>()>
       client_cert_store_factory_for_testing_;
 
-#if BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
-  std::unique_ptr<enterprise_encryption::CacheEncryptionProviderImpl>
-      cache_encryption_provider_;
-#endif  // BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
 
   base::WeakPtrFactory<ProfileNetworkContextService> weak_factory_{this};
 };

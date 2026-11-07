@@ -84,7 +84,7 @@ namespace sql {
 // When enabled, don't commit or rollback transactions if they have already been
 // rolled back by a statement error (e.g. SQLITE_FULL).
 BASE_FEATURE(kCheckAutoCommitInCommitAndRollback,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 namespace {
 
@@ -222,7 +222,7 @@ enum class OpenDatabaseFailedReason {
   kMaxValue = kPragmaJournalFailed
 };
 
-// LINT.ThenChange(//tools/metrics/histograms/metadata/sql/enums.xml)
+// LINT.ThenChange(//tools/metrics/histograms/metadata/sql/enums.xml:OpenDatabaseFailedReason)
 // Reports the reason for a failure in Database::Open(...).
 void RecordOpenDatabaseFailureReason(const std::string& histogram_tag,
                                      OpenDatabaseFailedReason reason) {
@@ -249,7 +249,7 @@ enum class RazeDatabaseFailedReason {
   kMaxValue = kCheckpointFailed
 };
 
-// LINT.ThenChange(//tools/metrics/histograms/metadata/sql/enums.xml)
+// LINT.ThenChange(//tools/metrics/histograms/metadata/sql/enums.xml:RazeDatabaseFailedReason)
 // Reports the reason for a failure in Database::Raze(...).
 void RecordRazeDatabaseFailureReason(const std::string& histogram_tag,
                                      RazeDatabaseFailedReason reason) {
@@ -671,8 +671,7 @@ void Database::CloseInternal(bool forced) {
     db_ = nullptr;
     auto sqlite_result_code = ToSqliteResultCode(sqlite3_close(raw_db));
 
-    CHECK_NE(sqlite_result_code, SqliteResultCode::kBusy,
-             base::NotFatalUntil::M141)
+    CHECK_NE(sqlite_result_code, SqliteResultCode::kBusy)
         << "sqlite3_close() called while resources (statements, blobs, etc) "
            "are still alive";
     DCHECK_EQ(sqlite_result_code, SqliteResultCode::kOk)

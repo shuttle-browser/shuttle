@@ -21,14 +21,15 @@ namespace viz {
 GpuClient::GpuClient(std::unique_ptr<GpuClientDelegate> delegate,
                      int client_id,
                      uint64_t client_tracing_id,
-                     bool enable_extra_handles_validation,
+                     mojom::GpuClientType client_type,
                      scoped_refptr<base::SingleThreadTaskRunner> task_runner)
     : delegate_(std::move(delegate)),
       client_id_(client_id),
       client_tracing_id_(client_tracing_id),
-      enable_extra_handles_validation_(enable_extra_handles_validation),
+      client_type_(client_type),
       task_runner_(std::move(task_runner)) {
   DCHECK(delegate_);
+  CHECK_NE(client_type, mojom::GpuClientType::kBrowser);
   gpu_receivers_.set_disconnect_handler(
       base::BindRepeating(&GpuClient::OnError, base::Unretained(this),
                           ErrorReason::kConnectionLost));
@@ -102,8 +103,7 @@ void GpuClient::EstablishGpuChannelInternal(
     mojo::ScopedMessagePipeHandle client_handle,
     base::TimeTicks start_time) {
   gpu_host->EstablishGpuChannel(
-      client_id_, client_tracing_id_, /*is_gpu_host=*/false,
-      enable_extra_handles_validation_, /*sync=*/false,
+      client_id_, client_tracing_id_, client_type_, /*sync=*/false,
       std::move(service_handle),
       base::BindOnce(&GpuClient::OnEstablishGpuChannel,
                      weak_factory_.GetWeakPtr(), reason, start_time,
@@ -220,7 +220,8 @@ void GpuClient::OnEstablishGpuChannel(
 
   if (callback_) {
     // A request is waiting.
-    std::move(callback_).Run(client_id_, std::move(channel_handle), gpu_info,
+    std::move(callback_).Run(client_id_, client_type_,
+                             std::move(channel_handle), gpu_info,
                              gpu_feature_info, shared_image_capabilities);
     return;
   }
@@ -240,9 +241,9 @@ void GpuClient::ClearCallback() {
   if (!callback_)
     return;
   EstablishGpuChannelCallback callback = std::move(callback_);
-  std::move(callback).Run(client_id_, mojo::ScopedMessagePipeHandle(),
-                          gpu::GPUInfo(), gpu::GpuFeatureInfo(),
-                          gpu::SharedImageCapabilities());
+  std::move(callback).Run(
+      client_id_, client_type_, mojo::ScopedMessagePipeHandle(), gpu::GPUInfo(),
+      gpu::GpuFeatureInfo(), gpu::SharedImageCapabilities());
 }
 
 void GpuClient::EstablishGpuChannel(EstablishGpuChannelCallback callback) {
@@ -263,7 +264,8 @@ void GpuClient::EstablishGpuChannelWithReason(
     //   2) if callback is empty, it's InitializeGpuChannelForNewRenderer()
     //   being called more than once, no need to do anything.
     if (callback) {
-      std::move(callback).Run(client_id_, std::move(channel_handle_), gpu_info_,
+      std::move(callback).Run(client_id_, client_type_,
+                              std::move(channel_handle_), gpu_info_,
                               gpu_feature_info_, shared_image_capabilities_);
       DCHECK(!channel_handle_.is_valid());
     }
@@ -283,8 +285,9 @@ void GpuClient::EstablishGpuChannelWithReason(
 
   if (!gpu_host) {
     if (callback) {
-      std::move(callback).Run(client_id_, mojo::ScopedMessagePipeHandle(),
-                              gpu::GPUInfo(), gpu::GpuFeatureInfo(),
+      std::move(callback).Run(client_id_, client_type_,
+                              mojo::ScopedMessagePipeHandle(), gpu::GPUInfo(),
+                              gpu::GpuFeatureInfo(),
                               gpu::SharedImageCapabilities());
     }
     return;

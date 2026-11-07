@@ -4,9 +4,12 @@
 
 #include "chrome/browser/extensions/api/tabs/tabs_event_router.h"
 
+#include <algorithm>
 #include <memory>
 #include <set>
+#include <vector>
 
+#include "base/memory/scoped_refptr.h"
 #include "base/values.h"
 #include "chrome/browser/extensions/api/tabs/tabs_api.h"
 #include "chrome/browser/extensions/api/tabs/tabs_constants.h"
@@ -23,6 +26,7 @@
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/event_router.h"
+#include "extensions/common/event_args.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
 
 namespace extensions {
@@ -260,7 +264,8 @@ void TabsEventRouter::RegisterForTabNotifications(
   }
 
   int tab_id = ExtensionTabUtil::GetTabId(&web_contents);
-  DCHECK(tab_entries_.find(tab_id) == tab_entries_.end());
+  CHECK(tab_entries_.find(tab_id) == tab_entries_.end(),
+        base::NotFatalUntil::M161);
   auto tab_entry = std::make_unique<TabEntry>(*this, web_contents);
   tab_entry->set_last_known_index(tab_index);
   tab_entries_[tab_id] = std::move(tab_entry);
@@ -286,7 +291,7 @@ void TabsEventRouter::UnregisterForTabNotifications(
 
   int tab_id = ExtensionTabUtil::GetTabId(&web_contents);
   int removed_count = tab_entries_.erase(tab_id);
-  DCHECK(removed_count > 0 || !expect_registered);
+  CHECK(removed_count > 0 || !expect_registered, base::NotFatalUntil::M161);
 }
 
 TabsEventRouter::TabEntry* TabsEventRouter::GetTabEntry(
@@ -306,8 +311,8 @@ void TabsEventRouter::TabUpdated(TabEntry* entry,
 void TabsEventRouter::DispatchTabUpdatedEvent(
     content::WebContents* contents,
     std::set<std::string> changed_property_names) {
-  DCHECK(!changed_property_names.empty());
-  DCHECK(contents);
+  CHECK(!changed_property_names.empty(), base::NotFatalUntil::M161);
+  CHECK(contents, base::NotFatalUntil::M161);
 
   Profile* profile = Profile::FromBrowserContext(contents->GetBrowserContext());
 
@@ -315,7 +320,7 @@ void TabsEventRouter::DispatchTabUpdatedEvent(
       events::TABS_ON_UPDATED, api::tabs::OnUpdated::kEventName,
       // The event arguments depend on the extension's permission. They are set
       // in WillDispatchTabUpdatedEvent().
-      base::ListValue(), profile);
+      nullptr, profile);
   event->user_gesture = EventRouter::UserGestureState::kNotEnabled;
   event->will_dispatch_callback =
       base::BindRepeating(&WillDispatchTabUpdatedEvent, contents,
@@ -329,7 +334,7 @@ void TabsEventRouter::DispatchTabCreatedEvent(content::WebContents* contents,
       Profile::FromBrowserContext(contents->GetBrowserContext());
   auto event = std::make_unique<Event>(events::TABS_ON_CREATED,
                                        api::tabs::OnCreated::kEventName,
-                                       base::ListValue(), profile);
+                                       nullptr, profile);
   event->user_gesture = EventRouter::UserGestureState::kNotEnabled;
   event->will_dispatch_callback =
       base::BindRepeating(&WillDispatchTabCreatedEvent, contents, active);
@@ -341,14 +346,14 @@ void TabsEventRouter::DispatchTabRemovedEvent(
     bool is_window_closing) {
   int tab_id = ExtensionTabUtil::GetTabId(&web_contents);
 
-  base::ListValue args;
-  args.Append(tab_id);
+  auto args = base::MakeRefCounted<EventArgs>();
+  args->data.Append(tab_id);
 
   base::DictValue object_args;
   object_args.Set(tabs_constants::kWindowIdKey,
                   ExtensionTabUtil::GetWindowIdOfTab(&web_contents));
   object_args.Set(tabs_constants::kIsWindowClosingKey, is_window_closing);
-  args.Append(std::move(object_args));
+  args->data.Append(std::move(object_args));
 
   Profile* profile =
       Profile::FromBrowserContext(web_contents.GetBrowserContext());
@@ -367,14 +372,14 @@ void TabsEventRouter::DispatchTabDetachedEvent(
     return;
   }
 
-  base::ListValue args;
-  args.Append(ExtensionTabUtil::GetTabId(&web_contents));
+  auto args = base::MakeRefCounted<EventArgs>();
+  args->data.Append(ExtensionTabUtil::GetTabId(&web_contents));
 
   base::DictValue object_args;
   object_args.Set(kOldWindowIdKey,
                   ExtensionTabUtil::GetWindowIdOfTab(&web_contents));
   object_args.Set(kOldPositionKey, tab_entry->last_known_index());
-  args.Append(std::move(object_args));
+  args->data.Append(std::move(object_args));
 
   Profile* profile =
       Profile::FromBrowserContext(web_contents.GetBrowserContext());
@@ -387,7 +392,7 @@ void TabsEventRouter::DispatchEvent(
     Profile* profile,
     events::HistogramValue histogram_value,
     const std::string& event_name,
-    base::ListValue args,
+    scoped_refptr<const EventArgs> args,
     EventRouter::UserGestureState user_gesture) {
   EventRouter* event_router = EventRouter::Get(profile);
   if (!profile_->IsSameOrParent(profile) || !event_router) {
@@ -400,9 +405,11 @@ void TabsEventRouter::DispatchEvent(
   event_router->BroadcastEvent(std::move(event));
 }
 
-void TabsEventRouter::UpdateTabIndices(TabListInterface& tab_list) {
-  std::vector<tabs::TabInterface*> tabs = tab_list.GetAllTabs();
-  for (size_t i = 0; i < tabs.size(); ++i) {
+void TabsEventRouter::UpdateTabIndices(TabListInterface& tab_list,
+                                       int first_index) {
+  const std::vector<tabs::TabInterface*> tabs = tab_list.GetAllTabs();
+  for (size_t i = static_cast<size_t>(std::max(first_index, 0));
+       i < tabs.size(); ++i) {
     content::WebContents* web_contents = tabs[i]->GetContents();
     CHECK(web_contents);
     TabEntry* tab_entry = GetTabEntry(*web_contents);
@@ -412,7 +419,7 @@ void TabsEventRouter::UpdateTabIndices(TabListInterface& tab_list) {
       // added to the set of tracked tabs.
       continue;
     }
-    tab_entry->set_last_known_index(i);
+    tab_entry->set_last_known_index(static_cast<int>(i));
   }
 }
 
@@ -422,9 +429,9 @@ void TabsEventRouter::OnTabAdded(TabListInterface& tab_list,
   content::WebContents* contents = tab->GetContents();
   CHECK(contents);
 
-  // Adding a new tab can affect the indices of all existing tabs in the tab
-  // list. Update them.
-  UpdateTabIndices(tab_list);
+  // Adding a tab shifts the tabs after it by one; the tabs before it keep
+  // their indices.
+  UpdateTabIndices(tab_list, index + 1);
 
   // Check if we've ever seen this tab.
   TabEntry* tab_entry = GetTabEntry(*contents);
@@ -432,14 +439,14 @@ void TabsEventRouter::OnTabAdded(TabListInterface& tab_list,
     // This is a known tab. Update the tab index and dispatch `onAttached`.
     tab_entry->set_last_known_index(index);
     int tab_id = ExtensionTabUtil::GetTabId(contents);
-    base::ListValue args;
-    args.Append(tab_id);
+    auto args = base::MakeRefCounted<EventArgs>();
+    args->data.Append(tab_id);
 
     base::DictValue object_args;
     object_args.Set(kNewWindowIdKey,
                     base::Value(ExtensionTabUtil::GetWindowIdOfTab(contents)));
     object_args.Set(kNewPositionKey, base::Value(index));
-    args.Append(std::move(object_args));
+    args->data.Append(std::move(object_args));
 
     Profile* profile =
         Profile::FromBrowserContext(contents->GetBrowserContext());
@@ -476,14 +483,14 @@ void TabsEventRouter::OnActiveTabChanged(TabListInterface& tab_list,
   content::WebContents* tab_contents = tab->GetContents();
   CHECK(tab_contents);
 
-  base::ListValue args;
+  auto args = base::MakeRefCounted<EventArgs>();
   int tab_id = ExtensionTabUtil::GetTabId(tab_contents);
-  args.Append(tab_id);
+  args->data.Append(tab_id);
 
   base::DictValue object_args;
   object_args.Set(tabs_constants::kWindowIdKey,
                   ExtensionTabUtil::GetWindowIdOfTab(tab_contents));
-  args.Append(object_args.Clone());
+  args->data.Append(object_args.Clone());
 
   // The onActivated event replaced onActiveChanged and onSelectionChanged. The
   // deprecated events take two arguments: tabId, {windowId}.
@@ -491,16 +498,16 @@ void TabsEventRouter::OnActiveTabChanged(TabListInterface& tab_list,
       Profile::FromBrowserContext(tab_contents->GetBrowserContext());
 
   DispatchEvent(profile, events::TABS_ON_SELECTION_CHANGED,
-                api::tabs::OnSelectionChanged::kEventName, args.Clone(),
+                api::tabs::OnSelectionChanged::kEventName, args,
                 EventRouter::UserGestureState::kUnknown);
   DispatchEvent(profile, events::TABS_ON_ACTIVE_CHANGED,
                 api::tabs::OnActiveChanged::kEventName, std::move(args),
                 EventRouter::UserGestureState::kUnknown);
 
   // The onActivated event takes one argument: {windowId, tabId}.
-  base::ListValue on_activated_args;
+  auto on_activated_args = base::MakeRefCounted<EventArgs>();
   object_args.Set(kTabIdKey, tab_id);
-  on_activated_args.Append(std::move(object_args));
+  on_activated_args->data.Append(std::move(object_args));
   DispatchEvent(
       profile, events::TABS_ON_ACTIVATED, api::tabs::OnActivated::kEventName,
       std::move(on_activated_args), EventRouter::UserGestureState::kUnknown);
@@ -512,9 +519,12 @@ void TabsEventRouter::OnTabRemoved(TabListInterface& tab_list,
   content::WebContents* web_contents = tab->GetContents();
   CHECK(web_contents);
 
-  // Removing a tab can affect the indices of all existing tabs in the tab
-  // list. Update them.
-  UpdateTabIndices(tab_list);
+  // Removing a tab shifts the tabs after it down by one; the tabs before it
+  // keep their indices. The removed tab is already gone from `tab_list`, so
+  // its last known index is where the shifted tabs start.
+  const TabEntry* removed_entry = GetTabEntry(*web_contents);
+  UpdateTabIndices(tab_list,
+                   removed_entry ? removed_entry->last_known_index() : 0);
 
   if (TabRemoveReasonUtils::WillDeleteTab(removed_reason)) {
     DispatchTabRemovedEvent(*web_contents, tab_list.IsClosingAllTabs());
@@ -538,19 +548,19 @@ void TabsEventRouter::OnTabMoved(TabListInterface& tab_list,
   content::WebContents* web_contents = tab->GetContents();
   CHECK(web_contents);
 
-  // Moving tab can affect the indices of all existing tabs in the tab list
-  // (not just the one being moved). Update them.
-  UpdateTabIndices(tab_list);
+  // Moving a tab shifts every tab between its old and new positions; the
+  // tabs before both keep their indices.
+  UpdateTabIndices(tab_list, std::min(from_index, to_index));
 
-  base::ListValue args;
-  args.Append(ExtensionTabUtil::GetTabId(web_contents));
+  auto args = base::MakeRefCounted<EventArgs>();
+  args->data.Append(ExtensionTabUtil::GetTabId(web_contents));
 
   base::DictValue object_args;
   object_args.Set(tabs_constants::kWindowIdKey,
                   ExtensionTabUtil::GetWindowIdOfTab(web_contents));
   object_args.Set(kFromIndexKey, from_index);
   object_args.Set(kToIndexKey, to_index);
-  args.Append(std::move(object_args));
+  args->data.Append(std::move(object_args));
 
   Profile* profile =
       Profile::FromBrowserContext(web_contents->GetBrowserContext());
@@ -589,10 +599,11 @@ void TabsEventRouter::OnHighlightedTabsChanged(
   }
   CHECK(profile);
 
-  base::ListValue args = api::tabs::OnHighlighted::Create(highlight_info);
+  auto args = base::MakeRefCounted<EventArgs>(
+      api::tabs::OnHighlighted::Create(highlight_info));
   // The onHighlighted event replaced onHighlightChanged.
   DispatchEvent(profile, events::TABS_ON_HIGHLIGHT_CHANGED,
-                api::tabs::OnHighlightChanged::kEventName, args.Clone(),
+                api::tabs::OnHighlightChanged::kEventName, args,
                 EventRouter::UserGestureState::kUnknown);
   DispatchEvent(profile, events::TABS_ON_HIGHLIGHTED,
                 api::tabs::OnHighlighted::kEventName, std::move(args),
@@ -608,9 +619,9 @@ void TabsEventRouter::OnWebContentsReplaced(
   // WebContents being swapped.
   const int new_tab_id = ExtensionTabUtil::GetTabId(new_contents);
   const int old_tab_id = ExtensionTabUtil::GetTabId(old_contents);
-  base::ListValue args;
-  args.Append(new_tab_id);
-  args.Append(old_tab_id);
+  auto args = base::MakeRefCounted<EventArgs>();
+  args->data.Append(new_tab_id);
+  args->data.Append(old_tab_id);
 
   DispatchEvent(Profile::FromBrowserContext(new_contents->GetBrowserContext()),
                 events::TABS_ON_REPLACED, api::tabs::OnReplaced::kEventName,
@@ -638,7 +649,7 @@ void TabsEventRouter::OnZoomControllerDestroyed(
 
 void TabsEventRouter::OnZoomChanged(
     const zoom::ZoomController::ZoomChangedEventData& data) {
-  DCHECK(data.web_contents);
+  CHECK(data.web_contents, base::NotFatalUntil::M161);
   int tab_id = ExtensionTabUtil::GetTabId(data.web_contents);
   if (tab_id < 0) {
     return;
@@ -656,9 +667,10 @@ void TabsEventRouter::OnZoomChanged(
   // Dispatch the |onZoomChange| event.
   Profile* profile =
       Profile::FromBrowserContext(data.web_contents->GetBrowserContext());
+  auto event_args = base::MakeRefCounted<EventArgs>(
+      api::tabs::OnZoomChange::Create(zoom_change_info));
   DispatchEvent(profile, events::TABS_ON_ZOOM_CHANGE,
-                api::tabs::OnZoomChange::kEventName,
-                api::tabs::OnZoomChange::Create(zoom_change_info),
+                api::tabs::OnZoomChange::kEventName, std::move(event_args),
                 EventRouter::UserGestureState::kUnknown);
 }
 

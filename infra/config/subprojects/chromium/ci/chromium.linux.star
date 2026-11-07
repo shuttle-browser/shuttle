@@ -248,8 +248,8 @@ ci.builder(
             "x64",
         ],
     ),
+    builderless = False,
     ssd = True,
-    free_space = builders.free_space.high,
     # Don't use the default tree closer, which filters by step name, and instead
     # enable tree closing for any step failure.
     tree_closing_notifiers = args.ignore_default(["close-on-any-step-failure"]),
@@ -279,6 +279,7 @@ ci.builder(
         ),
     },
     cores = 32,
+    ssd = None,
     # This builder uses almost as much disk space as is available on a standard
     # VM, which causes issues if there are any caches from other builders. So,
     # target higher disk space instances.
@@ -690,6 +691,14 @@ ci.thin_tester(
                     "--additional-env-var=LLVM_PROFILE_FILE=${ISOLATED_OUTDIR}/profraw/default-%2m.profraw",
                 ],
                 swarming = targets.swarming(
+                    # Move to faster machine types to reduce capacity impact.
+                    # TODO(crbug.com/541675870): Can remove this if/when
+                    # everything's been migrated.
+                    optional_dimensions = {
+                        30: {
+                            "cpu": "x86-64-e4",
+                        },
+                    },
                     shards = 8,
                 ),
             ),
@@ -697,12 +706,14 @@ ci.thin_tester(
                 args = [
                     "--additional-env-var=LLVM_PROFILE_FILE=${ISOLATED_OUTDIR}/profraw/default-%2m.profraw",
                 ],
+                enable_rts_filtering = True,
             ),
             "browser_tests": targets.mixin(
                 args = [
                     # TODO(crbug.com/542347163): Re-enable when the runtime regression is fixed.
                     "--disable-features=WebUIOmniboxPopup,WebUIOmniboxAimPopup",
                 ],
+                enable_rts_filtering = True,
                 swarming = targets.swarming(
                     # Move to faster machine types to reduce capacity impact.
                     # TODO(crbug.com/541675870): Can remove this if/when
@@ -715,8 +726,23 @@ ci.thin_tester(
                     shards = 20,
                 ),
             ),
+            "components_unittests": targets.mixin(
+                enable_rts_filtering = True,
+            ),
             "content_browsertests": targets.mixin(
                 ci_only = True,
+            ),
+            "headless_shell_wpt_tests": targets.mixin(
+                swarming = targets.swarming(
+                    # Move to faster machine types to reduce capacity impact.
+                    # TODO(crbug.com/541675870): Can remove this if/when
+                    # everything's been migrated.
+                    optional_dimensions = {
+                        30: {
+                            "cpu": "x86-64-e4",
+                        },
+                    },
+                ),
             ),
             "interactive_ui_tests": targets.mixin(
                 args = [
@@ -739,6 +765,7 @@ ci.thin_tester(
                     # TODO(crbug.com/542347163): Re-enable when the runtime regression is fixed.
                     "--disable-features=WebUIOmniboxPopup,WebUIOmniboxAimPopup",
                 ],
+                enable_rts_filtering = True,
             ),
             "not_site_per_process_blink_web_tests": targets.mixin(
                 args = [
@@ -747,6 +774,18 @@ ci.thin_tester(
             ),
             "not_site_per_process_blink_wpt_tests": targets.mixin(
                 ci_only = True,
+            ),
+            "not_site_per_process_headless_shell_wpt_tests": targets.mixin(
+                swarming = targets.swarming(
+                    # Move to faster machine types to reduce capacity impact.
+                    # TODO(crbug.com/541675870): Can remove this if/when
+                    # everything's been migrated.
+                    optional_dimensions = {
+                        30: {
+                            "cpu": "x86-64-e4",
+                        },
+                    },
+                ),
             ),
             "telemetry_perf_unittests": targets.mixin(
                 args = [
@@ -757,12 +796,16 @@ ci.thin_tester(
             "webdriver_wpt_tests": targets.mixin(
                 ci_only = True,
             ),
-            "webdriver_bidi_e2e_tests": targets.mixin(
-                experiment_percentage = 10,
-                swarming = targets.swarming(
-                    shards = 8,
+            "webdriver_bidi_e2e_tests": [
+                targets.mixin(
+                    experiment_percentage = 10,
+                    swarming = targets.swarming(
+                        shards = 8,
+                    ),
                 ),
-            ),
+                # TODO(crbug.com/579036421): Remove once e4 failures are fixed.
+                "e2-standard-8",
+            ],
             "webdriver_bidi_unittests": targets.mixin(
                 experiment_percentage = 10,
             ),
@@ -820,19 +863,22 @@ ci.thin_tester(
                     shards = 15,
                 ),
             ),
-            "browser_tests": targets.mixin(
-                args = [
-                    # TODO(crbug.com/542347163): Re-enable when the runtime regression is fixed.
-                    "--disable-features=WebUIOmniboxPopup,WebUIOmniboxAimPopup",
-                ],
-                # crbug.com/1066161
-                # crbug.com/1459645
-                # crbug.com/1508286
-                # crbug.com/404871436
-                swarming = targets.swarming(
-                    shards = 152,
+            "browser_tests": [
+                targets.mixin(
+                    args = [
+                        # TODO(crbug.com/542347163): Re-enable when the runtime regression is fixed.
+                        "--disable-features=WebUIOmniboxPopup,WebUIOmniboxAimPopup",
+                    ],
+                    # crbug.com/1066161
+                    # crbug.com/1459645
+                    # crbug.com/1508286
+                    # crbug.com/404871436
+                    swarming = targets.swarming(
+                        shards = 152,
+                    ),
                 ),
-            ),
+                "no_ssd",
+            ],
             "content_browsertests": targets.mixin(
                 # crbug.com/1508286
                 # crbug.com/404871436
@@ -890,12 +936,15 @@ ci.thin_tester(
                     shards = 16,
                 ),
             ),
-            "telemetry_perf_unittests": targets.mixin(
-                args = [
-                    "--xvfb",
-                    "--jobs=1",
-                ],
-            ),
+            "telemetry_perf_unittests": [
+                targets.mixin(
+                    args = [
+                        "--xvfb",
+                        "--jobs=1",
+                    ],
+                ),
+                "no_ssd",
+            ],
             "unit_tests": targets.mixin(
                 # The suite runs signficantly slower on linux dbg, so increase shards.
                 swarming = targets.swarming(
@@ -907,7 +956,7 @@ ci.thin_tester(
                     "--debug",
                 ],
                 swarming = targets.swarming(
-                    shards = 4,
+                    shards = 12,
                 ),
             ),
         },
@@ -919,6 +968,10 @@ ci.thin_tester(
     ),
     cq_mirrors_console_view = "mirrors",
     contact_team_email = "chrome-linux-engprod@google.com",
+    experiments = {
+        "luci.buildbucket.run_in_turboci": 100,
+        "luci.buildbucket.run_in_turboci.grpc_client": 100,
+    },
 )
 
 ci.thin_tester(
@@ -1480,4 +1533,37 @@ ci.builder(
         category = "linux",
     ),
     cq_mirrors_console_view = "mirrors",
+)
+
+ci.builder(
+    name = "linux-webdriver-bidi-rel",
+    description_html = "Builder for WebDriver BiDi implementation",
+    builder_spec = builder_config.copy_from("ci/Linux Builder"),
+    gn_args = "ci/Linux Builder",
+    targets = targets.bundle(
+        targets = [
+            "webdriver_bidi_e2e_tests",
+            "webdriver_bidi_unittests",
+        ],
+        mixins = [
+            "linux-jammy",
+        ],
+        per_test_modifications = {
+            "webdriver_bidi_e2e_tests": [
+                targets.mixin(
+                    swarming = targets.swarming(
+                        shards = 8,
+                    ),
+                ),
+                # TODO(crbug.com/579036421): Remove once e4 failures are fixed.
+                "e2-standard-8",
+            ],
+        },
+    ),
+    console_view_entry = consoles.console_view_entry(
+        category = "webdriver",
+        short_name = "bidi",
+    ),
+    cq_mirrors_console_view = "mirrors",
+    contact_team_email = "chrome-devtools@google.com",
 )

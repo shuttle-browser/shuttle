@@ -378,7 +378,7 @@ PrefService* PermissionActionsHistory::GetPrefServiceForTesting() {
 
 // static
 void PermissionActionsHistory::FillInActionCounts(
-    PredictionRequestFeatures::ActionCounts* counts,
+    PermissionActionsHistory::ActionCounts* counts,
     const std::vector<PermissionActionsHistory::Entry>& actions) {
   for (const auto& entry : actions) {
     switch (entry.action) {

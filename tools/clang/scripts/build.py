@@ -24,7 +24,6 @@ import atexit
 import datetime
 import glob
 import io
-import json
 import multiprocessing
 import os
 import shlex
@@ -35,9 +34,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib
-import urllib.error
-import urllib.request
 
 from update import (
   CDS_URL,
@@ -98,6 +94,10 @@ GIT_EXE = 'git.bat' if sys.platform.startswith('win') else 'git'
 # Name of the file that `WriteGitCommitInfo` writes into a git checkout.
 GIT_COMMIT_INFO_FILENAME = 'git-commit-info'
 
+# Retry policy for `GitOutputWithRetry`.
+GIT_NETWORK_MAX_TRIES = 5
+GIT_NETWORK_INITIAL_RETRY_DELAY_SECONDS = 1
+
 BUG_REPORT_URL = (
   'https://crbug.com in the Tools>LLVM component,'
   ' run tools/clang/scripts/process_crashreports.py'
@@ -110,7 +110,7 @@ ZSTD_VERSION = 'zstd-1.5.5'
 # This must be less than or equal to the lowest target used in Chromium. See
 # e.g. mac_deployment_target in //build/config/mac/mac_sdk.gni and min_version
 # in //chrome/installer/gcapi_mac/BUILD.gn.
-DEFAULT_MACOSX_DEPLOYMENT_TARGET = '10.12'
+DEFAULT_MACOSX_DEPLOYMENT_TARGET = '11.0'
 
 win_sdk_dir = None
 
@@ -315,43 +315,71 @@ def GitRevert(git_repository, commit):
   )
 
 
-def FetchUrl(url, max_tries=5, delay_seconds=1):
-  """Fetch content from a URL. If the fetch fails, retry several times after a
-  short delay."""
-  for i in range(max_tries):
-    try:
-      with urllib.request.urlopen(url) as response:
-        return response.read()
-    except (ConnectionError, urllib.error.URLError) as e:
-      # If this was the last try or a permanent 404 client error, re-raise.
-      if i >= max_tries - 1 or (
-        isinstance(e, urllib.error.HTTPError) and e.code == 404
-      ):
-        raise e
+def GitOutputWithRetry(git_args):
+  """Returns the stdout (as `bytes`) of `git <git_args>`.
 
-      reason = getattr(e, 'reason', e)
+  Network operations against Git can fail transiently,
+  so failures are retried with exponential backoff."""
+  delay_seconds = GIT_NETWORK_INITIAL_RETRY_DELAY_SECONDS
+  for i in range(GIT_NETWORK_MAX_TRIES):
+    try:
+      return subprocess.check_output([GIT_EXE] + git_args)
+    except subprocess.CalledProcessError as e:
+      if i >= GIT_NETWORK_MAX_TRIES - 1:
+        raise e
       print(
-        f"Failed to fetch {url}: {reason} (attempt {i + 1}/{max_tries}). "
-        f"Retrying in {delay_seconds}s..."
+        f'Failed to run `git {" ".join(git_args)}` '
+        f'(attempt {i + 1}/{GIT_NETWORK_MAX_TRIES}). '
+        f'Retrying in {delay_seconds}s...'
       )
       time.sleep(delay_seconds)
       delay_seconds *= 2
 
 
-def GetLatestCommit(url):
-  """Get the latest commit hash from a git repository's JSON output. If the
-  fetch fails, retry several times after a short delay."""
-  main = json.loads(FetchUrl(url).decode("utf-8").replace(")]}'", ""))
-  return main['commit']
+def GetLatestCommit(git_url, ref='refs/heads/main'):
+  """Returns the commit hash that `ref` points to in the remote `git_url`."""
+  output = GitOutputWithRetry(['ls-remote', git_url, ref]).decode('utf-8')
+  # Each line is `<hash>\t<ref>`.  `git ls-remote` matches patterns against the
+  # tail of ref names, so compare the full name to rule out e.g.
+  # `refs/heads/foo/refs/heads/main`.
+  for line in output.splitlines():
+    commit, remote_ref = line.split('\t')
+    if remote_ref == ref:
+      return commit
+  raise RuntimeError(f'`{ref}` not found in {git_url}')
+
+
+def FetchGitFile(git_url, commit, path):
+  """Returns the contents (as `bytes`) of `path` at `commit` in the remote
+  `git_url`, without cloning the whole repository.
+
+  A shallow, blobless fetch only downloads the commit and its trees; `git show`
+  then lazily fetches the single blob for `path`."""
+  git_dir = tempfile.mkdtemp()
+  try:
+    GitOutputWithRetry(['init', '--quiet', git_dir])
+    GitOutputWithRetry(
+      [
+        '-C',
+        git_dir,
+        'fetch',
+        '--quiet',
+        '--depth=1',
+        '--filter=blob:none',
+        git_url,
+        commit,
+      ]
+    )
+    return GitOutputWithRetry(['-C', git_dir, 'show', f'{commit}:{path}'])
+  finally:
+    # `RmTree` (rather than `tempfile.TemporaryDirectory`) handles the
+    # read-only files that git creates on Windows.
+    RmTree(git_dir)
 
 
 def GetLatestLLVMCommit():
   """Get the latest commit hash in the LLVM monorepo."""
-  url = (
-    'https://chromium.googlesource.com/external/'
-    + 'github.com/llvm/llvm-project/+/refs/heads/main?format=JSON'
-  )
-  return GetLatestCommit(url)
+  return GetLatestCommit(LLVM_GIT_URL)
 
 
 def GetCommitDescription(commit):
@@ -414,14 +442,14 @@ def WriteGitCommitInfo(git_repository, commit, tz):
 def AddCMakeToPath():
   """Download CMake and add it to PATH."""
   if sys.platform == 'win32':
-    zip_name = 'cmake-3.31.12-windows-x86_64.zip'
-    dir_name = ['cmake-3.31.12-windows-x86_64', 'bin']
+    zip_name = 'cmake-3.26.4-windows-x86_64.zip'
+    dir_name = ['cmake-3.26.4-windows-x86_64', 'bin']
   elif sys.platform == 'darwin':
-    zip_name = 'cmake-3.31.12-macos-universal.tar.gz'
-    dir_name = ['cmake-3.31.12-macos-universal', 'CMake.app', 'Contents', 'bin']
+    zip_name = 'cmake-3.26.4-macos-universal.tar.gz'
+    dir_name = ['cmake-3.26.4-macos-universal', 'CMake.app', 'Contents', 'bin']
   else:
-    zip_name = 'cmake-3.31.12-linux-x86_64.tar.gz'
-    dir_name = ['cmake-3.31.12-linux-x86_64', 'bin']
+    zip_name = 'cmake-3.26.4-linux-x86_64.tar.gz'
+    dir_name = ['cmake-3.26.4-linux-x86_64', 'bin']
 
   cmake_dir = os.path.join(LLVM_BUILD_TOOLS_DIR, *dir_name)
   if not os.path.exists(cmake_dir):
@@ -529,6 +557,28 @@ def GetLibXml2Dirs():
   return LibXmlDirs()
 
 
+def GetThirdPartyCMakeArgs(cc, cxx, cmake_sysroot, mac_deployment_target):
+  """Returns the CMake args for building a third-party static library.
+
+  The library can then be linked into LLVM (see `BuildLibXml2` and
+  `BuildZStd`), or into other toolchain binaries (e.g. see
+  `//tools/rust/build_crubit.py`).  The caller has to add
+  `CMAKE_INSTALL_PREFIX` and the library-specific args.
+  """
+  cmake_args = [
+    '-DCMAKE_C_COMPILER=' + cc,
+    '-DCMAKE_CXX_COMPILER=' + cxx,
+    '-DCMAKE_BUILD_TYPE=Release',
+    '-DCMAKE_INSTALL_LIBDIR=lib',
+    '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',  # /MT to match LLVM.
+  ]
+  if cmake_sysroot:
+    cmake_args.append('-DCMAKE_SYSROOT=' + cmake_sysroot)
+  if sys.platform == 'darwin':
+    cmake_args.append('-DCMAKE_OSX_DEPLOYMENT_TARGET=' + mac_deployment_target)
+  return cmake_args
+
+
 def BuildLibXml2(cc, cxx, cmake_sysroot, mac_deployment_target):
   """Download and build libxml2"""
   # The .tar.gz on GCS was uploaded as follows.
@@ -551,13 +601,10 @@ def BuildLibXml2(cc, cxx, cmake_sysroot, mac_deployment_target):
   # Disable everything except WITH_TREE and WITH_OUTPUT, both needed by LLVM's
   # WindowsManifestMerger.
   # Also enable WITH_THREADS, else libxml doesn't compile on Linux.
-  cmake_args = [
-    '-DCMAKE_C_COMPILER=' + cc,
-    '-DCMAKE_CXX_COMPILER=' + cxx,
-    '-DCMAKE_BUILD_TYPE=Release',
+  cmake_args = GetThirdPartyCMakeArgs(
+    cc, cxx, cmake_sysroot, mac_deployment_target
+  ) + [
     '-DCMAKE_INSTALL_PREFIX=install',
-    '-DCMAKE_INSTALL_LIBDIR=lib',
-    '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',  # /MT to match LLVM.
     '-DBUILD_SHARED_LIBS=OFF',
     '-DLIBXML2_WITH_C14N=OFF',
     '-DLIBXML2_WITH_CATALOG=OFF',
@@ -595,10 +642,6 @@ def BuildLibXml2(cc, cxx, cmake_sysroot, mac_deployment_target):
     '-DLIBXML2_WITH_XPTR=OFF',
     '-DLIBXML2_WITH_ZLIB=OFF',
   ]
-  if cmake_sysroot:
-    cmake_args.append('-DCMAKE_SYSROOT=' + cmake_sysroot)
-  if sys.platform == 'darwin':
-    cmake_args.append('-DCMAKE_OSX_DEPLOYMENT_TARGET=' + mac_deployment_target)
 
   RunCommand(['cmake', '-GNinja'] + cmake_args + ['..'], setenv=True)
   RunCommand(['ninja', 'install'], setenv=True)
@@ -662,19 +705,12 @@ def BuildZStd(cc, cxx, cmake_sysroot, mac_deployment_target):
   os.mkdir(dirs.build_dir)
   os.chdir(dirs.build_dir)
 
-  cmake_args = [
-    '-DCMAKE_C_COMPILER=' + cc,
-    '-DCMAKE_CXX_COMPILER=' + cxx,
-    '-DCMAKE_BUILD_TYPE=Release',
+  cmake_args = GetThirdPartyCMakeArgs(
+    cc, cxx, cmake_sysroot, mac_deployment_target
+  ) + [
     '-DCMAKE_INSTALL_PREFIX=install',
-    '-DCMAKE_INSTALL_LIBDIR=lib',
-    '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',  # /MT to match LLVM.
     '-DZSTD_BUILD_SHARED=OFF',
   ]
-  if cmake_sysroot:
-    cmake_args.append('-DCMAKE_SYSROOT=' + cmake_sysroot)
-  if sys.platform == 'darwin':
-    cmake_args.append('-DCMAKE_OSX_DEPLOYMENT_TARGET=' + mac_deployment_target)
   RunCommand(
     ['cmake', '-GNinja'] + cmake_args + ['../build/cmake'], setenv=True
   )
@@ -1200,6 +1236,7 @@ def main():
     '-DCLANG_PLUGIN_SUPPORT=OFF',
     '-DCLANG_ENABLE_STATIC_ANALYZER=OFF',
     '-DCLANG_ENABLE_ARCMT=OFF',
+    '-DCLANG_ENABLE_CIR=OFF',
     '-DBUG_REPORT_URL=' + BUG_REPORT_URL,
     # See crbug.com/1126219: Use native symbolizer instead of DIA
     '-DLLVM_ENABLE_DIA_SDK=OFF',

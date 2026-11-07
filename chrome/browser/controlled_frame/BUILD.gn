@@ -31,10 +31,7 @@ source_set("controlled_frame") {
     "//ui/gfx",
   ]
 
-  configs += [
-    "//build/config:precompiled_headers",
-    "//build/config/compiler:wexit_time_destructors",
-  ]
+  configs += [ "//build/config:precompiled_headers" ]
 
   public_deps = [ "//chrome/browser/controlled_frame/api:api_registration" ]
 }
@@ -58,6 +55,7 @@ source_set("media_access_handler_impl") {
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/profiles:profile",
+    "//chrome/common:constants",
     "//extensions/browser",
   ]
 }

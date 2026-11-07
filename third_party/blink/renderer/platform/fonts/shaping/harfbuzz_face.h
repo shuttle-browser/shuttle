@@ -80,7 +80,7 @@ class PLATFORM_EXPORT HarfBuzzFace final
   hb_font_t* GetScaledFont() const;
 
   bool HasSpaceInLigaturesOrKerning(TypesettingFeatures);
-  unsigned UnitsPerEmFromHeadTable();
+  wtf_size_t UnitsPerEmFromHeadTable();
   Glyph HbGlyphForCharacter(UChar32 character);
 
   hb_codepoint_t HarfBuzzGetGlyphForTesting(UChar32 character,
@@ -103,7 +103,7 @@ class PLATFORM_EXPORT HarfBuzzFace final
   Member<HarfBuzzFontData> harfbuzz_font_data_;
 };
 
-inline constexpr hb_codepoint_t kUnmatchedVSGlyphId =
+inline constexpr hb_codepoint_t kUnmatchedVsGlyphId =
     static_cast<hb_codepoint_t>(-1);
 
 }  // namespace blink

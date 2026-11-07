@@ -518,20 +518,6 @@
       depends_on: ["Serial"],
       privacy_sensitive: true,
     },
-    // Deprecated. TODO(crbug.com/462465887): Remove when no longer needed.
-    {
-      name: "Deprecated_SharedStorage",
-      permissions_policy_name: "shared-storage",
-      feature_default: "EnableForAll",
-      depends_on: ["SharedStorageAPI"],
-    },
-    // Deprecated. TODO(crbug.com/462465887): Remove when no longer needed.
-    {
-      name: "Deprecated_SharedStorageSelectUrl",
-      permissions_policy_name: "shared-storage-select-url",
-      feature_default: "EnableForAll",
-      depends_on: ["SharedStorageAPI"],
-    },
     {
       name: "SmartCard",
       permissions_policy_name: "smart-card",
@@ -585,6 +571,15 @@
       permissions_policy_name: "usb-unrestricted",
       depends_on: ["UnrestrictedUsb"],
       visibility: "IsolatedContext",
+    },
+    {
+      // TODO(crbug.com/508672616): This is currently only usable by
+      // privileged (e.g. WebUI) content. If it is exposed to the open web, add
+      // it to https://github.com/w3c/webappsec-permissions-policy/blob/main/features.md.
+      name: "UnboundedElement",
+      permissions_policy_name: "unbounded-element",
+      depends_on: ["UnboundedElement"],
+      feature_default: "EnableForSelf",
     },
     {
       // Unload is special and can default to being disabled by default based

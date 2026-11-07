@@ -13,7 +13,6 @@
 #include "base/notimplemented.h"
 #include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/string_util.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
@@ -31,6 +30,8 @@
 #include "services/network/public/cpp/orb/orb_api.h"
 #include "services/network/public/cpp/record_ontransfersizeupdate_utils.h"
 #include "services/network/public/cpp/resource_request.h"
+#include "services/network/public/cpp/sri_message_signatures.h"
+#include "services/network/public/cpp/unencoded_digests.h"
 #include "services/network/public/mojom/early_hints.mojom.h"
 #include "services/network/public/mojom/http_raw_headers.mojom.h"
 #include "services/network/public/mojom/url_loader.mojom.h"
@@ -198,14 +199,7 @@ class WebBundleURLLoaderFactory::URLLoader : public mojom::URLLoader {
             base::Time request_start_time,
             base::TimeTicks request_start_time_ticks,
             base::OnceCallback<void(URLLoader*)> disconnected_callback)
-      : url_(request.url),
-        bundle_url_(request.web_bundle_token_params->bundle_url),
-        request_mode_(request.mode),
-        request_initiator_(request.request_initiator),
-        request_destination_(request.destination),
-        request_headers_(request.headers),
-
-        is_trusted_(request.trusted_params),
+      : request_(request),
         receiver_(this, std::move(loader)),
         client_(std::move(client)),
         trusted_header_client_(std::move(trusted_header_client)),
@@ -224,19 +218,22 @@ class WebBundleURLLoaderFactory::URLLoader : public mojom::URLLoader {
   URLLoader(const URLLoader&) = delete;
   URLLoader& operator=(const URLLoader&) = delete;
 
-  const GURL& url() const { return url_; }
-  const GURL& bundle_url() const { return bundle_url_; }
-  const mojom::RequestMode& request_mode() const { return request_mode_; }
+  const ResourceRequest& request() const { return request_; }
+  const GURL& url() const { return request_.url; }
+  const GURL& bundle_url() const {
+    return request_.web_bundle_token_params->bundle_url;
+  }
+  mojom::RequestMode request_mode() const { return request_.mode; }
   const net::HttpRequestHeaders& request_headers() const {
-    return request_headers_;
+    return request_.headers;
   }
 
   const std::optional<url::Origin>& request_initiator() const {
-    return request_initiator_;
+    return request_.request_initiator;
   }
 
   mojom::RequestDestination request_destination() const {
-    return request_destination_;
+    return request_.destination;
   }
 
   base::WeakPtr<URLLoader> GetWeakPtr() {
@@ -296,8 +293,6 @@ class WebBundleURLLoaderFactory::URLLoader : public mojom::URLLoader {
     CompleteBlockedResponse(net::OK, std::nullopt);
   }
 
-  bool is_trusted() const { return is_trusted_; }
-
   void CompleteBlockedResponse(
       int error_code,
       std::optional<mojom::BlockedByResponseReason> reason) {
@@ -343,14 +338,7 @@ class WebBundleURLLoaderFactory::URLLoader : public mojom::URLLoader {
 
   void OnMojoDisconnect() { deleteThis(); }
 
-  const GURL url_;
-  const GURL bundle_url_;
-  mojom::RequestMode request_mode_;
-  std::optional<url::Origin> request_initiator_;
-  mojom::RequestDestination request_destination_;
-  net::HttpRequestHeaders request_headers_;
-  std::optional<std::string> devtools_request_id_;
-  const bool is_trusted_;
+  const ResourceRequest request_;
   mojo::Receiver<mojom::URLLoader> receiver_;
   mojo::Remote<mojom::URLLoaderClient> client_;
   mojo::Remote<mojom::TrustedHeaderClient> trusted_header_client_;
@@ -848,6 +836,11 @@ void WebBundleURLLoaderFactory::SendResponseToLoader(
   response_head->load_timing = loader->load_timing();
   loader->SetBodyLength(payload_length);
 
+  if (response_head->headers) {
+    response_head->unencoded_digests =
+        ParseUnencodedDigestsFromHeaders(*response_head->headers);
+  }
+
   // Enforce the Cross-Origin-Resource-Policy (CORP) header.
   //
   // TODO(crbug.com/333708501)
@@ -866,25 +859,16 @@ void WebBundleURLLoaderFactory::SendResponseToLoader(
     return;
   }
 
-  // Enforce ad-auction-only signals -- the renderer process isn't allowed
-  // to read auction-only signals for ad auctions; only the browser process
-  // is allowed to read those, and only the browser process can issue trusted
-  // requests.
-  // TODO(crbug.com/40269364): Remove old names once API users have migrated to
-  // new names.
-  if (!loader->is_trusted() && response_head->headers) {
-    std::optional<std::string> auction_only =
-        response_head->headers->GetNormalizedHeader("Ad-Auction-Only");
-    if (!auction_only) {
-      auction_only =
-          response_head->headers->GetNormalizedHeader("X-FLEDGE-Auction-Only");
-    }
-    if (auction_only &&
-        base::EqualsCaseInsensitiveASCII(*auction_only, "true")) {
-      loader->CompleteBlockedResponse(net::ERR_BLOCKED_BY_RESPONSE,
-                                      /*reason=*/std::nullopt);
-      return;
-    }
+  // Enforce SRI-compliant HTTP Message Signature headers.
+  //
+  // https://wicg.github.io/signature-based-sri/
+  if (std::optional<mojom::BlockedByResponseReason> blocked_reason =
+          MaybeBlockResponseForSRIMessageSignature(
+              loader->request(), *response_head,
+              loader->request().expected_public_keys)) {
+    loader->CompleteBlockedResponse(net::ERR_BLOCKED_BY_RESPONSE,
+                                    blocked_reason);
+    return;
   }
 
   auto orb_analyzer = orb::ResponseAnalyzer::Create(&orb_state_);

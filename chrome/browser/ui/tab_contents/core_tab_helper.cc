@@ -27,6 +27,7 @@
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_service.h"
 #include "components/strings/grit/components_strings.h"
+#include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
@@ -83,11 +84,26 @@ gfx::Image DownscaleImage(const gfx::Image& image) {
 
 }  // namespace
 
-CoreTabHelper::CoreTabHelper(WebContents* web_contents)
+DEFINE_USER_DATA(CoreTabHelper);
+
+CoreTabHelper::CoreTabHelper(tabs::TabInterface& tab, WebContents* web_contents)
     : content::WebContentsObserver(web_contents),
-      content::WebContentsUserData<CoreTabHelper>(*web_contents) {}
+      scoped_unowned_user_data_(tab.GetUnownedUserDataHost(), *this) {}
 
 CoreTabHelper::~CoreTabHelper() = default;
+
+// static
+CoreTabHelper* CoreTabHelper::From(tabs::TabInterface* tab) {
+  return tab ? Get(tab->GetUnownedUserDataHost()) : nullptr;
+}
+
+// static
+CoreTabHelper* CoreTabHelper::FromWebContents(WebContents* web_contents) {
+  if (!web_contents) {
+    return nullptr;
+  }
+  return From(tabs::TabInterface::MaybeGetFromContents(web_contents));
+}
 
 // static
 std::u16string CoreTabHelper::GetDefaultTitle() {
@@ -227,7 +243,7 @@ void CoreTabHelper::SearchByImageImpl(
   TemplateURLService* template_url_service = GetTemplateURLService();
   const TemplateURL* const default_provider =
       template_url_service->GetDefaultSearchProvider();
-  DCHECK(default_provider);
+  CHECK(default_provider, base::NotFatalUntil::M162);
   TemplateURLRef::SearchTermsArgs search_args =
       TemplateURLRef::SearchTermsArgs(std::u16string());
 
@@ -430,7 +446,7 @@ void CoreTabHelper::DoSearchByImage(
   TemplateURLService* template_url_service = GetTemplateURLService();
   const TemplateURL* const default_provider =
       template_url_service->GetDefaultSearchProvider();
-  DCHECK(default_provider);
+  CHECK(default_provider, base::NotFatalUntil::M162);
 
   TemplateURLRef::SearchTermsArgs search_args =
       TemplateURLRef::SearchTermsArgs(std::u16string());
@@ -457,10 +473,10 @@ void CoreTabHelper::DoSearchByImage(
 TemplateURLService* CoreTabHelper::GetTemplateURLService() {
   Profile* profile =
       Profile::FromBrowserContext(web_contents()->GetBrowserContext());
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M162);
   TemplateURLService* template_url_service =
       TemplateURLServiceFactory::GetForProfile(profile);
-  DCHECK(template_url_service);
+  CHECK(template_url_service, base::NotFatalUntil::M162);
   return template_url_service;
 }
 
@@ -471,12 +487,12 @@ void CoreTabHelper::PostContentToURL(TemplateURLRef::PostContent post_content,
   }
   content::OpenURLParams open_url_params =
       content::OpenURLParams::CreateBrowserInitiated(
-          url, WindowOpenDisposition::NEW_FOREGROUND_TAB,
+          url, WindowOpenDisposition::kNewForegroundTab,
           ui::PAGE_TRANSITION_LINK);
   const std::string& content_type = post_content.first;
   const std::string& post_data = post_content.second;
   if (!post_data.empty()) {
-    DCHECK(!content_type.empty());
+    CHECK(!content_type.empty(), base::NotFatalUntil::M162);
     open_url_params.post_data =
         network::ResourceRequestBody::CreateFromCopyOfBytes(
             base::as_byte_span(post_data));
@@ -487,5 +503,3 @@ void CoreTabHelper::PostContentToURL(TemplateURLRef::PostContent post_content,
 
   web_contents()->OpenURL(open_url_params, /*navigation_handle_callback=*/{});
 }
-
-WEB_CONTENTS_USER_DATA_KEY_IMPL(CoreTabHelper);

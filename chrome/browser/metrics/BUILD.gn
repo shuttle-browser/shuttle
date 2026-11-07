@@ -176,10 +176,6 @@ source_set("metrics") {
     ]
   }
 
-  if (!is_chromeos) {
-    public += [ "family_link_user_metrics_provider.h" ]
-  }
-
   if (is_win) {
     public += [
       "antivirus_metrics_provider_win.h",
@@ -262,14 +258,12 @@ source_set("impl") {
     "variations/google_groups_manager_factory.cc",
   ]
 
-  public_deps = [
-    ":metrics",
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = [ ":metrics" ]
 
   deps = [
     "//build/config/compiler:compiler_buildflags",
     "//chrome/browser:browser_process_platform_part",
+    "//chrome/browser:buildflags",
     "//chrome/browser:chrome_browser_main",
     "//chrome/browser:flags",
     "//chrome/browser/content_settings:content_settings_factory",
@@ -284,19 +278,18 @@ source_set("impl") {
     "//chrome/browser/page_load_metrics",
     "//chrome/browser/performance_manager",
     "//chrome/browser/prefs",
+    "//chrome/browser/regional_capabilities",
     "//chrome/browser/resource_coordinator",
     "//chrome/browser/resource_coordinator:mojo_bindings",
     "//chrome/browser/resource_coordinator:utils",
     "//chrome/browser/safe_browsing",
     "//chrome/browser/site_isolation",
     "//chrome/browser/subscription_eligibility",
-    "//chrome/browser/supervised_user",
     "//chrome/browser/tracing",
     "//chrome/browser/ui:browser_otr_state",
     "//chrome/browser/ui:recently_audible_helper",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/upgrade_detector",
-    "//components/activity_reporter",
     "//components/crash/core/app",
     "//components/language/core/browser",
     "//components/metrics:component_metrics",
@@ -311,7 +304,6 @@ source_set("impl") {
     "//components/services/paint_preview_compositor/public/mojom",
     "//components/signin/core/browser",
     "//components/startup_metric_utils",
-    "//components/supervised_user/core/browser",
     "//components/ukm",
     "//components/ukm:ukm_recorder",
     "//services/resource_coordinator/public/cpp/memory_instrumentation:browser",
@@ -319,6 +311,11 @@ source_set("impl") {
 
   if (enable_pdf) {
     deps += [ "//components/pdf/browser" ]
+  }
+
+  # Activity reporting must never be built into ChromeOS.
+  if (!is_chromeos) {
+    deps += [ "//components/activity_reporter" ]
   }
 
   if (is_android) {
@@ -425,6 +422,7 @@ source_set("impl") {
       "//chrome/browser/ui/webui/ash/settings/services/metrics",
       "//chromeos/ash/components/browser_context_helper",
       "//chromeos/ash/components/demo_mode",
+      "//chromeos/ash/components/signin:identity_manager_provider",
       "//chromeos/ash/components/system",
       "//chromeos/ash/services/cros_healthd/public/cpp",
       "//chromeos/ash/services/multidevice_setup/public/cpp",
@@ -434,10 +432,6 @@ source_set("impl") {
       "//components/metrics/structured:structured_metrics_validator",
       "//components/metrics/structured/lib",
     ]
-  }
-
-  if (!is_chromeos) {
-    sources += [ "family_link_user_metrics_provider.cc" ]
   }
 
   if (is_win) {
@@ -451,8 +445,6 @@ source_set("impl") {
       "tpm_metrics_provider_win.cc",
     ]
     deps += [
-      "//chrome/browser/win",
-      "//chrome/browser/win:cloud_synced_folder_checker",
       "//chrome/browser/win/isolated_browser:isolated_browser_support",
       "//chrome/notification_helper:constants",
     ]
@@ -488,6 +480,10 @@ source_set("impl") {
 
   if (is_linux || is_win || is_mac) {
     deps += [ "//chrome/browser/updates:update_metrics" ]
+  }
+
+  if (is_win) {
+    deps += [ "//chrome/browser/default_browser:startup_metrics" ]
   }
 
   if (is_win || is_android || is_linux) {

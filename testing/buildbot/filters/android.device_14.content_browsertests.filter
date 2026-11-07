@@ -12,3 +12,10 @@
 
 # TODO(crbug.com/529326479): Temporarily disabled due to DrDc race condition.
 -All/NavigationEntryScreenshotBrowserTest*
+
+# crbug.com/571503676
+-All/NavigationEntryScreenshotCacheHitOrMissReasonBrowserTest.BasicNavigations/CrossOrigin_BFCacheEnabled
+
+# crbug.com/575528236: thread_restrictions DCHECK.
+-GpuHostImplPersistentCacheTest.ClearCacheOnCrash
+-GpuHostImplPersistentCacheTest.SetChannelPersistentCacheFileCalled

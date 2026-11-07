@@ -12,6 +12,8 @@
 #include <utility>
 
 #include "base/check.h"
+#include "base/containers/flat_map.h"
+#include "base/containers/to_vector.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
@@ -86,6 +88,7 @@ struct BrowsingHistoryService::QueryHistoryState
 
   std::u16string search_text;
   QueryOptions original_options;
+  base::TimeTicks query_start_time;
 
   QuerySourceStatus local_status = UNINITIALIZED;
   // Should always be sorted in reverse chronological order.
@@ -116,7 +119,7 @@ BrowsingHistoryService::HistoryEntry::HistoryEntry(
     int typed_count,
     bool is_actor_visit,
     std::optional<std::string> app_id,
-    history::VisitID visit_id)
+    VisitID visit_id)
     : entry_type(entry_type),
       url(url),
       title(title),
@@ -131,7 +134,7 @@ BrowsingHistoryService::HistoryEntry::HistoryEntry(
       is_actor_visit(is_actor_visit),
       app_id(app_id) {
   all_timestamps[url].insert(time);
-  if (visit_id != history::kInvalidVisitID) {
+  if (visit_id != kInvalidVisitID) {
     all_visit_ids.push_back(visit_id);
   }
 }
@@ -185,6 +188,8 @@ void BrowsingHistoryService::QueryHistory(const std::u16string& search_text,
 
 void BrowsingHistoryService::QueryHistoryInternal(
     scoped_refptr<QueryHistoryState> state) {
+  state->query_start_time = base::TimeTicks::Now();
+
   // Anything in-flight is invalid.
   query_task_tracker_.TryCancelAll();
 
@@ -318,8 +323,7 @@ bool BrowsingHistoryService::ShouldQueryRemote(const QueryHistoryState& state) {
 
 #if !BUILDFLAG(IS_IOS)
   // Actor visits are local-only and user visits should not be queried.
-  if (history::IsBrowsingHistoryActorIntegrationM3Enabled() &&
-      !state.original_options.include_user_visits) {
+  if (!state.original_options.include_user_visits) {
     return false;
   }
 #endif

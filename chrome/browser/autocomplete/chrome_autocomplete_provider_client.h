@@ -21,8 +21,6 @@
 #include "chrome/browser/autocomplete/tab_matcher_desktop.h"
 #endif
 
-class AutocompleteScoringModelService;
-class OnDeviceTailModelService;
 class Profile;
 class TabMatcher;
 
@@ -30,6 +28,10 @@ namespace content {
 class StoragePartition;
 class WebContents;
 }  // namespace content
+
+namespace sessions {
+class TabRestoreService;
+}  // namespace sessions
 
 namespace unified_consent {
 class UrlKeyedDataCollectionConsentHelper;
@@ -57,8 +59,6 @@ class ChromeAutocompleteProviderClient : public AutocompleteProviderClient {
   const AutocompleteSchemeClassifier& GetSchemeClassifier() const override;
   AutocompleteClassifier* GetAutocompleteClassifier() override;
   history::HistoryService* GetHistoryService() override;
-  history_clusters::HistoryClustersService* GetHistoryClustersService()
-      override;
   scoped_refptr<history::TopSites> GetTopSites() override;
   history::URLDatabase* GetInMemoryDatabase() override;
   InMemoryURLIndex* GetInMemoryURLIndex() override;
@@ -88,10 +88,8 @@ class ChromeAutocompleteProviderClient : public AutocompleteProviderClient {
   OmniboxTriggeredFeatureService* GetOmniboxTriggeredFeatureService()
       const override;
   signin::IdentityManager* GetIdentityManager() const override;
-  AutocompleteScoringModelService* GetAutocompleteScoringModelService()
-      const override;
-  OnDeviceTailModelService* GetOnDeviceTailModelService() const override;
   ProviderStateService* GetProviderStateService() const override;
+  sessions::TabRestoreService* GetTabRestoreService() const override;
 
   bool IsOffTheRecord() const override;
   bool IsPrimaryOTRProfileWithRegularParent() const override;

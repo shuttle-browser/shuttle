@@ -18,6 +18,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/script_value.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_language_model_expected.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_language_model_sampling_mode.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_performance_preference.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_proofreader_create_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_rewriter_create_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_summarizer_create_options.h"
@@ -52,8 +53,12 @@ ConvertSamplingModeToV8(
     std::optional<mojom::blink::AILanguageModelSamplingMode> sampling_mode);
 
 // Converts string language codes to AILanguageCode mojo struct.
-Vector<mojom::blink::AILanguageCodePtr> ToMojoLanguageCodes(
+MODULES_EXPORT Vector<mojom::blink::AILanguageCodePtr> ToMojoLanguageCodes(
     const Vector<String>& language_codes);
+
+// Converts IDL performance preference to Mojo enum.
+MODULES_EXPORT mojom::blink::PerformancePreference ToMojoPerformancePreference(
+    V8PerformancePreference preference);
 
 enum class SamplingParamsOptionError {
   kOnlyOneOfTopKAndTemperatureIsProvided,
@@ -176,25 +181,18 @@ class RunOnDestruction {
 };
 
 // Returns a closure that rejects `resolver` if it's destroyed before being run.
-// If `signal` is aborted on destruction, its reason is passed with rejection.
-template <typename T>
-base::OnceClosure RejectOnDestruction(ScriptPromiseResolver<T>* resolver,
-                                      AbortSignal* signal = nullptr) {
+template <typename Resolver>
+base::OnceClosure RejectOnDestruction(Resolver* resolver) {
   CHECK(resolver);
   RunOnDestruction run_on_destruction(BindOnce(
-      [](ScriptPromiseResolver<T>* resolver, AbortSignal* signal) {
+      [](Resolver* resolver) {
         // Heap termination can clear persistent handles before their owning
         // callbacks are destroyed.
-        if (!resolver) {
-          return;
-        }
-        if (signal && signal->aborted()) {
-          resolver->Reject(signal->reason(resolver->GetScriptState()));
-        } else {
+        if (resolver) {
           resolver->Reject();
         }
       },
-      WrapPersistent(resolver), WrapPersistent(signal)));
+      WrapPersistent(resolver)));
 
   return BindOnce(
       [](RunOnDestruction resolver_holder) { resolver_holder.Reset(); },

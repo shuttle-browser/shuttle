@@ -24,7 +24,6 @@ class SharedURLLoaderFactory;
 
 namespace policy {
 
-class DeviceManagementService;
 class PolicyStatisticsCollector;
 
 // The BrowserPolicyConnector keeps some shared components of the policy system.
@@ -51,37 +50,6 @@ class POLICY_EXPORT BrowserPolicyConnector : public BrowserPolicyConnectorBase {
   // Cleans up the connector before it can be safely deleted.
   void Shutdown() override;
 
-  // Schedules initialization of the cloud policy backend services, if the
-  // services are already constructed.
-  void ScheduleServiceInitialization(int64_t delay_milliseconds);
-
-  DeviceManagementService* device_management_service() {
-    return device_management_service_.get();
-  }
-
-  DeviceManagementService* GetTestDeviceManagementService();
-
-  // Allows setting a mock DeviceManagementService for tests. Does not take
-  // ownership, and should be reset to nullptr at the end of the test.
-  // Set this before an instance is built for a Profile.
-  static void SetDeviceManagementServiceForTesting(
-      DeviceManagementService* device_management_service);
-
-  // Returns the URL for the device management service endpoint.
-  std::string GetDeviceManagementUrl() const;
-
-  // Returns the URL for the realtime reporting service endpoint.
-  std::string GetRealtimeReportingUrl() const;
-
-  // Returns the URL for the encrypted reporting service endpoint.
-  std::string GetEncryptedReportingUrl() const;
-
-  // Returns the URL for the File Storage Server endpoint for uploads.
-  std::string GetFileStorageServerUploadUrl() const;
-
-  // Registers refresh rate prefs.
-  static void RegisterPrefs(PrefRegistrySimple* registry);
-
   // Returns true if the command line switch of policy can be used.
   virtual bool IsCommandLineSwitchSupported() const = 0;
 
@@ -92,23 +60,13 @@ class POLICY_EXPORT BrowserPolicyConnector : public BrowserPolicyConnectorBase {
       const HandlerListFactory& handler_list_factory);
 
   // Helper for the public Init() that must be called by subclasses.
-  void InitInternal(
-      PrefService* local_state,
-      std::unique_ptr<DeviceManagementService> device_management_service);
+  void InitInternal(PrefService* local_state);
 
   // Returns true if the given |provider| has any registered policies.
   bool ProviderHasPolicies(const ConfigurationPolicyProvider* provider) const;
 
  private:
-  // Helper function to read URL overriding flags. If `flag` isn't set or if the
-  // Chrome channel doesn't allowing overriding, `default_value` is returned
-  // instead.
-  std::string GetUrlOverride(const char* flag,
-                             std::string_view default_value) const;
-
   std::unique_ptr<PolicyStatisticsCollector> policy_statistics_collector_;
-
-  std::unique_ptr<DeviceManagementService> device_management_service_;
 };
 
 }  // namespace policy

@@ -9,7 +9,6 @@
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
 #include "chrome/browser/policy/profile_policy_connector.h"
 #include "chrome/browser/profiles/profile.h"
-#include "components/enterprise/browser/controller/browser_dm_token_storage.h"
 #include "components/policy/core/common/policy_namespace.h"
 #include "components/policy/core/common/policy_service.h"
 
@@ -17,40 +16,8 @@
 #include "components/policy/core/common/management/platform_management_status_provider_win.h"
 #elif BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ash/policy/core/browser_policy_connector_ash.h"
-#include "chrome/browser/ash/profiles/profile_helper.h"
 #include "chrome/browser/browser_process_platform_part.h"
-#include "components/user_manager/user_manager.h"
 #endif
-
-namespace {
-
-bool IsProfileManaged(Profile* profile) {
-  return profile && profile->GetProfilePolicyConnector() &&
-         profile->GetProfilePolicyConnector()->IsManaged();
-}
-
-}  // namespace
-
-BrowserCloudManagementStatusProvider::BrowserCloudManagementStatusProvider() =
-    default;
-
-BrowserCloudManagementStatusProvider::~BrowserCloudManagementStatusProvider() =
-    default;
-
-EnterpriseManagementAuthority
-BrowserCloudManagementStatusProvider::FetchAuthority() {
-#if BUILDFLAG(IS_CHROMEOS)
-  return EnterpriseManagementAuthority::NONE;
-#else
-  // A machine level user cloud policy manager is only created if the browser is
-  // managed by CBCM.
-  if (g_browser_process->browser_policy_connector()
-          ->machine_level_user_cloud_policy_manager() != nullptr) {
-    return EnterpriseManagementAuthority::CLOUD_DOMAIN;
-  }
-  return EnterpriseManagementAuthority::NONE;
-#endif  // BUILDFLAG(IS_CHROMEOS)
-}
 
 LocalBrowserManagementStatusProvider::LocalBrowserManagementStatusProvider() =
     default;
@@ -97,30 +64,6 @@ LocalDomainBrowserManagementStatusProvider::FetchAuthority() {
   }
   return result;
 #endif  // BUILDFLAG(IS_CHROMEOS)
-}
-
-ProfileCloudManagementStatusProvider::ProfileCloudManagementStatusProvider(
-    Profile* profile)
-    : profile_(profile) {}
-
-ProfileCloudManagementStatusProvider::~ProfileCloudManagementStatusProvider() =
-    default;
-
-EnterpriseManagementAuthority
-ProfileCloudManagementStatusProvider::FetchAuthority() {
-  if (IsProfileManaged(profile_))
-    return EnterpriseManagementAuthority::CLOUD;
-#if BUILDFLAG(IS_CHROMEOS)
-  // This session's primary user may also have policies, and those policies may
-  // not have per-profile support.
-  auto* primary_user = user_manager::UserManager::Get()->GetPrimaryUser();
-  if (primary_user && g_browser_process->profile_manager() &&
-      IsProfileManaged(
-          ash::ProfileHelper::Get()->GetProfileByUser(primary_user))) {
-    return EnterpriseManagementAuthority::CLOUD;
-  }
-#endif
-  return EnterpriseManagementAuthority::NONE;
 }
 
 LocalTestPolicyUserManagementProvider::LocalTestPolicyUserManagementProvider(

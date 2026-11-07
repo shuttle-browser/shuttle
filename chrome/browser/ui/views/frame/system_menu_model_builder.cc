@@ -17,7 +17,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
 #include "chrome/browser/ui/tabs/features.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/common/chrome_features.h"
@@ -36,6 +35,7 @@
 #include "chrome/browser/ash/boca/on_task/on_task_locked_controller.h"
 #include "chrome/browser/ui/ash/multi_user/multi_user_util.h"
 #include "chrome/browser/ui/browser_window.h"
+#include "chrome/browser/ui/chromeos/locked_state/locked_state_controller.h"
 #include "chrome/browser/ui/settings_window_manager_chromeos.h"
 #include "chromeos/strings/grit/chromeos_strings.h"
 #include "chromeos/ui/frame/desks/move_to_desks_menu_delegate.h"
@@ -69,6 +69,18 @@ void AddItemWithIconMaybe(ui::SimpleMenuModel* model,
   }
 }
 #endif  // !BUILDFLAG(IS_MAC)
+
+#if BUILDFLAG(IS_CHROMEOS)
+// Returns true if the browser is locked for OnTask. Only relevant for non-web
+// browser scenarios.
+bool IsLockedForOnTask(BrowserWindowInterface* browser) {
+  if (features::IsUseUnifiedLockedStateControllerEnabled()) {
+    return chromeos::LockedStateController::From(browser)->IsLockedForOnTask();
+  }
+  return ash::boca::OnTaskLockedController::From(browser)
+      ->is_locked_for_on_task();
+}
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 }  // namespace
 
@@ -168,67 +180,10 @@ void SystemMenuModelBuilder::BuildSystemMenuForBrowserWindow(
                        kNameWindowOldIcon);
 #endif  // BUILDFLAG(IS_MAC)
 
-  if (auto* controller =
-          tabs::VerticalTabStripStateController::From(browser())) {
-    const bool display_vertical_tabs = controller->ShouldDisplayVerticalTabs();
-
-    if (!display_vertical_tabs &&
-        base::FeatureList::IsEnabled(tabs::kTabStripUnification)) {
-      model->AddItemWithStringId(IDC_TAB_SCROLL_BUTTONS_TOGGLE_PIN,
-                                 IDS_TAB_SCROLL_PIN_BUTTONS_SYSTEM_MENU);
-    }
-
-    model->AddSeparator(ui::NORMAL_SEPARATOR);
-
-    const int switch_to_horizontal_id =
-#if BUILDFLAG(IS_MAC)
-        IDS_SWITCH_TO_HORIZONTAL_TAB_MAC;
-#else
-        IDS_SWITCH_TO_HORIZONTAL_TAB;
-#endif
-
-    const int switch_to_vertical_id =
-#if BUILDFLAG(IS_MAC)
-        IDS_SWITCH_TO_VERTICAL_TAB_MAC;
-#else
-        IDS_SWITCH_TO_VERTICAL_TAB;
-#endif
-    if (display_vertical_tabs) {
-      model->AddItemWithStringId(IDC_TOGGLE_VERTICAL_TABS,
-                                 switch_to_horizontal_id);
-
-      model->AddItemWithStringId(IDC_TOGGLE_VERTICAL_TABS_COLLAPSE,
-                                 controller->IsCollapsed()
-                                     ? IDS_EXPAND_VERTICAL_TABS
-                                     : IDS_COLLAPSE_VERTICAL_TABS);
-      model->SetElementIdentifierAt(
-          model->GetIndexOfCommandId(IDC_TOGGLE_VERTICAL_TABS_COLLAPSE).value(),
-          kToggleVerticalTabsCollapseElementId);
-    } else {
-      model->AddItemWithStringId(IDC_TOGGLE_VERTICAL_TABS,
-                                 switch_to_vertical_id);
-    }
-    model->SetElementIdentifierAt(
-        model->GetIndexOfCommandId(IDC_TOGGLE_VERTICAL_TABS).value(),
-        kToggleVerticalTabsElementId);
-
-    const bool show_expand_on_hover =
-        tabs::IsVerticalTabsExpandOnHoverFeatureEnabled() &&
-        controller->ShouldDisplayVerticalTabs();
-    if (show_expand_on_hover) {
-      model->AddItemWithStringId(
-          IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER,
-          controller->IsExpandOnHoverEnabled()
-              ? IDS_VERTICAL_TABS_DISABLE_EXPAND_ON_HOVER
-              : IDS_VERTICAL_TABS_ENABLE_EXPAND_ON_HOVER);
-      model->SetElementIdentifierAt(
-          model->GetIndexOfCommandId(IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER)
-              .value(),
-          kToggleVerticalTabsExpandOnHoverElementId);
-    }
-
-    model->AddItemWithStringId(IDC_VERTICAL_TABS_SEND_FEEDBACK,
-                               IDS_VERTICAL_TABS_SEND_FEEDBACK);
+  if (browser()->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL &&
+      base::FeatureList::IsEnabled(tabs::kTabStripUnification)) {
+    model->AddItemWithStringId(IDC_TAB_SCROLL_BUTTONS_TOGGLE_PIN,
+                               IDS_TAB_SCROLL_PIN_BUTTONS_SYSTEM_MENU);
   }
 
   if (chrome::CanOpenTaskManager()) {
@@ -311,8 +266,7 @@ void SystemMenuModelBuilder::BuildSystemMenuForAppOrPopupWindow(
 #if BUILDFLAG(IS_CHROMEOS)
   // Hide TaskManager option for the app if it is locked for OnTask. Only
   // relevant for non-web browser scenarios.
-  if (ash::boca::OnTaskLockedController::From(browser())
-          ->is_locked_for_on_task()) {
+  if (IsLockedForOnTask(browser())) {
     should_show_task_manager = false;
   }
 #endif
@@ -341,8 +295,7 @@ void SystemMenuModelBuilder::AppendMoveToDesksMenu(ui::SimpleMenuModel* model) {
   auto* const browser = menu_delegate_.browser();
   // Do not show the move to desks menu if the app is locked for OnTask. Only
   // relevant for non-web browser scenarios.
-  if (ash::boca::OnTaskLockedController::From(browser)
-          ->is_locked_for_on_task() ||
+  if (IsLockedForOnTask(browser) ||
       !chromeos::MoveToDesksMenuDelegate::ShouldShowMoveToDesksMenu()) {
     return;
   }
@@ -360,7 +313,7 @@ void SystemMenuModelBuilder::AppendMoveToDesksMenu(ui::SimpleMenuModel* model) {
 
 void SystemMenuModelBuilder::AppendTeleportMenu(ui::SimpleMenuModel* model) {
 #if BUILDFLAG(IS_CHROMEOS)
-  DCHECK(browser()->GetWindow());
+  CHECK(browser()->GetWindow(), base::NotFatalUntil::M162);
 
   // Avoid appending the teleport menu for the settings window.  This window's
   // presentation is unique: it's a normal browser window with an app-like

@@ -123,9 +123,6 @@ _rebaseline_builder(
 # (tests content shell) to avoid coupling their build configurations.
 try_.builder(
     name = "linux-wpt-chromium-rel",
-    description_html = "Runs {} against Chrome.".format(
-        linkify("https://web-platform-tests.org", "web platform tests"),
-    ),
     mirrors = ["ci/linux-wpt-chromium-rel"],
     builder_config_settings = builder_config.try_settings(
         retry_failed_shards = False,
@@ -557,7 +554,6 @@ _rebaseline_builder(
             "15-x64-emulator",
             "emulator-8-cores",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "android_chrome_wpt_tests": targets.mixin(

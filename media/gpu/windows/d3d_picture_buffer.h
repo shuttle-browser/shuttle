@@ -5,9 +5,11 @@
 #ifndef MEDIA_GPU_WINDOWS_D3D_PICTURE_BUFFER_H_
 #define MEDIA_GPU_WINDOWS_D3D_PICTURE_BUFFER_H_
 
+#include <concepts>
 #include <memory>
 #include <vector>
 
+#include "base/check_op.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/ref_counted_delete_on_sequence.h"
 #include "base/task/sequenced_task_runner.h"
@@ -20,19 +22,22 @@
 #include "media/base/video_frame.h"
 #include "media/gpu/command_buffer_helper.h"
 #include "media/gpu/media_gpu_export.h"
-#include "media/gpu/windows/d3d11_texture_wrapper.h"
 #include "media/gpu/windows/d3d12_fence.h"
 #include "media/gpu/windows/d3d_com_defs.h"
 #include "media/gpu/windows/d3d_status.h"
+#include "media/gpu/windows/d3d_texture_wrapper.h"
+#include "ui/gfx/geometry/size.h"
 
 namespace media {
 
-class Texture2DWrapper;
+class D3D11PictureBufferImpl;
+class D3D12PictureBufferImpl;
+class D3DTextureWrapper;
 using PictureBufferGPUResourceInitDoneCB =
     base::OnceCallback<void(scoped_refptr<media::D3DPictureBuffer>)>;
 
-// PictureBuffer that owns Chrome Textures to display it, and keep a reference
-// to the D3D texture that backs the image.
+// PictureBuffer that owns Chrome Textures to display it, and keeps a reference
+// to the D3D11 texture or D3D12 resource that backs the image.
 //
 // This is created and owned on the decoder thread.  While currently that's the
 // gpu main thread, we still keep the decoder parts separate from the chrome GL
@@ -47,42 +52,32 @@ using PictureBufferGPUResourceInitDoneCB =
 class MEDIA_GPU_EXPORT D3DPictureBuffer
     : public base::RefCountedDeleteOnSequence<D3DPictureBuffer> {
  public:
-  // |texture_wrapper| is responsible for controlling mailbox access to
-  // the ID3D11Texture2D,
-  // |array_slice| is the picturebuffer index inside the Array-type
-  // ID3D11Texture2D.  |picture_index| is a unique id used to identify this
-  // picture to the decoder.  If a texture array is used, then it might as well
-  // be equal to the texture array index.  Otherwise, any 0-based index is
-  // probably okay, though sequential makes sense.
-  D3DPictureBuffer(scoped_refptr<base::SequencedTaskRunner> delete_task_runner,
-                   ComD3D11Texture2D texture,
-                   size_t array_slice,
-                   std::unique_ptr<Texture2DWrapper> texture_wrapper,
-                   size_t picture_index);
-
-  D3DStatus Init(scoped_refptr<base::SingleThreadTaskRunner> gpu_task_runner,
-                 GetCommandBufferHelperCB get_helper_cb,
-                 ComD3D11VideoDevice1 video_device,
-                 const GUID& decoder_guid,
-                 std::unique_ptr<MediaLog> media_log,
-                 PictureBufferGPUResourceInitDoneCB
-                     picture_buffer_gpu_resource_init_done_cb);
+  enum class Type { kD3D11, kD3D12 };
 
   D3DPictureBuffer(const D3DPictureBuffer&) = delete;
   D3DPictureBuffer& operator=(const D3DPictureBuffer&) = delete;
 
-  // Initialize |shared_image_dest|; return true if successful.
-  // |input_color_space| is the color space of our input texture.
+  // Returns this as T, CHECKing that the implementation matches.
+  template <typename T>
+    requires(std::same_as<T, D3D11PictureBufferImpl> ||
+             std::same_as<T, D3D12PictureBufferImpl>)
+  T* As() {
+    CHECK_EQ(GetType(), T::kType);
+    return static_cast<T*>(this);
+  }
+
+  D3DStatus BeginSharedImageAccess() const;
+
+  // Initialize |shared_image_dest|.
   D3DStatus ProcessTexture(
       scoped_refptr<gpu::ClientSharedImage>& shared_image_dest);
-  ComD3D11Texture2D Texture() const;
-  D3DStatus::Or<ID3D11VideoDecoderOutputView*> AcquireOutputView() const;
 
-  // Get the D3D12Resource by device->OpenSharedHandle or return the opened one.
-  D3DStatus::Or<ID3D12Resource*> ToD3D12Resource(ID3D12Device* device);
+  // Opens the D3D11 texture as a D3D12 resource, or returns the cached
+  // or native D3D12 resource.
+  virtual base::expected<ID3D12Resource*, D3DStatus> GetOrCreateD3D12Resource(
+      ID3D12Device* device) = 0;
 
   void SetFenceAndValue(scoped_refptr<D3D12Fence> fence, uint64_t value);
-  D3DStatus WaitForDecodeCompleteGPU(ID3D11DeviceContext* context);
 
   size_t picture_index() const { return picture_index_; }
 
@@ -103,33 +98,108 @@ class MEDIA_GPU_EXPORT D3DPictureBuffer
   void set_in_picture_use(bool use) { in_picture_use_ = use; }
 
   uint32_t array_slice() const { return array_slice_; }
+  const gfx::Size& size() const { return size_; }
 
-  Texture2DWrapper* texture_wrapper() const { return texture_wrapper_.get(); }
+  D3DTextureWrapper* texture_wrapper() const { return texture_wrapper_.get(); }
 
   // Shouldn't be here, but simpler for now.
   base::TimeDelta timestamp_;
 
+ protected:
+  // |texture_wrapper| controls mailbox access to the backing resource.
+  // |array_slice| is the index inside an array texture. |picture_index| is a
+  // unique id used to identify this picture to the decoder.
+  D3DPictureBuffer(scoped_refptr<base::SequencedTaskRunner> delete_task_runner,
+                   size_t array_slice,
+                   std::unique_ptr<D3DTextureWrapper> texture_wrapper,
+                   const gfx::Size& size,
+                   size_t picture_index);
+  virtual ~D3DPictureBuffer();
+
+  std::unique_ptr<MediaLog> media_log_;
+
  private:
-  ~D3DPictureBuffer();
   friend class base::RefCountedDeleteOnSequence<D3DPictureBuffer>;
   friend class base::DeleteHelper<D3DPictureBuffer>;
 
-  ComD3D11Texture2D texture_;
-  uint32_t array_slice_;
+  virtual Type GetType() const = 0;
 
-  std::unique_ptr<MediaLog> media_log_;
-  std::unique_ptr<Texture2DWrapper> texture_wrapper_;
+  uint32_t array_slice_;
+  const gfx::Size size_;
+
+  std::unique_ptr<D3DTextureWrapper> texture_wrapper_;
 
   bool in_picture_use_ = false;
   int in_client_use_ = 0;
   size_t picture_index_;
 
+  // Reused across submissions for this picture buffer. The buffer is not
+  // decoded into again until its previous accesses have completed.
+  scoped_refptr<gfx::D3DSharedFence> shared_decode_fence_;
+};
+
+class MEDIA_GPU_EXPORT D3D11PictureBufferImpl : public D3DPictureBuffer {
+ public:
+  static constexpr Type kType = Type::kD3D11;
+
+  D3D11PictureBufferImpl(
+      scoped_refptr<base::SequencedTaskRunner> delete_task_runner,
+      ComD3D11Texture2D texture,
+      size_t array_slice,
+      std::unique_ptr<D3DTextureWrapper> texture_wrapper,
+      const gfx::Size& size,
+      size_t picture_index);
+
+  D3DStatus InitD3D11(
+      scoped_refptr<base::SingleThreadTaskRunner> gpu_task_runner,
+      GetCommandBufferHelperCB get_helper_cb,
+      ComD3D11VideoDevice1 video_device,
+      const GUID& decoder_guid,
+      std::unique_ptr<MediaLog> media_log,
+      PictureBufferGPUResourceInitDoneCB
+          picture_buffer_gpu_resource_init_done_cb);
+
+  base::expected<ID3D11VideoDecoderOutputView*, D3DStatus> AcquireOutputView()
+      const;
+
+  // D3DPictureBuffer:
+  base::expected<ID3D12Resource*, D3DStatus> GetOrCreateD3D12Resource(
+      ID3D12Device* device) override;
+
+ private:
+  // D3DPictureBuffer:
+  ~D3D11PictureBufferImpl() override;
+  Type GetType() const override;
+
+  ComD3D11Texture2D d3d11_texture_;
   ComD3D11VideoDecoderOutputView output_view_;
 
-  // The cached pointer of D3D12 version of texture, if ToD3D12Resource() has
-  // been called.
+  // The cached D3D12 version of the texture.
   ComD3D12Resource d3d12_resource_;
-  std::pair<scoped_refptr<D3D12Fence>, uint64_t> fence_and_value_;
+};
+
+class MEDIA_GPU_EXPORT D3D12PictureBufferImpl : public D3DPictureBuffer {
+ public:
+  static constexpr Type kType = Type::kD3D12;
+
+  D3D12PictureBufferImpl(
+      scoped_refptr<base::SequencedTaskRunner> delete_task_runner,
+      ComD3D12Resource resource,
+      uint32_t array_slice,
+      std::unique_ptr<D3DTextureWrapper> texture_wrapper,
+      const gfx::Size& size,
+      size_t picture_index);
+
+  // D3DPictureBuffer:
+  base::expected<ID3D12Resource*, D3DStatus> GetOrCreateD3D12Resource(
+      ID3D12Device* device) override;
+
+ private:
+  // D3DPictureBuffer:
+  ~D3D12PictureBufferImpl() override;
+  Type GetType() const override;
+
+  ComD3D12Resource d3d12_resource_;
 };
 
 }  // namespace media

@@ -9,6 +9,7 @@
 #include "third_party/blink/renderer/core/css/parser/sizes_math_function_parser.h"
 #include "third_party/blink/renderer/core/css/properties/css_parsing_utils.h"
 #include "third_party/blink/renderer/core/media_type_names.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 
 namespace blink {
 
@@ -37,7 +38,16 @@ bool SizesAttributeParser::Parse(CSSParserTokenStream& stream) {
       // can be specified if desired."
       // For example: sizes="auto, (max-width: 30em) 100vw, ..."
       is_auto_ = true;
-      return true;
+      stream.Consume();
+      stream.ConsumeWhitespace();
+      if (stream.AtEnd()) {
+        return true;
+      }
+      if (stream.Peek().GetType() != kCommaToken) {
+        return false;
+      }
+      stream.Consume();
+      continue;
     }
 
     CSSParserTokenStream::State savepoint = stream.Save();
@@ -60,12 +70,18 @@ bool SizesAttributeParser::Parse(CSSParserTokenStream& stream) {
       stream.Restore(savepoint);
     }
 
-    if (stream.Peek().GetType() != kCommaToken) {
+    if (RuntimeEnabledFeatures::SrcsetTwoDimensionalSizesEnabled() &&
+        (css_parsing_utils::AtIdent(stream.Peek(), "contain") ||
+         css_parsing_utils::AtIdent(stream.Peek(), "cover"))) {
+      if (ParseTwoDimensionalSize(stream)) {
+        return true;
+      }
+    } else if (stream.Peek().GetType() != kCommaToken) {
       float length;
       if (CalculateLengthInPixels(stream, length)) {
         stream.ConsumeWhitespace();
         if (stream.AtEnd() || stream.Peek().GetType() == kCommaToken) {
-          size_ = length;
+          size_ = {length};
           size_was_set_ = true;
           return true;
         }
@@ -79,6 +95,39 @@ bool SizesAttributeParser::Parse(CSSParserTokenStream& stream) {
   }
 
   return false;
+}
+
+// Parses `[contain | cover] <length> <length>` followed by the end of the
+// stream or a comma. On failure, the stream is left at an unspecified position
+// within the current source size; the caller skips to the next comma.
+bool SizesAttributeParser::ParseTwoDimensionalSize(
+    CSSParserTokenStream& stream) {
+  EObjectFit object_fit;
+  if (css_parsing_utils::AtIdent(stream.Peek(), "contain")) {
+    object_fit = EObjectFit::kContain;
+  } else {
+    DCHECK(css_parsing_utils::AtIdent(stream.Peek(), "cover"));
+    object_fit = EObjectFit::kCover;
+  }
+  stream.ConsumeIncludingWhitespace();
+
+  float width;
+  if (!CalculateLengthInPixels(stream, width)) {
+    return false;
+  }
+  stream.ConsumeWhitespace();
+  float height;
+  if (!CalculateLengthInPixels(stream, height)) {
+    return false;
+  }
+  stream.ConsumeWhitespace();
+  if (!stream.AtEnd() && stream.Peek().GetType() != kCommaToken) {
+    return false;
+  }
+
+  size_ = {width, height, object_fit};
+  size_was_set_ = true;
+  return true;
 }
 
 bool SizesAttributeParser::CalculateLengthInPixels(CSSParserTokenStream& stream,
@@ -124,37 +173,45 @@ bool SizesAttributeParser::MediaConditionMatches(
   return media_query_evaluator->Eval(media_condition);
 }
 
-float SizesAttributeParser::Size() {
+TargetBoxSize SizesAttributeParser::Size() {
   if (is_valid_) {
     return EffectiveSize();
   }
-
   return EffectiveSizeDefaultValue();
 }
 
-float SizesAttributeParser::EffectiveSize() {
+TargetBoxSize SizesAttributeParser::EffectiveSize() {
   // Spec:
   // https://html.spec.whatwg.org/#parsing-a-sizes-attribute
 
-  // 3.6 If size is not auto, then return size.
-  if (size_was_set_) {
-    return size_;
+  // 3.3 If size is auto, and img is not null, and img allows auto-sizes:
+  // if img is being rendered, use its concrete object size and store
+  // it as the last auto-sizes size; otherwise use the last auto-sizes
+  // size if present.
+  if (is_auto_ && img_ && img_->AllowAutoSizes()) {
+    if (img_->IsBeingRendered()) {
+      TargetBoxSize size = img_->AutoSizesSize();
+      img_->UpdateLastAutoSizes(size);
+      return size;
+    }
+    if (std::optional<TargetBoxSize> last_size = img_->LastAutoSizesSize()) {
+      return *last_size;
+    }
   }
 
-  // 3.3 If size is auto, and img is not null, and img is being rendered, and
-  // img allows auto-sizes, then set size to the concrete object size width of
-  // img, in CSS pixels.
-  if (is_auto_ && img_ && img_->IsBeingRendered() && img_->AllowAutoSizes()) {
-    return img_->LayoutBoxWidth();
+  // 3.6 If size is not auto, then return size. This handles the explicit
+  // fallback after auto when the auto value is ignored.
+  if (size_was_set_) {
+    return size_;
   }
 
   // 4. Return 100vw.
   return EffectiveSizeDefaultValue();
 }
 
-float SizesAttributeParser::EffectiveSizeDefaultValue() {
+TargetBoxSize SizesAttributeParser::EffectiveSizeDefaultValue() {
   // Returning the equivalent of "100vw"
-  return ClampTo<float>(*media_values_->Width());
+  return {ClampTo<float>(*media_values_->Width())};
 }
 
 bool SizesAttributeParser::IsAuto() {

@@ -79,7 +79,7 @@ bool ShouldShowBadFlagsSecurityWarnings() {
 
   const auto* pref = local_state->FindPreference(
       prefs::kCommandLineFlagSecurityWarningsEnabled);
-  DCHECK(pref);
+  CHECK(pref, base::NotFatalUntil::M162);
 
   // The warnings can only be disabled by policy. Default to show warnings.
   if (pref->IsManaged()) {
@@ -205,7 +205,7 @@ void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
       !is_web_app && HasPendingUncleanExit(browser->GetProfile());
   base::UmaHistogramBoolean("Startup.CrashBubbleShown", should_display_bubble);
   if (should_display_bubble) {
-    SessionCrashedBubble::ShowIfNotOffTheRecordProfile(
+    ShowSessionCrashedBubbleIfNotOffTheRecordProfile(
         browser,
         /*skip_tab_checking=*/false);
   }

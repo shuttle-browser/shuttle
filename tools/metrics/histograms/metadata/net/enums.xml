@@ -86,11 +86,6 @@ chromium-metrics-reviews@google.com.
   <int value="1" label="coalesced"/>
 </enum>
 
-<enum name="BooleanConfirmed">
-  <int value="0" label="Not Confirmed"/>
-  <int value="1" label="Confirmed"/>
-</enum>
-
 <enum name="BooleanExceeded">
   <int value="0" label="Not exceeded"/>
   <int value="1" label="Exceeded"/>
@@ -142,6 +137,18 @@ chromium-metrics-reviews@google.com.
   <int value="0" label="Trust"/>
   <int value="1" label="Client Cert"/>
 </enum>
+
+<!-- LINT.IfChange(CertificateViewerEntrypoint) -->
+
+<enum name="CertificateViewerEntrypoint">
+  <int value="0" label="Page Info"/>
+  <int value="1" label="SSL interstitial"/>
+  <int value="2" label="DevTools"/>
+  <int value="3" label="Certificate Manager"/>
+  <int value="4" label="Client certificate selector"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/certificate_viewer.h:CertificateViewerEntrypoint) -->
 
 <enum name="ConnectionInfo">
   <summary>
@@ -630,6 +637,31 @@ historical analysis. -->
 
 <!-- LINT.ThenChange(//services/network/public/mojom/device_bound_sessions.mojom:DeviceBoundSessionDeletionReason) -->
 
+<!-- LINT.IfChange(DeviceBoundSessionFederatedRegistrationRedirect) -->
+
+<enum name="DeviceBoundSessionFederatedRegistrationRedirect">
+  <int value="0" label="No redirect"/>
+  <int value="1" label="Same origin"/>
+  <int value="2" label="Cross origin"/>
+</enum>
+
+<!-- LINT.ThenChange(//net/device_bound_sessions/registration_fetcher.cc:FederatedRegistrationRedirect) -->
+
+<!-- LINT.IfChange(DeviceBoundSessionPrewarmTrigger) -->
+
+<enum name="DeviceBoundSessionPrewarmTrigger">
+  <int value="0" label="Pre-warmer started"/>
+  <int value="1" label="Scheduled refresh"/>
+  <int value="2" label="Retry after transient error"/>
+  <int value="3" label="Reconnected after unreachable pre-warm"/>
+  <int value="4" label="Reconnected during unreachable pre-warm"/>
+  <int value="5" label="Session created"/>
+  <int value="6" label="Network service disconnected"/>
+  <int value="7" label="Retry after network service unavailable"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/net/device_bound_session_prewarmer.h:PrewarmTrigger) -->
+
 <!-- LINT.IfChange(DeviceBoundSessionProactiveRefreshAttempt) -->
 
 <enum name="DeviceBoundSessionProactiveRefreshAttempt">
@@ -657,6 +689,7 @@ historical analysis. -->
   <int value="7" label="Refreshed as waiter"/>
   <int value="8" label="Transient signing error"/>
   <int value="9" label="In-scope refresh not yet needed"/>
+  <int value="10" label="Canceled (deferred requests destroyed)"/>
 </enum>
 
 <!-- LINT.ThenChange(//net/device_bound_sessions/refresh_result.h:DeviceBoundSessionRefreshResult) -->
@@ -892,6 +925,11 @@ historical analysis. -->
   <int value="9" label="SpdyProxy Reject (Deprecated)"/>
 </enum>
 
+<enum name="HttpAuthSchemeAllowedTarget">
+  <int value="0" label="AUTH_PROXY"/>
+  <int value="1" label="AUTH_SERVER"/>
+</enum>
+
 <enum name="HttpAuthTarget">
   <int value="0" label="Basic Proxy"/>
   <int value="1" label="Basic Secure Proxy"/>
@@ -1108,6 +1146,19 @@ historical analysis. -->
   <int value="5" label="CryptoConnectFailedAsync"/>
 </enum>
 
+<!-- LINT.IfChange(LinuxProxyResolutionStatus) -->
+
+<enum name="LinuxProxyResolutionStatus">
+  <int value="0" label="Ok"/>
+  <int value="1" label="PortalUnavailable"/>
+  <int value="2" label="DBusError"/>
+  <int value="3" label="EmptyProxyList"/>
+  <int value="4" label="InvalidResponse"/>
+  <int value="5" label="Aborted"/>
+</enum>
+
+<!-- LINT.ThenChange(//net/proxy_resolution/linux/linux_proxy_resolution_status.h:LinuxProxyResolutionStatus) -->
+
 <!-- LINT.IfChange(LogicalInvalidationStoreLoadResult) -->
 
 <enum name="LogicalInvalidationStoreLoadResult">
@@ -1196,6 +1247,17 @@ historical analysis. -->
   <int value="2" label="Normalized Names"/>
   <int value="3" label="Chain contained only one certificate"/>
 </enum>
+
+<!-- LINT.IfChange(NetCertificateSerialNumberType) -->
+
+<enum name="NetCertificateSerialNumberType">
+  <int value="0" label="Positive"/>
+  <int value="1" label="Zero"/>
+  <int value="2" label="Negative"/>
+  <int value="3" label="Invalid"/>
+</enum>
+
+<!-- LINT.ThenChange(//net/cert/x509_util.h:SerialNumberType) -->
 
 <!-- LINT.IfChange(NetCertVerifier1QwacResult) -->
 
@@ -1394,18 +1456,6 @@ historical analysis. -->
   <int value="8" label="Queued"/>
   <int value="9" label="Discarded: include_subdomains without DNS error"/>
   <int value="10" label="Discarded: IP address mismatch"/>
-</enum>
-
-<enum name="NetReportingHeaderType">
-  <int value="0" label="Report-To"/>
-  <int value="1" label="Invalid Report-To"/>
-  <int value="2" label="Reporting-Endpoints"/>
-  <int value="3" label="Invalid Reporting-Endpoints"/>
-</enum>
-
-<enum name="NetReportingUploadHeaderType">
-  <int value="0" label="ReportTo"/>
-  <int value="1" label="ReportingEndpoints"/>
 </enum>
 
 <enum name="NetTrustAnchors">
@@ -2807,29 +2857,6 @@ Called by update_net_trust_anchors.py.-->
   <int value="5" label="FIVE_PACKETS_LOST"/>
 </enum>
 
-<enum name="QuicConnectionMigrationStatus">
-  <int value="0" label="No stream to migrate"/>
-  <int value="1" label="Already migrated"/>
-  <int value="2" label="Internal error"/>
-  <int value="3" label="Too many migrations"/>
-  <int value="4" label="Success"/>
-  <int value="5" label="Disabled by non-migratable stream"/>
-  <int value="6" label="Migration not enabled"/>
-  <int value="7" label="No alternate network"/>
-  <int value="8" label="Disabled by too many path degradings"/>
-  <int value="9" label="Disabled by config"/>
-  <int value="10" label="Path degrading not enabled"/>
-  <int value="11" label="Timeout with no new network"/>
-  <int value="12"
-      label="Exceeding maximum number of migrations on write error"/>
-  <int value="13" label="Path degrading before handshake confirmed"/>
-  <int value="14" label="Idle migration period exceeded"/>
-  <int value="15" label="Migration fails due to lack of connection ID"/>
-  <int value="16" label="Migration Probe received Stateless Reset"/>
-  <int value="17" label="Migration aborted due to session close"/>
-  <int value="18" label="Path validation aborted because of newer validation"/>
-</enum>
-
 <enum name="QuicDisabledReason">
   <int value="1" label="Public reset post handshake"/>
   <int value="2" label="Timeout with open streams"/>
@@ -3164,6 +3191,9 @@ Called by update_net_trust_anchors.py.-->
   <int value="7" label="New network connected post path degrading (probing)"/>
   <int value="8" label="On server preferred address available (probing)"/>
   <int value="9" label="Multi-port path"/>
+  <int value="10"
+      label="Wait for new network post network disconnected (direct)"/>
+  <int value="11" label="Wait for new network post write error (direct)"/>
 </enum>
 
 <!-- LINT.ThenChange(//net/quic/quic_migration_attempt_context.h:QuicMigrationAttemptCause) -->
@@ -3175,7 +3205,8 @@ Called by update_net_trust_anchors.py.-->
   <int value="1" label="Probe timeout"/>
   <int value="2" label="No unused Connection ID"/>
   <int value="3" label="Stateless reset received"/>
-  <int value="4" label="Probe failed"/>
+  <int value="4" label="Unknown probe failure"/>
+  <int value="5" label="Probing socket write error"/>
 </enum>
 
 <!-- LINT.ThenChange(//net/quic/quic_migration_attempt_context.h:QuicMigrationAttemptFailureReason) -->
@@ -3360,6 +3391,18 @@ Called by update_net_trust_anchors.py.-->
 
 <!-- LINT.ThenChange(//net/quic/quic_session_pool_async_dns_job.h:QuicSessionPoolAsyncDnsJobSuccessSource) -->
 
+<!-- LINT.IfChange(QuicSocketConfigStep) -->
+
+<enum name="QuicSocketConfigStep">
+  <int value="0" label="Connect"/>
+  <int value="1" label="Set receive buffer size"/>
+  <int value="2" label="Set do not fragment"/>
+  <int value="3" label="Set receive ECN"/>
+  <int value="4" label="Set send buffer size"/>
+</enum>
+
+<!-- LINT.ThenChange(//net/quic/quic_socket_config_step.h:QuicSocketConfigStep) -->
+
 <enum name="QuicTransportErrorCodes">
   <int value="0" label="NO_ERROR"/>
   <int value="1" label="INTERNAL_ERROR"/>
@@ -3459,7 +3502,7 @@ Called by update_net_trust_anchors.py.-->
 <enum name="SCTOrigin">
   <int value="0" label="SCT_EMBEDDED"/>
   <int value="1" label="SCT_FROM_TLS_EXTENSION"/>
-  <int value="2" label="SCT_FROM_OCSP_RESPONSE"/>
+  <int value="2" label="(Obsolete) SCT_FROM_OCSP_RESPONSE"/>
 </enum>
 
 <!-- LINT.IfChange(SecureDnsModeDetails) -->

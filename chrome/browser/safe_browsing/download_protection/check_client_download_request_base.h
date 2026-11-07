@@ -20,7 +20,6 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "chrome/browser/enterprise/connectors/common.h"
 #include "chrome/browser/safe_browsing/download_protection/download_protection_util.h"
 #include "chrome/browser/safe_browsing/download_protection/download_request_maker.h"
 #include "chrome/browser/safe_browsing/download_protection/file_analyzer.h"
@@ -106,11 +105,9 @@ class CheckClientDownloadRequestBase {
   void SendRequest();
   void OnURLLoaderComplete(std::optional<std::string> response_body);
 
-  // If we need to perform additional prompting (e.g. deep scanning, local
-  // password decryption) due to the response, this method will update `result`
-  // and `reason` appropriately. This method also performs logging related to
-  // these additional prompts. If both prompts are allowed, deep scanning will
-  // be prioritized.
+  // If we need to perform additional prompting (local password decryption) due
+  // to the response, this method will update `result` and `reason`
+  // appropriately. This method also performs logging related to the prompt.
   void GetAdditionalPromptResult(const ClientDownloadResponse& response,
                                  DownloadCheckResult* result,
                                  DownloadCheckResultReason* reason,
@@ -136,11 +133,13 @@ class CheckClientDownloadRequestBase {
   // hooks with slightly different logic when they are called.
 
   // Called with the client download response as returned by the server, if one
-  // was returned and the returned verdict is unsafe (i.e. not safe or unknown).
+  // was returned and either the returned verdict is unsafe (i.e. not safe or
+  // unknown) or the download is from a registered app store.
   virtual void SetDownloadProtectionData(
       const std::string& token,
       const ClientDownloadResponse::Verdict& verdict,
-      const ClientDownloadResponse::TailoredVerdict& tailored_verdict) = 0;
+      const ClientDownloadResponse::TailoredVerdict& tailored_verdict,
+      bool is_registered_app_store) = 0;
 
   // TODO(crbug.com/397407934): Download feedback is not supported on Android
   // yet, but it will be.
@@ -153,31 +152,9 @@ class CheckClientDownloadRequestBase {
       const std::string& response_body) = 0;
 #endif
 
-  // Returns whether or not the file should be uploaded to Safe Browsing for
-  // deep scanning. Returns the settings to apply for analysis if the file
-  // should be uploaded for deep scanning, or std::nullopt if it should not.
-  virtual std::optional<enterprise_connectors::AnalysisSettings>
-  ShouldUploadBinary(DownloadCheckResultReason reason) = 0;
-
-  // If ShouldUploadBinary returns settings, actually performs the upload to
-  // Safe Browsing for deep scanning.
-  virtual void UploadBinary(
-      DownloadCheckResult result,
-      DownloadCheckResultReason reason,
-      enterprise_connectors::AnalysisSettings settings) = 0;
-
   // Called whenever a request has completed.
   virtual void NotifyRequestFinished(DownloadCheckResult result,
                                      DownloadCheckResultReason reason) = 0;
-
-  // Called when finishing the download, to decide whether to
-  // immediately start deep scanning or not.
-  virtual bool ShouldImmediatelyDeepScan(bool server_requests_prompt) const = 0;
-
-  // Called when finishing the download, to decide whether to prompt the user
-  // for deep scanning or not.
-  virtual bool ShouldPromptForDeepScanning(
-      bool server_requests_prompt) const = 0;
 
   // Called when finishing the download, to decide whether to prompt the user
   // for local decryption or not.
@@ -196,9 +173,6 @@ class CheckClientDownloadRequestBase {
   // For sampled unsupported file types, replaces all URLs in
   // |client_download_request_| with their origin.
   void SanitizeRequest();
-
-  // Called when we decide whether or not to show a deep scanning prompt
-  virtual void LogDeepScanningPrompt(bool did_prompt) const = 0;
 
   // Returns whether we should skip sending a ping to Safe Browsing because the
   // provided password was incorrect.

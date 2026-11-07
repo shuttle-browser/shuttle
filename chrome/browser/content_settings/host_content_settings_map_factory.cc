@@ -15,13 +15,10 @@
 #include "chrome/browser/profiles/profile_key.h"
 #include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
-#include "chrome/browser/supervised_user/family_link_settings_service_factory.h"
 #include "chrome/common/buildflags.h"
 #include "components/content_settings/core/browser/content_settings_pref_provider.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/permissions/features.h"
-#include "components/supervised_user/core/browser/family_link_settings_service.h"
-#include "components/supervised_user/core/browser/supervised_user_content_settings_provider.h"
 #include "content/public/browser/browser_thread.h"
 #include "extensions/buildflags/buildflags.h"
 #include "ui/webui/webui_allowlist_provider.h"
@@ -66,7 +63,6 @@ HostContentSettingsMapFactory::HostContentSettingsMapFactory()
               // Ash Internals.
               .WithAshInternals(ProfileSelection::kOwnInstance)
               .Build()) {
-  DependsOn(supervised_user::FamilyLinkSettingsServiceFactory::GetInstance());
 #if BUILDFLAG(IS_ANDROID)
   DependsOn(
       safe_browsing::AdvancedProtectionStatusManagerFactory::GetInstance());
@@ -92,7 +88,8 @@ HostContentSettingsMapFactory::~HostContentSettingsMapFactory() = default;
 // static
 HostContentSettingsMap* HostContentSettingsMapFactory::GetForProfile(
     content::BrowserContext* browser_context) {
-  DCHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::UI));
+  CHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::UI),
+        base::NotFatalUntil::M161);
 
   return static_cast<HostContentSettingsMap*>(
       GetInstance()->GetServiceForBrowserContext(browser_context, true).get());
@@ -107,7 +104,7 @@ HostContentSettingsMapFactory* HostContentSettingsMapFactory::GetInstance() {
 scoped_refptr<RefcountedKeyedService>
     HostContentSettingsMapFactory::BuildServiceInstanceFor(
     content::BrowserContext* context) const {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   Profile* profile = static_cast<Profile*>(context);
   // extensions::ContentSettingsService::Get() needs the original profile.
@@ -158,19 +155,6 @@ scoped_refptr<RefcountedKeyedService>
       std::make_unique<extensions::ExtensionInstallTimePermissionProvider>(
           context, extensions::ExtensionRegistry::Get(context)));
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-
-  supervised_user::FamilyLinkSettingsService* family_link_settings_service =
-      supervised_user::FamilyLinkSettingsServiceFactory::GetForKey(
-          profile->GetProfileKey());
-  // This may be null in testing.
-  if (family_link_settings_service) {
-    std::unique_ptr<supervised_user::SupervisedUserContentSettingsProvider>
-        supervised_provider(
-            new supervised_user::SupervisedUserContentSettingsProvider(
-                family_link_settings_service));
-    settings_map->RegisterProvider(ProviderType::kSupervisedProvider,
-                                   std::move(supervised_provider));
-  }
 
 #if BUILDFLAG(IS_ANDROID)
   if (!profile->IsOffTheRecord()) {

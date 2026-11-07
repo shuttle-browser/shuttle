@@ -35,6 +35,10 @@ BROWSER_TEST_SUITES = [
 # The max number of tests to run on a batch during the test run.
 MAX_BATCH_SIZE = 256
 
+# Browser tests run each test in its own process, so are much slower than other
+# gtests. Batches must complete within the batch timeout (10x --shard-timeout).
+_BROWSER_TEST_MAX_BATCH_SIZE = 64
+
 RUN_IN_SUB_THREAD_TEST_SUITES = [
     # Multiprocess tests should be run outside of the main thread.
     'base_unittests',  # file_locking_unittest.cc uses a child process.
@@ -44,29 +48,6 @@ RUN_IN_SUB_THREAD_TEST_SUITES = [
     'mojo_perftests',
     'mojo_unittests',
     'net_unittests',
-]
-
-
-# Used for filtering large data deps at a finer grain than what's allowed in
-# isolate files since pushing deps to devices is expensive.
-# Wildcards are allowed.
-_DEPS_EXCLUSION_LIST = [
-    'chrome/test/data/extensions/api_test',
-    'chrome/test/data/extensions/secure_shell',
-    'chrome/test/data/firefox*',
-    'chrome/test/data/gpu',
-    'chrome/test/data/image_decoding',
-    'chrome/test/data/import',
-    'chrome/test/data/page_cycler',
-    'chrome/test/data/perf',
-    'chrome/test/data/pyauto_private',
-    'chrome/test/data/safari_import',
-    'chrome/test/data/scroll',
-    'chrome/test/data/third_party',
-    'third_party/hunspell_dictionaries/*.dic',
-    # crbug.com/258690
-    'webkit/data/bmp_decoder',
-    'webkit/data/ico_decoder',
 ]
 
 
@@ -158,7 +139,7 @@ def ParseGTestListTests(raw_list):
                 current = test_case
         else:
             test = test.strip()
-            if test and not 'YOU HAVE' in test:
+            if test and 'YOU HAVE' not in test:
                 test_name = test.split()[0]
                 ret += [current + test_name]
     return ret
@@ -207,7 +188,7 @@ def ParseGTestOutput(output, symbolizer, device_abi):
                 )
             )
 
-    for l in output:
+    for l in output:  # noqa: E741
         matcher = _RE_TEST_STATUS.match(l)
         launcher_main_start_match = _RE_LAUNCHER_MAIN_START.match(l)
         if skipping_failure_summary:
@@ -478,24 +459,20 @@ class GtestTestInstance(test_instance.TestInstance):
             if os.path.exists(exe_dist_dir):
                 self._exe_dist_dir = exe_dist_dir
 
-        incremental_part = ''
-        if args.test_apk_incremental_install_json:
-            incremental_part = '_incremental'
-
-        self._test_launcher_batch_limit = MAX_BATCH_SIZE
+        max_batch_size = MAX_BATCH_SIZE
+        if self._suite in BROWSER_TEST_SUITES:
+            max_batch_size = _BROWSER_TEST_MAX_BATCH_SIZE
+        self._test_launcher_batch_limit = max_batch_size
         if (
             args.test_launcher_batch_limit
-            and 0 < args.test_launcher_batch_limit < MAX_BATCH_SIZE
+            and 0 < args.test_launcher_batch_limit < max_batch_size
         ):
             self._test_launcher_batch_limit = args.test_launcher_batch_limit
 
         apk_path = os.path.join(
             constants.GetOutDirectory(),
             '%s_apk' % self._suite,
-            '%s-debug%s.apk' % (self._suite, incremental_part),
-        )
-        self._test_apk_incremental_install_json = (
-            args.test_apk_incremental_install_json
+            '%s-debug.apk' % self._suite,
         )
         if not os.path.exists(apk_path):
             self._apk_helper = None
@@ -539,6 +516,7 @@ class GtestTestInstance(test_instance.TestInstance):
 
         self._data_deps_delegate = data_deps_delegate
         self._runtime_deps_path = args.runtime_deps_path
+        self._device_data_filters = args.device_data_filters
         if not self._runtime_deps_path:
             logging.warning('No data dependencies will be pushed.')
 
@@ -567,7 +545,7 @@ class GtestTestInstance(test_instance.TestInstance):
             self._flags.extend(args.command_line_flags)
         if args.device_flags_file:
             with open(args.device_flags_file) as f:
-                stripped_lines = (l.strip() for l in f)
+                stripped_lines = (l.strip() for l in f)  # noqa: E741
                 self._flags.extend(flag for flag in stripped_lines if flag)
         if args.run_disabled:
             self._flags.append('--gtest_also_run_disabled_tests')
@@ -677,10 +655,6 @@ class GtestTestInstance(test_instance.TestInstance):
         return self._symbolizer
 
     @property
-    def test_apk_incremental_install_json(self):
-        return self._test_apk_incremental_install_json
-
-    @property
     def test_launcher_batch_limit(self):
         return self._test_launcher_batch_limit
 
@@ -720,7 +694,10 @@ class GtestTestInstance(test_instance.TestInstance):
                     'debuggable_apks = true in GN args'
                 )
         self._data_deps.extend(
-            self._data_deps_delegate(self._runtime_deps_path)
+            self._data_deps_delegate(
+                self._runtime_deps_path,
+                device_data_filters=self._device_data_filters,
+            )
         )
         if self._proguard_mapping_path:
             self._deobfuscator = deobfuscator.DeobfuscatorPool(
@@ -830,7 +807,7 @@ class GtestTestInstance(test_instance.TestInstance):
             with open(disabled_tests_file_path) as disabled_tests_file:
                 disabled_filter_items += [
                     '%s' % l
-                    for l in (line.strip() for line in disabled_tests_file)
+                    for l in (line.strip() for line in disabled_tests_file)  # noqa: E741
                     if l and not l.startswith('#')
                 ]
 

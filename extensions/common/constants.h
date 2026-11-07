@@ -423,6 +423,10 @@ inline constexpr char kGoogleSheetsAppId[] = "felcaaldnbdncclmgdcncolpebgiejap";
 // The extension id of the Google Slides application.
 inline constexpr char kGoogleSlidesAppId[] = "aapocclcgogkmnckokdopfmhonfmgoek";
 
+// The extension id of the in-app payments support application.
+inline constexpr char kInAppPaymentsSupportAppId[] =
+    "nmmhkkegccagdldgiimedpiccmgmieda";
+
 #if BUILDFLAG(IS_CHROMEOS)
 // The id of the testing extension allowed in the signin profile.
 inline constexpr char kSigninProfileTestExtensionId[] =
@@ -552,14 +556,6 @@ inline constexpr char kDocsOfflineExtensionId[] =
 
 // This is used extensively, generally as a key in a dictionary.
 inline constexpr char kId[] = "id";
-
-// The key name of extension request timestamp used by the
-// enterprise_reporting::kCloudExtensionRequestIds preference.
-inline constexpr char kExtensionRequestTimestamp[] = "timestamp";
-
-// The key name of the extension workflow request justification used by the
-// enterprise_reporting::kCloudExtensionRequestIds preference.
-inline constexpr char kExtensionWorkflowJustification[] = "justification";
 
 }  // namespace extension_misc
 

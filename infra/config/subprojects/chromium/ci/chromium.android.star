@@ -412,7 +412,7 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "android_builder",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "x86",
@@ -465,7 +465,6 @@ ci.thin_tester(
             "10-x86-emulator",
             "emulator-4-cores",
             "linux-jammy",
-            "x86-64",
         ],
     ),
     targets_settings = targets.settings(
@@ -725,6 +724,7 @@ ci.builder(
         ],
     ),
     cores = 32,
+    ssd = None,
     # This builder uses almost as much disk space as is available on a standard
     # VM, which causes issues if there are any caches from other builders. So,
     # target higher disk space instances.
@@ -802,7 +802,7 @@ ci.builder(
         configs = [
             "android_builder",
             "enable_android_secondary_abi",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "arm64",
@@ -867,7 +867,6 @@ ci.builder(
             "emulator-8-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "android_browsertests": targets.mixin(
@@ -1000,7 +999,6 @@ ci.builder(
             "emulator-8-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "chrome_public_test_apk": targets.mixin(
@@ -1042,8 +1040,8 @@ ci.builder(
             "12l-x64-emulator",
             "emulator-8-cores",
             "has_native_resultdb_integration",
+            "isolate_profile_data",
             "linux-jammy",
-            "x86-64",
         ],
     ),
     ssd = None,
@@ -1174,7 +1172,7 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "android_builder",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "x64",
@@ -1192,7 +1190,6 @@ ci.builder(
             "15-x64-emulator",
             "emulator-8-cores",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "bf_cache_content_browsertests": targets.mixin(
@@ -1718,7 +1715,6 @@ ci.thin_tester(
             "emulator-8-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
     ),
     ssd = None,
@@ -1767,7 +1763,6 @@ ci.thin_tester(
             "emulator-8-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
     ),
     ssd = None,
@@ -1817,7 +1812,6 @@ ci.thin_tester(
             "has_native_resultdb_integration",
             "isolate_profile_data",
             "linux-jammy",
-            "x86-64",
         ],
     ),
     ssd = None,
@@ -1867,7 +1861,6 @@ ci.thin_tester(
             "has_native_resultdb_integration",
             "isolate_profile_data",
             "linux-jammy",
-            "x86-64",
         ],
     ),
     ssd = None,
@@ -1917,7 +1910,6 @@ ci.thin_tester(
             "has_native_resultdb_integration",
             "isolate_profile_data",
             "linux-jammy",
-            "x86-64",
         ],
     ),
     ssd = None,
@@ -1966,7 +1958,6 @@ ci.thin_tester(
             "emulator-4-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
     ),
     ssd = None,
@@ -2015,7 +2006,6 @@ ci.thin_tester(
             "emulator-4-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "net_unittests": targets.mixin(
@@ -2071,7 +2061,6 @@ ci.thin_tester(
             "emulator-4-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "net_unittests": targets.mixin(
@@ -2129,7 +2118,6 @@ ci.thin_tester(
             "emulator-4-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "net_unittests": targets.mixin(
@@ -2185,7 +2173,6 @@ ci.thin_tester(
             "emulator-4-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
     ),
     ssd = None,
@@ -2358,7 +2345,6 @@ ci.builder(
             "10-x86-emulator",
             "emulator-4-cores",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "base_unittests_android_death_tests": targets.mixin(
@@ -2477,6 +2463,8 @@ ci.builder(
                 ],
                 ci_only = True,
             ),
+            # TODO(crbug.com/579036143): Remove once e4 failures are fixed.
+            "ui_junit_tests": "e2-standard-8",
             # If you change this, make similar changes in android-x86-code-coverage
             "webview_instrumentation_test_apk_multiple_process_mode": targets.mixin(
                 swarming = targets.swarming(
@@ -2561,12 +2549,12 @@ ci.builder(
             "10-x86-emulator",
             "emulator-4-cores",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "android_browsertests": targets.mixin(
                 args = [
                     "--test-launcher-filter-file=../../testing/buildbot/filters/android.emulator_10.android_browsertests.filter",
+                    "--test-launcher-filter-file=../../testing/buildbot/filters/android.phone.android_browsertests.filter",
                 ],
                 ci_only = True,
                 swarming = targets.swarming(
@@ -2585,6 +2573,9 @@ ci.builder(
             ),
             "base_unittests_android_death_tests": targets.mixin(
                 ci_only = True,
+            ),
+            "blink_unittests": targets.mixin(
+                enable_rts_filtering = True,
             ),
             "chrome_public_test_apk": targets.mixin(
                 args = [
@@ -2607,11 +2598,15 @@ ci.builder(
                     "--disable-field-trial-config",
                     "--skia-gold-consider-unsupported",
                 ],
+                enable_rts_filtering = True,
             ),
             "components_browsertests": targets.mixin(
                 swarming = targets.swarming(
                     shards = 4,
                 ),
+            ),
+            "components_unittests": targets.mixin(
+                enable_rts_filtering = True,
             ),
             "content_browsertests": targets.mixin(
                 args = [
@@ -2622,21 +2617,6 @@ ci.builder(
                     dimensions = {
                         # use 8-core to shorten runtime
                         "cores": "8",
-                    },
-                    optional_dimensions = {
-                        # TODO(crrev.com/541675870): Remove x86-64-n4 when migration is done.
-                        # Wait 30 seconds for n4 cpu with cache, wait 30 seconds for n4 cpu
-                        # wait 60 seconds for any bot with a cache.
-                        30: {
-                            "cpu": "x86-64-n4",
-                            "caches": "android_29_google_apis_x86",
-                        },
-                        60: {
-                            "cpu": "x86-64-n4",
-                        },
-                        120: {
-                            "caches": "android_29_google_apis_x86",
-                        },
                     },
                     shards = 75,
                 ),
@@ -2649,6 +2629,7 @@ ci.builder(
                     "--disable-field-trial-config",
                     "--skia-gold-consider-unsupported",
                 ],
+                enable_rts_filtering = True,
                 swarming = targets.swarming(
                     dimensions = {
                         # use 8-core to shorten runtime
@@ -2701,6 +2682,8 @@ ci.builder(
                 ],
                 ci_only = True,
             ),
+            # TODO(crbug.com/579036143): Remove once e4 failures are fixed.
+            "ui_junit_tests": "e2-standard-8",
             "webview_instrumentation_test_apk_multiple_process_mode": targets.mixin(
                 args = [
                     "--disable-field-trial-config",
@@ -2763,7 +2746,7 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "android_builder",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "x86",
@@ -2781,7 +2764,6 @@ ci.builder(
             "emulator-4-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "android_browsertests": targets.mixin(
@@ -2898,7 +2880,7 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "android_builder",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "x64",
@@ -2918,7 +2900,6 @@ ci.builder(
             "has_native_resultdb_integration",
             "isolate_profile_data",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "android_browsertests": targets.mixin(
@@ -3068,7 +3049,7 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "android_builder",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "x64",
@@ -3087,7 +3068,6 @@ ci.builder(
             "emulator-8-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "android_browsertests": targets.mixin(
@@ -3208,7 +3188,7 @@ ci.builder(
         configs = [
             "android_builder",
             "android_with_static_analysis",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "arm64",
@@ -3233,6 +3213,9 @@ ci.builder(
                 ci_only = True,
             ),
             "android_browsertests": targets.mixin(
+                args = [
+                    "--test-launcher-filter-file=../../testing/buildbot/filters/android.phone.android_browsertests.filter",
+                ],
                 # TODO Re-enable on CQ once the high
                 # pending time is gone
                 ci_only = True,
@@ -3326,7 +3309,7 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "android_builder",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "x64",
@@ -3344,15 +3327,8 @@ ci.builder(
             "emulator-8-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
-            "android_browsertests": targets.mixin(
-                args = [
-                    # https://crbug.com/361042311
-                    "--gtest_filter=-All/SharedStorageChromeBrowserTest.CrossOriginWorklet_SelectURL_Success/*",
-                ],
-            ),
             "android_sync_integration_tests": targets.mixin(
                 args = [
                     "--emulator-debug-tags=all,-qemud,-sensors",
@@ -3497,7 +3473,7 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "android_builder",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "x64",
@@ -3513,26 +3489,12 @@ ci.builder(
             "emulator-8-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
-        per_test_modifications = {
-            "chrome_public_test_apk": targets.mixin(
-                args = [
-                    "--test-launcher-filter-file=../../testing/buildbot/filters/android.emulator_14_automotive_landscape.chrome_public_test_apk.filter",
-                ],
-            ),
-            "chrome_public_unit_test_apk": targets.mixin(
-                args = [
-                    "--test-launcher-filter-file=../../testing/buildbot/filters/android.emulator_14_automotive_landscape.chrome_public_unit_test_apk.filter",
-                ],
-            ),
-        },
     ),
     targets_settings = targets.settings(
         os_type = targets.os_type.ANDROID,
     ),
     ssd = None,
-    gardener_rotations = args.ignore_default(None),
     #tree_closing = True,
     console_view_entry = consoles.console_view_entry(
         category = "builder_tester|x64",
@@ -3568,7 +3530,7 @@ ci.builder(
         configs = [
             "android_builder",
             "android_with_static_analysis",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "arm64",
@@ -3690,7 +3652,7 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "android_builder",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "x64",
@@ -3710,14 +3672,9 @@ ci.builder(
             "emulator-8-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "android_browsertests": targets.mixin(
-                args = [
-                    # https://crbug.com/361042311
-                    "--gtest_filter=-All/SharedStorageChromeBrowserTest.CrossOriginWorklet_SelectURL_Success/*",
-                ],
                 swarming = targets.swarming(
                     shards = 12,
                 ),
@@ -3847,7 +3804,7 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "android_builder",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "x64",
@@ -3863,7 +3820,6 @@ ci.builder(
             "emulator-8-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "chrome_public_test_apk": targets.mixin(
@@ -3920,7 +3876,7 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "android_builder",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "x64",
@@ -3936,7 +3892,6 @@ ci.builder(
             "emulator-8-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "android_browsertests": targets.remove(
@@ -4054,17 +4009,16 @@ ci.builder(
             "emulator-8-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "android_browsertests": targets.mixin(
                 swarming = targets.swarming(
-                    shards = 6,
+                    shards = 12,
                 ),
             ),
             "android_browsertests_no_fieldtrial": targets.mixin(
                 swarming = targets.swarming(
-                    shards = 6,
+                    shards = 12,
                 ),
             ),
             "base_unittests": targets.mixin(
@@ -4163,7 +4117,7 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "android_builder",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "x64",
@@ -4183,32 +4137,21 @@ ci.builder(
             "16-x64-emulator",
             "emulator-8-cores",
             "has_native_resultdb_integration",
+            "isolate_profile_data",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "android_browsertests": targets.mixin(
+                args = [
+                    "--test-launcher-filter-file=../../testing/buildbot/filters/android.phone.android_browsertests.filter",
+                ],
                 enable_rts_filtering = True,
                 swarming = targets.swarming(
-                    optional_dimensions = {
-                        # TODO(crrev.com/541675870): Remove x86-64-n4 when migration is done.
-                        # Wait 30 seconds for n4 cpu with cache, wait 30 seconds for n4 cpu
-                        # wait 60 seconds for any bot with a cache.
-                        30: {
-                            "cpu": "x86-64-n4",
-                            "caches": "android_36_google_apis_x64",
-                        },
-                        60: {
-                            "cpu": "x86-64-n4",
-                        },
-                        120: {
-                            "caches": "android_36_google_apis_x64",
-                        },
-                    },
                     shards = 25,
                 ),
             ),
             "android_sync_integration_tests": targets.mixin(
+                enable_rts_filtering = True,
                 swarming = targets.swarming(
                     shards = 4,
                 ),
@@ -4227,10 +4170,16 @@ ci.builder(
             "base_unittests_android_death_tests": targets.mixin(
                 ci_only = True,
             ),
+            "blink_unittests": targets.mixin(
+                enable_rts_filtering = True,
+            ),
             "components_browsertests": targets.mixin(
                 swarming = targets.swarming(
                     shards = 3,
                 ),
+            ),
+            "components_unittests": targets.mixin(
+                enable_rts_filtering = True,
             ),
             "content_shell_freeze_test": targets.mixin(
                 # TODO (b/511219429): Remove once stability is established and also add to android_rel_isolated_scripts
@@ -4243,23 +4192,11 @@ ci.builder(
                 ],
                 enable_rts_filtering = True,
                 swarming = targets.swarming(
-                    optional_dimensions = {
-                        # TODO(crrev.com/541675870): Remove x86-64-n4 when migration is done.
-                        # Wait 30 seconds for n4 cpu with cache, wait 30 seconds for n4 cpu
-                        # wait 60 seconds for any bot with a cache.
-                        30: {
-                            "cpu": "x86-64-n4",
-                            "caches": "android_36_google_apis_x64",
-                        },
-                        60: {
-                            "cpu": "x86-64-n4",
-                        },
-                        120: {
-                            "caches": "android_36_google_apis_x64",
-                        },
-                    },
                     shards = 47,
                 ),
+            ),
+            "chrome_public_unit_test_apk": targets.mixin(
+                enable_rts_filtering = True,
             ),
             "content_browsertests": targets.mixin(
                 args = [
@@ -4267,21 +4204,6 @@ ci.builder(
                 ],
                 ci_only = True,
                 swarming = targets.swarming(
-                    optional_dimensions = {
-                        # TODO(crrev.com/541675870): Remove x86-64-n4 when migration is done.
-                        # Wait 30 seconds for n4 cpu with cache, wait 30 seconds for n4 cpu
-                        # wait 60 seconds for any bot with a cache.
-                        30: {
-                            "cpu": "x86-64-n4",
-                            "caches": "android_36_google_apis_x64",
-                        },
-                        60: {
-                            "cpu": "x86-64-n4",
-                        },
-                        120: {
-                            "caches": "android_36_google_apis_x64",
-                        },
-                    },
                     shards = 40,
                 ),
             ),
@@ -4382,7 +4304,7 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "android_builder",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "x64",
@@ -4400,7 +4322,6 @@ ci.builder(
             "emulator-8-cores",
             "has_native_resultdb_integration",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "chrome_public_test_apk": targets.mixin(
@@ -4450,7 +4371,7 @@ ci.builder(
     gn_args = gn_args.config(
         configs = [
             "android_builder",
-            "release_builder",
+            "release_builder_with_dchecks",
             "remoteexec",
             "minimal_symbols",
             "x64",
@@ -4465,8 +4386,8 @@ ci.builder(
             "13-x64-emulator",
             "emulator-8-cores",
             "has_native_resultdb_integration",
+            "isolate_profile_data",
             "linux-jammy",
-            "x86-64",
         ],
         per_test_modifications = {
             "webview_64_cts_hostside_tests full_mode": targets.mixin(

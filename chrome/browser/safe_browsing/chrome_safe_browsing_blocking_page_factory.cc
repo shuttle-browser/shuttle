@@ -6,10 +6,6 @@
 
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
-#include "chrome/browser/enterprise/connectors/interstitials/enterprise_block_controller_client.h"
-#include "chrome/browser/enterprise/connectors/interstitials/enterprise_block_page.h"
-#include "chrome/browser/enterprise/connectors/interstitials/enterprise_warn_controller_client.h"
-#include "chrome/browser/enterprise/connectors/interstitials/enterprise_warn_page.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/interstitials/chrome_settings_page_helper.h"
 #include "chrome/browser/profiles/profile.h"
@@ -105,30 +101,6 @@ ChromeSafeBrowsingBlockingPageFactory::CreateSafeBrowsingPage(
       /*url_loader_for_testing=*/nullptr);
 }
 
-security_interstitials::SecurityInterstitialPage*
-ChromeSafeBrowsingBlockingPageFactory::CreateEnterpriseWarnPage(
-    BaseUIManager* ui_manager,
-    content::WebContents* web_contents,
-    const GURL& main_frame_url,
-    const SafeBrowsingBlockingPage::UnsafeResourceList& unsafe_resources) {
-  return new EnterpriseWarnPage(
-      ui_manager, web_contents, main_frame_url, unsafe_resources,
-      std::make_unique<EnterpriseWarnControllerClient>(web_contents,
-                                                       main_frame_url));
-}
-
-security_interstitials::SecurityInterstitialPage*
-ChromeSafeBrowsingBlockingPageFactory::CreateEnterpriseBlockPage(
-    BaseUIManager* ui_manager,
-    content::WebContents* web_contents,
-    const GURL& main_frame_url,
-    const SafeBrowsingBlockingPage::UnsafeResourceList& unsafe_resources) {
-  return new EnterpriseBlockPage(
-      web_contents, main_frame_url, unsafe_resources,
-      std::make_unique<EnterpriseBlockControllerClient>(web_contents,
-                                                        main_frame_url));
-}
-
 ChromeSafeBrowsingBlockingPageFactory::ChromeSafeBrowsingBlockingPageFactory() =
     default;
 
@@ -141,7 +113,7 @@ ChromeSafeBrowsingBlockingPageFactory::CreateControllerClient(
     std::optional<base::TimeTicks> blocked_page_shown_timestamp) {
   Profile* profile =
       Profile::FromBrowserContext(web_contents->GetBrowserContext());
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M162);
 
   std::unique_ptr<ContentMetricsHelper> metrics_helper =
       std::make_unique<ContentMetricsHelper>(

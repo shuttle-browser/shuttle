@@ -17,7 +17,7 @@ import {RestartType} from '../relaunch_mixin_lit.js';
 </if><!-- chromeos -->
 <if expr="not is_chromeos">
     ${!this.shouldUseMetricsConsentRestructure_ ? html`
-      <div class="cr-row hr">
+      <div class="cr-row hr toggle-button-wrapper">
         <div class="flex cr-padded-text">
           <div id="metricsReportingLabel">
             $i18n{enablePersonalizationLogging}
@@ -89,7 +89,7 @@ import {RestartType} from '../relaunch_mixin_lit.js';
         it is alays selected but disabled. -->
     ${this.showSearchAggregatorSuggest_ ? html`
       <settings-toggle-button id="searchAggregatorSuggestToggle"
-          .pref="${this.searchAggregatorSuggestFakePref_}"
+          pref-key="synthetic.settings.search_aggregator_suggest"
           disabled
           class="hr"
           label="$i18n{searchAggregatorSuggestPref}"

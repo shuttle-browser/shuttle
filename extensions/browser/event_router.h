@@ -488,7 +488,9 @@ class EventRouter : public KeyedService,
 
   // Reports a bad message when `process` is not authorized for `extension_id`,
   // recording crash keys to help diagnose unexpected renderer kills.
+  // `event_name` is the event whose listener was being updated.
   void ReportUnauthorizedExtensionProcess(const ExtensionId& extension_id,
+                                          std::string_view event_name,
                                           content::RenderProcessHost& process);
 
   // Validates a main-thread listener owner from a renderer-originated message.
@@ -499,6 +501,7 @@ class EventRouter : public KeyedService,
   // reported).
   bool ValidateMainThreadListenerOwner(
       const mojom::EventListenerOwner& listener_owner,
+      std::string_view event_name,
       content::RenderProcessHost& process,
       bool require_extension_process);
 
@@ -506,6 +509,7 @@ class EventRouter : public KeyedService,
   // acting for an extension-owned worker scope that `process` may host.
   bool ValidateServiceWorkerListenerForExtension(
       const ExtensionId& extension_id,
+      std::string_view event_name,
       const GURL& worker_scope_url,
       content::RenderProcessHost& process);
 
@@ -821,28 +825,6 @@ struct Event {
   // and limit usages of this constructor and introduce "include incognito"
   // option to a constructor version for clients that need to dispatch events to
   // related browser_contexts. See https://crbug.com/40522431.
-  Event(events::HistogramValue histogram_value,
-        std::string_view event_name,
-        base::ListValue event_args);
-
-  Event(events::HistogramValue histogram_value,
-        std::string_view event_name,
-        base::ListValue event_args,
-        content::BrowserContext* restrict_to_browser_context,
-        std::optional<mojom::ContextType> restrict_to_context_type =
-            std::nullopt);
-
-  Event(events::HistogramValue histogram_value,
-        std::string_view event_name,
-        base::ListValue event_args,
-        content::BrowserContext* restrict_to_browser_context,
-        std::optional<mojom::ContextType> restrict_to_context_type,
-        const GURL& event_url,
-        EventRouter::UserGestureState user_gesture,
-        mojom::EventFilteringInfoPtr info,
-        bool lazy_background_active_on_dispatch = false,
-        base::TimeTicks dispatch_start_time = base::TimeTicks{});
-
   Event(events::HistogramValue histogram_value,
         std::string_view event_name,
         scoped_refptr<const EventArgs> event_args);

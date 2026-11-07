@@ -14,6 +14,7 @@
 #include "third_party/blink/renderer/core/css/css_custom_font_data.h"
 #include "third_party/blink/renderer/core/css/css_font_face.h"
 #include "third_party/blink/renderer/core/css/font_face_set_document.h"
+#include "third_party/blink/renderer/core/css/ift_custom_font_data.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
@@ -34,7 +35,6 @@
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/text/strcat.h"
 
@@ -161,9 +161,12 @@ RemoteFontFaceSource::RemoteFontFaceSource(
 RemoteFontFaceSource::~RemoteFontFaceSource() = default;
 
 Document* RemoteFontFaceSource::GetDocument() const {
-  auto* window =
-      DynamicTo<LocalDOMWindow>(font_selector_->GetExecutionContext());
+  auto* window = DynamicTo<LocalDOMWindow>(GetExecutionContext());
   return window ? window->document() : nullptr;
+}
+
+ExecutionContext* RemoteFontFaceSource::GetExecutionContext() const {
+  return font_selector_->GetExecutionContext();
 }
 
 bool RemoteFontFaceSource::IsLoading() const {
@@ -179,7 +182,7 @@ bool RemoteFontFaceSource::IsValid() const {
 }
 
 void RemoteFontFaceSource::NotifyFinished(Resource* resource) {
-  ExecutionContext* execution_context = font_selector_->GetExecutionContext();
+  ExecutionContext* execution_context = GetExecutionContext();
   if (!execution_context) {
     return;
   }
@@ -201,10 +204,8 @@ void RemoteFontFaceSource::NotifyFinished(Resource* resource) {
   // SRI applies to fonts loaded via preload (ForceIntegrityChecks) and via
   // CSS URL modifiers (e.g. integrity() in @font-face src). In either case
   // we check here and simulate a network error on failure.
-  const bool check_integrity =
-      resource->ForceIntegrityChecks() ||
-      (RuntimeEnabledFeatures::CSSResourceIntegrityEnforcementEnabled() &&
-       !resource->GetIntegrityMetadata().empty());
+  const bool check_integrity = resource->ForceIntegrityChecks() ||
+                               !resource->GetIntegrityMetadata().empty();
   if (check_integrity) {
     resource->IntegrityReport().SendReports(execution_context);
   }
@@ -215,6 +216,9 @@ void RemoteFontFaceSource::NotifyFinished(Resource* resource) {
   DCHECK(!custom_font_data_);
   if (resource->PassedIntegrityChecks() || !check_integrity) {
     custom_font_data_ = font->GetCustomFontData();
+    if (RuntimeEnabledFeatures::IncrementalFontTransferEnabled()) {
+      ift_custom_font_data_ = IftCustomFontData::MaybeCreate(this, *font);
+    }
   }
   url_ = resource->Url().GetString();
 
@@ -310,6 +314,23 @@ bool RemoteFontFaceSource::UpdatePeriod() {
   return changed;
 }
 
+void RemoteFontFaceSource::UpdateCustomFontData(
+    const FontCustomPlatformData* custom_font_data) {
+  CHECK(custom_font_data);
+  custom_font_data_ = custom_font_data;
+  ClearTable();
+  InvalidateFontFace();
+}
+
+void RemoteFontFaceSource::InvalidateFontFace() {
+  if (face_->FallbackVisibilityChanged(this)) {
+    // TODO(wmedrano): Only invalidate `FontFallbackList`s that use this font
+    // instead of all `FontFallbackList`s.
+    font_selector_->FontFaceInvalidated(
+        FontInvalidationReason::kGeneralInvalidation);
+  }
+}
+
 bool RemoteFontFaceSource::ShouldTriggerWebFontsIntervention() {
   if (!IsA<LocalDOMWindow>(font_selector_->GetExecutionContext())) {
     return false;
@@ -342,6 +363,9 @@ const SimpleFontData* RemoteFontFaceSource::CreateFontData(
 
   histograms_.RecordFallbackTime();
 
+  CustomFontData* custom_font_data =
+      ift_custom_font_data_ ? ift_custom_font_data_.Get()
+                            : MakeGarbageCollected<CustomFontData>();
   return MakeGarbageCollected<SimpleFontData>(
       custom_font_data_->GetFontPlatformData(
           font_description.EffectiveFontSize(),
@@ -350,13 +374,15 @@ const SimpleFontData* RemoteFontFaceSource::CreateFontData(
               font_description.SyntheticBoldAllowed(),
           font_description.IsSyntheticItalic() &&
               font_description.SyntheticItalicAllowed(),
+          font_description.GetStyleSyntax() ==
+              FontDescription::StyleSyntax::kItalicKeyword,
           font_description.GetFontSelectionRequest(),
           font_selection_capabilities, font_description.FontOpticalSizing(),
           font_description.TextRendering(),
           font_description.ResolveFontFeatures(),
           font_description.Orientation(), font_description.VariationSettings(),
           font_description.GetFontPalette()),
-      MakeGarbageCollected<CustomFontData>());
+      custom_font_data);
 }
 
 const SimpleFontData* RemoteFontFaceSource::CreateLoadingFallbackFontData(
@@ -439,6 +465,7 @@ void RemoteFontFaceSource::Trace(Visitor* visitor) const {
   visitor->Trace(face_);
   visitor->Trace(font_selector_);
   visitor->Trace(custom_font_data_);
+  visitor->Trace(ift_custom_font_data_);
   CSSFontFaceSource::Trace(visitor);
   FontResourceClient::Trace(visitor);
 }

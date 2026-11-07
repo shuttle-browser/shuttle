@@ -11,8 +11,6 @@
 #include "base/functional/callback_forward.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_occlusion_observer.h"
-#include "chrome/browser/picture_in_picture/scoped_picture_in_picture_occlusion_observation.h"
 #include "chrome/browser/ui/views/controls/site_icon_text_and_origin_view.h"
 #include "chrome/browser/ui/views/shortcuts/create_desktop_shortcut.h"
 #include "content/public/browser/visibility.h"
@@ -34,8 +32,7 @@ std::u16string AppendProfileNameToTitleIfNeeded(Profile* profile,
                                                 std::u16string old_title);
 
 class CreateDesktopShortcutDelegate : public ui::DialogModelDelegate,
-                                      public content::WebContentsObserver,
-                                      public PictureInPictureOcclusionObserver {
+                                      public content::WebContentsObserver {
  public:
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kCreateShortcutDialogOkButtonId);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kCreateShortcutDialogTitleFieldId);
@@ -45,9 +42,6 @@ class CreateDesktopShortcutDelegate : public ui::DialogModelDelegate,
 
   ~CreateDesktopShortcutDelegate() override;
 
-  // Starts observing the create desktop shortcut dialog's widget for picture in
-  // picture occlusion if any.
-  void StartObservingForPictureInPictureOcclusion(views::Widget* dialog_widget);
 
   void OnAccept();
   void OnClose();
@@ -62,15 +56,11 @@ class CreateDesktopShortcutDelegate : public ui::DialogModelDelegate,
   void WebContentsDestroyed() override;
   void PrimaryPageChanged(content::Page& page) override;
 
-  // PictureInPictureOcclusionObserver overrides:
-  void OnOcclusionStateChanged(bool occluded) override;
-
  private:
   void CloseDialogAsIgnored();
 
   CreateShortcutDialogCallback final_callback_;
   std::u16string text_field_data_;
-  ScopedPictureInPictureOcclusionObservation occlusion_observation_{this};
   base::WeakPtrFactory<CreateDesktopShortcutDelegate> weak_ptr_factory_{this};
 };
 

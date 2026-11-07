@@ -18,8 +18,9 @@
 #include "base/notreached.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/media/webrtc/media_stream_capture_indicator.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/recently_audible_helper.h"
-#include "chrome/browser/vr/vr_tab_helper.h"
+#include "chrome/browser/ui/tabs/alert/child_tab_alert_helper.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/tabs/public/tab_alert.h"
 #include "components/tabs/public/tab_interface.h"
@@ -37,20 +38,21 @@ bool CompareAlerts::operator()(TabAlert first, TabAlert second) const {
   // Alerts are ordered from highest priority to be shown to lowest priority.
   static constexpr auto tab_alert_priority =
       base::MakeFixedFlatMap<TabAlert, int>(
-          {{TabAlert::kDesktopCapturing, 17},
-           {TabAlert::kTabCapturing, 16},
-           {TabAlert::kMediaRecording, 15},
-           {TabAlert::kAudioRecording, 14},
-           {TabAlert::kVideoRecording, 13},
-           {TabAlert::kBluetoothConnected, 12},
-           {TabAlert::kBluetoothScanActive, 11},
-           {TabAlert::kUsbConnected, 10},
-           {TabAlert::kHidConnected, 9},
-           {TabAlert::kSerialConnected, 8},
-           {TabAlert::kActorWaitingOnUser, 7},
-           {TabAlert::kActorAccessing, 6},
-           {TabAlert::kGlicAccessing, 5},
-           {TabAlert::kGlicSharing, 4},
+          {{TabAlert::kDesktopCapturing, 18},
+           {TabAlert::kTabCapturing, 17},
+           {TabAlert::kMediaRecording, 16},
+           {TabAlert::kAudioRecording, 15},
+           {TabAlert::kVideoRecording, 14},
+           {TabAlert::kBluetoothConnected, 13},
+           {TabAlert::kBluetoothScanActive, 12},
+           {TabAlert::kUsbConnected, 11},
+           {TabAlert::kHidConnected, 10},
+           {TabAlert::kSerialConnected, 9},
+           {TabAlert::kActorWaitingOnUser, 8},
+           {TabAlert::kActorAccessing, 7},
+           {TabAlert::kGlicAccessing, 6},
+           {TabAlert::kGlicSharing, 5},
+           {TabAlert::kAiModeSharing, 4},
            // NOTE: VR must take priority over the audio alert ones
            // because most VR content has audio and its usage is implied by the
            // VR icon.
@@ -93,14 +95,20 @@ TabAlertController::TabAlertController(TabInterface& tab)
       MediaCaptureDevicesDispatcher::GetInstance()
           ->GetMediaStreamCaptureIndicator()
           .get());
-  vr_tab_helper_observation_.Observe(
-      vr::VrTabHelper::FromWebContents(web_contents()));
-  recently_audible_subscription_ =
-      RecentlyAudibleHelper::FromWebContents(tab.GetContents())
-          ->RegisterRecentlyAudibleChangedCallback(base::BindRepeating(
-              &TabAlertController::OnRecentlyAudibleStateChanged,
-              base::Unretained(this)));
+  if (auto* audible_helper = RecentlyAudibleHelper::From(&tab)) {
+    recently_audible_subscription_ =
+        audible_helper->RegisterRecentlyAudibleChangedCallback(
+            base::BindRepeating(
+                &TabAlertController::OnRecentlyAudibleStateChanged,
+                base::Unretained(this)));
+  }
 
+  if (auto* child_alert_helper = ChildTabAlertHelper::From(&tab)) {
+    callback_subscriptions_.emplace_back(
+        child_alert_helper->RegisterChildAlertsStateChange(
+            base::BindRepeating(&TabAlertController::OnChildAlertsStateChange,
+                                base::Unretained(this))));
+  }
 }
 
 TabAlertController::~TabAlertController() = default;
@@ -113,16 +121,6 @@ const TabAlertController* TabAlertController::From(const TabInterface* tab) {
 // static:
 TabAlertController* TabAlertController::From(TabInterface* tab) {
   return Get(tab->GetUnownedUserDataHost());
-}
-
-// static
-std::optional<TabAlert> TabAlertController::GetAlertStateToShow(
-    const std::vector<TabAlert>& alert_states) {
-  if (alert_states.empty()) {
-    return std::nullopt;
-  }
-
-  return alert_states[0];
 }
 
 // static:
@@ -179,6 +177,9 @@ std::u16string TabAlertController::GetTabAlertStateText(
     case TabAlert::kGlicSharing:
       return l10n_util::GetStringUTF16(
           IDS_TOOLTIP_TAB_ALERT_STATE_GLIC_SHARING);
+    case TabAlert::kAiModeSharing:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_AI_MODE_SHARING);
     case TabAlert::kNone:
       NOTREACHED();
   }
@@ -222,6 +223,8 @@ int TabAlertController::GetAccessibleAlertStringId(const TabAlert alert_state) {
       return IDS_TAB_AX_LABEL_GLIC_ACCESSING;
     case TabAlert::kGlicSharing:
       return IDS_TAB_AX_LABEL_GLIC_SHARING;
+    case TabAlert::kAiModeSharing:
+      return IDS_TAB_AX_LABEL_AI_MODE_SHARING;
     case TabAlert::kNone:
       NOTREACHED();
   }
@@ -253,6 +256,7 @@ void TabAlertController::RecordCloseTabMetrics(const TabAlert alert_state) {
     case TabAlert::kActorAccessing:
     case TabAlert::kGlicAccessing:
     case TabAlert::kGlicSharing:
+    case TabAlert::kAiModeSharing:
     case TabAlert::kNone:
       break;
   }
@@ -285,14 +289,13 @@ void TabAlertController::OnDiscardContents(TabInterface* tab_interface,
                                            content::WebContents* new_contents) {
   tabs::ContentsObservingTabFeature::OnDiscardContents(
       tab_interface, old_contents, new_contents);
-  vr_tab_helper_observation_.Reset();
-  vr_tab_helper_observation_.Observe(
-      vr::VrTabHelper::FromWebContents(new_contents));
-  recently_audible_subscription_ =
-      RecentlyAudibleHelper::FromWebContents(new_contents)
-          ->RegisterRecentlyAudibleChangedCallback(base::BindRepeating(
-              &TabAlertController::OnRecentlyAudibleStateChanged,
-              base::Unretained(this)));
+  if (auto* audible_helper = RecentlyAudibleHelper::From(tab_interface)) {
+    recently_audible_subscription_ =
+        audible_helper->RegisterRecentlyAudibleChangedCallback(
+            base::BindRepeating(
+                &TabAlertController::OnRecentlyAudibleStateChanged,
+                base::Unretained(this)));
+  }
 }
 
 void TabAlertController::OnCapabilityTypesChanged(
@@ -333,7 +336,7 @@ void TabAlertController::DidUpdateAudioMutingState(bool muted) {
   // possible for a tab to be muted but never play audio, in such cases, the
   // muted alert should not show.
   RecentlyAudibleHelper* const audible_helper =
-      RecentlyAudibleHelper::FromWebContents(tab().GetContents());
+      RecentlyAudibleHelper::From(&tab());
   CHECK(audible_helper);
   ScopedAlertNotifier notifier(this);
   UpdateAlertState(TabAlert::kAudioMuting,
@@ -393,11 +396,6 @@ void TabAlertController::OnIsCapturingDisplayChanged(
   }
 }
 
-void TabAlertController::OnIsContentDisplayedInHeadsetChanged(bool state) {
-  ScopedAlertNotifier notifier(this);
-  UpdateAlertState(TabAlert::kVrPresentingInHeadset, state);
-}
-
 void TabAlertController::OnRecentlyAudibleStateChanged(bool was_audible) {
   // Muted alert state also needs to update when audible state changes to ensure
   // that the muted alert becomes active if the tab is already muted but is
@@ -406,6 +404,11 @@ void TabAlertController::OnRecentlyAudibleStateChanged(bool was_audible) {
   UpdateAlertState(TabAlert::kAudioPlaying, was_audible);
   UpdateAlertState(TabAlert::kAudioMuting,
                    was_audible && tab().GetContents()->IsAudioMuted());
+}
+
+void TabAlertController::OnChildAlertsStateChange() {
+  ScopedAlertNotifier notifier(this);
+  UpdateMediaAlert();
 }
 
 void TabAlertController::UpdateAlertState(TabAlert alert, bool is_active) {
@@ -427,11 +430,18 @@ void TabAlertController::UpdateMediaAlert() {
           ->GetMediaStreamCaptureIndicator()
           .get();
   content::WebContents* const web_contents = tab().GetContents();
+  const auto* child_alert_helper = ChildTabAlertHelper::From(&tab());
+  auto is_child_alert_active = [&](TabAlert alert) {
+    return child_alert_helper && child_alert_helper->IsChildAlertActive(alert);
+  };
+  const bool child_media = is_child_alert_active(TabAlert::kMediaRecording);
 
   const bool is_capturing_audio =
-      media_stream_capture_indicator->IsCapturingAudio(web_contents);
+      media_stream_capture_indicator->IsCapturingAudio(web_contents) ||
+      is_child_alert_active(TabAlert::kAudioRecording) || child_media;
   const bool is_capturing_video =
-      media_stream_capture_indicator->IsCapturingVideo(web_contents);
+      media_stream_capture_indicator->IsCapturingVideo(web_contents) ||
+      is_child_alert_active(TabAlert::kVideoRecording) || child_media;
 
   active_alerts_.erase(TabAlert::kMediaRecording);
   active_alerts_.erase(TabAlert::kVideoRecording);

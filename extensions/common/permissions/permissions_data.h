@@ -65,7 +65,7 @@ class PermissionsData {
   // have control over policy decisions.
   class PolicyDelegate {
    public:
-    virtual ~PolicyDelegate() {}
+    virtual ~PolicyDelegate() = default;
 
     // Returns true if script access should be blocked on this page.
     // Otherwise, default policy should decide.
@@ -228,6 +228,15 @@ class PermissionsData {
                                     int tab_id,
                                     std::string* error) const;
 
+  // Like GetPageAccess() and GetContentScriptAccess(), but match the
+  // extension's explicit or scriptable host patterns (respectively) against
+  // only the security origin of `document_url` (i.e. ignore the paths of both
+  // `document_url` and the patterns).
+  PageAccess GetPageAccessForSecurityOrigin(const GURL& document_url,
+                                            int tab_id) const;
+  PageAccess GetContentScriptAccessForSecurityOrigin(const GURL& document_url,
+                                                     int tab_id) const;
+
   // Returns true if the associated extension is allowed to obtain the contents
   // of a page as an image. Pages may contain multiple sources (e.g.,
   // example.com may embed google.com), so simply checking the top-frame's URL
@@ -306,6 +315,13 @@ class PermissionsData {
   // Must be called with `runtime_lock_` acquired.
   const PermissionSet* GetTabSpecificPermissions(int tab_id) const;
 
+  // Whether CanRunOnPage() matches URL patterns against the full document URL
+  // or against only its security origin (i.e. ignoring URL paths).
+  enum class PatternMatchMode {
+    kMatchUrl,
+    kMatchSecurityOrigin,
+  };
+
   // Returns whether or not the extension is permitted to run on the given page,
   // checking against `permitted_url_patterns` and `tab_url_patterns` in
   // addition to blocking special sites (like the webstore or chrome:// urls).
@@ -314,6 +330,7 @@ class PermissionsData {
                           const URLPatternSet& permitted_url_patterns,
                           const URLPatternSet& withheld_url_patterns,
                           const URLPatternSet* tab_url_patterns,
+                          PatternMatchMode match_mode,
                           std::string* error) const;
 
   // Check if a specific URL is blocked by policy from extension use at runtime.

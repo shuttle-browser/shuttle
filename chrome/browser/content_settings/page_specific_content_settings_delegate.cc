@@ -12,7 +12,6 @@
 #include "chrome/browser/media/webrtc/media_stream_capture_indicator.h"
 #include "chrome/browser/permissions/permission_decision_auto_blocker_factory.h"
 #include "chrome/browser/permissions/system/system_permission_settings.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/renderer_configuration.mojom.h"
@@ -137,7 +136,7 @@ void PageSpecificContentSettingsDelegate::OnCapturingStateChanged(
     content::WebContents* web_contents,
     ContentSettingsType type,
     bool is_capturing) {
-  DCHECK(web_contents);
+  CHECK(web_contents, base::NotFatalUntil::M161);
 
   PageSpecificContentSettings* pscs = PageSpecificContentSettings::GetForFrame(
       web_contents->GetPrimaryMainFrame());
@@ -149,12 +148,6 @@ void PageSpecificContentSettingsDelegate::OnCapturingStateChanged(
   }
 
   pscs->OnCapturingStateChanged(type, is_capturing);
-
-  content::WebContents* pip_web_contents =
-      PictureInPictureWindowManager::GetInstance()->GetChildWebContents();
-  if (pip_web_contents && pip_web_contents != web_contents) {
-    OnCapturingStateChanged(pip_web_contents, type, is_capturing);
-  }
 }
 
 void PageSpecificContentSettingsDelegate::UpdateLocationBar() {
@@ -177,16 +170,16 @@ void PageSpecificContentSettingsDelegate::UpdateLocationBar() {
 
   if (state.Has(PageSpecificContentSettings::kCameraAccessed) ||
       state.Has(PageSpecificContentSettings::kMicrophoneAccessed)) {
-    auto* permission_tracker =
-        permissions::PermissionRecoverySuccessRateTracker::FromWebContents(
-            web_contents());
+    if (auto* permission_tracker =
+            permissions::PermissionRecoverySuccessRateTracker::FromWebContents(
+                web_contents())) {
+      if (state.Has(PageSpecificContentSettings::kMicrophoneAccessed)) {
+        permission_tracker->TrackUsage(ContentSettingsType::MEDIASTREAM_MIC);
+      }
 
-    if (state.Has(PageSpecificContentSettings::kMicrophoneAccessed)) {
-      permission_tracker->TrackUsage(ContentSettingsType::MEDIASTREAM_MIC);
-    }
-
-    if (state.Has(PageSpecificContentSettings::kCameraAccessed)) {
-      permission_tracker->TrackUsage(ContentSettingsType::MEDIASTREAM_CAMERA);
+      if (state.Has(PageSpecificContentSettings::kCameraAccessed)) {
+        permission_tracker->TrackUsage(ContentSettingsType::MEDIASTREAM_CAMERA);
+      }
     }
   }
 }
@@ -265,23 +258,8 @@ PageSpecificContentSettingsDelegate::GetMicrophoneCameraState() {
 content::WebContents* PageSpecificContentSettingsDelegate::
     MaybeGetSyncedWebContentsForPictureInPicture(
         content::WebContents* web_contents) {
-  DCHECK(web_contents);
-  content::WebContents* parent_web_contents =
-      PictureInPictureWindowManager::GetInstance()->GetWebContents();
-  content::WebContents* child_web_contents =
-      PictureInPictureWindowManager::GetInstance()->GetChildWebContents();
-
-  // For document picture-in-picture window, return the opener web contents.
-  if (web_contents == child_web_contents) {
-    DCHECK(parent_web_contents);
-    return parent_web_contents;
-  }
-
-  // For browser window that has opened a document picture-in-picture window,
-  // return the PiP window web contents.
-  if ((web_contents == parent_web_contents) && child_web_contents) {
-    return child_web_contents;
-  }
+  CHECK(web_contents, base::NotFatalUntil::M161);
+  // Shuttle: no document picture-in-picture windows.
   return nullptr;
 }
 
@@ -320,8 +298,9 @@ void PageSpecificContentSettingsDelegate::OnContentBlocked(
 
 bool PageSpecificContentSettingsDelegate::IsBlockedOnSystemLevel(
     ContentSettingsType type) {
-  DCHECK(type == ContentSettingsType::MEDIASTREAM_MIC ||
-         type == ContentSettingsType::MEDIASTREAM_CAMERA);
+  CHECK(type == ContentSettingsType::MEDIASTREAM_MIC ||
+            type == ContentSettingsType::MEDIASTREAM_CAMERA,
+        base::NotFatalUntil::M161);
 
   return system_permission_settings::IsDenied(type);
 }
@@ -355,11 +334,9 @@ bool PageSpecificContentSettingsDelegate::IsFrameAllowlistedForJavaScript(
 
 bool PageSpecificContentSettingsDelegate::IsPiPWindow(
     content::WebContents* web_contents) {
-  DCHECK(web_contents);
-  content::WebContents* child_web_contents =
-      PictureInPictureWindowManager::GetInstance()->GetChildWebContents();
-
-  return child_web_contents == web_contents;
+  CHECK(web_contents, base::NotFatalUntil::M161);
+  // Shuttle: no document picture-in-picture windows.
+  return false;
 }
 
 void PageSpecificContentSettingsDelegate::PrimaryPageChanged(

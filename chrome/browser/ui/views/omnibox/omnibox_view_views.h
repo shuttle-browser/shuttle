@@ -92,13 +92,13 @@ class OmniboxViewViews
   // TODO(crbug.com/392015004): Remove this macro once it gets fixed.
   //
   // Both `OmniboxView` and `views::Textfield` (*1) have the
-  // `ADVANCED_MEMORY_SAFETY_CHECKS` macro, hence there is ambiguity about which
+  // `SANITIZED_OBJECT` macro, hence there is ambiguity about which
   // `operator new` should be used (although the two `operator new` are
   // eventually equivalent). Choose `OmniboxView` with no deep reason.
   //
   // (*1) Note that `views::Textfield` inherits from `views::View`, which has
-  // the `ADVANCED_MEMORY_SAFETY_CHECKS` macro.
-  INHERIT_MEMORY_SAFETY_CHECKS(OmniboxView);
+  // the `SANITIZED_OBJECT` macro.
+  INHERIT_SANITIZED_OBJECT(OmniboxView);
 
   METADATA_HEADER(OmniboxViewViews, views::Textfield)
 
@@ -286,6 +286,22 @@ class OmniboxViewViews
 
   void ClearAccessibilityLabel();
 
+  // Stops tail-eliding the text, so that it can scroll to keep the caret in
+  // view. `OnFocus()` does this for the focused classic omnibox. In Full WebUI
+  // mode the textfield never takes focus, so `OnMousePressed()` does it for the
+  // duration of a left press instead, letting the text follow a drag past its
+  // visible end.
+  void StopEliding();
+
+  // Elides the text again once a press is over (on release, capture loss, or
+  // a context menu handoff), undoing `StopEliding()` from `OnMousePressed()`.
+  // Does nothing while the textfield is focused.
+  void ElideAfterPress();
+
+  // Tail-elides the text and resets the scroll position, for when the
+  // textfield stops being where the user edits text.
+  void ElideAndResetScrollPosition();
+
   void SetAccessibilityLabel(const std::u16string& display_text,
                              const AutocompleteMatch& match,
                              bool notify_text_changed) override;
@@ -293,6 +309,11 @@ class OmniboxViewViews
   // Returns true if the user text was updated with the full URL (without
   // steady-state elisions).  |gesture| is the user gesture causing unelision.
   bool UnapplySteadyStateElisions(UnelisionGesture gesture);
+
+  // In Full WebUI mode, shows the WebUI searchbox menu instead of the views
+  // one. Returns true if handled.
+  bool HandOffContextMenuToWebUI(const gfx::Point& point,
+                                 ui::mojom::MenuSourceType source_type);
 
 #if BUILDFLAG(IS_MAC)
   void AnnounceFriendlySuggestionText();
@@ -402,6 +423,10 @@ class OmniboxViewViews
   // always be considered "user gesture-triggered", lest it always return BLOCK.
   void PermitExternalProtocolHandler();
 
+  // Opens the full WebUI omnibox popup and syncs native selection state to
+  // WebUI when double-click forwarding is enabled.
+  void OpenFullWebUIOmniboxPopup(bool query_zps, bool preserve_matches = false);
+
   // Drops dragged text and updates `output_drag_op` accordingly.
   void PerformDrop(const ui::DropTargetEvent& event,
                    ui::mojom::DragOperation& output_drag_op,
@@ -453,6 +478,14 @@ class OmniboxViewViews
   // release, potentially presenting the popup, which we don't want to do if the
   // user made a selection via a click-drag gesture.
   bool select_all_on_mouse_release_ = false;
+
+  // In Full WebUI mode, whether the current click gesture requested zero-prefix
+  // suggestions on mouse release. This is set by the single click that opens
+  // the popup and is carried over to the later clicks of the same multi-click
+  // gesture, so that those clicks keep the dropdown open. Those later clicks
+  // land on the newly opened popup, which forwards them to this view for a
+  // short time (see `OmniboxPopupFullPresenter::Show()`).
+  bool click_gesture_requested_zps_ = false;
 
   // Indicates if we want to select all text in the omnibox when we get a
   // GESTURE_TAP. We want to select all only when the textfield is not in focus

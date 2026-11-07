@@ -11,7 +11,6 @@
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "chrome/common/buildflags.h"
-#include "chrome/common/request_header_integrity/buildflags.h"
 #include "net/net_buildflags.h"
 #include "ui/base/unowned_user_data/user_data_factory.h"
 
@@ -32,16 +31,12 @@ class PlatformHandle;
 
 
 class ApplicationLocaleStorage;
-class AudioProcessMlModelForwarder;
 class BrowserProcess;
 
 namespace installer_downloader {
 class InstallerDownloaderController;
 }
 
-namespace optimization_guide {
-class OptimizationGuideGlobalFeature;
-}  // namespace optimization_guide
 
 namespace safe_browsing {
 class ApplicationAdvancedProtectionStatusDetector;
@@ -82,12 +77,6 @@ class SmartRestartMetricsObserver;
 namespace tabs_api {
 class TabDragSessionManager;
 }
-
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-namespace request_header_integrity {
-class ChromeCompaneroHost;
-}
-#endif
 
 // This class owns the core controllers for features that are globally
 // scoped on desktop and Android. It can be subclassed by tests to perform
@@ -156,15 +145,6 @@ class GlobalFeatures {
   }
 #endif
 
-  optimization_guide::OptimizationGuideGlobalFeature*
-  optimization_guide_global_feature() {
-    return optimization_guide_global_feature_.get();
-  }
-
-  AudioProcessMlModelForwarder* audio_process_ml_model_forwarder() {
-    return audio_process_ml_model_forwarder_.get();
-  }
-
   safe_browsing::ApplicationAdvancedProtectionStatusDetector*
   application_advanced_protection_status_detector() {
     return application_advanced_protection_status_detector_.get();
@@ -200,12 +180,6 @@ class GlobalFeatures {
     return tab_drag_session_manager_.get();
   }
 
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-  request_header_integrity::ChromeCompaneroHost* chrome_companero_host() {
-    return chrome_companero_host_.get();
-  }
-#endif
-
  protected:
   GlobalFeatures();
 
@@ -220,10 +194,6 @@ class GlobalFeatures {
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   virtual std::unique_ptr<scheduled_restart::ScheduledRestartManager>
   CreateScheduledRestartManager();
-#endif
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-  virtual std::unique_ptr<request_header_integrity::ChromeCompaneroHost>
-  CreateChromeCompaneroHost();
 #endif
 
  private:
@@ -242,13 +212,6 @@ class GlobalFeatures {
   std::unique_ptr<installer_downloader::InstallerDownloaderController>
       installer_downloader_controller_;
 #endif
-
-  std::unique_ptr<optimization_guide::OptimizationGuideGlobalFeature>
-      optimization_guide_global_feature_;
-
-  // Must be outlived by `optimization_guide_global_feature_`.
-  std::unique_ptr<AudioProcessMlModelForwarder>
-      audio_process_ml_model_forwarder_;
 
   std::unique_ptr<safe_browsing::ApplicationAdvancedProtectionStatusDetector>
       application_advanced_protection_status_detector_;
@@ -293,10 +256,6 @@ class GlobalFeatures {
 
   std::unique_ptr<GlassFrameService> glass_frame_service_;
 
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-  std::unique_ptr<request_header_integrity::ChromeCompaneroHost>
-      chrome_companero_host_;
-#endif
 };
 
 #endif  // CHROME_BROWSER_GLOBAL_FEATURES_H_

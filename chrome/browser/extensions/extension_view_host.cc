@@ -35,7 +35,7 @@ ExtensionViewHost::ExtensionViewHost(
                     host_type),
       delegate_(std::move(delegate)) {
   // Not used for panels, see PanelHost.
-  DCHECK(host_type == mojom::ViewType::kExtensionPopup);
+  CHECK(host_type == mojom::ViewType::kExtensionPopup, base::NotFatalUntil::M161);
 
   host_contents()->SetIgnoreZoomGestures(true);
 }
@@ -103,13 +103,13 @@ content::WebContents* ExtensionViewHost::OpenURLFromTab(
         navigation_handle_callback) {
   // Allowlist the dispositions we will allow to be opened.
   switch (params.disposition) {
-    case WindowOpenDisposition::SINGLETON_TAB:
-    case WindowOpenDisposition::NEW_FOREGROUND_TAB:
-    case WindowOpenDisposition::NEW_BACKGROUND_TAB:
-    case WindowOpenDisposition::NEW_POPUP:
-    case WindowOpenDisposition::NEW_WINDOW:
-    case WindowOpenDisposition::SAVE_TO_DISK:
-    case WindowOpenDisposition::OFF_THE_RECORD: {
+    case WindowOpenDisposition::kSingletonTab:
+    case WindowOpenDisposition::kNewForegroundTab:
+    case WindowOpenDisposition::kNewBackgroundTab:
+    case WindowOpenDisposition::kNewPopup:
+    case WindowOpenDisposition::kNewWindow:
+    case WindowOpenDisposition::kSaveToDisk:
+    case WindowOpenDisposition::kOffTheRecord: {
       // Only allow these from hosts that are bound to a browser (e.g. popups).
       // Otherwise they are not driven by a user gesture.
       return delegate_->OpenURL(params, std::move(navigation_handle_callback));
@@ -192,7 +192,7 @@ WindowController* ExtensionViewHost::GetExtensionWindowController() {
 void ExtensionViewHost::OnExtensionHostDocumentElementAvailable(
     content::BrowserContext* host_browser_context,
     ExtensionHost* extension_host) {
-  DCHECK(extension_host->extension());
+  CHECK(extension_host->extension(), base::NotFatalUntil::M161);
   if (host_browser_context != browser_context() ||
       extension_host->extension() != extension() ||
       extension_host->extension_host_type() !=
@@ -200,9 +200,10 @@ void ExtensionViewHost::OnExtensionHostDocumentElementAvailable(
     return;
   }
 
-  DCHECK_EQ(process_util::PersistentBackgroundPageState::kReady,
-            process_util::GetPersistentBackgroundPageState(*extension(),
-                                                           browser_context()));
+  CHECK_EQ(process_util::PersistentBackgroundPageState::kReady,
+           process_util::GetPersistentBackgroundPageState(*extension(),
+                                                          browser_context()),
+           base::NotFatalUntil::M161);
   // We only needed to wait for the background page to load, so stop observing.
   host_registry_observation_.Reset();
   LoadInitialURL();

@@ -29,7 +29,6 @@
 #include "chrome/common/chrome_switches.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/history_clusters/core/file_clustering_backend.h"
 #include "components/infobars/content/content_infobar_manager.h"
 #include "components/infobars/core/infobar_delegate.h"
 #include "components/network_session_configurator/common/network_switches.h"
@@ -64,6 +63,7 @@
 #include "chrome/browser/android/flags/bad_flags_snackbar_manager.h"
 #include "chrome/browser/flags/android/chrome_feature_list.h"
 #else
+#include "components/tabs/public/tab_interface.h"
 #include "services/device/public/cpp/hid/hid_switches.h"
 #endif
 
@@ -170,11 +170,6 @@ const char* const kBadFlags[] = {
     // platform-level enterprise policy is also applied.
     webauthn::switches::kRemoteProxiedRequestsAllowedAdditionalOrigin,
 
-    // When a file is specified as part of this flag, this sideloads machine
-    // learning model output used by the History Clusters service and should
-    // only be used for testing purposes.
-    history_clusters::switches::kClustersOverrideFile,
-
     // This flag disables protection against potentially unintentional user
     // interaction with certain UI elements.
     views::switches::kDisableInputEventActivationProtectionForTesting,
@@ -220,8 +215,16 @@ static const std::variant<const base::Feature*, const char*>
         &net::features::kTestRootStore,
 
         // This feature allows open web content to use the Unbounded Element
-        // API, which lets a page paint outside the bounds of its window.
+        // API, which lets a page paint outside the bounds of its frame.
         &blink::features::kUnsafeUnboundedElementOnTheOpenWeb,
+
+        // This feature allows open web content to use the Unbounded Element
+        // API, which lets a page paint outside the bounds of its window.
+        &blink::features::kUnsafeEscapingUnboundedElementOnTheOpenWeb,
+
+        // This feature is under development and currently has security
+        // concerns.
+        &blink::features::kPersistentWidgetAPI,
 };
 
 void ShowBadFlagsInfoBarHelper(content::WebContents* web_contents,
@@ -232,11 +235,16 @@ void ShowBadFlagsInfoBarHelper(content::WebContents* web_contents,
           infobars::InfoBarDelegate::BAD_FLAGS_INFOBAR_DELEGATE)) {
     auto* manager = infobars::BrowserInfoBarManager::From(g_browser_process);
     CHECK(manager);
+    tabs::TabInterface* tab =
+        tabs::TabInterface::MaybeGetFromContents(web_contents);
+    if (!tab) {
+      return;
+    }
     infobars::InfoBarShowParams params;
     params.message_text =
         l10n_util::GetStringFUTF16(message_id, base::UTF8ToUTF16(flag));
-    manager->ShowGlobally(infobars::InfoBarDelegate::BAD_FLAGS_INFOBAR_DELEGATE,
-                          std::move(params));
+    manager->Show(tab, infobars::InfoBarDelegate::BAD_FLAGS_INFOBAR_DELEGATE,
+                  std::move(params));
     return;
   }
 #endif

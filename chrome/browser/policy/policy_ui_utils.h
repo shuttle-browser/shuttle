@@ -7,7 +7,6 @@
 
 #include <string>
 
-#include "components/enterprise/browser/promotion/promotion_eligibility_checker.h"
 #include "components/policy/core/browser/webui/json_generation.h"
 #include "chrome/browser/profiles/profile.h"
 
@@ -16,11 +15,6 @@ namespace policy {
 // platform specific data and `application_name`.
 JsonGenerationParams GetChromeMetadataParams(
     const std::string& application_name);
-
-std::unique_ptr<enterprise_promotion::PromotionEligibilityChecker>
-    CreatePromotionEligibilityChecker(Profile* profile,
-                                     bool dismissed_banner_pref,
-                                     bool feature_enabled);
 
 }  // namespace policy
 

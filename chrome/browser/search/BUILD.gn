@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//extensions/buildflags/buildflags.gni")
 import("//ui/webui/webui_features.gni")
 
 assert(is_win || is_mac || is_linux || is_chromeos || is_android)
@@ -14,18 +15,16 @@ source_set("search") {
   public_deps = []
   deps = [
     "//base",
-    "//chrome/browser:browser_public_dependencies",
+    "//build:android_buildflags",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/search_engines",
-    "//chrome/browser/supervised_user",
     "//chrome/browser/themes",
     "//chrome/common",
     "//components/google/core/common",
     "//components/search",
     "//components/search_engines:search_engine_type",
-    "//components/supervised_user/core/browser",
-    "//components/supervised_user/core/common:buildflags",
     "//content/public/browser",
+    "//ui/webui:buildflags",
     "//url",
   ]
   if (is_android) {
@@ -35,13 +34,15 @@ source_set("search") {
     ]
     public_deps += [ "//components/policy/core/browser" ]
     deps += [ "//components/prefs" ]
-  } else {
+  }
+  if (enable_webui_ntp) {
     sources += [
     ]
     public_deps += [
       "//base",
       "//chrome/browser/ntp_tiles",
       "//chrome/browser/profiles:profile",
+      "//chrome/browser/themes",
       "//chrome/common",
       "//components/history/core/browser",
       "//components/keyed_service/core",
@@ -60,12 +61,9 @@ source_set("search") {
       "//chrome/common:constants",
       "//chrome/common:non_code_constants",
       "//components/favicon_base",
-      "//components/page_image_service/mojom:mojo_bindings",
       "//components/policy:generated",
       "//components/policy:policy_code_generate",
       "//components/policy/core/common",
-      "//extensions/browser",
-      "//extensions/common",
       "//mojo/public/cpp/bindings",
       "//ui/base",
       "//ui/gfx:color_utils",

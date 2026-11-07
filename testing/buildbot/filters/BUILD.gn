@@ -23,6 +23,7 @@ source_set("android_browsertests_filters") {
     "//testing/buildbot/filters/android.desktop.android_browsertests.filter",
     "//testing/buildbot/filters/android.desktop.emulator_15.android_browsertests.filter",
     "//testing/buildbot/filters/android.emulator_10.android_browsertests.filter",
+    "//testing/buildbot/filters/android.phone.android_browsertests.filter",
   ]
 }
 
@@ -111,11 +112,11 @@ source_set("chrome_public_test_apk_filters") {
   testonly = true
 
   data = [
+    "//testing/buildbot/filters/android.code_coverage.chrome_public_test_apk.filter",
     "//testing/buildbot/filters/android.device_14.chrome_public_test_apk.filter",
     "//testing/buildbot/filters/android.device_14_tablet.chrome_public_test_apk.filter",
     "//testing/buildbot/filters/android.emulator_11.chrome_public_test_apk.filter",
     "//testing/buildbot/filters/android.emulator_12l_landscape.chrome_public_test_apk.filter",
-    "//testing/buildbot/filters/android.emulator_14_automotive_landscape.chrome_public_test_apk.filter",
     "//testing/buildbot/filters/android.emulator_15_tablet_landscape.chrome_public_test_apk.filter",
     "//testing/buildbot/filters/android.emulator_15_tablet.chrome_public_test_apk.filter",
   ]
@@ -124,10 +125,7 @@ source_set("chrome_public_test_apk_filters") {
 source_set("chrome_public_unit_test_apk_filters") {
   testonly = true
 
-  data = [
-    "//testing/buildbot/filters/android.emulator_14_automotive_landscape.chrome_public_unit_test_apk.filter",
-    "//testing/buildbot/filters/android.emulator_15_tablet.chrome_public_unit_test_apk.filter",
-  ]
+  data = [ "//testing/buildbot/filters/android.emulator_15_tablet.chrome_public_unit_test_apk.filter" ]
 }
 
 source_set("chromeos_filters") {
@@ -201,13 +199,6 @@ bundle_data("media_unittests_filters_bundle_data") {
               "{{source_root_relative_dir}}/{{source_file_part}}" ]
 }
 
-bundle_data("midi_unittests_use_blink_filters_bundle_data") {
-  testonly = true
-  sources = [ "//testing/buildbot/filters/ios.use_blink.midi_unittests.filter" ]
-  outputs = [ "{{bundle_resources_dir}}/" +
-              "{{source_root_relative_dir}}/{{source_file_part}}" ]
-}
-
 source_set("content_browsertests_filters") {
   testonly = true
 
@@ -269,7 +260,6 @@ source_set("content_unittests_filters") {
     "//testing/buildbot/filters/android.emulator_14.content_unittests.filter",
     "//testing/buildbot/filters/android.emulator_15_16.content_unittests.filter",
     "//testing/buildbot/filters/android.device.content_unittests.filter",
-    "//testing/buildbot/filters/fuchsia.lsan.content_unittests.filter",
     "//testing/buildbot/filters/ozone-linux.content_unittests_weston.filter",
     "//testing/buildbot/filters/webrtc.content_unittests.filter",
     "//testing/buildbot/filters/win.win-rel-cft.content_unittests.filter",
@@ -385,10 +375,10 @@ source_set("gl_tests_filters") {
     "//testing/buildbot/filters/android.samsung_a23.gl_tests.filter",
     "//testing/buildbot/filters/linux.amd.5500xt.wayland.gl_tests_passthrough.filter",
     "//testing/buildbot/filters/linux.intel.arc_b570.gl_tests_passthrough.filter",
+    "//testing/buildbot/filters/linux.rtx_4070_super.wayland.gl_tests_passthrough.filter",
     "//testing/buildbot/filters/linux.swiftshader.tsan.gl_tests_passthrough.filter",
     "//testing/buildbot/filters/linux.uhd_630.gl_tests_passthrough.filter",
     "//testing/buildbot/filters/linux.uhd_770.gl_tests_passthrough.filter",
-    "//testing/buildbot/filters/mac.m2.asan.gl_tests_passthrough.filter",
     "//testing/buildbot/filters/win.amd.7600.gl_tests_passthrough.filter",
     "//testing/buildbot/filters/win.intel.arc_b570.gl_tests_passthrough.filter",
     "//testing/buildbot/filters/win.qualcomm.snapdragon_x_elite.gl_tests_passthrough.filter",
@@ -504,4 +494,29 @@ source_set("gwp_asan_unittests_filters") {
     "//testing/buildbot/filters/android.emulator_15_16.gwp_asan_unittests.filter",
     "//testing/buildbot/filters/android.device.gwp_asan_unittests.filter",
   ]
+}
+
+source_set("sandbox_linux_unittests_filters") {
+  testonly = true
+
+  data = [ "//testing/buildbot/filters/fuchsia.starview.sandbox_linux_unittests.filter" ]
+}
+
+source_set("mojo_unittests_filters") {
+  testonly = true
+
+  data = [ "//testing/buildbot/filters/fuchsia.starview.mojo_unittests.filter" ]
+}
+
+source_set("ipc_tests_filters") {
+  testonly = true
+
+  data = [ "//testing/buildbot/filters/fuchsia.starview.ipc_tests.filter" ]
+}
+
+source_set("leveldb_unittests_filters") {
+  testonly = true
+
+  data =
+      [ "//testing/buildbot/filters/fuchsia.starview.leveldb_unittests.filter" ]
 }

@@ -621,7 +621,7 @@ bool SessionService::RestoreIfNecessary(const StartupTabs& startup_tabs,
     } else {
       // If 'browser' is not null, show the crash bubble in the current browser
       // instance.
-      SessionCrashedBubble::ShowIfNotOffTheRecordProfile(
+      ShowSessionCrashedBubbleIfNotOffTheRecordProfile(
           browser, /*skip_tab_checking=*/true);
       ProfileLaunchObserver::AddLaunched(profile());
     }
@@ -757,6 +757,13 @@ void SessionService::RebuildCommandsIfRequired() {
       is_saving_enabled()) {
     ScheduleResetCommands();
   }
+}
+
+bool SessionService::ShouldDeleteSessionStorageOnTabClosing(
+    SessionID window_id) const {
+  // If the window is closing, then the tab's sessionStorage should be kept
+  // around for session restore.
+  return !pending_window_close_ids_.contains(window_id);
 }
 
 void SessionService::OnClosingAllBrowsersChanged(bool closing) {

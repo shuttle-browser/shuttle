@@ -23,6 +23,7 @@
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl_hash.h"
+#include "third_party/blink/renderer/platform/weborigin/security_origin.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
 #include "third_party/blink/renderer/platform/wtf/hash_traits.h"
 #include "third_party/blink/renderer/platform/wtf/ref_counted.h"
@@ -73,8 +74,15 @@ class PLATFORM_EXPORT UrlData : public RefCounted<UrlData> {
   // Keep in sync with WebMediaPlayer::CorsMode.
   enum CorsMode { CORS_UNSPECIFIED, CORS_ANONYMOUS, CORS_USE_CREDENTIALS };
   enum CacheMode { kNormal, kCacheDisabled };
-  using KeyType =
-      std::pair<KURL, std::pair<CorsMode, media::DataSource::EncodingMode>>;
+  using KeyType = std::pair<
+      KURL,
+      std::pair<scoped_refptr<const SecurityOrigin>,
+                std::pair<CorsMode, media::DataSource::EncodingMode>>>;
+
+  static KeyType MakeKey(const KURL& url,
+                         scoped_refptr<const SecurityOrigin> security_origin,
+                         CorsMode cors_mode,
+                         media::DataSource::EncodingMode encoding_mode);
 
   // `url_index` is a WeakPtr since while UrlData objects are created by the
   // UrlIndex they are not owned by the UrlIndex until after the network load
@@ -83,15 +91,20 @@ class PLATFORM_EXPORT UrlData : public RefCounted<UrlData> {
   UrlData(base::PassKey<UrlIndex>,
           const KURL& url,
           CorsMode cors_mode,
+          CacheMode cache_lookup_mode,
+          scoped_refptr<const SecurityOrigin> security_origin,
           media::DataSource::EncodingMode encoding_mode,
           base::WeakPtr<UrlIndex> url_index,
-          CacheMode cache_lookup_mode,
           scoped_refptr<base::SingleThreadTaskRunner> task_runner);
   UrlData(const UrlData&) = delete;
   UrlData& operator=(const UrlData&) = delete;
 
   // Accessors
   const KURL& url() const { return url_; }
+
+  const scoped_refptr<const SecurityOrigin>& security_origin() const {
+    return security_origin_;
+  }
 
   const std::optional<KURL>& data_origin() const { return data_origin_; }
 
@@ -138,6 +151,10 @@ class PLATFORM_EXPORT UrlData : public RefCounted<UrlData> {
   // Length of data associated with url or |kPositionNotSpecified|
   int64_t length() const { return length_; }
 
+  // Returns true if this UrlData has not yet had a length set, or if |length|
+  // matches the existing length.
+  bool HasCompatibleLength(int64_t length) const;
+
   // Returns the number of blocks cached for this resource.
   size_t CachedSize();
 
@@ -155,11 +172,14 @@ class PLATFORM_EXPORT UrlData : public RefCounted<UrlData> {
   // this is not called regularly.
   void Use();
 
-  // Call this before we add some data to the multibuffer().
-  // If the multibuffer is empty, the data origin is set from
-  // |origin| and returns true. If not, it compares |origin|
-  // to the previous origin and returns whether they match or not.
-  bool ValidateDataOrigin(const KURL& origin);
+  // Returns true if this UrlData has not yet had a data origin set, or if
+  // |origin| and |is_cors_cross_origin| are compatible with the existing data
+  // origin and CORS cross-origin state.
+  bool CanAcceptDataFrom(const KURL& origin, bool is_cors_cross_origin) const;
+
+  // Sets the data origin and CORS cross-origin state. Must only be called when
+  // CanAcceptDataFrom(origin, is_cors_cross_origin) is true.
+  void SetDataOrigin(const KURL& origin, bool is_cors_cross_origin);
 
   // Setters.
   void set_length(int64_t length);
@@ -168,7 +188,6 @@ class PLATFORM_EXPORT UrlData : public RefCounted<UrlData> {
   void set_range_supported();
   void set_last_modified(base::Time last_modified);
   void set_etag(const std::string& etag);
-  void set_is_cors_cross_origin(bool is_cors_cross_origin);
   void set_has_access_control();
   void set_passed_timing_allow_origin_check(bool);
   void set_mime_type(std::string mime_type);
@@ -179,6 +198,11 @@ class PLATFORM_EXPORT UrlData : public RefCounted<UrlData> {
 
   // Fail, tell all clients that a failure has occurred.
   void Fail();
+
+  // Marks this data as CORS cross-origin before calling Fail(). Used when a
+  // request fails due to cross-origin security restrictions (e.g., ORB, CORP,
+  // or CORS violations) before a response is received.
+  void CrossOriginFail();
 
   // Callback for receiving notifications when a redirect occurs.
   using RedirectCB = base::OnceCallback<void(const scoped_refptr<UrlData>&)>;
@@ -202,9 +226,10 @@ class PLATFORM_EXPORT UrlData : public RefCounted<UrlData> {
  protected:
   UrlData(const KURL& url,
           CorsMode cors_mode,
+          CacheMode cache_lookup_mode,
+          scoped_refptr<const SecurityOrigin> security_origin,
           media::DataSource::EncodingMode encoding_mode,
           base::WeakPtr<UrlIndex> url_index,
-          CacheMode cache_lookup_mode,
           scoped_refptr<base::SingleThreadTaskRunner> task_runner);
   virtual ~UrlData();
 
@@ -214,11 +239,15 @@ class PLATFORM_EXPORT UrlData : public RefCounted<UrlData> {
   friend class UrlIndex;
 
   void OnEmpty();
-  void MergeFrom(const scoped_refptr<UrlData>& other);
+  bool MergeFrom(const scoped_refptr<UrlData>& other);
+  void set_is_cors_cross_origin(bool is_cors_cross_origin);
 
   // Url we represent, note that there may be multiple UrlData for
   // the same url.
   const KURL url_;
+
+  // Requesting document's security origin.
+  const scoped_refptr<const SecurityOrigin> security_origin_;
 
   // Origin of the data, should only be different from the
   // url_.DeprecatedGetOriginAsURL() when service workers are involved.
@@ -303,6 +332,7 @@ class PLATFORM_EXPORT UrlIndex {
       const KURL& url,
       UrlData::CorsMode cors_mode,
       UrlData::CacheMode cache_mode,
+      scoped_refptr<const SecurityOrigin> security_origin,
       media::DataSource::EncodingMode encoding_mode =
           media::DataSource::EncodingMode::kIdentity);
 
@@ -341,6 +371,7 @@ class PLATFORM_EXPORT UrlIndex {
       const KURL& url,
       UrlData::CorsMode cors_mode,
       UrlData::CacheMode cache_lookup_mode,
+      scoped_refptr<const SecurityOrigin> security_origin,
       media::DataSource::EncodingMode encoding_mode);
 
   raw_ptr<ResourceFetchContext> fetch_context_;

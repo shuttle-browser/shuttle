@@ -18,8 +18,6 @@ enum class OrganizerPanelLocation {
   kNone,
   // In a slide-out tray.
   kOrganizerTray,
-  // In the vertical tab strip.
-  kVerticalTabStrip
 };
 
 // Object that hosts an organizer panel view.

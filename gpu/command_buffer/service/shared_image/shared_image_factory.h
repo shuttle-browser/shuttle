@@ -9,9 +9,9 @@
 #include <string>
 #include <vector>
 
-#include "base/memory/advanced_memory_safety_checks.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
+#include "base/memory/sanitized_object.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/synchronization/lock.h"
@@ -30,7 +30,6 @@
 #include "gpu/ipc/common/surface_handle.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 #include "ui/gfx/buffer_types.h"
-#include "ui/gfx/gpu_extra_info.h"
 #include "ui/gfx/gpu_memory_buffer_handle.h"
 #include "ui/gl/gl_bindings.h"
 
@@ -84,7 +83,7 @@ class GPU_GLES2_EXPORT SharedImageFactoryRef
 
 class GPU_GLES2_EXPORT SharedImageFactory {
   // TODO(crbug.com/497136403): Remove this macro once the bug gets fixed.
-  ADVANCED_MEMORY_SAFETY_CHECKS();
+  SANITIZED_OBJECT();
 
  public:
   // All objects passed are expected to outlive this class.
@@ -161,7 +160,6 @@ class GPU_GLES2_EXPORT SharedImageFactory {
                                   base::OnceCallback<void(bool)> callback);
 #endif
 
-  void SetGpuExtraInfo(const gfx::GpuExtraInfo& gpu_info);
   bool GetGpuMemoryBufferHandleInfo(const Mailbox& mailbox,
                                     gfx::GpuMemoryBufferHandle& handle,
                                     gfx::BufferUsage& buffer_usage);
@@ -182,8 +180,7 @@ class GPU_GLES2_EXPORT SharedImageFactory {
   const scoped_refptr<SharedImageCopyManager>& copy_manager();
 
   static bool IsNativeBufferSupported(viz::SharedImageFormat format,
-                                      gfx::BufferUsage usage,
-                                      const gfx::GpuExtraInfo& gpu_extra_info);
+                                      gfx::BufferUsage usage);
 
   base::WeakPtr<SharedImageFactory> GetWeakPtr();
   scoped_refptr<SharedImageFactoryRef> GetFactoryRef();
@@ -219,6 +216,7 @@ class GPU_GLES2_EXPORT SharedImageFactory {
                            gfx::GpuMemoryBufferType gmb_type,
                            const gfx::Size& size,
                            const std::string& debug_label);
+  static const char* GmbTypeToString(gfx::GpuMemoryBufferType type);
 #if BUILDFLAG(IS_WIN)
   bool IsD3DSharedImageSupported() const;
 #endif
@@ -252,7 +250,6 @@ class GPU_GLES2_EXPORT SharedImageFactory {
   // images.
   std::vector<std::unique_ptr<SharedImageBackingFactory>> factories_;
 
-  gfx::GpuExtraInfo gpu_extra_info_;
   gpu::GpuPreferences gpu_preferences_;
   gpu::GpuDriverBugWorkarounds workarounds_;
 
@@ -302,8 +299,6 @@ class GPU_GLES2_EXPORT SharedImageRepresentationFactory {
   std::unique_ptr<OverlayImageRepresentation> ProduceOverlay(
       const Mailbox& mailbox);
   std::unique_ptr<MemoryImageRepresentation> ProduceMemory(
-      const Mailbox& mailbox);
-  std::unique_ptr<RasterImageRepresentation> ProduceRaster(
       const Mailbox& mailbox);
 
 #if BUILDFLAG(IS_ANDROID)

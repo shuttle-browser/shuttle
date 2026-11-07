@@ -740,6 +740,16 @@ Called by update_protocol_commands_enum.py.-->
   <int value="2140268492" label="CSS.startRuleUsageTracking"/>
 </enum>
 
+<!-- LINT.IfChange(DeveloperToolsAvailability) -->
+
+<enum name="DeveloperToolsAvailability">
+  <int value="0" label="DisallowedForForceInstalledExtensions (default)"/>
+  <int value="1" label="Allowed"/>
+  <int value="2" label="Disallowed"/>
+</enum>
+
+<!-- LINT.ThenChange(//components/policy/core/browser/developer_tools_availability.h:DeveloperToolsAvailability) -->
+
 <enum name="DevToolsAction">
   <int value="1" label="Window docked"/>
   <int value="2" label="Window undocked"/>
@@ -978,6 +988,33 @@ Called by update_protocol_commands_enum.py.-->
   <int value="207" label="AI Code Completion - FRE completed from Sources"/>
 </enum>
 
+<!-- LINT.IfChange(DevToolsBlockReason) -->
+
+<enum name="DevToolsBlockReason">
+  <int value="0" label="Not blocked (unexpected)"/>
+  <int value="1"
+      label="URL blocked by DeveloperToolsAvailabilityBlocklist or not
+             covered by DeveloperToolsAvailabilityAllowlist"/>
+  <int value="2" label="DeveloperToolsAvailability set to Disallowed"/>
+  <int value="3"
+      label="Policy-installed extension (DeveloperToolsAvailability at
+             default value)"/>
+  <int value="4"
+      label="Component extension in managed profile
+             (DeveloperToolsAvailability at default value)"/>
+  <int value="5"
+      label="Kiosk-installed web app (DeveloperToolsAvailability at default
+             value)"/>
+  <int value="6"
+      label="Policy-installed Isolated Web App (DeveloperToolsAvailability at
+             default value)"/>
+  <int value="7" label="ChromeOS captive portal sign-in window"/>
+  <int value="8" label="Kiosk mode (DevTools UI unavailable)"/>
+  <int value="9" label="chrome://devtools blocked by URLBlocklist"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/devtools/devtools_availability_checker.h:DevToolsBlockReason) -->
+
 <enum name="DevToolsBuiltInAiAvailability">
   <int value="0" label="LanguageModel unavailable, has GPU"/>
   <int value="1" label="LanguageModel downloadable, has GPU"/>
@@ -1192,7 +1229,7 @@ Called by update_protocol_commands_enum.py.-->
   <int value="39" label="TrustedWebActivityIssue::kUnavailableOffline"/>
   <int value="40" label="TrustedWebActivityIssue::kDigitalAssetLinks"/>
   <int value="41" label="LowTextContrastIssue"/>
-  <int value="42" label="CorsIssue::InsecurePrivateNetwork"/>
+  <int value="42" label="CorsIssue::InsecureLocalNetwork"/>
   <int value="43" label="CorsIssue::InsecurePrivateNetworkPreflight"/>
   <int value="44" label="CorsIssue::InvalidHeaders"/>
   <int value="45" label="CorsIssue::WildcardOriginWithCredentials"/>
@@ -1295,6 +1332,8 @@ Called by update_protocol_commands_enum.py.-->
       label="GenericIssue::AutofillAndManualTextPolicyControlledFeaturesInfo"/>
   <int value="115" label="GenericIssue::AutofillPolicyControlledFeatureInfo"/>
   <int value="116" label="GenericIssue::ManualTextPolicyControlledFeatureInfo"/>
+  <int value="117" label="GenericIssue::GeolocationPromptWithoutUserGesture"/>
+  <int value="118" label="CorsIssue::InvalidLocalNetworkAccess"/>
 </enum>
 
 <enum name="DevToolsIssuesPanelIssueExpanded">
@@ -1672,6 +1711,7 @@ Called by update_protocol_commands_enum.py.-->
   <int value="67" label="Drawer - Autofill"/>
   <int value="68" label="AI Assistance"/>
   <int value="69" label="Application - Ads"/>
+  <int value="70" label="Application - Private Verification Tokens"/>
 </enum>
 
 <enum name="DevToolsRecordingReplayFinished">

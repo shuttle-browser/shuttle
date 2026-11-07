@@ -78,13 +78,12 @@ JSProfilingMode ProfilerGroup::GetProfilingMode(
   // Check the new js-profiling-mode enum policy first.
   PolicyValue mode_value = execution_context->GetDocumentPolicyValue(
       mojom::blink::DocumentPolicyFeature::kJSProfilingMode);
-  if (mode_value.Type() == mojom::blink::PolicyValueType::kEnum) {
-    int32_t v = mode_value.IntValue();
-    if (v >= 1 && v <= static_cast<int32_t>(JSProfilingMode::kMax)) {
+  if (std::optional<int32_t> v = mode_value.GetIfEnum()) {
+    if (*v >= 1 && *v <= static_cast<int32_t>(JSProfilingMode::kMax)) {
       // "eager" or "lazy" explicitly set in the header — honour it.
-      return static_cast<JSProfilingMode>(v);
+      return static_cast<JSProfilingMode>(*v);
     }
-    // v == 0: default "not set", meaning the header was absent. Fall through
+    // *v == 0: default "not set", meaning the header was absent. Fall through
     // to the legacy kJSProfiling boolean policy.
   }
   // Fall back to the legacy js-profiling boolean policy.
@@ -280,8 +279,9 @@ void ProfilerGroup::WillBeDestroyed() {
 
   StopDetachedProfilers();
 
-  if (cpu_profiler_)
+  if (cpu_profiler_) {
     TeardownV8Profiler();
+  }
 }
 
 void ProfilerGroup::Trace(Visitor* visitor) const {
@@ -335,8 +335,9 @@ void ProfilerGroup::StopProfiler(
                                                   profiler->TimeOrigin());
   resolver->Resolve(trace);
 
-  if (profile)
+  if (profile) {
     profile->Delete();
+  }
 
   profilers_.erase(profiler);
   --num_active_profilers_;
@@ -394,8 +395,9 @@ void ProfilerGroup::StopDetachedProfilers() {
 }
 
 void ProfilerGroup::CancelProfilerImpl(String profiler_id) {
-  if (!cpu_profiler_)
+  if (!cpu_profiler_) {
     return;
+  }
 
   v8::HandleScope scope(isolate_);
   v8::Local<v8::String> v8_profiler_id = V8String(isolate_, profiler_id);

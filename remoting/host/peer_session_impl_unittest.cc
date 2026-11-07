@@ -14,24 +14,30 @@
 #include <vector>
 
 #include "base/check.h"
+#include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
 #include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/path_service.h"
 #include "base/run_loop.h"
 #include "base/strings/string_split.h"
 #include "base/task/thread_pool/thread_pool_instance.h"
 #include "base/test/run_until.h"
+#include "base/test/scoped_path_override.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_future.h"
 #include "base/time/time.h"
+#include "base/types/expected.h"
 #include "build/build_config.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "remoting/base/auto_thread_task_runner.h"
 #include "remoting/base/constants.h"
 #include "remoting/base/errors.h"
 #include "remoting/base/session_policies.h"
+#include "remoting/host/agent_integration_configurator.h"
+#include "remoting/host/agent_integration_control_message_handler.h"
 #include "remoting/host/base/desktop_environment_options.h"
 #include "remoting/host/desktop_display_info.h"
 #include "remoting/host/fake_desktop_environment.h"
@@ -40,11 +46,13 @@
 #include "remoting/host/peer_session.h"
 #include "remoting/host/security_key/security_key_auth_handler.h"
 #include "remoting/host/security_key/security_key_data_channel_handler.h"
+#include "remoting/host/terminal_error.h"
 
 #if BUILDFLAG(IS_POSIX)
 #include "remoting/host/security_key/security_key_auth_handler_posix.h"
 #endif
 
+#include "remoting/proto/agent_integration_control.pb.h"
 #include "remoting/proto/control.pb.h"
 #include "remoting/proto/event.pb.h"
 #include "remoting/protocol/capability_names.h"
@@ -202,6 +210,10 @@ class PeerSessionImplTest : public testing::Test {
   void ConnectPeerSession(const SessionPolicies& session_policies = {},
                           const SessionOptions& session_options = {});
 
+  // Enables terminal mode and waits for the restoration of persistent
+  // terminals to finish.
+  void EnableTerminalMode();
+
   // Add a fake display to the layout list. Used in conjunction with
   // NotifyDesktopDisplaySize.
   void AddDisplayToLayout(protocol::VideoLayout* displays,
@@ -285,6 +297,8 @@ void PeerSessionImplTest::SetUp() {
 
   // Suppress spammy "uninteresting call" logs.
   EXPECT_CALL(client_stub_, SetCursorShape(_)).Times(testing::AnyNumber());
+
+  FakeTerminalSession::ResetStaticState();
 }
 
 void PeerSessionImplTest::TearDown() {
@@ -348,6 +362,19 @@ void PeerSessionImplTest::ConnectPeerSession(
   // Stubs should be set only after connection is authenticated.
   EXPECT_TRUE(connection_->clipboard_stub());
   EXPECT_TRUE(connection_->input_stub());
+}
+
+void PeerSessionImplTest::EnableTerminalMode() {
+  protocol::Capabilities capabilities;
+  capabilities.set_capabilities(protocol::kTerminalModeCapability);
+  peer_session_->SetCapabilities(capabilities);
+  // Wait for terminal restoration to finish: flush the ThreadPool task, then
+  // wait for its reply, which is queued on the main thread ahead of `future`.
+  base::ThreadPoolInstance::Get()->FlushForTesting();
+  base::test::TestFuture<void> future;
+  task_environment_.GetMainThreadTaskRunner()->PostTask(FROM_HERE,
+                                                        future.GetCallback());
+  ASSERT_TRUE(future.Wait());
 }
 
 void PeerSessionImplTest::AddDisplayToLayout(protocol::VideoLayout* displays,
@@ -773,6 +800,133 @@ TEST_F(PeerSessionImplTest, ControlTerminal_CreateTerminal) {
   peer_session_.reset();
 }
 
+TEST_F(PeerSessionImplTest, ControlTerminal_CreateTerminalFailure) {
+  CreatePeerSession();
+  ConnectPeerSession();
+  ASSERT_NO_FATAL_FAILURE(EnableTerminalMode());
+
+  const TerminalError error(FROM_HERE, TerminalError::Reason::kPtyError,
+                            "start failed", 42);
+  FakeTerminalSession::SetNextStartError(error);
+
+  // Expect client_stub to receive the create response.
+  protocol::TerminalControl create_response;
+  EXPECT_CALL(client_stub_, DeliverTerminalControl(_))
+      .WillOnce([&create_response](const protocol::TerminalControl& control) {
+        create_response = control;
+      });
+
+  protocol::TerminalControl create_req;
+  create_req.mutable_create_request();
+  peer_session_->ControlTerminal(create_req);
+
+  // The error details should be forwarded to the client.
+  ASSERT_TRUE(create_response.has_create_response());
+  ASSERT_TRUE(create_response.create_response().has_error());
+  const auto& error_proto = create_response.create_response().error();
+  EXPECT_EQ(
+      error_proto.reason(),
+      protocol::TerminalControl::CreateTerminalResponse::Error::PTY_ERROR);
+  EXPECT_EQ(error_proto.code(), 42);
+  EXPECT_EQ(error_proto.error_message(), "start failed");
+  EXPECT_EQ(error_proto.file_name(), error.location.file_name());
+  EXPECT_EQ(error_proto.line_number(),
+            static_cast<uint32_t>(error.location.line_number()));
+  EXPECT_TRUE(base::test::RunUntil(
+      [] { return FakeTerminalSession::GetActiveSessions().empty(); }));
+
+  peer_session_->DisconnectSession(ErrorCode::OK, {}, FROM_HERE);
+  peer_session_.reset();
+}
+
+TEST_F(PeerSessionImplTest, ControlTerminal_CreateTerminalWaitsForAsyncStart) {
+  CreatePeerSession();
+  ConnectPeerSession();
+  ASSERT_NO_FATAL_FAILURE(EnableTerminalMode());
+  FakeTerminalSession::SetDeferStart(true);
+
+  std::vector<protocol::TerminalControl> sent;
+  EXPECT_CALL(client_stub_, DeliverTerminalControl(_))
+      .WillRepeatedly([&sent](const protocol::TerminalControl& control) {
+        sent.push_back(control);
+      });
+
+  protocol::TerminalControl create_req;
+  create_req.mutable_create_request();
+  peer_session_->ControlTerminal(create_req);
+
+  // No response should be sent until the terminal session has started.
+  EXPECT_TRUE(sent.empty());
+  auto sessions = FakeTerminalSession::GetActiveSessions();
+  ASSERT_EQ(sessions.size(), 1u);
+  sessions[0]->CompleteStart(base::ok());
+
+  ASSERT_EQ(sent.size(), 1u);
+  ASSERT_TRUE(sent[0].has_create_response());
+  EXPECT_FALSE(sent[0].create_response().has_error());
+  EXPECT_EQ(sent[0].create_response().terminal_id(), 1);
+
+  peer_session_->DisconnectSession(ErrorCode::OK, {}, FROM_HERE);
+  peer_session_.reset();
+}
+
+TEST_F(PeerSessionImplTest, ControlTerminal_CreateTerminalAsyncFailure) {
+  CreatePeerSession();
+  ConnectPeerSession();
+  ASSERT_NO_FATAL_FAILURE(EnableTerminalMode());
+  FakeTerminalSession::SetDeferStart(true);
+
+  std::vector<protocol::TerminalControl> sent;
+  EXPECT_CALL(client_stub_, DeliverTerminalControl(_))
+      .WillRepeatedly([&sent](const protocol::TerminalControl& control) {
+        sent.push_back(control);
+      });
+
+  protocol::TerminalControl create_req;
+  create_req.mutable_create_request();
+  peer_session_->ControlTerminal(create_req);
+
+  EXPECT_TRUE(sent.empty());
+  auto sessions = FakeTerminalSession::GetActiveSessions();
+  ASSERT_EQ(sessions.size(), 1u);
+  sessions[0]->CompleteStart(base::unexpected(TerminalError(
+      FROM_HERE, TerminalError::Reason::kLaunchFailed, "launch failed")));
+  EXPECT_TRUE(base::test::RunUntil(
+      [] { return FakeTerminalSession::GetActiveSessions().empty(); }));
+
+  // Only the error response should be sent; in particular, there should be no
+  // close_terminal message for the failed session.
+  ASSERT_EQ(sent.size(), 1u);
+  ASSERT_TRUE(sent[0].has_create_response());
+  ASSERT_TRUE(sent[0].create_response().has_error());
+  EXPECT_EQ(
+      sent[0].create_response().error().reason(),
+      protocol::TerminalControl::CreateTerminalResponse::Error::LAUNCH_FAILED);
+  EXPECT_EQ(sent[0].create_response().error().error_message(), "launch failed");
+
+  peer_session_->DisconnectSession(ErrorCode::OK, {}, FROM_HERE);
+  peer_session_.reset();
+}
+
+TEST_F(PeerSessionImplTest, ControlTerminal_DisconnectWhileCreatePending) {
+  CreatePeerSession();
+  ConnectPeerSession();
+  ASSERT_NO_FATAL_FAILURE(EnableTerminalMode());
+  FakeTerminalSession::SetDeferStart(true);
+
+  EXPECT_CALL(client_stub_, DeliverTerminalControl(_)).Times(0);
+  protocol::TerminalControl create_req;
+  create_req.mutable_create_request();
+  peer_session_->ControlTerminal(create_req);
+  ASSERT_EQ(FakeTerminalSession::GetActiveSessions().size(), 1u);
+
+  // The pending session should be detached and destroyed without a response
+  // being sent.
+  peer_session_->DisconnectSession(ErrorCode::OK, {}, FROM_HERE);
+  EXPECT_TRUE(FakeTerminalSession::GetActiveSessions().empty());
+  peer_session_.reset();
+}
+
 TEST_F(PeerSessionImplTest, ControlTerminal_InputAndResize) {
   CreatePeerSession();
   ConnectPeerSession();
@@ -967,6 +1121,121 @@ TEST_F(PeerSessionImplTest, ControlTerminal_RemoveRequest) {
 
   sessions = FakeTerminalSession::GetActiveSessions();
   ASSERT_EQ(sessions.size(), 0u);
+
+  peer_session_->DisconnectSession(ErrorCode::OK, {}, FROM_HERE);
+  peer_session_.reset();
+}
+
+TEST_F(PeerSessionImplTest, SetAgentStatus_ForwardsForActiveTerminalOnly) {
+  CreatePeerSession();
+  ConnectPeerSession();
+
+  mojo::Remote<mojom::ChromotingSessionServices> session_services;
+  peer_session_->OnSessionServicesClientConnected(
+      session_services.BindNewPipeAndPassReceiver());
+
+  protocol::TerminalControl::AgentInfo status;
+  status.set_terminal_id(1);
+  status.set_agent_state(protocol::TerminalControl::AgentInfo::TOOL_USE);
+  status.set_conversation_title("My Terminal");
+
+  // Ignored before terminal mode is enabled.
+  EXPECT_CALL(client_stub_, DeliverTerminalControl(_)).Times(0);
+  base::test::TestFuture<void> ack1;
+  session_services->SetAgentStatus(status, ack1.GetCallback());
+  ASSERT_TRUE(ack1.Wait());
+
+  ASSERT_NO_FATAL_FAILURE(EnableTerminalMode());
+
+  // Ignored before terminal 1 is created.
+  base::test::TestFuture<void> ack2;
+  session_services->SetAgentStatus(status, ack2.GetCallback());
+  ASSERT_TRUE(ack2.Wait());
+
+  // Create terminal 1.
+  EXPECT_CALL(client_stub_, DeliverTerminalControl(_)).Times(1);
+  protocol::TerminalControl create_req;
+  create_req.mutable_create_request();
+  peer_session_->ControlTerminal(create_req);
+
+  // Ignored for non-existent terminal ID 99.
+  protocol::TerminalControl::AgentInfo unknown_status = status;
+  unknown_status.set_terminal_id(99);
+  EXPECT_CALL(client_stub_, DeliverTerminalControl(_)).Times(0);
+  base::test::TestFuture<void> ack3;
+  session_services->SetAgentStatus(unknown_status, ack3.GetCallback());
+  ASSERT_TRUE(ack3.Wait());
+
+  // Ignored when terminal_id is missing.
+  protocol::TerminalControl::AgentInfo missing_id_status;
+  missing_id_status.set_agent_state(
+      protocol::TerminalControl::AgentInfo::WORKING);
+  base::test::TestFuture<void> ack_missing_id;
+  session_services->SetAgentStatus(missing_id_status,
+                                   ack_missing_id.GetCallback());
+  ASSERT_TRUE(ack_missing_id.Wait());
+
+  // Ignored when agent_state is UNSPECIFIED and conversation_title is unset.
+  protocol::TerminalControl::AgentInfo unspecified_status;
+  unspecified_status.set_terminal_id(1);
+  unspecified_status.set_agent_state(
+      protocol::TerminalControl::AgentInfo::UNSPECIFIED);
+  base::test::TestFuture<void> ack_unspecified;
+  session_services->SetAgentStatus(unspecified_status,
+                                   ack_unspecified.GetCallback());
+  ASSERT_TRUE(ack_unspecified.Wait());
+
+  // Forwarded for active terminal 1.
+  protocol::TerminalControl received_control;
+  EXPECT_CALL(client_stub_, DeliverTerminalControl(_))
+      .WillOnce(testing::SaveArg<0>(&received_control));
+  base::test::TestFuture<void> ack4;
+  session_services->SetAgentStatus(status, ack4.GetCallback());
+  ASSERT_TRUE(ack4.Wait());
+  ASSERT_TRUE(received_control.has_agent_info());
+  EXPECT_EQ(received_control.agent_info().terminal_id(), 1);
+  EXPECT_EQ(received_control.agent_info().agent_state(),
+            protocol::TerminalControl::AgentInfo::TOOL_USE);
+  EXPECT_EQ(received_control.agent_info().conversation_title(), "My Terminal");
+
+  // Forwarded with agent_state only.
+  protocol::TerminalControl::AgentInfo state_only;
+  state_only.set_terminal_id(1);
+  state_only.set_agent_state(protocol::TerminalControl::AgentInfo::REVIEWING);
+  EXPECT_CALL(client_stub_, DeliverTerminalControl(_))
+      .WillOnce(testing::SaveArg<0>(&received_control));
+  base::test::TestFuture<void> ack_state_only;
+  session_services->SetAgentStatus(state_only, ack_state_only.GetCallback());
+  ASSERT_TRUE(ack_state_only.Wait());
+  ASSERT_TRUE(received_control.has_agent_info());
+  EXPECT_EQ(received_control.agent_info().terminal_id(), 1);
+  EXPECT_EQ(received_control.agent_info().agent_state(),
+            protocol::TerminalControl::AgentInfo::REVIEWING);
+  EXPECT_FALSE(received_control.agent_info().has_conversation_title());
+
+  // Forwarded with conversation_title only.
+  protocol::TerminalControl::AgentInfo title_only;
+  title_only.set_terminal_id(1);
+  title_only.set_conversation_title("Title Only");
+  EXPECT_CALL(client_stub_, DeliverTerminalControl(_))
+      .WillOnce(testing::SaveArg<0>(&received_control));
+  base::test::TestFuture<void> ack_title_only;
+  session_services->SetAgentStatus(title_only, ack_title_only.GetCallback());
+  ASSERT_TRUE(ack_title_only.Wait());
+  ASSERT_TRUE(received_control.has_agent_info());
+  EXPECT_EQ(received_control.agent_info().terminal_id(), 1);
+  EXPECT_FALSE(received_control.agent_info().has_agent_state());
+  EXPECT_EQ(received_control.agent_info().conversation_title(), "Title Only");
+
+  // Closing terminal 1 stops further SetAgentStatus updates for it.
+  protocol::TerminalControl remove_req;
+  remove_req.mutable_remove_request()->set_terminal_id(1);
+  peer_session_->ControlTerminal(remove_req);
+
+  EXPECT_CALL(client_stub_, DeliverTerminalControl(_)).Times(0);
+  base::test::TestFuture<void> ack5;
+  session_services->SetAgentStatus(status, ack5.GetCallback());
+  ASSERT_TRUE(ack5.Wait());
 
   peer_session_->DisconnectSession(ErrorCode::OK, {}, FROM_HERE);
   peer_session_.reset();
@@ -1263,5 +1532,64 @@ TEST_F(PeerSessionSecurityKeyTest, DataChannelConnects) {
   pipe->ClosePipe();
   ASSERT_TRUE(base::test::RunUntil([&]() { return !pipe->HasWrappers(); }));
 }
+
+TEST_F(PeerSessionImplTest,
+       DoesNotAdvertiseAgentIntegrationCapabilityWhenBinaryMissing) {
+  base::ScopedTempDir temp_dir;
+  ASSERT_TRUE(temp_dir.CreateUniqueTempDir());
+  base::ScopedPathOverride exe_dir_override(base::DIR_EXE, temp_dir.GetPath());
+
+  EXPECT_CALL(client_stub_, SetCapabilities(Not(IncludesCapabilities(
+                                protocol::kAgentIntegrationCapability))));
+
+  CreatePeerSession();
+  ConnectPeerSession();
+}
+
+#if BUILDFLAG(IS_LINUX)
+TEST_F(
+    PeerSessionImplTest,
+    AdvertisesAgentIntegrationCapabilityAndHandlesDataChannelWhenBinaryExists) {
+  base::ScopedTempDir temp_dir;
+  ASSERT_TRUE(temp_dir.CreateUniqueTempDir());
+  base::ScopedPathOverride exe_dir_override(base::DIR_EXE, temp_dir.GetPath());
+  base::FilePath binary_path =
+      temp_dir.GetPath().AppendASCII(AgentIntegrationConfigurator::kBinaryName);
+  ASSERT_TRUE(base::WriteFile(binary_path, ""));
+  ASSERT_TRUE(base::SetPosixFilePermissions(
+      binary_path, base::FILE_PERMISSION_READ_BY_USER |
+                       base::FILE_PERMISSION_WRITE_BY_USER |
+                       base::FILE_PERMISSION_EXECUTE_BY_USER));
+
+  EXPECT_CALL(client_stub_, SetCapabilities(IncludesCapabilities(
+                                protocol::kAgentIntegrationCapability)));
+
+  CreatePeerSession();
+  ConnectPeerSession();
+
+  protocol::Capabilities capabilities_message;
+  capabilities_message.set_capabilities(protocol::kAgentIntegrationCapability);
+  peer_session_->SetCapabilities(capabilities_message);
+
+  auto pipe =
+      std::make_unique<protocol::FakeMessagePipe>(/*asynchronous=*/false);
+  peer_session_->OnIncomingDataChannel(
+      AgentIntegrationControlMessageHandler::kDataChannelName, pipe->Wrap());
+
+  pipe->OpenPipe();
+
+  protocol::AgentIntegrationControl message;
+  message.mutable_query_state_request();
+  pipe->ReceiveProtobufMessage(message);
+  ASSERT_EQ(pipe->sent_messages().size(), 1u);
+
+  protocol::AgentIntegrationControl response;
+  ASSERT_TRUE(response.ParseFromString(pipe->sent_messages().front()));
+  ASSERT_TRUE(response.has_query_state_response());
+  EXPECT_FALSE(response.query_state_response().enabled());
+
+  pipe->ClosePipe();
+}
+#endif  // BUILDFLAG(IS_LINUX)
 
 }  // namespace remoting

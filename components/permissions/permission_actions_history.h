@@ -13,7 +13,6 @@
 #include "components/permissions/permission_request_enums.h"
 #include "components/permissions/permission_uma_constants.h"
 #include "components/permissions/permission_util.h"
-#include "components/permissions/prediction_service/prediction_request_features.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 
 enum class PermissionAction;
@@ -39,6 +38,15 @@ class PermissionActionsHistory : public KeyedService {
     base::Time time;
 
     friend bool operator==(const Entry&, const Entry&) = default;
+  };
+
+  // Per-action counts of recorded prompt actions.
+  struct ActionCounts {
+    size_t grants = 0;
+    size_t denies = 0;
+    size_t dismissals = 0;
+    size_t ignores = 0;
+    size_t total() const { return grants + denies + dismissals + ignores; }
   };
 
   enum class EntryFilter {
@@ -85,7 +93,7 @@ class PermissionActionsHistory : public KeyedService {
   PrefService* GetPrefServiceForTesting();
 
   static void FillInActionCounts(
-      PredictionRequestFeatures::ActionCounts* counts,
+      ActionCounts* counts,
       const std::vector<PermissionActionsHistory::Entry>& permission_actions);
 
   // Registers the preferences related to blocklisting in the given PrefService.

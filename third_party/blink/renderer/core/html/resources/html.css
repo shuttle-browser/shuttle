@@ -251,9 +251,6 @@ table {
     border-spacing: 2px;
     border-collapse: separate;
     text-indent: initial;
-    @supports not blink-feature(TableDefaultBorderColorCurrentColor) {
-        border-color: gray;
-    }
 }
 
 thead {
@@ -776,17 +773,17 @@ input[type="image" i] {
 
 input[type="radio" i],
 input[type="checkbox" i] {
+    cursor: default;
+
     @supports not blink-feature(AppearanceBase) {
         padding: initial;
         background-color: initial;
         border: initial;
-        cursor: default;
     }
     @supports blink-feature(AppearanceBase) {
         padding: -internal-auto-base(initial, unset);
         background-color: -internal-auto-base(initial, transparent);
         border: -internal-auto-base(initial, 1px solid currentColor);
-        cursor: -internal-auto-base(default, unset);
 
         block-size: -internal-auto-base(unset, 1em);
         inline-size: -internal-auto-base(unset, 1em);
@@ -880,7 +877,6 @@ button {
 
     @supports not blink-feature(AppearanceBase) {
         text-align: center;
-        cursor: default;
         padding-block: 1px;
         padding-inline: 6px;
         border: 2px outset ButtonBorder;
@@ -981,6 +977,7 @@ button:disabled {
         background-color: -internal-auto-base(light-dark(rgba(239, 239, 239, 0.3), rgba(19, 1, 1, 0.3)), revert-rule);
         border-color: -internal-auto-base(light-dark(rgba(118, 118, 118, 0.3), rgba(195, 195, 195, 0.3)), revert-rule);
         color: -internal-auto-base(light-dark(rgba(16, 16, 16, 0.3), rgba(255, 255, 255, 0.3)), color-mix(currentColor 50%, transparent));
+        cursor: -internal-auto-base(default, not-allowed);
     }
 }
 
@@ -989,6 +986,7 @@ input[type="color" i]:disabled {
         background-color: -internal-auto-base(light-dark(rgba(239, 239, 239, 0.3), rgba(19, 1, 1, 0.3)), transparent);
         border-color: -internal-auto-base(light-dark(rgba(118, 118, 118, 0.3), rgba(195, 195, 195, 0.3)), currentColor);
         color: -internal-auto-base(light-dark(rgba(16, 16, 16, 0.3), rgba(255, 255, 255, 0.3)), color-mix(currentColor 50%, transparent));
+        cursor: -internal-auto-base(default, not-allowed);
     }
     @supports not blink-feature(AppearanceBase) {
         background-color: light-dark(rgba(239, 239, 239, 0.3), rgba(19, 1, 1, 0.3));
@@ -1016,14 +1014,14 @@ input[type="button" i]:active:disabled, input[type="submit" i]:active:disabled, 
 }
 
 input:disabled, textarea:disabled {
-    cursor: default;
-
     @supports not blink-feature(AppearanceBase) {
+        cursor: default;
         background-color: light-dark(rgba(239, 239, 239, 0.3), rgba(59, 59, 59, 0.3));
         color: light-dark(#545454, #aaaaaa);
     }
 
     @supports blink-feature(AppearanceBase) {
+        cursor: -internal-auto-base(default, not-allowed);
         background-color: -internal-auto-base(light-dark(rgba(239, 239, 239, 0.3), rgba(59, 59, 59, 0.3)), unset);
         color: -internal-auto-base(light-dark(#545454, #aaaaaa), color-mix(currentColor 50%, transparent));
     }
@@ -1082,6 +1080,7 @@ input[type="radio" i] {
 input[type="color" i] {
     appearance: auto;
     box-sizing: border-box;
+    cursor: default;
 
     @supports not blink-feature(AppearanceBase) {
         inline-size: 50px;
@@ -1089,7 +1088,6 @@ input[type="color" i] {
         /* Same as native_theme_base. */
         border: 1px solid ButtonBorder;
         padding: 1px 2px;
-        cursor: default;
         background-color: ButtonFace;
         color: ButtonText;
     }
@@ -1100,7 +1098,6 @@ input[type="color" i] {
         /* Same as native_theme_base when auto. */
         border: 1px solid -internal-auto-base(ButtonBorder, currentColor);
         padding: -internal-auto-base(1px 2px, 0);
-        cursor: -internal-auto-base(default, inherit);
         background-color: -internal-auto-base(ButtonFace, transparent);
         color: -internal-auto-base(ButtonText, inherit);
 
@@ -1380,6 +1377,9 @@ textarea:disabled {
 }
 select:disabled {
   border-color: -internal-auto-base(rgba(118, 118, 118, 0.3), currentColor);
+  @supports blink-feature(CustomizableSelectNewUAStyles) {
+    cursor: -internal-auto-base(default, not-allowed);
+  }
 }
 
 select:disabled,
@@ -2155,7 +2155,9 @@ select:not(:-internal-list-box) {
   text-align: -internal-auto-base(start, initial);
   text-indent: -internal-auto-base(0px, initial);
   -webkit-rtl-ordering: -internal-auto-base(logical, inherit);
-  cursor: -internal-auto-base(default, inherit);
+  @supports not blink-feature(CustomizableSelectNewUAStyles) {
+    cursor: -internal-auto-base(default, inherit);
+  }
   white-space: -internal-auto-base(pre, inherit);
   /* This text-autospace rule won't work because it is set with !important
    * earlier in the UA stylesheet. After merging with the rest of the UA
@@ -2195,7 +2197,9 @@ select {
   text-align: -internal-auto-base(start, initial);
   text-indent: -internal-auto-base(0px, initial);
   -webkit-rtl-ordering: -internal-auto-base(logical, inherit);
-  cursor: -internal-auto-base(default, inherit);
+  @supports not blink-feature(CustomizableSelectNewUAStyles) {
+    cursor: -internal-auto-base(default, inherit);
+  }
   white-space: -internal-auto-base(pre, inherit);
   /* See note in CustomizableSelect feature block about text-autospace. */
   text-autospace: -internal-auto-base(no-autospace !important, inherit);
@@ -2391,6 +2395,11 @@ select::-internal-select-autofill-preview[popover]:popover-open {
   padding: 0;
   border: 1px solid black;
 }
+select::-internal-select-autofill-preview,
+select::-internal-select-autofill-preview-text {
+  user-select: none !important;
+  -webkit-user-modify: read-only !important;
+}
 select::-internal-select-autofill-preview-text {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2532,6 +2541,10 @@ select optgroup optgroup {
     position-area: block-end span-inline-end;
   }
 
+  menulist:-internal-popover-in-top-layer::backdrop {
+    pointer-events: none !important;
+  }
+
   menulist:-internal-menulist-popover-with-menulist-anchor {
     /* To the right, with its top aligned to the implicit anchor's top */
     position-area: inline-end span-block-end;
@@ -2555,11 +2568,13 @@ select optgroup optgroup {
     border-block-start: 1px solid currentColor;
   }
 
-  menuitem::checkmark {
+  menuitemcheckbox::checkmark,
+  menuitemradio::checkmark {
     content: '\2713' / '';
   }
 
-  menuitem:not(:checked)::checkmark {
+  menuitemcheckbox:not(:checked)::checkmark,
+  menuitemradio:not(:checked)::checkmark {
     visibility: hidden;
   }
 
@@ -2574,11 +2589,19 @@ select optgroup optgroup {
     display: contents;
   }
 
-  menuitem {
+  menuitem,
+  menuitemcheckbox,
+  menuitemradio {
     display: inline-flex;
     /* menuitems in a menubar do not open on interest (hover), unless a menu
      * is already open (see below) */
     interest-delay-start: calc(infinity * 1s);
+  }
+
+  menulist menuitem,
+  menulist menuitemcheckbox,
+  menulist menuitemradio {
+    display: flex;
   }
 
   /* menuitems in a menubar that has an open menu trigger instantly on
@@ -2589,12 +2612,11 @@ select optgroup optgroup {
   }
 
   menulist menuitem {
-    display: flex;
     interest-delay-start: normal;
   }
 
   menubar, menulist {
-    menuitem {
+    menuitem, menuitemcheckbox, menuitemradio {
       align-items: center;
       user-select: none;
       gap: 0.5em;
@@ -2611,10 +2633,14 @@ select optgroup optgroup {
       padding-inline: 0.5em;
     }
 
-    menuitem:enabled:hover {
+    menuitem:enabled:hover,
+    menuitemcheckbox:enabled:hover,
+    menuitemradio:enabled:hover {
       background-color: color-mix(currentColor 10%, transparent);
     }
-    menuitem:disabled {
+    menuitem:disabled,
+    menuitemcheckbox:disabled,
+    menuitemradio:disabled {
       color: color-mix(currentColor 50%, transparent);
     }
 
@@ -2629,10 +2655,6 @@ select optgroup optgroup {
 
 [overscrollcontainer] {
   -internal-overscroll-container: auto;
-}
-
-[overscrollcontainer] > [overscrollarea] {
-  -internal-overscroll-position: auto;
 }
 
 [overscrollcontainer] > [overscrollarea]::overscroll-backdrop {

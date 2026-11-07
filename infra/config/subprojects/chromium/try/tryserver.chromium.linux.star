@@ -146,13 +146,11 @@ try_.builder(
 
 try_.builder(
     name = "linux-annotator-rel",
-    description_html = "Runs tests for the Network Traffic Annotation Auditor on Linux, mirroring linux-annotator-rel.",
     mirrors = ["ci/linux-annotator-rel"],
     gn_args = gn_args.config(
         configs = [
             "ci/linux-annotator-rel",
-            "try_builder",
-            "no_symbols",
+            "release_try_builder",
         ],
     ),
     ssd = True,
@@ -264,7 +262,8 @@ try_.builder(
     gn_args = gn_args.config(
         configs = [
             "ci/linux-blink-heap-verification",
-            "try_builder",
+            "release_try_builder",
+            "minimal_symbols",
         ],
     ),
     ssd = True,
@@ -321,6 +320,9 @@ try_.builder(
             "verify_paths_only": True,
         },
     },
+    # Download the build outputs so that the "Verify Archive Paths" step can
+    # find them.
+    siso_output_local_strategy = "greedy",
     siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
 )
 
@@ -396,10 +398,6 @@ try_.builder(
 
 try_.builder(
     name = "linux-surface-embed-rel",
-    description_html = (
-        "Runs web_tests and wpt_tests using surface embed " +
-        "against complete desktop Chrome browser."
-    ),
     mirrors = ["ci/linux-surface-embed-rel"],
     gn_args = "ci/linux-surface-embed-rel",
     ssd = True,
@@ -454,8 +452,7 @@ try_.builder(
     gn_args = gn_args.config(
         configs = [
             "ci/linux-perfetto-rel",
-            "try_builder",
-            "no_symbols",
+            "release_try_builder",
         ],
     ),
     ssd = True,
@@ -497,6 +494,7 @@ try_.orchestrator_builder(
     # use_orchestrator_pool = True,
     cq_settings = try_.cq_settings(
         on_default_cq = True,
+        reuse_max_commit_distance = 800 if settings.is_main else None,
     ),
     experiments = {
         # go/nplus1shardsproposal
@@ -529,7 +527,9 @@ try_.builder(
     ssd = True,
     contact_team_email = "chrome-devtools@google.com",
     cq_settings = try_.cq_settings(
-        includable_only = True,
+        location_filters = [
+            "third_party/chromium-bidi/.+",
+        ],
     ),
     main_list_view = "try",
 )
@@ -578,7 +578,6 @@ try_.builder(
     ssd = True,
     # TODO(crbug.com/329118490): Re-enable flake endorser.
     check_for_flakiness = False,
-    check_for_flakiness_with_resultdb = False,
     contact_team_email = "chrome-linux-engprod@google.com",
     coverage_test_types = ["unit", "overall"],
     cq_settings = try_.cq_settings(
@@ -607,7 +606,6 @@ try_.builder(
     ssd = True,
     # TODO(crbug.com/329118490): Re-enable flake endorser.
     check_for_flakiness = False,
-    check_for_flakiness_with_resultdb = False,
     contact_team_email = "chrome-linux-engprod@google.com",
     coverage_test_types = ["unit", "overall"],
     cq_settings = try_.cq_settings(
@@ -751,7 +749,7 @@ try_.orchestrator_builder(
             "ci/Linux ASan LSan Builder",
             # TODO(crbug.com/507993636): Restore symbol_level=1 if/when CAS
             # uploads and downloads are no longer slow.
-            "no_symbols",
+            "release_try_builder",
         ],
     ),
     compilator = "linux_chromium_asan_rel_ng-compilator",
@@ -796,7 +794,6 @@ try_.builder(
     cores = 32,
     ssd = True,
     check_for_flakiness = False,
-    check_for_flakiness_with_resultdb = False,
     contact_team_email = "chrome-sanitizer-builder-owners@google.com",
     cq_settings = try_.cq_settings(
         location_filters = [
@@ -829,7 +826,13 @@ try_.builder(
         "ci/Linux Chromium OS ASan LSan Builder",
         "ci/Linux Chromium OS ASan LSan Tests (1)",
     ],
-    gn_args = "ci/Linux Chromium OS ASan LSan Builder",
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Linux Chromium OS ASan LSan Builder",
+            "release_try_builder",
+            "minimal_symbols",
+        ],
+    ),
     # TODO(crbug.com/41482936): Remove this when memory consumption during links
     # is reduced.
     cores = 16,
@@ -857,6 +860,7 @@ try_.builder(
 
 try_.builder(
     name = "linux_chromium_clobber_deterministic",
+    description_html = "Verifies that Linux x64 release builds are deterministic.",
     executable = "recipe:swarming/deterministic_build",
     gn_args = gn_args.config(
         configs = [
@@ -1024,7 +1028,6 @@ try_.orchestrator_builder(
     ),
     # TODO (crbug.com/410653528): Reenable for TSAN when fixes are appropriate.
     check_for_flakiness = False,
-    check_for_flakiness_with_resultdb = False,
     compilator = "linux_chromium_tsan_rel_ng-compilator",
     contact_team_email = "chrome-sanitizer-builder-owners@google.com",
     # TODO (crbug.com/1372179): Use orchestrator pool once overloaded test pools
@@ -1081,6 +1084,7 @@ try_.builder(
 
 try_.builder(
     name = "linux_upload_clang",
+    description_html = "Builds and uploads Clang toolchain packages for Linux x64.",
     executable = "recipe:chromium_toolchain/package_clang",
     gn_args = gn_args.config(
         configs = [
@@ -1093,8 +1097,8 @@ try_.builder(
     cores = 32,
     ssd = True,
     execution_timeout = 5 * time.hour,
-    notifies = ["chrome-rust-toolchain"],
     properties = {
+        "disable_tbi": True,
         "$build/chromium_toolchain": {
             "toolchain": "CLANG",
             "trusted_build_instance": "lexan-release-infra-linux-prod",
@@ -1108,12 +1112,12 @@ try_.builder(
 
 try_.builder(
     name = "linux_upload_rust",
+    description_html = "Builds and uploads Rust toolchain packages for Linux x64.",
     executable = "recipe:chromium_toolchain/package_rust",
     builderless = True,
     cores = 32,
     ssd = True,
     execution_timeout = 5 * time.hour,
-    notifies = ["chrome-rust-toolchain"],
 )
 
 try_.builder(
@@ -1139,7 +1143,6 @@ try_.builder(
 
 try_.builder(
     name = "linux-no-initial-webui-rel",
-    description_html = "Mirror of Linux No Initial WebUI CI builder",
     mirrors = [
         "ci/Linux Builder",
         "ci/linux-no-initial-webui-rel",
@@ -1170,6 +1173,7 @@ try_.builder(
 
 try_.builder(
     name = "tricium-metrics-analysis",
+    description_html = "Runs Tricium metrics analysis on modified JSON and XML files.",
     executable = "recipe:tricium_metrics",
     ssd = True,
     cq_settings = try_.cq_settings(
@@ -1184,6 +1188,7 @@ try_.builder(
 
 try_.builder(
     name = "tricium-oilpan-analysis",
+    description_html = "Runs Tricium Oilpan static analysis on modified C/C++ files.",
     executable = "recipe:tricium_oilpan",
     ssd = True,
     cq_settings = try_.cq_settings(
@@ -1250,7 +1255,6 @@ try_.builder(
     ),
     ssd = True,
     check_for_flakiness = False,
-    check_for_flakiness_with_resultdb = False,
     cq_settings = try_.cq_settings(
         location_filters = [
             cq.location_filter(path_regexp = r".*\.(js|ts)"),
@@ -1275,7 +1279,6 @@ try_.builder(
     ),
     ssd = True,
     check_for_flakiness = False,
-    check_for_flakiness_with_resultdb = False,
     cq_settings = try_.cq_settings(
         experiment_percentage = 5,
         location_filters = [
@@ -1340,7 +1343,6 @@ try_.builder(
 
 try_.builder(
     name = "linux-separate-renderer-rel",
-    description_html = "Runs separate renderer tests on Linux, mirroring linux-separate-renderer-fyi-rel.",
     mirrors = [
         "ci/linux-separate-renderer-fyi-rel",
     ],

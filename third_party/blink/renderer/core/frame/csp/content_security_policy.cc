@@ -352,9 +352,6 @@ void ContentSecurityPolicy::ReportUseCounters(
     const Vector<network::mojom::blink::ContentSecurityPolicyPtr>& policies) {
   for (const auto& policy : policies) {
     Count(GetUseCounterType(policy->header->type));
-    if (policy->treat_as_public_address) {
-      Count(WebFeature::kLocalNetworkAccessShouldTreatAsPublicAddressCsp);
-    }
     if (CSPDirectiveListAllowDynamic(*policy,
                                      CSPDirectiveName::ScriptSrcAttr) ||
         CSPDirectiveListAllowDynamic(*policy,
@@ -369,7 +366,8 @@ void ContentSecurityPolicy::ReportUseCounters(
             *policy, this, ReportingDisposition::kSuppressReporting,
             kWillNotThrowException, g_empty_string,
             /*script_hash_values=*/{},
-            delegate_ && delegate_->ScriptSrcExtendedHashesEnabled())) {
+            delegate_ && delegate_->ScriptSrcExtendedHashesEnabled(),
+            /*trusted_types_enforced=*/false)) {
       Count(WebFeature::kCSPWithUnsafeEval);
     }
 
@@ -576,7 +574,6 @@ void ContentSecurityPolicy::ComputeInternalStateForParsedPolicy(
       case CSPDirectiveName::ReportURI:
       case CSPDirectiveName::RequireTrustedTypesFor:
       case CSPDirectiveName::Sandbox:
-      case CSPDirectiveName::TreatAsPublicAddress:
       case CSPDirectiveName::TrustedTypes:
       case CSPDirectiveName::UpgradeInsecureRequests:
       case CSPDirectiveName::WorkerSrc:
@@ -712,6 +709,17 @@ bool ContentSecurityPolicy::AllowEval(
     ReportingDisposition reporting_disposition,
     ContentSecurityPolicy::ExceptionStatus exception_status,
     const String& script_content) {
+  // https://w3c.github.io/webappsec-csp/#can-compile-strings
+  // 'trusted-types-eval' applies _only_ when Trusted Types is enforced, i.e.
+  // when some enforcing policy requires Trusted Types for 'script'. Note that
+  // in most other contexts, we only check whether TT is required -- report only
+  // or not -- because even in report-only we need to run the checks in order to
+  // generate the reports. This, however, is a global property, so we compute it
+  // here and pass it to each per-policy check.
+  bool trusted_types_enforced =
+      std::ranges::any_of(policies_, [](const auto& policy) {
+        return CSPDirectiveListRequiresTrustedTypesEnforcing(*policy);
+      });
   bool is_allowed = true;
   Vector<network::IntegrityMetadata> csp_hash_values;
   FillInCSPHashValues(script_content, hash_algorithms_used_, csp_hash_values);
@@ -719,7 +727,8 @@ bool ContentSecurityPolicy::AllowEval(
     is_allowed &= CSPDirectiveListAllowEval(
         *policy, this, reporting_disposition, exception_status, script_content,
         csp_hash_values,
-        delegate_ && delegate_->ScriptSrcExtendedHashesEnabled());
+        delegate_ && delegate_->ScriptSrcExtendedHashesEnabled(),
+        trusted_types_enforced);
   }
   return is_allowed;
 }
@@ -734,30 +743,6 @@ bool ContentSecurityPolicy::AllowWasmCodeGeneration(
         *policy, this, reporting_disposition, exception_status, script_content);
   }
   return is_allowed;
-}
-
-bool ContentSecurityPolicy::AllowTrustedTypesEval(
-    ReportingDisposition reporting_disposition,
-    ContentSecurityPolicy::ExceptionStatus exception_status) {
-  // https://www.w3.org/TR/CSP3/#can-compile-strings, step 5.3.3
-  // "If source-list contains a source expression which is [...] "'unsafe-eval'"
-
-  // The spec wants 'trusted-types-eval' to apply _only_ when Trusted Types is
-  // enforced. Note that in most other contexts, we only check whether TT is
-  // required -- report only or not -- because even in report-only we need to
-  // run the checks in order to generate the reports. This, however, requires
-  // TT to enabled in an enforcing directive. Because that is a global
-  // property, we need to check it here.
-  bool trusted_types_is_enforced =
-      std::ranges::any_of(policies_, [&](const auto& policy) {
-        return CSPDirectiveListRequiresTrustedTypesEnforcing(*policy);
-      });
-  bool trusted_types_eval_applies =
-      std::ranges::any_of(policies_, [&](const auto& policy) {
-        return CSPDirectiveListAllowTrustedTypesEval(
-            *policy, this, reporting_disposition, exception_status);
-      });
-  return trusted_types_is_enforced && trusted_types_eval_applies;
 }
 
 HashSet<HashAlgorithm> ContentSecurityPolicy::HashesToReport() const {
@@ -1242,8 +1227,8 @@ SourceLocation* GatherSecurityPolicyViolationEventData(
     SourceLocation* source_location,
     const StringView& script_source,
     const StringView& sample_prefix,
-    const std::optional<String> eval_hash,
-    const std::optional<String> url_hash) {
+    const String& eval_hash,
+    const String& url_hash) {
   if (effective_type == CSPDirectiveName::FrameAncestors) {
     // If this load was blocked via 'frame-ancestors', then the URL of
     // |document| has not yet been initialized. In this case, we'll set both
@@ -1264,8 +1249,8 @@ SourceLocation* GatherSecurityPolicyViolationEventData(
         break;
       case ContentSecurityPolicyViolationType::kEvalViolation:
         init->setBlockedURI("eval");
-        if (eval_hash.has_value() && !eval_hash->IsNull()) {
-          init->setEvalHash(eval_hash.value());
+        if (!eval_hash.IsNull()) {
+          init->setEvalHash(eval_hash);
         }
         break;
       case ContentSecurityPolicyViolationType::kWasmEvalViolation:
@@ -1279,8 +1264,8 @@ SourceLocation* GatherSecurityPolicyViolationEventData(
         // redirects).
         init->setBlockedURI(ContentSecurityPolicy::StripURLForUseInReport(
             delegate->GetSecurityOrigin(), blocked_url, effective_type));
-        if (url_hash.has_value() && !url_hash->IsNull()) {
-          init->setUrlHash(url_hash.value());
+        if (!url_hash.IsNull()) {
+          init->setUrlHash(url_hash);
         }
         break;
       case ContentSecurityPolicyViolationType::kTrustedTypesSinkViolation:
@@ -1390,8 +1375,8 @@ void ContentSecurityPolicy::ReportViolation(
     const String& source,
     const String& source_prefix,
     std::optional<base::UnguessableToken> issue_id,
-    std::optional<String> eval_hash,
-    std::optional<String> url_hash) {
+    const String& eval_hash,
+    const String& url_hash) {
   CHECK(violation_type == kURLViolation || blocked_url.IsEmpty() ||
         violation_type == kSRIViolation);
 
@@ -1426,12 +1411,15 @@ void ContentSecurityPolicy::ReportViolation(
       blocked_url, header, header_type, violation_type, source_location, source,
       source_prefix, eval_hash, url_hash);
 
+  // Suppress reports pointing at extension URLs loaded outside of extensions.
+  //
   // TODO(mkwst): Obviously, we shouldn't hit this check, as extension-loaded
   // resources should be allowed regardless. We apparently do, however, so
   // we should at least stop spamming reporting endpoints. See
   // https://crbug.com/524356 for detail.
-  if (!violation_data->sourceFile().empty() &&
-      ShouldBypassContentSecurityPolicy(KURL(violation_data->sourceFile()))) {
+  if (source_location &&
+      ShouldBypassContentSecurityPolicy(KURL(source_location->Url())) &&
+      !ShouldBypassContentSecurityPolicy(relevant_delegate->Url())) {
     return;
   }
   PostViolationReport(violation_data, context_frame, report_endpoints,
@@ -1690,8 +1678,6 @@ const char* ContentSecurityPolicy::GetDirectiveName(CSPDirectiveName type) {
       return "style-src-attr";
     case CSPDirectiveName::StyleSrcElem:
       return "style-src-elem";
-    case CSPDirectiveName::TreatAsPublicAddress:
-      return "treat-as-public-address";
     case CSPDirectiveName::TrustedTypes:
       return "trusted-types";
     case CSPDirectiveName::UpgradeInsecureRequests:
@@ -1759,8 +1745,6 @@ CSPDirectiveName ContentSecurityPolicy::GetDirectiveType(const String& name) {
     return CSPDirectiveName::StyleSrcAttr;
   if (name == "style-src-elem")
     return CSPDirectiveName::StyleSrcElem;
-  if (name == "treat-as-public-address")
-    return CSPDirectiveName::TreatAsPublicAddress;
   if (name == "trusted-types")
     return CSPDirectiveName::TrustedTypes;
   if (name == "upgrade-insecure-requests")

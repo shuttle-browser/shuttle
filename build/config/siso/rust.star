@@ -361,6 +361,22 @@ def __step_config(ctx, step_config):
             "timeout": "2m",
             "remote_command": platform.remote_python_bin,
         },
+        {
+            # Like rust/bindgen, `rs_bindings_from_cc` parses C++ headers and
+            # writes a depfile.  In clean builds the depfile does not exist
+            # yet, so the transitively included headers are not known to Siso
+            # and remote execution fails with `fatal error: '...' file not
+            # found`.  Siso scandeps (`"deps": "gcc"`) doesn't help, because
+            # the headers are passed via `--public_headers=...` rather than
+            # as regular compiler inputs.
+            # TODO(b/356496947): Enable remote execution together with
+            # rust/bindgen.
+            "name": "rust/rust_api_from_cpp",
+            "command_prefix": platform.python_bin + " ../../build/rust/gni_impl/rust_api_from_cpp_wrapper.py",
+            "inputs": rust_toolchain + clang_inputs,
+            "remote": False,
+            "timeout": "2m",
+        },
     ])
     return step_config
 

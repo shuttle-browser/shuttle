@@ -7,8 +7,8 @@ import 'chrome://settings/settings.js';
 import 'chrome://settings/lazy_load.js';
 
 import {webUIListenerCallback} from 'chrome://resources/js/cr.js';
-import type {SettingsPrivacyPageIndexElement, SettingsPrefsElement, SyncStatus} from 'chrome://settings/settings.js';
-import {CrSettingsPrefs, loadTimeData, MetricsBrowserProxyImpl, PrefService, PrefsBrowserProxy, PrivacyGuideBrowserProxyImpl, PrivacyGuideInteractions, resetRouterForTesting, routes, Router, StatusAction} from 'chrome://settings/settings.js';
+import type {SettingsPrivacyPageIndexElement, SyncStatus} from 'chrome://settings/settings.js';
+import {loadTimeData, MetricsBrowserProxyImpl, PrefService, PrefsBrowserProxy, PrivacyGuideBrowserProxyImpl, PrivacyGuideInteractions, resetRouterForTesting, routes, Router, StatusAction} from 'chrome://settings/settings.js';
 import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {flushTasks} from 'chrome://webui-test/polymer_test_util.js';
 import {isChildVisible} from 'chrome://webui-test/test_util.js';
@@ -21,7 +21,6 @@ import {TestPrefsBrowserProxy} from './test_prefs_browser_proxy.js';
 // removed.
 suite('PrivacyGuidePromoVisibility', () => {
   let page: SettingsPrivacyPageIndexElement;
-  let settingsPrefs: SettingsPrefsElement;
   let testMetricsBrowserProxy: TestMetricsBrowserProxy;
   let privacyGuideBrowserProxy: TestPrivacyGuideBrowserProxy;
   let prefService: PrefService;
@@ -54,24 +53,9 @@ suite('PrivacyGuidePromoVisibility', () => {
     prefService = PrefService.getInstance();
     await prefService.whenInitialized();
 
-    settingsPrefs = document.createElement('settings-prefs');
-    settingsPrefs.initialize(prefsBrowserProxy.fakeApi);
-    document.body.appendChild(settingsPrefs);
-    await CrSettingsPrefs.initialized;
-
     Router.getInstance().navigateTo(routes.PRIVACY);
 
     page = document.createElement('settings-privacy-page-index');
-    page.prefs = settingsPrefs.prefs!;
-    // TODO(crbug.com/40184479): Temporary bridge to notify the unmigrated
-    // Polymer parent element of pref changes from Lit child elements until
-    // settings-privacy-page-index is migrated to PrefService.
-    prefsBrowserProxy.fakeApi.onPrefsChanged.addListener(
-        (prefs: chrome.settingsPrivate.PrefObject[]) => {
-          for (const pref of prefs) {
-            page.setPrefValue(pref.key, pref.value);
-          }
-        });
     document.body.appendChild(page);
     await flushTasks();
 
@@ -136,6 +120,7 @@ suite('PrivacyGuidePromoVisibility', () => {
 
     // The privacy guide should be marked as seen and the promo no longer
     // visible.
+    assertTrue(prefService.getPref<boolean>('privacy_guide.viewed').value);
     assertFalse(isChildVisible(page, '#privacyGuidePromo'));
   });
 

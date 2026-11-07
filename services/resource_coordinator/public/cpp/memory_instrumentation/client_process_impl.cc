@@ -9,7 +9,6 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
-#include "base/not_fatal_until.h"
 #include "base/notreached.h"
 #include "base/process/process.h"
 #include "base/synchronization/lock.h"
@@ -104,8 +103,7 @@ void ClientProcessImpl::OnChromeMemoryDumpDone(
     uint64_t dump_guid,
     std::unique_ptr<base::trace_event::ProcessMemoryDump> process_memory_dump) {
   CHECK(outcome == base::trace_event::ProcessMemoryDumpOutcome::kSuccess ||
-            !process_memory_dump,
-        base::NotFatalUntil::M148);
+        !process_memory_dump);
 
   auto callback_it = pending_chrome_callbacks_.find(dump_guid);
   CHECK(callback_it != pending_chrome_callbacks_.end());
@@ -174,7 +172,12 @@ void ClientProcessImpl::RequestOSMemoryDump(
 
 #if BUILDFLAG(IS_MAC)
   // If the most recent chrome memory dump hasn't finished, wait for that to
-  // finish.
+  // finish. On Mac, `phys_footprint` (used to compute `private_footprint_kb`)
+  // counts faulted pages of anonymous shared memory. The Chrome dump faults
+  // every resident shared memory page (see
+  // ProcessMemoryDump::CountResidentBytesInSharedMemory()), so that subtracting
+  // the resident size reported by SharedMemoryTracker is accurate. That only
+  // works if phys_footprint is sampled after the Chrome dump.
   if (most_recent_chrome_memory_dump_guid_.has_value()) {
     uint64_t guid = most_recent_chrome_memory_dump_guid_.value();
     auto it = pending_chrome_callbacks_.find(guid);

@@ -18,6 +18,7 @@
 #include "third_party/blink/renderer/platform/heap/persistent.h"
 #include "third_party/blink/renderer/platform/loader/fetch/back_forward_cache_loader_helper.h"
 #include "third_party/blink/renderer/platform/loader/fetch/data_pipe_bytes_consumer.h"
+#include "third_party/blink/renderer/platform/loader/fetch/drained_data_pipe_client.h"
 #include "third_party/blink/renderer/platform/loader/testing/bytes_consumer_test_reader.h"
 #include "third_party/blink/renderer/platform/loader/testing/replaying_bytes_consumer.h"
 #include "third_party/blink/renderer/platform/scheduler/test/fake_task_runner.h"
@@ -63,6 +64,8 @@ class ResponseBodyLoaderTest : public testing::Test {
     bool LoadingIsFinished() const { return finished_; }
     bool LoadingIsFailed() const { return failed_; }
     bool LoadingIsCancelled() const { return cancelled_; }
+    int WillCreateBlobCount() const { return will_create_blob_count_; }
+    int DidCreateBlobCount() const { return did_create_blob_count_; }
 
     void DidReceiveData(base::span<const char> data) override {
       DCHECK(!finished_);
@@ -97,6 +100,13 @@ class ResponseBodyLoaderTest : public testing::Test {
       DCHECK(!failed_);
       cancelled_ = true;
     }
+    void WillCreateBlobFromDrainedDataPipe() override {
+      ++will_create_blob_count_;
+    }
+    void DidCreateBlobFromDrainedDataPipe(
+        const scoped_refptr<BlobDataHandle>&) override {
+      ++did_create_blob_count_;
+    }
 
     void SetLoader(ResponseBodyLoader& loader) { loader_ = loader; }
     void Trace(Visitor* visitor) const override { visitor->Trace(loader_); }
@@ -107,6 +117,8 @@ class ResponseBodyLoaderTest : public testing::Test {
     StringBuilder data_;
     bool finished_ = false;
     bool failed_ = false;
+    int will_create_blob_count_ = 0;
+    int did_create_blob_count_ = 0;
     bool cancelled_ = false;
   };
 
@@ -114,9 +126,11 @@ class ResponseBodyLoaderTest : public testing::Test {
                               public BytesConsumer::Client {
    public:
     ReadingClient(BytesConsumer& bytes_consumer,
-                  TestClient& test_response_body_loader_client)
+                  TestClient& test_response_body_loader_client,
+                  bool cancel_when_closed_or_errored = false)
         : bytes_consumer_(bytes_consumer),
-          test_response_body_loader_client_(test_response_body_loader_client) {}
+          test_response_body_loader_client_(test_response_body_loader_client),
+          cancel_when_closed_or_errored_(cancel_when_closed_or_errored) {}
 
     void OnStateChangeInternal() {
       while (true) {
@@ -135,7 +149,15 @@ class ResponseBodyLoaderTest : public testing::Test {
     // BytesConsumer::Client implementation
     void OnStateChange() override {
       on_state_change_called_ = true;
-      OnStateChangeInternal();
+      // Like BodyStreamBuffer, cancel without reading once the body is closed
+      // or errored.
+      if (cancel_when_closed_or_errored_ &&
+          bytes_consumer_->GetPublicState() !=
+              PublicState::kReadableOrWaiting) {
+        bytes_consumer_->Cancel();
+      } else {
+        OnStateChangeInternal();
+      }
       // Notification is done asynchronously.
       EXPECT_FALSE(test_response_body_loader_client_->LoadingIsCancelled());
       EXPECT_FALSE(test_response_body_loader_client_->LoadingIsFinished());
@@ -154,6 +176,7 @@ class ResponseBodyLoaderTest : public testing::Test {
     bool on_state_change_called_ = false;
     const Member<BytesConsumer> bytes_consumer_;
     const Member<TestClient> test_response_body_loader_client_;
+    const bool cancel_when_closed_or_errored_;
   };
 
   ResponseBodyLoader* MakeResponseBodyLoader(
@@ -1062,6 +1085,60 @@ TEST_F(ResponseBodyLoaderDrainedBytesConsumerNotificationOutOfOnStateChangeTest,
 }
 
 TEST_F(ResponseBodyLoaderDrainedBytesConsumerNotificationOutOfOnStateChangeTest,
+       DrainAsDataPipeHandsOutClient) {
+  mojo::ScopedDataPipeConsumerHandle consumer_end;
+  mojo::ScopedDataPipeProducerHandle producer_end;
+  ASSERT_EQ(mojo::CreateDataPipe(nullptr, producer_end, consumer_end),
+            MOJO_RESULT_OK);
+
+  DataPipeBytesConsumer::CompletionNotifier* completion_notifier = nullptr;
+  auto task_runner = base::MakeRefCounted<scheduler::FakeTaskRunner>();
+  auto* original_consumer = MakeGarbageCollected<DataPipeBytesConsumer>(
+      task_runner, std::move(consumer_end), &completion_notifier);
+  auto* client = MakeGarbageCollected<TestClient>();
+  auto* body_loader =
+      MakeResponseBodyLoader(*original_consumer, *client, task_runner);
+
+  DrainedDataPipeClient* drained_client = nullptr;
+  EXPECT_TRUE(
+      body_loader->DrainAsBytesConsumer().DrainAsDataPipe(&drained_client));
+  ASSERT_TRUE(drained_client);
+
+  drained_client->WillCreateBlobFromDrainedDataPipe();
+  EXPECT_EQ(1, client->WillCreateBlobCount());
+  drained_client->DidCreateBlobFromDrainedDataPipe(nullptr);
+  EXPECT_EQ(1, client->DidCreateBlobCount());
+}
+
+TEST_F(ResponseBodyLoaderDrainedBytesConsumerNotificationOutOfOnStateChangeTest,
+       BlobFromDrainedDataPipeIsDroppedAfterAbort) {
+  mojo::ScopedDataPipeConsumerHandle consumer_end;
+  mojo::ScopedDataPipeProducerHandle producer_end;
+  ASSERT_EQ(mojo::CreateDataPipe(nullptr, producer_end, consumer_end),
+            MOJO_RESULT_OK);
+
+  DataPipeBytesConsumer::CompletionNotifier* completion_notifier = nullptr;
+  auto task_runner = base::MakeRefCounted<scheduler::FakeTaskRunner>();
+  auto* original_consumer = MakeGarbageCollected<DataPipeBytesConsumer>(
+      task_runner, std::move(consumer_end), &completion_notifier);
+  auto* client = MakeGarbageCollected<TestClient>();
+  auto* body_loader =
+      MakeResponseBodyLoader(*original_consumer, *client, task_runner);
+
+  DrainedDataPipeClient* drained_client = nullptr;
+  EXPECT_TRUE(
+      body_loader->DrainAsBytesConsumer().DrainAsDataPipe(&drained_client));
+  ASSERT_TRUE(drained_client);
+  drained_client->WillCreateBlobFromDrainedDataPipe();
+  EXPECT_EQ(1, client->WillCreateBlobCount());
+
+  body_loader->Abort();
+
+  drained_client->DidCreateBlobFromDrainedDataPipe(nullptr);
+  EXPECT_EQ(0, client->DidCreateBlobCount());
+}
+
+TEST_F(ResponseBodyLoaderDrainedBytesConsumerNotificationOutOfOnStateChangeTest,
        DrainAsDataPipe) {
   mojo::ScopedDataPipeConsumerHandle consumer_end;
   mojo::ScopedDataPipeProducerHandle producer_end;
@@ -1081,7 +1158,7 @@ TEST_F(ResponseBodyLoaderDrainedBytesConsumerNotificationOutOfOnStateChangeTest,
 
   BytesConsumer& consumer = body_loader->DrainAsBytesConsumer();
 
-  EXPECT_TRUE(consumer.DrainAsDataPipe());
+  EXPECT_TRUE(consumer.DrainAsDataPipe(nullptr));
 
   task_runner->RunUntilIdle();
 
@@ -1245,6 +1322,68 @@ TEST_F(ResponseBodyLoaderDrainedBytesConsumerNotificationInOnStateChangeTest,
   EXPECT_FALSE(client->LoadingIsFailed());
 }
 
+TEST_F(ResponseBodyLoaderDrainedBytesConsumerNotificationInOnStateChangeTest,
+       CancelAfterDone) {
+  auto task_runner = base::MakeRefCounted<scheduler::FakeTaskRunner>();
+  auto* original_consumer =
+      MakeGarbageCollected<ReplayingBytesConsumer>(task_runner);
+  original_consumer->Add(Command(Command::kWait));
+  original_consumer->Add(Command(Command::kDone));
+
+  auto* client = MakeGarbageCollected<TestClient>();
+
+  auto* body_loader =
+      MakeResponseBodyLoader(*original_consumer, *client, task_runner);
+
+  BytesConsumer& consumer = body_loader->DrainAsBytesConsumer();
+  auto* reading_client = MakeGarbageCollected<ReadingClient>(
+      consumer, *client, /*cancel_when_closed_or_errored=*/true);
+  consumer.SetClient(reading_client);
+
+  base::span<const char> buffer;
+  // This BeginRead posts a task which calls OnStateChange.
+  Result result = consumer.BeginRead(buffer);
+  EXPECT_EQ(result, Result::kShouldWait);
+
+  task_runner->RunUntilIdle();
+
+  EXPECT_TRUE(reading_client->IsOnStateChangeCalled());
+  EXPECT_FALSE(client->LoadingIsCancelled());
+  EXPECT_TRUE(client->LoadingIsFinished());
+  EXPECT_FALSE(client->LoadingIsFailed());
+}
+
+TEST_F(ResponseBodyLoaderDrainedBytesConsumerNotificationInOnStateChangeTest,
+       CancelAfterError) {
+  auto task_runner = base::MakeRefCounted<scheduler::FakeTaskRunner>();
+  auto* original_consumer =
+      MakeGarbageCollected<ReplayingBytesConsumer>(task_runner);
+  original_consumer->Add(Command(Command::kWait));
+  original_consumer->Add(Command(Command::kError));
+
+  auto* client = MakeGarbageCollected<TestClient>();
+
+  auto* body_loader =
+      MakeResponseBodyLoader(*original_consumer, *client, task_runner);
+
+  BytesConsumer& consumer = body_loader->DrainAsBytesConsumer();
+  auto* reading_client = MakeGarbageCollected<ReadingClient>(
+      consumer, *client, /*cancel_when_closed_or_errored=*/true);
+  consumer.SetClient(reading_client);
+
+  base::span<const char> buffer;
+  // This BeginRead posts a task which calls OnStateChange.
+  Result result = consumer.BeginRead(buffer);
+  EXPECT_EQ(result, Result::kShouldWait);
+
+  task_runner->RunUntilIdle();
+
+  EXPECT_TRUE(reading_client->IsOnStateChangeCalled());
+  EXPECT_FALSE(client->LoadingIsCancelled());
+  EXPECT_FALSE(client->LoadingIsFinished());
+  EXPECT_TRUE(client->LoadingIsFailed());
+}
+
 class ResponseBodyLoaderTestAllowDrainAsBytesConsumerInBFCache
     : public ResponseBodyLoaderTest {
  protected:
@@ -1306,6 +1445,148 @@ TEST_F(ResponseBodyLoaderTestAllowDrainAsBytesConsumerInBFCache,
   EXPECT_FALSE(client->LoadingIsCancelled());
   EXPECT_TRUE(client->LoadingIsFinished());
   EXPECT_FALSE(client->LoadingIsFailed());
+}
+
+// Regression test for b/564248014:
+// Once a drained `DelegatingBytesConsumer` reaches `State::kDone`
+// (`PublicState::kClosed`), aborting the `ResponseBodyLoader` before
+// `DidFinishLoadingBody` runs must not retroactively flip `GetPublicState()`
+// from `PublicState::kClosed` to `PublicState::kErrored`.
+TEST_F(ResponseBodyLoaderTest,
+       AbortAfterDrainedBytesConsumerDoneDoesNotFlipStateToErrored) {
+  auto task_runner = base::MakeRefCounted<scheduler::FakeTaskRunner>();
+  auto* original_consumer =
+      MakeGarbageCollected<ReplayingBytesConsumer>(task_runner);
+  original_consumer->Add(Command(Command::kData, "hello"));
+  original_consumer->Add(Command(Command::kDone));
+
+  auto* client = MakeGarbageCollected<TestClient>();
+  auto* body_loader =
+      MakeResponseBodyLoader(*original_consumer, *client, task_runner);
+
+  BytesConsumer& consumer = body_loader->DrainAsBytesConsumer();
+  auto* reader = MakeGarbageCollected<BytesConsumerTestReader>(&consumer);
+  auto result = reader->Run(task_runner.get());
+  EXPECT_EQ(result.first, Result::kDone);
+  EXPECT_EQ(String(result.second), "hello");
+  EXPECT_EQ(PublicState::kClosed, consumer.GetPublicState());
+
+  // Abort the loader after the drained consumer has already reached kClosed.
+  body_loader->Abort();
+
+  // Terminal state kClosed must be preserved.
+  EXPECT_EQ(PublicState::kClosed, consumer.GetPublicState());
+  base::span<const char> buffer;
+  EXPECT_EQ(Result::kDone, consumer.BeginRead(buffer));
+}
+
+// Verifies that when the underlying BytesConsumer is already kClosed while
+// DelegatingBytesConsumer is still in State::kLoading, aborting the loader
+// keeps both GetPublicState() as kClosed and BeginRead() returning kDone.
+TEST_F(ResponseBodyLoaderTest,
+       AbortWhenUnderlyingConsumerAlreadyClosedPreservesClosedState) {
+  auto task_runner = base::MakeRefCounted<scheduler::FakeTaskRunner>();
+  auto* closed_underlying = BytesConsumer::CreateClosed();
+  auto* client = MakeGarbageCollected<TestClient>();
+  auto* body_loader =
+      MakeResponseBodyLoader(*closed_underlying, *client, task_runner);
+  BytesConsumer& consumer = body_loader->DrainAsBytesConsumer();
+  EXPECT_EQ(PublicState::kClosed, consumer.GetPublicState());
+
+  body_loader->Abort();
+  EXPECT_EQ(PublicState::kClosed, consumer.GetPublicState());
+  base::span<const char> buffer;
+  EXPECT_EQ(Result::kDone, consumer.BeginRead(buffer));
+}
+
+// Verifies that when the underlying BytesConsumer is kReadableOrWaiting when
+// Abort() is called, closing the underlying consumer or cancelling later does
+// not retroactively flip PublicState::kErrored to PublicState::kClosed.
+TEST_F(ResponseBodyLoaderTest,
+       AbortWhenUnderlyingConsumerReadablePreservesErroredState) {
+  auto task_runner = base::MakeRefCounted<scheduler::FakeTaskRunner>();
+  auto* replaying_underlying =
+      MakeGarbageCollected<ReplayingBytesConsumer>(task_runner);
+  replaying_underlying->Add(Command(Command::kDone));
+  auto* client = MakeGarbageCollected<TestClient>();
+  auto* body_loader =
+      MakeResponseBodyLoader(*replaying_underlying, *client, task_runner);
+  BytesConsumer& consumer = body_loader->DrainAsBytesConsumer();
+  EXPECT_EQ(PublicState::kReadableOrWaiting, consumer.GetPublicState());
+
+  body_loader->Abort();
+  EXPECT_EQ(PublicState::kErrored, consumer.GetPublicState());
+
+  // Advance underlying consumer to kClosed and attempt Cancel().
+  base::span<const char> buffer;
+  EXPECT_EQ(Result::kDone, replaying_underlying->BeginRead(buffer));
+  EXPECT_EQ(PublicState::kClosed, replaying_underlying->GetPublicState());
+  consumer.Cancel();
+
+  EXPECT_EQ(PublicState::kErrored, consumer.GetPublicState());
+  EXPECT_EQ(Result::kError, consumer.BeginRead(buffer));
+}
+
+// Verifies that calling Cancel() after the underlying BytesConsumer has already
+// errored (while DelegatingBytesConsumer is still in State::kLoading) preserves
+// PublicState::kErrored instead of flipping it to PublicState::kClosed.
+TEST_F(ResponseBodyLoaderTest,
+       CancelWhenUnderlyingConsumerAlreadyErroredPreservesErroredState) {
+  auto task_runner = base::MakeRefCounted<scheduler::FakeTaskRunner>();
+  auto* errored_underlying =
+      BytesConsumer::CreateErrored(BytesConsumer::Error("error"));
+  auto* client = MakeGarbageCollected<TestClient>();
+  auto* body_loader =
+      MakeResponseBodyLoader(*errored_underlying, *client, task_runner);
+  BytesConsumer& consumer = body_loader->DrainAsBytesConsumer();
+  EXPECT_EQ(PublicState::kErrored, consumer.GetPublicState());
+
+  consumer.Cancel();
+
+  EXPECT_EQ(PublicState::kErrored, consumer.GetPublicState());
+  base::span<const char> buffer;
+  EXPECT_EQ(Result::kError, consumer.BeginRead(buffer));
+}
+
+// Regression test for https://issues.chromium.org/issues/571671613:
+// a readable notification delivered while the loader is suspended (page freeze,
+// LoaderFreezeMode::kStrict) is swallowed by the drained
+// DelegatingBytesConsumer. Resume() must re-notify it, otherwise the body
+// stream stalls forever.
+TEST_F(ResponseBodyLoaderTest,
+       DrainedBytesConsumerIsNotifiedOnResumeAfterNotificationWhileSuspended) {
+  auto task_runner = base::MakeRefCounted<scheduler::FakeTaskRunner>();
+  auto* original_consumer =
+      MakeGarbageCollected<ReplayingBytesConsumer>(task_runner);
+  original_consumer->Add(Command(Command::kWait));
+  original_consumer->Add(Command(Command::kData, "hello"));
+  original_consumer->Add(Command(Command::kDone));
+
+  auto* client = MakeGarbageCollected<TestClient>();
+  auto* body_loader =
+      MakeResponseBodyLoader(*original_consumer, *client, task_runner);
+  BytesConsumer& consumer = body_loader->DrainAsBytesConsumer();
+  auto* reading_client = MakeGarbageCollected<ReadingClient>(consumer, *client);
+  consumer.SetClient(reading_client);
+
+  // Nothing to read yet; the underlying consumer schedules a readable
+  // notification.
+  base::span<const char> buffer;
+  EXPECT_EQ(Result::kShouldWait, consumer.BeginRead(buffer));
+
+  // The page freezes before the notification is delivered.
+  body_loader->Suspend(LoaderFreezeMode::kStrict);
+  task_runner->RunUntilIdle();
+  EXPECT_FALSE(reading_client->IsOnStateChangeCalled());
+
+  body_loader->Resume();
+  task_runner->RunUntilIdle();
+
+  EXPECT_TRUE(reading_client->IsOnStateChangeCalled());
+  EXPECT_EQ("hello", client->GetData());
+  EXPECT_TRUE(client->LoadingIsFinished());
+  EXPECT_FALSE(client->LoadingIsFailed());
+  EXPECT_FALSE(client->LoadingIsCancelled());
 }
 
 }  // namespace

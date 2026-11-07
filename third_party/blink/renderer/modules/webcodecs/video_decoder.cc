@@ -4,6 +4,7 @@
 
 #include "third_party/blink/renderer/modules/webcodecs/video_decoder.h"
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -45,7 +46,6 @@
 #include "third_party/blink/renderer/platform/heap/cross_thread_handle.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_std.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/blink/renderer/platform/wtf/text/format.h"
@@ -122,7 +122,8 @@ VideoDecoderConfig* CopyConfig(const VideoDecoderConfig& config) {
   copy->setCodec(config.codec());
 
   if (config.hasDescription()) {
-    auto desc_wrapper = AsSpan<const uint8_t>(config.description());
+    base::span<const uint8_t> desc_wrapper =
+        AsSpan<SharedBufferPolicy::kAllow>(*config.description());
     if (!desc_wrapper.data()) {
       // Checked by IsValidVideoDecoderConfig.
       NOTREACHED();
@@ -368,7 +369,8 @@ std::optional<media::VideoType> VideoDecoder::IsValidVideoDecoderConfig(
     return std::nullopt;
 
   if (config.hasDescription()) {
-    auto desc_wrapper = AsSpan<const uint8_t>(config.description());
+    base::span<const uint8_t> desc_wrapper =
+        AsSpan<SharedBufferPolicy::kAllow>(*config.description());
     if (!desc_wrapper.data()) {
       *js_error_message = "Invalid config, description is detached.";
       return std::nullopt;
@@ -451,7 +453,8 @@ VideoDecoder::MakeMediaVideoDecoderConfigInternal(
 
   std::vector<uint8_t> extra_data;
   if (config.hasDescription()) {
-    auto desc_wrapper = AsSpan<const uint8_t>(config.description());
+    base::span<const uint8_t> desc_wrapper =
+        AsSpan<SharedBufferPolicy::kAllow>(*config.description());
     if (!desc_wrapper.data()) {
       // Checked by IsValidVideoDecoderConfig().
       NOTREACHED();
@@ -568,11 +571,8 @@ VideoDecoder::MakeMediaVideoDecoderConfigInternal(
   }
 
   if (decoder_specific_data.decoder_helper) {
-    const gfx::HDRMetadata hdr_metadata =
-        decoder_specific_data.decoder_helper->GetHdrMetadata();
-    if (!hdr_metadata.IsEmpty() && hdr_metadata.IsValid()) {
-      media_config.set_hdr_metadata(hdr_metadata);
-    }
+    media_config.set_hdr_metadata(
+        decoder_specific_data.decoder_helper->GetHdrMetadata());
   }
 
   return media_config;
@@ -605,7 +605,7 @@ std::optional<media::VideoDecoderConfig> VideoDecoder::MakeMediaConfig(
   return media_config;
 }
 
-media::DecoderStatus::Or<scoped_refptr<media::DecoderBuffer>>
+base::expected<scoped_refptr<media::DecoderBuffer>, media::DecoderStatus>
 VideoDecoder::MakeInput(const InputType& chunk, bool verify_key_frame) {
   scoped_refptr<media::DecoderBuffer> decoder_buffer = chunk.buffer();
   if (decoder_specific_data_.decoder_helper) {
@@ -616,18 +616,18 @@ VideoDecoder::MakeInput(const InputType& chunk, bool verify_key_frame) {
         decoder_specific_data_.decoder_helper->CalculateNeededOutputBufferSize(
             decoder_buffer_span, verify_key_frame);
     if (!output_size) {
-      return media::DecoderStatus(
+      return base::unexpected(media::DecoderStatus(
           media::DecoderStatus::Codes::kMalformedBitstream,
-          "Unable to determine size of bitstream buffer.");
+          "Unable to determine size of bitstream buffer."));
     }
 
     std::vector<uint8_t> buf(output_size);
     if (decoder_specific_data_.decoder_helper->ConvertNalUnitStreamToByteStream(
             decoder_buffer_span, buf, &output_size, verify_key_frame) !=
         VideoDecoderHelper::Status::kSucceed) {
-      return media::DecoderStatus(
-          media::DecoderStatus::Codes::kMalformedBitstream,
-          "Unable to convert NALU to byte stream.");
+      return base::unexpected(
+          media::DecoderStatus(media::DecoderStatus::Codes::kMalformedBitstream,
+                               "Unable to convert NALU to byte stream."));
     }
 
     decoder_buffer =
@@ -639,9 +639,9 @@ VideoDecoder::MakeInput(const InputType& chunk, bool verify_key_frame) {
 
   if (verify_key_frame) {
     if (chunk.type() != V8EncodedVideoChunkType::Enum::kKey) {
-      return media::DecoderStatus(
+      return base::unexpected(media::DecoderStatus(
           media::DecoderStatus::Codes::kKeyFrameRequired,
-          "A key frame is required after configure() or flush().");
+          "A key frame is required after configure() or flush()."));
     }
 
     bool is_key_frame = true;
@@ -661,11 +661,11 @@ VideoDecoder::MakeInput(const InputType& chunk, bool verify_key_frame) {
       // to provide a description for AVC H.264. We could try to guess at the
       // NAL unit size and see if a NAL unit parses out, but this seems fine.
       if (!is_key_frame && !decoder_specific_data_.decoder_helper) {
-        return media::DecoderStatus(
+        return base::unexpected(media::DecoderStatus(
             media::DecoderStatus::Codes::kKeyFrameRequired,
             "A key frame is required after configure() or flush(). If you're "
             "using AVC formatted H.264 you must fill out the description field "
-            "in the VideoDecoderConfig.");
+            "in the VideoDecoderConfig."));
       }
 #endif
     } else if (pending_codec_ == media::VideoCodec::kHEVC) {
@@ -674,40 +674,41 @@ VideoDecoder::MakeInput(const InputType& chunk, bool verify_key_frame) {
 #if BUILDFLAG(USE_PROPRIETARY_CODECS)
 #if BUILDFLAG(ENABLE_PLATFORM_HEVC)
       if (!is_key_frame && !decoder_specific_data_.decoder_helper) {
-        return media::DecoderStatus(
+        return base::unexpected(media::DecoderStatus(
             media::DecoderStatus::Codes::kKeyFrameRequired,
             "A key frame is required after configure() or flush(). If you're "
             "using HEVC formatted H.265 you must fill out the description "
-            "field in the VideoDecoderConfig.");
+            "field in the VideoDecoderConfig."));
       }
 #endif  // BUILDFLAG(ENABLE_PLATFORM_HEVC)
 #endif  // BUILDFLAG(USE_PROPRIETARY_CODECS)
     }
 
     if (!is_key_frame) {
-      return media::DecoderStatus(
+      return base::unexpected(media::DecoderStatus(
           media::DecoderStatus::Codes::kKeyFrameRequired,
           "An EncodedVideoChunk was marked as type `key` but wasn't a key frame"
-          ". A key frame is required after configure() or flush().");
+          ". A key frame is required after configure() or flush()."));
     }
   }
 
-  chunk_metadata_[chunk.buffer()->timestamp()] =
-      ChunkMetadata{chunk.buffer()->duration()};
+  chunk_metadata_.push_back(
+      ChunkMetadata{chunk.buffer()->timestamp(), chunk.buffer()->duration()});
 
   return decoder_buffer;
 }
 
-media::DecoderStatus::Or<VideoDecoder::OutputType*> VideoDecoder::MakeOutput(
-    scoped_refptr<MediaOutputType> output,
-    ExecutionContext* context) {
+base::expected<VideoDecoder::OutputType*, media::DecoderStatus>
+VideoDecoder::MakeOutput(scoped_refptr<MediaOutputType> output,
+                         ExecutionContext* context) {
   if (output) {
     output->metadata().transformation = active_transform_;
   }
 
-  const auto it = chunk_metadata_.find(output->timestamp());
+  const auto it = std::ranges::find(chunk_metadata_, output->timestamp(),
+                                    &ChunkMetadata::timestamp);
   if (it != chunk_metadata_.end()) {
-    const auto duration = it->second.duration;
+    const auto duration = it->duration;
     if (!duration.is_zero() && duration != media::kNoTimestamp) {
       auto wrapped_output = media::VideoFrame::WrapVideoFrame(
           output, output->format(), output->visible_rect(),
@@ -717,15 +718,26 @@ media::DecoderStatus::Or<VideoDecoder::OutputType*> VideoDecoder::MakeOutput(
       output = wrapped_output;
     }
 
-    // We erase from the beginning onward to our target frame since frames
-    // should be returned in presentation order.
-    chunk_metadata_.erase(chunk_metadata_.begin(), it + 1);
+    // Consume the matched entry. Since outputs may arrive out of input order
+    // (e.g., B-frame reordering up to 16 frames), only evict unmatched older
+    // entries that exceed the maximum reordering window.
+    constexpr ptrdiff_t kMaxReorderedFrames = 16;
+    const ptrdiff_t index = it - chunk_metadata_.begin();
+    chunk_metadata_.EraseAt(static_cast<wtf_size_t>(index));
+    if (index > kMaxReorderedFrames) {
+      chunk_metadata_.EraseAt(
+          0, static_cast<wtf_size_t>(index - kMaxReorderedFrames));
+    }
   }
   return MakeGarbageCollected<OutputType>(std::move(output), context);
 }
 
 void VideoDecoder::OnActiveConfigChanged(const MediaConfigType& config) {
   active_transform_ = config.video_transformation();
+}
+
+void VideoDecoder::OnReset() {
+  chunk_metadata_.clear();
 }
 
 const AtomicString& VideoDecoder::InterfaceName() const {

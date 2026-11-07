@@ -27,7 +27,6 @@
 class BrowserWindow;
 class BrowserWindowInterface;
 class Profile;
-enum class TabChangeType;
 
 namespace input {
 struct NativeWebKeyboardEvent;
@@ -75,6 +74,14 @@ class BrowserCommandController : public CommandUpdater,
   // prevent changing the state of enabled shortcuts while in this mode (so the
   // other *Changed() functions will be a NO-OP in this state).
   void LockedFullscreenStateChanged();
+
+  // Called when the OnTask state changes without a pin/unpin, e.g. entering
+  // or leaving the prepared state. Re-derives the commands that depend on the
+  // OnTask state (currently DevTools).
+  // TODO(crbug.com/438540029): Consolidate with LockedFullscreenStateChanged()
+  // and SetTabSwitchCommandsEnabled() into a single notification that
+  // re-derives all command state from LockedStateController.
+  void OnTaskStateChanged();
 
   // Enables or disables all tab switching commands (IDC_SELECT_NEXT_TAB,
   // IDC_SELECT_PREVIOUS_TAB, IDC_CYCLE_*, IDC_SELECT_TAB_0..7, etc.).
@@ -133,12 +140,8 @@ class BrowserCommandController : public CommandUpdater,
                               std::optional<tab_groups::TabGroupId> new_group,
                               tabs::TabInterface* tab,
                               int index) override;
-  void OnTabChangedAt(tabs::TabInterface* tab,
-                      TabChangeType change_type) override;
+  void OnTabBlockedStateChanged(tabs::TabInterface* tab) override;
   void OnTabPinnedStateChanged(tabs::TabInterface* tab, int index) override;
-  void OnTabGroupFocusChanged(
-      std::optional<tab_groups::TabGroupId> new_focused_group,
-      std::optional<tab_groups::TabGroupId> old_focused_group) override;
 
   // Overridden from TabRestoreServiceObserver:
   void TabRestoreServiceChanged(sessions::TabRestoreService* service) override;
@@ -235,11 +238,14 @@ class BrowserCommandController : public CommandUpdater,
   void UpdateCommandsForTabStripStateChanged();
 
 
-  // Updates commands and actions that depend on tab group focus state.
-  void UpdateCommandsForTabGroupFocusChanged();
-
   // Updates commands and actions for profiling.
   void UpdateCommandsForProfiling();
+
+  // Updates action visibilities that depend on the sharing hub policy.
+  void UpdateActionsForSharingHubPolicy();
+
+  // Updates the QR code generator action enabled state.
+  void UpdateQRCodeGeneratorActionEnabledState();
 
   void UpdateCommandAndActionEnabled(int command_id,
                                      actions::ActionId action_id,

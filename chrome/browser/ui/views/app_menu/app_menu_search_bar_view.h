@@ -5,54 +5,48 @@
 #ifndef CHROME_BROWSER_UI_VIEWS_APP_MENU_APP_MENU_SEARCH_BAR_VIEW_H_
 #define CHROME_BROWSER_UI_VIEWS_APP_MENU_APP_MENU_SEARCH_BAR_VIEW_H_
 
-#include <memory>
+#include <string_view>
 
+#include "base/callback_list.h"
 #include "base/memory/raw_ptr.h"
+#include "ui/base/interaction/element_identifier.h"
 #include "ui/base/metadata/metadata_header_macros.h"
-#include "ui/events/event.h"
-#include "ui/events/event_observer.h"
-#include "ui/views/controls/textfield/textfield.h"
+#include "ui/views/layout/box_layout_view.h"
 
-namespace views {
-class EventMonitor;
-class ImageView;
-}  // namespace views
-
-// Search bar view placed at the top of the Block Style ChroMenu.
-class AppMenuSearchBarView : public views::Textfield, public ui::EventObserver {
-  METADATA_HEADER(AppMenuSearchBarView, views::Textfield)
+// Search bar placed at the top of the Block Style ChroMenu.
+class AppMenuSearchBarView : public views::BoxLayoutView {
+  METADATA_HEADER(AppMenuSearchBarView, views::BoxLayoutView)
 
  public:
-  using views::Textfield::OnEvent;
+  // The icon occupying the leading slot.
+  enum class LeadingIcon { kSearch, kBack };
+
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kSearchFieldElementId);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kSearchIconElementId);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kBackButtonElementId);
 
   AppMenuSearchBarView();
   AppMenuSearchBarView(const AppMenuSearchBarView&) = delete;
   AppMenuSearchBarView& operator=(const AppMenuSearchBarView&) = delete;
   ~AppMenuSearchBarView() override;
 
-  views::ImageView* search_icon_for_testing() { return search_icon_; }
-  const views::ImageView* search_icon_for_testing() const {
-    return search_icon_;
-  }
-  bool is_active_for_testing() const { return is_active_; }
+  void SetLeadingIcon(LeadingIcon icon);
 
-  void HandleKeyEvent(ui::KeyEvent* event);
+  std::u16string_view GetText() const;
+  void SetText(std::u16string_view text);
+  [[nodiscard]] base::CallbackListSubscription AddTextChangedCallback(
+      views::PropertyChangedCallback callback);
 
-  // ui::EventObserver:
-  void OnEvent(const ui::Event& event) override;
-
-  // views::Textfield:
-  void AddedToWidget() override;
-  void RemovedFromWidget() override;
-  void Layout(PassKey) override;
-  bool OnMousePressed(const ui::MouseEvent& event) override;
+  // Runs `callback` when the back button is pressed, before the query is
+  // cleared.
+  [[nodiscard]] base::CallbackListSubscription AddBackPressedCallback(
+      base::RepeatingClosure callback);
 
  private:
-  void SetTextfieldFocused(bool focused);
+  // The textfield, with the focus and key handling it needs inside the menu.
+  class SearchField;
 
-  bool is_active_ = false;
-  raw_ptr<views::ImageView> search_icon_ = nullptr;
-  std::unique_ptr<views::EventMonitor> event_monitor_;
+  raw_ptr<SearchField> search_field_ = nullptr;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_APP_MENU_APP_MENU_SEARCH_BAR_VIEW_H_

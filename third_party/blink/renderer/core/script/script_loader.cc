@@ -49,7 +49,6 @@
 #include "third_party/blink/renderer/core/loader/modulescript/module_script_creation_params.h"
 #include "third_party/blink/renderer/core/loader/modulescript/module_script_fetch_request.h"
 #include "third_party/blink/renderer/core/loader/render_blocking_resource_manager.h"
-#include "third_party/blink/renderer/core/loader/url_matcher.h"
 #include "third_party/blink/renderer/core/loader/web_bundle/script_web_bundle.h"
 #include "third_party/blink/renderer/core/scheduler/task_attribution_util.h"
 #include "third_party/blink/renderer/core/script/cache_hint_attribute_value.h"
@@ -232,6 +231,17 @@ void ScriptLoader::Removed() {
 
 void ScriptLoader::DocumentBaseURLChanged() {
   if (GetScriptType() != ScriptTypeAtPrepare::kSpeculationRules) {
+    return;
+  }
+  // If the entire rule set failed to parse (which ShouldReportUMAForError()
+  // checks: kSourceIsNotJsonObject or kInvalidRulesetLevelTag), do not reparse
+  // it. Top-level parse errors only depend on the original source text and not
+  // the base URL, so reparsing would always fail with the same error and
+  // synchronously re-dispatch error events in AddSpeculationRuleSet() while
+  // EventDispatchForbiddenScope may be active (e.g. during <base> insertion or
+  // removal).
+  if (!speculation_rule_set_ ||
+      speculation_rule_set_->ShouldReportUMAForError()) {
     return;
   }
   // We reparse the original source text and generate a new SpeculationRuleSet

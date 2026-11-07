@@ -18,17 +18,18 @@
 #include "base/memory/ref_counted.h"
 #include "base/task/thread_pool.h"
 #include "base/values.h"
+#include "components/lookalikes/core/flat_safety_tips_allowlist.h"
 #include "components/lookalikes/core/safety_tips.pb.h"
 #include "components/lookalikes/core/safety_tips_config.h"
 
 namespace {
 
-const base::FilePath::CharType kSafetyTipsConfigBinaryPbFileName[] =
+constexpr base::FilePath::CharType kSafetyTipsConfigBinaryPbFileName[] =
     FILE_PATH_LITERAL("safety_tips.pb");
 
 // The SHA256 of the SubjectPublicKeyInfo used to sign the extension.
 // The extension id is: jflookgnkcckhobaglndicnbbgbonegd
-const uint8_t kSafetyTipsPublicKeySHA256[32] = {
+constexpr uint8_t kSafetyTipsPublicKeySHA256[32] = {
     0x95, 0xbe, 0xea, 0x6d, 0xa2, 0x2a, 0x7e, 0x10, 0x6b, 0xd3, 0x82,
     0xd1, 0x16, 0x1e, 0xd4, 0x63, 0x21, 0xfe, 0x79, 0x5d, 0x02, 0x30,
     0xc2, 0xcf, 0x4a, 0x9c, 0x8a, 0x39, 0xcc, 0x4a, 0x00, 0xce};
@@ -48,6 +49,30 @@ std::unique_ptr<reputation::SafetyTipsConfig> LoadSafetyTipsProtoFromDisk(
     return nullptr;
   }
   return proto;
+}
+
+struct SafetyTipsConfigAndAllowlist {
+  std::unique_ptr<reputation::SafetyTipsConfig> config;
+  // Null if and only if `config` is.
+  std::unique_ptr<lookalikes::FlatSafetyTipsAllowlist> allowlist;
+};
+
+SafetyTipsConfigAndAllowlist LoadSafetyTipsConfigFromDisk(
+    const base::FilePath& pb_path) {
+  SafetyTipsConfigAndAllowlist loaded;
+  loaded.config = LoadSafetyTipsProtoFromDisk(pb_path);
+  if (loaded.config) {
+    // Most of the parsed config is its URL allowlist, which takes much less
+    // memory in flat form.
+    loaded.allowlist =
+        lookalikes::FlatSafetyTipsAllowlist::ExtractFrom(*loaded.config);
+  }
+  return loaded;
+}
+
+void InstallSafetyTipsConfig(SafetyTipsConfigAndAllowlist loaded) {
+  lookalikes::SetSafetyTipsRemoteConfig(std::move(loaded.config),
+                                        std::move(loaded.allowlist));
 }
 
 }  // namespace
@@ -100,8 +125,8 @@ void SafetyTipsComponentInstallerPolicy::ComponentReady(
   // gave us without checking the default proto from the resource bundle.
   base::ThreadPool::PostTaskAndReplyWithResult(
       FROM_HERE, {base::MayBlock(), base::TaskPriority::BEST_EFFORT},
-      base::BindOnce(&LoadSafetyTipsProtoFromDisk, pb_path),
-      base::BindOnce(&lookalikes::SetSafetyTipsRemoteConfigProto));
+      base::BindOnce(&LoadSafetyTipsConfigFromDisk, pb_path),
+      base::BindOnce(&InstallSafetyTipsConfig));
 }
 
 // Called during startup and installation before ComponentReady().

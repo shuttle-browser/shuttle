@@ -176,6 +176,9 @@ class PageInfoMainView : public views::View,
   // shown when at least of one the buttons is available.
   raw_ptr<views::View> extended_site_info_section_ = nullptr;
 
+  // Bubble header view containing the page title/URL.
+  raw_ptr<views::View> header_view_ = nullptr;
+
   // "About this site" button that opens a subpage.
 
   // The view that contains `SecurityInformationView` and a certificate button.

@@ -330,7 +330,7 @@ constexpr base::MemoryConsumerTraits kSpareRenderProcessHostManagerTraits(
     // Pools pre-warmed renderer processes (tens of MBs each).
     base::MemoryConsumerTraits::EstimatedMemoryUsage::kMedium,
     // Process termination lets the OS reclaim memory pages directly.
-    base::MemoryConsumerTraits::ReleaseMemoryCost::kFreesPagesWithoutTraversal,
+    base::MemoryConsumerTraits::ReleaseMemoryDataAccess::kNone,
     // Eviction results in a cold start, but no user state is lost.
     base::MemoryConsumerTraits::InformationRetention::kLossless,
     // Cleans up host objects synchronously on the browser main thread.
@@ -933,7 +933,7 @@ size_t SpareRenderProcessHostManagerImpl::GetTargetSpareRPHCount() const {
 
   // Preserve 1 spare if keep-one-alive policy is active.
   if (base::FeatureList::IsEnabled(kSpareRPHKeepOneAliveOnMemoryPressure) &&
-      memory_limit() > 0) {
+      memory_limit() > base::MemoryLimit::FromPercent(0)) {
     target = std::max(size_t{1}, target);
   }
 

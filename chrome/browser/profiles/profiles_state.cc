@@ -85,7 +85,7 @@ void RegisterPrefs(PrefRegistrySimple* registry) {
 
 void SetLastUsedProfile(const base::FilePath& profile_dir) {
   PrefService* local_state = g_browser_process->local_state();
-  DCHECK(local_state);
+  CHECK(local_state, base::NotFatalUntil::M162);
   local_state->SetFilePath(prefs::kProfileLastUsed, profile_dir);
 }
 
@@ -229,7 +229,7 @@ std::u16string GetDefaultNameForNewEnterpriseProfile(
 
 std::u16string GetDefaultNameForNewSignedInProfile(
     const AccountInfo& account_info) {
-  DCHECK(account_info.IsValid());
+  CHECK(account_info.IsValid(), base::NotFatalUntil::M162);
   if (account_info.IsManaged() != signin::Tribool::kTrue) {
     std::u16string given_name = base::UTF8ToUTF16(*account_info.GetGivenName());
     CHECK(!given_name.empty());

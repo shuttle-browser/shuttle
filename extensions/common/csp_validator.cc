@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "base/check_op.h"
+#include "base/command_line.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
@@ -28,6 +29,7 @@
 #include "extensions/common/extension_features.h"
 #include "extensions/common/install_warning.h"
 #include "extensions/common/manifest_constants.h"
+#include "extensions/common/switches.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 
 namespace extensions::csp_validator {
@@ -70,6 +72,7 @@ constexpr std::string_view kHashSourcePrefixes[] = {
 };
 
 constexpr char kChromeResourcesUrl[] = "chrome://resources";
+constexpr char kChromeWebUITestUrl[] = "chrome://webui-test";
 constexpr const char* const kExtensionsAllowedToUseChromeResources[] = {
     extension_misc::kChromeVoxExtensionId,
     extension_misc::kIndigoExtensionId,
@@ -593,11 +596,11 @@ void CSPParser::Parse() {
 }
 
 std::string SanitizeContentSecurityPolicy(
-    const std::string& policy,
+    std::string_view policy,
     std::string manifest_key,
     int options,
     std::vector<InstallWarning>* warnings) {
-  CSPParser csp_parser(policy);
+  CSPParser csp_parser(std::string{policy});
 
   bool allow_insecure_object_src = options & OPTIONS_ALLOW_INSECURE_OBJECT_SRC;
   ExtensionCSPEnforcer csp_enforcer(std::move(manifest_key),
@@ -647,7 +650,7 @@ bool ContentSecurityPolicyIsSandboxed(
 
 bool DoesCSPDisallowRemoteCode(const std::string& extension_id,
                                mojom::ManifestLocation location,
-                               const std::string& content_security_policy,
+                               std::string_view content_security_policy,
                                std::string_view manifest_key,
                                std::u16string* error) {
   DCHECK(error);
@@ -676,7 +679,7 @@ bool DoesCSPDisallowRemoteCode(const std::string& extension_id,
   };
 
   // Populate |directive_mappings|.
-  CSPParser csp_parser(content_security_policy);
+  CSPParser csp_parser(std::string{content_security_policy});
   for (DirectiveMapping* mapping : directive_mappings) {
     // Find the first matching directive. As per
     // http://www.w3.org/TR/CSP/#parse-a-csp-policy, duplicate directive names
@@ -743,6 +746,14 @@ bool DoesCSPDisallowRemoteCode(const std::string& extension_id,
             return true;
           }
 
+          if (source_lower == kChromeWebUITestUrl &&
+              IsWebUITestAllowedForLocation(location)) {
+            // chrome://webui-test only exists in browser tests. Built-in
+            // component extensions may load test helpers from it when the
+            // test-only switch is set.
+            return true;
+          }
+
           return source_lower == kSelfSource || source_lower == kNoneSource ||
                  IsLocalHostSource(source_lower) ||
                  source_lower == kWasmUnsafeEvalSource;
@@ -763,7 +774,7 @@ bool DoesCSPDisallowRemoteCode(const std::string& extension_id,
     if (mapping == &default_src_mapping)
       continue;
 
-    if (mapping->directive && secure_directives.count(mapping->directive)) {
+    if (mapping->directive && secure_directives.contains(mapping->directive)) {
       // We already checked this directive and know it's secure. Skip it.
       continue;
     }
@@ -785,6 +796,12 @@ bool DoesCSPDisallowRemoteCode(const std::string& extension_id,
 bool IsExtensionAllowedToUseChromeResources(const std::string& extension_id) {
   return std::ranges::contains(kExtensionsAllowedToUseChromeResources,
                                extension_id);
+}
+
+bool IsWebUITestAllowedForLocation(mojom::ManifestLocation location) {
+  return location == mojom::ManifestLocation::kComponent &&
+         base::CommandLine::ForCurrentProcess()->HasSwitch(
+             switches::kAllowWebUITestInComponentExtensions);
 }
 
 }  // namespace extensions::csp_validator

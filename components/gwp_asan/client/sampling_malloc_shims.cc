@@ -37,7 +37,7 @@ using allocator_shim::AllocatorDispatch;
 //
 // Note that this optimization has not been benchmarked. However since it is
 // easy to do there is no reason to pay the extra cost.
-SamplingState<MALLOC> sampling_state;
+SmartSamplingState<MALLOC> sampling_state;
 
 // The global allocator singleton used by the shims. Implemented as a global
 // pointer instead of a function-local static to avoid initialization checks
@@ -49,9 +49,10 @@ extern AllocatorDispatch g_allocator_dispatch;
 void* AllocFn(size_t size,
               allocator_shim::AllocToken alloc_token,
               void* context) {
-  if (sampling_state.Sample(size)) [[unlikely]] {
-    if (void* allocation = gpa->Allocate(size))
+  if (sampling_state.Sample(size, alloc_token.value())) [[unlikely]] {
+    if (void* allocation = gpa->Allocate(size)) {
       return allocation;
+    }
   }
 
   return g_allocator_dispatch.next->alloc_function(size, alloc_token, context);
@@ -60,9 +61,10 @@ void* AllocFn(size_t size,
 void* AllocUncheckedFn(size_t size,
                        allocator_shim::AllocToken alloc_token,
                        void* context) {
-  if (sampling_state.Sample(size)) [[unlikely]] {
-    if (void* allocation = gpa->Allocate(size))
+  if (sampling_state.Sample(size, alloc_token.value())) [[unlikely]] {
+    if (void* allocation = gpa->Allocate(size)) {
       return allocation;
+    }
   }
 
   return g_allocator_dispatch.next->alloc_unchecked_function(size, alloc_token,
@@ -73,7 +75,7 @@ void* AllocZeroInitializedFn(size_t n,
                              size_t size,
                              allocator_shim::AllocToken alloc_token,
                              void* context) {
-  if (sampling_state.Sample(size)) [[unlikely]] {
+  if (sampling_state.Sample(size, alloc_token.value())) [[unlikely]] {
     base::CheckedNumeric<size_t> checked_total = size;
     checked_total *= n;
     if (!checked_total.IsValid()) [[unlikely]] {
@@ -91,11 +93,17 @@ void* AllocZeroInitializedFn(size_t n,
       n, size, alloc_token, context);
 }
 
-void* AllocZeroInitializedUncheckedFn(size_t n,
-                                      size_t size,
-                                      allocator_shim::AllocToken alloc_token,
-                                      void* context) {
-  if (sampling_state.Sample(size)) [[unlikely]] {
+// If this allocation is sampled, returns `n * size` zeroed bytes aligned to
+// `alignment` (or by default if 0) from GWP-ASan, or nullptr if the size
+// overflows. Otherwise, or if GWP-ASan can't allocate them, returns
+// `fallback()`.
+template <typename FallbackFn>
+void* AllocZeroInitializedUncheckedImpl(size_t n,
+                                        size_t size,
+                                        size_t alignment,
+                                        allocator_shim::AllocToken alloc_token,
+                                        FallbackFn fallback) {
+  if (sampling_state.Sample(size, alloc_token.value())) [[unlikely]] {
     base::CheckedNumeric<size_t> checked_total = size;
     checked_total *= n;
     if (!checked_total.IsValid()) [[unlikely]] {
@@ -103,7 +111,7 @@ void* AllocZeroInitializedUncheckedFn(size_t n,
     }
 
     size_t total_size = checked_total.ValueOrDie();
-    if (void* allocation = gpa->Allocate(total_size)) {
+    if (void* allocation = gpa->Allocate(total_size, alignment)) {
       // SAFETY: This is a low-level function.
       // The memory was just allocated for this size above.
       UNSAFE_BUFFERS(memset(allocation, 0, total_size));
@@ -111,17 +119,29 @@ void* AllocZeroInitializedUncheckedFn(size_t n,
     }
   }
 
-  return g_allocator_dispatch.next->alloc_zero_initialized_unchecked_function(
-      n, size, alloc_token, context);
+  return fallback();
+}
+
+void* AllocZeroInitializedUncheckedFn(size_t n,
+                                      size_t size,
+                                      allocator_shim::AllocToken alloc_token,
+                                      void* context) {
+  return AllocZeroInitializedUncheckedImpl(
+      n, size, /*alignment=*/0, alloc_token, [&] {
+        return g_allocator_dispatch.next
+            ->alloc_zero_initialized_unchecked_function(n, size, alloc_token,
+                                                        context);
+      });
 }
 
 void* AllocAlignedFn(size_t alignment,
                      size_t size,
                      allocator_shim::AllocToken alloc_token,
                      void* context) {
-  if (sampling_state.Sample(size)) [[unlikely]] {
-    if (void* allocation = gpa->Allocate(size, alignment))
+  if (sampling_state.Sample(size, alloc_token.value())) [[unlikely]] {
+    if (void* allocation = gpa->Allocate(size, alignment)) {
       return allocation;
+    }
   }
 
   return g_allocator_dispatch.next->alloc_aligned_function(
@@ -132,7 +152,7 @@ void* AllocAlignedUncheckedFn(size_t alignment,
                               size_t size,
                               allocator_shim::AllocToken alloc_token,
                               void* context) {
-  if (sampling_state.Sample(size)) [[unlikely]] {
+  if (sampling_state.Sample(size, alloc_token.value())) [[unlikely]] {
     if (void* allocation = gpa->Allocate(size, alignment)) {
       return allocation;
     }
@@ -161,11 +181,13 @@ void* ReallocFn(void* address,
   }
 
   void* new_alloc = gpa->Allocate(size);
-  if (!new_alloc)
+  if (!new_alloc) {
     new_alloc =
         g_allocator_dispatch.next->alloc_function(size, alloc_token, context);
-  if (!new_alloc)
+  }
+  if (!new_alloc) {
     return nullptr;
+  }
 
   UNSAFE_TODO(memcpy(new_alloc, address,
                      std::min(size, gpa->GetRequestedSize(address))));
@@ -294,8 +316,9 @@ void BatchFreeFn(void** to_be_freed, unsigned num_to_be_freed, void* context) {
       // If this batch includes guarded allocations, call free() on all of the
       // individual allocations to ensure the guarded allocations are handled
       // correctly.
-      for (size_t j = 0; j < num_to_be_freed; j++)
+      for (size_t j = 0; j < num_to_be_freed; j++) {
         FreeFn(UNSAFE_TODO(to_be_freed[j]), context);
+      }
       return;
     }
   }
@@ -317,9 +340,10 @@ static void* AlignedMallocFn(size_t size,
                              size_t alignment,
                              allocator_shim::AllocToken alloc_token,
                              void* context) {
-  if (sampling_state.Sample(size)) [[unlikely]] {
-    if (void* allocation = gpa->Allocate(size, alignment))
+  if (sampling_state.Sample(size, alloc_token.value())) [[unlikely]] {
+    if (void* allocation = gpa->Allocate(size, alignment)) {
       return allocation;
+    }
   }
 
   return g_allocator_dispatch.next->aligned_malloc_function(
@@ -330,7 +354,7 @@ static void* AlignedMallocUncheckedFn(size_t size,
                                       size_t alignment,
                                       allocator_shim::AllocToken alloc_token,
                                       void* context) {
-  if (sampling_state.Sample(size)) [[unlikely]] {
+  if (sampling_state.Sample(size, alloc_token.value())) [[unlikely]] {
     if (void* allocation = gpa->Allocate(size, alignment)) {
       return allocation;
     }
@@ -338,6 +362,18 @@ static void* AlignedMallocUncheckedFn(size_t size,
 
   return g_allocator_dispatch.next->aligned_malloc_unchecked_function(
       size, alignment, alloc_token, context);
+}
+
+static void* AlignedCallocUncheckedFn(size_t n,
+                                      size_t size,
+                                      size_t alignment,
+                                      allocator_shim::AllocToken alloc_token,
+                                      void* context) {
+  return AllocZeroInitializedUncheckedImpl(
+      n, size, alignment, alloc_token, [&] {
+        return g_allocator_dispatch.next->aligned_calloc_unchecked_function(
+            n, size, alignment, alloc_token, context);
+      });
 }
 
 static void* AlignedReallocFn(void* address,
@@ -360,11 +396,13 @@ static void* AlignedReallocFn(void* address,
   }
 
   void* new_alloc = gpa->Allocate(size, alignment);
-  if (!new_alloc)
+  if (!new_alloc) {
     new_alloc = g_allocator_dispatch.next->aligned_malloc_function(
         size, alignment, alloc_token, context);
-  if (!new_alloc)
+  }
+  if (!new_alloc) {
     return nullptr;
+  }
 
   UNSAFE_TODO(memcpy(new_alloc, address,
                      std::min(size, gpa->GetRequestedSize(address))));
@@ -435,6 +473,7 @@ AllocatorDispatch g_allocator_dispatch = {
     &TryFreeDefaultFn,
     &AlignedMallocFn,
     &AlignedMallocUncheckedFn,
+    &AlignedCallocUncheckedFn,
     &AlignedReallocFn,
     &AlignedReallocUncheckedFn,
     &AlignedFreeFn,
@@ -456,7 +495,9 @@ bool InstallMallocHooks(const AllocatorSettings& settings,
     return false;
   }
   malloc_crash_key.Set(gpa->GetCrashKey());
-  sampling_state.Init(settings.sampling_frequency);
+  sampling_state.Init(settings.sampling_frequency,
+                      settings.smart_sampling_enabled,
+                      settings.smart_sampling_rate_multiplier);
   sampling_state.SetSampleSizeRestriction(settings.sampling_min_size,
                                           settings.sampling_max_size);
 

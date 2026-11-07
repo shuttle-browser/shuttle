@@ -9,6 +9,7 @@
 
 #include <utility>
 
+#include "base/feature_list.h"
 #include "base/location.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
@@ -18,6 +19,7 @@
 #include "base/strings/string_util.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
+#include "net/base/net_errors.h"
 #include "net/http/http_byte_range.h"
 #include "net/http/http_request_headers.h"
 #include "services/network/public/cpp/cors/cors.h"
@@ -270,9 +272,41 @@ void ResourceMultiBufferDataProvider::DidReceiveResponse(
 
   if (!redirects_to_.IsEmpty()) {
     destination_url_data = url_data_->url_index()->GetByUrl(
-        redirects_to_, cors_mode_, url_data_->cache_lookup_mode());
+        redirects_to_, cors_mode_, url_data_->cache_lookup_mode(),
+        url_data_->security_origin(), url_data_->encoding_mode());
     redirects_to_ = KURL();
   }
+
+  // Get the response URL since it can differ from the request URL when a
+  // service worker provided the response. Normally we would just use
+  // ResponseUrl(), but ResourceMultiBufferDataProvider disallows mixing
+  // constructed responses (new Response()) and native server responses, even if
+  // they have the same response URL.
+  KURL response_url;
+  if (response.WasFetchedViaServiceWorker()) {
+    was_fetched_via_service_worker_ = true;
+    if (response.HasUrlListViaServiceWorker()) {
+      response_url = response.ResponseUrl();
+    }
+  } else {
+    response_url = response.ResponseUrl();
+  }
+
+  // This test is vital for security! Ensure that both the original UrlData and
+  // any redirect destination UrlData are compatible with the response's origin
+  // and opacity before mutating metadata on `destination_url_data`, inserting
+  // into `UrlIndex`, or merging data across a redirect. We get the response
+  // type here because aborting the loader may change it.
+  const bool is_cors_cross_origin =
+      network::cors::IsCorsCrossOriginResponseType(response.GetType());
+  if (!old_url_data->CanAcceptDataFrom(response_url, is_cors_cross_origin) ||
+      !destination_url_data->CanAcceptDataFrom(response_url,
+                                               is_cors_cross_origin)) {
+    active_loader_.reset();
+    url_data_->Fail();
+    return;  // "this" may be deleted now.
+  }
+  destination_url_data->SetDataOrigin(response_url, is_cors_cross_origin);
 
   base::Time last_modified;
   if (base::Time::FromString(
@@ -295,9 +329,6 @@ void ResourceMultiBufferDataProvider::DidReceiveResponse(
   int64_t content_length = response.ExpectedContentLength();
   bool end_of_file = false;
   bool do_fail = false;
-  // We get the response type here because aborting the loader may change it.
-  const bool is_cors_cross_origin =
-      network::cors::IsCorsCrossOriginResponseType(response.GetType());
   bytes_to_discard_ = 0;
 
   // We make a strong assumption that when we reach here we have either
@@ -321,11 +352,11 @@ void ResourceMultiBufferDataProvider::DidReceiveResponse(
     if (partial_response &&
         VerifyPartialResponse(response, destination_url_data)) {
       destination_url_data->set_range_supported();
-    } else if (ok_response) {
+    } else if (ok_response &&
+               TrySetLength(destination_url_data, content_length)) {
       // We accept a 200 response for a Range:0- request, trusting the
       // Accept-Ranges header, because Apache thinks that's a reasonable thing
       // to return.
-      destination_url_data->set_length(content_length);
       bytes_to_discard_ = byte_pos();
     } else if (response.HttpStatusCode() == kHttpRangeNotSatisfiable &&
                !is_cors_cross_origin) {
@@ -352,10 +383,9 @@ void ResourceMultiBufferDataProvider::DidReceiveResponse(
   if (!do_fail) {
     destination_url_data =
         url_data_->url_index()->TryInsert(destination_url_data);
+    CHECK(destination_url_data->CanAcceptDataFrom(response_url,
+                                                  is_cors_cross_origin));
   }
-
-  // This is vital for security!
-  destination_url_data->set_is_cors_cross_origin(is_cors_cross_origin);
 
   // Only used for metrics.
   {
@@ -394,28 +424,12 @@ void ResourceMultiBufferDataProvider::DidReceiveResponse(
     if (!weak_this) {
       return;  // "this" may be deleted now.
     }
+    CHECK(destination_url_data->CanAcceptDataFrom(response_url,
+                                                  is_cors_cross_origin));
   }
 
   if (do_fail) {
     destination_url_data->Fail();
-    return;  // "this" may be deleted now.
-  }
-
-  // Get the response URL since it can differ from the request URL when a
-  // service worker provided the response. Normally we would just use
-  // ResponseUrl(), but ResourceMultiBufferDataProvider disallows mixing
-  // constructed responses (new Response()) and native server responses, even if
-  // they have the same response URL.
-  KURL response_url;
-  if (!response.WasFetchedViaServiceWorker() ||
-      response.HasUrlListViaServiceWorker()) {
-    response_url = response.ResponseUrl();
-  }
-
-  // This test is vital for security!
-  if (!url_data_->ValidateDataOrigin(response_url)) {
-    active_loader_.reset();
-    url_data_->Fail();
     return;  // "this" may be deleted now.
   }
 
@@ -468,7 +482,7 @@ void ResourceMultiBufferDataProvider::DidReceiveData(
   // Beware, this object might be deleted here.
 }
 
-void ResourceMultiBufferDataProvider::DidDownloadData(uint64_t dataLength) {
+void ResourceMultiBufferDataProvider::DidDownloadData(uint64_t data_length) {
   NOTIMPLEMENTED();
 }
 
@@ -521,6 +535,33 @@ void ResourceMultiBufferDataProvider::DidFail(const WebURLError& error) {
   DVLOG(1) << "didFail: reason=" << error.reason();
   DCHECK(active_loader_.get());
   active_loader_.reset();
+
+  // ORB, Cross-Origin-Resource-Policy / COEP / DIP enforcement
+  // (ERR_BLOCKED_BY_RESPONSE), and web security violations (CORS, LNA, CSP,
+  // etc.) block cross-origin responses. Record this so that the failure is not
+  // distinguishable from other opaque failures (e.g. via error messages exposed
+  // by the media element). These blocks (as well as request-blocked and
+  // certificate errors) are deterministic for a given request, so fail
+  // immediately rather than retrying: a retry can never succeed, and the retry
+  // cadence is observable (e.g. by a service worker counting fetch events),
+  // which would leak whether the cross-origin server answered 206 or 416.
+  if (error.reason() == net::ERR_BLOCKED_BY_ORB ||
+      error.reason() == net::ERR_BLOCKED_BY_RESPONSE ||
+      error.is_web_security_violation()) {
+    url_data_->CrossOriginFail();
+    return;  // "this" may be deleted now.
+  }
+
+  // Service worker responses are not retried on failure, as they are
+  // synthesized or proxied by script and retrying exposes internal buffer
+  // positions via follow-up Range headers.
+  if (was_fetched_via_service_worker_ ||
+      net::IsRequestBlockedError(error.reason()) ||
+      net::IsCertificateError(error.reason()) ||
+      net::IsClientCertificateError(error.reason())) {
+    url_data_->Fail();
+    return;  // "this" may be deleted now.
+  }
 
   if (url_data_->url_index() && retries_ < kMaxRetries && pos_ != 0) {
     retries_++;
@@ -610,8 +651,8 @@ bool ResourceMultiBufferDataProvider::VerifyPartialResponse(
     return false;
   }
 
-  if (url_data->length() == kPositionNotSpecified) {
-    url_data->set_length(instance_size);
+  if (!TrySetLength(url_data, instance_size)) {
+    return false;
   }
 
   if (first_byte_position > byte_pos()) {
@@ -622,6 +663,23 @@ bool ResourceMultiBufferDataProvider::VerifyPartialResponse(
   }
   bytes_to_discard_ = byte_pos() - first_byte_position;
 
+  return true;
+}
+
+bool ResourceMultiBufferDataProvider::TrySetLength(
+    const scoped_refptr<UrlData>& destination_url_data,
+    int64_t length) {
+  // If a previous response already established the resource length on either
+  // the original or destination UrlData, subsequent responses must report the
+  // same total length. Otherwise a service worker could splice a smaller
+  // cross-origin response onto a UrlData whose length was pinned by a larger
+  // resource, causing DidFinishLoading() to retry at the smaller response's
+  // EOF and disclose its size via the follow-up Range header.
+  if (!url_data_->HasCompatibleLength(length) ||
+      !destination_url_data->HasCompatibleLength(length)) {
+    return false;
+  }
+  destination_url_data->set_length(length);
   return true;
 }
 

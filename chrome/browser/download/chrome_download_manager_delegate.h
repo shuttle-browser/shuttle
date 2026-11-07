@@ -41,10 +41,6 @@
 #include "chrome/browser/download/android/download_message_bridge.h"  // nogncheck crbug.com/40147906
 #endif
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS) || BUILDFLAG(IS_ANDROID)
-#include "base/types/expected.h"
-#endif
-
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
 #include "chrome/browser/download/download_completion_blocker.h"
 #endif
@@ -60,12 +56,6 @@ class DownloadManager;
 namespace extensions {
 class CrxInstaller;
 class CrxInstallError;
-}
-#endif
-
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS) || BUILDFLAG(IS_ANDROID)
-namespace enterprise_obfuscation {
-enum class Error;
 }
 #endif
 
@@ -101,7 +91,7 @@ class ChromeDownloadManagerDelegate
   void SetDownloadManager(content::DownloadManager* dm);
 
 #if BUILDFLAG(IS_ANDROID)
-  void ShowDownloadDialog(gfx::NativeWindow native_window,
+  void ShowDownloadDialog(content::WebContents* web_contents,
                           int64_t total_bytes,
                           DownloadLocationDialogType dialog_type,
                           const base::FilePath& suggested_path,
@@ -131,7 +121,6 @@ class ChromeDownloadManagerDelegate
   bool ShouldOpenDownload(
       download::DownloadItem* item,
       content::DownloadOpenDelayedCallback callback) override;
-  bool ShouldObfuscateDownload(download::DownloadItem* item) override;
   bool InterceptDownloadIfApplicable(
       const GURL& url,
       const std::string& user_agent,
@@ -187,6 +176,11 @@ class ChromeDownloadManagerDelegate
   // browser if doing so is preferred.
   void OpenDownloadUsingPlatformHandler(download::DownloadItem* download);
 
+#if BUILDFLAG(IS_WIN)
+  // Shows the Windows "Open with" dialog for `download`.
+  void OpenDownloadWithDialog(download::DownloadItem* download);
+#endif
+
   DownloadPrefs* download_prefs() { return download_prefs_.get(); }
 
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
@@ -208,10 +202,6 @@ class ChromeDownloadManagerDelegate
   // Callback function after the DownloadProtectionService completes.
   void CheckClientDownloadDone(uint32_t download_id,
                                safe_browsing::DownloadCheckResult result);
-
-  // Callback function after scanning completes for a save package.
-  void CheckSavePackageScanningDone(uint32_t download_id,
-                                    safe_browsing::DownloadCheckResult result);
 #endif  // SAFE_BROWSING_DOWNLOAD_PROTECTION
 
   base::WeakPtr<ChromeDownloadManagerDelegate> GetWeakPtr();
@@ -333,14 +323,6 @@ class ChromeDownloadManagerDelegate
       base::OnceClosure internal_complete_callback);
   void ShouldCompleteDownloadInternal(uint32_t download_id,
                                       base::OnceClosure user_complete_callback);
-
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS) || BUILDFLAG(IS_ANDROID)
-  // Called when obfuscated download files are deobfuscated.
-  void OnDeobfuscationComplete(
-      uint32_t download_id,
-      base::OnceClosure callback,
-      base::expected<void, enterprise_obfuscation::Error> deobfuscation_result);
-#endif
 
   // Sets the next download id based on download database records, and runs all
   // cached id callbacks.

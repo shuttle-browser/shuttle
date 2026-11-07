@@ -74,6 +74,9 @@
 #include "third_party/blink/public/web/web_settings.h"
 #include "third_party/blink/public/web/web_view_client.h"
 #include "third_party/blink/renderer/core/frame/csp/test_util.h"
+#include "third_party/blink/renderer/core/frame/frame_owner.h"
+#include "third_party/blink/renderer/core/frame/frame_swap_scope.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/web_frame_widget_impl.h"
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
 #include "third_party/blink/renderer/core/frame/web_remote_frame_impl.h"
@@ -401,6 +404,15 @@ WebRemoteFrameImpl* CreateRemoteChild(
           .BindNewEndpointAndPassDedicatedReceiver(),
       std::move(replicated_state), mojom::blink::FrameOwnerProperties::New());
   return frame;
+}
+
+bool SwapLocalFrame(WebFrame* old_frame, WebLocalFrame* new_local_frame) {
+  FrameSwapScope frame_swap_scope(WebFrame::ToCoreFrame(*old_frame)->Owner());
+  if (!old_frame->Swap(new_local_frame)) {
+    return false;
+  }
+  To<WebLocalFrameImpl>(new_local_frame)->GetFrame()->AttachViewToOwner();
+  return true;
 }
 
 void SwapRemoteFrame(
@@ -1145,6 +1157,8 @@ void TestWebFrameWidgetHost::TextInputStateChanged(
     ui::mojom::blink::TextInputStatePtr state) {
   if (state->show_ime_if_needed)
     ++virtual_keyboard_request_count_;
+  ++text_input_state_changed_count_;
+  last_text_input_state_ = std::move(state);
 }
 
 void TestWebFrameWidgetHost::SelectionBoundsChanged(

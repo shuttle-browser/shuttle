@@ -18,7 +18,6 @@
 
 class AutocompleteClassifier;
 class AutocompleteSchemeClassifier;
-class AutocompleteScoringModelService;
 class DocumentSuggestionsService;
 class GURL;
 class GeolocationHeaderService;
@@ -27,7 +26,6 @@ class KeywordExtensionsDelegate;
 class KeywordProvider;
 class OmniboxPedalProvider;
 class OmniboxTriggeredFeatureService;
-class OnDeviceTailModelService;
 class PrefService;
 class RemoteSuggestionsService;
 class ShortcutsBackend;
@@ -45,10 +43,6 @@ class TopSites;
 class URLDatabase;
 }  // namespace history
 
-namespace history_clusters {
-class HistoryClustersService;
-}
-
 namespace network {
 class SharedURLLoaderFactory;
 }
@@ -56,6 +50,10 @@ class SharedURLLoaderFactory;
 namespace component_updater {
 class ComponentUpdateService;
 }
+
+namespace sessions {
+class TabRestoreService;
+}  // namespace sessions
 
 namespace signin {
 class IdentityManager;
@@ -75,7 +73,6 @@ class AutocompleteProviderClient : public OmniboxAction::Client {
   virtual const AutocompleteSchemeClassifier& GetSchemeClassifier() const = 0;
   virtual AutocompleteClassifier* GetAutocompleteClassifier() = 0;
   virtual history::HistoryService* GetHistoryService() = 0;
-  virtual history_clusters::HistoryClustersService* GetHistoryClustersService();
   virtual scoped_refptr<history::TopSites> GetTopSites() = 0;
   virtual history::URLDatabase* GetInMemoryDatabase() = 0;
   virtual InMemoryURLIndex* GetInMemoryURLIndex() = 0;
@@ -96,10 +93,8 @@ class AutocompleteProviderClient : public OmniboxAction::Client {
   GetUnscopedExtensionProviderDelegate(UnscopedExtensionProvider* provider) = 0;
   virtual OmniboxTriggeredFeatureService* GetOmniboxTriggeredFeatureService()
       const = 0;
-  virtual AutocompleteScoringModelService* GetAutocompleteScoringModelService()
-      const = 0;
-  virtual OnDeviceTailModelService* GetOnDeviceTailModelService() const = 0;
   virtual ProviderStateService* GetProviderStateService() const = 0;
+  virtual sessions::TabRestoreService* GetTabRestoreService() const;
 
   // The value to use for Accept-Languages HTTP header when making an HTTP
   // request.

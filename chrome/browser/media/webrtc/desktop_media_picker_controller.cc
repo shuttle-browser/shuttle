@@ -50,7 +50,10 @@ void DesktopMediaPickerController::Show(
     const std::vector<DesktopMediaList::Type>& sources,
     DoneCallback done_callback,
     base::OnceClosure on_show_picker) {
-  DCHECK(!std::ranges::contains(sources, DesktopMediaList::Type::kNone));
+  CHECK(!std::ranges::contains(sources, DesktopMediaList::Type::kNone),
+        base::NotFatalUntil::M161);
+  // TODO(crbug.com/576416893): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(!done_callback_);
 
   done_callback_ = std::move(done_callback);
@@ -75,7 +78,7 @@ void DesktopMediaPickerController::Show(
   if (params.select_only_screen && sources.size() == 1 &&
       sources[0] == DesktopMediaList::Type::kScreen) {
     // Try to bypass the picker dialog if possible.
-    DCHECK(source_lists_.size() == 1);
+    CHECK(source_lists_.size() == 1, base::NotFatalUntil::M161);
     auto* source_list = source_lists_[0].get();
     source_list->Update(
         base::BindOnce(&DesktopMediaPickerController::OnInitialMediaListFound,
@@ -125,14 +128,15 @@ bool DesktopMediaPickerController::IsSystemAudioCaptureSupported(
 }
 
 void DesktopMediaPickerController::OnInitialMediaListFound() {
-  DCHECK(params_.select_only_screen);
-  DCHECK(source_lists_.size() == 1);
+  CHECK(params_.select_only_screen, base::NotFatalUntil::M161);
+  CHECK(source_lists_.size() == 1, base::NotFatalUntil::M161);
   auto* source_list = source_lists_[0].get();
   if (source_list->GetSourceCount() == 1) {
     // With only one possible source, the picker dialog is being bypassed. Apply
     // the default value of the "audio checkbox" here for desktop screen share.
     DesktopMediaID media_id = source_list->GetSource(0).id;
-    DCHECK_EQ(media_id.type, DesktopMediaID::TYPE_SCREEN);
+    CHECK_EQ(media_id.type, DesktopMediaID::TYPE_SCREEN,
+             base::NotFatalUntil::M161);
     media_id.audio_share =
         params_.request_audio &&
         IsSystemAudioCaptureSupported(params_.request_source);

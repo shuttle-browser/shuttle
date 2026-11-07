@@ -44,16 +44,13 @@ source_set("impl") {
     ":navigator",
     "//base",
     "//chrome/browser:browser_about_handler",
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser:primitives",
-    "//chrome/browser/picture_in_picture",
     "//chrome/browser/prefs",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/renderer_host",
     "//chrome/browser/search_engines",
     "//chrome/browser/tab_contents",
     "//chrome/browser/tab_list",
-    "//chrome/browser/ui",
     "//chrome/browser/ui/browser_window:create_browser_window",
     "//chrome/common:chrome_features",
     "//components/captive_portal/content",
@@ -69,9 +66,15 @@ source_set("impl") {
 
   if (is_chromeos) {
     deps += [
+      "//ash",
       "//chrome/browser/ash/boca/on_task",
       "//chrome/browser/ui/ash/system_web_apps",
+      "//chrome/browser/ui/chromeos/locked_state",
     ]
+  }
+
+  if (is_android) {
+    deps += [ "//chrome/browser/android:tabs_public" ]
   }
 
   if (!is_android) {
@@ -87,10 +90,10 @@ source_set("impl") {
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui:singleton_tabs",
       "//chrome/browser/ui:status_bubble",
-      "//chrome/browser/ui:tab_helpers",
       "//chrome/browser/ui/browser_ui_controller",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/location_bar",
+      "//chrome/browser/ui/tabs:features",
       "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/window_feature_controller",
     ]

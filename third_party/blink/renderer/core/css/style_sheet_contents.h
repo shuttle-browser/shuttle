@@ -46,6 +46,7 @@ class CSSStyleSheetResource;
 class Document;
 class MediaQueryEvaluator;
 class Node;
+class PropertyRegistry;
 class ResourceFetcher;
 class StyleRuleBase;
 class StyleRuleFontFace;
@@ -82,6 +83,10 @@ class CORE_EXPORT StyleSheetContents final
                                bool allow_import_rules = true,
                                CSSDeferPropertyParsing defer_property_parsing =
                                    CSSDeferPropertyParsing::kNo);
+  PropertyRegistry& EnsurePrivatePropertyRegistry();
+  const PropertyRegistry* GetPrivatePropertyRegistry() const {
+    return private_property_registry_.Get();
+  }
 
   bool IsCacheableForResource() const;
   bool IsCacheableForStyleElement() const;
@@ -156,7 +161,7 @@ class CORE_EXPORT StyleSheetContents final
     if (rule_set_diff_) {
       rule_set_diff_->MarkUnrepresentable();
     }
-    has_cached_mixins_ = false;
+    InvalidateCachedMixins();
   }
 
   // Get/clear the diff between last time we did StartMutation()
@@ -253,6 +258,11 @@ class CORE_EXPORT StyleSheetContents final
   // NOTE: “medium” must be the same as is later used for EnsureRuleSet(),
   // or the set of mixins and the rule set may be inconsistent.
   //
+  // Incremented when a previously extracted, non-empty mixin map is
+  // invalidated. Unlike has_cached_mixins_, this state is not consumed by
+  // ExtractMixins(), so every collection sharing these contents can observe
+  // the mutation.
+  uint64_t MixinCacheRevision() const { return mixin_cache_revision_; }
   MixinMap& ExtractMixins(const MediaQueryEvaluator& medium);
 
   RuleSet& GetRuleSet() {
@@ -283,6 +293,7 @@ class CORE_EXPORT StyleSheetContents final
 
  private:
   StyleSheetContents& operator=(const StyleSheetContents&) = delete;
+  void InvalidateCachedMixins();
   void NotifyRemoveFontFaceRule(const StyleRuleFontFace*);
 
   Document* ClientSingleOwnerDocument() const;
@@ -311,6 +322,7 @@ class CORE_EXPORT StyleSheetContents final
   bool is_used_from_resource_cache_ : 1;
 
   Member<const CSSParserContext> parser_context_;
+  Member<PropertyRegistry> private_property_registry_;
 
   HeapHashSet<WeakMember<CSSStyleSheet>> loading_clients_;
   HeapHashSet<WeakMember<CSSStyleSheet>> completed_clients_;
@@ -327,6 +339,7 @@ class CORE_EXPORT StyleSheetContents final
   // _previous_ mixin map, which helps us to know if we have any mixins
   // that may have been removed.
   MixinMap mixins_;
+  uint64_t mixin_cache_revision_ = 0;
   bool has_cached_mixins_ = false;
 
   Member<RuleSet> rule_set_;

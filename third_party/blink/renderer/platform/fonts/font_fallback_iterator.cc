@@ -236,7 +236,7 @@ const SimpleFontData* FontFallbackIterator::FallbackPriorityFont(UChar32 hint) {
 }
 
 // static
-unsigned FontFallbackIterator::ChooseHintIndex(
+wtf_size_t FontFallbackIterator::ChooseHintIndex(
     const FontFallbackIterator::HintCharList& hint_list) {
   // crbug.com/618178 has a test case where no Myanmar font is ever found,
   // because the run starts with a punctuation character with a script value of
@@ -251,7 +251,7 @@ unsigned FontFallbackIterator::ChooseHintIndex(
     return 0;
 
   for (wtf_size_t i = 1; i < hint_list.size(); ++i) {
-    if (Character::HasLikelyScript(hint_list[i])) {
+    if (unicode::HasLikelyScript(hint_list[i])) {
       return i;
     }
   }

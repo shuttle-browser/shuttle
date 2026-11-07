@@ -22,7 +22,6 @@ class OnDeviceTranslationServiceLauncherImpl;
 
 namespace content {
 class VideoCaptureServiceLauncher;
-class WebNNBrowserHostImpl;
 shape_detection::mojom::ShapeDetectionService* GetShapeDetectionService();
 
 class ServiceProcessHostPreloadLibraries {
@@ -36,7 +35,6 @@ class ServiceProcessHostPreloadLibraries {
   // should be added here and must be reviewed by the security team.
   friend class screen_ai::ScreenAIServiceHandlerBase;
   friend class on_device_translation::OnDeviceTranslationServiceLauncherImpl;
-  friend class content::WebNNBrowserHostImpl;
   friend shape_detection::mojom::ShapeDetectionService*
   content::GetShapeDetectionService();
 

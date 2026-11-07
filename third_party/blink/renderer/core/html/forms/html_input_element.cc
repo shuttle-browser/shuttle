@@ -1318,8 +1318,8 @@ void HTMLInputElement::SetSuggestedValue(const String& value) {
   if (!input_type_->CanSetSuggestedValue()) {
     // Clear the suggested value because it may have been set when
     // `input_type_->CanSetSuggestedValue()` was true.
-    SetAutofillState(WebAutofillState::kNotFilled);
     TextControlElement::SetSuggestedValue(String());
+    SetAutofillState(WebAutofillState::kNotFilled);
     return;
   }
   needs_to_update_view_value_ = true;
@@ -1331,9 +1331,9 @@ void HTMLInputElement::SetSuggestedValue(const String& value) {
     sanitized_value = String();
   }
 
+  TextControlElement::SetSuggestedValue(sanitized_value);
   SetAutofillState(sanitized_value.empty() ? WebAutofillState::kNotFilled
                                            : WebAutofillState::kPreviewed);
-  TextControlElement::SetSuggestedValue(sanitized_value);
 
   // Update the suggested value revelation.
   if (auto* placeholder = PlaceholderElement()) {
@@ -1351,11 +1351,14 @@ void HTMLInputElement::SetSuggestedValue(const String& value) {
   input_type_view_->UpdateView();
 }
 
-void HTMLInputElement::DidChangeIsInCanvasSubtree() {
-  TextControlElement::DidChangeIsInCanvasSubtree();
-  if (IsInCanvasSubtree()) {
-    // Hide suggested values when under canvas, to prevent leaking this
-    // information to javascript.
+void HTMLInputElement::DidChangeIsInCanvasSubtree(
+    CanvasSubtreePropagation propagation_behavior) {
+  TextControlElement::DidChangeIsInCanvasSubtree(propagation_behavior);
+  // Hide suggested values when under canvas, to prevent leaking this
+  // information to javascript. Skip when there is nothing to hide:
+  // SetSuggestedValue() always rebuilds the view, which can move focus and run
+  // script during slot assignment recalc (crbug.com/574469802).
+  if (IsInCanvasSubtree() && !SuggestedValue().IsNull()) {
     SetSuggestedValue(String());
   }
 }
@@ -1916,10 +1919,6 @@ void HTMLInputElement::OnSearch() {
   input_type_->DispatchSearchEvent();
 }
 
-void HTMLInputElement::UpdateClearButtonVisibility() {
-  input_type_view_->UpdateClearButtonVisibility();
-}
-
 bool HTMLInputElement::IsInnerEditorValueEmpty() const {
   return input_type_view_->IsInnerEditorValueEmpty();
 }
@@ -2248,12 +2247,12 @@ int HTMLInputElement::scrollWidth() {
   const auto* box = GetLayoutBox();
   if (!editor_box || !box)
     return TextControlElement::scrollWidth();
-  // Adjust scrollWidth to include input element horizontal paddings and
-  // decoration width.
-  LayoutUnit adjustment = box->PhysicalPaddingBoxRect().Width() -
+  // Adjust scrollWidth to include the horizontal paddings and decoration width
+  // in the client rect.
+  LayoutUnit adjustment = PhysicalClientRect(*box).Width() -
                           editor_box->PhysicalPaddingBoxRect().Width();
   return AdjustForAbsoluteZoom::AdjustLayoutUnit(
-             editor_box->ScrollWidth() + adjustment, box->StyleRef())
+             editor_box->ScrollWidth() + adjustment, box->Style())
       .Round();
 }
 
@@ -2273,12 +2272,12 @@ int HTMLInputElement::scrollHeight() {
   const auto* box = GetLayoutBox();
   if (!editor_box || !box)
     return TextControlElement::scrollHeight();
-  // Adjust scrollHeight to include input element vertical paddings and
-  // decoration height.
-  LayoutUnit adjustment = box->PhysicalPaddingBoxRect().Height() -
+  // Adjust scrollHeight to include the vertical paddings and decoration height
+  // in the client rect.
+  LayoutUnit adjustment = PhysicalClientRect(*box).Height() -
                           editor_box->PhysicalPaddingBoxRect().Height();
   return AdjustForAbsoluteZoom::AdjustLayoutUnit(
-             editor_box->ScrollHeight() + adjustment, box->StyleRef())
+             editor_box->ScrollHeight() + adjustment, box->Style())
       .Round();
 }
 
@@ -2337,13 +2336,6 @@ RadioButtonGroupScope* HTMLInputElement::GetRadioButtonGroupScope() const {
   if (isConnected())
     return &GetTreeScope().GetRadioButtonGroupScope();
   return nullptr;
-}
-
-unsigned HTMLInputElement::SizeOfRadioGroup() const {
-  RadioButtonGroupScope* scope = GetRadioButtonGroupScope();
-  if (!scope)
-    return 0;
-  return scope->GroupSizeFor(this);
 }
 
 inline void HTMLInputElement::AddToRadioButtonGroup() {
@@ -2434,6 +2426,12 @@ OpaqueRange* HTMLInputElement::createValueRange(
   }
   return TextControlElement::createValueRange(start_offset, end_offset,
                                               exception_state);
+}
+
+void HTMLInputElement::ClosePopupView() {
+  if (input_type_view_) {
+    input_type_view_->ClosePopupView();
+  }
 }
 
 bool HTMLInputElement::SetupDateTimeChooserParameters(
@@ -2739,6 +2737,19 @@ void HTMLInputElement::SetFocused(bool is_focused,
   if (RadioButtonGroupScope* scope = GetRadioButtonGroupScope()) {
     scope->UpdateLastFocusedState(this);
   }
+
+  if (focus_type != mojom::blink::FocusType::kPage && IsTextField()) {
+    if (HTMLSelectElement* select = FilterTarget()) {
+      // TODO(crbug.com/453705243): Track the target select element like we are
+      // already doing for the list attribute in order to remove the
+      // :active-option pseudo.
+      if (is_focused) {
+        select->StartFiltering();
+      } else {
+        select->StopFiltering();
+      }
+    }
+  }
 }
 
 bool HTMLInputElement::SupportsBaseAppearanceInternal(
@@ -2757,7 +2768,7 @@ bool HTMLInputElement::IsBaseAppearanceCombobox() const {
 }
 
 HTMLSelectElement* HTMLInputElement::FilterTarget() const {
-  if (!RuntimeEnabledFeatures::FilterableSelectEnabled()) {
+  if (!RuntimeEnabledFeatures::FilterableSelectEnabled() || !IsTextField()) {
     return nullptr;
   }
   if (nearest_ancestor_select_) {

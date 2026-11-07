@@ -29,13 +29,13 @@
 #include "chrome/browser/browsing_data/browsing_data_important_sites_util.h"
 #include "chrome/browser/defaults.h"
 #include "chrome/browser/devtools/devtools_window.h"
-#include "chrome/browser/enterprise/isolated_mode/isolated_mode_settings_service_factory.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_window.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "chrome/browser/shell_integration.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/ui/accelerator_table.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/actions/chrome_action_properties.h"
 #include "chrome/browser/ui/actions/command_action_updater.h"
@@ -57,11 +57,9 @@
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
-#include "chrome/browser/ui/tabs/tab_change_type.h"
 #include "chrome/browser/ui/tabs/tab_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -272,9 +270,21 @@ BrowserCommandController::BrowserCommandController(BrowserWindowInterface* bwi)
         base::BindRepeating(
             &BrowserCommandController::UpdateCommandsForFileSelectionDialogs,
             base::Unretained(this)));
+    local_pref_registrar_.Add(
+        prefs::kQRCodeGeneratorEnabled,
+        base::BindRepeating(
+            &BrowserCommandController::UpdateQRCodeGeneratorActionEnabledState,
+            base::Unretained(this)));
   }
 
   profile_pref_registrar_.Init(profile()->GetPrefs());
+#if !BUILDFLAG(IS_CHROMEOS)
+  profile_pref_registrar_.Add(
+      prefs::kDesktopSharingHubEnabled,
+      base::BindRepeating(
+          &BrowserCommandController::UpdateActionsForSharingHubPolicy,
+          base::Unretained(this)));
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 #if BUILDFLAG(ENABLE_PRINTING)
   profile_pref_registrar_.Add(
       prefs::kPrintingEnabled,
@@ -381,13 +391,7 @@ bool BrowserCommandController::IsReservedCommandOrKey(
   }
 #endif
 
-  return command_id == IDC_CLOSE_TAB || command_id == IDC_CLOSE_WINDOW ||
-         command_id == IDC_NEW_TAB ||
-         command_id == IDC_NEW_WINDOW || command_id == IDC_RESTORE_TAB ||
-         command_id == IDC_SELECT_NEXT_TAB ||
-         command_id == IDC_SELECT_PREVIOUS_TAB ||
-         command_id == IDC_CYCLE_TO_NEXT_TAB ||
-         command_id == IDC_CYCLE_TO_PREV_TAB || command_id == IDC_EXIT;
+  return IsReservedCommand(command_id);
 }
 
 void BrowserCommandController::TabStateChanged() {
@@ -489,6 +493,17 @@ void BrowserCommandController::HandleCommandWithDisposition(
     base::TimeTicks time_stamp) {
   DCHECK(IsCommandEnabled(id)) << "Invalid/disabled command " << id;
 
+  // LINT.IfChange
+  // ===========================================================================
+  // When adding a new command below, you MUST also create a corresponding
+  // declarative ActionItem in the modern Actions framework. (Pure ActionItems
+  // added without legacy IDC_* commands are allowed).
+  //
+  // Quick Guide:
+  // 1. Map ID in //chrome/browser/ui/actions/chrome_action_id.h:
+  //    E(kActionFoo, IDC_FOO)
+  // 2. Wire callback in BrowserActions::Initialize...() (browser_actions.cc).
+  // ===========================================================================
   // The order of commands in this switch statement must match the function
   // declaration order in browser.h!
   switch (id) {
@@ -522,30 +537,6 @@ void BrowserCommandController::HandleCommandWithDisposition(
       break;
     case IDC_TAB_SCROLL_BUTTONS_TOGGLE_PIN:
       ToggleTabScrollButtonsPin(browser_);
-      break;
-    case IDC_TOGGLE_VERTICAL_TABS:
-      ToggleVerticalTabs(browser_);
-      break;
-    case IDC_TOGGLE_VERTICAL_TABS_COLLAPSE:
-#if !BUILDFLAG(IS_MAC)
-      // On Mac, the logging for both the keyboard shortcut and the view menu
-      // is handled in BrowserNativeWidgetMac::ExecuteCommand to correctly
-      // distinguish between the two trigger sources.
-      if (auto* controller =
-              tabs::VerticalTabStripStateController::From(browser_)) {
-        if (controller->IsCollapsed()) {
-          base::RecordAction(base::UserMetricsAction(
-              "VerticalTabs_TabStrip_KeyboardShortcutToggleUncollapsed"));
-        } else {
-          base::RecordAction(base::UserMetricsAction(
-              "VerticalTabs_TabStrip_KeyboardShortcutToggleCollapsed"));
-        }
-      }
-#endif  // !BUILDFLAG(IS_MAC)
-      ToggleCollapseVerticalTabs(browser_);
-      break;
-    case IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER:
-      ToggleVerticalTabsExpandOnHover(browser_);
       break;
     // Window management commands
     case IDC_NEW_WINDOW:
@@ -947,8 +938,13 @@ void BrowserCommandController::HandleCommandWithDisposition(
       ShowAboutChrome(webui::GetBrowserForOpeningWebUi(browser_));
       break;
     case IDC_UPGRADE_DIALOG:
-      OpenUpdateChromeDialog(browser_);
+      MaybeUpdateChrome(browser_);
       break;
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+    case IDC_SCHEDULED_RESTART_DIALOG:
+      OpenScheduledRestartDialog(browser_);
+      break;
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
     case IDC_OPEN_SAFETY_HUB:
       ShowSettingsSubPage(webui::GetBrowserForOpeningWebUi(browser_),
                           chrome::kSafetyHubSubPage);
@@ -1035,9 +1031,6 @@ void BrowserCommandController::HandleCommandWithDisposition(
     case IDC_ADD_NEW_TAB_RECENT_GROUP:
       AddNewTabToRecentGroup(browser_);
       break;
-    case IDC_UNFOCUS_TAB_GROUP:
-      ExitFocusMode(browser_, TabGroupFocusExitReason::kTabStripButton);
-      break;
     case IDC_WINDOW_CLOSE_TABS_TO_RIGHT:
       CloseTabsToRight(browser_);
       break;
@@ -1086,6 +1079,7 @@ void BrowserCommandController::HandleCommandWithDisposition(
       LOG(WARNING) << "Received Unimplemented Command: " << id;
       break;
   }
+  // LINT.ThenChange(//chrome/browser/ui/actions/chrome_action_id.h)
 }
 
 void BrowserCommandController::AddCommandObserver(int id,
@@ -1143,24 +1137,16 @@ void BrowserCommandController::TabGroupedStateChanged(
   UpdateCommandsForTabStripStateChanged();
 }
 
-void BrowserCommandController::OnTabChangedAt(tabs::TabInterface* tab,
-                                              TabChangeType change_type) {
-  if (change_type == TabChangeType::kBlockedOnly) {
-    PrintingStateChanged();
-    FullscreenStateChanged();
-    UpdateCommandsForFind();
-  }
+void BrowserCommandController::OnTabBlockedStateChanged(
+    tabs::TabInterface* tab) {
+  PrintingStateChanged();
+  FullscreenStateChanged();
+  UpdateCommandsForFind();
 }
 
 void BrowserCommandController::OnTabPinnedStateChanged(tabs::TabInterface* tab,
                                                        int index) {
   UpdateCommandsForTabStripStateChanged();
-}
-
-void BrowserCommandController::OnTabGroupFocusChanged(
-    std::optional<tab_groups::TabGroupId> new_focused_group,
-    std::optional<tab_groups::TabGroupId> old_focused_group) {
-  UpdateCommandsForTabGroupFocusChanged();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1217,7 +1203,6 @@ void BrowserCommandController::InitCommandState() {
   command_updater_->UpdateCommandEnabled(IDC_FOCUS_PREV_TAB_GROUP, true);
   command_updater_->UpdateCommandEnabled(IDC_CLOSE_TAB_GROUP, true);
   command_updater_->UpdateCommandEnabled(IDC_ADD_NEW_TAB_RECENT_GROUP, true);
-  command_updater_->UpdateCommandEnabled(IDC_UNFOCUS_TAB_GROUP, true);
 
   // Omnibox commands
   command_updater_->UpdateCommandEnabled(IDC_SHOW_FULL_URLS, true);
@@ -1229,16 +1214,10 @@ void BrowserCommandController::InitCommandState() {
   command_updater_->UpdateCommandEnabled(IDC_CLOSE_TAB, true);
   command_updater_->UpdateCommandEnabled(
       IDC_DUPLICATE_TAB,
-      browser_->GetType() !=
-          BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE);
+      browser_->GetType() != BrowserWindowInterface::Type::TYPE_FLOATING);
   UpdateTabRestoreCommandState();
   command_updater_->UpdateCommandEnabled(IDC_EXIT, true);
   command_updater_->UpdateCommandEnabled(IDC_NAME_WINDOW, true);
-  command_updater_->UpdateCommandEnabled(IDC_TOGGLE_VERTICAL_TABS, true);
-  command_updater_->UpdateCommandEnabled(
-      IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER, true);
-  command_updater_->UpdateCommandEnabled(IDC_TOGGLE_VERTICAL_TABS_COLLAPSE,
-                                         true);
 #if BUILDFLAG(IS_CHROMEOS)
   command_updater_->UpdateCommandEnabled(IDC_TOGGLE_MULTITASK_MENU, true);
   command_updater_->UpdateCommandEnabled(IDC_MINIMIZE_WINDOW, true);
@@ -1367,6 +1346,9 @@ void BrowserCommandController::InitCommandState() {
 
   // These are always enabled; the menu determines their menu item visibility.
   command_updater_->UpdateCommandEnabled(IDC_UPGRADE_DIALOG, true);
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+  command_updater_->UpdateCommandEnabled(IDC_SCHEDULED_RESTART_DIALOG, true);
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   command_updater_->UpdateCommandEnabled(IDC_SET_BROWSER_AS_DEFAULT, true);
 
   // Safety Hub commands.
@@ -1414,7 +1396,6 @@ void BrowserCommandController::InitCommandState() {
   UpdateCommandsForExtensionsMenu();
   UpdateCommandsForTabKeyboardFocus(GetKeyboardFocusedTabIndex(browser_));
   UpdateCommandsForWebContentsFocus();
-  UpdateCommandsForTabGroupFocusChanged();
 }
 
 // static
@@ -1601,8 +1582,7 @@ void BrowserCommandController::UpdateCommandsForFullscreenMode() {
       browser_->GetType() != BrowserWindowInterface::Type::TYPE_NORMAL &&
           !is_fullscreen &&
           browser_->GetType() != BrowserWindowInterface::Type::TYPE_DEVTOOLS &&
-          browser_->GetType() !=
-              BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE);
+          browser_->GetType() != BrowserWindowInterface::Type::TYPE_FLOATING);
 
   // Focus various bits of UI
   command_updater_->UpdateCommandEnabled(IDC_FOCUS_TOOLBAR, show_main_ui);
@@ -1686,7 +1666,7 @@ void NonAllowlistedCommandsAreDisabled(const CommandUpdater* command_updater) {
     if (std::ranges::contains(kAllowlistedIds, id)) {
       continue;
     }
-    DCHECK(!command_updater->IsCommandEnabled(id));
+    CHECK(!command_updater->IsCommandEnabled(id), base::NotFatalUntil::M162);
   }
 }
 #endif
@@ -1700,7 +1680,8 @@ void BrowserCommandController::UpdateCommandsForLockedFullscreenMode() {
   bool is_locked_fullscreen =
       platform_util::IsBrowserLockedFullscreen(browser_);
   // Sanity check to make sure this function is called only on state change.
-  DCHECK_NE(is_locked_fullscreen, is_locked_fullscreen_);
+  CHECK_NE(is_locked_fullscreen, is_locked_fullscreen_,
+           base::NotFatalUntil::M162);
   if (is_locked_fullscreen == is_locked_fullscreen_) {
     return;
   }
@@ -1767,6 +1748,23 @@ void BrowserCommandController::UpdateTabSwitchingCommandState() {
 void BrowserCommandController::SetTabSwitchCommandsEnabled(bool enabled) {
   is_tab_switching_enabled_ = enabled;
   UpdateTabSwitchingCommandState();
+}
+
+void BrowserCommandController::OnTaskStateChanged() {
+  CHECK(features::IsUseUnifiedLockedStateControllerEnabled());
+  // While pinned (including extension locked fullscreen), all commands are
+  // disabled by UpdateCommandsForLockedFullscreenMode() and must stay that way.
+  if (IsInLockedFullscreenMode(/*allow_ontask=*/false)) {
+    return;
+  }
+  // DevTools are unavailable throughout the OnTask lifecycle; this re-derives
+  // the state for the unpinned (prepared / unlocked) transitions.
+  const bool enabled = !IsLockedForOnTask(browser_);
+  command_updater_->UpdateCommandEnabled(IDC_DEV_TOOLS, enabled);
+  command_updater_->UpdateCommandEnabled(IDC_DEV_TOOLS_CONSOLE, enabled);
+  command_updater_->UpdateCommandEnabled(IDC_DEV_TOOLS_DEVICES, enabled);
+  command_updater_->UpdateCommandEnabled(IDC_DEV_TOOLS_INSPECT, enabled);
+  command_updater_->UpdateCommandEnabled(IDC_DEV_TOOLS_TOGGLE, enabled);
 }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
@@ -1909,30 +1907,41 @@ void BrowserCommandController::UpdateCommandsForTabStripStateChanged() {
 }
 
 
-void BrowserCommandController::UpdateCommandsForTabGroupFocusChanged() {
-  if (IsInLockedFullscreenMode(/*allow_ontask=*/false)) {
-    return;
-  }
-
-  if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
-    const bool is_focused =
-        browser_->tab_strip_model()->GetFocusedGroup().has_value();
-    if (auto* const action = FindAction(kActionUnfocusTabGroup, browser_)) {
-      action->SetVisible(is_focused);
-    }
-    if (auto* const action =
-            FindAction(kActionToggleCollapseVertical, browser_)) {
-      action->SetVisible(!is_focused);
-    }
-  }
-}
-
 void BrowserCommandController::UpdateCommandsForProfiling() {
   if (base::debug::IsProfilingSupported()) {
     command_updater_->UpdateCommandEnabled(IDC_PROFILING_ENABLED,
                                            IsShowingMainUI());
     UpdateCheckedState(kActionProfilingEnabled,
                        content::Profiling::BeingProfiled());
+  }
+}
+
+void BrowserCommandController::UpdateActionsForSharingHubPolicy() {
+#if !BUILDFLAG(IS_CHROMEOS)
+  // Update the visibility of the QR code generator, send tab to self, and copy
+  // link actions based on the sharing hub policy. This matches the fact that
+  // these actions' visibility in the app menu.
+  const bool sharing_enabled =
+      profile()->GetPrefs()->GetBoolean(prefs::kDesktopSharingHubEnabled);
+
+  auto update_action_visibility =
+      [this, &sharing_enabled](actions::ActionId action_id) {
+        if (auto* action_item = FindAction(action_id, browser_)) {
+          action_item->SetVisible(sharing_enabled);
+        }
+      };
+  update_action_visibility(kActionQrCodeGenerator);
+  update_action_visibility(kActionSendTabToSelf);
+  update_action_visibility(kActionCopyUrl);
+#endif  // !BUILDFLAG(IS_CHROMEOS)
+}
+
+void BrowserCommandController::UpdateQRCodeGeneratorActionEnabledState() {
+  bool qr_code_generator_enabled = g_browser_process->local_state()->GetBoolean(
+      prefs::kQRCodeGeneratorEnabled);
+  if (auto* qr_code_action_item =
+          FindAction(kActionQrCodeGenerator, browser_)) {
+    qr_code_action_item->SetEnabled(qr_code_generator_enabled);
   }
 }
 

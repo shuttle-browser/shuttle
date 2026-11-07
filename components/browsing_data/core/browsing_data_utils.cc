@@ -29,7 +29,7 @@ namespace {
 std::u16string CreateHistoryCounterString(
     const browsing_data::HistoryCounter::HistoryResult* history_result) {
   CHECK(history_result->source()->GetPrefName() ==
-            browsing_data::prefs::kDeleteBrowsingHistory);
+        browsing_data::prefs::kDeleteBrowsingHistory);
 
   if (!history_result->Finished()) {
     // The counter is still counting.
@@ -193,7 +193,7 @@ std::u16string GetCounterTextFromResult(
   if (pref_name == prefs::kDeleteBrowsingHistory) {
     // History counter.
     return CreateHistoryCounterString(
-          static_cast<const HistoryCounter::HistoryResult*>(result));
+        static_cast<const HistoryCounter::HistoryResult*>(result));
   }
 
   NOTREACHED();
@@ -203,9 +203,8 @@ const char* GetTimePeriodPreferenceName() {
   return prefs::kDeleteTimePeriod;
 }
 
-bool GetDeletionPreferenceFromDataType(
-    BrowsingDataType data_type,
-    std::string* out_pref) {
+bool GetDeletionPreferenceFromDataType(BrowsingDataType data_type,
+                                       std::string* out_pref) {
   switch (data_type) {
     case BrowsingDataType::HISTORY:
       *out_pref = prefs::kDeleteBrowsingHistory;
@@ -231,6 +230,9 @@ bool GetDeletionPreferenceFromDataType(
     case BrowsingDataType::TABS:
       *out_pref = prefs::kCloseTabs;
       return true;
+    case BrowsingDataType::SKILLS:
+      *out_pref = prefs::kDeleteSkills;
+      return true;
   }
   NOTREACHED();
 }
@@ -246,6 +248,7 @@ std::optional<BrowsingDataType> GetDataTypeFromDeletionPreference(
           {prefs::kDeleteSiteSettings, BrowsingDataType::SITE_SETTINGS},
           {prefs::kDeleteDownloadHistory, BrowsingDataType::DOWNLOADS},
           {prefs::kDeleteHostedAppsData, BrowsingDataType::HOSTED_APPS_DATA},
+          {prefs::kDeleteSkills, BrowsingDataType::SKILLS},
       });
 
   auto iter = preference_to_datatype->find(pref_name);

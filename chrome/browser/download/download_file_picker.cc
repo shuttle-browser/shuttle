@@ -17,11 +17,15 @@
 #include "content/public/browser/download_item_utils.h"
 #include "content/public/browser/download_manager.h"
 #include "content/public/browser/web_contents.h"
+#include "ui/display/types/display_constants.h"
 #include "ui/shell_dialogs/selected_file_info.h"
 
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
-#include "chrome/browser/ui/browser_window.h"
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "ui/base/base_window.h"
+#endif
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
 #include "ui/aura/window.h"
 #endif
 
@@ -37,14 +41,27 @@ DownloadFilePicker::DownloadFilePicker(download::DownloadItem* item,
       download_item_(item) {
   const DownloadPrefs* prefs = DownloadPrefs::FromBrowserContext(
       content::DownloadItemUtils::GetBrowserContext(item));
-  DCHECK(prefs);
+  CHECK(prefs, base::NotFatalUntil::M161);
 
-  DCHECK(item);
+  CHECK(item, base::NotFatalUntil::M161);
   item->AddObserver(this);
-  WebContents* web_contents = content::DownloadItemUtils::GetWebContents(item);
+  // Exiting fullscreen may spin a nested loop and destroy |download_item_|.
+  if (WebContents* initial_contents =
+          content::DownloadItemUtils::GetWebContents(item)) {
+    if (auto blocker = initial_contents->ForSecurityDropFullscreen(
+            display::kInvalidDisplayId)) {
+      fullscreen_block_ = std::move(*blocker);
+    }
+  }
+  WebContents* web_contents =
+      download_item_
+          ? content::DownloadItemUtils::GetWebContents(download_item_)
+          : nullptr;
   // Extension download may not have associated webcontents.
-  if (item->GetDownloadSource() != download::DownloadSource::EXTENSION_API &&
-      (!web_contents || !web_contents->GetNativeView())) {
+  if (!download_item_ || (web_contents && !fullscreen_block_) ||
+      (download_item_->GetDownloadSource() !=
+           download::DownloadSource::EXTENSION_API &&
+       (!web_contents || !web_contents->GetNativeView()))) {
     base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(&DownloadFilePicker::FileSelectionCanceled,
                                   base::Unretained(this)));
@@ -78,17 +95,25 @@ DownloadFilePicker::DownloadFilePicker(download::DownloadItem* item,
       web_contents ? platform_util::GetTopLevel(web_contents->GetNativeView())
                    : gfx::NativeWindow();
 
-  // If select_file_dialog_ issued by extension API,
-  // (e.g. chrome.downloads.download), the |owning_window| host
-  // could be null, then it will cause the select file dialog is not modal
-  // dialog in Linux (See SelectFileImpl() in select_file_dialog_linux_gtk.cc).
-  // and windows.Here we make owning_window host to browser current active
-  // window if it is null. https://crbug.com/40825014
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
-  if (!owning_window || !owning_window->GetHost()) {
-    owning_window = GetLastActiveBrowserWindowInterfaceWithAnyProfile()
-                        ->GetWindow()
-                        ->GetNativeWindow();
+  // On Aura (Linux/Win), an offscreen extension WebContents has a non-null
+  // aura::Window* with a null WindowTreeHost, which prevents the file dialog
+  // from being modal (https://crbug.com/40825014). Clear it so we fall back to
+  // the last active browser window below.
+  if (owning_window && !owning_window->GetHost()) {
+    owning_window = gfx::NativeWindow();
+  }
+#endif
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID)
+  // If the download was initiated without a WebContents (e.g., from an
+  // extension background service worker) or with a hostless Aura window, fall
+  // back to the last active browser window.
+  if (!owning_window) {
+    if (BrowserWindowInterface* browser =
+            GetLastActiveBrowserWindowInterfaceWithAnyProfile();
+        browser && browser->GetWindow()) {
+      owning_window = browser->GetWindow()->GetNativeWindow();
+    }
   }
 #endif
 
@@ -145,6 +170,6 @@ void DownloadFilePicker::ShowFilePicker(DownloadItem* item,
 }
 
 void DownloadFilePicker::OnDownloadDestroyed(DownloadItem* download_item) {
-  DCHECK_EQ(download_item, download_item_);
+  CHECK_EQ(download_item, download_item_, base::NotFatalUntil::M161);
   download_item_ = nullptr;
 }

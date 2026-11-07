@@ -7,6 +7,7 @@
 #include <memory>
 #include <utility>
 
+#include "base/command_line.h"
 #include "base/lazy_instance.h"
 #include "base/memory/raw_ptr.h"
 #include "base/values.h"
@@ -18,6 +19,7 @@
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
+#include "content/public/common/url_constants.h"
 #include "extensions/browser/event_router.h"
 #include "extensions/browser/extension_util.h"
 #include "extensions/buildflags/buildflags.h"
@@ -27,6 +29,7 @@
 #include "extensions/common/extensions_client.h"
 #include "extensions/common/manifest.h"
 #include "extensions/common/permissions/permissions_data.h"
+#include "extensions/common/switches.h"
 #include "url/origin.h"
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
@@ -56,8 +59,8 @@ class TabCaptureRegistry::LiveRequest : public content::WebContentsObserver {
                                ->GetDeprecatedID()),
         render_frame_id_(
             target_contents->GetPrimaryMainFrame()->GetRoutingID()) {
-    DCHECK(web_contents());
-    DCHECK(registry_);
+    CHECK(web_contents(), base::NotFatalUntil::M161);
+    CHECK(registry_, base::NotFatalUntil::M161);
   }
 
   LiveRequest(const LiveRequest&) = delete;
@@ -72,7 +75,7 @@ class TabCaptureRegistry::LiveRequest : public content::WebContentsObserver {
   bool is_verified() const { return is_verified_; }
 
   void SetIsVerified() {
-    DCHECK(!is_verified_);
+    CHECK(!is_verified_, base::NotFatalUntil::M161);
     is_verified_ = true;
   }
 
@@ -156,8 +159,8 @@ TabCaptureRegistry::GetFactoryInstance() {
 void TabCaptureRegistry::GetCapturedTabs(
     const std::string& extension_id,
     base::ListValue* capture_info_list) const {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  DCHECK(capture_info_list);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
+  CHECK(capture_info_list, base::NotFatalUntil::M161);
   capture_info_list->clear();
   for (const std::unique_ptr<LiveRequest>& request : requests_) {
     if (request->is_anonymous() || !request->is_verified() ||
@@ -214,7 +217,7 @@ std::string TabCaptureRegistry::AddRequest(
 bool TabCaptureRegistry::VerifyRequest(int render_process_id,
                                        int render_frame_id,
                                        const std::string& extension_id) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
 
   LiveRequest* const request = FindRequest(render_process_id, render_frame_id);
   if (!request) {
@@ -236,7 +239,7 @@ void TabCaptureRegistry::OnRequestUpdate(
     int target_render_frame_id,
     blink::mojom::MediaStreamType stream_type,
     const content::MediaRequestState new_state) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   if (stream_type != blink::mojom::MediaStreamType::GUM_TAB_VIDEO_CAPTURE &&
       stream_type != blink::mojom::MediaStreamType::GUM_TAB_AUDIO_CAPTURE) {
     return;
@@ -294,10 +297,10 @@ void TabCaptureRegistry::DispatchStatusChangeEvent(
     return;
   }
 
-  base::ListValue args;
+  auto args = base::MakeRefCounted<EventArgs>();
   tab_capture::CaptureInfo info;
   request->GetCaptureInfo(&info);
-  args.Append(info.ToValue());
+  args->data.Append(info.ToValue());
   auto event = std::make_unique<Event>(events::TAB_CAPTURE_ON_STATUS_CHANGED,
                                        tab_capture::OnStatusChanged::kEventName,
                                        std::move(args), browser_context_);
@@ -342,7 +345,8 @@ bool TabCaptureRegistry::CanCaptureWebContents(
     const Extension& extension,
     content::BrowserContext& browser_context,
     content::WebContents& target_contents,
-    std::string& error) {
+    std::string& error,
+    bool is_navigation) {
   const url::Origin& origin =
       target_contents.GetPrimaryMainFrame()->GetLastCommittedOrigin();
   const GURL origin_url =
@@ -361,6 +365,25 @@ bool TabCaptureRegistry::CanCaptureWebContents(
   // nice defense-in-depth).
   if (Manifest::IsComponentLocation(extension.location())) {
     return true;
+  }
+
+  // Non-component extensions may only capture chrome:// URLs if they have been
+  // explicitly granted activeTab permission for the current page view (or are
+  // allowlisted via command line). ActiveTab grants on chrome:// pages are
+  // ephemeral and do not persist across navigations (see
+  // ActiveTabPermissionGranter::DidFinishNavigation); note that
+  // PrimaryPageChanged fires before DidFinishNavigation clears the previous
+  // page's grant, so `is_navigation` unconditionally disallows chrome:// URLs
+  // unless allowlisted.
+  if (origin_url.SchemeIs(content::kChromeUIScheme) &&
+      (is_navigation ||
+       !extension.permissions_data()->HasAPIPermissionForTab(
+           sessions::SessionTabHelper::IdForTab(&target_contents).id(),
+           mojom::APIPermissionID::kTabCaptureForTab)) &&
+      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+          switches::kAllowlistedExtensionID) != extension.id()) {
+    error = tab_capture_errors::kCannotCapturePage;
+    return false;
   }
 
   if (extension.permissions_data()->IsPolicyBlockedHost(origin_url)) {

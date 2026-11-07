@@ -192,13 +192,13 @@ void DynamicsCompressor::Process(const AudioBus* source_bus,
     // envelope_rate is the rate we slew from current compressor level to the
     // desired level.  The exact rate depends on if we're attacking or
     // releasing and by how much.
-    float envelope_rate;
+    float envelope_rate = 0.0f;
 
     const bool is_releasing = scaled_desired_gain > compressor_gain_;
 
     // compression_diff_db is the difference between current compression level
     // and the desired level.
-    float db_compression_diff;
+    float db_compression_diff = 0.0f;
 
     if (scaled_desired_gain == 0) {
       db_compression_diff = is_releasing ? -1 : 1;
@@ -273,7 +273,7 @@ void DynamicsCompressor::Process(const AudioBus* source_bus,
             (number_of_source_channels > j
                  ? source_bus->Channel(j)->Span()
                  : source_bus->Channel(0)->Span())[frame_index];
-        pre_delay_buffers_[j]->at(pre_delay_write_index) = undelayed_source;
+        pre_delay_buffers_[j][pre_delay_write_index] = undelayed_source;
 
         const float abs_undelayed_source =
             undelayed_source > 0 ? undelayed_source : -undelayed_source;
@@ -345,7 +345,7 @@ void DynamicsCompressor::Process(const AudioBus* source_bus,
       // Apply final gain.
       for (unsigned j = 0; j < number_of_channels; ++j) {
         destination_bus->Channel(j)->MutableSpan()[frame_index] =
-            pre_delay_buffers_[j]->at(pre_delay_read_index) * total_gain;
+            pre_delay_buffers_[j][pre_delay_read_index] * total_gain;
       }
 
       frame_index++;
@@ -375,7 +375,7 @@ void DynamicsCompressor::Reset() {
 
   // Predelay section.
   for (auto& pre_delay_buffer : pre_delay_buffers_) {
-    pre_delay_buffer->Zero();
+    pre_delay_buffer.Zero();
   }
 
   pre_delay_read_index_ = 0;
@@ -391,8 +391,7 @@ void DynamicsCompressor::SetNumberOfChannels(unsigned number_of_channels) {
 
   pre_delay_buffers_.clear();
   for (unsigned i = 0; i < number_of_channels; ++i) {
-    pre_delay_buffers_.push_back(
-        std::make_unique<AudioFloatArray>(kMaxPreDelayFrames));
+    pre_delay_buffers_.emplace_back(kMaxPreDelayFrames);
   }
 
   number_of_channels_ = number_of_channels;
@@ -457,7 +456,7 @@ void DynamicsCompressor::SetPreDelayTime(float pre_delay_time) {
   if (last_pre_delay_frames_ != pre_delay_frames) {
     last_pre_delay_frames_ = pre_delay_frames;
     for (auto& pre_delay_buffer : pre_delay_buffers_) {
-      pre_delay_buffer->Zero();
+      pre_delay_buffer.Zero();
     }
 
     pre_delay_read_index_ = 0;

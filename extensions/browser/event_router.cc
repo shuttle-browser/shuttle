@@ -25,6 +25,7 @@
 #include "base/notreached.h"
 #include "base/strings/string_util.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
 #include "components/crx_file/id_util.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -473,8 +474,20 @@ bool EventRouter::CanProcessAccessOrigin(RenderProcessHost& process,
 
 void EventRouter::ReportUnauthorizedExtensionProcess(
     const ExtensionId& extension_id,
+    std::string_view event_name,
     RenderProcessHost& process) {
+  // TODO(crbug.com/531900625): Remove these crash keys (and the `event_name`
+  // plumbing) once the cause of these renderer kills is understood.
   SCOPED_CRASH_KEY_STRING64("EventRouter", "extension_id", extension_id);
+  SCOPED_CRASH_KEY_STRING64("EventRouter", "event_name", event_name);
+
+  // How many extensions ScriptInjectionTracker believes have run content
+  // scripts in `process`.
+  SCOPED_CRASH_KEY_NUMBER(
+      "EventRouter", "cs_ext_count",
+      ScriptInjectionTracker::GetExtensionsThatRanContentScriptsInProcess(
+          process)
+          .size());
 
   SCOPED_CRASH_KEY_BOOL(
       "EventRouter", "cpsp_allows_origin",
@@ -491,20 +504,40 @@ void EventRouter::ReportUnauthorizedExtensionProcess(
 
   // Whether ProcessManager tracks a worker for this extension in `process`.
   ProcessManager* process_manager = ProcessManager::Get(browser_context_);
+  const std::vector<WorkerId> workers =
+      process_manager
+          ? process_manager->GetServiceWorkersForExtension(extension_id)
+          : std::vector<WorkerId>();
   const bool worker_known =
-      process_manager &&
-      std::ranges::any_of(
-          process_manager->GetServiceWorkersForExtension(extension_id),
-          [&process](const WorkerId& worker_id) {
-            return worker_id.render_process_id == process.GetID();
-          });
+      std::ranges::any_of(workers, [&process](const WorkerId& worker_id) {
+        return worker_id.render_process_id == process.GetID();
+      });
   SCOPED_CRASH_KEY_BOOL("EventRouter", "worker_known", worker_known);
+
+  // How many workers ProcessManager tracks for this extension, in any process.
+  SCOPED_CRASH_KEY_NUMBER("EventRouter", "worker_count", workers.size());
+
+  // Whether ProcessMap associates this extension with any process. Unlike
+  // `worker_count`, this includes processes whose worker hasn't finished
+  // starting yet, since ProcessMap is updated when a process is assigned.
+  SCOPED_CRASH_KEY_BOOL(
+      "EventRouter", "ext_has_any_process",
+      process_map && process_map->ExtensionHasProcess(extension_id));
+
+  // Time since `process` was last (re)initialized.
+  const base::TimeTicks last_init_time = process.GetLastInitTime();
+  SCOPED_CRASH_KEY_NUMBER(
+      "EventRouter", "process_age_ms",
+      last_init_time.is_null()
+          ? -1
+          : (base::TimeTicks::Now() - last_init_time).InMilliseconds());
 
   receivers_.ReportBadMessage(kEventListenerWithUnauthorizedExtensionID);
 }
 
 bool EventRouter::ValidateMainThreadListenerOwner(
     const mojom::EventListenerOwner& listener_owner,
+    std::string_view event_name,
     RenderProcessHost& process,
     bool require_extension_process) {
   if (listener_owner.is_extension_id()) {
@@ -525,7 +558,7 @@ bool EventRouter::ValidateMainThreadListenerOwner(
             : IsProcessAuthorizedForMainThreadExtensionListener(extension_id,
                                                                 process);
     if (!is_authorized) {
-      ReportUnauthorizedExtensionProcess(extension_id, process);
+      ReportUnauthorizedExtensionProcess(extension_id, event_name, process);
       return false;
     }
     return true;
@@ -547,6 +580,7 @@ bool EventRouter::ValidateMainThreadListenerOwner(
 
 bool EventRouter::ValidateServiceWorkerListenerForExtension(
     const ExtensionId& extension_id,
+    std::string_view event_name,
     const GURL& worker_scope_url,
     RenderProcessHost& process) {
   if (!worker_scope_url.is_valid()) {
@@ -568,7 +602,7 @@ bool EventRouter::ValidateServiceWorkerListenerForExtension(
   // state. A process that merely ran an extension content or user script is not
   // authorized to mutate that state.
   if (!IsProcessAuthorizedForExtensionProcessListener(extension_id, process)) {
-    ReportUnauthorizedExtensionProcess(extension_id, process);
+    ReportUnauthorizedExtensionProcess(extension_id, event_name, process);
     return false;
   }
 
@@ -589,7 +623,8 @@ void EventRouter::AddListenerForMainThread(
 
   const mojom::EventListenerOwner& listener_owner =
       *event_listener->listener_owner;
-  if (!ValidateMainThreadListenerOwner(listener_owner, *process,
+  if (!ValidateMainThreadListenerOwner(listener_owner,
+                                       event_listener->event_name, *process,
                                        /*require_extension_process=*/false)) {
     return;
   }
@@ -621,7 +656,8 @@ void EventRouter::AddListenerForServiceWorker(
 
   const ExtensionId& extension_id = listener_owner.get_extension_id();
   if (!ValidateServiceWorkerListenerForExtension(
-          extension_id, service_worker_context->scope_url, *process)) {
+          extension_id, event_listener->event_name,
+          service_worker_context->scope_url, *process)) {
     return;
   }
 
@@ -641,7 +677,7 @@ void EventRouter::AddLazyListenerForMainThread(const ExtensionId& extension_id,
   }
 
   if (!IsProcessAuthorizedForExtensionProcessListener(extension_id, *process)) {
-    ReportUnauthorizedExtensionProcess(extension_id, *process);
+    ReportUnauthorizedExtensionProcess(extension_id, event_name, *process);
     return;
   }
 
@@ -667,8 +703,8 @@ void EventRouter::AddLazyListenerForServiceWorker(
     return;
   }
 
-  if (!ValidateServiceWorkerListenerForExtension(extension_id, worker_scope_url,
-                                                 *process)) {
+  if (!ValidateServiceWorkerListenerForExtension(extension_id, event_name,
+                                                 worker_scope_url, *process)) {
     return;
   }
 
@@ -705,7 +741,7 @@ void EventRouter::AddFilteredListenerForMainThread(
   }
 
   if (!ValidateMainThreadListenerOwner(
-          *listener_owner, *process,
+          *listener_owner, event_name, *process,
           /*require_extension_process=*/add_lazy_listener)) {
     return;
   }
@@ -726,7 +762,8 @@ void EventRouter::AddFilteredListenerForServiceWorker(
   }
 
   if (!ValidateServiceWorkerListenerForExtension(
-          extension_id, service_worker_context->scope_url, *process)) {
+          extension_id, event_name, service_worker_context->scope_url,
+          *process)) {
     return;
   }
 
@@ -745,7 +782,8 @@ void EventRouter::RemoveListenerForMainThread(
 
   const mojom::EventListenerOwner& listener_owner =
       *event_listener->listener_owner;
-  if (!ValidateMainThreadListenerOwner(listener_owner, *process,
+  if (!ValidateMainThreadListenerOwner(listener_owner,
+                                       event_listener->event_name, *process,
                                        /*require_extension_process=*/false)) {
     return;
   }
@@ -777,7 +815,8 @@ void EventRouter::RemoveListenerForServiceWorker(
 
   const ExtensionId& extension_id = listener_owner.get_extension_id();
   if (!ValidateServiceWorkerListenerForExtension(
-          extension_id, service_worker_context->scope_url, *process)) {
+          extension_id, event_listener->event_name,
+          service_worker_context->scope_url, *process)) {
     return;
   }
 
@@ -798,7 +837,7 @@ void EventRouter::RemoveLazyListenerForMainThread(
   }
 
   if (!IsProcessAuthorizedForExtensionProcessListener(extension_id, *process)) {
-    ReportUnauthorizedExtensionProcess(extension_id, *process);
+    ReportUnauthorizedExtensionProcess(extension_id, event_name, *process);
     return;
   }
 
@@ -824,8 +863,8 @@ void EventRouter::RemoveLazyListenerForServiceWorker(
     return;
   }
 
-  if (!ValidateServiceWorkerListenerForExtension(extension_id, worker_scope_url,
-                                                 *process)) {
+  if (!ValidateServiceWorkerListenerForExtension(extension_id, event_name,
+                                                 worker_scope_url, *process)) {
     return;
   }
 
@@ -862,7 +901,7 @@ void EventRouter::RemoveFilteredListenerForMainThread(
   }
 
   if (!ValidateMainThreadListenerOwner(
-          *listener_owner, *process,
+          *listener_owner, event_name, *process,
           /*require_extension_process=*/remove_lazy_listener)) {
     return;
   }
@@ -883,7 +922,8 @@ void EventRouter::RemoveFilteredListenerForServiceWorker(
   }
 
   if (!ValidateServiceWorkerListenerForExtension(
-          extension_id, service_worker_context->scope_url, *process)) {
+          extension_id, event_name, service_worker_context->scope_url,
+          *process)) {
     return;
   }
 
@@ -2007,46 +2047,6 @@ void EventRouter::UnbindServiceWorkerEventDispatcher(RenderProcessHost* host,
   }
   map->second.erase(worker_thread_id);
 }
-
-Event::Event(events::HistogramValue histogram_value,
-             std::string_view event_name,
-             base::ListValue event_args)
-    : Event(histogram_value, event_name, std::move(event_args), nullptr) {}
-
-Event::Event(events::HistogramValue histogram_value,
-             std::string_view event_name,
-             base::ListValue event_args,
-             content::BrowserContext* restrict_to_browser_context,
-             std::optional<mojom::ContextType> restrict_to_context_type)
-    : Event(histogram_value,
-            event_name,
-            std::move(event_args),
-            restrict_to_browser_context,
-            restrict_to_context_type,
-            GURL(),
-            EventRouter::UserGestureState::kUnknown,
-            mojom::EventFilteringInfo::New()) {}
-
-Event::Event(events::HistogramValue histogram_value,
-             std::string_view event_name,
-             base::ListValue event_args,
-             content::BrowserContext* restrict_to_browser_context,
-             std::optional<mojom::ContextType> restrict_to_context_type,
-             const GURL& event_url,
-             EventRouter::UserGestureState user_gesture,
-             mojom::EventFilteringInfoPtr info,
-             bool lazy_background_active_on_dispatch,
-             base::TimeTicks dispatch_start_time)
-    : Event(histogram_value,
-            event_name,
-            base::MakeRefCounted<EventArgs>(std::move(event_args)),
-            restrict_to_browser_context,
-            restrict_to_context_type,
-            event_url,
-            user_gesture,
-            std::move(info),
-            lazy_background_active_on_dispatch,
-            dispatch_start_time) {}
 
 Event::Event(events::HistogramValue histogram_value,
              std::string_view event_name,

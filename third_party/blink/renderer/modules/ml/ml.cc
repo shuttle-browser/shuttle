@@ -25,7 +25,6 @@
 #include "third_party/blink/renderer/platform/graphics/gpu/webgpu_callback.h"
 #include "third_party/blink/renderer/platform/graphics/web_graphics_context_3d_provider_util.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #if BUILDFLAG(USE_DAWN)
@@ -91,8 +90,6 @@ void OnWebGpuDeviceRequested(
     wgpu::Device device) {
   wgpu::Device wgpu_device = std::move(device);
   std::move(callback).Run(webnn::WebGpuContextProperties{
-      .wgpu_device = wgpu_device.Get(),
-      .dawn_procs = &dawn::wire::client::GetProcs(),
       // Explicitly retain references to both `DawnControlClientHolder` and
       // `wgpu::Device` within this closure so that the underlying GPU
       // command buffer channel and Dawn device remain alive throughout the
@@ -103,7 +100,9 @@ void OnWebGpuDeviceRequested(
              const wgpu::Device& /*wgpu_device*/) {
             dawn_control_client->Flush();
           },
-          dawn_control_client, wgpu_device)});
+          dawn_control_client, wgpu_device),
+      .wgpu_device = wgpu_device.Get(),
+      .dawn_procs = &dawn::wire::client::GetProcs()});
 }
 
 void OnWebGpuAdapterRequested(
@@ -111,17 +110,35 @@ void OnWebGpuAdapterRequested(
     webnn::WebGpuContextHelperOnceCallback callback,
     wgpu::Adapter adapter) {
   Vector<wgpu::FeatureName> required_features;
+  // Enable FP16 shader execution.
   if (adapter.HasFeature(wgpu::FeatureName::ShaderF16)) {
     required_features.push_back(wgpu::FeatureName::ShaderF16);
   }
+  // Enable subgroup operations in compute shaders.
   if (adapter.HasFeature(wgpu::FeatureName::Subgroups)) {
     required_features.push_back(wgpu::FeatureName::Subgroups);
+  }
+  // Enable GPU execution timing queries.
+  if (adapter.HasFeature(wgpu::FeatureName::TimestampQuery)) {
+    required_features.push_back(wgpu::FeatureName::TimestampQuery);
+  }
+  // Enable subgroup matrix multiplication acceleration.
+  if (adapter.HasFeature(
+          wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
+    required_features.push_back(
+        wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
   }
 
   wgpu::DeviceDescriptor dawn_desc = {};
   if (!required_features.empty()) {
     dawn_desc.requiredFeatures = required_features.data();
     dawn_desc.requiredFeatureCount = required_features.size();
+  }
+
+  // Request the adapter's maximum supported limits instead of default limits.
+  wgpu::Limits adapter_limits = {};
+  if (adapter.GetLimits(&adapter_limits) == wgpu::Status::Success) {
+    dawn_desc.requiredLimits = &adapter_limits;
   }
 
   auto dawn_control_client_for_device = dawn_control_client;

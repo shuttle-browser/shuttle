@@ -22,12 +22,6 @@ chromium-metrics-reviews@google.com.
 
 <histograms>
 
-<variants name="CookieAccessReceiver">
-  <variant name="NavigationRequest"/>
-  <variant name="RenderFrameHost"/>
-  <variant name="StoragePartitionImpl"/>
-</variants>
-
 <!-- LINT.IfChange(NoSpareRendererReason) -->
 
 <variants name="NoSpareRendererReason">
@@ -211,7 +205,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Browser.ChromeOS.HatsStatus" enum="HatsStatus"
-    expires_after="2027-01-24">
+    expires_after="2027-03-28">
   <owner>aalsum@chromium.org</owner>
   <owner>chromeos-data-eng@google.com</owner>
   <summary>
@@ -223,22 +217,8 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram
-    name="Browser.CookieAccessObserver.{CookieAccessReceiver}.Duration.Subsampled"
-    units="microseconds" expires_after="2026-11-29">
-  <owner>acondor@chromium.org</owner>
-  <owner>clank-performance-team@google.com</owner>
-  <summary>
-    Records the latency of CookieAccessObserver's callbacks.
-
-    Subsampled to 1/100.
-
-    Not reported for clients with low-resolution clocks.
-  </summary>
-</histogram>
-
 <histogram name="Browser.DarkModeStatus" enum="DarkModeStatus"
-    expires_after="2027-01-24">
+    expires_after="2027-03-28">
   <owner>lgrey@chromium.org</owner>
   <owner>robliao@chromium.org</owner>
   <summary>
@@ -707,6 +687,26 @@ chromium-metrics-reviews@google.com.
   </token>
 </histogram>
 
+<histogram name="Browser.GlassFrame.Enabled.Daily" enum="BooleanEnabled"
+    expires_after="2027-07-15">
+  <owner>stluong@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <summary>
+    Logs whether the glass frame pref is enabled. Logged once per day via
+    GlassFrameService.
+  </summary>
+</histogram>
+
+<histogram name="Browser.GlassFrame.IsDefault.Daily" enum="Boolean"
+    expires_after="2027-07-15">
+  <owner>stluong@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <summary>
+    Logs whether the glass frame pref is in its default state. Logged once per
+    day via GlassFrameService.
+  </summary>
+</histogram>
+
 <histogram name="Browser.MainThreadsCongestion.1MinAfterResume" units="janks"
     expires_after="2027-03-21">
   <owner>kawasin@google.com</owner>
@@ -851,7 +851,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Browser.MainThreadsCongestion{UsageScenario}" units="janks"
-    expires_after="2027-02-07">
+    expires_after="2027-04-11">
   <owner>pmonette@chromium.org</owner>
   <owner>catan-team@chromium.org</owner>
   <improvement direction="LOWER_IS_BETTER"/>
@@ -1023,7 +1023,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Browser.PaintPreview.Player.TimeToFirstBitmap" units="ms"
-    expires_after="2027-02-09">
+    expires_after="2027-04-11">
   <owner>ckitagawa@chromium.org</owner>
   <owner>fredmello@chromium.org</owner>
   <owner>chrome-fdt@google.com</owner>
@@ -1103,7 +1103,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="Browser.PaintPreview.TabbedPlayer.UpTime{TabbedPaintPreviewPlayerUptime}"
-    units="ms" expires_after="2027-02-09">
+    units="ms" expires_after="2027-04-11">
   <owner>ckitagawa@chromium.org</owner>
   <owner>fredmello@chromium.org</owner>
   <owner>chrome-fdt@google.com</owner>
@@ -1267,7 +1267,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Browser.Tabs.TotalIncompleteSwitchDuration3{TabSwitchingType}"
-    units="ms" expires_after="2027-02-07">
+    units="ms" expires_after="2027-04-11">
   <owner>fdoray@chromium.org</owner>
   <owner>jonross@chromium.org</owner>
   <owner>joenotcharles@google.com</owner>
@@ -1332,7 +1332,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Browser.WindowCount.Guest" units="units"
-    expires_after="2027-02-07">
+    expires_after="2027-04-11">
   <owner>rhalavati@chromium.org</owner>
   <owner>chrome-privacy-core@google.com</owner>
   <summary>
@@ -1531,18 +1531,6 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="BrowserRenderProcessHost.FastShutdownIfPossible.Total"
-    enum="Boolean" expires_after="2025-06-29">
-  <owner>mych@chromium.org</owner>
-  <owner>bfcache-dev@chromium.org</owner>
-  <summary>
-    Records true when an attempt is made to fast shutdown a RenderProcessHost.
-
-    Warning: this histogram was expired from 2024-04-29 to 2024-12-09; data may
-    be missing.
-  </summary>
-</histogram>
-
 <histogram name="BrowserRenderProcessHost.LabeledInTaskManager"
     enum="BooleanLabeledRendererTask" expires_after="2024-06-30">
   <owner>creis@chromium.org</owner>
@@ -1676,7 +1664,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="BrowserRenderProcessHost.SpareProcessEvictedOtherSpare"
-    enum="Boolean" expires_after="2027-02-07">
+    enum="Boolean" expires_after="2027-04-11">
   <owner>jam@chromium.org</owner>
   <owner>cduvall@chromium.org</owner>
   <summary>
@@ -1687,7 +1675,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="BrowserRenderProcessHost.SpareProcessMaybeTakeAction"
-    enum="SpareProcessMaybeTakeAction" expires_after="2027-02-07">
+    enum="SpareProcessMaybeTakeAction" expires_after="2027-04-11">
   <owner>alexmos@chromium.org</owner>
   <owner>lukasza@chromium.org</owner>
   <summary>
@@ -1709,7 +1697,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="BrowserRenderProcessHost.SpareProcessMaybeTakeTime"
-    units="seconds" expires_after="2027-01-24">
+    units="seconds" expires_after="2027-03-28">
   <owner>gjc@google.com</owner>
   <owner>chrome-loading@google.com</owner>
   <summary>
@@ -1724,7 +1712,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="BrowserRenderProcessHost.SpareProcessMaybeTakeTime.{SpareProcessMaybeTakeAction}"
-    units="seconds" expires_after="2027-02-07">
+    units="seconds" expires_after="2027-04-11">
   <owner>gjc@google.com</owner>
   <owner>chrome-loading@google.com</owner>
   <summary>
@@ -1747,7 +1735,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="BrowserRenderProcessHost.SpareProcessStartupTime" units="ms"
-    expires_after="2027-01-31">
+    expires_after="2027-04-04">
   <owner>kerenzhu@chromium.org</owner>
   <owner>dayeung@chromium.org</owner>
   <owner>robliao@chromium.org</owner>
@@ -1967,7 +1955,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="BrowserServices.VerificationTime.Offline" units="ms"
-    expires_after="2027-02-14">
+    expires_after="2027-04-18">
   <owner>peconn@chromium.org</owner>
   <owner>peter@chromium.org</owner>
   <summary>
@@ -2191,6 +2179,7 @@ chromium-metrics-reviews@google.com.
     <variant name="Accept" summary="Accept/OK button click action"/>
     <variant name="Cancel" summary="Cancel button click action"/>
     <variant name="Dismiss" summary="Dismissal action"/>
+    <variant name="Extra" summary="Extra button click action"/>
     <variant name="Ignored"
         summary="Infobar went away without any user interaction, e.g. on tab
                  close or navigation expiry"/>
@@ -2210,6 +2199,43 @@ chromium-metrics-reviews@google.com.
     for this metric is set to 10. It is less plausible to have 10 infobars at
     the same time, so this maximum value will help to capture all the lower
     buckets distinctly.
+  </summary>
+</histogram>
+
+<histogram name="InfoBar.PendingIndicator.CountAtShow" units="InfoBars"
+    expires_after="2027-09-01">
+  <owner>koretadaniel@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <summary>
+    Records the pending-queue depth at the moment the queued-count pill becomes
+    visible on an infobar, or moves to a new host infobar. Also re-recorded when
+    a tab whose bottom infobar hosts the pill is re-activated, since the
+    container re-attaches on every tab switch. The maximum bucket is 10.
+  </summary>
+</histogram>
+
+<histogram name="InfoBar.PendingIndicator.HostResolveTime" units="ms"
+    expires_after="2027-09-01">
+  <owner>koretadaniel@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <summary>
+    The time between the queued-count pill appearing on an infobar and that
+    infobar being removed from its manager (closed or accepted). Not recorded
+    when the infobar is merely detached from the container by a tab switch or
+    window teardown. Measures whether the pill's expectation-setting shortens
+    how long the host infobar stays up.
+  </summary>
+</histogram>
+
+<histogram name="InfoBar.PendingIndicator.Shown" enum="InfoBarIdentifier"
+    expires_after="2027-09-01">
+  <owner>koretadaniel@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <summary>
+    Records the identifier of the infobar that hosts the queued-count pill, each
+    time the pill becomes visible or moves to a new host infobar. Also
+    re-recorded when a tab whose bottom infobar hosts the pill is re-activated,
+    since the container re-attaches on every tab switch.
   </summary>
 </histogram>
 
@@ -2348,7 +2374,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="{SidePanelType}.OpenDuration" units="ms"
-    expires_after="2027-02-07">
+    expires_after="2027-04-11">
   <owner>corising@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
   <summary>
@@ -2361,7 +2387,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="{SidePanelType}.OpenOrChangeEntryTrigger"
-    enum="SidePanelOpenTrigger" expires_after="2027-01-27">
+    enum="SidePanelOpenTrigger" expires_after="2027-03-28">
   <owner>corising@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
   <summary>
@@ -2373,7 +2399,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="{SidePanelType}.OpenTrigger" enum="SidePanelOpenTrigger"
-    expires_after="2027-01-31">
+    expires_after="2027-04-04">
   <owner>corising@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
   <summary>
@@ -2422,7 +2448,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="{SidePanelType}.{SidePanelAnimationType}.AnimationFPS"
-    units="fps" expires_after="2027-02-14">
+    units="fps" expires_after="2027-04-18">
   <owner>corising@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
   <summary>
@@ -2436,7 +2462,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="{SidePanelType}.{SidePanelAnimationType}.TimeOfLongestAnimationStep"
-    units="ms" expires_after="2027-01-24">
+    units="ms" expires_after="2027-03-28">
   <owner>corising@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
   <summary>
@@ -2448,7 +2474,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="{SidePanelType}.{SidePanelEntry}.ResizedWidth" units="px"
-    expires_after="2027-02-14">
+    expires_after="2027-04-18">
   <owner>emshack@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
   <summary>
@@ -2460,7 +2486,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="{SidePanelType}.{SidePanelEntry}.ResizedWidthPercentage"
-    units="% of window width" expires_after="2027-02-14">
+    units="% of window width" expires_after="2027-04-18">
   <owner>emshack@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
   <summary>
@@ -2473,7 +2499,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="{SidePanelType}.{SidePanelEntry}.ShownDuration" units="ms"
-    expires_after="2027-01-31">
+    expires_after="2027-04-04">
   <owner>corising@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
   <summary>
@@ -2486,7 +2512,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="{SidePanelType}.{SidePanelEntry}.ShowTriggered"
-    enum="SidePanelOpenTrigger" expires_after="2027-02-07">
+    enum="SidePanelOpenTrigger" expires_after="2027-04-11">
   <owner>corising@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
   <summary>

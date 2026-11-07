@@ -308,7 +308,6 @@ try_.builder(
 try_.builder(
     name = "android-15-x64-rel",
     branch_selector = branches.selector.ANDROID_BRANCHES,
-    description_html = "Run Chromium tests on Android 15 emulator.",
     mirrors = [
         "ci/android-15-x64-rel",
     ],
@@ -327,7 +326,6 @@ try_.builder(
     name = "android-15-tablet-landscape-x64-rel",
     # TODO(crbug.com/376748979 ): Enable on branches once tests are stable
     # branch_selector = branches.selector.ANDROID_BRANCHES,
-    description_html = "Run Chromium tests on Android 15 tablet landscape emulator.",
     mirrors = [
         "ci/android-15-tablet-landscape-x64-rel",
     ],
@@ -346,7 +344,6 @@ try_.builder(
     name = "android-15-tablet-x64-rel",
     # TODO(crbug.com/376748979 ): Enable on branches once tests are stable
     # branch_selector = branches.selector.ANDROID_BRANCHES,
-    description_html = "Run Chromium tests on Android 15 tablet emulator.",
     mirrors = [
         "ci/android-15-tablet-x64-rel",
     ],
@@ -381,7 +378,6 @@ try_.builder(
 try_.builder(
     name = "android-16-x64-rel",
     branch_selector = branches.selector.ANDROID_BRANCHES,
-    description_html = "Run Chromium tests on Android 16 emulator.",
     mirrors = [
         "ci/android-16-x64-rel",
     ],
@@ -414,7 +410,6 @@ try_.builder(
 
 try_.builder(
     name = "android-16-x64-leakcanary-rel",
-    description_html = "Try builder mirroring android-16-x64-leakcanary-rel CI builder.",
     mirrors = [
         "ci/android-16-x64-leakcanary-rel",
     ],
@@ -456,8 +451,7 @@ try_.builder(
     gn_args = gn_args.config(
         configs = [
             "ci/android-annotator-rel",
-            "try_builder",
-            "no_symbols",
+            "release_try_builder",
         ],
     ),
     ssd = True,
@@ -523,6 +517,7 @@ try_.orchestrator_builder(
     coverage_test_types = ["unit", "overall"],
     cq_settings = try_.cq_settings(
         on_default_cq = True,
+        reuse_max_commit_distance = 800 if settings.is_main else None,
     ),
     experiments = {
         # go/nplus1shardsproposal
@@ -567,7 +562,6 @@ try_.builder(
 
 try_.builder(
     name = "android-bfcache-rel",
-    description_html = "Tests the back/forward-cache feature on chromium",
     mirrors = [
         "ci/android-bfcache-rel",
     ],
@@ -585,6 +579,7 @@ try_.builder(
 try_.builder(
     name = "android-binary-size",
     branch_selector = branches.selector.ANDROID_BRANCHES,
+    description_html = "Measures Android binary size impact of CLs on ARM and ARM64 official builds.",
     executable = "recipe:binary_size_trybot",
     gn_args = gn_args.config(
         configs = [
@@ -610,16 +605,17 @@ try_.builder(
     properties = {
         "$build/binary_size": {
             "analyze_targets": [
-                "//chrome/android:trichrome_32_minimal_apks",
-                "//chrome/android:trichrome_library_64_apk",
+                "//chrome/android:chrome_and_webview_32_minimal_apks",
+                "//chrome/android:chrome_public_minimal_apks",
                 "//chrome/android:validate_expectations",
                 "//tools/binary_size:binary_size_trybot_py",
             ],
-            "arm64_size_config_json": "config/TrichromeLibrary64_size_config.json",
+            "arm64_size_config_json": "config/Chrome64_size_config.json",
             "compile_targets": [
                 "check_chrome_static_initializers",
-                "trichrome_32_minimal_apks",
-                "trichrome_library_64_apk",
+                "check_webview_static_initializers",
+                "chrome_and_webview_32_minimal_apks",
+                "chrome_public_minimal_apks",
                 "validate_expectations",
             ],
         },
@@ -838,7 +834,6 @@ try_.builder(
 
 try_.builder(
     name = "android-cronet-x64-dbg-14-tests",
-    description_html = "Tests Cronet against Android 14",
     mirrors = [
         "ci/android-cronet-x64-dbg",
         "ci/android-cronet-x64-dbg-14-tests",
@@ -851,7 +846,6 @@ try_.builder(
 
 try_.builder(
     name = "android-cronet-x64-dbg-15-tests",
-    description_html = "Tests Cronet against Android 15",
     mirrors = [
         "ci/android-cronet-x64-dbg",
         "ci/android-cronet-x64-dbg-15-tests",
@@ -864,7 +858,6 @@ try_.builder(
 
 try_.builder(
     name = "android-cronet-x64-dbg-16-tests",
-    description_html = "Tests Cronet against Android 16",
     mirrors = [
         "ci/android-cronet-x64-dbg",
         "ci/android-cronet-x64-dbg-16-tests",
@@ -902,6 +895,11 @@ try_.builder(
     gn_args = "ci/android-cronet-x86-dbg",
     ssd = True,
     contact_team_email = "cronet-team@google.com",
+    cq_settings = try_.cq_settings(
+        location_filters = [
+            "net/.+",
+        ],
+    ),
     siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
 )
 
@@ -1020,6 +1018,7 @@ try_.builder(
 
 try_.builder(
     name = "android-deterministic-dbg",
+    description_html = "Verifies that Android ARM debug builds are deterministic.",
     executable = "recipe:swarming/deterministic_build",
     gn_args = gn_args.config(
         configs = [
@@ -1040,6 +1039,7 @@ try_.builder(
 
 try_.builder(
     name = "android-deterministic-rel",
+    description_html = "Verifies that Android ARM release builds are deterministic.",
     executable = "recipe:swarming/deterministic_build",
     gn_args = gn_args.config(
         configs = [
@@ -1065,8 +1065,7 @@ try_.builder(
     gn_args = gn_args.config(
         configs = [
             "ci/android-fieldtrial-rel",
-            "try_builder",
-            "no_symbols",
+            "release_try_builder",
         ],
     ),
     ssd = True,
@@ -1080,8 +1079,7 @@ try_.builder(
     gn_args = gn_args.config(
         configs = [
             "ci/android-perfetto-rel",
-            "try_builder",
-            "no_symbols",
+            "release_try_builder",
         ],
     ),
     ssd = True,
@@ -1174,7 +1172,6 @@ try_.builder(
 try_.orchestrator_builder(
     name = "android-x64-rel",
     branch_selector = branches.selector.ANDROID_BRANCHES,
-    description_html = "Run Chromium tests on Android emulators.",
     mirrors = [
         "ci/android-12l-x64-rel-cq",
         "ci/android-16-x64-rel",
@@ -1194,6 +1191,7 @@ try_.orchestrator_builder(
     coverage_test_types = ["unit", "overall"],
     cq_settings = try_.cq_settings(
         on_default_cq = True,
+        reuse_max_commit_distance = 800 if settings.is_main else None,
     ),
     experiments = {
         # go/nplus1shardsproposal
@@ -1216,7 +1214,6 @@ try_.orchestrator_builder(
 try_.compilator_builder(
     name = "android-x64-rel-compilator",
     branch_selector = branches.selector.ANDROID_BRANCHES,
-    description_html = "Compilator builder for android-x64-rel",
     contact_team_email = "clank-engprod@google.com",
     main_list_view = "try",
 )
@@ -1241,6 +1238,7 @@ try_.orchestrator_builder(
     coverage_test_types = ["unit", "overall"],
     cq_settings = try_.cq_settings(
         on_default_cq = True,
+        reuse_max_commit_distance = 800 if settings.is_main else None,
     ),
     experiments = {
         "chromium.add_one_test_shard": 10,
@@ -1269,6 +1267,7 @@ try_.compilator_builder(
 
 try_.builder(
     name = "android_blink_rel",
+    description_html = "Builds Android x64 release configs and runs Blink unit tests on Android 12 x64 emulators.",
     builder_spec = builder_config.builder_spec(
         gclient_config = builder_config.gclient_config(
             config = "chromium",
@@ -1308,7 +1307,6 @@ try_.builder(
             "12-x64-emulator",
             "emulator-8-cores",
             "linux-jammy",
-            "x86-64",
         ],
     ),
     targets_settings = targets.settings(

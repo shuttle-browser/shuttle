@@ -516,7 +516,11 @@ gfx::PointF GetSanitizedFlippedPoint(NSPoint point, CGFloat height) {
   if (_willSetWebContentsOccludedAfterDelay)
     return;
 
-  // Coalesce one second's worth of occlusion updates.
+  // Coalesce one second's worth of occlusion updates.  Note: the occlusion hide
+  // delay in `views::NativeWidgetMacNSWindowHost::OnWindowOcclusionChanged`
+  // should stay longer than this delay. Update it if this changes. (This is not
+  // a correctness issue, which is why it's not enforced by something stronger
+  // than a comment).
   const NSTimeInterval kOcclusionUpdateDelayInSeconds = 1.0;
   [self performSelector:@selector(performDelayedSetWebContentsOccluded)
              withObject:nil
@@ -565,6 +569,13 @@ gfx::PointF GetSanitizedFlippedPoint(NSPoint point, CGFloat height) {
         removeObserver:self
                   name:NSWindowDidChangeOcclusionStateNotification
                 object:oldWindow];
+    if (oldWindow != newWindow && [oldWindow isOccluded]) {
+      // If removing this view leaves `oldWindow` without any web contents, an
+      // update pass will clear its occluded state (whereas a synchronous tab
+      // switch will attach the replacement before the pass runs).
+      [[WebContentsOcclusionCheckerMac sharedInstance]
+          scheduleOcclusionStateUpdates];
+    }
   }
 
   if (newWindow) {
@@ -584,14 +595,17 @@ gfx::PointF GetSanitizedFlippedPoint(NSPoint point, CGFloat height) {
 }
 
 - (void)viewDidMoveToWindow {
+  [super viewDidMoveToWindow];
   [self updateWebContentsVisibility];
 }
 
 - (void)viewDidHide {
+  [super viewDidHide];
   [self updateWebContentsVisibility];
 }
 
 - (void)viewDidUnhide {
+  [super viewDidUnhide];
   [self updateWebContentsVisibility];
 }
 

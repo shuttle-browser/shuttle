@@ -699,13 +699,16 @@ void BubbleFrameView::Layout(PassKey) {
 }
 
 void BubbleFrameView::OnThemeChanged() {
+  // Call the base class before the early return below:
+  // View::PropagateThemeChanged() DCHECKs that View::OnThemeChanged() ran.
+  FrameView::OnThemeChanged();
+
   // TODO(crbug.com/445859201): investigate which widget's delegate is null.
   // This seems to happen on ChromeOS on a scheduled change of color mode.
   if (!GetWidget() || !GetWidget()->widget_delegate()) {
     return;
   }
 
-  FrameView::OnThemeChanged();
   UpdateWindowTitle();
   UpdateSubtitle();
   ResetWindowControls();
@@ -867,7 +870,16 @@ BubbleBorder::Arrow BubbleFrameView::GetArrow() const {
 }
 
 void BubbleFrameView::SetDisplayVisibleArrow(bool display_visible_arrow) {
+  if (bubble_border_->visible_arrow() == display_visible_arrow) {
+    return;
+  }
   bubble_border_->set_visible_arrow(display_visible_arrow);
+  if (GetWidget() && GetWidget()->widget_delegate()) {
+    if (auto* bubble_delegate =
+            GetWidget()->widget_delegate()->AsBubbleDialogDelegate()) {
+      bubble_delegate->SizeToContents();
+    }
+  }
 }
 
 bool BubbleFrameView::GetDisplayVisibleArrow() const {
@@ -982,7 +994,16 @@ gfx::Rect BubbleFrameView::GetUpdatedWindowBounds(
     SchedulePaint();
   }
 
-  return bubble_border_->GetBounds(anchor_rect, size);
+  gfx::Rect bounds = bubble_border_->GetBounds(anchor_rect, size);
+  if (adjust_to_fit_available_bounds &&
+      BubbleBorder::has_arrow(delegate_arrow)) {
+    const gfx::Rect available_bounds = GetAvailableScreenBounds(anchor_rect);
+    if (!available_bounds.IsEmpty()) {
+      bubble_border_->AdjustBoundsToFitAvailableBounds(bounds,
+                                                       available_bounds);
+    }
+  }
+  return bounds;
 }
 
 void BubbleFrameView::UpdateInputProtectorTimeStamp() {

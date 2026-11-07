@@ -8,6 +8,7 @@
 
 #include "base/check_is_test.h"
 #include "base/functional/bind.h"
+#include "base/i18n/rtl.h"
 #include "base/memory/raw_ref.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_actions.h"
@@ -19,7 +20,6 @@
 #include "chrome/browser/ui/views/frame/shadow_frame_view.h"
 #include "chrome/browser/ui/views/tabs/organizer/layout_constants.h"
 #include "chrome/browser/ui/views/tabs/organizer/organizer_panel_controls_view.h"
-#include "chrome/browser/ui/views/tabs/organizer/organizer_panel_view.h"
 #include "ui/base/interaction/element_tracker.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/compositor/layer.h"
@@ -33,6 +33,7 @@
 #include "ui/views/layout/layout_types.h"
 #include "ui/views/layout/proposed_layout.h"
 #include "ui/views/view_class_properties.h"
+#include "ui/views/view_utils.h"
 
 namespace {
 
@@ -95,12 +96,6 @@ class OrganizerTrayView::EventObserver : public ui::EventObserver,
     if (!focused_now || !tray_->GetVisible() || tray_->Contains(focused_now)) {
       return;
     }
-
-    // If the panel is closing due to focus being lost (e.g., a tab group was
-    // focused or a tab was activated), the last focused view before the panel
-    // was opened should not be refocused.
-    tray_->last_focused_view_before_opening_.SetView(nullptr);
-
     tray_->ClosePanel();
   }
 
@@ -150,19 +145,25 @@ OrganizerTrayView::OrganizerTrayView(BrowserWindowInterface& browser,
 
 OrganizerTrayView::~OrganizerTrayView() = default;
 
-void OrganizerTrayView::UpdatePanelClip() {
+void OrganizerTrayView::UpdatePanelClipAndShadow() {
   if (!background() || !panel_view_) {
     return;
   }
   const auto* const bg = background()->AsA<CustomCornersBackground>();
   bg->ClipViewToBackground(panel_view_);
+
+  const auto corners = *bg->GetRoundedCornerRadii();
+  shadow_frame_->SetShadowCornerRadii(corners);
+  // Corners are already mirrored for RTL. Decide how strong the shadow should
+  // be by how close the lower trailing corner is to its full size.
+  const double key_corner =
+      base::i18n::IsRTL() ? corners.lower_left() : corners.lower_right();
+  shadow_frame_->SetShadowOpacity(
+      std::min(1.0, key_corner / bg->default_radius()));
 }
 
-bool OrganizerTrayView::IsPositionInWindowCaption(const gfx::Point& point) {
-  const auto in_controls =
-      views::View::ConvertPointToTarget(this, controls_view_, point);
-  return controls_view_->HitTestPoint(in_controls) &&
-         controls_view_->IsPositionInWindowCaption(in_controls);
+bool OrganizerTrayView::IsPositionInWindowCaption(const gfx::Point&) {
+  return false;
 }
 
 void OrganizerTrayView::SetTopLeadingExclusion(
@@ -227,18 +228,10 @@ void OrganizerTrayView::AddedToWidget() {
 void OrganizerTrayView::VisibilityChanged(views::View* from, bool visible) {
   if (visible) {
     event_observer_ = std::make_unique<EventObserver>(*this);
-    last_focused_view_before_opening_.SetView(
-        GetFocusManager()->GetFocusedView());
-    GetFocusManager()->SetFocusedView(this);
     controls_view_->UpdateTooltipText();
     TooltipTextChanged();
   } else {
     event_observer_.reset();
-    if (last_focused_view_before_opening_) {
-      GetFocusManager()->SetFocusedView(
-          last_focused_view_before_opening_.view());
-      last_focused_view_before_opening_.SetView(nullptr);
-    }
   }
 }
 
@@ -283,7 +276,7 @@ void OrganizerTrayView::Layout(PassKey) {
   double opacity = 1.0;
   const int exclusion_width = top_leading_exclusion_.width();
   const int actual_width = width();
-  if (exclusion_width > 0 && actual_width < target_width_) {
+  if (actual_width < target_width_) {
     const int controls_preferred_width =
         controls_view_->GetPreferredSize().width();
     const int required_width =

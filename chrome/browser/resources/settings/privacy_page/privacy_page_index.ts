@@ -3,12 +3,11 @@
 // found in the LICENSE file.
 
 import 'chrome://resources/cr_elements/cr_view_manager/cr_view_manager.js';
-import '/shared/settings/prefs/prefs.js';
 import '../settings_page/settings_section.js';
 import '../settings_shared.css.js';
 import './privacy_page.js';
 
-import {PrefsMixin} from '/shared/settings/prefs/prefs_mixin.js';
+import {PrefServiceObserverMixin} from '/shared/settings/prefs2/pref_service_observer_mixin.js';
 import type {CrViewManagerElement} from 'chrome://resources/cr_elements/cr_view_manager/cr_view_manager.js';
 import {assert} from 'chrome://resources/js/assert.js';
 import {PromiseResolver} from 'chrome://resources/js/promise_resolver.js';
@@ -38,7 +37,7 @@ export interface SettingsPrivacyPageIndexElement {
 
 const SettingsPrivacyPageIndexElementBase =
     SearchableViewContainerMixin(
-        PrefsMixin(RouteObserverMixin(PolymerElement)));
+        PrefServiceObserverMixin(RouteObserverMixin(PolymerElement)));
 
 export class SettingsPrivacyPageIndexElement extends
     SettingsPrivacyPageIndexElementBase implements SettingsPlugin {
@@ -52,16 +51,9 @@ export class SettingsPrivacyPageIndexElement extends
 
   static get properties() {
     return {
-      prefs: Object,
-
       routes_: {
         type: Object,
         value: () => routes,
-      },
-
-      enableBundledSecuritySettings_: {
-        type: Boolean,
-        value: () => loadTimeData.getBoolean('enableBundledSecuritySettings'),
       },
 
       enableCapturedSurfaceControl_: {
@@ -156,9 +148,7 @@ export class SettingsPrivacyPageIndexElement extends
     };
   }
 
-  declare prefs: Record<string, unknown>;
   declare private routes_: SettingsRoutes;
-  declare private enableBundledSecuritySettings_: boolean;
   declare private enableCapturedSurfaceControl_: boolean;
   declare private enableFederatedIdentityApiContentSetting_: boolean;
   declare private enableExperimentalWebPlatformFeatures_: boolean;

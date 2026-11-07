@@ -42,8 +42,10 @@ void CC_EXPORT
 ComputeTransforms(TransformTree* transform_tree,
                   const ViewportPropertyIds& viewport_property_ids);
 
-// Computes screen space opacity for every node in the opacity tree.
-void CC_EXPORT ComputeEffects(EffectTree* effect_tree);
+// Computes effect properties, including surface scales, for every effect node.
+// The caller must invalidate the effect tree when external scale changes.
+void CC_EXPORT ComputeEffects(EffectTree* effect_tree,
+                              float external_page_scale_factor);
 
 void CC_EXPORT UpdatePropertyTrees(LayerTreeHost* layer_tree_host);
 
@@ -54,9 +56,8 @@ UpdatePropertyTreesAndRenderSurfaces(LayerTreeImpl* layer_tree_impl,
 void CC_EXPORT FindLayersThatNeedUpdates(LayerTreeHost* layer_tree_host,
                                          LayerList* update_layer_list);
 
-void CC_EXPORT
-FindLayersThatNeedUpdates(LayerTreeImpl* layer_tree_impl,
-                          std::vector<LayerImpl*>* visible_layer_list);
+void CC_EXPORT FindLayersThatNeedUpdates(LayerTreeImpl* layer_tree_impl,
+                                         LayerImplList* visible_layer_list);
 
 gfx::Transform CC_EXPORT DrawTransform(const LayerImpl* layer,
                                        const TransformTree& transform_tree,

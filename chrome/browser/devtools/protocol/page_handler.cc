@@ -4,16 +4,21 @@
 
 #include "chrome/browser/devtools/protocol/page_handler.h"
 
+#include <string>
+#include <utility>
 #include <variant>
 
-#include "base/strings/string_util.h"
-#include "base/strings/utf_string_conversions.h"
-#include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
-#include "chrome/browser/shuttle/home_tab.h"
-#include "components/custom_handlers/protocol_handler_registry.h"
-#include "components/subresource_filter/content/browser/devtools_interaction_tracker.h"
+#include "base/check.h"
+#include "base/functional/bind.h"
+#include "base/strings/strcat.h"
+#include "components/optimization_guide/content/browser/page_content_proto_provider.h"
+#include "components/optimization_guide/proto/features/common_quality_data.pb.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/web_contents.h"
+#include "third_party/blink/public/mojom/content_extraction/ai_page_content.mojom.h"
 
 #if BUILDFLAG(ENABLE_PRINTING)
+#include "components/printing/browser/headless/headless_print_manager.h"
 #include "components/printing/browser/print_to_pdf/pdf_print_utils.h"
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
 #include "chrome/browser/printing/print_view_manager.h"
@@ -31,94 +36,6 @@ using ActivePrintManager = printing::PrintViewManagerBasic;
 #endif
 
 #endif  // BUILDFLAG(ENABLE_PRINTING)
-
-PageHandler::PageHandler(scoped_refptr<content::DevToolsAgentHost> agent_host,
-                         content::WebContents* web_contents,
-                         protocol::UberDispatcher* dispatcher,
-                         bool is_trusted)
-    : agent_host_(agent_host),
-      web_contents_(web_contents->GetWeakPtr()),
-      is_trusted_(is_trusted) {
-  protocol::Page::Dispatcher::wire(dispatcher, this);
-}
-
-PageHandler::~PageHandler() {
-  Disable();
-}
-
-void PageHandler::ToggleAdBlocking(bool enabled) {
-  if (!web_contents_)
-    return;
-
-  // Create the DevtoolsInteractionTracker lazily (note that this call is a
-  // no-op if the object was already created).
-  subresource_filter::DevtoolsInteractionTracker::CreateForWebContents(
-      web_contents_.get());
-
-  subresource_filter::DevtoolsInteractionTracker::FromWebContents(
-      web_contents_.get())
-      ->ToggleForceActivation(enabled);
-}
-
-protocol::Response PageHandler::Enable(
-    std::optional<bool> enable_file_chooser_opened_event) {
-  enabled_ = true;
-  // Do not mark the command as handled. Let it fall through instead, so that
-  // the handler in content gets a chance to process the command.
-  return protocol::Response::FallThrough();
-}
-
-protocol::Response PageHandler::Disable() {
-  enabled_ = false;
-  ToggleAdBlocking(false /* enable */);
-  // Do not mark the command as handled. Let it fall through instead, so that
-  // the handler in content gets a chance to process the command.
-  return protocol::Response::FallThrough();
-}
-
-protocol::Response PageHandler::Close() {
-  if (shuttle::IsHomeTab(web_contents_.get())) {
-    return protocol::Response::ServerError(
-        "The home tab closes only with its window");
-  }
-  return protocol::Response::FallThrough();
-}
-
-protocol::Response PageHandler::SetAdBlockingEnabled(bool enabled) {
-  if (!enabled_)
-    return protocol::Response::ServerError("Page domain is disabled.");
-  ToggleAdBlocking(enabled);
-  return protocol::Response::Success();
-}
-
-protocol::Response PageHandler::SetRPHRegistrationMode(
-    const protocol::String& mode) {
-  if (!web_contents_) {
-    return protocol::Response::ServerError("No web contents to host a dialog.");
-  }
-  if (!is_trusted_) {
-    return protocol::Response::ServerError(
-        "Permission denied: Page.setRPHRegistrationMode requires a trusted "
-        "client");
-  }
-
-  custom_handlers::RphRegistrationMode rph_mode =
-      custom_handlers::RphRegistrationMode::kNone;
-  if (mode == protocol::Page::SetRPHRegistrationMode::ModeEnum::AutoAccept) {
-    rph_mode = custom_handlers::RphRegistrationMode::kAutoAccept;
-  } else if (mode ==
-             protocol::Page::SetRPHRegistrationMode::ModeEnum::AutoReject) {
-    rph_mode = custom_handlers::RphRegistrationMode::kAutoReject;
-  } else if (mode != protocol::Page::SetRPHRegistrationMode::ModeEnum::None) {
-    return protocol::Response::ServerError("Unrecognized mode value");
-  }
-
-  custom_handlers::ProtocolHandlerRegistry* registry =
-      ProtocolHandlerRegistryFactory::GetForBrowserContext(
-          web_contents_->GetBrowserContext());
-  registry->SetRphRegistrationMode(rph_mode);
-  return protocol::Response::Success();
-}
 
 void PageHandler::PrintToPDF(std::optional<bool> landscape,
                              std::optional<bool> display_header_footer,
@@ -138,7 +55,17 @@ void PageHandler::PrintToPDF(std::optional<bool> landscape,
                              std::optional<bool> generate_tagged_pdf,
                              std::optional<bool> generate_document_outline,
                              std::unique_ptr<PrintToPDFCallback> callback) {
-  DCHECK(callback);
+  CHECK(callback, base::NotFatalUntil::M161);
+
+#if BUILDFLAG(IS_ANDROID)
+  // On Android, Page.printToPDF is only available to trusted clients. Fall
+  // through so that untrusted clients observe the same behavior as when this
+  // handler is not instantiated.
+  if (!is_trusted_) {
+    callback->fallThrough();
+    return;
+  }
+#endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(ENABLE_PRINTING)
   if (!web_contents_) {
@@ -160,8 +87,9 @@ void PageHandler::PrintToPDF(std::optional<bool> landscape,
     return;
   }
 
-  DCHECK(std::holds_alternative<printing::mojom::PrintPagesParamsPtr>(
-      print_pages_params));
+  CHECK(std::holds_alternative<printing::mojom::PrintPagesParamsPtr>(
+            print_pages_params),
+        base::NotFatalUntil::M161);
 
   bool return_as_stream =
       transfer_mode.value_or("") ==
@@ -200,6 +128,53 @@ void PageHandler::PrintToPDF(std::optional<bool> landscape,
 
   callback->sendFailure(
       protocol::Response::ServerError("Printing is not available"));
+}
+
+void PageHandler::GetAnnotatedPageContent(
+    std::optional<bool> include_actionable_information,
+    std::unique_ptr<GetAnnotatedPageContentCallback> callback) {
+  if (!web_contents_) {
+    callback->sendFailure(
+        protocol::Response::ServerError("WebContents not found."));
+    return;
+  }
+
+  // optimization_guide::GetAIPageContent() extracts content from the primary
+  // main frame of `web_contents_`. Reject sessions attached to a non-primary
+  // page (e.g. a prerendered page) rather than returning the content of a
+  // different page.
+  if (!IsAttachedToPrimaryPage()) {
+    callback->sendFailure(
+        protocol::Response::ServerError("Not attached to an active page"));
+    return;
+  }
+
+  auto options = include_actionable_information.value_or(true)
+                     ? optimization_guide::ActionableAIPageContentOptions(
+                           /*on_critical_path=*/false)
+                     : optimization_guide::DefaultAIPageContentOptions(
+                           /*on_critical_path=*/false);
+
+  optimization_guide::GetAIPageContent(
+      web_contents_.get(), std::move(options),
+      base::BindOnce(
+          [](std::unique_ptr<GetAnnotatedPageContentCallback> callback,
+             optimization_guide::AIPageContentResultOrError result) {
+            if (!result.has_value()) {
+              callback->sendFailure(protocol::Response::ServerError(
+                  base::StrCat({"Failed to get annotated page content: ",
+                                result.error().message})));
+              return;
+            }
+            callback->sendSuccess(protocol::Binary::fromString(
+                result->proto.SerializeAsString()));
+          },
+          std::move(callback)));
+}
+
+bool PageHandler::IsAttachedToPrimaryPage() const {
+  return web_contents_ && content::DevToolsAgentHost::GetOrCreateFor(
+                              web_contents_.get()) == agent_host_;
 }
 
 #if BUILDFLAG(ENABLE_PRINTING)

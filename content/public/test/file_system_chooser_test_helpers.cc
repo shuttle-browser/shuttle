@@ -4,6 +4,10 @@
 
 #include "content/public/test/file_system_chooser_test_helpers.h"
 
+#include <memory>
+#include <utility>
+
+#include "base/check.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "ui/shell_dialogs/select_file_dialog.h"
@@ -179,6 +183,34 @@ class ObservableSelectFileDialog : public ui::SelectFileDialog {
   base::WeakPtr<ObservableSelectFileDialogFactory::Observer> observer_;
 };
 
+// A factory that creates a single SelectFileDialog with the configured result,
+// and resets its configuration once consumed (one-shot). Subsequent requests
+// will create a CancellingSelectFileDialog.
+class OneShotSelectFileDialogFactory : public ui::SelectFileDialogFactory {
+ public:
+  explicit OneShotSelectFileDialogFactory(
+      std::optional<std::vector<ui::SelectedFileInfo>> result)
+      : result_(std::move(result)) {}
+
+  ~OneShotSelectFileDialogFactory() override = default;
+
+  ui::SelectFileDialog* Create(
+      ui::SelectFileDialog::Listener* listener,
+      std::unique_ptr<ui::SelectFilePolicy> policy) override {
+    std::optional<std::vector<ui::SelectedFileInfo>> result =
+        std::exchange(result_, std::nullopt);
+    if (!result.has_value()) {
+      return new CancellingSelectFileDialog(/*out_params=*/nullptr, listener,
+                                            std::move(policy));
+    }
+    return new FakeSelectFileDialog(std::move(*result), /*out_params=*/nullptr,
+                                    listener, std::move(policy));
+  }
+
+ private:
+  std::optional<std::vector<ui::SelectedFileInfo>> result_;
+};
+
 }  // namespace
 
 SelectFileDialogParams::SelectFileDialogParams() = default;
@@ -221,6 +253,22 @@ ui::SelectFileDialog* FakeSelectFileDialogFactory::Create(
   return new FakeSelectFileDialog(result_, out_params_, listener,
                                   std::move(policy));
 }
+
+ScopedSelectFileDialogFactory::ScopedSelectFileDialogFactory(
+    std::optional<std::vector<base::FilePath>> result)
+    : scoped_factory_(std::make_unique<OneShotSelectFileDialogFactory>(
+          result.and_then([](const auto& paths) {
+            return std::make_optional(
+                ui::FilePathListToSelectedFileInfoList(paths));
+          }))) {}
+
+ScopedSelectFileDialogFactory::ScopedSelectFileDialogFactory(
+    std::vector<ui::SelectedFileInfo> result)
+    : scoped_factory_(
+          std::make_unique<OneShotSelectFileDialogFactory>(std::move(result))) {
+}
+
+ScopedSelectFileDialogFactory::~ScopedSelectFileDialogFactory() = default;
 
 ObservableSelectFileDialogFactory::ObservableSelectFileDialogFactory(
     base::WeakPtr<Observer> observer)

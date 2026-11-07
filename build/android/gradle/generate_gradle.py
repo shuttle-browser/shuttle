@@ -23,19 +23,19 @@ import zipfile
 
 _BUILD_ANDROID = os.path.join(os.path.dirname(__file__), os.pardir)
 sys.path.append(_BUILD_ANDROID)
-import devil_chromium
-from devil.utils import run_tests_helper
-from pylib import constants
-from pylib.constants import host_paths
+import devil_chromium  # noqa: E402
+from devil.utils import run_tests_helper  # noqa: E402
+from pylib import constants  # noqa: E402
+from pylib.constants import host_paths  # noqa: E402
 
 sys.path.append(os.path.join(_BUILD_ANDROID, 'gyp'))
-import jinja_template
-from util import build_utils
-from util import params_json_util
-from util import resource_utils
+import jinja_template  # noqa: E402
+from util import build_utils  # noqa: E402
+from util import params_json_util  # noqa: E402
+from util import resource_utils  # noqa: E402
 
 sys.path.append(os.path.dirname(_BUILD_ANDROID))
-import gn_helpers
+import gn_helpers  # noqa: E402
 
 # Typically these should track the versions that works on the slowest release
 # channel, i.e. Android Studio stable.
@@ -184,7 +184,6 @@ def _IsUsefulSrcJar(srcjar_path, canonical_compile_resources=None):
             '_placeholder.srcjar',
             '__build_config_srcjar.srcjar',
             '__native_libraries.srcjar',
-            '__product_config_srcjar.srcjar',
             '__assetres.srcjar',
         )
     ):
@@ -363,7 +362,7 @@ class _ProjectEntry:
         ]
 
     def PrebuiltJars(self):
-        filt = lambda p: (
+        filt = lambda p: (  # noqa: E731
             p.get('is_prebuilt') or p.get('gradle_treat_as_prebuilt')
         )
         return (
@@ -1019,7 +1018,7 @@ def _CombineTestEntries(entries):
             entry.android_test_entries = android_test_entries[target_name]
             del android_test_entries[target_name]
     # Add unmatched test entries as individual targets.
-    combined_entries.extend(e for l in android_test_entries.values() for e in l)
+    combined_entries.extend(e for l in android_test_entries.values() for e in l)  # noqa: E741
     return combined_entries
 
 

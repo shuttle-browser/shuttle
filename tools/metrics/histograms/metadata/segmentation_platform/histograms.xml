@@ -195,14 +195,17 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram
-    name="SegmentationPlatform.ClassificationRequest.TotalDuration.{SegmentationKey}"
+    name="SegmentationPlatform.ClassificationRequest.TotalDuration2.{SegmentationKey}"
     units="ms" expires_after="2027-02-14">
   <owner>ritikagup@google.com</owner>
   <owner>chrome-segmentation-platform@google.com</owner>
   <summary>
-    Records the total duration for Classification API call for the given
-    {SegmentationKey} including the time required for feature processing and
-    model execution as well.
+    Records the total duration (up to 3 minutes) for a Classification API call
+    for the given {SegmentationKey}, including the time required for feature
+    processing and model execution. Replaces
+    SegmentationPlatform.ClassificationRequest.TotalDuration.{SegmentationKey}
+    with an extended bucket range to cover longer timeouts (such as the 60s
+    DeviceSwitcher sync wait timeout).
 
     Starts recording every time the GetClassificationAPI is called for
     {SegmentationKey}. Records the duration when ClassificationResult is
@@ -307,8 +310,7 @@ chromium-metrics-reviews@google.com.
     Each device is identified by one unique guid. No deduping is applied. May be
     0 when there are no signed in/syncing profiles open. Recorded once on
     browser startup iff DeviceInfo sync is enabled. Note that the threshold on
-    the number of days for determining active statuses may change based on the
-    config of the kSegmentationDeviceCountByOsType feature.
+    the number of days for determining active statuses is 14 days.
   </summary>
   <token key="OsType">
     <variant name="Android"/>
@@ -611,7 +613,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="SegmentationPlatform.ModelExecution.Result.{Index}.{SegmentationModel}"
-    units="score" expires_after="2027-02-07">
+    units="score" expires_after="2027-04-11">
   <owner>shaktisahu@chromium.org</owner>
   <owner>chrome-segmentation-platform@google.com</owner>
   <summary>
@@ -630,7 +632,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="SegmentationPlatform.ModelExecution.Result.{Index}.{SegmentationModel}.Raw"
-    units="score" expires_after="2027-02-07">
+    units="score" expires_after="2027-04-11">
   <owner>shaktisahu@chromium.org</owner>
   <owner>ssid@chromium.org</owner>
   <owner>salg@google.com</owner>
@@ -649,7 +651,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="SegmentationPlatform.ModelExecution.Result.{Index}.{SegmentationModel}.Scaled100"
-    units="score" expires_after="2027-02-07">
+    units="score" expires_after="2027-04-11">
   <owner>shaktisahu@chromium.org</owner>
   <owner>ssid@chromium.org</owner>
   <owner>salg@google.com</owner>
@@ -792,7 +794,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SegmentationPlatform.SelectionFailedReason.{SegmentationKey}"
-    enum="SegmentationSelectionFailureReason" expires_after="2027-02-07">
+    enum="SegmentationSelectionFailureReason" expires_after="2027-04-11">
   <owner>ssid@chromium.org</owner>
   <owner>chrome-segmentation-platform@google.com</owner>
   <summary>
@@ -985,7 +987,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="SegmentationPlatform.{SegmentationKey}.PostProcessing.TopLabel.Computed"
-    units="index" expires_after="2027-02-07">
+    units="index" expires_after="2027-04-11">
   <owner>shaktisahu@chromium.org</owner>
   <owner>chrome-segmentation-platform@google.com</owner>
   <summary>

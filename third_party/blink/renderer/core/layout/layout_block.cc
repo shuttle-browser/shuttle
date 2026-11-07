@@ -100,54 +100,16 @@ void LayoutBlock::WillBeDestroyed(const ComputedStyle* style) {
   LayoutBox::WillBeDestroyed(style);
 }
 
-// Compute a local version of the "font size scale factor" used by SVG
-// <text>. Squared to avoid computing the square root. See
-// SVGLayoutSupport::CalculateScreenFontSizeScalingFactor().
-static double ComputeSquaredLocalFontSizeScalingFactor(
-    const gfx::Transform* transform) {
-  if (!transform)
-    return 1;
-  const auto affine = AffineTransform::FromTransform(*transform);
-  return affine.XScaleSquared() + affine.YScaleSquared();
-}
-
 void LayoutBlock::StyleDidChange(
     StyleDifference diff,
     const ComputedStyle* old_style,
     const ComputedStyle& new_style,
     const StyleChangeContext& style_change_context) {
   NOT_DESTROYED();
-  // Computes old scaling factor before PaintLayer::UpdateTransform()
-  // updates Layer()->Transform().
-  double old_squared_scale = 1;
-  if (!RuntimeEnabledFeatures::SvgIgnoreOuterTransformsEnabled() && Layer() &&
-      diff.transform_changed && HasSVGTextDescendants()) {
-    old_squared_scale =
-        ComputeSquaredLocalFontSizeScalingFactor(Layer()->Transform());
-  }
 
   LayoutBox::StyleDidChange(diff, old_style, new_style, style_change_context);
 
   PropagateStyleToAnonymousChildren();
-
-  if (!RuntimeEnabledFeatures::SvgIgnoreOuterTransformsEnabled() &&
-      diff.transform_changed && HasSVGTextDescendants()) {
-    const double new_squared_scale = ComputeSquaredLocalFontSizeScalingFactor(
-        Layer() ? Layer()->Transform() : nullptr);
-    // Compare local scale before and after.
-    if (old_squared_scale != new_squared_scale) {
-      bool stacking_context_changed =
-          old_style &&
-          (IsStackingContext(*old_style) != IsStackingContext(new_style));
-      for (LayoutBox* box : *View()->SvgTextDescendantsMap().at(this)) {
-        To<LayoutSVGText>(box)->SetNeedsTextMetricsUpdate();
-        if (GetNode() == GetDocument().documentElement() ||
-            stacking_context_changed) {
-          box->SetNeedsLayout(layout_invalidation_reason::kStyleChange);
-        }
-      }
-    }
-  }
 }
 
 bool LayoutBlock::RespectsCSSOverflow() const {
@@ -156,65 +118,57 @@ bool LayoutBlock::RespectsCSSOverflow() const {
   return GetNode() != GetDocument().ViewportDefiningElement();
 }
 
-void LayoutBlock::AddChildBeforeDescendant(LayoutObject* new_child,
-                                           LayoutObject* before_descendant) {
-  NOT_DESTROYED();
-  DCHECK(!IsLayoutBlockFlow());
-  DCHECK_NE(before_descendant->Parent(), this);
-
-  if (!new_child->IsInline() && !new_child->IsTablePart()) {
-    LayoutObject* before_child =
-        SplitAnonymousBoxesAroundChild(before_descendant);
-
-    DCHECK_EQ(before_child->Parent(), this);
-    AddChild(new_child, before_child);
-    return;
-  }
-
-  LayoutObject* before_descendant_container = before_descendant->Parent();
-  while (before_descendant_container->Parent() != this) {
-    before_descendant_container = before_descendant_container->Parent();
-  }
-  CHECK(before_descendant_container->IsAnonymous());
-  CHECK(before_descendant_container->IsLayoutBlockFlow());
-
-  // Insert the child into the anonymous block-flow instead of here.
-  before_descendant_container->AddChild(new_child, before_descendant);
-}
-
 void LayoutBlock::AddChild(LayoutObject* new_child,
                            LayoutObject* before_child) {
   NOT_DESTROYED();
-  if (before_child && before_child->Parent() != this) {
-    AddChildBeforeDescendant(new_child, before_child);
-    return;
-  }
-
-  // Only LayoutBlockFlow should have inline children, and then we shouldn't be
-  // here.
+  DCHECK(!IsLayoutBlockFlow() || IsLayoutCustom());
   DCHECK(!ChildrenInline());
 
-  if (new_child->IsInline() || new_child->IsTablePart()) {
-    // If we're inserting an inline child but all of our children are blocks,
-    // then we have to make sure it is put into an anomyous block box. We try to
-    // use an existing anonymous box if possible, otherwise a new one is created
-    // and inserted into our list of children in the appropriate position.
-    LayoutObject* after_child =
-        before_child ? before_child->PreviousSibling() : LastChild();
+  const bool is_before_child_a_direct_child =
+      !before_child || before_child->Parent() == this;
 
-    if (after_child && after_child->IsAnonymousBlockFlow()) {
-      after_child->AddChild(new_child);
-      return;
+  // First check if this child is allowed to be a direct child of `this`.
+  if (CanBeDirectChild(*new_child)) {
+    // If `before_child` is not a direct child (it's wrapped in some anonymous
+    // objects), split these anonymous objects so that we can insert
+    // `new_child` between them.
+    if (!is_before_child_a_direct_child) {
+      before_child = SplitAnonymousBoxesAroundChild(before_child);
+      DCHECK_EQ(before_child->Parent(), this);
     }
-
-    // No suitable existing anonymous box - create a new one.
-    LayoutBlock* new_box = CreateAnonymousBlock();
-    LayoutBox::AddChild(new_box, before_child);
-    new_box->AddChild(new_child);
+    LayoutBox::AddChild(new_child, before_child);
     return;
   }
 
-  LayoutBox::AddChild(new_child, before_child);
+  // We are inserting a child which isn't allowed to be a direct child of
+  // `this`.
+
+  if (!is_before_child_a_direct_child) {
+    // If `before_child` is not a direct child, find the anonymous wrapper
+    // which is a direct child of `this`, and insert `new_child`.
+    LayoutObject* before_child_container = before_child->Parent();
+    while (before_child_container->Parent() != this) {
+      before_child_container = before_child_container->Parent();
+    }
+    CHECK(before_child_container->IsAnonymous());
+    before_child_container->AddChild(new_child, before_child);
+    return;
+  }
+
+  // We have to insert `new_child` within an anonymous wrapper. `before_child`
+  // is a direct child - so check if the object before it is anonymous, if so
+  // insert `new_child` within that wrapper.
+  LayoutObject* after_child =
+      before_child ? before_child->PreviousSibling() : LastChild();
+  if (after_child && after_child->IsAnonymous()) {
+    after_child->AddChild(new_child);
+    return;
+  }
+
+  // We didn't find a suitable anonymous wrapper, create a new one.
+  LayoutBlock* anonymous = CreateAnonymousChild();
+  LayoutBox::AddChild(anonymous, before_child);
+  anonymous->AddChild(new_child);
 }
 
 void LayoutBlock::Paint(const PaintInfo& paint_info) const {
@@ -258,11 +212,12 @@ void LayoutBlock::ImageChanged(WrappedImagePtr image,
   NOT_DESTROYED();
   LayoutBox::ImageChanged(image, defer);
 
-  if (!StyleRef().HasPseudoElementStyle(kPseudoIdFirstLine))
+  if (!Style().HasPseudoElementStyle(kPseudoIdFirstLine)) {
     return;
+  }
 
   const auto* first_line_style =
-      StyleRef().GetCachedPseudoElementStyle(kPseudoIdFirstLine);
+      Style().GetCachedPseudoElementStyle(kPseudoIdFirstLine);
   if (!first_line_style)
     return;
   if (auto* first_line_container = NearestInnerBlockWithFirstLine()) {
@@ -276,36 +231,9 @@ void LayoutBlock::ImageChanged(WrappedImagePtr image,
   }
 }
 
-void LayoutBlock::AddSvgTextDescendant(LayoutSVGText& svg_text) {
-  NOT_DESTROYED();
-  DCHECK(!RuntimeEnabledFeatures::SvgIgnoreOuterTransformsEnabled());
-  auto result = View()->SvgTextDescendantsMap().insert(this, nullptr);
-  if (result.is_new_entry) {
-    result.stored_value->value =
-        MakeGarbageCollected<GCedHeapHashSet<Member<LayoutSVGText>>>();
-  }
-  result.stored_value->value->insert(&svg_text);
-  SetHasSVGTextDescendants(true);
-}
-
-void LayoutBlock::RemoveSvgTextDescendant(LayoutSVGText& svg_text) {
-  NOT_DESTROYED();
-  DCHECK(!RuntimeEnabledFeatures::SvgIgnoreOuterTransformsEnabled());
-  auto& map = View()->SvgTextDescendantsMap();
-  auto it = map.find(this);
-  if (it == map.end())
-    return;
-  GCedHeapHashSet<Member<LayoutSVGText>>& descendants = *it->value;
-  descendants.erase(&svg_text);
-  if (descendants.empty()) {
-    map.erase(this);
-    SetHasSVGTextDescendants(false);
-  }
-}
-
 LayoutUnit LayoutBlock::TextIndentOffset() const {
   NOT_DESTROYED();
-  const ComputedStyle& style = StyleRef();
+  const ComputedStyle& style = Style();
   const Length& length = style.TextIndent();
   if (length.IsZero() || style.IsTextIndentHanging()) {
     return LayoutUnit();
@@ -369,7 +297,7 @@ PositionWithAffinity LayoutBlock::PositionForPointIfOutsideAtomicInlineLevel(
   NOT_DESTROYED();
   DCHECK(IsInline());
   LogicalOffset logical_offset =
-      WritingModeConverter({StyleRef().GetWritingMode(), ResolvedDirection()},
+      WritingModeConverter({Style().GetWritingMode(), ResolvedDirection()},
                            StitchedSize())
           .ToLogical(point, PhysicalSize());
 
@@ -452,8 +380,9 @@ const LayoutBlock* LayoutBlock::FirstLineStyleParentBlock() const {
     return nullptr;
 
   LayoutObject* parent_block = first_line_block->Parent();
-  if (!parent_block || !parent_block->BehavesLikeBlockContainer())
+  if (!parent_block || !parent_block->CanHaveFirstLineOrLetter()) {
     return nullptr;
+  }
 
   const LayoutBlock* parent_layout_block = To<LayoutBlock>(parent_block);
 
@@ -501,7 +430,7 @@ PhysicalRect LayoutBlock::LocalCaretRect(int caret_offset,
     return LayoutBox::LocalCaretRect(caret_offset, caret_shape);
   }
 
-  const ComputedStyle& style = StyleRef();
+  const ComputedStyle& style = Style();
   const bool is_horizontal = style.IsHorizontalWritingMode();
 
   PhysicalSize stitched_size = StitchedSize();
@@ -537,13 +466,13 @@ void LayoutBlock::AddOutlineRects(OutlineRectCollector& collector,
                                      include_block_overflows);
   }
   if (info)
-    *info = OutlineInfo::GetFromStyle(StyleRef());
+    *info = OutlineInfo::GetFromStyle(Style());
 }
 
 LayoutBox* LayoutBlock::CreateAnonymousBoxWithSameTypeAs(
     const LayoutObject* parent) const {
   NOT_DESTROYED();
-  return CreateAnonymousWithParentAndDisplay(parent, StyleRef().Display());
+  return CreateAnonymousWithParentAndDisplay(parent, Style().Display());
 }
 
 const char* LayoutBlock::GetName() const {
@@ -583,8 +512,7 @@ LayoutBlock* LayoutBlock::CreateAnonymousWithParentAndDisplay(
   ComputedStyleBuilder new_style_builder =
       parent->GetDocument()
           .GetStyleResolver()
-          .CreateAnonymousStyleBuilderWithDisplay(parent->StyleRef(),
-                                                  new_display);
+          .CreateAnonymousStyleBuilderWithDisplay(parent->Style(), new_display);
 
   parent->UpdateAnonymousChildStyle(nullptr, new_style_builder);
   const ComputedStyle& new_style = *new_style_builder.TakeStyle();

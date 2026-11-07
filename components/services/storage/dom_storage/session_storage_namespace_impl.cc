@@ -123,12 +123,22 @@ void SessionStorageNamespaceImpl::Bind(
 }
 
 void SessionStorageNamespaceImpl::PurgeUnboundAreas() {
+  const bool database_migration_in_progress =
+      database_ && database_->is_migrating();
+
   auto it = storage_key_areas_.begin();
   while (it != storage_key_areas_.end()) {
-    if (!it->second->IsBound())
-      it = storage_key_areas_.erase(it);
-    else
+    SessionStorageAreaImpl& storage_area = *it->second;
+    if (storage_area.IsBound()) {
       ++it;
+    } else if (storage_area.data_map()->storage_area()->HasPendingCommit() &&
+               database_migration_in_progress) {
+      // To avoid losing the pending commit, don't purge the storage area during
+      // migration.
+      ++it;
+    } else {
+      it = storage_key_areas_.erase(it);
+    }
   }
 }
 
@@ -206,11 +216,9 @@ void SessionStorageNamespaceImpl::OpenArea(
 
 void SessionStorageNamespaceImpl::Clone(const std::string& clone_to_namespace) {
   DCHECK(IsPopulated());
-  // `clone_to_namespace` comes from the mojo peer and must be a valid session
-  // storage namespace ID. Reject invalid IDs here rather than crashing later
-  // when the shared map's metadata key is written.
-  if (clone_to_namespace.size() != blink::kSessionStorageNamespaceIdLength) {
-    receivers_.ReportBadMessage("Invalid session storage namespace ID.");
+
+  if (!IsNamespaceIdValid(clone_to_namespace)) {
+    receivers_.ReportBadMessage(kInvalidNamespaceIdError);
     return;
   }
 
@@ -277,7 +285,7 @@ void SessionStorageNamespaceImpl::CloneAllNamespacesWaitingForClone(
   child_namespaces_waiting_for_clone_call_.clear();
 }
 
-StorageAreaImpl* SessionStorageNamespaceImpl::GetStorageAreaForTesting(
+SessionStorageAreaImpl* SessionStorageNamespaceImpl::GetStorageAreaForTesting(
     const blink::StorageKey& storage_key) {
   if (!IsPopulated()) {
     return nullptr;
@@ -286,7 +294,7 @@ StorageAreaImpl* SessionStorageNamespaceImpl::GetStorageAreaForTesting(
   if (it == storage_key_areas_.end()) {
     return nullptr;
   }
-  return it->second->data_map()->storage_area();
+  return it->second.get();
 }
 
 void SessionStorageNamespaceImpl::FlushAreasForTesting() {
@@ -296,11 +304,12 @@ void SessionStorageNamespaceImpl::FlushAreasForTesting() {
 
 void SessionStorageNamespaceImpl::FlushStorageKeyForTesting(
     const blink::StorageKey& storage_key) {
-  StorageAreaImpl* storage_area = GetStorageAreaForTesting(storage_key);
-  if (!storage_area) {
+  SessionStorageAreaImpl* session_storage_area =
+      GetStorageAreaForTesting(storage_key);
+  if (!session_storage_area) {
     return;
   }
-  storage_area->ScheduleImmediateCommit();
+  session_storage_area->data_map()->storage_area()->ScheduleImmediateCommit();
 }
 
 }  // namespace storage

@@ -10,6 +10,7 @@ import("//ui/gl/features.gni")
 if (is_mac) {
   import("//build/apple/tweak_info_plist.gni")
   import("//build/config/mac/rules.gni")
+  import("views_examples.gni")
 }
 
 if (is_mac) {

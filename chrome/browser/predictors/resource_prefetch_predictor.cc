@@ -99,10 +99,6 @@ PreconnectPrediction& PreconnectPrediction::operator=(
 PreconnectPrediction& PreconnectPrediction::operator=(
     PreconnectPrediction&& other) = default;
 
-OptimizationGuidePrediction::OptimizationGuidePrediction() = default;
-OptimizationGuidePrediction::OptimizationGuidePrediction(
-    const OptimizationGuidePrediction& prediction) = default;
-OptimizationGuidePrediction::~OptimizationGuidePrediction() = default;
 
 ////////////////////////////////////////////////////////////////////////////////
 // ResourcePrefetchPredictor static functions.
@@ -111,7 +107,7 @@ bool ResourcePrefetchPredictor::GetRedirectOrigin(
     const url::Origin& entry_origin,
     const RedirectDataMap& redirect_data,
     url::Origin* redirect_origin) {
-  DCHECK(redirect_origin);
+  CHECK(redirect_origin, base::NotFatalUntil::M162);
 
   RedirectData data;
   bool exists = redirect_data.TryGetData(entry_origin.host(), &data);
@@ -122,7 +118,7 @@ bool ResourcePrefetchPredictor::GetRedirectOrigin(
     return true;
   }
 
-  DCHECK_GT(data.redirect_endpoints_size(), 0);
+  CHECK_GT(data.redirect_endpoints_size(), 0, base::NotFatalUntil::M162);
   if (data.redirect_endpoints_size() > 1) {
     // The predictor observed multiple redirect destinations recently. Redirect
     // endpoint is ambiguous. The predictor predicts a redirect only if it
@@ -184,7 +180,7 @@ bool ResourcePrefetchPredictor::GetRedirectEndpointsForPreconnect(
           features::kLoadingPreconnectToRedirectTarget)) {
     return false;
   }
-  DCHECK(!prediction || prediction->requests.empty());
+  CHECK(!prediction || prediction->requests.empty(), base::NotFatalUntil::M162);
 
   RedirectData data;
   if (!redirect_data.TryGetData(entry_origin.host(), &data))
@@ -246,7 +242,7 @@ ResourcePrefetchPredictor::ResourcePrefetchPredictor(
       initialization_state_(NOT_INITIALIZED),
       tables_(PredictorDatabaseFactory::GetForProfile(profile)
                   ->resource_prefetch_tables()) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 }
 
 ResourcePrefetchPredictor::~ResourcePrefetchPredictor() = default;
@@ -301,7 +297,7 @@ void ResourcePrefetchPredictor::Shutdown() {
 }
 
 bool ResourcePrefetchPredictor::TryEnsureRecordingPrecondition() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   // Make sure initialization is done or start initialization if necessary.
   if (initialization_state_ == NOT_INITIALIZED) {
@@ -339,8 +335,8 @@ void ResourcePrefetchPredictor::RecordPageRequestSummary(
 bool ResourcePrefetchPredictor::PredictPreconnectOrigins(
     const GURL& url,
     PreconnectPrediction* prediction) const {
-  DCHECK(!prediction || prediction->requests.empty());
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK(!prediction || prediction->requests.empty(), base::NotFatalUntil::M162);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (initialization_state_ != INITIALIZED)
     return false;
 
@@ -396,12 +392,12 @@ void ResourcePrefetchPredictor::CreateCaches(
     std::unique_ptr<RedirectDataMap> host_redirect_data,
     std::unique_ptr<OriginDataMap> origin_data,
     std::unique_ptr<LcppDataMap> lcpp_data) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  DCHECK_EQ(INITIALIZING, initialization_state_);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK_EQ(INITIALIZING, initialization_state_, base::NotFatalUntil::M162);
 
-  DCHECK(host_redirect_data);
-  DCHECK(origin_data);
-  DCHECK(lcpp_data);
+  CHECK(host_redirect_data, base::NotFatalUntil::M162);
+  CHECK(origin_data, base::NotFatalUntil::M162);
+  CHECK(lcpp_data, base::NotFatalUntil::M162);
 
   host_redirect_data_ = std::move(host_redirect_data);
   origin_data_ = std::move(origin_data);
@@ -412,8 +408,8 @@ void ResourcePrefetchPredictor::CreateCaches(
 }
 
 void ResourcePrefetchPredictor::OnHistoryAndCacheLoaded() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  DCHECK_EQ(INITIALIZING, initialization_state_);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK_EQ(INITIALIZING, initialization_state_, base::NotFatalUntil::M162);
 
   initialization_state_ = INITIALIZED;
   if (delete_all_data_requested_) {
@@ -426,7 +422,7 @@ void ResourcePrefetchPredictor::OnHistoryAndCacheLoaded() {
 }
 
 void ResourcePrefetchPredictor::DeleteAllUrls() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (initialization_state_ != INITIALIZED) {
     delete_all_data_requested_ = true;
     return;
@@ -452,7 +448,7 @@ void ResourcePrefetchPredictor::DeleteUrls(const history::URLRows& urls) {
 
 void ResourcePrefetchPredictor::LearnRedirect(const std::string& key,
                                               const GURL& final_redirect) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
 
   // If the primary key is too long reject it.
   if (key.length() > ResourcePrefetchPredictorTables::kMaxStringLength)
@@ -534,7 +530,7 @@ void ResourcePrefetchPredictor::LearnOrigins(
     const std::string& host,
     const GURL& main_frame_origin,
     const std::map<url::Origin, OriginRequestSummary>& summaries) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (host.size() > ResourcePrefetchPredictorTables::kMaxStringLength)
     return;
 
@@ -548,7 +544,7 @@ void ResourcePrefetchPredictor::LearnOrigins(
         std::vector<const OriginRequestSummary*>(origins_size);
     for (const auto& kv : summaries) {
       size_t index = kv.second.first_occurrence;
-      DCHECK_LT(index, origins_size);
+      CHECK_LT(index, origins_size, base::NotFatalUntil::M162);
       ordered_origins[index] = &kv.second;
     }
 
@@ -566,7 +562,7 @@ void ResourcePrefetchPredictor::LearnOrigins(
           old_index
               .insert({url::Origin::Create(GURL(data.origins(i).origin())), i})
               .second;
-      DCHECK(is_new);
+      CHECK(is_new, base::NotFatalUntil::M162);
     }
 
     // Update the old origins.
@@ -642,7 +638,7 @@ void ResourcePrefetchPredictor::LearnLcpp(
 std::optional<LcppStat> ResourcePrefetchPredictor::GetLcppStat(
     const std::optional<url::Origin>& initiator_origin,
     const GURL& url) const {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   // The `initialization_state_` can be not `INITIALIZED` in the very first
   // navigation on browser startup. Because this object is initialized on the
   // first navigation.
@@ -670,7 +666,7 @@ void ResourcePrefetchPredictor::GetPreconnectAndPrefetchRequest(
     const std::optional<url::Origin>& initiator_origin,
     const GURL& url,
     PreconnectPrediction& prediction) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   // The `initialization_state_` can be not `INITIALIZED` in the very first
   // navigation on browser startup. Because this object is initialized on the
   // first navigation.
@@ -685,8 +681,8 @@ void ResourcePrefetchPredictor::GetPreconnectAndPrefetchRequest(
 void ResourcePrefetchPredictor::OnHistoryDeletions(
     history::HistoryService* history_service,
     const history::DeletionInfo& deletion_info) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  DCHECK(initialization_state_ == INITIALIZED);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK(initialization_state_ == INITIALIZED, base::NotFatalUntil::M162);
 
   if (deletion_info.IsAllHistory())
     DeleteAllUrls();
@@ -702,8 +698,8 @@ void ResourcePrefetchPredictor::OnHistoryServiceLoaded(
 }
 
 void ResourcePrefetchPredictor::ConnectToHistoryService() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  DCHECK_EQ(INITIALIZING, initialization_state_);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
+  CHECK_EQ(INITIALIZING, initialization_state_, base::NotFatalUntil::M162);
 
   // Register for HistoryServiceLoading if it is not ready.
   history::HistoryService* history_service =
@@ -711,7 +707,8 @@ void ResourcePrefetchPredictor::ConnectToHistoryService() {
                                            ServiceAccessType::EXPLICIT_ACCESS);
   if (!history_service)
     return;
-  DCHECK(!history_service_observation_.IsObservingSource(history_service));
+  CHECK(!history_service_observation_.IsObservingSource(history_service),
+        base::NotFatalUntil::M162);
   history_service_observation_.Observe(history_service);
   if (history_service->BackendLoaded()) {
     // HistoryService is already loaded. Continue with Initialization.

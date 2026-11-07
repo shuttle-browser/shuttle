@@ -18,10 +18,6 @@
 #include "extensions/common/manifest_handler_registry.h"
 
 
-#if BUILDFLAG(IS_CHROMEOS)
-#include "chrome/common/extensions/api/file_browser_handlers/file_browser_handler.h"
-#endif
-
 namespace extensions {
 
 void RegisterChromeManifestHandlers(ManifestHandlerRegistry* registry) {
@@ -32,11 +28,6 @@ void RegisterChromeManifestHandlers(ManifestHandlerRegistry* registry) {
   registry->RegisterHandler(std::make_unique<SettingsOverridesHandler>());
   registry->RegisterHandler(std::make_unique<StorageSchemaManifestHandler>());
   registry->RegisterHandler(std::make_unique<ThemeHandler>());
-
-
-#if BUILDFLAG(IS_CHROMEOS)
-  registry->RegisterHandler(std::make_unique<FileBrowserHandlerParser>());
-#endif
 }
 
 }  // namespace extensions

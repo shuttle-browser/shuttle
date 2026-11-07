@@ -31,6 +31,8 @@ constexpr SkColor kColorSysSurface_Light = SkColorSetRGB(0xFF, 0xFF, 0xFF);
 constexpr SkColor kColorGemSysColorPrimary_Light =
     SkColorSetRGB(0x0B, 0x57, 0xD0);
 constexpr SkColor kColorSysStateHoverOnSubtle_Light = SkColorSetARGB(0x0F, 0x1F, 0x1F, 0x1F);
+constexpr SkColor kColorSysStateRippleNeutralOnSubtle_Light =
+    SkColorSetARGB(0x14, 0x1F, 0x1F, 0x1F);
 constexpr SkColor kColorSysTonalOutline_Light = SkColorSetRGB(0xA8, 0xC7, 0xFA);
 constexpr SkColor kColorSysPrimary_Light = SkColorSetRGB(0x0B, 0x57, 0xD0);
 
@@ -272,6 +274,13 @@ void AddGeneratedThemeComprehensiveColors(ui::ColorMixer& mixer) {
                           color_utils::kMinimumReadableContrastRatio),
       ui::PickGoogleColor(gfx::kGoogleGrey500, element_background_color,
                           color_utils::kMinimumReadableContrastRatio));
+
+  mixer[kColorNewTabPageThreadsRailPrimaryFont] = {primary_foreground_color};
+  mixer[kColorNewTabPageThreadsRailBackground] =
+      SelectBasedOnWhiteNtpBackground(gfx::kGoogleGrey100,
+                                      element_background_color);
+  mixer[kColorNewTabPageThreadsRailHoverBackground] =
+      ui::SetAlpha(primary_foreground_color, 0.06f * SK_AlphaOPAQUE);
 }
 
 void AddSearchboxColors(ui::ColorMixer& mixer, const ui::ColorProviderKey& key) {
@@ -304,6 +313,8 @@ void AddSearchboxColors(ui::ColorMixer& mixer, const ui::ColorProviderKey& key) 
       dark_mode ? SkColorSetRGB(0xE6, 0xE8, 0xF0)
                 : SkColorSetRGB(0x0A, 0x0A, 0x0A)};
   mixer[kColorComposeboxFontLight] = {SkColorSetRGB(0x1F, 0x1F, 0x1F)};
+  mixer[kColorComposeboxGhostCardBackground] = {
+      kColorSysStateRippleNeutralOnSubtle_Light};
   mixer[kColorComposeboxCancelButton] = {
       dark_mode ? SkColorSetRGB(0xAD, 0xAF, 0xB8)
                 : SkColorSetRGB(0x0A, 0x0A, 0x0A)};
@@ -332,9 +343,6 @@ void AddSearchboxColors(ui::ColorMixer& mixer, const ui::ColorProviderKey& key) 
       dark_mode ? SkColorSetRGB(0x4E, 0x50, 0x59)
                 : SkColorSetRGB(0xF0, 0xF2, 0xF5)};
   mixer[kColorComposeboxUploadButton] = {ui::kColorRefNeutral10};
-  mixer[kColorComposeboxUploadButtonDisabled] = {
-      dark_mode ? SkColorSetRGB(0x56, 0x59, 0x5E)
-                : SkColorSetRGB(0xAD, 0xAF, 0xB8)};
   mixer[kColorComposeboxFileChipBackground] = {kColorSysSurface3_Light};
   mixer[kColorComposeboxFileChipFaviconBackground] = {kColorSysSurface_Light};
   mixer[kColorComposeboxFileChipText] = {SkColorSetRGB(0x1F, 0x1F, 0x1F)};
@@ -491,6 +499,16 @@ void AddNewTabPageColorMixer(ui::ColorProvider* provider,
         dark_mode ? SK_ColorWHITE : gfx::kGoogleGrey800};
     mixer[kColorNewTabPageText] = {dark_mode ? gfx::kGoogleGrey200
                                              : SK_ColorBLACK};
+    // Includes ThemeType::kExtension, and ThemeType::kNativeX11
+    if (key.custom_theme) {
+      mixer[kColorNewTabPageThreadsRailPrimaryFont] = {
+          primary_foreground_color};
+      mixer[kColorNewTabPageThreadsRailBackground] =
+          SelectBasedOnWhiteNtpBackground(gfx::kGoogleGrey100,
+                                          element_background_color);
+      mixer[kColorNewTabPageThreadsRailHoverBackground] =
+          ui::SetAlpha(primary_foreground_color, 0.06f * SK_AlphaOPAQUE);
+    }
   }
 
   /* NewTabFooter */
@@ -498,10 +516,6 @@ void AddNewTabPageColorMixer(ui::ColorProvider* provider,
   mixer[kColorNewTabFooterText] =
       ui::GetColorWithMaxContrast({kColorNewTabFooterBackground});
   mixer[kColorNewTabFooterLogoBackground] = {SK_ColorWHITE};
-
-  /* NewTabPageThreadsRail */
-  mixer[kColorNewTabPageThreadsRailBackground] = {kColorToolbar};
-  mixer[kColorNewTabPageThreadsRailIconButton] = {ui::kColorSysOnSurfaceSubtle};
 }
 
 void AddWebThemeNewTabPageColors(ui::ColorMixer& mixer, bool dark_mode) {
@@ -653,6 +667,12 @@ void AddWebThemeNewTabPageColors(ui::ColorMixer& mixer, bool dark_mode) {
                                                          : gfx::kGoogleGrey800};
   mixer[kColorNewTabPageActionChipDeepSearchIcon] = {
       dark_mode ? SK_ColorWHITE : gfx::kGoogleGrey800};
+
+  mixer[kColorNewTabPageThreadsRailPrimaryFont] = {primary_foreground_color};
+  mixer[kColorNewTabPageThreadsRailBackground] = {
+      dark_mode ? gfx::kGoogleGrey800 : gfx::kGoogleGrey100};
+  mixer[kColorNewTabPageThreadsRailHoverBackground] =
+      ui::SetAlpha(primary_foreground_color, 0.06f * SK_AlphaOPAQUE);
 
   // Isolated Tab colors.
   // The Isolated Tab Page is designed to always remain in light mode.

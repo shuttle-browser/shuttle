@@ -4,6 +4,7 @@
 
 #include "chrome/browser/extensions/open_tab_helper.h"
 
+#include "base/memory/weak_ptr.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/types/expected_macros.h"
 #include "chrome/browser/extensions/api/tabs/tabs_constants.h"
@@ -19,6 +20,7 @@
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/common/webui_url_constants.h"
+#include "components/split_tabs/split_tab_visual_data.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/site_instance.h"
@@ -33,11 +35,7 @@
 #include "url/gurl.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/unload_controller.h"
-#include "components/split_tabs/split_tab_id.h"
-#include "components/split_tabs/split_tab_visual_data.h"
-#include "components/tabs/public/tab_interface.h"
 #endif
 
 namespace extensions {
@@ -61,8 +59,9 @@ BrowserWindowInterface* CreateAndShowBrowser(Profile* profile,
     return nullptr;
   }
 
+  base::WeakPtr<BrowserWindowInterface> weak_browser = browser->GetWeakPtr();
   browser->GetWindow()->Show();
-  return browser;
+  return weak_browser.get();
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -194,8 +193,8 @@ base::expected<content::WebContents*, std::string> OpenTabHelper::OpenTab(
   NavigateParams navigate_params(&browser, validated_url,
                                  ui::PAGE_TRANSITION_LINK);
   navigate_params.disposition = active
-                                    ? WindowOpenDisposition::NEW_FOREGROUND_TAB
-                                    : WindowOpenDisposition::NEW_BACKGROUND_TAB;
+                                    ? WindowOpenDisposition::kNewForegroundTab
+                                    : WindowOpenDisposition::kNewBackgroundTab;
 
   // If splitWithTabId is specified, determine the relative positioning of the
   // new tab. Defaults to the right of the target tab if index is not specified.
@@ -214,8 +213,11 @@ base::expected<content::WebContents*, std::string> OpenTabHelper::OpenTab(
         index = split_index + 1;
       }
       if (split_contents) {
-        split_tab = tabs::TabInterface::GetFromContents(split_contents);
-        CHECK(split_tab);
+        split_tab = tabs::TabInterface::MaybeGetFromContents(split_contents);
+        if (!split_tab) {
+          return base::unexpected(
+              tabs_constants::kSplitViewCreationFailedError);
+        }
       }
     }
   }
@@ -259,8 +261,9 @@ base::expected<content::WebContents*, std::string> OpenTabHelper::OpenTab(
     tabs::TabInterface* new_tab =
         tabs::TabInterface::GetFromContents(new_contents);
     CHECK(new_tab);
-    if (!tab_list->CreateSplit(
-            {split_tab->GetHandle(), new_tab->GetHandle()})) {
+    if (!tab_list->CreateSplit({split_tab->GetHandle(), new_tab->GetHandle()},
+                               split_tabs::SplitTabVisualData(
+                                   split_tabs::SplitTabLayout::kSideBySide))) {
       tab_list->CloseTab(new_tab->GetHandle());
       return base::unexpected(tabs_constants::kSplitViewCreationFailedError);
     }

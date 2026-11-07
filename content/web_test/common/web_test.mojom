@@ -167,6 +167,16 @@ interface WebTestRenderFrame {
   //   process that about:blank committed in.
   ResetRendererAfterWebTest();
 
+  // Resets the process-wide TestRunner state (e.g. whether
+  // testRunner.notifyDone() has been called, runtime flags, loading frames).
+  // Sent the first time a renderer process is seen during a test, before
+  // SetTestConfiguration() or SetupRendererProcessForNonTestWindow() and
+  // ReplicateWebTestRuntimeFlagsChanges(). This is needed because a renderer
+  // process that hosted only out-of-process iframes (or other secondary
+  // windows) in the previous test can be kept alive and reused, and such a
+  // process never receives ResetRendererAfterWebTest().
+  ResetTestRunnerForNewWebTest();
+
   // Processes a work item. This is called for the process with the main
   // window's main frame.
   ProcessWorkItem(WorkItem work_item);
@@ -270,8 +280,9 @@ interface WebTestControlHost {
   [Sync]
   GetWritableDirectory() => (mojo_base.mojom.FilePath path);
 
-  // For the duration of the current test this causes all file choosers to
-  // return the passed in |path|.
+  // Causes the next file chooser to return the passed in |path|. The
+  // configured path is consumed on first use (one-shot), causing any
+  // subsequent file choosers to be canceled.
   SetFilePathForMockFileDialog(mojo_base.mojom.FilePath path);
 
   // Creates a subresource filter ruleset file that considers URLs with suffixes

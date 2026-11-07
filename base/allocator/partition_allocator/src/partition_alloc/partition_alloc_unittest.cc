@@ -346,7 +346,7 @@ GetPartitionAllocWithSizedFreeTestParams() {
   auto params = GetPartitionAllocTestParams();
   auto free_with_size_func = [](PartitionRoot* root, void* ptr, size_t size,
                                 size_t) {
-    root->Free<FreeFlags::kWithSizeHint>(ptr, {.size = size});
+    root->Free(ptr, FreeSizeHint{size});
   };
   params.emplace_back(PartitionAllocTestParam{BucketDistribution::kNeutral,
                                               false, free_with_size_func});
@@ -360,8 +360,7 @@ GetPartitionAllocWithFreeWithSizeAndAlignmentTestParams() {
   auto params = GetPartitionAllocTestParams();
   auto free_with_size_and_alignment_func = [](PartitionRoot* root, void* ptr,
                                               size_t size, size_t alignment) {
-    root->Free<FreeFlags::kWithSizeHint | FreeFlags::kWithAlignmentHint>(
-        ptr, {.size = size, .alignment = alignment});
+    root->Free(ptr, FreeSizeHint{size}, FreeAlignmentHint{alignment});
   };
   params.emplace_back(PartitionAllocTestParam{
       BucketDistribution::kNeutral, false, free_with_size_and_alignment_func});
@@ -2142,7 +2141,8 @@ TEST_P(PartitionAllocTest, Realloc) {
                     ->InSlotMetadataPointerFromObjectForTesting(ptr2)
                     ->IsSmuggledSizeAvailable());
     EXPECT_EQ(internal::GetSmuggledSize(
-                  ptr2, allocator.root()->GetSlotUsableSize(slot_span)),
+                  UntaggedSlotStart::Unchecked(UntagPtr(ptr2)),
+                  allocator.root()->GetSlotUsableSize(slot_span)),
               size + 1);
   }
 #endif  // PA_BUILDFLAG(CHECKED_SPAN_HAS_METADATA_SUPPORT)
@@ -4386,8 +4386,7 @@ TEST_P(PartitionAllocTest, IntendedLeak) {
       SlotSpan::FromSlotStart(SlotStart::Unchecked(ptr).Untag(), root.get());
 
   constexpr const uint64_t kTypeId = 0xDEADBEAFu;
-  root->Free<FreeFlags::kIntendedLeak | FreeFlags::kWithTypeIdHint>(
-      ptr, {.type_id = kTypeId});
+  root->Free<FreeFlags::kIntendedLeak>(ptr, FreeTypeIdHint{kTypeId});
 
   // Leaked objects will be never found in the freelist of the `slot_span`.
   EXPECT_NE(SlotStart::Unchecked(ptr).Untag().value(),
@@ -4725,14 +4724,14 @@ TEST_P(PartitionAllocTest, OverrideHooks) {
 
   PartitionAllocHooks::SetOverrideHooks(
       [](void** out, AllocFlags flags, size_t size, const char* type_name,
-         std::optional<size_t> alignment) -> bool {
+         std::optional<size_t> alignment, bool use_brp) -> bool {
         if (size == kOverriddenSize && type_name == kOverriddenType) {
           *out = overridden_allocation;
           return true;
         }
         return false;
       },
-      [](void* address) -> bool {
+      [](void* address, FreeFlags flags) -> bool {
         if (address == overridden_allocation) {
           free_called = true;
           return true;
@@ -5327,6 +5326,50 @@ TEST_P(PartitionAllocTest, RefCountBasic) {
       static_cast<uint64_t*>(allocator.root()->Alloc(alloc_size, type_name));
   PA_EXPECT_PTR_EQ(ptr1, ptr3);
   allocator.root()->Free(ptr3);
+}
+
+TEST_P(PartitionAllocTest, MaxRefCount) {
+  if (!UseBRPPool()) {
+    return;
+  }
+
+  InSlotMetadata::ResetMaxRefCountForTesting();
+  EXPECT_EQ(InSlotMetadata::GetMaxRefCountForReporting(), 0u);
+
+  size_t alloc_size = 64 - ExtraAllocSize(allocator);
+  void* ptr = allocator.root()->Alloc(alloc_size, type_name);
+  ASSERT_TRUE(ptr);
+
+  auto* in_slot_metadata =
+      allocator.root()->InSlotMetadataPointerFromObjectForTesting(ptr);
+
+  // Below 2^12 (4096), max_ref_count_ is not updated.
+  for (size_t i = 0; i < 4095; ++i) {
+    in_slot_metadata->Acquire();
+  }
+  EXPECT_EQ(InSlotMetadata::GetMaxRefCountForReporting(), 0u);
+
+  // Reaching 4096 (2^12) records 4096.
+  in_slot_metadata->Acquire();
+  EXPECT_EQ(InSlotMetadata::GetMaxRefCountForReporting(), 4096u);
+
+  // Non-power-of-2 values above 4096 do not update max_ref_count_.
+  for (size_t i = 4096; i < 8191; ++i) {
+    in_slot_metadata->Acquire();
+  }
+  EXPECT_EQ(InSlotMetadata::GetMaxRefCountForReporting(), 4096u);
+
+  // Reaching 8192 (2^13) updates max_ref_count_ to 8192.
+  in_slot_metadata->Acquire();
+  EXPECT_EQ(InSlotMetadata::GetMaxRefCountForReporting(), 8192u);
+
+  for (size_t i = 0; i < 8192; ++i) {
+    EXPECT_FALSE(in_slot_metadata->Release());
+  }
+  // High-water mark should remain 8192 after releases.
+  EXPECT_EQ(InSlotMetadata::GetMaxRefCountForReporting(), 8192u);
+
+  allocator.root()->Free(ptr);
 }
 
 void PartitionAllocTest::RunRefCountReallocSubtest(size_t orig_size,
@@ -6130,6 +6173,43 @@ TEST_P(PartitionAllocTest, GetReservationStart) {
   allocator.root()->Free(ptr);
 }
 
+#if PA_BUILDFLAG(HAS_64_BIT_POINTERS)
+// Direct-mapped reservations are transient, and are placed at the top of the
+// pool, whereas normal bucket super pages are placed at the bottom. See
+// AddressPoolManager::ReservationLifetime.
+TEST_P(PartitionAllocTest, DirectMapIsAllocatedFromTopOfPool) {
+  void* small_ptr = allocator.root()->Alloc(kTestAllocSize, type_name);
+  ASSERT_TRUE(small_ptr);
+  size_t large_size = kSuperPageSize * 3 + PartitionPageSize() * .5f;
+  ASSERT_GT(large_size, BucketIndexLookup::kMaxBucketSize);
+  void* large_ptr = allocator.root()->Alloc(large_size, type_name);
+  ASSERT_TRUE(large_ptr);
+  void* large_ptr2 = allocator.root()->Alloc(large_size, type_name);
+  ASSERT_TRUE(large_ptr2);
+
+  uintptr_t small_address = UntagPtr(small_ptr);
+  uintptr_t large_address = UntagPtr(large_ptr);
+  uintptr_t large_address2 = UntagPtr(large_ptr2);
+  auto small_info = PartitionAddressSpace::GetPoolInfo(small_address);
+  auto large_info = PartitionAddressSpace::GetPoolInfo(large_address);
+  ASSERT_EQ(small_info.handle, large_info.handle);
+  const size_t pool_size = ~large_info.base_mask + 1;
+
+  // Other tests and allocations in this process share the pool, so don't
+  // expect exact addresses. However, normal bucket super pages should be in the
+  // bottom half of the pool, and direct-mapped ones in the top half, growing
+  // downward.
+  EXPECT_LT(small_info.offset, pool_size / 2);
+  EXPECT_GE(large_info.offset, pool_size / 2);
+  EXPECT_LT(large_info.offset, pool_size);
+  EXPECT_LT(large_address2, large_address);
+
+  allocator.root()->Free(large_ptr2);
+  allocator.root()->Free(large_ptr);
+  allocator.root()->Free(small_ptr);
+}
+#endif  // PA_BUILDFLAG(HAS_64_BIT_POINTERS)
+
 TEST_P(PartitionAllocTest, CheckReservationType) {
   ReservationOffsetTable table = allocator.root()->GetReservationOffsetTable();
   void* ptr = allocator.root()->Alloc(kTestAllocSize, type_name);
@@ -6238,6 +6318,29 @@ TEST_P(PartitionAllocTest, CheckReservationType) {
   EXPECT_DEATH_IF_SUPPORTED(table.IsReservationStart(address_to_check), "");
 #endif  //  PA_BUILDFLAG(DCHECKS_ARE_ON) && (!PA_BUILDFLAG(OFFICIAL)
         //  || PA_BUILDFLAG(IS_DEBUG))
+}
+
+TEST_P(PartitionAllocTest, IsAlwaysDirectMapped) {
+  static_assert(!IsAlwaysDirectMapped(BucketIndexLookup::kMaxBucketSize));
+  static_assert(IsAlwaysDirectMapped(BucketIndexLookup::kMaxBucketSize + 1));
+
+  for (size_t size : {BucketIndexLookup::kMaxBucketSize + 1,
+                      2 * BucketIndexLookup::kMaxBucketSize}) {
+    SCOPED_TRACE(size);
+    ASSERT_TRUE(IsAlwaysDirectMapped(size));
+
+    void* ptr = allocator.root()->Alloc(size, type_name);
+    ASSERT_TRUE(ptr);
+    EXPECT_TRUE(
+        IsManagedByDirectMapForTesting(UntagPtr(ptr), allocator.root()));
+    allocator.root()->Free(ptr);
+
+    ptr = allocator.root()->AlignedAlloc(64, size);
+    ASSERT_TRUE(ptr);
+    EXPECT_TRUE(
+        IsManagedByDirectMapForTesting(UntagPtr(ptr), allocator.root()));
+    allocator.root()->Free(ptr);
+  }
 }
 
 // Test for crash http://crbug.com/1169003.
@@ -6523,6 +6626,91 @@ TEST_P(PartitionAllocTest, ConfigurablePool) {
 
 #endif  // PA_BUILDFLAG(PA_ARCH_CPU_64_BITS)
 }
+
+#if PA_BUILDFLAG(PA_ARCH_CPU_64_BITS) && PA_BUILDFLAG(ENABLE_PKEYS)
+
+namespace {
+
+void VerifyAllocationHasPkey(void* ptr, int pkey) {
+  volatile uint32_t* typed_ptr = static_cast<volatile uint32_t*>(ptr);
+  *typed_ptr = 42;
+  EXPECT_EQ(42u, *typed_ptr);
+
+  // Each protection key occupies 2 bits in the PKRU register (at bit offset
+  // `2 * pkey`). Verify that write access is currently enabled for `pkey`, then
+  // set its write-disable bit in the death test to check that writing to `ptr`
+  // triggers a PKU fault.
+  const uint32_t pkru = Rdpkru();
+  const uint32_t disable_write_mask = static_cast<uint32_t>(PKEY_DISABLE_WRITE)
+                                      << (2 * pkey);
+  ASSERT_EQ(0u, pkru & disable_write_mask);
+  EXPECT_DEATH_IF_SUPPORTED(
+      {
+        Wrpkru(pkru | disable_write_mask);
+        *typed_ptr = 99;
+      },
+      "");
+}
+
+}  // namespace
+
+TEST_P(PartitionAllocTest, ConfigurablePoolPkey) {
+  int pkey = PkeyAlloc(0);
+  if (pkey == kInvalidPkey) {
+    // `PA_BUILDFLAG(ENABLE_PKEYS)` is unconditionally enabled at compile time
+    // on all x64 Linux/ChromeOS builds, but the test binary may run on an x64
+    // CPU/VM that does not support PKU at runtime, in which case `PkeyAlloc`
+    // fails and returns `kInvalidPkey`.
+    GTEST_SKIP();
+  }
+  ASSERT_NE(pkey, kDefaultPkey);
+
+  const size_t pool_size = PartitionAddressSpace::ConfigurablePoolMinSize();
+  EXPECT_FALSE(IsConfigurablePoolAvailable());
+  uintptr_t pool_base =
+      AllocPages(pool_size, pool_size,
+                 PageAccessibilityConfiguration(
+                     PageAccessibilityConfiguration::kInaccessible),
+                 PageTag::kPartitionAlloc);
+  ASSERT_NE(0u, pool_base);
+  PA_PCHECK(PkeyMprotect(reinterpret_cast<void*>(pool_base), pool_size,
+                         PROT_NONE, pkey) == 0);
+  PartitionAddressSpace::InitConfigurablePool(pool_base, pool_size, pkey);
+  EXPECT_TRUE(IsConfigurablePoolAvailable());
+
+  PartitionOptions opts = GetCommonPartitionOptions();
+  opts.use_configurable_pool = PartitionOptions::kAllowed;
+  std::unique_ptr<PartitionRoot> root = CreateCustomTestRoot(
+      opts, PartitionTestOptions{.uncap_empty_slot_span_memory = true,
+                                 .set_bucket_distribution = true});
+
+  const size_t direct_map_size = BucketIndexLookup::kMaxBucketSize + 1;
+  void* ptr1 = root->Alloc(direct_map_size);
+  ASSERT_NE(nullptr, ptr1);
+  VerifyAllocationHasPkey(ptr1, pkey);
+
+  // Freeing a direct-mapped allocation calls `UnreserveAndDecommit`. Check that
+  // reallocating those pages preserves `pkey`.
+  root->Free(ptr1);
+  void* ptr2 = root->Alloc(direct_map_size);
+  ASSERT_EQ(ptr1, ptr2);
+  VerifyAllocationHasPkey(ptr2, pkey);
+  root->Free(ptr2);
+
+  // Also check normal bucket allocations reusing the `UnreserveAndDecommit`ted
+  // superpage at the start of the pool.
+  void* bucket_ptr = root->Alloc(kTestAllocSize);
+  ASSERT_NE(nullptr, bucket_ptr);
+  VerifyAllocationHasPkey(bucket_ptr, pkey);
+
+  root->Free(bucket_ptr);
+  PartitionRoot::DeleteForTesting(root.release());
+  PartitionAddressSpace::UninitConfigurablePoolForTesting();
+  FreePages(pool_base, pool_size);
+  PkeyFree(pkey);
+}
+
+#endif  // PA_BUILDFLAG(PA_ARCH_CPU_64_BITS) && PA_BUILDFLAG(ENABLE_PKEYS)
 
 TEST_P(PartitionAllocTest, EmptySlotSpanSizeIsCapped) {
   // Use another root, since the ones from the test harness disable the empty
@@ -7073,6 +7261,7 @@ TEST_P(PartitionAllocTest, SwitchBucketDistributionAfterAlloc) {
   root->Free(ptr);
 }
 
+#if PA_BUILDFLAG(ENABLE_AUTO_PARTITIONING)
 TEST_P(PartitionAllocTest, MultipleThreadCachePerThread) {
   // Use thread cache indices which are not used by default partitions.
   constexpr size_t index1 = kNumPartitions;
@@ -7103,6 +7292,7 @@ TEST_P(PartitionAllocTest, MultipleThreadCachePerThread) {
                                     bucket_index, pos2));
   EXPECT_EQ(pos2, 0u);
 }
+#endif  // PA_BUILDFLAG(ENABLE_AUTO_PARTITIONING)
 
 // Documentation tests demonstrating the behavior of `IsExtentOutOfBounds()`.
 // This test passes if it doesn't crash.

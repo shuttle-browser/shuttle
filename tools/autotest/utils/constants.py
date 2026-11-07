@@ -23,7 +23,6 @@ DEPOT_TOOLS_DIR: Path = SRC_DIR / 'third_party' / 'depot_tools'
 
 # Some test suites use suffixes that would also match non-test-suite targets.
 # Those test suites should be manually added here.
-# pylint: disable=line-too-long
 TEST_TARGET_ALLOWLIST: list[str] = [
   # The tests below this line were output from the ripgrep command just below:
   '//ash:ash_pixeltests',
@@ -44,8 +43,8 @@ TEST_TARGET_ALLOWLIST: list[str] = [
   '//chrome/test:interactive_ui_tests',
   '//chrome/test:unit_tests',
   '//clank/javatests:chrome_apk_baseline_profile_generator',
+  '//clank/javatests:chrome_bundle_smoke_test',
   '//clank/javatests:chrome_smoke_test',
-  '//clank/javatests:trichrome_chrome_google_bundle_smoke_test',
   '//components/chromeos_camera:jpeg_decode_accelerator_unittest',
   '//components/exo/wayland:wayland_client_compatibility_tests',
   '//components/exo/wayland:wayland_client_tests',
@@ -111,7 +110,6 @@ TEST_TARGET_ALLOWLIST: list[str] = [
   '//third_party/rapidhash:rapidhash_fuzztests',
   '//ui/ozone:ozone_integration_tests',
 ]
-# pylint: disable=line-too-long
 r"""
  You can run this command to find test targets that do not match
  _TEST_TARGET_SUFFIXES, and use it to update _TEST_TARGET_ALLOWLIST.

@@ -7,12 +7,14 @@
 #include <stddef.h>
 
 #include <algorithm>
+#include <optional>
+#include <ranges>
 #include <sstream>
+#include <string_view>
 #include <utility>
 
 #include "base/check.h"
 #include "base/compiler_specific.h"
-#include "base/containers/adapters.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
@@ -147,8 +149,7 @@ const ui::Layer* GetRootLayer(const ui::Layer* layer) {
 // state, the layer root does not match the root window's layer.
 bool IsLayerDivergedFromRoot(const Window* window, const Window* root_window) {
   CHECK(root_window);
-  return !window->layer_managed_by_parent() &&
-         GetRootLayer(window->layer()) != root_window->layer();
+  return GetRootLayer(window->layer()) != root_window->layer();
 }
 
 gfx::Vector2d GetLayerTargetOffsetToRoot(const ui::Layer* layer) {
@@ -223,6 +224,19 @@ class ScopedCursorHider {
   raw_ptr<Window> window_;
   bool hid_cursor_;
 };
+
+void CollectWindowsWithGestureState(Window* window,
+                                    std::optional<WindowTracker>& tracker) {
+  if (window->provider()) {
+    if (!tracker) {
+      tracker.emplace();
+    }
+    tracker->Add(window);
+  }
+  for (Window* child : window->children()) {
+    CollectWindowsWithGestureState(child, tracker);
+  }
+}
 
 }  // namespace
 
@@ -364,9 +378,9 @@ void Window::SetType(client::WindowType type) {
   TriggerChangedCallback(&type_);
 }
 
-const std::string& Window::GetName() const {
+std::string_view Window::GetName() const {
   std::string* name = GetProperty(client::kNameKey);
-  return name ? *name : base::EmptyString();
+  return name ? *name : std::string_view();
 }
 
 void Window::SetName(const std::string& name) {
@@ -403,9 +417,7 @@ void Window::SetTransparent(bool transparent) {
     return;
   transparent_ = transparent;
 
-  if (!layer()->AsSolidColor()) {
-    layer()->SetFillsBoundsOpaquely(!transparent_);
-  }
+  layer()->SetFillsBoundsOpaquely(!transparent_);
   TriggerChangedCallback(&transparent_);
 }
 
@@ -793,8 +805,6 @@ void Window::ConvertPointToTarget(const Window* source,
     CHECK(target->layer());
     const ui::Layer* source_layer = source->layer();
     const ui::Layer* target_layer = target->layer();
-
-#if !BUILDFLAG(IS_WIN)
     auto chain_name = [](const aura::Window* window) {
       std::ostringstream out;
       out << "[";
@@ -810,12 +820,7 @@ void Window::ConvertPointToTarget(const Window* source,
         << "Root layer in source and target window are different. "
            "source chain="
         << chain_name(source) << ", target chain=" << chain_name(target);
-#else
-    // TODO(crbug.com/550457201): Investigate why this is hitting on Windows.
-    if (GetRootLayer(source_layer) != GetRootLayer(target_layer)) {
-      return;
-    }
-#endif
+
     ui::Layer::ConvertPointToLayer(source_layer, target_layer,
                                    /*use_target_transform=*/true, point);
   }
@@ -944,7 +949,7 @@ Window* Window::GetEventHandlerForPoint(const gfx::Point& local_point) {
   if (!HitTest(local_point))
     return nullptr;
 
-  for (Window* child : base::Reversed(children_)) {
+  for (Window* child : std::views::reverse(children_)) {
     if (child->event_targeting_policy_ == EventTargetingPolicy::kNone) {
       continue;
     }
@@ -1659,34 +1664,43 @@ void Window::NotifyWindowVisibilityChangedUp(aura::Window* target,
 }
 
 bool Window::CleanupGestureState() {
+  Env* env = Env::GetInstance();
   // If it's in the process already, clean up the consumer state. Reentrant can
   // happen through some event handlers for CancelActiveTouches().
-  Env* env = Env::GetInstance();
   if (cleaning_up_gesture_state_) {
     return env->gesture_recognizer()->CleanupStateForConsumer(this);
   }
-  cleaning_up_gesture_state_ = true;
 
-  // Cancelling active touches may end up destroying this window. We use a
-  // tracker to detect this.
-  WindowTracker tracking_this({this});
-
-  bool state_modified = false;
-  state_modified |= env->gesture_recognizer()->CancelActiveTouches(this);
-  if (!tracking_this.Contains(this))
-    return state_modified;
-
-  state_modified |= env->gesture_recognizer()->CleanupStateForConsumer(this);
   // Potentially event handlers for CancelActiveTouches() within
   // CleanupGestureState may change the window hierarchy (or reorder the
   // |children_|), and therefore iterating over |children_| is not safe. Use
-  // WindowTracker to track the list of children.
-  WindowTracker children(children_);
-  while (!children.windows().empty()) {
-    Window* child = children.Pop();
-    state_modified |= child->CleanupGestureState();
+  // WindowTracker to track the windows that have gesture state.
+  std::optional<WindowTracker> windows;
+  CollectWindowsWithGestureState(this, windows);
+  if (!windows) {
+    return false;
   }
-  cleaning_up_gesture_state_ = false;
+
+  bool state_modified = false;
+  while (!windows->windows().empty()) {
+    Window* window = windows->windows().front();
+    if (window->cleaning_up_gesture_state_) {
+      windows->Remove(window);
+      state_modified |=
+          env->gesture_recognizer()->CleanupStateForConsumer(window);
+      continue;
+    }
+    window->cleaning_up_gesture_state_ = true;
+    state_modified |= env->gesture_recognizer()->CancelActiveTouches(window);
+    // Cancelling active touches may end up destroying `window`. `windows`
+    // tracks whether `window` is still alive.
+    if (windows->Contains(window)) {
+      windows->Remove(window);
+      state_modified |=
+          env->gesture_recognizer()->CleanupStateForConsumer(window);
+      window->cleaning_up_gesture_state_ = false;
+    }
+  }
   return state_modified;
 }
 

@@ -31,10 +31,6 @@ _KNOWN_GOOGLE_PROJECTS = (
     'rbe-webrtc-untrusted',
 )
 
-_GOOGLE_CROS_STAR = os.path.join(
-    THIS_DIR, "backend_config", "google_cros_chroot.star"
-)
-
 
 def ReadConfig():
     entries = {}
@@ -84,7 +80,7 @@ def main():
 
     if args.get_siso_project:
         config = ReadConfig()
-        if not SISO_PROJECT_CFG in config:
+        if SISO_PROJECT_CFG not in config:
             return 1
         print(config[SISO_PROJECT_CFG])
         return 0
@@ -116,7 +112,9 @@ def main():
         if project in _KNOWN_GOOGLE_PROJECTS:
             reapi_backend_config_path = _GOOGLE_STAR
         elif project.startswith('chromeos-') and project.endswith('-bot'):
-            reapi_backend_config_path = _GOOGLE_CROS_STAR
+            # ChromeOS RBE. google.star adjusts the platform properties
+            # based on the reapi_instance.
+            reapi_backend_config_path = _GOOGLE_STAR
 
     if reapi_backend_config_path:
         if not os.path.isabs(reapi_backend_config_path):

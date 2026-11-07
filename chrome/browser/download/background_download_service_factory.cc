@@ -19,7 +19,6 @@
 #include "chrome/browser/download/deferred_client_wrapper.h"
 #include "chrome/browser/download/download_manager_utils.h"
 #include "chrome/browser/download/simple_download_manager_coordinator_factory.h"
-#include "chrome/browser/optimization_guide/prediction/prediction_model_download_client.h"
 #include "chrome/browser/profiles/incognito_helpers.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_key.h"
@@ -37,7 +36,6 @@
 #include "components/download/public/common/simple_download_manager_coordinator.h"
 #include "components/keyed_service/core/simple_dependency_manager.h"
 #include "components/leveldb_proto/public/proto_database_provider.h"
-#include "components/optimization_guide/core/optimization_guide_features.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -56,17 +54,11 @@ std::unique_ptr<download::Client> CreateBackgroundFetchDownloadClient(
   return std::make_unique<background_fetch::DownloadClient>(profile);
 }
 
-std::unique_ptr<download::Client>
-CreateOptimizationGuidePredictionModelDownloadClient(Profile* profile) {
-  return std::make_unique<optimization_guide::PredictionModelDownloadClient>(
-      profile);
-}
-
 // Called on profile created to retrieve the BlobStorageContextGetter.
 void DownloadOnProfileCreated(download::BlobContextGetterCallback callback,
                               Profile* profile) {
   auto blob_context_getter = profile->GetBlobStorageContext();
-  DCHECK(callback);
+  CHECK(callback, base::NotFatalUntil::M161);
   std::move(callback).Run(blob_context_getter);
 }
 
@@ -75,7 +67,7 @@ class DownloadBlobContextGetterFactory
     : public download::BlobContextGetterFactory {
  public:
   explicit DownloadBlobContextGetterFactory(SimpleFactoryKey* key) : key_(key) {
-    DCHECK(key_);
+    CHECK(key_, base::NotFatalUntil::M161);
   }
 
   DownloadBlobContextGetterFactory(const DownloadBlobContextGetterFactory&) =
@@ -98,14 +90,14 @@ class DownloadBlobContextGetterFactory
 
 void OnProfileCreated(download::URLLoaderFactoryGetterCallback callback,
                       Profile* profile) {
-  DCHECK(callback);
+  CHECK(callback, base::NotFatalUntil::M161);
   std::move(callback).Run(profile->GetURLLoaderFactory());
 }
 
 class URLLoaderFactoryGetter : public download::URLLoaderFactoryGetter {
  public:
   explicit URLLoaderFactoryGetter(SimpleFactoryKey* key) : key_(key) {
-    DCHECK(key_);
+    CHECK(key_, base::NotFatalUntil::M161);
   }
 
   URLLoaderFactoryGetter(const URLLoaderFactoryGetter&) = delete;
@@ -158,15 +150,6 @@ BackgroundDownloadServiceFactory::BuildServiceInstanceFor(
       download::DownloadClient::BACKGROUND_FETCH,
       std::make_unique<download::DeferredClientWrapper>(
           base::BindOnce(&CreateBackgroundFetchDownloadClient), key)));
-
-  if (!key->IsOffTheRecord()) {
-    clients->insert(std::make_pair(
-        download::DownloadClient::OPTIMIZATION_GUIDE_PREDICTION_MODELS,
-        std::make_unique<download::DeferredClientWrapper>(
-            base::BindOnce(
-                &CreateOptimizationGuidePredictionModelDownloadClient),
-            key)));
-  }
 
   // Build in memory download service for incognito profile.
   if (key->IsOffTheRecord()) {

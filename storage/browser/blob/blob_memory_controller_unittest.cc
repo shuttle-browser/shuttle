@@ -83,7 +83,8 @@ class BlobMemoryControllerTest : public testing::Test {
     std::vector<scoped_refptr<ShareableBlobDataItem>> result;
     for (const auto& item : builder.items()) {
       result.push_back(base::MakeRefCounted<ShareableBlobDataItem>(
-          item->item(), ShareableBlobDataItem::QUOTA_NEEDED));
+          item->item(), ShareableBlobDataItem::QUOTA_NEEDED,
+          /*creator_identity=*/nullptr));
     }
     return result;
   }
@@ -608,6 +609,118 @@ TEST_F(BlobMemoryControllerTest, MultipleFilesPaged) {
   RunFileThreadTasks();
   base::RunLoop().RunUntilIdle();
   EXPECT_EQ(0u, controller.disk_usage());
+}
+
+// Paging stops once memory usage, including pending requests, is below the
+// limit, instead of paging every item.
+TEST_F(BlobMemoryControllerTest, PartialEviction) {
+  BlobMemoryController controller(temp_dir_.GetPath(), file_runner_);
+  SetTestMemoryLimits(&controller);
+  AssertEnoughDiskSpace();
+
+  const size_t kItemSize = kTestBlobStorageMinFileSizeBytes;
+  const size_t kLimit =
+      kTestBlobStorageMaxBlobMemorySize - kTestBlobStorageMinFileSizeBytes;
+
+  // Fill memory up to the paging limit with small items.
+  std::vector<scoped_refptr<ShareableBlobDataItem>> small_items;
+  for (size_t i = 0; i < kLimit / kItemSize; i++) {
+    BlobDataBuilder builder("fake");
+    builder.AppendData(std::string(kItemSize, 'e'));
+    std::vector<scoped_refptr<ShareableBlobDataItem>> items =
+        CreateSharedDataItems(builder);
+    base::WeakPtr<QuotaAllocationTask> memory_task =
+        controller.ReserveMemoryQuota(items, GetMemoryRequestCallback());
+    EXPECT_FALSE(memory_task);
+    items[0]->set_state(ItemState::POPULATED_WITH_QUOTA);
+    small_items.insert(small_items.end(), items.begin(), items.end());
+  }
+  controller.NotifyMemoryItemsUsed(small_items);
+  EXPECT_FALSE(file_runner_->HasPendingTask());
+  EXPECT_EQ(kLimit, controller.memory_usage());
+
+  // Request 3 more items worth of memory. Only 3 items need to be paged.
+  const size_t kRequestSize = 3 * kItemSize;
+  BlobDataBuilder builder("fake");
+  builder.AppendFutureData(kRequestSize);
+  std::vector<scoped_refptr<ShareableBlobDataItem>> items =
+      CreateSharedDataItems(builder);
+
+  memory_quota_result_ = false;
+  base::WeakPtr<QuotaAllocationTask> memory_task =
+      controller.ReserveMemoryQuota(items, GetMemoryRequestCallback());
+  EXPECT_TRUE(memory_task);
+  EXPECT_TRUE(file_runner_->HasPendingTask());
+
+  RunFileThreadTasks();
+  base::RunLoop().RunUntilIdle();
+
+  EXPECT_TRUE(memory_quota_result_);
+  EXPECT_EQ(kRequestSize, controller.disk_usage());
+  EXPECT_EQ(kLimit, controller.memory_usage());
+
+  // The 3 least recently used items were paged to disk, the rest stayed in
+  // memory.
+  for (size_t i = 0; i < small_items.size(); i++) {
+    EXPECT_EQ(i < 3 ? BlobDataItem::Type::kFile : BlobDataItem::Type::kBytes,
+              small_items[i]->item()->type())
+        << "index " << i;
+  }
+}
+
+// An item that is being paged to disk doesn't prevent the other items passed
+// to NotifyMemoryItemsUsed() from being tracked for eviction.
+TEST_F(BlobMemoryControllerTest, NotifyMemoryItemsUsedWhilePaging) {
+  BlobMemoryController controller(temp_dir_.GetPath(), file_runner_);
+  SetTestMemoryLimits(&controller);
+  AssertEnoughDiskSpace();
+
+  // Populate item A.
+  BlobDataBuilder builder_a("fake_a");
+  builder_a.AppendData(std::string(300, 'a'));
+  std::vector<scoped_refptr<ShareableBlobDataItem>> items_a =
+      CreateSharedDataItems(builder_a);
+  EXPECT_FALSE(
+      controller.ReserveMemoryQuota(items_a, GetMemoryRequestCallback()));
+  items_a[0]->set_state(ItemState::POPULATED_WITH_QUOTA);
+  controller.NotifyMemoryItemsUsed(items_a);
+  EXPECT_FALSE(file_runner_->HasPendingTask());
+
+  // Reserving item B goes above the paging limit, so item A starts paging.
+  BlobDataBuilder builder_b("fake_b");
+  builder_b.AppendData(std::string(200, 'b'));
+  std::vector<scoped_refptr<ShareableBlobDataItem>> items_b =
+      CreateSharedDataItems(builder_b);
+  EXPECT_FALSE(
+      controller.ReserveMemoryQuota(items_b, GetMemoryRequestCallback()));
+  EXPECT_TRUE(file_runner_->HasPendingTask());
+  items_b[0]->set_state(ItemState::POPULATED_WITH_QUOTA);
+
+  // Notify with A (being paged) first, then B.
+  controller.NotifyMemoryItemsUsed({items_a[0], items_b[0]});
+
+  RunFileThreadTasks();
+  base::RunLoop().RunUntilIdle();
+  EXPECT_EQ(300u, controller.disk_usage());
+  EXPECT_EQ(200u, controller.memory_usage());
+  EXPECT_EQ(BlobDataItem::Type::kFile, items_a[0]->item()->type());
+  EXPECT_EQ(BlobDataItem::Type::kBytes, items_b[0]->item()->type());
+
+  // Reserving item C goes above the paging limit again, so item B is paged.
+  // This only happens if B was tracked.
+  BlobDataBuilder builder_c("fake_c");
+  builder_c.AppendData(std::string(300, 'c'));
+  std::vector<scoped_refptr<ShareableBlobDataItem>> items_c =
+      CreateSharedDataItems(builder_c);
+  EXPECT_FALSE(
+      controller.ReserveMemoryQuota(items_c, GetMemoryRequestCallback()));
+  EXPECT_TRUE(file_runner_->HasPendingTask());
+
+  RunFileThreadTasks();
+  base::RunLoop().RunUntilIdle();
+  EXPECT_EQ(500u, controller.disk_usage());
+  EXPECT_EQ(300u, controller.memory_usage());
+  EXPECT_EQ(BlobDataItem::Type::kFile, items_b[0]->item()->type());
 }
 
 TEST_F(BlobMemoryControllerTest, FullEviction) {
@@ -1349,8 +1462,9 @@ TEST_F(BlobMemoryControllerTest, StatefulMemoryPressure) {
     run_loop.Run();
   }
 
-  EXPECT_EQ(0u, controller.memory_usage());
-  EXPECT_EQ(400ull, controller.disk_usage());
+  // Only enough items are paged to get below the limit.
+  EXPECT_EQ(200u, controller.memory_usage());
+  EXPECT_EQ(200ull, controller.disk_usage());
 
   // Set limit back to 100% (none pressure).
   {
@@ -1362,12 +1476,12 @@ TEST_F(BlobMemoryControllerTest, StatefulMemoryPressure) {
   }
 
   EXPECT_EQ(500u, controller.limits().max_blob_in_memory_space);
-  EXPECT_EQ(0u, controller.memory_usage());
+  EXPECT_EQ(200u, controller.memory_usage());
 
   // Verify we can allocate more memory now that the limit is restored to 500.
-  // Allocate 300 bytes.
+  // Allocate 200 bytes.
   std::vector<scoped_refptr<ShareableBlobDataItem>> new_items;
-  for (int i = 0; i < 3; ++i) {
+  for (int i = 0; i < 2; ++i) {
     BlobDataBuilder builder2("new_fake");
     builder2.AppendData(kData);
     std::vector<scoped_refptr<ShareableBlobDataItem>> builder_items =
@@ -1382,7 +1496,7 @@ TEST_F(BlobMemoryControllerTest, StatefulMemoryPressure) {
   }
   controller.NotifyMemoryItemsUsed(new_items);
   EXPECT_FALSE(file_runner_->HasPendingTask());
-  EXPECT_EQ(300u, controller.memory_usage());
+  EXPECT_EQ(400u, controller.memory_usage());
 }
 
 TEST_F(BlobMemoryControllerTest, StatefulMemoryPressureCriticalBypass) {

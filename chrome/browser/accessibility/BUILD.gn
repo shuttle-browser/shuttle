@@ -3,12 +3,21 @@
 # found in the LICENSE file.
 
 import("//extensions/buildflags/buildflags.gni")
+import("//mojo/public/tools/bindings/mojom.gni")
 import("//services/screen_ai/buildflags/features.gni")
+
+mojom("mojo_bindings") {
+  sources = [ "page_colors.mojom" ]
+  if (!is_chromeos && !is_android) {
+    webui_module_path = "/"
+  }
+}
 
 source_set("accessibility") {
   public = [
     "accessibility_labels_service.h",
     "accessibility_labels_service_factory.h",
+    "page_colors_controller.h",
     "pdf_ocr_metrics.h",
     "prefers_default_scrollbar_styles_prefs.h",
   ]
@@ -19,7 +28,6 @@ source_set("accessibility") {
       "caption_settings_dialog.h",
       "embedded_a11y_extension_loader.h",
       "invert_bubble_prefs.h",
-      "page_colors_controller.h",
       "page_colors_controller_factory.h",
     ]
   }
@@ -37,6 +45,7 @@ source_set("accessibility") {
   }
 
   public_deps = [
+    ":mojo_bindings",
     "//base",
     "//chrome/browser/profiles:profile",
     "//components/keyed_service/core",
@@ -44,6 +53,7 @@ source_set("accessibility") {
     "//mojo/public/cpp/bindings",
     "//net",
     "//services/image_annotation/public/mojom",
+    "//ui/native_theme",
   ]
 
   if (!is_android && !is_chromeos) {
@@ -60,13 +70,12 @@ source_set("accessibility") {
       "//components/live_caption",
       "//components/pref_registry",
       "//ui/accessibility/platform",
-      "//ui/native_theme",
     ]
   }
 
   if (is_chromeos) {
     public_deps += [
-      "//chrome/common/extensions/api",
+      "//chromeos/ash/experiences/extensions/common/api",
       "//content/public/browser",
       "//extensions/browser",
     ]
@@ -77,6 +86,7 @@ source_set("impl") {
   sources = [
     "accessibility_labels_service.cc",
     "accessibility_labels_service_factory.cc",
+    "page_colors_controller.cc",
     "pdf_ocr_metrics.cc",
     "prefers_default_scrollbar_styles_prefs.cc",
   ]
@@ -87,13 +97,11 @@ source_set("impl") {
     sources += [
       "embedded_a11y_extension_loader.cc",
       "invert_bubble_prefs.cc",
-      "page_colors_controller.cc",
       "page_colors_controller_factory.cc",
     ]
     deps += [
       "//chrome/browser/accessibility/live_caption:impl",
       "//chrome/browser/extensions",
-      "//chrome/browser/ui",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/views/frame:browser_view_header",
       "//components/live_caption:live_translate",
@@ -123,12 +131,14 @@ source_set("impl") {
 
   if (enable_extensions && is_chromeos) {
     sources += [ "accessibility_extension_api_ash.cc" ]
+    deps += [
+      "//ash",
+      "//chrome/browser/ash/profiles",
+      "//ui/strings:ui_strings",
+    ]
   }
 
-  public_deps = [
-    ":accessibility",
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = [ ":accessibility" ]
 
   deps += [
     "//base",
@@ -136,6 +146,8 @@ source_set("impl") {
     "//chrome/browser/manta",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/ui/tab_contents",
+    "//chrome/common:channel_info",
+    "//chrome/common:constants",
     "//components/language/core/browser",
     "//components/live_caption:constants",
     "//components/manta",
@@ -160,9 +172,6 @@ source_set("impl") {
       "//components/infobars/content",
     ]
   }
-
-  allow_circular_includes_from =
-      [ "//chrome/browser:browser_public_dependencies" ]
 }
 
 if (!is_android) {

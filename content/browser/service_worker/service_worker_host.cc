@@ -147,18 +147,24 @@ void ServiceWorkerHost::GetSandboxedFileSystemForBucket(
   }
 }
 
-#if !BUILDFLAG(IS_ANDROID)
 void ServiceWorkerHost::BindHidService(
     mojo::PendingReceiver<blink::mojom::HidService> receiver) {
   CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
   version_->embedded_worker()->BindHidService(version_->key().origin(),
                                               std::move(receiver));
 }
-#endif
 
 void ServiceWorkerHost::BindClipboardHost(
     mojo::PendingReceiver<blink::mojom::ClipboardHost> receiver) {
   CHECK_CURRENTLY_ON(BrowserThread::UI);
+  if (!GetContentClient()->browser()->IsClipboardAllowedForServiceWorker(
+          version_->key().origin())) {
+    // The renderer only exposes navigator.clipboard to eligible workers, so a
+    // request from an ineligible one means a compromised renderer.
+    mojo::ReportBadMessage(
+        "Clipboard is not allowed for this service worker origin.");
+    return;
+  }
   clipboard_hosts_.Add(std::make_unique<ClipboardHostImpl>(*this),
                        std::move(receiver));
 }

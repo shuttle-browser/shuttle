@@ -139,7 +139,7 @@ RespectImageOrientationEnum LayoutImageResource::ImageOrientation() const {
   // Always respect the orientation of opaque origin images to avoid leaking
   // image data. Otherwise pull orientation from the layout object's style.
   return cached_image_->ForceOrientationIfNecessary(
-      layout_object_->StyleRef().ImageOrientation());
+      layout_object_->Style().ImageOrientation());
 }
 
 NaturalSizingInfo LayoutImageResource::GetNaturalDimensions(
@@ -149,8 +149,8 @@ NaturalSizingInfo LayoutImageResource::GetNaturalDimensions(
     return NaturalSizingInfo::None();
   }
   NaturalSizingInfo sizing_info;
-  Image& image = *cached_image_->GetImage();
-  if (auto* svg_image = DynamicTo<SVGImage>(image)) {
+  scoped_refptr<Image> image = cached_image_->GetImage();
+  if (auto* svg_image = DynamicTo<SVGImage>(image.get())) {
     const SVGImageViewInfo* view_info = SVGImageForContainer::CreateViewInfo(
         *svg_image, layout_object_->GetNode());
     sizing_info =
@@ -158,9 +158,9 @@ NaturalSizingInfo LayoutImageResource::GetNaturalDimensions(
             .value_or(NaturalSizingInfo::None());
   } else {
     sizing_info = NaturalSizingInfo::MakeFixed(
-        gfx::SizeF(image.Size(ImageOrientation())));
+        gfx::SizeF(image->Size(ImageOrientation())));
   }
-  if (multiplier != 1 && image.HasIntrinsicSize()) {
+  if (multiplier != 1 && image->HasIntrinsicSize()) {
     sizing_info.size = ApplyClampedZoom(sizing_info.size, multiplier);
   }
   if (auto* layout_image = DynamicTo<LayoutImage>(*layout_object_)) {
@@ -217,13 +217,13 @@ scoped_refptr<Image> LayoutImageResource::GetImage(
   if (!cached_image_->HasImage())
     return Image::NullImage();
 
-  Image* image = cached_image_->GetImage();
+  scoped_refptr<Image> image = cached_image_->GetImage();
 
-  auto* svg_image = DynamicTo<SVGImage>(image);
+  auto* svg_image = DynamicTo<SVGImage>(image.get());
   if (!svg_image)
     return image;
 
-  const ComputedStyle& style = layout_object_->StyleRef();
+  const ComputedStyle& style = layout_object_->Style();
   auto preferred_color_scheme = layout_object_->GetDocument()
                                     .GetStyleEngine()
                                     .ResolveColorSchemeForEmbedding(&style);

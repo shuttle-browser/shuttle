@@ -69,7 +69,7 @@ constexpr size_t kInputBufferMaxSizeFor1080p = 2 * kInputBuferMaxSizeFor480p;
 constexpr size_t kInputBufferMaxSizeFor4k = 2 * kInputBufferMaxSizeFor1080p;
 
 // Input format V4L2 fourccs this class supports.
-const std::vector<uint32_t> kSupportedInputFourccs = {
+constexpr uint32_t kSupportedInputFourccs[] = {
     // V4L2 stateless formats
     V4L2_PIX_FMT_H264_SLICE,
 #if BUILDFLAG(ENABLE_HEVC_PARSER_AND_HW_DECODER)
@@ -687,7 +687,7 @@ CroStatus V4L2VideoDecoder::SetupOutputFormat(const gfx::Size& size,
   }
 
   // Ask the pipeline to pick the output format.
-  CroStatus::Or<PixelLayoutCandidate> status_or_output_format =
+  base::expected<PixelLayoutCandidate, CroStatus> status_or_output_format =
       client_->PickDecoderOutputFormat(
           candidates, visible_rect, aspect_ratio_.GetNaturalSize(visible_rect),
           /*output_size=*/std::nullopt, num_codec_reference_frames,

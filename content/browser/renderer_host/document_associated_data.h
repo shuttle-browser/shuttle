@@ -75,7 +75,10 @@ class CONTENT_EXPORT DocumentAssociatedData : public base::SupportsUserData {
   void MarkDomContentLoaded() { dom_content_loaded_ = true; }
 
   // Indicates whether a discard request has been dispatched for the current
-  // document.
+  // document. Note that marking a document as discarded must not clear
+  // DocumentUserData or PageUserData, as the RenderFrameHostImpl and PageImpl
+  // remain the active primary frame/page of the WebContents until a subsequent
+  // navigation commits or the RenderFrameHostImpl is destroyed.
   bool is_discarded() const { return is_discarded_; }
   void MarkDiscarded() { is_discarded_ = true; }
 
@@ -242,6 +245,13 @@ class CONTENT_EXPORT DocumentAssociatedData : public base::SupportsUserData {
     renderer_accessible_http_cache_write_enabled_ = enabled;
   }
 
+  bool can_use_device_bound_session_js_api() const {
+    return can_use_device_bound_session_js_api_;
+  }
+  void set_can_use_device_bound_session_js_api(bool value) {
+    can_use_device_bound_session_js_api_ = value;
+  }
+
  private:
   const blink::DocumentToken token_;
   std::unique_ptr<PageImpl> owned_page_;
@@ -280,6 +290,11 @@ class CONTENT_EXPORT DocumentAssociatedData : public base::SupportsUserData {
   // here to re-enable cache writes when subresource loader factories are
   // recreated (e.g. following a Network Service crash).
   bool renderer_accessible_http_cache_write_enabled_ = false;
+
+  // Whether this document may bind RestrictedDeviceBoundSessionManager. Set
+  // upon navigation commit to the value sent to the renderer in
+  // CommitNavigationParams, so later checks see what the renderer got.
+  bool can_use_device_bound_session_js_api_ = false;
 
   base::WeakPtrFactory<RenderFrameHostImpl> weak_factory_;
 };

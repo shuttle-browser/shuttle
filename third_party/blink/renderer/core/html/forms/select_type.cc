@@ -35,6 +35,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_mutation_observer_init.h"
 #include "third_party/blink/renderer/core/accessibility/ax_object_cache.h"
 #include "third_party/blink/renderer/core/css/style_change_reason.h"
+#include "third_party/blink/renderer/core/dom/flat_tree_traversal.h"
 #include "third_party/blink/renderer/core/dom/focus_params.h"
 #include "third_party/blink/renderer/core/dom/mutation_observer.h"
 #include "third_party/blink/renderer/core/dom/mutation_record.h"
@@ -390,9 +391,9 @@ bool MenuListSelectType::DefaultEventHandler(const Event& event) {
     if (key_event->GetModifiers() & ignore_modifiers)
       return false;
 
-    // Customizable-<select> keydown handling is done in
-    // HTMLOptionElement::DefaultEventHandlerInternal().
-    if (select_->IsAppearanceBase()) {
+    // Customizable-<select> and <select multiple size=1> keydown handling is
+    // done in HTMLOptionElement::DefaultEventHandlerInternal().
+    if (select_->IsAppearanceBase() || PickerIsPopover()) {
       return false;
     }
 
@@ -631,15 +632,16 @@ void MenuListSelectType::CreateShadowSubtree(ShadowRoot& root) {
     popover_input_slot_->SetIdAttribute(shadow_element_names::kSelectInput);
     popover_->AppendChild(popover_input_slot_);
 
-    HTMLDivElement* listbox = MakeGarbageCollected<HTMLDivElement>(doc);
-    listbox->SetShadowPseudoId(shadow_element_names::kSelectListbox);
-    listbox->setAttribute(html_names::kRoleAttr, AtomicString("listbox"));
-    popover_->AppendChild(listbox);
-    listbox->AppendChild(popover_options_slot_);
+    listbox_ = MakeGarbageCollected<HTMLDivElement>(doc);
+    listbox_->SetShadowPseudoId(shadow_element_names::kSelectListbox);
+    listbox_->setAttribute(html_names::kRoleAttr, AtomicString("listbox"));
+    popover_->AppendChild(listbox_);
+    listbox_->AppendChild(popover_options_slot_);
   } else {
     CHECK(!select_->NumDescendantInputs());
     popover_input_slot_ = nullptr;
     popover_->AppendChild(popover_options_slot_);
+    listbox_ = nullptr;
   }
 
   CreateAutofillPopover(root);
@@ -886,6 +888,7 @@ bool MenuListSelectType::PopupIsVisible() const {
 void MenuListSelectType::SetNativePopupIsVisible(bool popup_is_visible) {
   native_popup_is_visible_ = popup_is_visible;
   select_->PseudoStateChanged(CSSSelector::kPseudoOpen);
+  select_->SetFreezeHoverForOpenPopup(popup_is_visible);
   if (auto* layout_object = select_->GetLayoutObject()) {
     // Invalidate paint to ensure that the focus ring is updated.
     layout_object->SetShouldDoFullPaintInvalidation();
@@ -1286,7 +1289,6 @@ class ListBoxSelectType final : public SelectType {
   Member<HTMLOptionElement> active_selection_end_;
   Member<HTMLSlotElement> option_slot_;
   Member<HTMLSlotElement> input_slot_;
-  Member<HTMLDivElement> listbox_;
   bool is_in_non_contiguous_selection_ = false;
   bool active_selection_state_ = false;
   AppearanceState appearance_state_ = AppearanceState::kNoStyle;
@@ -1303,7 +1305,6 @@ void ListBoxSelectType::Trace(Visitor* visitor) const {
   visitor->Trace(active_selection_end_);
   visitor->Trace(option_slot_);
   visitor->Trace(input_slot_);
-  visitor->Trace(listbox_);
   SelectType::Trace(visitor);
 }
 
@@ -1930,12 +1931,11 @@ void ListBoxSelectType::CreateShadowSubtree(ShadowRoot& root) {
     input_slot_->SetIdAttribute(shadow_element_names::kSelectInput);
     root.appendChild(input_slot_);
 
-    HTMLDivElement* listbox = MakeGarbageCollected<HTMLDivElement>(doc);
-    listbox->SetShadowPseudoId(shadow_element_names::kSelectListbox);
-    listbox->setAttribute(html_names::kRoleAttr, AtomicString("listbox"));
-    root.appendChild(listbox);
-    listbox->AppendChild(option_slot_);
-    listbox_ = listbox;
+    listbox_ = MakeGarbageCollected<HTMLDivElement>(doc);
+    listbox_->SetShadowPseudoId(shadow_element_names::kSelectListbox);
+    listbox_->setAttribute(html_names::kRoleAttr, AtomicString("listbox"));
+    root.appendChild(listbox_);
+    listbox_->AppendChild(option_slot_);
   } else {
     CHECK(!select_->NumDescendantInputs());
     input_slot_ = nullptr;
@@ -2052,6 +2052,7 @@ void SelectType::Trace(Visitor* visitor) const {
   visitor->Trace(select_);
   visitor->Trace(autofill_popover_);
   visitor->Trace(autofill_popover_text_);
+  visitor->Trace(listbox_);
 }
 
 void SelectType::CreateAutofillPopover(ShadowRoot& root) {

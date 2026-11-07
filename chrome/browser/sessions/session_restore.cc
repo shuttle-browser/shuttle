@@ -52,6 +52,7 @@
 #include "chrome/browser/sessions/app_session_service.h"
 #include "chrome/browser/sessions/app_session_service_factory.h"
 #include "chrome/browser/sessions/session_restore_delegate.h"
+#include "chrome/browser/sessions/session_restore_metrics.h"
 #include "chrome/browser/sessions/session_service.h"
 #include "chrome/browser/sessions/session_service_factory.h"
 #include "chrome/browser/sessions/session_service_log.h"
@@ -77,7 +78,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_selection_state.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
 #include "chrome/common/chrome_features.h"
@@ -316,6 +316,7 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
                      bool restore_apps,
                      bool restore_browser,
                      bool log_event,
+                     bool is_foreign_session_restore,
                      const StartupTabs& startup_tabs)
       : profile_(profile),
         browser_(browser),
@@ -325,6 +326,7 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
         log_event_(log_event),
         restore_apps_(restore_apps),
         restore_browser_(restore_browser),
+        is_foreign_session_restore_(is_foreign_session_restore),
         startup_tabs_(startup_tabs),
         active_window_id_(SessionID::InvalidValue()),
         restore_started_(base::TimeTicks::Now()) {
@@ -349,6 +351,7 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
   bool synchronous() const { return synchronous_; }
 
   BrowserWindowInterface* Restore() {
+    DCHECK(!is_foreign_session_restore_);
     if (restore_browser_) {
       SessionServiceBase* service =
           SessionServiceFactory::GetForProfileForSessionRestore(profile_);
@@ -393,6 +396,7 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
   std::vector<BrowserWindowInterface*> RestoreForeignSession(
       std::vector<const sessions::SessionWindow*>::const_iterator begin,
       std::vector<const sessions::SessionWindow*>::const_iterator end) {
+    DCHECK(is_foreign_session_restore_);
     std::vector<BrowserWindowInterface*> windows;
     std::vector<RestoredTab> restored_tabs;
     // Create a browser instance to put the restored tabs in.
@@ -432,13 +436,14 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
   // the WebContents of the restored tab.
   WebContents* RestoreForeignTab(const sessions::SessionTab& tab,
                                  WindowOpenDisposition disposition) {
+    DCHECK(is_foreign_session_restore_);
     DCHECK(!tab.navigations.empty());
     int selected_index = tab.current_navigation_index;
     selected_index = std::max(
         0,
         std::min(selected_index, static_cast<int>(tab.navigations.size() - 1)));
 
-    bool use_new_window = disposition == WindowOpenDisposition::NEW_WINDOW;
+    bool use_new_window = disposition == WindowOpenDisposition::kNewWindow;
 
     BrowserWindowInterface* browser =
         use_new_window ? CreateBrowserWindow(BrowserWindowCreateParams(
@@ -448,7 +453,7 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
     RecordAppLaunchForTab(browser, tab, selected_index);
 
     WebContents* web_contents;
-    if (disposition == WindowOpenDisposition::CURRENT_TAB) {
+    if (disposition == WindowOpenDisposition::kCurrentTab) {
       DCHECK(!use_new_window);
       web_contents = chrome::ReplaceRestoredTab(
           browser, tab.navigations, selected_index, tab.extension_app_id,
@@ -460,7 +465,7 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
       web_contents = chrome::AddRestoredTab(
           browser, tab.navigations, tab_index, selected_index,
           tab.extension_app_id, std::nullopt,
-          disposition == WindowOpenDisposition::NEW_FOREGROUND_TAB,  // selected
+          disposition == WindowOpenDisposition::kNewForegroundTab,  // selected
           tab.pinned, base::TimeTicks(), base::Time(), nullptr,
           tab.user_agent_override, tab.extra_data,
           true /* from_session_restore */, std::nullopt);
@@ -489,7 +494,31 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
   SessionRestoreImpl(const SessionRestoreImpl&) = delete;
   SessionRestoreImpl& operator=(const SessionRestoreImpl&) = delete;
 
-  ~SessionRestoreImpl() override { GetActiveSessionRestorers().erase(this); }
+  // SessionRestoreImpl deletes itself once it is done, so the destructor is
+  // where a session restore ends.
+  ~SessionRestoreImpl() override {
+    // Remove `this` from the active restorer set *before* notifying observers,
+    // so that SessionRestore::IsAnySessionCurrentlyRestoring() reflects that
+    // this restore has finished. Observers may call
+    // IsAnySessionCurrentlyRestoring() from OnProfileSessionRestored() to
+    // decide whether the last in-flight restore has completed.
+    GetActiveSessionRestorers().erase(this);
+
+    // Restores of a session from another device are not restores of this
+    // profile's own session, and are not reported to observers.
+    if (is_foreign_session_restore_) {
+      return;
+    }
+
+    for (auto& observer : *SessionRestore::observers()) {
+      observer.OnProfileSessionRestored(profile_, counts_.normal_windows,
+                                        counts_.app_windows);
+    }
+  }
+
+  bool is_foreign_session_restore() const {
+    return is_foreign_session_restore_;
+  }
 
   // BrowserCollectionObserver:
   void OnBrowserClosed(BrowserWindowInterface* browser) override {
@@ -575,18 +604,24 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
       bool for_apps,
       std::vector<std::unique_ptr<sessions::SessionWindow>> windows,
       SessionID active_window_id,
-      bool read_error) {
+      sessions::CommandStorageReadStatus status,
+      sessions::SessionReplayResult replay_result) {
 #if BUILDFLAG(IS_CHROMEOS)
     ash::BootTimesRecorder::Get()->AddLoginTimeMarker(
         "SessionRestore-GotSession", false);
 #endif
+
+    // Record before `windows` is merged into `windows_`, so that the sample
+    // describes this subsystem's restore alone.
+    RecordSessionRestoreMetrics(for_apps, status, replay_result,
+                                !windows.empty());
 
     // This function could be called twice from both SessionService and
     // AppSessionService. If one of them returns error, then |read_error_| is
     // true. So check whether |read_error_| has been set as true to prevent the
     // result is overwritten.
     if (!read_error_) {
-      read_error_ = read_error;
+      read_error_ = sessions::IsCommandStorageReadError(status);
     }
 
     // Copy windows into windows_ so that we can combine both app and browser
@@ -671,6 +706,8 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
     BrowserWindowInterface* result =
         ProcessSessionWindows(windows, active_window_id, restored_tabs,
                               &window_count, &tab_count, &counts);
+    counts_.normal_windows += counts.normal_windows;
+    counts_.app_windows += counts.app_windows;
     if (log_event_) {
       LogSessionServiceRestoreEvent(profile_, window_count, tab_count,
                                     read_error_);
@@ -751,6 +788,13 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
       const bool is_app_window =
           window->type == sessions::SessionWindow::TYPE_APP;
 
+      // Record restored normal (`TYPE_NORMAL`) and app (`TYPE_APP`) window
+      // counts in `counts`. This window-type classification must match
+      // SavePreRestartTabWindowCounts() in
+      // chrome/browser/lifetime/application_lifetime_desktop.cc, which saves
+      // the pre-restart baseline counts. If the two diverge,
+      // SessionRestore.{Tab,Window,Profile}DiffAfterRestart.{Normal,App} will
+      // compare mismatched window sets and report false gains or losses.
       if (is_normal_window) {
         counts->normal_windows++;
       } else if (is_app_window) {
@@ -1225,24 +1269,6 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
     params.creation_source =
         BrowserWindowCreateParams::CreationSource::kSessionRestore;
 
-    if (extra_data.contains(
-            tabs::VerticalTabStripStateController::kCollapsedKey)) {
-      params.vertical_tab_strip_collapsed =
-          extra_data.at(tabs::VerticalTabStripStateController::kCollapsedKey) ==
-          "true";
-    }
-
-    if (extra_data.contains(
-            tabs::VerticalTabStripStateController::kUncollapsedWidthKey)) {
-      int uncollapsed_width = 0;
-      if (base::StringToInt(
-              extra_data.at(
-                  tabs::VerticalTabStripStateController::kUncollapsedWidthKey),
-              &uncollapsed_width)) {
-        params.vertical_tab_strip_uncollapsed_width = uncollapsed_width;
-      }
-    }
-
     if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
       auto it = extra_data.find(
           tabs::TabStripModelSelectionState::kFocusedTabGroupIdKey);
@@ -1289,8 +1315,8 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
       }
       NavigateParams params(browser, url, ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
       params.disposition = is_first_tab
-                               ? WindowOpenDisposition::NEW_FOREGROUND_TAB
-                               : WindowOpenDisposition::NEW_BACKGROUND_TAB;
+                               ? WindowOpenDisposition::kNewForegroundTab
+                               : WindowOpenDisposition::kNewBackgroundTab;
       params.tabstrip_add_types = add_types;
       is_first_tab = false;
       Navigate(&params);
@@ -1392,6 +1418,16 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
   // If true, restores the normal browser.
   bool restore_browser_ = true;
 
+  // True if this instance is restoring a session from another device, rather
+  // than this profile's own last session. Foreign restores are not reported to
+  // SessionRestoreObservers.
+  const bool is_foreign_session_restore_;
+
+  // Normal and app window counts restored for this profile, reported to
+  // SessionRestoreObservers when the restore finishes. Tab counts are not
+  // accumulated.
+  SessionRestore::StateCounts counts_;
+
   // During app restores, we make two GetLastSession calls to
   // [App]SessionService, we need to wait till they both return before
   // processing the windows together in one pass.
@@ -1465,7 +1501,8 @@ BrowserWindowInterface* SessionRestore::RestoreSession(
       (behavior & CLOBBER_CURRENT_TAB) != 0,
       (behavior & ALWAYS_CREATE_TABBED_BROWSER) != 0,
       (behavior & RESTORE_APPS) != 0, (behavior & RESTORE_BROWSER) != 0,
-      /* log_event */ true, startup_tabs);
+      /* log_event */ true, /* is_foreign_session_restore */ false,
+      startup_tabs);
   return restorer->Restore();
 }
 
@@ -1524,7 +1561,9 @@ void SessionRestore::RestoreForeignSessionWindows(
   SessionRestoreImpl restorer(profile, nullptr, true, false, true,
                               /* restore_apps */ false,
                               /* restore_browser */ true,
-                              /* log_event */ false, startup_tabs);
+                              /* log_event */ false,
+                              /* is_foreign_session_restore */ true,
+                              startup_tabs);
   std::vector<BrowserWindowInterface*> windows =
       restorer.RestoreForeignSession(begin, end);
   std::move(callback).Run(std::move(windows));
@@ -1544,7 +1583,9 @@ WebContents* SessionRestore::RestoreForeignSessionTab(
   SessionRestoreImpl restorer(profile, browser, true, false, false,
                               /* restore_apps */ false,
                               /* restore_browser */ true,
-                              /* log_event */ false, startup_tabs);
+                              /* log_event */ false,
+                              /* is_foreign_session_restore */ true,
+                              startup_tabs);
   return restorer.RestoreForeignTab(tab, disposition);
 }
 
@@ -1557,6 +1598,14 @@ bool SessionRestore::IsRestoring(const Profile* profile) {
     }
   }
   return false;
+}
+
+// static
+bool SessionRestore::IsAnySessionCurrentlyRestoring() {
+  return std::ranges::any_of(GetActiveSessionRestorers(),
+                             [](const SessionRestoreImpl* restorer) {
+                               return !restorer->is_foreign_session_restore();
+                             });
 }
 
 // static

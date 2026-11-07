@@ -17,20 +17,36 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import pathlib
 import re
 import shutil
 import sys
 
 # ResultDB canonical test IDs format:
 #   [+-]?[ninja://<target_path>:<target_name>/]:chromium-bidi!<scheme>:<coarse_name>:<fine_name>[#<case_name>]
+#
+# Examples:
+#   :chromium-bidi!pytest:tests/bluetooth/:test_characteristic_emulation.py#test_foo
+#   ninja://third_party/chromium-bidi:webdriver_bidi_e2e_tests/:chromium-bidi!pytest:tests/bidi/:test_bidi.py
+#   ninja://third_party/chromium-bidi:webdriver_bidi_unittests/:chromium-bidi!mocha:src/utils/:assert.test.ts#assert:should not throw
+# The isolated-test API uses :: between rules. For backwards compatibility,
+# mixed GTest-style single-colon filters also recognize a following path or
+# exclusion. That legacy syntax is ambiguous with path-like nested titles;
+# escape literal colons in a component and use :: between canonical rules.
 CANONICAL_TEST_ID_RE = re.compile(
     r"""
     [+-]?                                           # Optional filter inclusion (+) or exclusion (-) prefix
     (?:ninja://\S+?:[^\s/]+/)?                      # Optional Ninja build target prefix (e.g. ninja://dir:target/)
     :chromium-bidi!\w+                              # ResultDB module prefix and scheme (e.g. :chromium-bidi!pytest)
-    :[^#:\s]*                                       # Coarse directory path (e.g. :tests/bluetooth/)
-    (?::[^#:\s]*)?                                  # Fine file name (e.g. :test_characteristic_emulation.py)
-    (?:\#[^:\s\n\r]*(?::(?!\S+[:/]|-)[\w\s-]+)*)?   # Optional case name, allowing colons in sub-titles (#suite:test)
+    :(?:\\.|[^#:\\\r\n])*                          # Coarse directory path
+    (?::(?:\\.|[^#:\\\r\n])*)?                     # Fine file name
+    (?:\#(?:
+        \\.                                        # Escaped ResultDB punctuation
+        |[^:\\\r\n]                                # Spaces are part of case names
+        |:(?!:|[*?]|[+-]|ninja://|[^\s:]*[/\\]|[^\s:]*\.(?:py|js|ts)(?=[:\#]|$))
+                                                    # Nested case component, not a following filter;
+                                                    # wildcard-leading rules keep their existing boundary
+    )*)?
     """,
     re.VERBOSE,
 )
@@ -44,10 +60,11 @@ def get_repo_root() -> str:
 def setup_runtime_env(
     gen_dir: str, src_dir: str | None = None, force: bool = False
 ) -> str:
-    """Sets up package.json and node_modules in the gen directory for tests.
+    """Sets up package.json in the gen directory for tests.
 
-    Uses symlinking for node_modules where possible for performance,
-    falling back to copying if symlinks are not permitted.
+    The package.json file sets the module type of the compiled files. Node.js
+    finds `node_modules` through the hook from `get_node_env`, so the gen
+    directory does not get a symlink or a copy of `node_modules`.
     Returns the absolute path to the prepared directory inside gen_dir.
     """
     if src_dir is None:
@@ -61,28 +78,28 @@ def setup_runtime_env(
     if os.path.exists(pkg_src) and (force or not os.path.exists(pkg_dst)):
         shutil.copy2(pkg_src, pkg_dst)
 
-    nm_src = os.path.join(src_dir, "node_modules")
-    nm_dst = os.path.join(dst_dir, "node_modules")
-    if os.path.exists(nm_src):
-        if force and os.path.exists(nm_dst):
-            if os.path.islink(nm_dst):
-                os.unlink(nm_dst)
-            else:
-                shutil.rmtree(nm_dst)
-
-        if not os.path.exists(nm_dst):
-            try:
-                os.symlink(nm_src, nm_dst)
-            except OSError:
-                shutil.copytree(
-                    nm_src,
-                    nm_dst,
-                    symlinks=False,
-                    ignore=shutil.ignore_patterns(".bin"),
-                    ignore_dangling_symlinks=True,
-                )
-
     return dst_dir
+
+
+def get_node_modules_hook_url() -> str:
+    """Returns the file URL of the Node.js `node_modules` resolution hook."""
+    hook_path = os.path.join(get_repo_root(), "tools", "node_modules_hook.mjs")
+    return pathlib.Path(hook_path).resolve().as_uri()
+
+
+def get_node_env(base_env: dict[str, str] | None = None) -> dict[str, str]:
+    """Returns an environment that lets Node.js find chromium-bidi node_modules.
+
+    The out directory is not always a descendant of the chromium-bidi
+    directory. The hook resolves bare specifiers against the chromium-bidi
+    `package.json` when the default resolution fails.
+    """
+    env = dict(os.environ if base_env is None else base_env)
+    import_arg = f"--import={get_node_modules_hook_url()}"
+    node_options = env.get("NODE_OPTIONS", "")
+    if import_arg not in node_options.split():
+        env["NODE_OPTIONS"] = f"{node_options} {import_arg}".strip()
+    return env
 
 
 def get_node_binary_path(node_py_path: str | None = None) -> str:
@@ -151,89 +168,114 @@ def parse_filter_tokens(filter_str: str) -> list[str]:
     if not filter_str:
         return []
 
-    canonical_tokens = []
+    # Extract complete canonical spans at rule boundaries, not inside legacy
+    # parameters. Do not invent placeholders that could be real test names.
+    patterns = []
+    end = 0
+    index = 0
+    in_parameter = False
+    at_boundary = True
+    while index < len(filter_str):
+        if not in_parameter and at_boundary:
+            match = CANONICAL_TEST_ID_RE.match(filter_str, index)
+            if match:
+                patterns.extend(_parse_legacy_filter_tokens(filter_str[end:index]))
+                patterns.append(match.group().strip())
+                index = end = match.end()
+                at_boundary = False
+                continue
+        char = filter_str[index]
+        if char == "[":
+            in_parameter = True
+        elif char == "]":
+            in_parameter = False
+        if char == ":" and not in_parameter:
+            at_boundary = True
+        elif not char.isspace():
+            at_boundary = False
+        index += 1
+    patterns.extend(_parse_legacy_filter_tokens(filter_str[end:]))
+    return patterns
 
-    def mask_canonical(match):
-        idx = len(canonical_tokens)
-        canonical_tokens.append(match.group(0).strip())
-        return f" __CANONICAL_{idx}__ "
 
-    masked_str = CANONICAL_TEST_ID_RE.sub(mask_canonical, filter_str)
-    raw_tokens = re.split(r":{3,}|(?<!:):(?!:)", masked_str)
+def _parse_legacy_filter_tokens(filter_str: str) -> list[str]:
+    # Preserve spaces, URLs and double colons inside a pytest parameter.
+    # Raw parameter IDs are arbitrary strings: extra '[' characters do not
+    # create nesting, and a backslash does not escape the closing ']'.
+    parts = []
+    start = 0
+    in_parameter = False
+    index = 0
+    separator = ""
+    while index < len(filter_str):
+        char = filter_str[index]
+        if char == "[":
+            in_parameter = True
+        elif char == "]":
+            in_parameter = False
+        elif char == ":" and not in_parameter:
+            parts.append((separator, filter_str[start:index].strip()))
+            start = index
+            while index < len(filter_str) and filter_str[index] == ":":
+                index += 1
+            separator = filter_str[start:index]
+            start = index
+            continue
+        index += 1
+    parts.append((separator, filter_str[start:].strip()))
 
     patterns = []
-    for raw in raw_tokens:
-        raw = raw.strip()
-        if not raw:
+    node_kind = None
+    for separator, token in parts:
+        if not token:
             continue
-
-        if "__CANONICAL_" in raw:
-            for piece in raw.split():
-                if piece.startswith("__CANONICAL_") and piece.endswith("__"):
-                    idx = int(piece[len("__CANONICAL_") : -2])
-                    patterns.append(canonical_tokens[idx])
-                elif piece and piece.strip(":") != "":
-                    patterns.append(piece)
-        elif "::" in raw:
-            sub_tokens = [s.strip() for s in raw.split("::") if s.strip()]
-            i = 0
-            while i < len(sub_tokens):
-                st = sub_tokens[i]
-                is_py = (
-                    st.endswith(".py")
-                    or ".py:" in st
-                    or (st.startswith("-") and st[1:].endswith(".py"))
-                )
-                is_js_ts = (
-                    st.endswith(".js")
-                    or st.endswith(".ts")
-                    or (
-                        st.startswith("-")
-                        and (st[1:].endswith(".js") or st[1:].endswith(".ts"))
-                    )
-                )
-                if (
-                    (is_py or is_js_ts)
-                    and i + 1 < len(sub_tokens)
-                    and not (
-                        sub_tokens[i + 1].endswith(".py")
-                        or sub_tokens[i + 1].endswith(".js")
-                        or sub_tokens[i + 1].endswith(".ts")
-                    )
-                    and not sub_tokens[i + 1].startswith(":")
-                    and not sub_tokens[i + 1].startswith("tests/")
-                    and not sub_tokens[i + 1].startswith("src/")
-                ):
-                    delimiter = "::" if is_py else "#"
-                    patterns.append(f"{st}{delimiter}{sub_tokens[i + 1]}")
-                    i += 2
-                else:
-                    patterns.append(st)
-                    i += 1
+        is_file = token.endswith((".py", ".js", ".ts")) or token.startswith(
+            ("tests/", "src/", "-tests/", "-src/")
+        )
+        if separator == "::" and node_kind and not is_file:
+            delimiter = "::" if node_kind == "pytest" else "#"
+            patterns[-1] += delimiter + token
+            # Preserve the legacy file::case grammar. A following :: rule
+            # (including a bare exclusion or glob) must remain independent.
+            # Canonical IDs unambiguously represent nested class/suite names.
+            node_kind = None
         else:
-            patterns.append(raw)
+            patterns.append(token)
+            node_kind = (
+                "pytest"
+                if token.endswith(".py")
+                else "node"
+                if token.endswith((".js", ".ts"))
+                else None
+            )
     return patterns
 
 
 def parse_filter_file(filepath: str) -> list[str]:
     """Reads a filter file in Chromium Test List Format."""
     filters = []
-    tag_regex = re.compile(
-        r"\[[^\]]*\]|Bug\([^)]*\)|crbug\.com/\S*|skbug\.com/\S*|webkit\.org/\S*",
-        re.VERBOSE,
+    metadata = re.compile(
+        r"^(?:\[([^\]]*)\]|Bug\([^)]*\)|(?:crbug\.com|skbug\.com|webkit\.org)/\S+)(?:\s+|$)"
     )
     with open(filepath, encoding="utf-8") as f:
         for line in f:
             raw_line = re.split(r"(?:\s|^)#", line)[0].strip()
             if not raw_line:
                 continue
-            is_skip = "[ Skip ]" in raw_line or "[ Failure ]" in raw_line
-            cleaned_line = tag_regex.sub("", raw_line).strip()
-            if cleaned_line:
-                for token in parse_filter_tokens(cleaned_line):
-                    if is_skip and not token.startswith("-"):
-                        token = "-" + token
-                    filters.append(token)
+            tags = []
+            while match := metadata.match(raw_line):
+                tags.extend((match.group(1) or "").split())
+                raw_line = raw_line[match.end() :].strip()
+            # Expectation tags follow the test name, separated by whitespace.
+            # Brackets attached to a parameterized node ID are not metadata.
+            while match := re.search(r"\s+\[([^\[\]]*)\]$", raw_line):
+                tags.extend(match.group(1).split())
+                raw_line = raw_line[: match.start()].rstrip()
+            is_skip = "Skip" in tags or "Failure" in tags
+            for token in parse_filter_tokens(raw_line):
+                if is_skip and not token.startswith("-"):
+                    token = "-" + token
+                filters.append(token)
     return filters
 
 

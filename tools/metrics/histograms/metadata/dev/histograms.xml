@@ -23,7 +23,7 @@ chromium-metrics-reviews@google.com.
 <histograms>
 
 <histogram name="DevTools.ActionTaken" enum="DevToolsAction"
-    expires_after="2027-02-07">
+    expires_after="2027-04-11">
   <owner>yangguo@google.com</owner>
   <owner>bmeurer@google.com</owner>
   <summary>Specified DevTools action has been taken.</summary>
@@ -39,8 +39,46 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="DevTools.BlockedByPolicy" enum="DeveloperToolsAvailability"
+    expires_after="2027-10-05">
+  <owner>mickaczmarczyk@google.com</owner>
+  <owner>cbe-cep-eng@google.com</owner>
+  <component>1937512</component>
+  <summary>
+    Recorded each time the &quot;Your organization has blocked the use of
+    DevTools on this page&quot; dialog is shown, i.e. each time a user actively
+    tried to open DevTools or view source and was blocked by the
+    DeveloperToolsAvailability, DeveloperToolsAvailabilityAllowlist or
+    DeveloperToolsAvailabilityBlocklist policies. Not recorded for repeated
+    attempts while the dialog is already open on the same tab. The bucket is the
+    effective value of the DeveloperToolsAvailability policy for the profile at
+    the time of the block. A rise in the DisallowedForForceInstalledExtensions
+    or Allowed buckets indicates DevTools being blocked in contexts that admins
+    did not explicitly disallow. Desktop only.
+  </summary>
+</histogram>
+
+<histogram name="DevTools.BlockedByPolicy.Reason" enum="DevToolsBlockReason"
+    expires_after="2027-10-05">
+  <owner>mickaczmarczyk@google.com</owner>
+  <owner>cbe-cep-eng@google.com</owner>
+  <component>1937512</component>
+  <summary>
+    Recorded together with DevTools.BlockedByPolicy, i.e. each time the
+    &quot;Your organization has blocked the use of DevTools on this page&quot;
+    dialog is shown. The bucket is the specific check that blocked DevTools for
+    the tab: the DeveloperToolsAvailability policy being set to Disallowed, the
+    URL-based DeveloperToolsAvailabilityAllowlist/Blocklist policies, the tab
+    belonging to a restricted extension or web app while the policy has its
+    default value, or the DevTools UI being unavailable for the profile. Blocks
+    reported for a component extension or for the URL lists while the policy has
+    its default value are the ones to investigate when the volume rises. Desktop
+    only.
+  </summary>
+</histogram>
+
 <histogram name="DevTools.BuiltInAiAvailability"
-    enum="DevToolsBuiltInAiAvailability" expires_after="2027-02-14">
+    enum="DevToolsBuiltInAiAvailability" expires_after="2027-04-18">
   <owner>wolfi@google.com</owner>
   <owner>alexrudenko@google.com</owner>
   <component>1559716</component>
@@ -48,7 +86,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="DevTools.CDPCommandFrom{ClientType}" enum="CDPCommands"
-    expires_after="2027-02-07">
+    expires_after="2027-04-11">
   <owner>wolfi@google.com</owner>
   <owner>danilsomsikov@google.com</owner>
   <owner>yangguo@google.com</owner>
@@ -149,7 +187,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="DevTools.DeveloperResourceScheme"
-    enum="DevToolsDeveloperResourceScheme" expires_after="2027-02-14">
+    enum="DevToolsDeveloperResourceScheme" expires_after="2027-04-18">
   <owner>bmeurer@google.com</owner>
   <owner>danilsomsikov@google.com</owner>
   <summary>
@@ -488,7 +526,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="DevTools.PanelShown" enum="DevToolsPanel"
-    expires_after="2027-02-07">
+    expires_after="2027-04-11">
   <owner>yangguo@google.com</owner>
   <owner>bmeurer@google.com</owner>
   <summary>Specified DevTools panel was shown.</summary>
@@ -620,7 +658,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="DevTools.VisualLogging.ProcessingTime" units="ms"
-    expires_after="2027-01-24">
+    expires_after="2027-03-28">
   <owner>danilsomsikov@google.com</owner>
   <owner>hablich@google.com</owner>
   <summary>

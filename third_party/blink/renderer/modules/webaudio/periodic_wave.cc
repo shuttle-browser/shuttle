@@ -28,6 +28,9 @@
 
 #include "third_party/blink/renderer/modules/webaudio/periodic_wave.h"
 
+#include <utility>
+
+#include "base/check.h"
 #include "base/containers/span.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_periodic_wave_options.h"
 #include "third_party/blink/renderer/modules/webaudio/base_audio_context.h"
@@ -36,7 +39,8 @@
 #include "third_party/blink/renderer/platform/bindings/exception_messages.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
-#include "third_party/blink/renderer/platform/wtf/text/strcat.h"
+#include "third_party/blink/renderer/platform/wtf/text/format.h"
+#include "v8/include/v8-isolate.h"
 
 namespace blink {
 
@@ -50,9 +54,9 @@ PeriodicWave* PeriodicWave::Create(BaseAudioContext& context,
   if (real.size() != imag.size()) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kIndexSizeError,
-        StrCat({"length of real array (", String::Number(real.size()),
-                ") and length of imaginary array (",
-                String::Number(imag.size()), ") must match."}));
+        Format("length of real array ({}) and length of imaginary array ({}) "
+               "must match.",
+               real.size(), imag.size()));
     return nullptr;
   }
 
@@ -72,19 +76,17 @@ PeriodicWave* PeriodicWave::Create(BaseAudioContext& context,
     return nullptr;
   }
 
-  PeriodicWave* periodic_wave =
-      MakeGarbageCollected<PeriodicWave>(context.sampleRate());
-  return periodic_wave->handler()->CreateBandLimitedTables(
-             base::span<const float>(real), base::span<const float>(imag),
-             disable_normalization)
-             ? periodic_wave
-             : nullptr;
+  scoped_refptr<PeriodicWaveHandler> handler = PeriodicWaveHandler::Create(
+      context.sampleRate(), base::span<const float>(real),
+      base::span<const float>(imag), disable_normalization);
+  return handler ? MakeGarbageCollected<PeriodicWave>(std::move(handler))
+                 : nullptr;
 }
 
 PeriodicWave* PeriodicWave::Create(BaseAudioContext* context,
                                    const PeriodicWaveOptions* options,
                                    ExceptionState& exception_state) {
-  bool normalize = options->disableNormalization();
+  const bool disable_normalization = options->disableNormalization();
 
   Vector<float> real_coef;
   Vector<float> imag_coef;
@@ -108,48 +110,46 @@ PeriodicWave* PeriodicWave::Create(BaseAudioContext* context,
     imag_coef[1] = 1;
   }
 
-  return Create(*context, real_coef, imag_coef, normalize, exception_state);
+  return Create(*context, real_coef, imag_coef, disable_normalization,
+                exception_state);
 }
 
 PeriodicWave* PeriodicWave::CreateSine(float sample_rate) {
-  PeriodicWave* periodic_wave = MakeGarbageCollected<PeriodicWave>(sample_rate);
-  return periodic_wave->handler()->GenerateBasicWaveform(
-             OscillatorHandler::SINE)
-             ? periodic_wave
-             : nullptr;
+  return CreateBasicWaveform(sample_rate, OscillatorHandler::SINE);
 }
 
 PeriodicWave* PeriodicWave::CreateSquare(float sample_rate) {
-  PeriodicWave* periodic_wave = MakeGarbageCollected<PeriodicWave>(sample_rate);
-  return periodic_wave->handler()->GenerateBasicWaveform(
-             OscillatorHandler::SQUARE)
-             ? periodic_wave
-             : nullptr;
+  return CreateBasicWaveform(sample_rate, OscillatorHandler::SQUARE);
 }
 
 PeriodicWave* PeriodicWave::CreateSawtooth(float sample_rate) {
-  PeriodicWave* periodic_wave = MakeGarbageCollected<PeriodicWave>(sample_rate);
-  return periodic_wave->handler()->GenerateBasicWaveform(
-             OscillatorHandler::SAWTOOTH)
-             ? periodic_wave
-             : nullptr;
+  return CreateBasicWaveform(sample_rate, OscillatorHandler::SAWTOOTH);
 }
 
 PeriodicWave* PeriodicWave::CreateTriangle(float sample_rate) {
-  PeriodicWave* periodic_wave = MakeGarbageCollected<PeriodicWave>(sample_rate);
-  return periodic_wave->handler()->GenerateBasicWaveform(
-             OscillatorHandler::TRIANGLE)
-             ? periodic_wave
-             : nullptr;
+  return CreateBasicWaveform(sample_rate, OscillatorHandler::TRIANGLE);
 }
 
-PeriodicWave::PeriodicWave(float sample_rate)
-    : periodic_wave_handler_(
-          MakeGarbageCollected<PeriodicWaveHandler>(sample_rate)) {}
+PeriodicWave::PeriodicWave(scoped_refptr<const PeriodicWaveHandler> handler)
+    : periodic_wave_handler_(std::move(handler)) {
+  CHECK(periodic_wave_handler_);
+  if (v8::Isolate* isolate = v8::Isolate::TryGetCurrent()) {
+    external_memory_accounter_.Set(
+        isolate, periodic_wave_handler_->AllocatedMemorySize());
+  }
+}
 
-void PeriodicWave::Trace(Visitor* visitor) const {
-  visitor->Trace(periodic_wave_handler_);
-  ScriptWrappable::Trace(visitor);
+PeriodicWave::~PeriodicWave() {
+  if (v8::Isolate* isolate = v8::Isolate::TryGetCurrent()) {
+    external_memory_accounter_.Clear(isolate);
+  }
+}
+
+PeriodicWave* PeriodicWave::CreateBasicWaveform(float sample_rate, int shape) {
+  scoped_refptr<PeriodicWaveHandler> handler =
+      PeriodicWaveHandler::CreateBasicWaveform(sample_rate, shape);
+  return handler ? MakeGarbageCollected<PeriodicWave>(std::move(handler))
+                 : nullptr;
 }
 
 }  // namespace blink

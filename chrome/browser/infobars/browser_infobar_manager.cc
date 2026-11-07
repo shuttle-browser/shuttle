@@ -11,8 +11,10 @@
 #include <utility>
 #include <vector>
 
+#include "base/auto_reset.h"
+#include "base/containers/span.h"
 #include "base/functional/callback.h"
-#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/string_util.h"
@@ -20,7 +22,6 @@
 #include "chrome/browser/infobars/confirm_infobar_creator.h"
 #include "chrome/browser/infobars/infobar_spec.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "components/infobars/content/content_infobar_manager.h"
 #include "components/infobars/core/confirm_infobar_delegate.h"
@@ -31,11 +32,10 @@
 #include "content/public/browser/web_contents_observer.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/gfx/vector_icon_types.h"
+#include "ui/views/view.h"
 #include "url/gurl.h"
 
 namespace infobars {
-
-namespace {
 
 // RegistryInfoBarDelegate acts as the universal adapter between the modern
 // InfoBarSpec and the legacy ConfirmInfoBarDelegate.
@@ -47,10 +47,12 @@ class RegistryInfoBarDelegate final : public ConfirmInfoBarDelegate,
   // `params` take precedence over the spec for this instance.
   RegistryInfoBarDelegate(InfoBarSpec spec,
                           content::WebContents* contents,
-                          InfoBarShowParams params)
+                          InfoBarShowParams params,
+                          BrowserInfoBarManager& manager)
       : content::WebContentsObserver(contents),
         spec_(std::move(spec)),
-        params_(std::move(params)) {
+        params_(std::move(params)),
+        manager_(manager) {
     if (params_.substitutions.has_value()) {
       substitutions_ = std::move(*params_.substitutions);
     }
@@ -65,22 +67,33 @@ class RegistryInfoBarDelegate final : public ConfirmInfoBarDelegate,
         base::UmaHistogramSparse("InfoBar.Centralized.Ignored",
                                  GetIdentifier());
       }
-      ReportResult(*pending_result_);
+      RunResultCallback(*pending_result_);
     }
   }
 
   // Called once the infobar has actually been added.
-  void set_shown() { pending_result_ = InfoBarResult::kIgnored; }
+  void set_shown(
+      std::optional<InfoBarResult> pending_result = InfoBarResult::kIgnored) {
+    pending_result_ = pending_result;
+  }
 
   // Keeps a manager-initiated removal from being reported as an outcome.
   void suppress_result() { pending_result_.reset(); }
 
-  // Whether an outcome is still owed at destruction (i.e. the user has not yet
-  // acted via Accept, Cancel, or Dismiss, and result was not suppressed).
-  bool has_pending_result() const { return pending_result_.has_value(); }
+  bool in_interaction() const { return in_interaction_; }
+  void set_close_after_interaction(bool close = true) {
+    close_after_interaction_ = close;
+  }
 
   infobars::InfoBarDelegate::InfoBarIdentifier GetIdentifier() const override {
     return spec_.identifier();
+  }
+
+  bool EqualsDelegate(infobars::InfoBarDelegate* delegate) const override {
+    if (spec_.allow_duplicates()) {
+      return false;
+    }
+    return ConfirmInfoBarDelegate::EqualsDelegate(delegate);
   }
 
   std::u16string GetMessageText() const override {
@@ -107,7 +120,7 @@ class RegistryInfoBarDelegate final : public ConfirmInfoBarDelegate,
     return spec_.message_text_template();
   }
 
-  const std::vector<MessageSubstitution>& GetMessageSubstitutions()
+  base::span<const MessageSubstitution> GetMessageSubstitutions()
       const override {
     if (!substitutions_.has_value()) {
       substitutions_ = spec_.substitutions_callback()
@@ -118,7 +131,8 @@ class RegistryInfoBarDelegate final : public ConfirmInfoBarDelegate,
   }
 
   std::u16string GetLinkText() const override {
-    return params_.link_text.value_or(spec_.link_text());
+    return params_.link_text.has_value() ? *params_.link_text
+                                         : spec_.link_text();
   }
 
   std::optional<std::u16string> GetLinkAccessibleText() const override {
@@ -138,6 +152,9 @@ class RegistryInfoBarDelegate final : public ConfirmInfoBarDelegate,
   int GetIconId() const override { return spec_.icon_id(); }
 
   const gfx::VectorIcon& GetVectorIcon() const override {
+    if (params_.icon) {
+      return *params_.icon;
+    }
     if (dark_mode() && spec_.dark_mode_icon()) {
       return *spec_.dark_mode_icon();
     }
@@ -147,86 +164,154 @@ class RegistryInfoBarDelegate final : public ConfirmInfoBarDelegate,
 
   int GetButtons() const override {
     int buttons = BUTTON_NONE;
-    if (!spec_.ok_button_label().empty() || spec_.ok_button_callback() ||
+    const std::u16string& ok_label = params_.ok_button.label.has_value()
+                                         ? *params_.ok_button.label
+                                         : spec_.ok_button_label();
+    if (!ok_label.empty() || spec_.ok_button_callback() ||
         params_.ok_button_callback) {
       buttons |= BUTTON_OK;
     }
-    if (!spec_.cancel_button_label().empty() ||
-        spec_.cancel_button_callback() || params_.cancel_button_callback) {
+    const std::u16string& cancel_label = params_.cancel_button.label.has_value()
+                                             ? *params_.cancel_button.label
+                                             : spec_.cancel_button_label();
+    if (!cancel_label.empty() || spec_.cancel_button_callback() ||
+        params_.cancel_button_callback) {
       buttons |= BUTTON_CANCEL;
+    }
+    const std::u16string& extra_label = params_.extra_button.label.has_value()
+                                            ? *params_.extra_button.label
+                                            : spec_.extra_button_label();
+    if (!extra_label.empty() || spec_.extra_button_callback() ||
+        params_.extra_button_callback) {
+      buttons |= BUTTON_EXTRA;
     }
     return buttons;
   }
 
   std::u16string GetButtonLabel(InfoBarButton button) const override {
-    if (button == BUTTON_OK && !spec_.ok_button_label().empty()) {
-      return spec_.ok_button_label();
+    if (button == BUTTON_OK) {
+      const std::u16string& label = params_.ok_button.label.has_value()
+                                        ? *params_.ok_button.label
+                                        : spec_.ok_button_label();
+      if (!label.empty()) {
+        return label;
+      }
     }
-    if (button == BUTTON_CANCEL && !spec_.cancel_button_label().empty()) {
-      return spec_.cancel_button_label();
+    if (button == BUTTON_CANCEL) {
+      const std::u16string& label = params_.cancel_button.label.has_value()
+                                        ? *params_.cancel_button.label
+                                        : spec_.cancel_button_label();
+      if (!label.empty()) {
+        return label;
+      }
+    }
+    if (button == BUTTON_EXTRA) {
+      const std::u16string& label = params_.extra_button.label.has_value()
+                                        ? *params_.extra_button.label
+                                        : spec_.extra_button_label();
+      if (!label.empty()) {
+        return label;
+      }
     }
     return ConfirmInfoBarDelegate::GetButtonLabel(button);
   }
 
+  ui::ImageModel GetButtonImage(InfoBarButton button) const override {
+    if (const auto* p = GetButtonParams(button); p && p->image.has_value()) {
+      return *p->image;
+    }
+    return ConfirmInfoBarDelegate::GetButtonImage(button);
+  }
+
+  bool GetButtonEnabled(InfoBarButton button) const override {
+    if (const auto* p = GetButtonParams(button); p && p->enabled.has_value()) {
+      return *p->enabled;
+    }
+    return ConfirmInfoBarDelegate::GetButtonEnabled(button);
+  }
+
+  std::u16string GetButtonTooltip(InfoBarButton button) const override {
+    if (const auto* p = GetButtonParams(button); p && p->tooltip.has_value()) {
+      return *p->tooltip;
+    }
+    return ConfirmInfoBarDelegate::GetButtonTooltip(button);
+  }
+
+  std::optional<ui::ButtonStyle> GetButtonStyle(
+      InfoBarButton button) const override {
+    if (const auto* p = GetButtonParams(button); p && p->style.has_value()) {
+      return p->style;
+    }
+    return ConfirmInfoBarDelegate::GetButtonStyle(button);
+  }
+
+  bool ShouldUseTextColorForButtonIcon(InfoBarButton button) const override {
+    if (const auto* p = GetButtonParams(button);
+        p && p->use_text_color_for_icon.has_value()) {
+      return *p->use_text_color_for_icon;
+    }
+    return ConfirmInfoBarDelegate::ShouldUseTextColorForButtonIcon(button);
+  }
+
   bool Accept() override {
     base::UmaHistogramSparse("InfoBar.Centralized.Accept", GetIdentifier());
-    const InfoBarSpec::ActionCallback& callback =
-        params_.ok_button_callback ? params_.ok_button_callback
-                                   : spec_.ok_button_callback();
-    auto* contents = web_contents();
-    if (contents && callback) {
-      callback.Run(contents);
-    }
-    ReportResult(InfoBarResult::kAccepted);
-    return spec_.close_on_accept();
+    return RunAction(params_.ok_button_callback ? params_.ok_button_callback
+                                                : spec_.ok_button_callback(),
+                     InfoBarResult::kAccepted, spec_.close_on_accept());
   }
 
   bool Cancel() override {
     base::UmaHistogramSparse("InfoBar.Centralized.Cancel", GetIdentifier());
-    const InfoBarSpec::ActionCallback& callback =
-        params_.cancel_button_callback ? params_.cancel_button_callback
-                                       : spec_.cancel_button_callback();
-    auto* contents = web_contents();
-    if (contents && callback) {
-      callback.Run(contents);
-    }
-    ReportResult(InfoBarResult::kCancelled);
-    return true;
+    return RunAction(params_.cancel_button_callback
+                         ? params_.cancel_button_callback
+                         : spec_.cancel_button_callback(),
+                     InfoBarResult::kCancelled, spec_.close_on_cancel());
+  }
+
+  bool ExtraButtonPressed() override {
+    base::UmaHistogramSparse("InfoBar.Centralized.Extra", GetIdentifier());
+    return RunAction(
+        params_.extra_button_callback ? params_.extra_button_callback
+                                      : spec_.extra_button_callback(),
+        InfoBarResult::kExtraButtonPressed, spec_.close_on_extra_button());
   }
 
   void InfoBarDismissed() override {
     base::UmaHistogramSparse("InfoBar.Centralized.Dismiss", GetIdentifier());
-    auto* contents = web_contents();
-    if (contents && spec_.dismiss_callback()) {
-      spec_.dismiss_callback().Run(contents);
-    }
-    ReportResult(InfoBarResult::kDismissed);
+    RunAction(spec_.dismiss_callback(), InfoBarResult::kDismissed);
   }
 
   bool LinkClicked(WindowOpenDisposition disposition) override {
-    if (pending_result_) {
-      pending_result_ = InfoBarResult::kLinkClicked;
-    }
+    base::AutoReset<bool> in_interaction(&in_interaction_, true);
+    MarkLinkClicked();
     base::UmaHistogramSparse("InfoBar.Centralized.LinkClicked",
                              GetIdentifier());
-    return ConfirmInfoBarDelegate::LinkClicked(disposition);
+    return ConfirmInfoBarDelegate::LinkClicked(disposition) ||
+           close_after_interaction_;
   }
 
   bool InlineSubstitutionLinkClicked(
       size_t index,
       WindowOpenDisposition disposition) override {
-    if (pending_result_) {
-      pending_result_ = InfoBarResult::kLinkClicked;
-    }
+    base::AutoReset<bool> in_interaction(&in_interaction_, true);
+    MarkLinkClicked();
     base::UmaHistogramSparse("InfoBar.Centralized.LinkClicked",
                              GetIdentifier());
     const InfoBarSpec::InlineLinkCallback& callback =
         params_.inline_link_callback ? params_.inline_link_callback
                                      : spec_.inline_link_callback();
-    if (callback) {
-      return callback.Run(web_contents(), index, disposition);
+    const bool should_close =
+        callback && callback.Run(web_contents(), index, disposition);
+    if (should_close) {
+      const bool should_report = ClaimPendingResult();
+      if (IsGlobal()) {
+        manager_->Hide(GetIdentifier());
+      }
+      if (should_report) {
+        RunResultCallback(InfoBarResult::kLinkClicked);
+      }
     }
-    return false;
+    return should_close || close_after_interaction_;
   }
 
   bool ShouldExpire(const NavigationDetails& details) const override {
@@ -247,13 +332,78 @@ class RegistryInfoBarDelegate final : public ConfirmInfoBarDelegate,
   }
 
  private:
-  void ReportResult(InfoBarResult result) {
-    if (!pending_result_) {
-      return;
+  const InfoBarButtonParams* GetButtonParams(InfoBarButton button) const {
+    switch (button) {
+      case BUTTON_OK:
+        return &params_.ok_button;
+      case BUTTON_CANCEL:
+        return &params_.cancel_button;
+      case BUTTON_EXTRA:
+        return &params_.extra_button;
+      case BUTTON_NONE:
+        return nullptr;
     }
+    return nullptr;
+  }
 
-    pending_result_.reset();
+  bool IsGlobal() const {
+    return params_.scope.value_or(spec_.scope()) == InfoBarScope::kGlobal;
+  }
 
+  // `callback` is taken by value since it may destroy `this`.
+  bool RunAction(InfoBarSpec::ActionCallback callback,
+                 InfoBarResult result,
+                 bool should_close = true) {
+    in_interaction_ = true;
+    const bool should_report = ClaimPendingResult();
+    if (should_close && IsGlobal()) {
+      manager_->Hide(GetIdentifier());
+    }
+    if (should_report) {
+      // Reported by the destructor if `callback` destroys `this`.
+      pending_result_ = result;
+    }
+    auto weak_this = weak_factory_.GetWeakPtr();
+    if (auto* contents = web_contents(); contents && callback) {
+      callback.Run(contents);
+    }
+    if (!weak_this) {
+      return false;
+    }
+    in_interaction_ = false;
+    if (should_report) {
+      pending_result_.reset();
+      RunResultCallback(result);
+    }
+    return should_close || close_after_interaction_;
+  }
+
+  std::optional<InfoBarResult>* ActivePendingResult() {
+    if (!IsGlobal()) {
+      return &pending_result_;
+    }
+    auto it = manager_->active_global_infobars_.find(GetIdentifier());
+    return it != manager_->active_global_infobars_.end()
+               ? &it->second.pending_result
+               : nullptr;
+  }
+
+  void MarkLinkClicked() {
+    if (auto* pending = ActivePendingResult(); pending && *pending) {
+      *pending = InfoBarResult::kLinkClicked;
+    }
+  }
+
+  bool ClaimPendingResult() {
+    auto* pending = ActivePendingResult();
+    if (!pending || !*pending) {
+      return false;
+    }
+    pending->reset();
+    return true;
+  }
+
+  void RunResultCallback(InfoBarResult result) {
     const InfoBarSpec::ResultCallback& callback = params_.result_callback
                                                       ? params_.result_callback
                                                       : spec_.result_callback();
@@ -264,51 +414,60 @@ class RegistryInfoBarDelegate final : public ConfirmInfoBarDelegate,
 
   InfoBarSpec spec_;
   InfoBarShowParams params_;
+  const raw_ref<BrowserInfoBarManager> manager_;
 
   // The terminal outcome still owed at destruction, cleared once an
   // interaction reports its own result.
   std::optional<InfoBarResult> pending_result_;
 
+  bool in_interaction_ = false;
+  bool close_after_interaction_ = false;
+
   // Computed once and cached so the substitutions don't change under the
   // view.
   mutable std::optional<std::vector<MessageSubstitution>> substitutions_;
+
+  base::WeakPtrFactory<RegistryInfoBarDelegate> weak_factory_{this};
 };
 
-content::WebContents* GetActiveWebContents() {
-  // TODO(crbug.com/512825363): Derivation of browser will be changed to
-  // accommodate profile.
-  auto* browser = GetLastActiveBrowserWindowInterfaceWithAnyProfile();
-  if (!browser) {
-    return nullptr;
-  }
+namespace {
 
-  auto* tab = browser->GetActiveTabInterface();
-  if (!tab) {
-    return nullptr;
-  }
-
-  return tab->GetContents();
-}
-
-// Keeps `infobar` from reporting a result when it goes away. Every infobar
-// here was created by this manager, so the cast is safe.
-void SuppressInfoBarResult(infobars::InfoBar* infobar) {
-  static_cast<RegistryInfoBarDelegate*>(infobar->delegate())->suppress_result();
-}
-
-// Whether `infobar` still has an outcome pending (i.e. the user has not acted
-// on it via Accept, Cancel, or Dismiss). Every infobar here was created by
-// this manager, so the cast is safe.
-bool HasPendingResult(infobars::InfoBar* infobar) {
-  return static_cast<RegistryInfoBarDelegate*>(infobar->delegate())
-      ->has_pending_result();
+std::unique_ptr<infobars::InfoBar> CreateInfoBarForSpec(
+    const InfoBarSpec& spec,
+    content::WebContents* contents,
+    InfoBarShowParams params,
+    BrowserInfoBarManager& manager) {
+  const InfoBarSpec::CustomViewCallback& custom_view_callback =
+      params.custom_view_callback ? params.custom_view_callback
+                                  : spec.custom_view_callback();
+  std::unique_ptr<views::View> custom_view =
+      custom_view_callback ? custom_view_callback.Run(contents) : nullptr;
+  return CreateConfirmInfoBar(std::make_unique<RegistryInfoBarDelegate>(
+                                  spec, contents, std::move(params), manager),
+                              std::move(custom_view));
 }
 
 // Removes `infobar` without reporting a result.
 void RemoveInfoBarWithoutResult(infobars::InfoBarManager* manager,
                                 infobars::InfoBar* infobar) {
-  SuppressInfoBarResult(infobar);
+  auto* delegate = static_cast<RegistryInfoBarDelegate*>(infobar->delegate());
+  delegate->suppress_result();
+  if (delegate->in_interaction()) {
+    delegate->set_close_after_interaction();
+    return;
+  }
   manager->RemoveInfoBar(infobar);
+}
+
+// Returns the browser whose tab shows `infobar`, if any.
+BrowserWindowInterface* BrowserForInfoBar(infobars::InfoBar* infobar) {
+  content::WebContents* web_contents =
+      static_cast<RegistryInfoBarDelegate*>(infobar->delegate())
+          ->web_contents();
+  tabs::TabInterface* tab =
+      web_contents ? tabs::TabInterface::MaybeGetFromContents(web_contents)
+                   : nullptr;
+  return tab ? tab->GetBrowserWindowInterface() : nullptr;
 }
 
 }  // namespace
@@ -371,13 +530,49 @@ infobars::InfoBar* BrowserInfoBarManager::Show(
   if (!manager) {
     return nullptr;
   }
-  if (auto* added_infobar = manager->AddInfoBar(
-          CreateConfirmInfoBar(std::make_unique<RegistryInfoBarDelegate>(
-              it->second, contents, std::move(params))))) {
+  if (auto* added_infobar = manager->AddInfoBar(CreateInfoBarForSpec(
+          it->second, contents, std::move(params), *this))) {
     static_cast<RegistryInfoBarDelegate*>(added_infobar->delegate())
         ->set_shown();
+    TrackTabInstance(added_infobar);
     base::UmaHistogramSparse("InfoBar.Centralized.Show", identifier);
     return added_infobar;
+  }
+  return nullptr;
+}
+
+infobars::InfoBar* BrowserInfoBarManager::Replace(
+    infobars::InfoBar* old_infobar,
+    infobars::InfoBarDelegate::InfoBarIdentifier identifier,
+    InfoBarShowParams params) {
+  auto it = registered_specs_.find(identifier);
+  if (it == registered_specs_.end()) {
+    return nullptr;
+  }
+  CHECK(old_infobar);
+  CHECK(params.scope.value_or(it->second.scope()) == InfoBarScope::kTab);
+
+  infobars::InfoBarManager* manager = old_infobar->owner();
+  if (!manager) {
+    return nullptr;
+  }
+
+  content::WebContents* contents =
+      static_cast<RegistryInfoBarDelegate*>(old_infobar->delegate())
+          ->web_contents();
+  if (!contents) {
+    return nullptr;
+  }
+
+  static_cast<RegistryInfoBarDelegate*>(old_infobar->delegate())
+      ->suppress_result();
+  if (auto* replaced_infobar = manager->ReplaceInfoBar(
+          old_infobar, CreateInfoBarForSpec(it->second, contents,
+                                            std::move(params), *this))) {
+    static_cast<RegistryInfoBarDelegate*>(replaced_infobar->delegate())
+        ->set_shown();
+    TrackTabInstance(replaced_infobar);
+    return replaced_infobar;
   }
   return nullptr;
 }
@@ -419,13 +614,10 @@ bool BrowserInfoBarManager::ShowGlobally(
           auto* manager =
               ContentInfoBarManager::FromWebContents(active_contents);
           if (manager) {
-            auto infobar =
-                CreateConfirmInfoBar(std::make_unique<RegistryInfoBarDelegate>(
-                    context.spec, active_contents, context.params));
+            auto infobar = CreateInfoBarForSpec(context.spec, active_contents,
+                                                context.params, *this);
             auto* added_infobar = manager->AddInfoBar(std::move(infobar));
             if (added_infobar) {
-              static_cast<RegistryInfoBarDelegate*>(added_infobar->delegate())
-                  ->set_shown();
               active_global_infobars_[identifier].active_instances[manager] =
                   added_infobar;
               added_any_infobars = true;
@@ -482,35 +674,52 @@ void BrowserInfoBarManager::Hide(infobars::InfoBar* infobar) {
 }
 
 void BrowserInfoBarManager::Hide(
-    infobars::InfoBarDelegate::InfoBarIdentifier identifier) {
+    infobars::InfoBarDelegate::InfoBarIdentifier identifier,
+    const InfoBarSpec::BrowserFilter& browser_filter) {
   auto it = registered_specs_.find(identifier);
   if (it == registered_specs_.end()) {
     return;
   }
 
-  const InfoBarSpec& spec = it->second;
-
-  if (spec.scope() == InfoBarScope::kTab) {
-    content::WebContents* active_contents = GetActiveWebContents();
-    if (!active_contents) {
-      return;
-    }
-    Hide(active_contents, identifier);
-  } else if (spec.scope() == InfoBarScope::kGlobal) {
-    auto active_it = active_global_infobars_.find(identifier);
-    if (active_it != active_global_infobars_.end()) {
-      auto& manager_map = active_it->second.active_instances;
-      while (!manager_map.empty()) {
-        auto map_it = manager_map.begin();
-        infobars::InfoBarManager* manager = map_it->first;
-        infobars::InfoBar* infobar = map_it->second;
-
-        manager_map.erase(
-            map_it);  // Erase first to signal programmatic removal.
-        RemoveInfoBarWithoutResult(manager, infobar);
+  if (it->second.scope() == InfoBarScope::kTab) {
+    // Removal drops instances from `active_tab_infobars_`, so iterate a copy.
+    const std::vector<infobars::InfoBar*> instances(
+        active_tab_infobars_.begin(), active_tab_infobars_.end());
+    for (infobars::InfoBar* infobar : instances) {
+      // A removal can take other instances with it, so check the set, which
+      // removals keep current, before touching one.
+      if (!active_tab_infobars_.contains(infobar) ||
+          infobar->delegate()->GetIdentifier() != identifier) {
+        continue;
       }
-      active_global_infobars_.erase(active_it);
+
+      if (browser_filter) {
+        BrowserWindowInterface* browser = BrowserForInfoBar(infobar);
+        if (!browser || !browser_filter.Run(browser)) {
+          continue;
+        }
+      }
+
+      Hide(infobar);
     }
+    return;
+  }
+
+  // A global infobar is hidden everywhere.
+  CHECK(!browser_filter);
+
+  auto active_it = active_global_infobars_.find(identifier);
+  if (active_it != active_global_infobars_.end()) {
+    auto& manager_map = active_it->second.active_instances;
+    while (!manager_map.empty()) {
+      auto map_it = manager_map.begin();
+      infobars::InfoBarManager* manager = map_it->first;
+      infobars::InfoBar* infobar = map_it->second;
+
+      manager_map.erase(map_it);  // Erase first to signal programmatic removal.
+      RemoveInfoBarWithoutResult(manager, infobar);
+    }
+    active_global_infobars_.erase(active_it);
   }
 }
 
@@ -528,6 +737,8 @@ void BrowserInfoBarManager::OnBrowserClosed(BrowserWindowInterface* browser) {
 
 void BrowserInfoBarManager::OnInfoBarRemoved(infobars::InfoBar* infobar,
                                              bool animate) {
+  active_tab_infobars_.erase(infobar);
+
   // Only tracked instances matter here. Everything in
   // `active_global_infobars_` was put there by ShowGlobally(), which only
   // accepts global specs, so membership is the scope check.
@@ -547,8 +758,11 @@ void BrowserInfoBarManager::OnInfoBarRemoved(infobars::InfoBar* infobar,
   }
   instances.erase(instance);
 
+  // Use the delegate, not the owner: when called from ~InfoBarManager(), the
+  // owner's WebContentsObserver base is already destroyed.
   content::WebContents* web_contents =
-      ContentInfoBarManager::WebContentsFromInfoBar(infobar);
+      static_cast<RegistryInfoBarDelegate*>(infobar->delegate())
+          ->web_contents();
   tabs::TabInterface* tab =
       web_contents ? tabs::TabInterface::MaybeGetFromContents(web_contents)
                    : nullptr;
@@ -564,7 +778,9 @@ void BrowserInfoBarManager::OnInfoBarRemoved(infobars::InfoBar* infobar,
       browser->GetTabStripModel()->closing_all() ||
       browser->IsDeleteScheduled() || web_contents->IsBeingDestroyed() ||
       !web_contents->GetPrimaryMainFrame()->IsRenderFrameLive();
-  if (!is_tearing_down || !HasPendingResult(infobar)) {
+  if (!is_tearing_down) {
+    static_cast<RegistryInfoBarDelegate*>(infobar->delegate())
+        ->set_shown(std::exchange(it->second.pending_result, std::nullopt));
     Hide(identifier);
     return;
   }
@@ -572,9 +788,15 @@ void BrowserInfoBarManager::OnInfoBarRemoved(infobars::InfoBar* infobar,
   // up in the other browsers. This instance must not report an outcome for a
   // logical infobar the user can still see; whichever instance goes last
   // reports for it.
-  if (!instances.empty()) {
-    SuppressInfoBarResult(infobar);
+  if (instances.empty()) {
+    static_cast<RegistryInfoBarDelegate*>(infobar->delegate())
+        ->set_shown(std::exchange(it->second.pending_result, std::nullopt));
   }
+}
+
+void BrowserInfoBarManager::OnInfoBarReplaced(infobars::InfoBar* old_infobar,
+                                              infobars::InfoBar* new_infobar) {
+  active_tab_infobars_.erase(old_infobar);
 }
 
 void BrowserInfoBarManager::OnManagerWillBeDestroyed(
@@ -628,13 +850,23 @@ void BrowserInfoBarManager::OnActiveTabChanged(
           !context.spec.browser_filter().Run(browser)) {
         continue;
       }
-      auto infobar =
-          CreateConfirmInfoBar(std::make_unique<RegistryInfoBarDelegate>(
-              context.spec, active_contents, context.params));
+      // An interaction callback switched away and back; keep its instance.
+      auto existing = std::ranges::find_if(
+          new_manager->infobars(), [identifier](infobars::InfoBar* ib) {
+            return ib->delegate()->GetIdentifier() == identifier &&
+                   static_cast<RegistryInfoBarDelegate*>(ib->delegate())
+                       ->in_interaction();
+          });
+      if (existing != new_manager->infobars().end()) {
+        static_cast<RegistryInfoBarDelegate*>((*existing)->delegate())
+            ->set_close_after_interaction(false);
+        context.active_instances[new_manager] = *existing;
+        continue;
+      }
+      auto infobar = CreateInfoBarForSpec(context.spec, active_contents,
+                                          context.params, *this);
       auto* added_infobar = new_manager->AddInfoBar(std::move(infobar));
       if (added_infobar) {
-        static_cast<RegistryInfoBarDelegate*>(added_infobar->delegate())
-            ->set_shown();
         context.active_instances[new_manager] = added_infobar;
         if (!infobar_manager_observations_.IsObservingSource(new_manager)) {
           infobar_manager_observations_.AddObservation(new_manager);
@@ -644,6 +876,15 @@ void BrowserInfoBarManager::OnActiveTabChanged(
   }
 
   last_active_managers_[browser] = new_manager;
+}
+
+void BrowserInfoBarManager::TrackTabInstance(infobars::InfoBar* infobar) {
+  active_tab_infobars_.insert(infobar);
+  infobars::InfoBarManager* manager = infobar->owner();
+
+  if (!infobar_manager_observations_.IsObservingSource(manager)) {
+    infobar_manager_observations_.AddObservation(manager);
+  }
 }
 
 bool BrowserInfoBarManager::IsTrackedGlobalInstance(

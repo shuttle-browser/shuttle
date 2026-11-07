@@ -108,13 +108,14 @@ scoped_refptr<ClientSharedImage> SharedImageInterface::NotifyMailboxAdded(
   return nullptr;
 }
 
-void SharedImageInterface::CopyToGpuMemoryBuffer(const SyncToken& sync_token,
-                                                 const Mailbox& mailbox) {
+void SharedImageInterface::CopyToGpuMemoryBuffer(
+    std::vector<SyncToken> sync_tokens,
+    const Mailbox& mailbox) {
   NOTREACHED();
 }
 
 void SharedImageInterface::CopyToGpuMemoryBufferAsync(
-    const SyncToken& sync_token,
+    std::vector<SyncToken> sync_tokens,
     const Mailbox& mailbox,
     base::OnceCallback<void(bool)> callback) {
   NOTREACHED();

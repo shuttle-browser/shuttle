@@ -18,9 +18,6 @@
 #include "chrome/browser/enterprise/browser_management/management_identity.h"
 #include "chromeos/components/kiosk/kiosk_utils.h"
 #include "components/user_manager/user_manager.h"
-#else
-#include "chrome/browser/enterprise/util/affiliation.h"
-#include "chrome/browser/policy/dm_token_utils.h"
 #endif
 
 const char kDevicePolicyStatusDescription[] = "statusDevice";
@@ -68,11 +65,9 @@ std::optional<bool> GetUserAffiliationStatus(Profile* profile) {
   }
   return user->IsAffiliated();
 #else
-  // Don't show affiliation status if the browser isn't enrolled in CBCM.
-  if (!policy::GetDMToken(profile).is_valid()) {
-    return std::nullopt;
-  }
-  return enterprise_util::IsProfileAffiliated(profile);
+  // Not enrolled in cloud management (removed in Shuttle): affiliation status
+  // is never shown.
+  return std::nullopt;
 #endif  // BUILDFLAG(IS_CHROMEOS)
 }
 

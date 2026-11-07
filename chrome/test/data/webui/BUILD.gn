@@ -50,9 +50,15 @@ webui_ts_library("build_ts") {
     in_files += [
       "fake_settings_private.ts",
       "mocked_metrics_reporter.ts",
-      "mouse_mock_interactions.ts",
       "test_api.ts",
       "test_store.ts",
+    ]
+  }
+
+  # Imported by the History WebUI tests, which run on Android Desktop.
+  if (!is_android || is_desktop_android) {
+    in_files += [
+      "mouse_mock_interactions.ts",
       "test_user_education_mixed_trust_handler.ts",
     ]
   }
@@ -69,8 +75,13 @@ webui_ts_library("build_ts") {
     deps += [ "//third_party/polymer/v3_0:library" ]
   }
 
-  if (!is_android) {
+  # Needed by test_user_education_mixed_trust_handler.ts, which the History
+  # WebUI tests import and which runs on Android Desktop.
+  if (!is_android || is_desktop_android) {
     deps += [ "//ui/webui/resources/mojo:build_ts" ]
+  }
+
+  if (!is_android) {
     definitions += [
       "//tools/typescript/definitions/chrome_event.d.ts",
       "//tools/typescript/definitions/chrome_send.d.ts",

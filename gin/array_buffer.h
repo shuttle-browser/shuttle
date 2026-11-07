@@ -13,6 +13,7 @@
 #include "gin/converter.h"
 #include "gin/gin_export.h"
 #include "partition_alloc/partition_alloc.h"
+#include "partition_alloc/partition_alloc_public_constants.h"
 #include "v8/include/v8-array-buffer.h"
 #include "v8/include/v8-forward.h"
 
@@ -48,7 +49,7 @@ class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
 class GIN_EXPORT ArrayBuffer {
  public:
   ArrayBuffer();
-  explicit ArrayBuffer(v8::Local<v8::ArrayBuffer> buffer);
+  explicit ArrayBuffer(v8::Local<v8::ArrayBufferBase> buffer);
   ArrayBuffer(const ArrayBuffer&) = delete;
   ~ArrayBuffer();
   ArrayBuffer& operator=(const ArrayBuffer& other);

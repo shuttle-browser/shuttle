@@ -25,7 +25,6 @@
 #include "components/renderer_context_menu/render_view_context_menu_base.h"
 #include "components/renderer_context_menu/render_view_context_menu_observer.h"
 #include "components/renderer_context_menu/render_view_context_menu_proxy.h"
-#include "components/supervised_user/core/browser/supervised_user_url_filtering_service.h"
 #include "content/public/browser/context_menu_params.h"
 #include "content/public/browser/weak_document_ptr.h"
 #include "content/public/common/buildflags.h"
@@ -120,6 +119,7 @@ class RenderViewContextMenu
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kAskGoogleAboutThisPageItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kContextualTasksSubmenuItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kSearchForImageItem);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kSearchForTextItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kSearchForVideoFrameItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kVideoFrameSubmenuItem);
 
@@ -248,6 +248,7 @@ class RenderViewContextMenu
                                         gfx::BreakType break_type);
 
   void ExecGlic();
+  void ExecGlicSmartSuggestion();
 
   friend class RenderViewContextMenuTest;
   friend class TestRenderViewContextMenu;
@@ -326,8 +327,10 @@ class RenderViewContextMenu
   void AppendPrintItem();
   void AppendPartialTranslateItem();
   void AppendTranslateItem();
+  void AppendTranslateOrPartialTranslateItem();
   void AppendMediaRouterItem();
   void AppendSaveToMemoryBanksItem();
+  bool CanSaveImageToMemoryBanks() const;
   void AppendGlicItems();
   void AppendRotationItems();
   void AppendSpellingAndSearchSuggestionItems();
@@ -472,12 +475,8 @@ class RenderViewContextMenu
   // warms up a renderer process.
   void MaybePrepareForLensQuery();
 
-  // Does not execute "Save link as" if the URL is blocked by the URL filter.
-  void CheckSupervisedUserURLFilterAndSaveLinkAs();
-  void OnSupervisedUserURLFilterChecked(
-      supervised_user::WebFilteringResult result);
-
   void MaybeAppendOpenGlicItem(bool add_separator = true);
+  void MaybeAppendGlicSmartSuggestionItem();
 
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -593,6 +592,10 @@ class RenderViewContextMenu
   //  Used for CTR metrics of menu item for opening Glic.
   bool glic_item_shown_ = false;
   bool glic_item_executed_ = false;
+
+  // Used for CTR metrics of the Glic share image menu item.
+  bool glic_share_image_item_shown_ = false;
+  bool glic_share_image_item_executed_ = false;
 
   // Tracks the originating document at menu-open time so Glic actions can bail
   // out if the tab navigated while the menu was open.

@@ -309,10 +309,22 @@ class _TransitiveValuesBuilder:
         params = self._params
         ret = self._ret
         resource_deps = params.resource_deps()
-        ret.dependency_zips.update(resource_deps.collect('resources_zip'))
-        ret.dependency_zip_overlays.update(
-            resource_deps.collect('resources_overlay_zip')
-        )
+        if params.type == 'dist_aar':
+            # dist_aar packages uncompiled resource files into res/, whereas
+            # resources_zip contains pre-compiled .flat files.
+            for c in resource_deps:
+                res_sources = c.get('res_sources_path') or c.get(
+                    'uncompiled_resources_zip'
+                )
+                if zip_path := c.get('resources_zip'):
+                    ret.dependency_zips.add(res_sources or zip_path)
+                elif zip_path := c.get('resources_overlay_zip'):
+                    ret.dependency_zip_overlays.add(res_sources or zip_path)
+        else:
+            ret.dependency_zips.update(resource_deps.collect('resources_zip'))
+            ret.dependency_zip_overlays.update(
+                resource_deps.collect('resources_overlay_zip')
+            )
 
         assets, uncompressed_assets, locale_paks = _MergeAssets(
             all_deps_without_under_test.of_type('android_assets')
@@ -469,7 +481,7 @@ def _CreateJavaLocaleListFromAssets(assets, locale_paks):
     locales = [
         os.path.basename(a)[:-4] for a in assets_paths if a in locale_paks
     ]
-    return '{%s}' % ','.join('"%s"' % l for l in sorted(locales))
+    return '{%s}' % ','.join('"%s"' % l for l in sorted(locales))  # noqa: E741
 
 
 def _AddJarMapping(jar_to_target, config):
@@ -636,7 +648,9 @@ def _CreateLintConfig(params, javac_config, manifest_config):
                 resource_sources.add(path)
             else:
                 resource_zips.add(
-                    c.get('resources_zip') or c.get('resources_overlay_zip')
+                    c.get('uncompiled_resources_zip')
+                    or c.get('resources_zip')
+                    or c.get('resources_overlay_zip')
                 )
 
     if params.is_bundle():
@@ -759,9 +773,6 @@ def main():
 
     if is_apk:
         main_config['apk_path'] = params['apk_path']
-        if path := params.get('incremental_install_json_path'):
-            main_config['incremental_install_json_path'] = path
-            main_config['incremental_apk_path'] = params['incremental_apk_path']
 
     if is_bundle_module:
         main_config['unprocessed_jar_path'] = params['unprocessed_jar_path']

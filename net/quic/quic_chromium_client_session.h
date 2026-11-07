@@ -108,30 +108,6 @@ enum class ConnectionMigrationMode {
   FULL_MIGRATION_V2
 };
 
-// Result of connection migration.
-enum QuicConnectionMigrationStatus {
-  MIGRATION_STATUS_NO_MIGRATABLE_STREAMS,
-  MIGRATION_STATUS_ALREADY_MIGRATED,
-  MIGRATION_STATUS_INTERNAL_ERROR,
-  MIGRATION_STATUS_TOO_MANY_CHANGES,
-  MIGRATION_STATUS_SUCCESS,
-  MIGRATION_STATUS_NON_MIGRATABLE_STREAM,
-  MIGRATION_STATUS_NOT_ENABLED,
-  MIGRATION_STATUS_NO_ALTERNATE_NETWORK,
-  MIGRATION_STATUS_ON_PATH_DEGRADING_DISABLED,
-  MIGRATION_STATUS_DISABLED_BY_CONFIG,
-  MIGRATION_STATUS_PATH_DEGRADING_NOT_ENABLED,
-  MIGRATION_STATUS_TIMEOUT,
-  MIGRATION_STATUS_ON_WRITE_ERROR_DISABLED,
-  MIGRATION_STATUS_PATH_DEGRADING_BEFORE_HANDSHAKE_CONFIRMED,
-  MIGRATION_STATUS_IDLE_MIGRATION_TIMEOUT,
-  MIGRATION_STATUS_NO_UNUSED_CONNECTION_ID,
-  MIGRATION_STATUS_STATELESS_RESET,
-  MIGRATION_STATUS_DISCONNECTING,
-  MIGRATION_STATUS_CANCELED_BY_NEWER_VALIDATION,
-  MIGRATION_STATUS_MAX
-};
-
 // Result of a connectivity probing attempt.
 enum class ProbingResult {
   PENDING,                          // Probing started, pending result.
@@ -182,6 +158,14 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   // Sets a callback that is called in the middle of a connection migration.
   // Only for testing.
   static void SetMidMigrationCallbackForTesting(base::OnceClosure callback);
+
+  // Maps between Chromium's QuicMigrationAttemptCause and QUICHE's
+  // quic::PathValidationFailure::Reason for path validations superseded by
+  // a new migration.
+  static quic::PathValidationFailure::Reason
+  ChromiumMigrationCauseToQuicheFailureReason(QuicMigrationAttemptCause cause);
+  static QuicMigrationAttemptCause QuicheFailureReasonToChromiumMigrationCause(
+      quic::PathValidationFailure::Reason reason);
 
   class StreamRequest;
 
@@ -753,13 +737,24 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   void LogProbeFailure(handles::NetworkHandle network,
                        const quic::QuicSocketAddress& peer_address);
 
+  // Marks the ongoing probing attempt according to `reason` and cancels path
+  // validation. Requires an in-flight path validation to exist.
+  void CancelInFlightProbe(
+      ProbingCancellationReason reason,
+      std::optional<QuicMigrationAttemptCause> superseded_cause);
+
   // If there is an ongoing probing on <network, peer_address>, marks the
   // attempt according to `reason` and cancels path validation.
-  void MaybeCancelProbing(
+  void MaybeCancelSpecificInFlightProbe(
       handles::NetworkHandle network,
       const quic::QuicSocketAddress& peer_address,
       ProbingCancellationReason reason,
-      std::optional<QuicMigrationAttemptCause> superseded_cause = std::nullopt);
+      std::optional<QuicMigrationAttemptCause> superseded_cause);
+
+  // If there is any ongoing probing, marks the attempt as superseded by
+  // `superseded_by_cause` and cancels path validation.
+  void MaybeCancelAnyInFlightProbe(
+      QuicMigrationAttemptCause superseded_by_cause);
 
   // quic::QuicSpdySession methods:
   size_t WriteHeadersOnHeadersStream(
@@ -830,10 +825,12 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
 
   // Helper for CreateContextForMultiPortPath. Gets the result of
   // ConnectAndConfigureSocket and uses it to create the multiport path context.
+  // `error_step` is non-empty only when `rv` is not OK.
   void FinishCreateContextForMultiPortPath(
       std::unique_ptr<quic::MultiPortPathContextObserver> context_observer,
       std::unique_ptr<QuicMigrationAttemptContext> context,
-      int rv);
+      int rv,
+      std::optional<QuicSocketConfigStep> error_step);
 
   // Performs a crypto handshake with the server.
   int CryptoConnect(CompletionOnceCallback callback);
@@ -925,7 +922,8 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
       std::unique_ptr<QuicMigrationAttemptContext> migration_context,
       bool close_session_on_error,
       MigrationCallback callback,
-      int rv);
+      int rv,
+      std::optional<QuicSocketConfigStep> error_step);
 
   void DoMigrationCallback(MigrationCallback callback, MigrationResult rv);
 
@@ -956,8 +954,13 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
 
   // Called when migration alarm fires. If migration has not occurred
   // since alarm was set, closes session with error.
-  void OnMigrationTimeout(size_t num_sockets,
-                          QuicMigrationAttemptCause migration_cause);
+  void OnMigrationTimeout();
+
+  // Clears the state associated with waiting for a new network. If
+  // `superseded_by_cause` is provided and the session was waiting for a new
+  // network, records the superseded outcome for that waiting attempt.
+  void ResetWaitForNewNetworkState(
+      std::optional<QuicMigrationAttemptCause> superseded_by_cause);
 
   // Populates network error details for this session.
   void PopulateNetErrorDetails(NetErrorDetails* details) const;
@@ -1057,9 +1060,11 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
 
   // Helper to finish network probe once socket has been opened. Always called
   // asynchronously.
+  // `error_step` is non-empty only when `rv` is not OK.
   void FinishStartProbing(ProbingCallback probing_callback,
                           std::unique_ptr<QuicMigrationAttemptContext> context,
-                          int rv);
+                          int rv,
+                          std::optional<QuicSocketConfigStep> error_step);
 
   // Perform a few checks before StartProbing. If any of those checks fails,
   // StartProbing will be skipped.
@@ -1118,12 +1123,9 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   void ResetNonMigratableStreams();
   void LogMetricsOnNetworkDisconnected();
   void LogMetricsOnNetworkMadeDefault();
-  void LogMigrationResultToHistogram(QuicConnectionMigrationStatus status);
-  void LogHandshakeStatusOnMigrationSignal() const;
-  void HistogramAndLogMigrationFailure(QuicConnectionMigrationStatus status,
-                                       quic::QuicConnectionId connection_id,
-                                       const char* reason);
-  void HistogramAndLogMigrationSuccess(quic::QuicConnectionId connection_id);
+  void LogMigrationFailure(quic::QuicConnectionId connection_id,
+                           const char* reason);
+  void LogMigrationSuccess(quic::QuicConnectionId connection_id);
   void LogPathValidationFailure(QuicChromiumPathValidationContext* context);
 
   // Notifies the factory that this session is going away and no more streams
@@ -1142,6 +1144,8 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   void OnCryptoHandshakeComplete();
 
   void LogZeroRttStats();
+
+  void RecordUnusedConnectionIdsAtMigrationAttempt();
 
 #if BUILDFLAG(ENABLE_WEBSOCKETS)
   std::unique_ptr<WebSocketQuicStreamAdapter>
@@ -1306,6 +1310,11 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   // connected to a migration attempt state, into a new manager-like entity for
   // migration attempts.
   std::optional<QuicMigrationAttemptCause> wait_for_new_network_cause_;
+  // Timestamp when the session started waiting for a new network.
+  base::TimeTicks wait_for_new_network_start_time_;
+  // Timer to close the session if no new network connects within the wait
+  // timeout.
+  base::OneShotTimer wait_for_new_network_timer_;
   // True if read errors should be ignored. Set when migration on write error is
   // posted and unset until the first packet is written after migration.
   // TODO(crbug.com/558250723): Consider moving this, and every other field

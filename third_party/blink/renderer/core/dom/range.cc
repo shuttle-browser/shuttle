@@ -25,6 +25,7 @@
 
 #include "third_party/blink/renderer/core/dom/range.h"
 
+#include "base/check.h"
 #include "third_party/blink/renderer/core/display_lock/display_lock_document_state.h"
 #include "third_party/blink/renderer/core/display_lock/display_lock_utilities.h"
 #include "third_party/blink/renderer/core/dom/character_data.h"
@@ -42,6 +43,7 @@
 #include "third_party/blink/renderer/core/editing/frame_selection.h"
 #include "third_party/blink/renderer/core/editing/iterators/text_iterator.h"
 #include "third_party/blink/renderer/core/editing/position_units.h"
+#include "third_party/blink/renderer/core/editing/selection_adjuster.h"
 #include "third_party/blink/renderer/core/editing/selection_template.h"
 #include "third_party/blink/renderer/core/editing/serializers/serialization.h"
 #include "third_party/blink/renderer/core/editing/set_selection_options.h"
@@ -67,6 +69,7 @@
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/wtf/text/format.h"
 #include "third_party/blink/renderer/platform/wtf/text/strcat.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 #include "ui/gfx/geometry/quad_f.h"
@@ -316,12 +319,7 @@ bool Range::HasSameRoot(const Node& node) const {
 bool Range::isPointInRange(Node* ref_node,
                            unsigned offset,
                            ExceptionState& exception_state) const {
-  if (!ref_node) {
-    // FIXME: Generated bindings code never calls with null, and neither should
-    // other callers!
-    exception_state.ThrowTypeError("The node provided is null.");
-    return false;
-  }
+  CHECK(ref_node);
   if (!HasSameRoot(*ref_node))
     return false;
 
@@ -471,15 +469,10 @@ void Range::deleteContents(ExceptionState& exception_state) {
   }
 }
 
-bool Range::intersectsNode(Node* ref_node, ExceptionState& exception_state) {
+bool Range::intersectsNode(Node* ref_node, ExceptionState&) {
   // http://developer.mozilla.org/en/docs/DOM:range.intersectsNode
   // Returns a bool if the node intersects the range.
-  if (!ref_node) {
-    // FIXME: Generated bindings code never calls with null, and neither should
-    // other callers!
-    exception_state.ThrowTypeError("The node provided is null.");
-    return false;
-  }
+  CHECK(ref_node);
   if (!HasSameRoot(*ref_node))
     return false;
 
@@ -856,12 +849,7 @@ DocumentFragment* Range::cloneContents(ExceptionState& exception_state) {
 
 // https://dom.spec.whatwg.org/#concept-range-insert
 void Range::insertNode(Node* new_node, ExceptionState& exception_state) {
-  if (!new_node) {
-    // FIXME: Generated bindings code never calls with null, and neither should
-    // other callers!
-    exception_state.ThrowTypeError("The node provided is null.");
-    return;
-  }
+  CHECK(new_node);
 
   // 1. If range’s start node is a ProcessingInstruction or Comment node, is a
   // Text node whose parent is null, or is node, then throw a
@@ -1010,7 +998,8 @@ DocumentFragment* Range::createContextualFragment(
   String compliant_markup = TrustedTypesCheckForFragment(
       markup, resolved_options, owner_document_->GetExecutionContext(),
       trusted_types_names::kRange,
-      trusted_types_names::kCreateContextualFragment, exception_state);
+      trusted_types_names::kCreateContextualFragment,
+      !owner_document_->IsHTMLDocument(), exception_state);
 
   if (exception_state.HadException()) {
     return nullptr;
@@ -1072,30 +1061,26 @@ Node* Range::CheckNodeWOffset(Node* n,
       if (offset > To<CharacterData>(n)->length()) {
         exception_state.ThrowDOMException(
             DOMExceptionCode::kIndexSizeError,
-            StrCat({"The offset ", String::Number(offset),
-                    " is larger than the node's length (",
-                    String::Number(To<CharacterData>(n)->length()), ")."}));
+            Format("The offset {} is larger than the node's length ({}).",
+                   offset, To<CharacterData>(n)->length()));
       } else if (offset >
                  static_cast<unsigned>(std::numeric_limits<int>::max())) {
         exception_state.ThrowDOMException(
             DOMExceptionCode::kIndexSizeError,
-            StrCat({"The offset ", String::Number(offset), " is invalid."}));
+            Format("The offset {} is invalid.", offset));
       }
       return nullptr;
     case Node::kProcessingInstructionNode:
       if (offset > To<ProcessingInstruction>(n)->data().length()) {
         exception_state.ThrowDOMException(
             DOMExceptionCode::kIndexSizeError,
-            StrCat(
-                {"The offset ", String::Number(offset),
-                 " is larger than the node's length (",
-                 String::Number(To<ProcessingInstruction>(n)->data().length()),
-                 ")."}));
+            Format("The offset {} is larger than the node's length ({}).",
+                   offset, To<ProcessingInstruction>(n)->data().length()));
       } else if (offset >
                  static_cast<unsigned>(std::numeric_limits<int>::max())) {
         exception_state.ThrowDOMException(
             DOMExceptionCode::kIndexSizeError,
-            StrCat({"The offset ", String::Number(offset), " is invalid."}));
+            Format("The offset {} is invalid.", offset));
       }
       return nullptr;
     case Node::kAttributeNode:
@@ -1107,15 +1092,14 @@ Node* Range::CheckNodeWOffset(Node* n,
       if (offset > static_cast<unsigned>(std::numeric_limits<int>::max())) {
         exception_state.ThrowDOMException(
             DOMExceptionCode::kIndexSizeError,
-            StrCat({"The offset ", String::Number(offset), " is invalid."}));
+            Format("The offset {} is invalid.", offset));
         return nullptr;
       }
       Node* child_before = NodeTraversal::ChildAt(*n, offset - 1);
       if (!child_before) {
         exception_state.ThrowDOMException(
             DOMExceptionCode::kIndexSizeError,
-            StrCat(
-                {"There is no child at offset ", String::Number(offset), "."}));
+            Format("There is no child at offset {}.", offset));
       }
       return child_before;
     }
@@ -1123,32 +1107,25 @@ Node* Range::CheckNodeWOffset(Node* n,
   NOTREACHED();
 }
 
-void Range::CheckNodeBA(Node* n, ExceptionState& exception_state) const {
-  if (!n) {
-    // FIXME: Generated bindings code never calls with null, and neither should
-    // other callers!
-    exception_state.ThrowTypeError("The node provided is null.");
-    return;
-  }
-
+void Range::CheckNodeBA(Node& n, ExceptionState& exception_state) const {
   // InvalidNodeTypeError: Raised if the root container of refNode is not an
   // Attr, Document, DocumentFragment or ShadowRoot node, or part of a SVG
   // shadow DOM tree, or if refNode is a Document, DocumentFragment, ShadowRoot,
   // Attr, Entity, or Notation node.
 
-  if (!n->parentNode()) {
+  if (!n.parentNode()) {
     exception_state.ThrowDOMException(DOMExceptionCode::kInvalidNodeTypeError,
                                       "the given Node has no parent.");
     return;
   }
 
-  switch (n->getNodeType()) {
+  switch (n.getNodeType()) {
     case Node::kAttributeNode:
     case Node::kDocumentFragmentNode:
     case Node::kDocumentNode:
       exception_state.ThrowDOMException(
           DOMExceptionCode::kInvalidNodeTypeError,
-          StrCat({"The node provided is of type '", n->nodeName(), "'."}));
+          StrCat({"The node provided is of type '", n.nodeName(), "'."}));
       return;
     case Node::kCdataSectionNode:
     case Node::kCommentNode:
@@ -1159,7 +1136,7 @@ void Range::CheckNodeBA(Node* n, ExceptionState& exception_state) const {
       break;
   }
 
-  Node* root = n;
+  Node* root = &n;
   while (ContainerNode* parent = root->parentNode())
     root = parent;
 
@@ -1176,7 +1153,7 @@ void Range::CheckNodeBA(Node* n, ExceptionState& exception_state) const {
     case Node::kTextNode:
       exception_state.ThrowDOMException(
           DOMExceptionCode::kInvalidNodeTypeError,
-          StrCat({"The node provided is of type '", n->nodeName(), "'."}));
+          StrCat({"The node provided is of type '", n.nodeName(), "'."}));
       return;
   }
 }
@@ -1188,7 +1165,7 @@ Range* Range::cloneRange() const {
 }
 
 void Range::setStartAfter(Node* ref_node, ExceptionState& exception_state) {
-  CheckNodeBA(ref_node, exception_state);
+  CheckNodeBA(*ref_node, exception_state);
   if (exception_state.HadException())
     return;
 
@@ -1196,7 +1173,7 @@ void Range::setStartAfter(Node* ref_node, ExceptionState& exception_state) {
 }
 
 void Range::setEndBefore(Node* ref_node, ExceptionState& exception_state) {
-  CheckNodeBA(ref_node, exception_state);
+  CheckNodeBA(*ref_node, exception_state);
   if (exception_state.HadException())
     return;
 
@@ -1204,7 +1181,7 @@ void Range::setEndBefore(Node* ref_node, ExceptionState& exception_state) {
 }
 
 void Range::setEndAfter(Node* ref_node, ExceptionState& exception_state) {
-  CheckNodeBA(ref_node, exception_state);
+  CheckNodeBA(*ref_node, exception_state);
   if (exception_state.HadException())
     return;
 
@@ -1212,12 +1189,7 @@ void Range::setEndAfter(Node* ref_node, ExceptionState& exception_state) {
 }
 
 void Range::selectNode(Node* ref_node, ExceptionState& exception_state) {
-  if (!ref_node) {
-    // FIXME: Generated bindings code never calls with null, and neither should
-    // other callers!
-    exception_state.ThrowTypeError("The node provided is null.");
-    return;
-  }
+  CHECK(ref_node);
 
   if (!ref_node->parentNode()) {
     exception_state.ThrowDOMException(DOMExceptionCode::kInvalidNodeTypeError,
@@ -1262,12 +1234,7 @@ void Range::selectNode(Node* ref_node, ExceptionState& exception_state) {
 
 void Range::selectNodeContents(Node* ref_node,
                                ExceptionState& exception_state) {
-  if (!ref_node) {
-    // FIXME: Generated bindings code never calls with null, and neither should
-    // other callers!
-    exception_state.ThrowTypeError("The node provided is null.");
-    return;
-  }
+  CHECK(ref_node);
 
   // InvalidNodeTypeError: Raised if refNode or an ancestor of refNode is an
   // Entity, Notation
@@ -1333,12 +1300,7 @@ bool Range::selectNodeContents(Node* ref_node, Position& start, Position& end) {
 // https://dom.spec.whatwg.org/#dom-range-surroundcontents
 void Range::surroundContents(Node* new_parent,
                              ExceptionState& exception_state) {
-  if (!new_parent) {
-    // FIXME: Generated bindings code never calls with null, and neither should
-    // other callers!
-    exception_state.ThrowTypeError("The node provided is null.");
-    return;
-  }
+  CHECK(new_parent);
 
   // 1. If a non-Text node is partially contained in the context object, then
   // throw an InvalidStateError.
@@ -1406,7 +1368,7 @@ void Range::surroundContents(Node* new_parent,
 }
 
 void Range::setStartBefore(Node* ref_node, ExceptionState& exception_state) {
-  CheckNodeBA(ref_node, exception_state);
+  CheckNodeBA(*ref_node, exception_state);
   if (exception_state.HadException())
     return;
 
@@ -1655,6 +1617,9 @@ void Range::expand(const String& unit, ExceptionState& exception_state) {
   owner_document_->UpdateStyleAndLayout(DocumentUpdateReason::kJavaScript);
   VisiblePosition start = CreateVisiblePosition(StartPosition());
   VisiblePosition end = CreateVisiblePosition(EndPosition());
+  if (start.IsNull() || end.IsNull()) {
+    return;
+  }
   if (unit == "word") {
     start = CreateVisiblePosition(StartOfWordPosition(start.DeepEquivalent()));
     end = CreateVisiblePosition(EndOfWordPosition(end.DeepEquivalent()));
@@ -1671,11 +1636,25 @@ void Range::expand(const String& unit, ExceptionState& exception_state) {
   } else {
     return;
   }
-  setStart(start.DeepEquivalent().ComputeContainerNode(),
-           start.DeepEquivalent().ComputeOffsetInContainerNode(),
-           exception_state);
-  setEnd(end.DeepEquivalent().ComputeContainerNode(),
-         end.DeepEquivalent().ComputeOffsetInContainerNode(), exception_state);
+  if (start.IsNull() || end.IsNull()) {
+    return;
+  }
+  const Position result_start =
+      SelectionAdjuster::AdjustSelectionToAvoidCrossingShadowBoundaries(
+          SelectionInDomTree::Builder()
+              .SetBaseAndExtent(StartPosition(), start.DeepEquivalent())
+              .Build())
+          .Focus();
+  const Position result_end =
+      SelectionAdjuster::AdjustSelectionToAvoidCrossingShadowBoundaries(
+          SelectionInDomTree::Builder()
+              .SetBaseAndExtent(EndPosition(), end.DeepEquivalent())
+              .Build())
+          .Focus();
+  setStart(result_start.ComputeContainerNode(),
+           result_start.ComputeOffsetInContainerNode(), exception_state);
+  setEnd(result_end.ComputeContainerNode(),
+         result_end.ComputeOffsetInContainerNode(), exception_state);
 }
 
 DOMRectList* Range::getClientRects() const {
@@ -1720,18 +1699,31 @@ void Range::GetBorderAndTextQuads(Vector<gfx::QuadF>& quads) const {
   Node* end_container = &end_.Container();
   Node* stop_node = PastLastNode();
 
-  // Stores the elements selected by the range.
+  // A selected box-less element stays in this set so its descendants inherit
+  // selection. Only an enclosing box suppresses their border boxes.
   HeapHashSet<Member<const Node>> selected_elements;
+  // Stores the elements whose border box is already enclosed by a selected
+  // ancestor, i.e. that ancestor draws a boundary around this subtree. A
+  // box-less ancestor, such as a `display: contents` element, encloses
+  // nothing. Ancestors are visited before their descendants, so this only
+  // looks at the parent.
+  HeapHashSet<Member<const Node>> enclosed_elements;
   for (Node* node = FirstNode(); node && node != stop_node;
        node = NodeTraversal::Next(*node)) {
     if (!node->IsElementNode())
       continue;
     auto* parent_node = node->parentNode();
-    if ((parent_node && selected_elements.Contains(parent_node)) ||
+    const bool parent_is_selected =
+        parent_node && selected_elements.Contains(parent_node);
+    if (parent_is_selected ||
         (!node->contains(start_container) && !node->contains(end_container))) {
       DCHECK_LE(StartPosition(), Position::BeforeNode(*node));
       DCHECK_GE(EndPosition(), Position::AfterNode(*node));
       selected_elements.insert(node);
+    }
+    if (parent_is_selected && (parent_node->GetLayoutObject() ||
+                               enclosed_elements.Contains(parent_node))) {
+      enclosed_elements.insert(node);
     }
   }
 
@@ -1740,8 +1732,9 @@ void Range::GetBorderAndTextQuads(Vector<gfx::QuadF>& quads) const {
     auto* element_node = DynamicTo<Element>(node);
     if (element_node) {
       if (!selected_elements.Contains(node) ||
-          selected_elements.Contains(node->parentNode()))
+          enclosed_elements.Contains(node)) {
         continue;
+      }
       LayoutObject* const layout_object = element_node->GetLayoutObject();
       if (!layout_object)
         continue;

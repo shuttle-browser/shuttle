@@ -125,7 +125,6 @@ source_set("indexed_db") {
     ":*",
     "//content/test/*",
   ]
-  check_includes_strict = CHECK_INCLUDES_STRICT_PUBLIC_INCLUDES_PRIVATE
 }
 
 
@@ -162,8 +161,8 @@ content_mojolpm_fuzzer_test("idb_factory_mojolpm_fuzzer") {
 mojom("internals_mojo_bindings") {
   sources = [ "indexed_db_internals.mojom" ]
   public_deps = [
-    "//components/services/storage/privileged/mojom",
-    "//components/services/storage/public/mojom",
+    "//components/services/storage/privileged/mojom:mojom_webui",
+    "//components/services/storage/public/mojom/buckets",
     "//mojo/public/mojom/base",
   ]
   webui_module_path = "/"

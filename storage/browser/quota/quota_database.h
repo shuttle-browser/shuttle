@@ -43,20 +43,6 @@ namespace storage {
 
 class SpecialStoragePolicy;
 
-// These values are logged to UMA. Entries should not be renumbered and numeric
-// values should never be reused. Please keep in sync with "DatabaseResetReason"
-// in tools/metrics/histograms/enums.xml.
-enum class DatabaseResetReason {
-  kOpenDatabase = 0,
-  kOpenInMemoryDatabase = 1,
-  kCreateSchema = 2,
-  kDatabaseMigration = 3,
-  kDatabaseVersionTooNew = 4,
-  kInitMetaTable = 5,
-  kCreateDirectory = 6,
-  kMaxValue = kCreateDirectory
-};
-
 // Stores all quota managed origin bucket data and metadata.
 //
 // Instances are owned by QuotaManagerImpl. There is one instance per
@@ -255,7 +241,6 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) QuotaDatabase {
 
   QuotaError EnsureOpened();
   void OnSqliteError(int sqlite_error_code, sql::Statement* statement);
-  bool MoveLegacyDatabase();
   bool OpenDatabase();
   bool EnsureDatabaseVersion();
   bool ResetStorage();
@@ -279,7 +264,6 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) QuotaDatabase {
 
   const std::unique_ptr<StorageDirectory> storage_directory_;
   const base::FilePath db_file_path_;
-  const base::FilePath legacy_db_file_path_;
 
   std::unique_ptr<sql::Database> db_ GUARDED_BY_CONTEXT(sequence_checker_);
   // The long-running transaction that batches writes between two commits.

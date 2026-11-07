@@ -5,6 +5,7 @@
 #include "third_party/blink/renderer/core/paint/highlight_painter.h"
 
 #include "base/auto_reset.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "third_party/blink/renderer/core/dom/node.h"
 #include "third_party/blink/renderer/core/editing/editor.h"
 #include "third_party/blink/renderer/core/editing/frame_selection.h"
@@ -198,9 +199,12 @@ TextPaintStyle TextPaintStyleForTextMatch(const TextMatchMarker& marker,
   const mojom::blink::ColorScheme color_scheme = style.UsedColorScheme();
   const Color platform_text_color =
       LayoutTheme::GetTheme().PlatformTextSearchColor(
-          marker.IsActiveMatch(), document.InForcedColorsMode(), color_scheme,
-          document.GetColorProviderForPainting(color_scheme),
-          document.IsInWebAppScope() && document.IsInitialProfile());
+          marker.IsActiveMatch(), document.InForcedColorsMode(),
+          /*theme_info=*/
+          {.color_provider = document.GetColorProviderForPainting(color_scheme),
+           .color_scheme = color_scheme,
+           .can_expose_system_accent_color =
+               document.IsInWebAppScope() && document.IsInitialProfile()});
   // Comparing against the value of the 'color' property doesn't always make
   // sense (for example for SVG <text> which paints using 'fill' and 'stroke').
   if (!ignore_current_color) {
@@ -235,7 +239,8 @@ struct MergedHighlightPart {
  public:
   struct Merged {
    public:
-    const Inner& inner;
+    // RAW_PTR_EXCLUSION: Stack-scoped.
+    RAW_PTR_EXCLUSION const Inner& inner;
     unsigned from;
     unsigned to;
   };
@@ -358,7 +363,7 @@ void HighlightPainter::SelectionPaintState::PaintSelectionBackground(
     const std::optional<AffineTransform>& rotation) {
   const Color color = HighlightStyleUtils::HighlightBackgroundColor(
       document, style, node, selection_style_.style.current_color,
-      kPseudoIdSelection, paint_info.IsPrivacyPreserving(),
+      kPseudoIdSelection, paint_info.IsReadBackAllowedRendering(),
       SearchTextIsActiveMatch::kNo);
   HighlightPainter::PaintHighlightBackground(context, style, color,
                                              PhysicalSelectionRect(), rotation);
@@ -462,8 +467,8 @@ HighlightPainter::HighlightPainter(
             *text_node, fragment_paint_info_.from, fragment_paint_info_.to);
         DCHECK(fragment_dom_offsets_);
         markers_ = controller.ComputeMarkersToPaint(*text_node);
-        if (!paint_info.IsPrivacyPreserving()) {
-          // When preserving privacy, only paint custom highlights and
+        if (!paint_info.IsReadBackAllowedRendering()) {
+          // For read-back allowed rendering, only paint custom highlights and
           // find-in-page. This check only protects markers painted with the
           // highlight overlay system.
           target_ = controller.MarkersFor(
@@ -579,10 +584,13 @@ void HighlightPainter::PaintNonCssMarkers(Phase phase) {
               LayoutTheme::GetTheme().PlatformTextSearchHighlightColor(
                   text_match_marker.IsActiveMatch(),
                   document.InForcedColorsMode(),
-                  originating_style_.UsedColorScheme(),
-                  document.GetColorProviderForPainting(
-                      originating_style_.UsedColorScheme()),
-                  document.IsInWebAppScope() && document.IsInitialProfile());
+                  /*theme_info=*/
+                  {.color_provider = document.GetColorProviderForPainting(
+                       originating_style_.UsedColorScheme()),
+                   .color_scheme = originating_style_.UsedColorScheme(),
+                   .can_expose_system_accent_color =
+                       document.IsInWebAppScope() &&
+                       document.IsInitialProfile()});
           PaintRect(
               paint_info_.context,
               ComputeBackgroundRect(text, paint_start_offset, paint_end_offset),
@@ -612,7 +620,7 @@ void HighlightPainter::PaintNonCssMarkers(Phase phase) {
       case DocumentMarker::kSuggestion: {
         // Editing markers are transient and reflect uncommitted content, so do
         // not draw them.
-        if (paint_info_.IsPrivacyPreserving()) {
+        if (paint_info_.IsReadBackAllowedRendering()) {
           break;
         }
 
@@ -646,7 +654,7 @@ void HighlightPainter::PaintNonCssMarkers(Phase phase) {
       case DocumentMarker::kGlic: {
         // GLIC markers may be related to agentic AI or other features that the
         // document origin would not normally have access to.
-        if (phase == kBackground && !paint_info_.IsPrivacyPreserving()) {
+        if (phase == kBackground && !paint_info_.IsReadBackAllowedRendering()) {
           PaintBackgroundForGlicMarker(marker, text, paint_start_offset,
                                        paint_end_offset);
         }

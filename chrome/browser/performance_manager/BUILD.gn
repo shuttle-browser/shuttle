@@ -64,6 +64,7 @@ source_set("performance_manager") {
     public += [
       "policies/discard_page_with_crashed_subframe_policy.h",
       "policies/process_rank_policy_android.h",
+      "policies/swap_pressure_discarding_policy_android.h",
     ]
     public_deps += [ "//content/public/browser" ]
   }
@@ -72,6 +73,7 @@ source_set("performance_manager") {
     public += [
       "metrics/metrics_provider_desktop.h",
       "policies/freezing_opt_out_checker.h",
+      "policies/memory_saver_memory_coordinator_policy.h",
       "policies/memory_saver_mode_policy.h",
       "policies/sustained_memory_pressure_evaluator.h",
       "policies/urgent_page_discarding_policy.h",
@@ -117,9 +119,7 @@ source_set("performance_manager") {
   }
 
   if (enable_extensions_core && !is_android) {
-    public += [
-      "execution_context_priority/extension_service_worker_priority_voter.h",
-    ]
+    public += [ "priority/extension_service_worker_priority_voter.h" ]
   }
 }
 
@@ -154,10 +154,7 @@ source_set("impl") {
     "user_tuning/user_tuning_utils.cc",
   ]
 
-  public_deps = [
-    ":performance_manager",
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = [ ":performance_manager" ]
 
   deps = [
     "//chrome/browser:browser_process",
@@ -196,6 +193,7 @@ source_set("impl") {
     sources += [
       "policies/discard_page_with_crashed_subframe_policy.cc",
       "policies/process_rank_policy_android.cc",
+      "policies/swap_pressure_discarding_policy_android.cc",
     ]
     deps += [
       "//chrome/browser/flags:flags_android",
@@ -210,6 +208,7 @@ source_set("impl") {
     sources += [
       "metrics/metrics_provider_desktop.cc",
       "policies/freezing_opt_out_checker.cc",
+      "policies/memory_saver_memory_coordinator_policy.cc",
       "policies/memory_saver_mode_policy.cc",
       "policies/sustained_memory_pressure_evaluator.cc",
       "policies/urgent_page_discarding_policy.cc",
@@ -279,9 +278,7 @@ source_set("impl") {
   }
 
   if (enable_extensions_core && !is_android) {
-    sources += [
-      "execution_context_priority/extension_service_worker_priority_voter.cc",
-    ]
+    sources += [ "priority/extension_service_worker_priority_voter.cc" ]
   }
 }
 

@@ -40,7 +40,7 @@ MessagingDelegate::PolicyPermission
 ChromeMessagingDelegate::IsNativeMessagingHostAllowed(
     content::BrowserContext* browser_context,
     const std::string& native_host_name) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   PrefService* pref_service =
       Profile::FromBrowserContext(browser_context)->GetPrefs();

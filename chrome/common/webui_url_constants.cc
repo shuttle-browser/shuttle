@@ -10,8 +10,6 @@
 #include "base/containers/fixed_flat_set.h"
 #include "base/no_destructor.h"
 #include "build/build_config.h"
-#include "components/history_clusters/history_clusters_internals/webui/url_constants.h"
-#include "components/optimization_guide/optimization_guide_internals/webui/url_constants.h"
 #include "components/safe_browsing/core/common/web_ui_constants.h"
 #include "device/vr/buildflags/buildflags.h"
 #include "extensions/buildflags/buildflags.h"
@@ -67,7 +65,6 @@ bool IsSystemWebUIHost(std::string_view host) {
       ash::kChromeUIAppInstallDialogHost,
       ash::kChromeUIBluetoothPairingHost,
       ash::kChromeUIBorealisCreditsHost,
-      ash::kChromeUIBorealisMOTDHost,
       kChromeUICertificateManagerHost,
       ash::kChromeUICloudUploadHost,
       ash::kChromeUICrostiniCreditsHost,
@@ -109,10 +106,8 @@ base::span<const base::cstring_view> ChromeURLHosts() {
       kChromeUICreditsHost,
       kChromeUIDeviceLogHost,
       kChromeUIDownloadInternalsHost,
-      kChromeUIFamilyLinkUserInternalsHost,
       kChromeUIFlagsHost,
       kChromeUIHistoryHost,
-      history_clusters_internals::kChromeUIHistoryClustersInternalsHost,
       kChromeUIInterstitialHost,
       kChromeUILocalStateHost,
 #if !BUILDFLAG(IS_ANDROID)
@@ -123,8 +118,7 @@ base::span<const base::cstring_view> ChromeURLHosts() {
       kChromeUINetExportHost,
       kChromeUINetInternalsHost,
       kChromeUINewTabHost,
-      kChromeUIOmniboxHost,
-      optimization_guide_internals::kChromeUIOptimizationGuideInternalsHost,
+      kChromeUIOmniboxInternalsHost,
       kChromeUIPolicyHost,
       kChromeUIPredictorsHost,
       kChromeUIPrefsInternalsHost,

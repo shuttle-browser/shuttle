@@ -5,6 +5,8 @@
 #ifndef UI_GFX_DISPLAY_COLOR_SPACES_H_
 #define UI_GFX_DISPLAY_COLOR_SPACES_H_
 
+#include <algorithm>
+#include <array>
 #include <optional>
 #include <string>
 #include <vector>
@@ -41,6 +43,28 @@ enum class ContentColorUsage : uint8_t {
   kWideColorGamut = 1,
   kHDR = 2,
   kMaxValue = kHDR,
+};
+
+struct COLOR_SPACE_EXPORT ContentColorVolume {
+  bool is_wide_color_gamut = false;
+  float hdr_headroom = 0.f;
+
+  ContentColorUsage GetContentColorUsage() const {
+    if (hdr_headroom > 0.f) {
+      return ContentColorUsage::kHDR;
+    }
+    if (is_wide_color_gamut) {
+      return ContentColorUsage::kWideColorGamut;
+    }
+    return ContentColorUsage::kSRGB;
+  }
+
+  void UnionWith(const ContentColorVolume& other) {
+    is_wide_color_gamut |= other.is_wide_color_gamut;
+    hdr_headroom = std::max(hdr_headroom, other.hdr_headroom);
+  }
+
+  bool operator==(const ContentColorVolume& other) const = default;
 };
 
 // This structure is used by a display::Display to specify the color space that
@@ -139,7 +163,7 @@ class COLOR_SPACE_EXPORT DisplayColorSpaces {
 
   void AsValueInto(base::trace_event::TracedValue* value) const;
 
-  bool operator==(const DisplayColorSpaces& other) const;
+  bool operator==(const DisplayColorSpaces& other) const = default;
 
   // Return true if the two parameters are equal except for their
   // `hdr_max_luminance_relative_` member.
@@ -152,8 +176,8 @@ class COLOR_SPACE_EXPORT DisplayColorSpaces {
   friend struct mojo::StructTraits<gfx::mojom::DisplayColorSpacesDataView,
                                    gfx::DisplayColorSpaces>;
 
-  gfx::ColorSpace color_spaces_[kConfigCount];
-  viz::SharedImageFormat formats_[kConfigCount];
+  std::array<gfx::ColorSpace, kConfigCount> color_spaces_;
+  std::array<viz::SharedImageFormat, kConfigCount> formats_;
   SkColorSpacePrimaries primaries_ = SkNamedPrimariesExt::kSRGB;
   float sdr_max_luminance_nits_ = ColorSpace::kDefaultSDRWhiteLevel;
   float hdr_max_luminance_relative_ = 1.f;

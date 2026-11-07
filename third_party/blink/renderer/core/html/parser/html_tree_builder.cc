@@ -56,6 +56,8 @@
 #include "third_party/blink/renderer/core/inspector/console_message.h"
 #include "third_party/blink/renderer/core/mathml_names.h"
 #include "third_party/blink/renderer/core/sanitizer/sanitizer.h"
+#include "third_party/blink/renderer/core/script/script_element_base.h"
+#include "third_party/blink/renderer/core/script/script_loader.h"
 #include "third_party/blink/renderer/core/svg_names.h"
 #include "third_party/blink/renderer/core/xlink_names.h"
 #include "third_party/blink/renderer/core/xml_names.h"
@@ -65,6 +67,7 @@
 #include "third_party/blink/renderer/platform/bindings/v8_per_isolate_data.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
+#include "third_party/blink/renderer/platform/network/http_names.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/text/platform_locale.h"
 #include "third_party/blink/renderer/platform/wtf/text/character_names.h"
@@ -80,6 +83,19 @@ namespace {
 
 inline bool IsHTMLSpaceOrReplacementCharacter(UChar character) {
   return IsHTMLSpace<UChar>(character) || character == kReplacementCharacter;
+}
+
+bool IsCSPMetaTagForPreload(AtomicHTMLToken* token) {
+  DCHECK_EQ(token->GetType(), HTMLToken::kStartTag);
+  if (token->GetHTMLTag() != HTMLTag::kMeta) {
+    return false;
+  }
+
+  Attribute* equiv_attribute =
+      token->GetAttributeItem(html_names::kHttpEquivAttr);
+  return equiv_attribute &&
+         EqualIgnoringAsciiCase(equiv_attribute->Value(),
+                                http_names::kContentSecurityPolicy);
 }
 
 enum class FeatureResetMode {
@@ -1628,6 +1644,12 @@ void HTMLTreeBuilder::ProcessStartTag(AtomicHTMLToken* token) {
           DCHECK(did_process);
           return;
         }
+        case HTMLTag::kHead:
+          if (!RuntimeEnabledFeatures::
+                  HTMLParserIgnoreHeadInNoscriptEnabled()) {
+            break;
+          }
+          [[fallthrough]];
         case HTMLTag::kNoscript:
           ParseError(token);
           return;
@@ -2916,7 +2938,16 @@ void HTMLTreeBuilder::ProcessEndOfFile(AtomicHTMLToken* token) {
       ParseError(token);
       if (tree_.CurrentStackItem()->MatchesHTMLTag(HTMLTag::kScript)) {
         // Mark the script element as "already started".
-        DVLOG(1) << "Not implemented.";
+        // TODO(crbug.com/491743369): This is spec-mandated for all parsers,
+        // but it is a web-visible behavior change for the main document parser
+        // (an unclosed <script src> at EOF currently executes). Apply it to
+        // the main document parser too, behind its own feature flag.
+        if (IsParsingFragment()) {
+          if (ScriptLoader* loader =
+                  ScriptLoaderFromElement(tree_.CurrentElement())) {
+            loader->SetAlreadyStarted();
+          }
+        }
       }
       Element* el = tree_.OpenElements()->Top();
       if (IsA<HTMLTextAreaElement>(el))
@@ -2995,11 +3026,17 @@ bool HTMLTreeBuilder::ProcessStartTagForInHead(AtomicHTMLToken* token) {
     case HTMLTag::kBasefont:
     case HTMLTag::kBgsound:
     case HTMLTag::kLink:
-    case HTMLTag::kMeta:
+    case HTMLTag::kMeta: {
+      const bool is_csp_meta_for_preload =
+          !IsParsingTemplateContents() && IsCSPMetaTagForPreload(token);
       tree_.InsertSelfClosingHTMLElementDestroyingToken(token);
+      if (is_csp_meta_for_preload) {
+        parser_->DidProcessCSPMetaTagForPreload();
+      }
       // Note: The custom processing for the <meta> tag is done in
       // HTMLMetaElement::process().
       return true;
+    }
     case html_names::HTMLTag::kCommand:
       if (RuntimeEnabledFeatures::HTMLCommandElementRemovalEnabled()) {
         return false;
@@ -3221,8 +3258,16 @@ void HTMLTreeBuilder::Flush() {
   // we use an exponential backoff strategy. We always want to avoid the
   // O(n^2) string copies for text documents, because they generate a single
   // <pre> with a potentially very large amount of content.
+  //
+  // Fragment parsers (e.g. streamHTML()) always flush: each chunk corresponds
+  // to a write() whose resolution should reflect the DOM, and no text may be
+  // left in pending_text_ if the writer is dropped without close()/abort().
+  // The O(n^2) concern above only applies when a single raw-text run spans
+  // many chunks; synchronous fragment parsing flushes at most once per
+  // Append(), so it is not affected.
   const bool defer_text_run =
-      (insertion_mode_ == kTextMode) || is_text_document_;
+      ((insertion_mode_ == kTextMode) || is_text_document_) &&
+      !IsParsingFragment();
   if (defer_text_run && DeferTreeBuilderFlushEnabled()) {
     base::TimeTicks now = base::TimeTicks::Now();
 

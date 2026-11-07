@@ -28,10 +28,12 @@
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 #include "sandbox/mac/sandbox_serializer.h"
+#include "sandbox/policy/features.h"
 #include "sandbox/policy/mac/params.h"
 #include "sandbox/policy/mac/sandbox_mac.h"
 #include "sandbox/policy/mojom/sandbox.mojom.h"
 #include "sandbox/policy/switches.h"
+#include "services/webnn/public/mojom/features.mojom-features.h"
 
 namespace content {
 
@@ -54,6 +56,11 @@ namespace content {
 //       └── modules.timestamp
 BASE_FEATURE(kMacSandboxRestrictGpuDarwinUserDirs,
              base::FEATURE_ENABLED_BY_DEFAULT);
+
+// If enabled, allows the renderer process to query `process-info-pidinfo` for
+// any process rather than only itself.
+BASE_FEATURE(kMacSandboxAllowRendererPidinfo,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 namespace {
 
@@ -107,7 +114,9 @@ void SetupCommonSandboxParameters(
   const base::CommandLine* browser_command_line =
       base::CommandLine::ForCurrentProcess();
   bool enable_logging = browser_command_line->HasSwitch(
-      sandbox::policy::switches::kEnableSandboxLogging);
+                            sandbox::policy::switches::kEnableSandboxLogging) ||
+                        base::FeatureList::IsEnabled(
+                            sandbox::policy::features::kEnableSandboxLogging);
 
   CHECK(serializer->SetParameter(
       sandbox::policy::kParamExecutablePath,
@@ -197,6 +206,11 @@ bool SetupGpuSandboxParameters(sandbox::SandboxSerializer* serializer,
       sandbox::policy::kParamRestrictGpuDarwinUserDirs,
       base::FeatureList::IsEnabled(kMacSandboxRestrictGpuDarwinUserDirs)));
 
+  CHECK(serializer->SetBooleanParameter(
+      sandbox::policy::kParamWebnnCompilerProcess,
+      base::FeatureList::IsEnabled(
+          webnn::mojom::features::kWebNNCompilerProcess)));
+
   // The helper may not be contained in an app bundle for unit tests.
   // In that case `kParamHelperBundleId` will remain unset.
   if (!helper_bundle_path.empty()) {
@@ -226,6 +240,12 @@ void SetupProxyResolverSandboxParameters(
       sandbox::policy::kParamSystemProxyNetworkAccess, /*value=*/false));
 }
 
+void SetupRendererSandboxParameters(sandbox::SandboxSerializer* serializer) {
+  CHECK(serializer->SetBooleanParameter(
+      sandbox::policy::kParamAllowRendererPidinfo,
+      base::FeatureList::IsEnabled(kMacSandboxAllowRendererPidinfo)));
+}
+
 void SetupWebNNModelCompilationSandboxParameters(
     sandbox::SandboxSerializer* serializer) {
   // CoreML requires access to user temporary directories to write intermediate
@@ -245,12 +265,14 @@ bool SetupSandboxParameters(sandbox::mojom::Sandbox sandbox_type,
     case sandbox::mojom::Sandbox::kMirroring:
     case sandbox::mojom::Sandbox::kPrintBackend:
     case sandbox::mojom::Sandbox::kPrintCompositor:
-    case sandbox::mojom::Sandbox::kRenderer:
     case sandbox::mojom::Sandbox::kService:
     case sandbox::mojom::Sandbox::kServiceWithJit:
     case sandbox::mojom::Sandbox::kPlatformRuntime:
     case sandbox::mojom::Sandbox::kUtility:
       // No specialized setup required.
+      break;
+    case sandbox::mojom::Sandbox::kRenderer:
+      SetupRendererSandboxParameters(serializer);
       break;
     case sandbox::mojom::Sandbox::kProxyResolver:
       SetupProxyResolverSandboxParameters(serializer, command_line);

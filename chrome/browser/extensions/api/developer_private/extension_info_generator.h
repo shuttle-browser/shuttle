@@ -15,7 +15,6 @@
 #include "base/scoped_observation.h"
 #include "chrome/browser/profiles/profile_observer.h"
 #include "chrome/common/extensions/api/developer_private.h"
-#include "components/supervised_user/core/common/buildflags.h"
 #include "extensions/browser/blocklist_state.h"
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/extension_prefs_observer.h"

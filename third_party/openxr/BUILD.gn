@@ -39,7 +39,6 @@ if (enable_openxr) {
     # If you'd like to expand this visibility, you will need to make similar
     # DEPS rules for it as are present in the below locations.
     visibility = [
-      "//chrome/browser/vr/*",
       "//chrome/test/*",
       "//components/webxr/*",
       "//device/vr/*",
@@ -100,7 +99,6 @@ if (enable_openxr) {
     # If you'd like to expand this visibility, you will need to make similar
     # DEPS rules for it as are present in the below locations.
     visibility = [
-      "//chrome/browser/vr/*",
       "//chrome/test/*",
       "//components/webxr/*",
       "//device/vr/*",

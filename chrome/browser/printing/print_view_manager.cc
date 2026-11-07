@@ -51,9 +51,6 @@
 #include "chrome/browser/chromeos/policy/dlp/dlp_content_manager.h"
 #endif
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-#include "chrome/browser/enterprise/data_protection/print_utils.h"
-#endif
 
 using content::BrowserThread;
 
@@ -69,14 +66,14 @@ using ScriptedPrintPreviewClosureMap =
 
 ScriptedPrintPreviewClosureMap& GetScriptedPrintPreviewClosureMap() {
   // No locking, only access on the UI thread.
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   static base::NoDestructor<ScriptedPrintPreviewClosureMap> closure_map;
   return *closure_map;
 }
 
 void OnScriptedPrintPreviewReply(
     PrintViewManager::SetupScriptedPrintPreviewCallback callback) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   std::move(callback).Run();
 }
 
@@ -112,7 +109,7 @@ PrintViewManager::PrintViewManager(content::WebContents* web_contents)
       content::WebContentsUserData<PrintViewManager>(*web_contents) {}
 
 PrintViewManager::~PrintViewManager() {
-  DCHECK_EQ(NOT_PREVIEWING, print_preview_state_);
+  CHECK_EQ(NOT_PREVIEWING, print_preview_state_, base::NotFatalUntil::M162);
 }
 
 // static
@@ -135,8 +132,8 @@ void PrintViewManager::BindPrintManagerHost(
 
 bool PrintViewManager::PrintForSystemDialogNow(
     base::OnceClosure dialog_shown_callback) {
-  DCHECK(dialog_shown_callback);
-  DCHECK(!on_print_dialog_shown_callback_);
+  CHECK(dialog_shown_callback, base::NotFatalUntil::M162);
+  CHECK(!on_print_dialog_shown_callback_, base::NotFatalUntil::M162);
   on_print_dialog_shown_callback_ = std::move(dialog_shown_callback);
   is_switching_to_system_dialog_ = true;
 
@@ -227,7 +224,7 @@ void PrintViewManager::PrintPreviewForWebNode(content::RenderFrameHost* rfh) {
 }
 
 void PrintViewManager::PrintPreviewAlmostDone() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (print_preview_state_ != SCRIPTED_PREVIEW)
     return;
 
@@ -235,7 +232,7 @@ void PrintViewManager::PrintPreviewAlmostDone() {
 }
 
 void PrintViewManager::PrintPreviewDone() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   if (print_preview_state_ == NOT_PREVIEWING)
     return;
 
@@ -377,7 +374,7 @@ void PrintViewManager::DidShowPrintDialog() {
 
 void PrintViewManager::GetPrintPreviewParams(
     GetPrintPreviewParamsCallback callback) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   if (!CheckTargetRenderFrameMatchesRFH()) {
     std::move(callback).Run(nullptr);
     return;
@@ -479,11 +476,11 @@ void PrintViewManager::GetPrintPreviewParams(
 
 void PrintViewManager::SetupScriptedPrintPreview(
     SetupScriptedPrintPreviewCallback callback) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   content::RenderFrameHost& rfh = CurrentTargetFrame();
   // The Mojo receiver endpoint is owned by a RenderFrameHostReceiverSet, so
   // this DCHECK should always hold.
-  DCHECK(rfh.IsRenderFrameLive());
+  CHECK(rfh.IsRenderFrameLive(), base::NotFatalUntil::M162);
 
   if (!rfh.IsActive()) {
     std::move(callback).Run();
@@ -516,7 +513,7 @@ void PrintViewManager::SetupScriptedPrintPreview(
   print_preview_state_ = SCRIPTED_PREVIEW;
   map[rph] = base::BindOnce(&OnScriptedPrintPreviewReply, std::move(callback));
   scripted_print_preview_rph_ = rph;
-  DCHECK(!scripted_print_preview_rph_set_blocked_);
+  CHECK(!scripted_print_preview_rph_set_blocked_, base::NotFatalUntil::M162);
   if (!scripted_print_preview_rph_->IsBlocked()) {
     scripted_print_preview_rph_->SetBlocked(true);
     scripted_print_preview_rph_set_blocked_ = true;
@@ -532,9 +529,6 @@ void PrintViewManager::ShowScriptedPrintPreview() {
     return;
   }
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  set_analyzing_content(/*analyzing=*/true);
-#endif
   RejectPrintPreviewRequestIfRestricted(
       print_preview_rfh_->GetGlobalId(),
       base::BindOnce(&PrintViewManager::OnScriptedPrintPreviewCallback,
@@ -545,9 +539,6 @@ void PrintViewManager::ShowScriptedPrintPreview() {
 void PrintViewManager::OnScriptedPrintPreviewCallback(
     content::GlobalRenderFrameHostId rfh_id,
     bool should_proceed) {
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  set_analyzing_content(/*analyzing=*/false);
-#endif
   if (!should_proceed) {
     OnPrintPreviewRequestRejected(rfh_id);
     return;
@@ -557,7 +548,7 @@ void PrintViewManager::OnScriptedPrintPreviewCallback(
     return;
   }
 
-  DCHECK(print_preview_rfh_);
+  CHECK(print_preview_rfh_, base::NotFatalUntil::M162);
 
   auto* rfh = content::RenderFrameHost::FromID(rfh_id);
   if (!rfh || rfh != print_preview_rfh_ || !print_preview_rfh_->IsActive()) {
@@ -594,9 +585,6 @@ void PrintViewManager::RequestPrintPreview(
     return;
   }
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  set_analyzing_content(/*analyzing=*/true);
-#endif
   content::GlobalRenderFrameHostId id = rfh.GetGlobalId();
   RejectPrintPreviewRequestIfRestricted(
       id, base::BindOnce(&PrintViewManager::OnRequestPrintPreviewCallback,
@@ -607,9 +595,6 @@ void PrintViewManager::OnRequestPrintPreviewCallback(
     mojom::RequestPrintPreviewParamsPtr params,
     content::GlobalRenderFrameHostId rfh_id,
     bool should_proceed) {
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  set_analyzing_content(/*analyzing=*/false);
-#endif
   if (!should_proceed) {
     OnPrintPreviewRequestRejected(rfh_id);
     return;
@@ -680,13 +665,13 @@ void PrintViewManager::MaybeUnblockScriptedPreviewRPH() {
 
 void PrintViewManager::SetPrintPreviewRenderFrameHost(
     content::RenderFrameHost* rfh) {
-  DCHECK_EQ(print_preview_state_, NOT_PREVIEWING);
-  DCHECK(rfh);
-  DCHECK(IsPrintRenderFrameConnected(rfh));
+  CHECK_EQ(print_preview_state_, NOT_PREVIEWING, base::NotFatalUntil::M162);
+  CHECK(rfh, base::NotFatalUntil::M162);
+  CHECK(IsPrintRenderFrameConnected(rfh), base::NotFatalUntil::M162);
   // All callers should already ensure this condition holds; CHECK to
   // aggressively protect against future unsafety.
   CHECK(rfh->IsRenderFrameLive());
-  DCHECK(!print_preview_rfh_);
+  CHECK(!print_preview_rfh_, base::NotFatalUntil::M162);
   print_preview_rfh_ = rfh;
 }
 

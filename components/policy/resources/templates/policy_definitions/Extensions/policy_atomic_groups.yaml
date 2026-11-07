@@ -9,5 +9,5 @@ Extensions:
   - ExtensionSettings
   - ExtensionUnpublishedAvailability
   - ExtensionExtendedBackgroundLifetimeForPortConnectionsToUrls
-  - ExtensionDOMActivityLoggingEnabled
   - ExtensionReviewPromptsEnabled
+  - ExtensionForceInstallWithSearchOrNewTabOverridesEnabled

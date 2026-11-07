@@ -205,6 +205,14 @@ bool IsCollapsed(const AXNode* node) {
   return node && node->HasState(ax::mojom::State::kCollapsed);
 }
 
+// `AXComputedNodeData` includes the contents of child trees, so a change to a
+// child tree also invalidates its host node and all of that node's ancestors.
+void ClearComputedNodeDataCrossingTreeBoundary(AXNode* node) {
+  for (; node; node = node->GetParentCrossingTreeBoundary()) {
+    node->ClearComputedNodeData();
+  }
+}
+
 }  // namespace
 
 // static
@@ -1535,6 +1543,11 @@ bool AXTree::Unserialize(const AXTreeUpdate& update) {
 
   }  // tree_update_in_progress.
 
+  if (!update_state.node_data_changed_ids.empty()) {
+    ClearComputedNodeDataCrossingTreeBoundary(
+        root_->GetParentCrossingTreeBoundary());
+  }
+
   if (update_state.old_tree_data) {
     DCHECK(update.has_tree_data)
         << "If `UpdateState::old_tree_data` exists, then there must be a "
@@ -2182,6 +2195,7 @@ void AXTree::NotifyNodeHasBeenReparentedOrCreated(
 void AXTree::NotifyChildTreeConnectionChanged(AXNode* node,
                                               AXTree* child_tree) {
   DCHECK(node->tree() == this);
+  ClearComputedNodeDataCrossingTreeBoundary(node);
   observers_.Notify(&AXTreeObserver::OnChildTreeConnectionChanged, node);
 }
 
@@ -2408,13 +2422,15 @@ void AXTree::UpdateReverseRelations(AXNode* node,
           }
         }
       }
-      map[new_relation_target_id].insert(id);
+      if (new_relation_target_id != kInvalidAXNodeID) {
+        map[new_relation_target_id].insert(id);
+      }
     }
   }
 
   for (const auto& attr : kReverseRelationIntListAttributes) {
-    const std::vector<int32_t>& old_idlist = old_data.GetIntListAttribute(attr);
-    const std::vector<int32_t>& new_idlist = new_data.GetIntListAttribute(attr);
+    base::span<const int32_t> old_idlist = old_data.GetIntListAttribute(attr);
+    base::span<const int32_t> new_idlist = new_data.GetIntListAttribute(attr);
     if (is_new_node || old_idlist != new_idlist) {
       auto& map = intlist_reverse_relations_[attr];
       if (!is_new_node) {
@@ -2732,6 +2748,11 @@ void AXTree::PopulateOrderedSetItemsMap(
   }
 }
 
+// TODO(dgrogan): Remove the IsContentViolatedMenu checks from this method.
+// Instead, add a separate IsContentViolatedMenu-specific method with its
+// simpler rules (all items flatten to the same level, radios aren't
+// special-cased, and we only recurse into non-member containers like
+// <fieldset>).
 void AXTree::RecursivelyPopulateOrderedSetItemsMap(
     const AXNode& original_node,
     const AXNode* ordered_set,
@@ -2756,6 +2777,15 @@ void AXTree::RecursivelyPopulateOrderedSetItemsMap(
       ordered_set != local_parent)
     return;
 
+  // Radio buttons report PosInSet/SetSize even when they aren't items of their
+  // container; they can be directly inside e.g. a form, or a list alongside
+  // list items. So unless |ordered_set| is a content-violated menu, a radio
+  // button's set is the other radio buttons, not |ordered_set|'s items. In a
+  // content-violated menu, radio buttons are items of the menu like any other.
+  const bool count_only_radios =
+      original_node.GetRole() == ax::mojom::Role::kRadioButton &&
+      !ordered_set->IsContentViolatedMenu();
+
   for (AXNode::UnignoredChildIterator
            itr = local_parent->UnignoredChildrenBegin(),
            end = local_parent->UnignoredChildrenEnd();
@@ -2777,14 +2807,12 @@ void AXTree::RecursivelyPopulateOrderedSetItemsMap(
 
     std::optional<int> curr_level = child->GetHierarchicalLevel();
 
-    // Add child to |items_map_to_be_populated| if role matches with the role of
-    // |ordered_set|. If role of node is kRadioButton, don't add items of other
-    // roles, even if item role matches the role of |ordered_set|.
-    if (child->GetRole() == ax::mojom::Role::kComment ||
-        (original_node.GetRole() == ax::mojom::Role::kRadioButton &&
+    const bool child_is_set_member =
+        child->GetRole() == ax::mojom::Role::kComment ||
+        (count_only_radios &&
          child->GetRole() == ax::mojom::Role::kRadioButton) ||
-        (original_node.GetRole() != ax::mojom::Role::kRadioButton &&
-         child->SetRoleMatchesItemRole(ordered_set))) {
+        (!count_only_radios && child->SetRoleMatchesItemRole(ordered_set));
+    if (child_is_set_member) {
       // According to WAI-ARIA spec, some ordered set items do not support
       // hierarchical level while its ordered set container does. For example,
       // <tab> does not support level, while <tablist> supports level.
@@ -2793,8 +2821,14 @@ void AXTree::RecursivelyPopulateOrderedSetItemsMap(
       // For this special case, when we add set items (e.g. tab) to
       // |items_map_to_be_populated|, set item is placed at the same level as
       // its container (e.g. tablist) in |items_map_to_be_populated|.
-      if (!curr_level && child->GetUnignoredParent() == ordered_set)
+      // In a content-violated menu, every item is an item of the menu, so it
+      // is placed at the menu's level even if it has a level of its own (e.g.
+      // a <menuitem> inside a <fieldset> has level 1 while the menu's level is
+      // unset when it has no direct-child <menuitem>).
+      if ((!curr_level && child->GetUnignoredParent() == ordered_set) ||
+          ordered_set->IsContentViolatedMenu()) {
         curr_level = ordered_set_min_level;
+      }
 
       // We only add child to |items_map_to_be_populated| if the child set item
       // is at the same hierarchical level as |ordered_set|'s level.
@@ -2813,7 +2847,11 @@ void AXTree::RecursivelyPopulateOrderedSetItemsMap(
     // If |child| is an ignored container for ordered set and should not be used
     // to contribute to |items_map_to_be_populated|, we recurse into |child|'s
     // descendants to populate |items_map_to_be_populated|.
-    if (child->IsIgnoredContainerForOrderedSet()) {
+    // In a content-violated menu, a <menuitem> has the kListItem role, which is
+    // both an item and an ignored container. Don't recurse into it, or its own
+    // contents would be counted as its siblings.
+    if (child->IsIgnoredContainerForOrderedSet() &&
+        !(child_is_set_member && ordered_set->IsContentViolatedMenu())) {
       RecursivelyPopulateOrderedSetItemsMap(original_node, ordered_set, child,
                                             ordered_set_min_level, curr_level,
                                             items_map_to_be_populated);
@@ -2991,7 +3029,7 @@ std::optional<int> AXTree::GetPosInSet(const AXNode& node) {
   if (node.GetRole() == ax::mojom::Role::kRadioButton &&
       !node.HasIntAttribute(ax::mojom::IntAttribute::kPosInSet) &&
       node.HasIntListAttribute(ax::mojom::IntListAttribute::kRadioGroupIds)) {
-    const std::vector<int32_t>& ids =
+    base::span<const int32_t> ids =
         node.GetIntListAttribute(ax::mojom::IntListAttribute::kRadioGroupIds);
     for (size_t i = 0; i < ids.size(); ++i) {
       if (ids[i] == node.id()) {

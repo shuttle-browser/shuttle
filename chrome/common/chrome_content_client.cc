@@ -207,6 +207,7 @@ void ChromeContentClient::AddAdditionalSchemes(Schemes* schemes) {
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   schemes->extension_schemes.push_back(extensions::kExtensionScheme);
+  schemes->code_cache_schemes.push_back(extensions::kExtensionScheme);
 #endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
@@ -255,13 +256,6 @@ void ChromeContentClient::AddAdditionalSchemes(Schemes* schemes) {
 #if BUILDFLAG(IS_ANDROID)
   schemes->local_schemes.push_back(url::kContentScheme);
 #endif
-
-  schemes->standard_schemes.push_back(
-      chrome::kChromeExperimentalSiteTokenProviderScheme);
-  schemes->secure_schemes.push_back(
-      chrome::kChromeExperimentalSiteTokenProviderScheme);
-  schemes->cors_enabled_schemes.push_back(
-      chrome::kChromeExperimentalSiteTokenProviderScheme);
 }
 
 std::u16string ChromeContentClient::GetLocalizedString(int message_id) {

@@ -34,6 +34,7 @@
 #include <ostream>
 #include <utility>
 
+#include "base/auto_reset.h"
 #include "base/containers/span.h"
 #include "base/dcheck_is_on.h"
 #include "base/gtest_prod_util.h"
@@ -77,7 +78,6 @@ enum class ScrollSourceType;
 
 namespace blink {
 
-class AbstractInlineTextBox;
 class AXObject;
 class AXObjectCacheImpl;
 class HTMLElement;
@@ -339,7 +339,6 @@ class MODULES_EXPORT AXObject : public GarbageCollected<AXObject> {
 
   // Wrappers that retrieve either an Accessibility Object Model property,
   // or the equivalent ARIA attribute, in that order.
-  virtual AbstractInlineTextBox* GetInlineTextBox() const { return nullptr; }
   virtual std::optional<AXBlockFlowIterator::FragmentIndex> GetFragmentIndex()
       const {
     return std::nullopt;
@@ -751,6 +750,9 @@ class MODULES_EXPORT AXObject : public GarbageCollected<AXObject> {
   // each word in the object's text.
   virtual void GetWordBoundaries(Vector<int>& word_starts,
                                  Vector<int>& word_ends) const;
+  static void GetWordBoundariesForText(Vector<int>& word_starts,
+                                       Vector<int>& word_ends,
+                                       const String& text);
 
   // For all inline text boxes and atomic text fields: Returns the length of the
   // inline's text or the field's value respectively.
@@ -864,6 +866,10 @@ class MODULES_EXPORT AXObject : public GarbageCollected<AXObject> {
 
   // (2) Determine the ARIA role after applying rules based on other properties.
   ax::mojom::blink::Role DetermineAriaRole() const;
+
+  // Returns true if an explicit ARIA role is only exposed when the element has
+  // an author-provided accessible name.
+  static bool IsNameDependentAriaRole(ax::mojom::blink::Role);
 
   // (3) Determine the native role using other ARIA properties (without using
   // the ARIA role).
@@ -982,10 +988,11 @@ class MODULES_EXPORT AXObject : public GarbageCollected<AXObject> {
   // on an invoking element, if a details relationship should be set up.
   AXObject* GetCommandForElementForDetailsRelation() const;
 
-  // Heuristic to get the target element for an element with the `interestfor`
-  // attribute. Returns null if the `interestfor` can be exposed as a
-  // description instead (even if there is a valid target element).
-  AXObject* GetInterestForTargetPopover() const;
+  // Returns the target of this element's `interestfor`, if that target is a
+  // rich hint: a popover whose contents are not plain (see IsPlainContent()).
+  // Returns null otherwise, including when the target is a plain hint, which
+  // is exposed as a name or description instead.
+  AXObject* GetRichHintTargetPopover() const;
 
   // Elements can be positioned relative to other elements with CSS anchor
   // positioning. This function returns the positioned element that should be
@@ -1002,6 +1009,9 @@ class MODULES_EXPORT AXObject : public GarbageCollected<AXObject> {
   // Scroll buttons and scroll marker groups are controls for the scrolling
   // element.
   AXObject* GetControlsForOverflowNavigation() const;
+
+  // Returns the listbox controlled by a filtering <input> for FilterableSelect.
+  AXObject* GetControlsListboxForFilterableSelect() const;
 
   // Returns true if this object is within or at the root of an editable region,
   // such as a contenteditable. Also, returns true if this object is an atomic
@@ -1291,6 +1301,31 @@ class MODULES_EXPORT AXObject : public GarbageCollected<AXObject> {
     return children_;
   }
 
+  // Range adapter for `AXObject::children_`, sets `AXObject::children_guarded_`
+  // while alive to avoid re-entrant modification of `children_`.
+  class GuardedChildren {
+    STACK_ALLOCATED();
+
+   public:
+    explicit GuardedChildren(AXObject& object)
+        : children_(object.children_),
+          guarded_(&object.children_guarded_, true) {}
+
+    auto begin() const { return children_.begin(); }
+    auto end() const { return children_.end(); }
+
+   private:
+    const AXObjectVector& children_;
+    base::AutoReset<bool> guarded_;
+  };
+
+  // Like CachedChildrenIncludingIgnored(), but holds a reentrancy guard on this
+  // object for the loop, so nested calls can't clear or rebuild its children_
+  // while the loop runs.
+  GuardedChildren GuardedCachedChildrenIncludingIgnored() {
+    return GuardedChildren(*this);
+  }
+
   // Sets the parent AXObject directly. If the parent of this object is known,
   // this can be faster than using ComputeParent().
   void SetParent(AXObject* new_parent);
@@ -1513,11 +1548,6 @@ class MODULES_EXPORT AXObject : public GarbageCollected<AXObject> {
 
   // Modify or take an action on an object. Returns true if handled.
   bool PerformAction(const ui::AXActionData&);
-  // TODO(accessibility) Do this through PerformAction() and move to private.
-  bool RequestScrollToMakeVisibleWithSubFocusAction(
-      const gfx::Rect&,
-      blink::mojom::blink::ScrollAlignment horizontal_scroll_alignment,
-      blink::mojom::blink::ScrollAlignment vertical_scroll_alignment);
 
   // These are actions, just like the actions above, and they allow us
   // to keep track of nodes that gain or lose accessibility focus, but
@@ -1533,11 +1563,22 @@ class MODULES_EXPORT AXObject : public GarbageCollected<AXObject> {
   virtual bool OnNativeFocusAction();
   virtual bool OnNativeIncrementAction();
   bool OnNativeScrollToGlobalPointAction(const gfx::Point&) const;
-  bool OnNativeScrollToMakeVisibleAction() const;
+  // Scrolls this object's full bounding box
+  // (`LayoutObject::AbsoluteBoundingBoxRect()`) into view using the requested
+  // scroll alignments.
+  bool OnNativeScrollToMakeVisibleAction(
+      mojom::blink::ScrollAlignment horizontal_scroll_alignment,
+      mojom::blink::ScrollAlignment vertical_scroll_alignment) const;
+  // Scrolls `target_rect` into view using the requested scroll alignments.
+  // `target_rect` is relative to the object's own top-left origin, so it is
+  // offset by `LayoutObject::LocalBoundingBoxRectForAccessibility().origin()`
+  // (which is `(0, 0)` for `LayoutBox` and `(inline_x, inline_y)` in the
+  // containing block for `LayoutInline` and `LayoutText`) and mapped to
+  // absolute coordinates via `LayoutObject::LocalToAbsoluteRect()`.
   bool OnNativeScrollToMakeVisibleWithSubFocusAction(
-      const gfx::Rect&,
-      blink::mojom::blink::ScrollAlignment horizontal_scroll_alignment,
-      blink::mojom::blink::ScrollAlignment vertical_scroll_alignment) const;
+      const gfx::Rect& target_rect,
+      mojom::blink::ScrollAlignment horizontal_scroll_alignment,
+      mojom::blink::ScrollAlignment vertical_scroll_alignment) const;
   virtual bool OnNativeSetSelectedAction(bool);
   virtual bool OnNativeSetSequentialFocusNavigationStartingPointAction();
   virtual bool OnNativeSetValueAction(const String&);
@@ -1597,6 +1638,8 @@ class MODULES_EXPORT AXObject : public GarbageCollected<AXObject> {
   // When true, actions may use more expensive layout-based computations.
   // e.g. DefaultActionVerb::kClickInHitTest.
   bool use_layout_based_action_ = false;
+  // While true children_ is being walked and must not be cleared or rebuilt.
+  bool children_guarded_ = false;
 
   // The final role, taking into account the ARIA role and native role.
   ax::mojom::blink::Role role_;
@@ -1711,6 +1754,12 @@ class MODULES_EXPORT AXObject : public GarbageCollected<AXObject> {
 #endif
 
  private:
+  void SetParentInternal(AXObject* parent) {
+    parent_ = parent;
+    if (parent_) {
+      parent_->may_have_attached_children_ = true;
+    }
+  }
   void NotifyCanvasIgnoredStateChanged(bool is_ignored);
   bool ComputeCanSetFocusAttribute();
   String KeyboardShortcut() const;
@@ -1727,10 +1776,18 @@ class MODULES_EXPORT AXObject : public GarbageCollected<AXObject> {
   AXObject* GetPopoverForDetailsRelation(const HTMLElement& popover,
                                          bool exclude_plain_content) const;
 
+  // Returns true if this is a popover with no explicit or implicit role, that
+  // is the rich hint of an interest invoker (see GetRichHintTargetPopover()).
+  // Such a popover gets a minimum role of tooltip instead of group.
+  bool HasRichHintMinimumRole() const;
+
   // Whether this is an AXNodeObject.
   bool is_node_object_ : 1 = false;
 
   bool children_dirty_ : 1 = false;
+  // True if any child AXObject has set its `parent_` to this object since the
+  // last `ClearChildren()` call.
+  bool may_have_attached_children_ : 1 = false;
 
   // Do the rest of the cached_* member variables need to be recomputed?
   bool cached_values_need_update_ : 1 = true;
@@ -1783,7 +1840,13 @@ class MODULES_EXPORT AXObject : public GarbageCollected<AXObject> {
   bool RequestFocusAction();
   bool RequestIncrementAction();
   bool RequestScrollToGlobalPointAction(const gfx::Point&);
-  bool RequestScrollToMakeVisibleAction();
+  bool RequestScrollToMakeVisibleAction(
+      mojom::blink::ScrollAlignment horizontal_scroll_alignment,
+      mojom::blink::ScrollAlignment vertical_scroll_alignment);
+  bool RequestScrollToMakeVisibleWithSubFocusAction(
+      const gfx::Rect& target_rect,
+      mojom::blink::ScrollAlignment horizontal_scroll_alignment,
+      mojom::blink::ScrollAlignment vertical_scroll_alignment);
   bool RequestSetSelectedAction(bool);
   bool RequestSetSequentialFocusNavigationStartingPointAction();
   bool RequestSetValueAction(const String&);
@@ -1799,6 +1862,15 @@ class MODULES_EXPORT AXObject : public GarbageCollected<AXObject> {
   // objects generated. Returns nullptr if a native scroll action to the node is
   // not possible.
   LayoutObject* GetLayoutObjectForNativeScrollAction() const;
+  // Updates style and layout for this object's node and returns the live
+  // `AXObject` (re-fetching from `AXObjectCache()` if updating layout detached
+  // `this`).
+  AXObject* GetTargetForScrollAction();
+  void ScrollLayoutObjectRectToVisible(
+      const LayoutObject& target_layout_object,
+      const PhysicalRect& absolute_target_rect,
+      mojom::blink::ScrollAlignment horizontal_scroll_alignment,
+      mojom::blink::ScrollAlignment vertical_scroll_alignment) const;
 
   void DispatchKeyboardEvent(LocalDOMWindow* local_dom_window,
                              WebInputEvent::Type type,

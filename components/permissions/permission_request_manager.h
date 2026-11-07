@@ -15,6 +15,7 @@
 
 #include "base/callback_list.h"
 #include "base/check_is_test.h"
+#include "base/containers/flat_set.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
@@ -27,7 +28,7 @@
 #include "components/permissions/permission_prompt.h"
 #include "components/permissions/permission_request_queue.h"
 #include "components/permissions/permission_uma_constants.h"
-#include "components/permissions/prediction_service/permission_ui_selector.h"
+#include "components/permissions/permission_ui_selector.h"
 #include "components/permissions/request_type.h"
 #include "components/permissions/resolvers/permission_prompt_options.h"
 #include "components/tabs/public/tab_interface.h"
@@ -142,6 +143,11 @@ class PermissionRequestManager
   void AddRequest(content::RenderFrameHost* source_frame,
                   std::unique_ptr<PermissionRequest> request);
 
+  // Cancels all queued or currently in-progress requests with `request_type.
+  // Note that if a matching request is currently being displayed together with
+  // other requests of other types, they will also be cancelled.
+  void CancelAllRequestsWithType(RequestType request_type);
+
   // Will reposition the bubble (may change parent if necessary).
   void UpdateAnchor();
 
@@ -235,6 +241,16 @@ class PermissionRequestManager
         web_contents_supports_permission_requests;
   }
 
+  // Restricts which permission request types are allowed for this WebContents.
+  // Should be called before any requests are added, as it does not affect
+  // requests that are already queued or showing.
+  void set_allowlist_for_permission_requests(
+      std::optional<base::flat_set<RequestType>>
+          allowlist_for_permission_requests) {
+    allowlist_for_permission_requests_ =
+        std::move(allowlist_for_permission_requests);
+  }
+
   // For testing only, used to override the default UI selectors and instead use
   // a new one.
   void set_permission_ui_selector_for_testing(
@@ -281,20 +297,6 @@ class PermissionRequestManager
 
   void set_on_page_loaded_time_for_testing(base::TimeTicks time) {
     on_page_loaded_time_ = time;
-  }
-
-  std::optional<PermissionUiSelector::PredictionGrantLikelihood>
-  prediction_grant_likelihood_for_testing() const {
-    return prediction_grant_likelihood_;
-  }
-
-  std::optional<bool> was_decision_held_back_for_testing() const {
-    return was_decision_held_back_;
-  }
-
-  std::optional<PermissionRequestRelevance>
-  permission_request_relevance_for_testing() const {
-    return permission_request_relevance_;
   }
 
   std::optional<permissions::PermissionPromptDisposition>
@@ -534,6 +536,10 @@ class PermissionRequestManager
 
   void RecordPostPromptSessionDuration();
 
+  void MaybeReportGeolocationPromptWithoutUserGestureInspectorIssue(
+      const PermissionRequest* request,
+      content::RenderFrameHost* source_frame);
+
   // Factory to be used to create views when needed.
   PermissionPrompt::Factory view_factory_;
 
@@ -641,24 +647,6 @@ class PermissionRequestManager
   // still waiting on the result from |permission_ui_selectors_|.
   std::optional<UiDecision> current_request_ui_to_use_;
 
-  // The likelihood value returned by the Web Permission Predictions Service,
-  // to be recorded in UKM.
-  std::optional<PermissionUiSelector::PredictionGrantLikelihood>
-      prediction_grant_likelihood_;
-
-  // The permission request relevance returned by an on-device ML model,
-  // to be recorded in UKM.
-  std::optional<PermissionRequestRelevance> permission_request_relevance_;
-
-  // The AI model version used for the permission decision, to be recorded in
-  // UKM.
-  std::optional<permissions::PermissionAiRelevanceModel>
-      permission_ai_relevance_model_;
-
-  // Status of the decision made by the Web Permission Prediction Service, if
-  // it was held back or not.
-  std::optional<bool> was_decision_held_back_;
-
   // True when the prompt is being temporary destroyed to be recreated for the
   // correct browser or when the tab is hidden. In those cases, callbacks from
   // the bubble itself should be ignored.
@@ -667,6 +655,13 @@ class PermissionRequestManager
   // Whether the web contents associated with this request manager supports
   // permission prompts.
   bool web_contents_supports_permission_requests_ = true;
+
+  // Optional allowlist of permission request types supported by the web
+  // contents associated with this request manager. If set, any request whose
+  // type is not in the allowlist will be cancelled. Ignored if
+  // `web_contents_supports_permission_requests_` is false, which takes
+  // priority.
+  std::optional<base::flat_set<RequestType>> allowlist_for_permission_requests_;
 
   // Whether the current request should be dismissed if the current tab is
   // closed.

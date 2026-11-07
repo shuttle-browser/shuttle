@@ -20,10 +20,9 @@
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/chrome_widget_sublevel.h"
-#include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
+#include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
 #include "chrome/browser/ui/views/tabs/hovercard/hover_card_anchor_target.h"
 #include "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_bubble_view.h"
 #include "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_thumbnail_observer.h"
@@ -64,7 +63,7 @@ base::TimeDelta GetPreviewImageCaptureDelay(
       break;
     }
   }
-  DCHECK_GE(ms, 0);
+  CHECK_GE(ms, 0, base::NotFatalUntil::M162);
   return base::Milliseconds(ms);
 }
 
@@ -99,36 +98,23 @@ base::TimeDelta GetShowDelay(BrowserWindowInterface* browser,
   //               |                                |
   //       minimum tab width               standard tab width
   int tab_width = 0, tab_min_width = 0, tab_standard_width = 0;
-  auto* vertical_tab_strip_state_controller =
-      tabs::VerticalTabStripStateController::From(browser);
-  if (vertical_tab_strip_state_controller &&
-      vertical_tab_strip_state_controller->ShouldDisplayVerticalTabs()) {
-    // For vertical tabs, we use tab strip width instead of tab widths. The
-    // minimum width is the collapsed state while the standard width is tied to
-    // the default uncollapsed width.
-    tab_width = tab_strip->width();
-
-    tab_min_width = VerticalTabStripRegionView::kCollapsedWidth;
-    tab_standard_width = tabs::kVerticalTabStripDefaultUncollapsedWidth;
-  } else {
-    // Use the largest tab in the tab strip when determining the delay so that
-    // the delay is consistent for all tabs within the tab strip.
-    tab_width = anchor_target->GetView()->width();
-    for (int i = 0; i < browser->GetTabStripModel()->count(); i++) {
-      tabs::TabInterface* tab = browser->GetTabStripModel()->GetTabAtIndex(i);
-      if (!tab) {
-        continue;
-      }
-      views::View* tab_anchor = tab_strip->GetTabAnchorView(tab->GetHandle());
-      if (tab_anchor) {
-        tab_width = std::max(tab_width, tab_anchor->width());
-      }
+  // Use the largest tab in the tab strip when determining the delay so that
+  // the delay is consistent for all tabs within the tab strip.
+  tab_width = anchor_target->GetView()->width();
+  for (int i = 0; i < browser->GetTabStripModel()->count(); i++) {
+    tabs::TabInterface* tab = browser->GetTabStripModel()->GetTabAtIndex(i);
+    if (!tab) {
+      continue;
     }
-
-    const TabStyle* tab_style = TabStyle::Get();
-    tab_min_width = tab_style->GetPinnedWidth(/*is_split=*/false);
-    tab_standard_width = tab_style->GetStandardWidth(/*is_split=*/false);
+    views::View* tab_anchor = tab_strip->GetTabAnchorView(tab->GetHandle());
+    if (tab_anchor) {
+      tab_width = std::max(tab_width, tab_anchor->width());
+    }
   }
+
+  const TabStyle* tab_style = TabStyle::Get();
+  tab_min_width = tab_style->GetPinnedWidth(/*is_split=*/false);
+  tab_standard_width = tab_style->GetStandardWidth(/*is_split=*/false);
 
   constexpr base::TimeDelta kMinimumTriggerDelay = base::Milliseconds(300);
   if (tab_width <= tab_min_width) {
@@ -158,13 +144,7 @@ views::WidgetFadeAnimator::SlideDirection ComputeSlideDirection(
     return views::WidgetFadeAnimator::SlideDirection::kNone;
   }
 
-  auto* controller = tabs::VerticalTabStripStateController::From(browser);
-
-  if (controller && controller->ShouldDisplayVerticalTabs()) {
-    return views::WidgetFadeAnimator::SlideDirection::kTrailing;
-  } else {
-    return views::WidgetFadeAnimator::SlideDirection::kDown;
-  }
+  return views::WidgetFadeAnimator::SlideDirection::kDown;
 }
 
 }  // anonymous namespace
@@ -336,12 +316,13 @@ void TabHoverCardController::UpdateHoverCard(
       }
       break;
     case TabSlotController::HoverCardUpdateType::kTabDataChanged:
-      DCHECK(anchor_target && IsHoverCardShowingForTab(anchor_target));
+      CHECK(anchor_target && IsHoverCardShowingForTab(anchor_target),
+            base::NotFatalUntil::M162);
       break;
     case TabSlotController::HoverCardUpdateType::kTabRemoved:
     case TabSlotController::HoverCardUpdateType::kAnimating:
       // Neither of these cases should have a tab associated.
-      DCHECK(!anchor_target);
+      CHECK(!anchor_target, base::NotFatalUntil::M162);
       break;
     case TabSlotController::HoverCardUpdateType::kEvent:
     case TabSlotController::HoverCardUpdateType::kFocus:
@@ -398,8 +379,8 @@ void TabHoverCardController::OnViewIsDeleting(views::View* observed_view) {
                     TabSlotController::HoverCardUpdateType::kTabRemoved);
     // These postconditions should always be met after calling
     // UpdateHoverCard(nullptr, ...)
-    DCHECK(!target_tab_);
-    DCHECK(!target_tab_observation_.IsObserving());
+    CHECK(!target_tab_, base::NotFatalUntil::M162);
+    CHECK(!target_tab_observation_.IsObserving(), base::NotFatalUntil::M162);
   }
 }
 
@@ -572,9 +553,9 @@ void TabHoverCardController::StartThumbnailObservation(
     return;
   }
 
-  DCHECK(anchor_target);
-  DCHECK(hover_card_);
-  DCHECK(waiting_for_preview());
+  CHECK(anchor_target, base::NotFatalUntil::M162);
+  CHECK(hover_card_, base::NotFatalUntil::M162);
+  CHECK(waiting_for_preview(), base::NotFatalUntil::M162);
 
   const TabCardData& card_data = std::get<TabCardData>(anchor_target->data());
   auto thumbnail = card_data.thumbnail;
@@ -667,7 +648,7 @@ void TabHoverCardController::UpdateOrShowCard(
     // since delayed capture only happens when the hover card already exists,
     // and this code is only invoked if there is no hover card yet.
     delayed_show_timer_.Stop();
-    DCHECK_EQ(target_tab_, anchor_target);
+    CHECK_EQ(target_tab_, anchor_target, base::NotFatalUntil::M162);
     ShowHoverCard(is_initial, anchor_target);
   }
 }
@@ -780,7 +761,7 @@ bool TabHoverCardController::TargetTabIsValid() const {
 }
 
 void TabHoverCardController::OnCardFullyVisible() {
-  DCHECK(target_tab_);
+  CHECK(target_tab_, base::NotFatalUntil::M162);
   if (target_tab_ == hover_card_last_seen_on_tab_.get()) {
     return;
   }
@@ -848,7 +829,7 @@ void TabHoverCardController::OnSlideAnimationComplete(
 void TabHoverCardController::OnPreviewImageAvailable(
     TabHoverCardThumbnailObserver* observer,
     gfx::ImageSkia thumbnail_image) {
-  DCHECK_EQ(thumbnail_observer_.get(), observer);
+  CHECK_EQ(thumbnail_observer_.get(), observer, base::NotFatalUntil::M162);
 
   thumbnail_wait_state_ = ThumbnailWaitState::kNotWaiting;
 

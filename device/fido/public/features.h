@@ -29,6 +29,13 @@ extern const base::FeatureParam<PasskeyUnlockErrorUiExperimentArm>
     kPasskeyUnlockErrorUiExperimentArm;
 #endif
 
+#if BUILDFLAG(IS_MAC)
+// Enables unlocking passkeys using iCloud Keychain upon PasskeyUnlockManager
+// startup.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_DECLARE_FEATURE(kPasskeyUnlockICloudRecovery);
+#endif  // BUILDFLAG(IS_MAC)
+
 #if BUILDFLAG(IS_WIN)
 // Controls whether on Windows, U2F/CTAP2 requests are forwarded to the
 // native WebAuthentication API, where available.
@@ -152,6 +159,37 @@ BASE_DECLARE_FEATURE(kWebAuthnEnclaveUseAuthDataFromEnclave);
 COMPONENT_EXPORT(FIDO_PUBLIC)
 BASE_DECLARE_FEATURE(kWebAuthnModalProviderIcons);
 
+// Fall back to software keys when hardware unexportable keys (TPM / Secure
+// Enclave) are absent or do not support the required signing algorithm.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_DECLARE_FEATURE(kWebAuthnSoftwareKeysWhenTpmAbsent);
+
+// Only fall back to U2F registration on CTAP2 security keys when ES256 is the
+// first algorithm in pubKeyCredParams that the key supports.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_DECLARE_FEATURE(kWebAuthnU2fFallbackRequiresPreferredEs256);
+
+// Filters the list of public key algorithms sent in makeCredential requests to
+// those advertised by the authenticator in its getInfo response.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_DECLARE_FEATURE(kWebAuthnFilterAlgorithmsForAuthenticator);
+
+// Enables the local browser-based Google Password Manager passkey authenticator
+// on desktop, replacing the cloud enclave authenticator.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_DECLARE_FEATURE(kWebAuthnLocalGpmPasskeys);
+
+enum class LocalGpmPasskeysMode {
+  // Only accounts that are not already registered with the enclave use the
+  // local authenticator.
+  kNewUsersOnly,
+  // All accounts use the local authenticator, regardless of enclave
+  // registration state.
+  kAllUsers,
+};
+COMPONENT_EXPORT(FIDO_PUBLIC)
+extern const base::FeatureParam<LocalGpmPasskeysMode>
+    kWebAuthnLocalGpmPasskeysMode;
 }  // namespace device
 
 #endif  // DEVICE_FIDO_PUBLIC_FEATURES_H_

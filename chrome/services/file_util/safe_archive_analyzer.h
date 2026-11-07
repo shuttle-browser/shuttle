@@ -7,6 +7,7 @@
 
 #include <optional>
 
+#include "base/timer/timer.h"
 #include "chrome/common/safe_browsing/archive_analyzer_results.h"
 #include "chrome/services/file_util/public/mojom/safe_archive_analyzer.mojom.h"
 #include "chrome/utility/safe_browsing/seven_zip_analyzer.h"
@@ -57,20 +58,6 @@ class SafeArchiveAnalyzer : public chrome::mojom::SafeArchiveAnalyzer {
       base::File seven_zip_file,
       mojo::PendingRemote<chrome::mojom::TemporaryFileGetter> temp_file_getter,
       AnalyzeSevenZipFileCallback callback) override;
-
-  void AnalyzeObfuscatedZipFile(
-      base::File zip_file,
-      const std::optional<std::string>& password,
-      chrome::mojom::ObfuscatedFileUtilHeaderDataPtr header_data,
-      mojo::PendingRemote<chrome::mojom::TemporaryFileGetter> temp_file_getter,
-      AnalyzeObfuscatedZipFileCallback callback) override;
-
-  void AnalyzeObfuscatedRarFile(
-      base::File rar_file,
-      const std::optional<std::string>& password,
-      chrome::mojom::ObfuscatedFileUtilHeaderDataPtr header_data,
-      mojo::PendingRemote<chrome::mojom::TemporaryFileGetter> temp_file_getter,
-      AnalyzeObfuscatedRarFileCallback callback) override;
 
   // Uses `temp_file_getter_` to supply a temporary file to callback.
   void RequestTemporaryFile(GetTempFileCallback callback);

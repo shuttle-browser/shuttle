@@ -19,7 +19,7 @@ declare_args() {
 
   # Enable modification checks in non-garbage-collected blink::Vector
   # (i.e. PartitionAllocator-backed) to detect modifications during iteration.
-  enable_vector_modification_checks = false
+  enable_vector_modification_checks = true
 }
 
 buildflag_header("wtf_buildflags") {
@@ -76,16 +76,6 @@ component("wtf") {
     "casting.h",
     "construct_traits.h",
     "container_annotations.h",
-    "cross_thread_copier.h",
-    "cross_thread_copier_base.h",
-    "cross_thread_copier_gfx.h",
-    "cross_thread_copier_gpu.h",
-    "cross_thread_copier_media.h",
-    "cross_thread_copier_mojo.h",
-    "cross_thread_copier_public.h",
-    "cross_thread_copier_skia.h",
-    "cross_thread_copier_std.h",
-    "cross_thread_copier_url.h",
     "cross_thread_functional.h",
     "date_math.cc",
     "date_math.h",
@@ -225,8 +215,6 @@ component("wtf") {
     "thread_specific.h",
     "threading.cc",
     "threading.h",
-    "threading_primitives.cc",
-    "threading_primitives.h",
     "type_traits.h",
     "uuid.cc",
     "uuid.h",
@@ -268,6 +256,7 @@ component("wtf") {
   public_deps = [
     ":wtf_buildflags",
     "//base",
+    "//base:i18n",
     "//base/third_party/double_conversion",
     "//components/crash/core/common:crash_key",
     "//third_party/icu",
@@ -415,7 +404,6 @@ source_set("wtf_unittests_sources") {
     "text/utf16_test.cc",
     "text/utf8_test.cc",
     "text/wtf_string_test.cc",
-    "threading_primitives_test.cc",
     "type_traits_test.cc",
     "uuid_test.cc",
     "vector_backed_linked_list_test.cc",

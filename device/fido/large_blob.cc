@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <ostream>
+#include <utility>
 
 #include "base/containers/map_util.h"
 #include "base/containers/span.h"
@@ -14,8 +15,8 @@
 #include "components/cbor/reader.h"
 #include "components/cbor/writer.h"
 #include "crypto/aead.h"
-#include "crypto/random.h"
 #include "crypto/hash.h"
+#include "crypto/random.h"
 #include "device/fido/pin.h"
 
 namespace device {
@@ -252,7 +253,7 @@ cbor::Value LargeBlobData::AsCBOR() const {
   map.emplace(static_cast<int>(LargeBlobDataKeys::kCiphertext), ciphertext_);
   map.emplace(static_cast<int>(LargeBlobDataKeys::kNonce), nonce_);
   map.emplace(static_cast<int>(LargeBlobDataKeys::kOrigSize), orig_size_);
-  return cbor::Value(map);
+  return cbor::Value(std::move(map));
 }
 
 LargeBlobArrayReader::LargeBlobArrayReader() = default;
@@ -285,8 +286,8 @@ std::optional<cbor::Value::ArrayValue> LargeBlobArrayReader::Materialize() {
 }
 
 LargeBlobArrayWriter::LargeBlobArrayWriter(
-    cbor::Value::ArrayValue large_blob_array) {
-  bytes_ = *cbor::Writer::Write(cbor::Value(std::move(large_blob_array)));
+    const cbor::Value::ArrayValue& large_blob_array) {
+  bytes_ = *cbor::Writer::Write(large_blob_array);
   std::array<uint8_t, crypto::hash::kSha256Size> large_blob_hash =
       crypto::hash::Sha256(bytes_);
   bytes_.insert(bytes_.end(), large_blob_hash.begin(),

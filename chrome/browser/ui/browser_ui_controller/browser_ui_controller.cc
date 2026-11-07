@@ -9,6 +9,7 @@
 #include "base/check.h"
 #include "base/check_deref.h"
 #include "base/check_op.h"
+#include "base/feature_list.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "chrome/browser/app_mode/app_mode_utils.h"
@@ -22,6 +23,7 @@
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_change_type.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/ui_features.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/invalidate_type.h"
 #include "content/public/browser/web_contents.h"
@@ -107,7 +109,7 @@ void BrowserUiController::UpdateUIForNavigationInTab(
 
 void BrowserUiController::ScheduleUIUpdate(content::WebContents* source,
                                            unsigned changed_flags) {
-  DCHECK(source);
+  CHECK(source, base::NotFatalUntil::M162);
   // WebContents may in some rare cases send updates after they've been detached
   // from the tabstrip but before they are deleted, causing a potential crash if
   // we proceed. For now bail out.
@@ -145,6 +147,17 @@ void BrowserUiController::ScheduleUIUpdate(content::WebContents* source,
     // changed_flags.
   }
 
+  if (changed_flags & content::INVALIDATE_TYPE_ICON) {
+    // Show the initial favicon synchronously after a navigation has committed.
+    // Otherwise a fast (e.g. fully cached) navigation shows the default icon
+    // for kUIUpdateCoalescingTime even though the favicon is already known,
+    // which makes the navigation feel slower than it really is.
+    if (base::FeatureList::IsEnabled(features::kFastFaviconDisplay)) {
+      NotifyTabUIChanged(tab, TabChangeType::kAll);
+    }
+    changed_flags &= ~content::INVALIDATE_TYPE_ICON;
+  }
+
   // If the only updates were synchronously handled above, we're done.
   if (changed_flags == 0) {
     return;
@@ -177,7 +190,8 @@ void BrowserUiController::ProcessPendingUIUpdates() {
       processed_count++;
     }
   }
-  DCHECK_EQ(processed_count, scheduled_updates_.size());
+  CHECK_EQ(processed_count, scheduled_updates_.size(),
+           base::NotFatalUntil::M162);
 #endif
 
   chrome_updater_factory_.InvalidateWeakPtrs();
@@ -189,9 +203,10 @@ void BrowserUiController::ProcessPendingUIUpdates() {
       // Updating the URL happens synchronously in ScheduleUIUpdate.
       std::vector<StatusBubble*> status_bubbles = GetStatusBubbles();
       if (flags & content::INVALIDATE_TYPE_LOAD && !status_bubbles.empty()) {
-        status_bubbles.front()->SetStatus(
-            CoreTabHelper::FromWebContents(tab->GetContents())
-                ->GetStatusText());
+        if (auto* core_tab_helper =
+                CoreTabHelper::FromWebContents(tab->GetContents())) {
+          status_bubbles.front()->SetStatus(core_tab_helper->GetStatusText());
+        }
       }
 
       if (flags &
@@ -269,8 +284,10 @@ void BrowserUiController::UpdateWindowForLoadingStateChanged(
 
     std::vector<StatusBubble*> status_bubbles = window_->GetStatusBubbles();
     if (!status_bubbles.empty()) {
-      status_bubbles.front()->SetStatus(
-          CoreTabHelper::FromWebContents(selected_contents)->GetStatusText());
+      if (auto* core_tab_helper =
+              CoreTabHelper::FromWebContents(selected_contents)) {
+        status_bubbles.front()->SetStatus(core_tab_helper->GetStatusText());
+      }
     }
   }
 }

@@ -275,16 +275,18 @@ suite('<history-item> integration test', function() {
     assertTrue(isVisible(actorExpandBtn));
     assertEquals(
         'cr:keyboard-arrow-down', actorExpandBtn!.getAttribute('iron-icon'));
-    const menuBtn =
-        items[1]!.shadowRoot.querySelector<HTMLElement>('#menuButton');
+    const menuBtn = items[1]!.$.menuButton;
     assertEquals(
-        menuBtn!.getAttribute('aria-describedby'),
+        menuBtn.getAttribute('aria-describedby'),
         actorExpandBtn!.getAttribute('aria-describedby'));
 
     const collapse =
         items[1]!.shadowRoot.querySelector<HTMLElement>('#collapse');
     assertTrue(!!collapse);
     assertFalse(collapse.hasAttribute('opened'));
+    const timeGapSeparator =
+        items[1]!.shadowRoot.querySelector<HTMLElement>('#time-gap-separator');
+    assertTrue(isVisible(timeGapSeparator));
 
     actorExpandBtn!.click();
     await microtasksFinished();
@@ -292,6 +294,7 @@ suite('<history-item> integration test', function() {
     assertEquals(
         'cr:keyboard-arrow-up', actorExpandBtn!.getAttribute('iron-icon'));
     assertTrue(collapse.hasAttribute('opened'));
+    assertFalse(isVisible(timeGapSeparator));
     assertEquals(1, testProxy.actionMap['HistoryPage_CriticalActionsExpanded']);
 
     const criticalActionsTitle =
@@ -353,8 +356,11 @@ suite('<history-item> integration test', function() {
       window.open = originalOpen;
     }
 
+    // Collapsing the item should restore the time gap separator.
     actorExpandBtn!.click();
     await microtasksFinished();
+    assertFalse(collapse.hasAttribute('opened'));
+    assertTrue(isVisible(timeGapSeparator));
     assertEquals(
         1, testProxy.actionMap['HistoryPage_CriticalActionsCollapsed']);
   });
@@ -379,7 +385,7 @@ suite('<history-item> integration test', function() {
             id: 'webmcp',
             label: 'Used a WebMCP tool',
             tooltip: 'Website actions',
-            linkoutUrl: '',
+            linkoutUrl: null,
             actionType: CriticalActionType.kWebMcpTool,
           },
         ];
@@ -493,4 +499,43 @@ suite('<history-item> integration test', function() {
         items[0]!.shadowRoot.querySelector<HTMLElement>('#collapse');
     assertFalse(isVisible(collapse));
   });
+
+  test(
+      'non-actor visit with critical actions has expand button',
+      async function() {
+        loadTimeData.overrideValues({
+          isCriticalActionsEnabled: true,
+        });
+
+        const newResults = [...TEST_HISTORY_RESULTS];
+        newResults[0]!.isActorVisit = false;
+        newResults[0]!.criticalActions = [
+          {
+            id: 'action-456',
+            label: 'Password filled',
+            tooltip: 'Saved passwords',
+            linkoutUrl: 'chrome://password-manager',
+            actionType: CriticalActionType.kCredentialAccess,
+          },
+        ];
+        element.addNewResults(newResults, false, true);
+        await microtasksFinished();
+
+        const items = element.shadowRoot.querySelectorAll('history-item');
+        const expandBtn =
+            items[0]!.shadowRoot.querySelector<HTMLElement>('#expand-button');
+        assertTrue(isVisible(expandBtn));
+        const collapse =
+            items[0]!.shadowRoot.querySelector<HTMLElement>('#collapse');
+        assertTrue(!!collapse);
+        assertFalse(collapse.hasAttribute('opened'));
+
+        expandBtn!.click();
+        await microtasksFinished();
+        assertTrue(collapse.hasAttribute('opened'));
+
+        const actionRows =
+            items[0]!.shadowRoot.querySelectorAll('.critical-action-row');
+        assertEquals(1, actionRows.length);
+      });
 });

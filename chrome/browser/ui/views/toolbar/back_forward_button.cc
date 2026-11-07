@@ -103,11 +103,9 @@ void BackForwardButton::NotifyClick(const ui::Event& event) {
     }
   }
 
-  content::WebContents* web_contents =
-      browser_->GetTabStripModel()->GetActiveWebContents();
-  if (web_contents) {
+  if (tabs::TabInterface* tab = browser_->GetTabStripModel()->GetActiveTab()) {
     ChainedBackNavigationTracker* tracker =
-        ChainedBackNavigationTracker::FromWebContents(web_contents);
+        ChainedBackNavigationTracker::From(tab);
     CHECK(tracker);
     tracker->RecordBackButtonClickForChainedBackNavigation();
   }
@@ -166,7 +164,7 @@ void BackForwardButton::OnMouseEntered(const ui::MouseEvent& event) {
     // Record this before the event triggers `StateChanged` via
     // `ToolbarButton::OnMouseEntered`.
     last_back_assumed_disposition_ = ui::DispositionFromEventFlags(
-        event.flags(), WindowOpenDisposition::CURRENT_TAB);
+        event.flags(), WindowOpenDisposition::kCurrentTab);
   }
 
   ToolbarButton::OnMouseEntered(event);
@@ -174,10 +172,6 @@ void BackForwardButton::OnMouseEntered(const ui::MouseEvent& event) {
 
 bool BackForwardButton::OnMousePressed(const ui::MouseEvent& event) {
   return ToolbarButton::OnMousePressed(event);
-}
-
-bool BackForwardButton::ShouldShowInkdropAfterIphInteraction() {
-  return false;
 }
 
 BEGIN_METADATA(BackForwardButton)

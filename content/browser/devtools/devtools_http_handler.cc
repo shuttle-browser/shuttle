@@ -437,12 +437,14 @@ class DevToolsAgentHostClientImpl : public DevToolsAgentHostClient {
       ServerWrapper* server_wrapper,
       int connection_id,
       scoped_refptr<DevToolsAgentHost> agent_host,
+      const net::IPEndPoint& peer_address,
       std::unique_ptr<DevToolsManagerDelegate::ConnectionFilter> filter =
           nullptr)
       : task_runner_(std::move(task_runner)),
         server_wrapper_(server_wrapper),
         connection_id_(connection_id),
         agent_host_(agent_host),
+        peer_address_(peer_address),
         filter_(std::move(filter)) {
     CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
     if (filter_) {
@@ -463,6 +465,11 @@ class DevToolsAgentHostClientImpl : public DevToolsAgentHostClient {
   }
 
   std::string GetTypeForMetrics() override { return "RemoteDebugger"; }
+
+  PeerMetadata GetPeerMetadata() override {
+    return {.transport_type = PeerMetadata::TransportType::kWebSocket,
+            .peer_address = peer_address_};
+  }
 
   void AgentHostClosed(DevToolsAgentHost* agent_host) override {
     CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
@@ -521,6 +528,7 @@ class DevToolsAgentHostClientImpl : public DevToolsAgentHostClient {
   const raw_ptr<ServerWrapper> server_wrapper_;
   const int connection_id_;
   scoped_refptr<DevToolsAgentHost> agent_host_;
+  const net::IPEndPoint peer_address_;
   std::unique_ptr<DevToolsManagerDelegate::ConnectionFilter> filter_;
   base::WeakPtrFactory<DevToolsAgentHostClientImpl> weak_factory_{this};
 };
@@ -1002,7 +1010,7 @@ void DevToolsHttpHandler::HandleDebuggingApproval(
     connection_to_client_[connection_id] =
         std::make_unique<DevToolsAgentHostClientImpl>(
             thread_->task_runner(), server_wrapper_.get(), connection_id,
-            browser_agent);
+            browser_agent, request.peer);
     AcceptWebSocket(connection_id, request);
   } else {
     Send403(connection_id, "Connection rejected");
@@ -1061,7 +1069,7 @@ void DevToolsHttpHandler::OnWebSocketRequest(
     connection_to_client_[connection_id] =
         std::make_unique<DevToolsAgentHostClientImpl>(
             thread_->task_runner(), server_wrapper_.get(), connection_id,
-            browser_agent);
+            browser_agent, request.peer);
     AcceptWebSocket(connection_id, request);
     return;
   }
@@ -1086,7 +1094,7 @@ void DevToolsHttpHandler::OnWebSocketRequest(
     connection_to_client_[connection_id] =
         std::make_unique<DevToolsAgentHostClientImpl>(
             thread_->task_runner(), server_wrapper_.get(), connection_id,
-            browser_agent, std::move(filter));
+            browser_agent, request.peer, std::move(filter));
     AcceptWebSocket(connection_id, request);
     return;
   }
@@ -1115,6 +1123,7 @@ void DevToolsHttpHandler::OnWebSocketRequest(
   connection_to_client_[connection_id] =
       std::make_unique<DevToolsAgentHostClientImpl>(
           thread_->task_runner(), server_wrapper_.get(), connection_id, agent,
+          request.peer,
           delegate_ ? delegate_->CreateConnectionFilter("", target_id)
                     : nullptr);
 

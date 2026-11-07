@@ -20,6 +20,7 @@
 #include "gpu/command_buffer/service/scheduler.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_factory.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_representation.h"
+#include "gpu/command_buffer/service/shared_image/shared_memory_image_backing_factory.h"
 #include "gpu/config/gpu_finch_features.h"
 #include "gpu/ipc/common/command_buffer_id.h"
 #include "gpu/ipc/common/gpu_peak_memory.h"
@@ -39,6 +40,26 @@ namespace {
 
 constexpr char kSICreationFailureError[] =
     "SharedImageStub: Unable to create shared image";
+
+bool IsSupportedFormat(viz::SharedImageFormat format) {
+#if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_WIN)
+  if (format.PrefersExternalSampler()) {
+    LOG(ERROR) << "SharedImageStub: Incompatible format: " << format.ToString();
+    return false;
+  }
+#endif
+
+  // `k16F` channel format does not support UV planes which have 2 channels.
+  if (format.is_multi_plane() &&
+      format.channel_format() == viz::SharedImageFormat::ChannelFormat::k16F &&
+      (format.plane_config() == viz::SharedImageFormat::PlaneConfig::kY_UV ||
+       format.plane_config() == viz::SharedImageFormat::PlaneConfig::kY_UV_A)) {
+    LOG(ERROR) << "SharedImageStub: Incompatible format: " << format.ToString();
+    return false;
+  }
+
+  return true;
+}
 
 }  // namespace
 
@@ -176,11 +197,6 @@ void SharedImageStub::ExecuteDeferredRequest(
   }
 }
 
-void SharedImageStub::SetGpuExtraInfo(const gfx::GpuExtraInfo& gpu_extra_info) {
-  CHECK(factory_);
-  factory_->SetGpuExtraInfo(gpu_extra_info);
-}
-
 void SharedImageStub::OnCreateSharedImagePool(
     mojom::CreateSharedImagePoolParamsPtr params) {
   TRACE_EVENT1("gpu", "SharedImageStub::OnCreateSharedImagePool", "pool_id",
@@ -211,6 +227,11 @@ void SharedImageStub::OnCreateSharedImage(
   TRACE_EVENT2("gpu", "SharedImageStub::OnCreateSharedImage", "width",
                params->si_info->meta.size.width(), "height",
                params->si_info->meta.size.height());
+  if (!IsSupportedFormat(params->si_info->meta.format)) {
+    OnError();
+    return;
+  }
+
   bool needs_gl = HasGLES2ReadOrWriteUsage(params->si_info->meta.usage);
   if (!MakeContextCurrent(needs_gl)) {
     OnError();
@@ -235,6 +256,10 @@ void SharedImageStub::OnCreateSharedImageWithData(
                params->si_info->meta.size.height());
 
   auto& metadata = params->si_info->meta;
+  if (!IsSupportedFormat(metadata.format)) {
+    OnError();
+    return;
+  }
 
   if (metadata.array_layers > 1) {
     LOG(ERROR) << "SharedImageStub: array_layers > 1 is not supported for "
@@ -301,31 +326,11 @@ void SharedImageStub::OnCreateSharedImageWithBuffer(
                params->si_info->meta.size.height());
   gfx::GpuMemoryBufferHandle buffer_handle = std::move(params->buffer_handle);
 
-#if BUILDFLAG(IS_OZONE)
-  if (channel_->enable_extra_handles_validation() &&
-      buffer_handle.type == gfx::NATIVE_PIXMAP) {
-    const auto& pixmap_handle = buffer_handle.native_pixmap_handle();
-    auto format = params->si_info->meta.format;
-    // Video Buffer may be packed to have a tighter stride than shared memory
-    // row, examples are NV15 or MT2T, where there's no padding bits within the
-    // component.
-    if (!gfx::CanFitImageForSizeAndFormat(pixmap_handle,
-                                          params->si_info->meta.size, format,
-                                          /*assume_single_memory_object=*/false,
-                                          /*maybe_packed=*/true)) {
-      LOG(ERROR)
-          << "SharedImageStub: Unable to import buffer, failed validation.";
-      OnError();
-      return;
-    }
-    if (gfx::CloneHandleForIPC(pixmap_handle).planes.empty()) {
-      LOG(ERROR) << "SharedImageStub: Unable to import buffer, failed to dup "
-                    "buffer fds.";
-      OnError();
-      return;
-    }
+  if (!ValidateGpuMemoryBufferHandleWithMetadata(buffer_handle,
+                                                 params->si_info->meta)) {
+    OnError();
+    return;
   }
-#endif  // BUILDFLAG(IS_OZONE)
 
   if (!CreateSharedImage(
           params->mailbox,
@@ -343,13 +348,10 @@ bool SharedImageStub::CreateSharedImage(
     std::optional<SharedImagePoolId> pool_id) {
   TRACE_EVENT2("gpu", "SharedImageStub::CreateSharedImage", "width",
                info.size.width(), "height", info.size.height());
-#if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_WIN)
-  if (info.format.PrefersExternalSampler()) {
-    LOG(ERROR) << "SharedImageStub: Incompatible format.";
+  if (!IsSupportedFormat(info.format)) {
     OnError();
     return false;
   }
-#endif
 
   bool needs_gl = HasGLES2ReadOrWriteUsage(info.usage);
   if (!MakeContextCurrent(needs_gl)) {
@@ -626,6 +628,138 @@ void SharedImageStub::OnError() {
 
 uint64_t SharedImageStub::GetSize() const {
   return memory_tracker_->GetSize();
+}
+
+bool SharedImageStub::CopyNativeBufferToSharedMemoryAsync(
+    gfx::GpuMemoryBufferHandle buffer_handle,
+    base::UnsafeSharedMemoryRegion shared_memory) {
+  if (!ValidateGpuMemoryBufferHandle(buffer_handle)) {
+    return false;
+  }
+
+  return factory_->CopyNativeBufferToSharedMemoryAsync(
+      std::move(buffer_handle), std::move(shared_memory));
+}
+
+gfx::GpuMemoryBufferHandle SharedImageStub::CreateGpuMemoryBufferHandle(
+    const gfx::Size& size,
+    const viz::SharedImageFormat& format,
+    gfx::BufferUsage buffer_usage) {
+  if (SharedImageFactory::IsNativeBufferSupported(format, buffer_usage)) {
+#if BUILDFLAG(IS_ANDROID)
+    // Creation of native buffer handles is not supported on Android (the
+    // only way that a non-null GpuMemoryBufferHandle can be created on
+    // Android is by importing an external AHB).
+    return gfx::GpuMemoryBufferHandle();
+#else
+    return factory_->CreateNativeGpuMemoryBufferHandle(size, format,
+                                                       buffer_usage);
+#endif
+  } else {
+    if (SharedMemoryImageBackingFactory::IsBufferUsageSupported(buffer_usage) &&
+        SharedMemoryImageBackingFactory::IsSizeValidForFormat(size, format)) {
+      return SharedMemoryImageBackingFactory::CreateGpuMemoryBufferHandle(
+          size, format);
+    }
+  }
+  return gfx::GpuMemoryBufferHandle();
+}
+
+gfx::GpuMemoryBufferHandle SharedImageStub::CreateSharedImageWithHandle(
+    const Mailbox& mailbox,
+    mojom::SharedImageInfoPtr info,
+    gfx::BufferUsage buffer_usage,
+    const std::optional<SharedImagePoolId>& pool_id) {
+  auto handle_for_client = CreateGpuMemoryBufferHandle(
+      info->meta.size, info->meta.format, buffer_usage);
+  auto handle_for_service = handle_for_client.Clone();
+
+  if (!handle_for_service.is_null()) {
+    CHECK(!handle_for_client.is_null());
+
+    // Clear the external sampler prefs for shared memory case if it is set.
+    // Note that the |si_info.format| is a reference, so any modifications to it
+    // will also be reflected at the place from which this method is called
+    // from. https://issues.chromium.org/339546249.
+    if (info->meta.format.PrefersExternalSampler() &&
+        (handle_for_service.type ==
+         gfx::GpuMemoryBufferType::SHARED_MEMORY_BUFFER)) {
+      info->meta.format.ClearPrefersExternalSampler();
+      if (info->meta.alpha_type == kPremul_SkAlphaType) {
+        info->meta.alpha_type = kUnpremul_SkAlphaType;
+      }
+    }
+    auto run_on_main = base::BindOnce(
+        [](base::WeakPtr<SharedImageStub> stub, const Mailbox& mailbox,
+           mojom::SharedImageInfoPtr info, gfx::GpuMemoryBufferHandle handle,
+           std::optional<SharedImagePoolId> pool_id) {
+          if (stub) {
+            stub->CreateSharedImage(
+                mailbox,
+                SharedImageInfo(info->meta, stub->GetLabel(info->debug_label)),
+                std::move(handle), std::move(pool_id));
+          }
+        },
+        weak_factory_.GetWeakPtr(), mailbox, std::move(info),
+        std::move(handle_for_service), pool_id);
+    channel_->scheduler()->ScheduleTask(
+        Scheduler::Task(sequence_, std::move(run_on_main), {}, SyncToken()));
+  }
+
+  return handle_for_client;
+}
+
+bool SharedImageStub::ValidateGpuMemoryBufferHandle(
+    const gfx::GpuMemoryBufferHandle& buffer_handle) {
+  // Shared memory always allowed.
+  if (buffer_handle.type == gfx::GpuMemoryBufferType::SHARED_MEMORY_BUFFER) {
+    return true;
+  }
+
+#if BUILDFLAG(IS_ANDROID)
+  if (channel_->client_type() == viz::mojom::GpuClientType::kRenderer) {
+    LOG(ERROR) << "AHardwareBuffers are not allowed from renderer processes";
+    return false;
+  }
+#endif
+
+  // TODO(crbug.com/565252393): Add validation
+  return true;
+}
+
+bool SharedImageStub::ValidateGpuMemoryBufferHandleWithMetadata(
+    const gfx::GpuMemoryBufferHandle& buffer_handle,
+    const SharedImageMetadata& metadata) {
+  if (!ValidateGpuMemoryBufferHandle(buffer_handle)) {
+    return false;
+  }
+
+#if BUILDFLAG(IS_OZONE)
+  if (channel_->client_type() == viz::mojom::GpuClientType::kOOPVD &&
+      buffer_handle.type == gfx::NATIVE_PIXMAP) {
+    const auto& pixmap_handle = buffer_handle.native_pixmap_handle();
+    auto format = metadata.format;
+    // Video Buffer may be packed to have a tighter stride than shared memory
+    // row, examples are NV15 or MT2T, where there's no padding bits within the
+    // component.
+    if (!gfx::CanFitImageForSizeAndFormat(pixmap_handle, metadata.size, format,
+                                          /*assume_single_memory_object=*/false,
+                                          /*maybe_packed=*/true)) {
+      LOG(ERROR)
+          << "SharedImageStub: Unable to import buffer, failed validation.";
+      return false;
+    }
+    if (gfx::CloneHandleForIPC(pixmap_handle).planes.empty()) {
+      LOG(ERROR) << "SharedImageStub: Unable to import buffer, failed to dup "
+                    "buffer fds.";
+      return false;
+    }
+  }
+
+#endif  // BUILDFLAG(IS_OZONE)
+
+  // TODO(crbug.com/565252393): Add validation
+  return true;
 }
 
 std::string SharedImageStub::GetLabel(const std::string& debug_label) const {

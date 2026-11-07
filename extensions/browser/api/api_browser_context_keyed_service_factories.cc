@@ -32,7 +32,6 @@
 // TODO(https://crbug.com/356905053): Enable these APIs on desktop-android.
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "extensions/browser/api/api_resource_manager.h"
-#include "extensions/browser/api/audio/audio_api.h"
 #include "extensions/browser/api/hid/hid_connection_resource.h"
 #include "extensions/browser/api/hid/hid_device_manager.h"
 #include "extensions/browser/api/networking_private/networking_private_event_router_factory.h"
@@ -51,6 +50,7 @@
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
 #if BUILDFLAG(IS_CHROMEOS)
+#include "extensions/browser/api/audio/audio_api.h"
 #include "extensions/browser/api/bluetooth/bluetooth_api.h"
 #include "extensions/browser/api/bluetooth/bluetooth_private_api.h"
 #include "extensions/browser/api/bluetooth_low_energy/bluetooth_api_advertisement.h"
@@ -125,9 +125,7 @@ void EnsureApiBrowserContextKeyedServiceFactoriesBuilt() {
   api::UDPSocketEventDispatcher::GetFactoryInstance();
 #if BUILDFLAG(IS_CHROMEOS)
   AppFirewallHoleManager::EnsureFactoryBuilt();
-#endif
   AudioAPI::GetFactoryInstance();
-#if BUILDFLAG(IS_CHROMEOS)
   BluetoothAPI::GetFactoryInstance();
   BluetoothPrivateAPI::GetFactoryInstance();
   ClipboardAPI::GetFactoryInstance();

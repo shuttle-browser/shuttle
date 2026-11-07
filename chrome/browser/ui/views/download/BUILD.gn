@@ -11,7 +11,6 @@ source_set("download") {
   ]
   public_deps = [
     "//base",
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/ui:unload_controller",
     "//components/download/public/common:public",
     "//components/offline_items_collection/core",
@@ -77,7 +76,6 @@ source_set("download") {
       "//chrome/browser:icon_manager",
       "//chrome/browser:primitives",
       "//chrome/browser/download/bubble",
-      "//chrome/browser/picture_in_picture",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/profiles:profile_util",
       "//chrome/browser/safe_browsing",
@@ -106,3 +104,6 @@ source_set("download") {
     }
   }
 }
+
+
+

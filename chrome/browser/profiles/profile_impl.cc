@@ -40,6 +40,7 @@
 #include "base/version.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
+#include "chrome/browser/after_startup_task_utils.h"
 #include "chrome/browser/background/background_contents_service_factory.h"
 #include "chrome/browser/background_fetch/background_fetch_delegate_factory.h"
 #include "chrome/browser/background_fetch/background_fetch_delegate_impl.h"
@@ -108,6 +109,7 @@
 #include "chrome/common/buildflags.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_constants.h"
+#include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_paths_internal.h"
 #include "chrome/common/chrome_switches.h"
@@ -130,9 +132,7 @@
 #include "components/metrics/metrics_service.h"
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/permissions/permission_manager.h"
-#include "components/policy/core/common/cloud/cloud_policy_manager.h"
-#include "components/policy/core/common/cloud/profile_cloud_policy_manager.h"
-#include "components/policy/core/common/cloud/user_cloud_policy_manager.h"
+#include "components/policy/core/common/configuration_policy_provider.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
@@ -147,8 +147,6 @@
 #include "components/spellcheck/spellcheck_buildflags.h"
 #include "components/subscription_eligibility/subscription_eligibility_prefs.h"
 #include "components/subscription_eligibility/subscription_eligibility_service.h"
-#include "components/supervised_user/core/common/pref_names.h"
-#include "components/supervised_user/core/common/supervised_user_constants.h"
 #include "components/url_formatter/url_fixer.h"
 #include "components/user_prefs/user_prefs.h"
 #include "components/version_info/channel.h"
@@ -323,13 +321,6 @@ bool LocaleNotChanged(const std::string& pref_locale,
 }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-#if !BUILDFLAG(IS_CHROMEOS)
-ProfileImpl::CloudPolicyManagerTestFactory&
-GetTestingCloudPolicyManagerFactory() {
-  static base::NoDestructor<ProfileImpl::CloudPolicyManagerTestFactory> factory;
-  return *factory;
-}
-#endif
 
 }  // namespace
 
@@ -349,7 +340,7 @@ std::unique_ptr<Profile> Profile::CreateProfile(const base::FilePath& path,
   base::Time creation_time = base::Time::Now();
   switch (create_mode) {
     case CreateMode::kAsynchronous:
-      DCHECK(delegate);
+      CHECK(delegate, base::NotFatalUntil::M162);
       creation_time = CreateProfileDirectory(io_task_runner.get(), path, true);
       break;
     case CreateMode::kSynchronous:
@@ -437,13 +428,6 @@ void ProfileImpl::RegisterProfilePrefs(
   registry->RegisterUint64Pref(prefs::kLomProfileId, 0u);
 }
 
-#if !BUILDFLAG(IS_CHROMEOS)
-// static
-void ProfileImpl::SetCloudPolicyManagerFactoryForTesting(
-    CloudPolicyManagerTestFactory factory) {
-  GetTestingCloudPolicyManagerFactory() = std::move(factory);
-}
-#endif
 
 ProfileImpl::ProfileImpl(
     const base::FilePath& path,
@@ -479,7 +463,8 @@ ProfileImpl::ProfileImpl(
 
 #if BUILDFLAG(IS_ANDROID)
   auto* startup_data = g_browser_process->startup_data();
-  DCHECK(startup_data && startup_data->GetProfileKey());
+  CHECK(startup_data && startup_data->GetProfileKey(),
+        base::NotFatalUntil::M162);
   TakePrefsFromStartupData();
   async_prefs = false;
 #else
@@ -540,7 +525,6 @@ void ProfileImpl::TakePrefsFromStartupData() {
   key_ = startup_data->TakeProfileKey();
   prefs_ = startup_data->TakeProfilePrefService();
   schema_registry_service_ = startup_data->TakeSchemaRegistryService();
-  user_cloud_policy_manager_ = startup_data->TakeUserCloudPolicyManager();
   profile_policy_connector_ = startup_data->TakeProfilePolicyConnector();
   pref_registry_ = startup_data->TakePrefRegistrySyncable();
 
@@ -568,7 +552,8 @@ void ProfileImpl::LoadPrefsForNormalStartup(bool async_prefs) {
   // policy data immediately.
   bool force_immediate_policy_load = !async_prefs;
 
-  policy::CloudPolicyManager* cloud_policy_manager = nullptr;
+  // No user/profile cloud policy (Shuttle): the profile's policy service only
+  // has the platform (local) providers.
   policy::ConfigurationPolicyProvider* policy_provider = nullptr;
 #if BUILDFLAG(IS_CHROMEOS)
   if (force_immediate_policy_load)
@@ -582,64 +567,12 @@ void ProfileImpl::LoadPrefsForNormalStartup(bool async_prefs) {
       g_browser_process->platform_part()->browser_policy_connector_ash(), this,
       force_immediate_policy_load, io_task_runner_);
 
-  cloud_policy_manager = nullptr;
   policy_provider = GetUserCloudPolicyManagerAsh();
-#else  // !BUILDFLAG(IS_CHROMEOS)
-  {
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-    if (GetTestingCloudPolicyManagerFactory()) {
-      auto result = GetTestingCloudPolicyManagerFactory().Run(this);
-      if (std::holds_alternative<
-              std::unique_ptr<policy::ProfileCloudPolicyManager>>(result)) {
-        profile_cloud_policy_manager_ = std::move(
-            std::get<std::unique_ptr<policy::ProfileCloudPolicyManager>>(
-                result));
-        cloud_policy_manager = profile_cloud_policy_manager_.get();
-      } else if (std::holds_alternative<
-                     std::unique_ptr<policy::UserCloudPolicyManager>>(result)) {
-        user_cloud_policy_manager_ = std::move(
-            std::get<std::unique_ptr<policy::UserCloudPolicyManager>>(result));
-        cloud_policy_manager = user_cloud_policy_manager_.get();
-      }
-    }
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-
-    if (!cloud_policy_manager) {
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-      ProfileAttributesEntry* entry = nullptr;
-      if (g_browser_process->profile_manager()) {
-        entry = g_browser_process->profile_manager()
-                    ->GetProfileAttributesStorage()
-                    .GetProfileAttributesWithPath(GetPath());
-      }
-
-      if (entry && (!entry->GetProfileManagementEnrollmentToken().empty() ||
-                    entry->IsDasherlessManagement())) {
-        profile_cloud_policy_manager_ =
-            policy::ProfileCloudPolicyManager::Create(
-                GetPath(), GetPolicySchemaRegistryService()->registry(),
-                force_immediate_policy_load, io_task_runner_,
-                base::BindRepeating(&content::GetNetworkConnectionTracker),
-                entry->IsDasherlessManagement());
-        cloud_policy_manager = profile_cloud_policy_manager_.get();
-      } else {
-#else
-      {
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-        user_cloud_policy_manager_ = policy::UserCloudPolicyManager::Create(
-            GetPath(), GetPolicySchemaRegistryService()->registry(),
-            force_immediate_policy_load, io_task_runner_,
-            base::BindRepeating(&content::GetNetworkConnectionTracker));
-        cloud_policy_manager = user_cloud_policy_manager_.get();
-      }
-    }
-    policy_provider = cloud_policy_manager;
-  }
 #endif
   profile_policy_connector_ =
       policy::CreateProfilePolicyConnectorForBrowserContext(
-          schema_registry_service_->registry(), cloud_policy_manager,
-          policy_provider, g_browser_process->browser_policy_connector(),
+          schema_registry_service_->registry(), policy_provider,
+          g_browser_process->browser_policy_connector(),
           force_immediate_policy_load, this);
 
   bool is_signin_profile = false;
@@ -671,8 +604,7 @@ void ProfileImpl::LoadPrefsForNormalStartup(bool async_prefs) {
       profile_policy_connector_->policy_service(),
       g_browser_process->browser_policy_connector(),
       std::move(pref_validation_delegate), GetIOTaskRunner(), key_.get(), path_,
-      async_prefs, g_browser_process->os_crypt_async(),
-      g_browser_process->device_parental_controls());
+      async_prefs, g_browser_process->os_crypt_async());
   key_->SetPrefs(prefs_.get());
 }
 
@@ -690,11 +622,6 @@ void ProfileImpl::DoFinalInit(CreateMode create_mode) {
     prefs->SetTime(prefs::kProfileCreationTime, path_creation_time_);
 
   pref_change_registrar_.Init(prefs);
-  pref_change_registrar_.Add(
-      prefs::kSupervisedUserId,
-      base::BindRepeating(&ProfileImpl::UpdateSupervisedUserIdInStorage,
-                          base::Unretained(this)));
-
   // Changes in the profile avatar.
   pref_change_registrar_.Add(
       prefs::kProfileAvatarIndex,
@@ -738,7 +665,6 @@ void ProfileImpl::DoFinalInit(CreateMode create_mode) {
   CreateProfileDirectory(io_task_runner_.get(), base_cache_path, false);
 
   // Initialize components that depend on the current value.
-  UpdateSupervisedUserIdInStorage();
   UpdateIsEphemeralInStorage();
   UpdateAiSubscriptionTierInStorage();
 
@@ -887,7 +813,7 @@ ProfileImpl::~ProfileImpl() {
           AreExtensionsDisabledForProfile(this)) {
     ExtensionPrefValueMap* pref_value_map =
         ExtensionPrefValueMapFactory::GetForBrowserContext(this);
-    DCHECK(pref_value_map);
+    CHECK(pref_value_map, base::NotFatalUntil::M162);
     pref_value_map->ClearAllIncognitoSessionOnlyPreferences();
   }
 #endif
@@ -961,8 +887,9 @@ const Profile* ProfileImpl::GetOriginalProfile() const {
 }
 
 bool ProfileImpl::IsChild() const {
-  return GetPrefs()->GetString(prefs::kSupervisedUserId) ==
-         supervised_user::kChildAccountSUID;
+  // Shuttle: supervised users / Family Link are removed; no profile is a
+  // child profile.
+  return false;
 }
 
 ExtensionSpecialStoragePolicy* ProfileImpl::GetExtensionSpecialStoragePolicy() {
@@ -992,7 +919,7 @@ void ProfileImpl::OnLocaleReady(CreateMode create_mode) {
           AreExtensionsDisabledForProfile(this)) {
     extensions::ExtensionPrefs* extension_prefs =
         extensions::ExtensionPrefs::Get(this);
-    DCHECK(extension_prefs);
+    CHECK(extension_prefs, base::NotFatalUntil::M162);
     extension_prefs->MigrateObsoleteExtensionPrefs();
   }
 #endif
@@ -1128,7 +1055,8 @@ PrefService* ProfileImpl::GetPrefs() {
 }
 
 const PrefService* ProfileImpl::GetPrefs() const {
-  DCHECK(prefs_);  // Should explicitly be initialized.
+  CHECK(prefs_,
+        base::NotFatalUntil::M162);  // Should explicitly be initialized.
   return prefs_.get();
 }
 
@@ -1145,29 +1073,7 @@ policy::SchemaRegistryService* ProfileImpl::GetPolicySchemaRegistryService() {
 policy::UserCloudPolicyManagerAsh* ProfileImpl::GetUserCloudPolicyManagerAsh() {
   return user_cloud_policy_manager_ash_.get();
 }
-#else
-policy::UserCloudPolicyManager* ProfileImpl::GetUserCloudPolicyManager() {
-  return user_cloud_policy_manager_.get();
-}
-
-policy::ProfileCloudPolicyManager* ProfileImpl::GetProfileCloudPolicyManager() {
-  return profile_cloud_policy_manager_.get();
-}
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-policy::CloudPolicyManager* ProfileImpl::GetCloudPolicyManager() {
-#if BUILDFLAG(IS_CHROMEOS)
-  return GetUserCloudPolicyManagerAsh();
-#else
-  if (user_cloud_policy_manager_) {
-    return GetUserCloudPolicyManager();
-  }
-  if (profile_cloud_policy_manager_) {
-    return GetProfileCloudPolicyManager();
-  }
-  return nullptr;
-#endif  // BUILDFLAG(IS_CHROMEOS)
-}
 
 policy::ConfigurationPolicyProvider*
 ProfileImpl::configuration_policy_provider() {
@@ -1176,11 +1082,7 @@ ProfileImpl::configuration_policy_provider() {
     return user_cloud_policy_manager_ash_.get();
   return nullptr;
 #else  // !BUILDFLAG(IS_CHROMEOS)
-  if (user_cloud_policy_manager_.get()) {
-    return user_cloud_policy_manager_.get();
-  } else {
-    return profile_cloud_policy_manager_.get();
-  }
+  return nullptr;
 #endif
 }
 
@@ -1216,7 +1118,7 @@ storage::SpecialStoragePolicy* ProfileImpl::GetSpecialStoragePolicy() {
 
 content::PlatformNotificationService*
 ProfileImpl::GetPlatformNotificationService() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
   return PlatformNotificationServiceFactory::GetForProfile(this);
 }
 
@@ -1322,7 +1224,7 @@ base::Time ProfileImpl::GetStartTime() const {
 }
 
 ProfileKey* ProfileImpl::GetProfileKey() const {
-  DCHECK(key_);
+  CHECK(key_, base::NotFatalUntil::M162);
   return key_.get();
 }
 
@@ -1343,7 +1245,7 @@ void ProfileImpl::ChangeAppLocale(const std::string& new_locale,
     NOTREACHED();
   }
   PrefService* local_state = g_browser_process->local_state();
-  DCHECK(local_state);
+  CHECK(local_state, base::NotFatalUntil::M162);
   if (local_state->IsManagedPreference(language::prefs::kApplicationLocale))
     return;
   std::string pref_locale =
@@ -1367,7 +1269,8 @@ void ProfileImpl::ChangeAppLocale(const std::string& new_locale,
     case APP_LOCALE_CHANGED_VIA_LOGIN:
     case APP_LOCALE_CHANGED_VIA_PUBLIC_SESSION_LOGIN: {
       if (!pref_locale.empty()) {
-        DCHECK(LocaleNotChanged(pref_locale, new_locale));
+        CHECK(LocaleNotChanged(pref_locale, new_locale),
+              base::NotFatalUntil::M162);
 
         if (!locale_change_guard_) {
           locale_change_guard_ = std::make_unique<ash::LocaleChangeGuard>(
@@ -1452,8 +1355,8 @@ void ProfileImpl::InitChromeOSPreferences() {
       g_browser_process->local_state(),
       g_browser_process->GetFeatures()->application_locale_storage(),
       g_browser_process->platform_part()->GetTimezoneResolverManager());
-  chromeos_preferences_->Init(
-      this, ash::ProfileHelper::Get()->GetUserByProfile(this));
+  chromeos_preferences_->Init(ash::ProfileHelper::Get()->GetUserByProfile(this),
+                              this, PrefServiceSyncableFromProfile(this));
 }
 
 #endif  // BUILDFLAG(IS_CHROMEOS)
@@ -1516,14 +1419,6 @@ GURL ProfileImpl::GetHomePage() {
   if (!home_page.is_valid())
     return chrome::ChromeUINewTabURLAsGURL();
   return home_page;
-}
-
-void ProfileImpl::UpdateSupervisedUserIdInStorage() {
-  ProfileManager* profile_manager = g_browser_process->profile_manager();
-  ProfileAttributesEntry* entry = profile_manager->GetProfileAttributesStorage()
-                                      .GetProfileAttributesWithPath(GetPath());
-  if (entry)
-    entry->SetSupervisedUserId(GetPrefs()->GetString(prefs::kSupervisedUserId));
 }
 
 void ProfileImpl::UpdateNameInStorage() {

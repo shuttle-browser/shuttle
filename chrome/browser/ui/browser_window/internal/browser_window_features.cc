@@ -16,7 +16,6 @@
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/devtools/devtools_ui_controller.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_ui_controller.h"
 #include "chrome/browser/extensions/browser_extension_window_controller.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sessions/session_service_factory.h"
@@ -51,6 +50,7 @@
 #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
 #include "chrome/browser/ui/sessions/session_service_browser_helper.h"
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_controller.h"
+#include "chrome/browser/ui/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/tabs/split_tab_highlight_controller.h"
 #include "chrome/browser/ui/tabs/tab_drag_api/desktop_tab_drag_impl/tab_drag_window_adapter_impl.h"
 #include "chrome/browser/ui/tabs/tab_drag_api/tab_drag_service_feature.h"
@@ -61,7 +61,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_api/tab_strip_service_feature.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller_impl.h"
 #include "chrome/browser/ui/toasts/toast_features.h"
 #include "chrome/browser/ui/toasts/toast_service.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
@@ -86,7 +85,6 @@
 #include "chrome/browser/ui/views/location_bar/zoom_bubble_coordinator.h"
 #include "chrome/browser/ui/views/location_bar/zoom_bubble_manager_views.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_closer.h"
-#include "chrome/browser/ui/views/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/views/toolbar/chrome_labs/chrome_labs_coordinator.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/browser/ui/views/upgrade_notification_controller.h"
@@ -291,12 +289,15 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
 
 
 #if BUILDFLAG(IS_CHROMEOS)
-  locked_state_controller_ =
-      GetUserDataFactory().CreateInstance<chromeos::LockedStateController>(
-          *browser, browser);
-  on_task_locked_controller_ =
-      GetUserDataFactory().CreateInstance<ash::boca::OnTaskLockedController>(
-          *browser, browser);
+  if (features::IsUseUnifiedLockedStateControllerEnabled()) {
+    locked_state_controller_ =
+        GetUserDataFactory().CreateInstance<chromeos::LockedStateController>(
+            *browser, browser);
+  } else {
+    on_task_locked_controller_ =
+        GetUserDataFactory().CreateInstance<ash::boca::OnTaskLockedController>(
+            *browser, browser);
+  }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if defined(USE_AURA)
@@ -371,32 +372,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   // instantiated in this block (please keep this list ordered without taking
   // into consideration buildflags, repeating buildflags is ok):
   if (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL) {
-
-    std::optional<bool> restored_state_collapsed =
-        BrowserInitState::From(browser)->is_vertical_tabs_initially_collapsed();
-    std::optional<int> restored_state_uncollapsed_width =
-        BrowserInitState::From(browser)
-            ->get_vertical_tabs_initial_uncollapsed_width();
-
-    if (!restored_state_collapsed.has_value() &&
-        !restored_state_uncollapsed_width.has_value() &&
-        !browser->CreatedBySessionRestore()) {
-      restored_state_collapsed =
-          profile->GetPrefs()->GetBoolean(prefs::kVerticalTabsCollapsedState);
-      restored_state_uncollapsed_width =
-          profile->GetPrefs()->GetInteger(prefs::kVerticalTabsUncollapsedWidth);
-    }
-
-    vertical_tab_strip_state_controller_ =
-        GetUserDataFactory()
-            .CreateInstance<tabs::VerticalTabStripStateControllerImpl>(
-                *browser, *browser, profile->GetPrefs(),
-                browser_actions_->root_action_item(),
-                SessionServiceFactory::GetForProfile(browser_->GetProfile()),
-                browser_->GetSessionID(), restored_state_collapsed,
-                restored_state_uncollapsed_width);
-
-    // This relies on the vertical tab strip state controller.
     if (organizer_panel::IsOrganizerPanelFeatureEnabled()) {
       organizer_panel_controller_ =
           GetUserDataFactory().CreateInstance<OrganizerPanelController>(
@@ -463,17 +438,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(
   if (browser_view) {
     contents_border_controller_ =
         std::make_unique<ContentsBorderController>(browser_view);
-  }
-
-  if (browser_view) {
-    if (browser_->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL ||
-        browser_->GetType() == BrowserWindowInterface::Type::TYPE_POPUP) {
-      data_protection_ui_controller_ =
-          GetUserDataFactory()
-              .CreateInstance<
-                  enterprise_data_protection::DataProtectionUIController>(
-                  *browser_view->browser(), browser_view);
-    }
   }
 
 #if BUILDFLAG(ENABLE_EXTENSIONS) && (BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC))
@@ -690,7 +654,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
 #if BUILDFLAG(ENABLE_EXTENSIONS) && (BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC))
   default_search_extension_controlled_controller_.reset();
 #endif
-  data_protection_ui_controller_.reset();
   contents_border_controller_.reset();
   color_provider_browser_helper_.reset();
   browser_ui_controller_.reset();

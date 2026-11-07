@@ -24,13 +24,14 @@ source_set("power_save_blocker") {
     "//remoting/host/win:*",
     "//services/device/wake_lock:*",
 
+    # Unit tests for the Linux implementation.
+    "//services/device:tests",
+
     # Scan Service in Ash needs to directly use the PowerSaveBlocker.
     "//chrome/browser/ash/scanning",
   ]
 
   sources = [ "power_save_blocker.h" ]
-
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   public_deps = [ "//services/device/public/mojom" ]
 
@@ -88,6 +89,10 @@ if (is_android) {
       "//services/device:*",
     ]
     sources = java_sources_needing_jni
-    deps = [ "//third_party/jni_zero:jni_zero_java" ]
+    deps = [
+      "//base:base_java",
+      "//services/device/public/mojom:mojom_java",
+      "//third_party/jni_zero:jni_zero_java",
+    ]
   }
 }

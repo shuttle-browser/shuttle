@@ -6,9 +6,9 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_WEBCODECS_VIDEO_DECODER_H_
 
 #include <stdint.h>
+
 #include <memory>
 
-#include "base/containers/flat_map.h"
 #include "base/time/time.h"
 #include "media/base/media_types.h"
 #include "media/base/status.h"
@@ -25,6 +25,7 @@
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/member.h"
+#include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace libgav1 {
 class BufferPool;
@@ -114,13 +115,13 @@ class MODULES_EXPORT VideoDecoder : public DecoderTemplate<VideoDecoderTraits> {
   std::optional<media::VideoDecoderConfig> MakeMediaConfig(
       const ConfigType& config,
       String* js_error_message) override;
-  media::DecoderStatus::Or<scoped_refptr<media::DecoderBuffer>> MakeInput(
-      const InputType& input,
-      bool verify_key_frame) override;
-  media::DecoderStatus::Or<OutputType*> MakeOutput(
+  base::expected<scoped_refptr<media::DecoderBuffer>, media::DecoderStatus>
+  MakeInput(const InputType& input, bool verify_key_frame) override;
+  base::expected<OutputType*, media::DecoderStatus> MakeOutput(
       scoped_refptr<MediaOutputType>,
       ExecutionContext*) override;
   void OnActiveConfigChanged(const MediaConfigType& config) override;
+  void OnReset() override;
 
  private:
   struct DecoderSpecificData {
@@ -151,11 +152,12 @@ class MODULES_EXPORT VideoDecoder : public DecoderTemplate<VideoDecoderTraits> {
 
   media::VideoTransformation active_transform_ = media::kNoTransformation;
 
-  // Per-chunk metadata to be applied to outputs, linked by timestamp.
+  // Per-chunk metadata to be applied to outputs, ordered by input sequence.
   struct ChunkMetadata {
+    base::TimeDelta timestamp;
     base::TimeDelta duration;
   };
-  base::flat_map<base::TimeDelta, ChunkMetadata> chunk_metadata_;
+  Vector<ChunkMetadata> chunk_metadata_;
 };
 
 }  // namespace blink

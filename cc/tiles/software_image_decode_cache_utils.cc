@@ -16,7 +16,6 @@
 #include "base/process/memory.h"
 #include "base/trace_event/trace_event.h"
 #include "cc/paint/paint_flags.h"
-#include "cc/paint/tone_map_util.h"
 #include "cc/tiles/mipmap_util.h"
 #include "skia/ext/geometry.h"
 #include "third_party/skia/include/core/SkColorSpace.h"
@@ -130,7 +129,7 @@ SoftwareImageDecodeCacheUtils::DoDecodeImage(
   if (paint_image.HasGainmapInfo()) {
     target_gainmap_info = SkImageInfo::Make(
         paint_image.GetSupportedDecodeSize(target_size, AuxImage::kGainmap),
-        color_type, kPremul_SkAlphaType);
+        color_type, kOpaque_SkAlphaType);
   }
 
   sk_sp<SkImage> target_image;
@@ -270,10 +269,12 @@ SoftwareImageDecodeCacheUtils::GenerateCacheEntryFromCandidate(
     auto canvas = SkCanvas::MakeRasterDirect(
         target_gainmap_pixmap.info(), target_gainmap_pixmap.writable_addr(),
         target_gainmap_pixmap.rowBytes());
+    SkPaint paint;
+    paint.setBlendMode(SkBlendMode::kSrc);
     canvas->drawImageRect(
         decoded_gainmap_image, src_gainmap_rect,
         SkRect::MakeSize(SkSize::Make(target_gainmap_info.dimensions())),
-        SkSamplingOptions(SkFilterMode::kLinear), nullptr,
+        SkSamplingOptions(SkFilterMode::kLinear), &paint,
         SkCanvas::kStrict_SrcRectConstraint);
   }
 
@@ -306,12 +307,10 @@ SoftwareImageDecodeCacheUtils::CacheKey::FromDrawImage(const DrawImage& image,
   //   results (and only ever cache one tone mapping for a given image).
   TargetColorParams target_color_params = image.target_color_params();
   target_color_params.hdr_headroom = std::nullopt;
-  if (paint_image.HasGainmapInfo() ||
-      ToneMapUtil::UseGlobalToneMapFilter(paint_image.color_space(),
-                                          paint_image.GetHDRMetadata())) {
+  if (paint_image.DecodeCacheColorConversionIsDestructive()) {
     if (paint_image.color_space()) {
       target_color_params.color_space =
-          gfx::ColorSpace(*paint_image.color_space());
+          gfx::ColorSpace(paint_image.color_space());
     }
   }
 

@@ -92,7 +92,6 @@ export interface SettingsRoutes {
   SITE_SETTINGS_WINDOW_MANAGEMENT: Route;
   SITE_SETTINGS_ZOOM_LEVELS: Route;
   SITE_SETTINGS_WEB_PRINTING: Route;
-  SPELL_CHECK: Route;
   SYSTEM: Route;
   TRIGGERED_RESET_DIALOG: Route;
 

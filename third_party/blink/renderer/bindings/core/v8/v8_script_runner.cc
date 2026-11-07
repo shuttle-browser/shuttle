@@ -511,7 +511,7 @@ v8::MaybeLocal<v8::Value> V8ScriptRunner::RunCompiledScript(
       script->GetUnboundScript()->GetScriptName();
   TRACE_EVENT("v8", "v8.run", "fileName",
               TRACE_STR_COPY(*v8::String::Utf8Value(isolate, script_name)),
-              [&](perfetto::EventContext ctx) {
+              "scriptId", script->ScriptId(), [&](perfetto::EventContext ctx) {
                 AddWorldAnnotations(ctx, script_state->World());
               });
   RuntimeCallStatsScopedTracer rcs_scoped_tracer(isolate);
@@ -709,11 +709,7 @@ ScriptEvaluationResult V8ScriptRunner::CompileAndRunScript(
             produce_cache_options);
       }
 
-      // `SharedStorageWorkletGlobalScope` has a out-of-process worklet
-      // architecture that does not have a `page` associated.
-      // TODO(crbug.com/340920456): Figure out what should be done here.
-      if ((compile_options & v8::ScriptCompiler::kProduceCompileHints) != 0 &&
-          !execution_context->IsSharedStorageWorkletGlobalScope()) {
+      if ((compile_options & v8::ScriptCompiler::kProduceCompileHints) != 0) {
         CHECK(page);
         CHECK(frame);
         // We can produce both crowdsourced and local compile hints at the
@@ -855,6 +851,12 @@ v8::MaybeLocal<v8::Value> V8ScriptRunner::CallFunction(
     v8::Isolate* isolate) {
   LocalDOMWindow* window = DynamicTo<LocalDOMWindow>(context);
   TRACE_EVENT("v8", "v8.callFunction", [&](perfetto::EventContext ctx) {
+    ctx.AddDebugAnnotation("scriptId", function->ScriptId());
+    ctx.AddDebugAnnotation("startPosition", function->GetScriptStartPosition());
+    ctx.AddDebugAnnotation("data", [&](perfetto::TracedValue trace_context) {
+      inspector_function_call_event::Data(std::move(trace_context), context,
+                                          function);
+    });
     AddFunctionWorldAnnotations(ctx, isolate, function);
   });
   RuntimeCallStatsScopedTracer rcs_scoped_tracer(isolate);
@@ -966,16 +968,26 @@ ScriptEvaluationResult V8ScriptRunner::EvaluateModule(
 
     // Script IDs are not available on errored modules or on non-source text
     // modules, so we give them a default value.
+    int script_id = record->GetStatus() != v8::Module::kErrored &&
+                            record->IsSourceTextModule()
+                        ? record->ScriptId()
+                        : v8::UnboundScript::kNoScriptId;
     probe::ExecuteScript probe(execution_context, module_script->SourceUrl(),
-                               record->GetStatus() != v8::Module::kErrored &&
-                                       record->IsSourceTextModule()
-                                   ? record->ScriptId()
-                                   : v8::UnboundScript::kNoScriptId);
+                               script_id);
 
-    TRACE_EVENT("v8,devtools.timeline", "v8.evaluateModule",
-                [&](perfetto::EventContext ctx) {
-                  AddWorldAnnotations(ctx, script_state->World());
-                });
+    LocalDOMWindow* window = DynamicTo<LocalDOMWindow>(execution_context);
+    LocalFrame* frame = window ? window->GetFrame() : nullptr;
+    TRACE_EVENT(
+        "v8,devtools.timeline", "v8.evaluateModule", "data",
+        [&](perfetto::TracedValue context) {
+          inspector_evaluate_module_event::Data(
+              std::move(context), isolate, frame,
+              module_script->SourceUrl().GetString(), script_id,
+              module_script->StartPosition());
+        },
+        [&](perfetto::EventContext ctx) {
+          AddWorldAnnotations(ctx, script_state->World());
+        });
     RUNTIME_CALL_TIMER_SCOPE(isolate, RuntimeCallStats::CounterId::kV8);
 
     // Do not perform a microtask checkpoint here. A checkpoint is performed

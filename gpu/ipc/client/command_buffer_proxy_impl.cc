@@ -699,6 +699,9 @@ void CommandBufferProxyImpl::CreateGpuFence(uint32_t gpu_fence_id,
   }
 
   gfx::GpuFence* gpu_fence = gfx::GpuFence::FromClientGpuFence(source);
+  if (!gpu_fence) {
+    return;
+  }
   command_buffer_->CreateGpuFenceFromHandle(
       gpu_fence_id, gpu_fence->GetGpuFenceHandle().Clone());
 }
@@ -797,8 +800,7 @@ void CommandBufferProxyImpl::TryUpdateStateDontReportError() {
 
 const gpu::CommandBufferSharedState* CommandBufferProxyImpl::shared_state()
     const {
-  return reinterpret_cast<const gpu::CommandBufferSharedState*>(
-      shared_state_mapping_.memory());
+  return shared_state_mapping_.GetMemoryAs<gpu::CommandBufferSharedState>();
 }
 
 base::HistogramBase*

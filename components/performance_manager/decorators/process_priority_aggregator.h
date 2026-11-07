@@ -10,6 +10,7 @@
 #include "components/performance_manager/public/graph/graph.h"
 #include "components/performance_manager/public/graph/node_data_describer.h"
 #include "components/performance_manager/public/graph/process_node.h"
+#include "components/performance_manager/public/priority/priority.h"
 
 namespace performance_manager {
 
@@ -17,15 +18,18 @@ namespace performance_manager {
 // priority as an aggregate of the priorities of all executions contexts (frames
 // and workers) it hosts. A process will inherit the priority of the highest
 // priority context that it hosts.
+//
+// This is part of the priority::PriorityVotingSystem: the
+// aggregated priority is cast as a vote on the process, where it is aggregated
+// with the votes cast directly on the process.
 class ProcessPriorityAggregator
-    : public GraphOwnedDefaultImpl,
-      public NodeDataDescriberDefaultImpl,
+    : public NodeDataDescriberDefaultImpl,
       public ProcessNodeObserver,
       public execution_context::ExecutionContextObserverDefaultImpl {
  public:
   using Data = ProcessPriorityAggregatorData;
 
-  ProcessPriorityAggregator();
+  explicit ProcessPriorityAggregator(priority::VotingChannel voting_channel);
 
   ProcessPriorityAggregator(const ProcessPriorityAggregator&) = delete;
   ProcessPriorityAggregator& operator=(const ProcessPriorityAggregator&) =
@@ -33,9 +37,9 @@ class ProcessPriorityAggregator
 
   ~ProcessPriorityAggregator() override;
 
-  // GraphOwned implementation:
-  void OnPassedToGraph(Graph* graph) override;
-  void OnTakenFromGraph(Graph* graph) override;
+  // Called by the PriorityVotingSystem.
+  void InitializeOnGraph(Graph* graph);
+  void TearDownOnGraph(Graph* graph);
 
   // NodeDataDescriber implementation:
   base::DictValue DescribeProcessNodeData(
@@ -52,8 +56,11 @@ class ProcessPriorityAggregator
       const execution_context::ExecutionContext* ec) override;
   void OnPriorityAndReasonChanged(
       const execution_context::ExecutionContext* ec,
-      const execution_context_priority::PriorityAndReason& previous_value)
-      override;
+      const priority::PriorityAndReason& previous_value) override;
+
+ private:
+  // Casts the aggregated priority of each process.
+  priority::VotingChannel voting_channel_;
 };
 
 }  // namespace performance_manager

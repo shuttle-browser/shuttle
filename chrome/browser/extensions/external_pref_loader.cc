@@ -113,7 +113,7 @@ ExternalPrefLoader::ExternalPrefLoader(int base_path_id,
 ExternalPrefLoader::~ExternalPrefLoader() = default;
 
 const base::FilePath ExternalPrefLoader::GetBaseCrxFilePath() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
 
   // |base_path_| was set in LoadOnFileThread().
   return base_path_;

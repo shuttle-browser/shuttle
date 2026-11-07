@@ -19,6 +19,7 @@
 #include "base/i18n/time_formatting.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/notreached.h"
+#include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
@@ -30,7 +31,6 @@
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/history/history_utils.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/supervised_user/supervised_user_url_filtering_service_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
@@ -44,15 +44,11 @@
 #include "components/favicon/core/large_icon_service.h"
 #include "components/favicon_base/favicon_url_parser.h"
 #include "components/history/core/browser/features.h"
-#include "components/history_clusters/core/config.h"
-#include "components/history_clusters/core/features.h"
-#include "components/history_clusters/core/history_clusters_prefs.h"
+#include "components/history/core/browser/time_period_filter_utils.h"
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/prefs/pref_service.h"
 #include "components/query_parser/snippet.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/supervised_user/core/browser/supervised_user_url_filtering_service.h"
-#include "components/supervised_user/core/browser/supervised_user_utils.h"
 #include "content/public/browser/url_data_source.h"
 #include "content/public/browser/web_ui.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
@@ -96,20 +92,6 @@ std::pair<std::string, std::string> SetHistoryEntryUrlAndTitle(
   return std::make_tuple(entry.url.spec(), base::UTF16ToUTF8(title_to_set));
 }
 
-// Helper function to check if entry is present in local database (local-side
-// history).
-bool IsUrlInLocalDatabase(const BrowsingHistoryService::HistoryEntry& entry) {
-  switch (entry.entry_type) {
-    case BrowsingHistoryService::HistoryEntry::EntryType::EMPTY_ENTRY:
-    case BrowsingHistoryService::HistoryEntry::EntryType::REMOTE_ENTRY:
-      return false;
-    case BrowsingHistoryService::HistoryEntry::EntryType::LOCAL_ENTRY:
-    case BrowsingHistoryService::HistoryEntry::EntryType::COMBINED_ENTRY:
-      return true;
-  }
-  NOTREACHED();
-}
-
 // Helper function to check if entry is present in user remote data (server-side
 // history).
 bool IsEntryInRemoteUserData(
@@ -133,20 +115,6 @@ constexpr UrlIdentity::FormatOptions url_identity_options{
     .default_options = {UrlIdentity::DefaultFormatOptions::
                             kOmitSchemePathAndTrivialSubdomains}};
 
-history::mojom::FilteringBehavior FilteringBehaviorToMojom(
-    supervised_user::FilteringBehavior filtering_behavior) {
-  switch (filtering_behavior) {
-    case supervised_user::FilteringBehavior::kAllow:
-      return history::mojom::FilteringBehavior::kAllow;
-    case supervised_user::FilteringBehavior::kBlock:
-      return history::mojom::FilteringBehavior::kBlock;
-    case supervised_user::FilteringBehavior::kInvalid:
-      return history::mojom::FilteringBehavior::kInvalid;
-    default:
-      return history::mojom::FilteringBehavior::kUnknown;
-  }
-}
-
 // Converts `entry` to a history::mojom::QueryResult to be owned by the caller.
 history::mojom::HistoryEntryPtr HistoryEntryToMojom(
     const BrowsingHistoryService::HistoryEntry& entry,
@@ -155,8 +123,8 @@ history::mojom::HistoryEntryPtr HistoryEntryToMojom(
   auto result_mojom = history::mojom::HistoryEntry::New();
   base::DictValue dictionary;
   auto url_and_title = SetHistoryEntryUrlAndTitle(entry);
-  result_mojom->url = url_and_title.first;
-  result_mojom->title = url_and_title.second;
+  result_mojom->url = std::move(url_and_title.first);
+  result_mojom->title = std::move(url_and_title.second);
 
   // UrlIdentity holds a user-identifiable string for a URL. We will display
   // this string to the user.
@@ -168,7 +136,7 @@ history::mojom::HistoryEntryPtr HistoryEntryToMojom(
   // When the domain is empty, use the scheme instead. This allows for a
   // sensible treatment of e.g. file: URLs when group by domain is on.
   if (domain.empty()) {
-    domain = base::UTF8ToUTF16(entry.url.GetScheme() + ":");
+    domain = base::UTF8ToUTF16(base::StrCat({entry.url.scheme(), ":"}));
   }
 
   // The items which are to be written into result are also described in
@@ -202,7 +170,6 @@ history::mojom::HistoryEntryPtr HistoryEntryToMojom(
   std::u16string snippet_string;
   std::u16string date_relative_day;
   std::u16string date_time_of_day;
-  bool is_blocked_visit = false;
 
   // Only pass in the strings we need (search results need a shortdate
   // and snippet, browse results need day and time information). Makes sure that
@@ -223,38 +190,17 @@ history::mojom::HistoryEntryPtr HistoryEntryToMojom(
     date_time_of_day = base::TimeFormatTimeOfDay(entry.time);
   }
 
-  supervised_user::FilteringBehavior filtering_behavior;
-  if (profile.IsChild()) {
-    filtering_behavior =
-        supervised_user::SupervisedUserUrlFilteringServiceFactory::
-            GetForProfile(&profile)
-                ->GetFilteringBehavior(entry.url.GetWithEmptyPath())
-                .behavior;
-    is_blocked_visit = entry.blocked_visit;
-    result_mojom->host_filtering_behavior =
-        FilteringBehaviorToMojom(filtering_behavior);
-  } else {
-    result_mojom->host_filtering_behavior =
-        history::mojom::FilteringBehavior::kUnknown;
-  }
+  result_mojom->host_filtering_behavior =
+      history::mojom::FilteringBehavior::kUnknown;
 
   result_mojom->date_time_of_day = base::UTF16ToUTF8(date_time_of_day);
   result_mojom->date_relative_day = base::UTF16ToUTF8(date_relative_day);
   result_mojom->snippet = base::UTF16ToUTF8(snippet_string);
   result_mojom->starred = false;
-  result_mojom->blocked_visit = is_blocked_visit;
+  result_mojom->blocked_visit = false;
   result_mojom->is_url_in_remote_user_data = IsEntryInRemoteUserData(entry);
   result_mojom->remote_icon_url_for_uma = entry.remote_icon_url_for_uma.spec();
   result_mojom->is_actor_visit = entry.is_actor_visit;
-
-  // Additional debugging fields shown only if the debug feature is enabled.
-  if (history_clusters::GetConfig().user_visible_debug) {
-    auto debug_mojom = history::mojom::DebugInfo::New();
-    debug_mojom->is_url_in_local_database = IsUrlInLocalDatabase(entry);
-    debug_mojom->visit_count = entry.visit_count;
-    debug_mojom->typed_count = entry.typed_count;
-    result_mojom->debug = std::move(debug_mojom);
-  }
 
   return result_mojom;
 }
@@ -269,7 +215,12 @@ BrowsingHistoryHandler::BrowsingHistoryHandler(
       web_contents_(web_contents),
       page_handler_(this, std::move(pending_page_handler)),
       clock_(base::DefaultClock::GetInstance()),
-      browsing_history_service_(nullptr) {}
+      browsing_history_service_(nullptr) {
+  HistoryService* local_history = HistoryServiceFactory::GetForProfile(
+      profile_, ServiceAccessType::EXPLICIT_ACCESS);
+  browsing_history_service_ =
+      std::make_unique<BrowsingHistoryService>(this, local_history);
+}
 
 BrowsingHistoryHandler::~BrowsingHistoryHandler() = default;
 
@@ -283,27 +234,14 @@ void BrowsingHistoryHandler::SetPage(
   deferred_callbacks_.clear();
 }
 
-void BrowsingHistoryHandler::StartQueryHistory() {
-  HistoryService* local_history = HistoryServiceFactory::GetForProfile(
-      profile_, ServiceAccessType::EXPLICIT_ACCESS);
-  browsing_history_service_ =
-      std::make_unique<BrowsingHistoryService>(this, local_history);
-
-  // 150 = RESULTS_PER_PAGE from chrome/browser/resources/history/constants.js
-  SendHistoryQuery(150, std::string(), std::nullopt, true, true);
-}
-
-void BrowsingHistoryHandler::QueryHistory(const std::string& query,
-                                          int max_count,
-                                          std::optional<double> begin_timestamp,
-                                          bool include_user_visits,
-                                          bool include_actor_visits,
-                                          QueryHistoryCallback callback) {
-  if (!browsing_history_service_) {
-    // Page was refreshed, so need to call StartQueryHistory here
-    StartQueryHistory();
-  }
-
+void BrowsingHistoryHandler::QueryHistory(
+    const std::string& query,
+    int max_count,
+    std::optional<double> begin_timestamp,
+    bool include_user_visits,
+    bool include_actor_visits,
+    const std::vector<std::string>& client_ids,
+    QueryHistoryCallback callback) {
   // Reset the query history continuation callback. Since it is repopulated in
   // OnQueryComplete(), it cannot be reset earlier, as the early return above
   // prevents the QueryHistory() call to the browsing history service.
@@ -317,7 +255,7 @@ void BrowsingHistoryHandler::QueryHistory(const std::string& query,
   query_history_callback_ = std::move(callback);
 
   SendHistoryQuery(max_count, query, begin_timestamp, include_user_visits,
-                   include_actor_visits);
+                   include_actor_visits, client_ids);
 }
 
 void BrowsingHistoryHandler::SendHistoryQuery(
@@ -325,7 +263,8 @@ void BrowsingHistoryHandler::SendHistoryQuery(
     const std::string& query,
     std::optional<double> begin_timestamp,
     bool include_user_visits,
-    bool include_actor_visits) {
+    bool include_actor_visits,
+    const std::vector<std::string>& client_ids) {
   query_timer_ = base::ElapsedTimer();
   history::QueryOptions options;
   options.max_count = max_count;
@@ -368,6 +307,8 @@ void BrowsingHistoryHandler::SendHistoryQuery(
         base::Time::FromMillisecondsSinceUnixEpoch(begin_timestamp.value());
   }
 
+  options.client_ids = client_ids;
+
   browsing_history_service_->QueryHistory(base::UTF8ToUTF16(text_query),
                                           options);
 }
@@ -393,13 +334,13 @@ void BrowsingHistoryHandler::RemoveVisits(
   std::vector<BrowsingHistoryService::HistoryEntry> items_to_remove;
   items_to_remove.reserve(items.size());
   for (const auto& item : items) {
-    const std::string url = item->url;
-    const std::vector<double> timestamps = item->timestamps;
+    const std::string& url = item->url;
+    const std::vector<double>& timestamps = item->timestamps;
     if (url.empty()) {
       NOTREACHED() << "Unable to extract arguments";
     }
 
-    DCHECK_GT(timestamps.size(), 0U);
+    CHECK_GT(timestamps.size(), 0U, base::NotFatalUntil::M162);
     BrowsingHistoryService::HistoryEntry entry;
     entry.url = GURL(url);
 
@@ -425,10 +366,8 @@ void BrowsingHistoryHandler::OpenClearBrowsingDataDialog() {
 
 void BrowsingHistoryHandler::RemoveBookmark(const std::string& url) {}
 //
-void BrowsingHistoryHandler::SetLastSelectedTab(const int last_tab) {
-  profile_->GetPrefs()->SetInteger(history_clusters::prefs::kLastSelectedTab,
-                                   last_tab);
-}
+// The Journeys tab is gone, so there is no tab selection to persist.
+void BrowsingHistoryHandler::SetLastSelectedTab(const int last_tab) {}
 
 void BrowsingHistoryHandler::OnQueryComplete(
     const std::vector<BrowsingHistoryService::HistoryEntry>& results,
@@ -500,4 +439,31 @@ void BrowsingHistoryHandler::HistoryDeleted() {
 
 Profile* BrowsingHistoryHandler::GetProfile() {
   return profile_;
+}
+
+void BrowsingHistoryHandler::GetTimePeriodOptions(
+    GetTimePeriodOptionsCallback callback) {
+  std::vector<history::mojom::TimePeriodOptionPtr> options_mojom;
+  for (const history::TimePeriodOption& option :
+       history::ComputeTimePeriodOptions(clock_->Now())) {
+    auto option_mojom = history::mojom::TimePeriodOption::New();
+    option_mojom->id =
+        static_cast<history::mojom::TimePeriodOptionId>(option.id);
+    option_mojom->label = base::UTF16ToUTF8(option.label);
+    if (!option.begin_time.is_null()) {
+      option_mojom->begin_time =
+          option.begin_time.InMillisecondsFSinceUnixEpoch();
+    }
+    if (!option.end_time.is_null()) {
+      option_mojom->end_time = option.end_time.InMillisecondsFSinceUnixEpoch();
+    }
+    options_mojom.push_back(std::move(option_mojom));
+  }
+  std::move(callback).Run(std::move(options_mojom));
+}
+
+// Shuttle: no sync, so there are never synced devices to filter by.
+void BrowsingHistoryHandler::GetSyncedDevicesForFiltering(
+    GetSyncedDevicesForFilteringCallback callback) {
+  std::move(callback).Run(std::vector<history::mojom::DevicePtr>());
 }

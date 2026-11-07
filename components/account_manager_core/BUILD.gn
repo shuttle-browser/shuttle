@@ -28,6 +28,7 @@ component("account_manager_core") {
 
   deps = [
     "//base",
+    "//components/policy/core/common:common_constants",
     "//components/prefs",
     "//google_apis",
     "//services/network/public/cpp",
@@ -67,16 +68,13 @@ source_set("unit_tests") {
     ":account_manager_core",
     ":test_support",
     "//base/test:test_support",
+    "//components/policy/core/common:common_constants",
     "//components/prefs:test_support",
     "//google_apis",
     "//services/network:test_support",
     "//services/network/public/cpp",
     "//testing/gtest",
   ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
 }
 
 proto_library("account_manager_proto") {

@@ -131,6 +131,8 @@ const SimpleFontData* LocalFontFaceSource::CreateFontData(
               font_description.SyntheticBoldAllowed(),
           font_description.IsSyntheticItalic() &&
               font_description.SyntheticItalicAllowed(),
+          font_description.GetStyleSyntax() ==
+              FontDescription::StyleSyntax::kItalicKeyword,
           font_description.GetFontSelectionRequest(),
           font_selection_capabilities, font_description.FontOpticalSizing(),
           font_description.TextRendering(),
@@ -142,7 +144,7 @@ const SimpleFontData* LocalFontFaceSource::CreateFontData(
       MakeGarbageCollected<FontPlatformData>(*platform_data);
 
   platform_data_avoid_bitmaps->SetAvoidEmbeddedBitmaps(
-      BitmapGlyphsBlockList::ShouldAvoidEmbeddedBitmapsForTypeface(*typeface));
+      ShouldAvoidEmbeddedBitmapsForTypeface(*typeface));
 
   SimpleFontData* font_data_variations_palette_applied =
       MakeGarbageCollected<SimpleFontData>(platform_data_avoid_bitmaps);

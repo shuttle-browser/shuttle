@@ -75,6 +75,8 @@ void JavascriptFrameworksUkmObserver::RecordJavascriptFrameworkPageLoad() {
   detect_framework_builder
       .SetAngularPageLoad(is_detected(JavaScriptFramework::kAngular))
       .SetGatsbyPageLoad(is_detected(JavaScriptFramework::kGatsby))
+      .SetLiteRTLMPageLoad(is_detected(JavaScriptFramework::kLiteRTLM))
+      .SetLiteRTPageLoad(is_detected(JavaScriptFramework::kLiteRT))
       .SetMediaPipePageLoad(is_detected(JavaScriptFramework::kMediaPipe))
       .SetNextJSPageLoad(is_detected(JavaScriptFramework::kNext))
       .SetNuxtJSPageLoad(is_detected(JavaScriptFramework::kNuxt))
@@ -169,6 +171,6 @@ void JavascriptFrameworksUkmObserver::RecordJavascriptFrameworkPageLoad() {
 
 void JavascriptFrameworksUkmObserver::DidActivatePrerenderedPage(
     content::NavigationHandle* navigation_handle) {
-  DCHECK(is_in_prerendered_page_);
+  CHECK(is_in_prerendered_page_, base::NotFatalUntil::M161);
   is_in_prerendered_page_ = false;
 }

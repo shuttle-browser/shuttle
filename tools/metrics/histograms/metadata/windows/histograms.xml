@@ -159,7 +159,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.Enclave.{Type}.Available" enum="BooleanAvailable"
-    expires_after="2027-02-07">
+    expires_after="2027-04-11">
   <owner>ajgo@chromium.org</owner>
   <owner>wfh@chromium.org</owner>
   <summary>
@@ -265,16 +265,6 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="Windows.HasThreadTicks" enum="Boolean"
-    expires_after="2025-02-23">
-  <owner>olivierli@chromium.org</owner>
-  <owner>gab@chromium.org</owner>
-  <summary>
-    The value of ThreadTicks::IsSupported(). Reported once per browser session,
-    on startup.
-  </summary>
-</histogram>
-
 <histogram name="Windows.HypervPresent" enum="BooleanEnabled"
     expires_after="2025-06-01">
   <owner>rkc@chromium.org</owner>
@@ -308,7 +298,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.InstallerDownloader.FailureReason"
-    enum="InstallerDownloaderFailureReason" expires_after="2027-01-24">
+    enum="InstallerDownloaderFailureReason" expires_after="2027-03-28">
   <owner>koretadaniel@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
   <summary>
@@ -330,7 +320,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.InstallerDownloader.InterruptReason"
-    enum="InterruptReason" expires_after="2027-02-14">
+    enum="InterruptReason" expires_after="2027-04-18">
   <owner>koretadaniel@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
   <summary>
@@ -439,7 +429,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.OneDriveSyncState.{SyncedState}" enum="BooleanEnabled"
-    expires_after="2027-02-07">
+    expires_after="2027-04-11">
   <owner>koretadaniel@chromium.org</owner>
   <owner>iclelland@chromium.org</owner>
   <summary>
@@ -457,7 +447,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.OpenWithLauncherResult" enum="OpenWithLauncherResult"
-    expires_after="2027-02-07">
+    expires_after="2027-04-11">
   <owner>jessemckenna@google.com</owner>
   <owner>davidbienvenu@chromium.org</owner>
   <summary>
@@ -586,7 +576,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.PlatformExperienceHelper.InstallerLaunchStatus.System"
-    enum="SystemInstallerLaunchStatus" expires_after="2027-02-14">
+    enum="SystemInstallerLaunchStatus" expires_after="2027-04-18">
   <owner>alsan@chromium.org</owner>
   <owner>chrome-desktop-ui-waterloo@google.com</owner>
   <summary>
@@ -606,7 +596,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.ProcessorFamily" enum="ProcessorFamily"
-    expires_after="2027-02-07">
+    expires_after="2027-04-11">
   <owner>rkc@chromium.org</owner>
   <owner>vnagarnaik@google.com</owner>
   <owner>rockot@chromium.org</owner>
@@ -674,7 +664,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.ShouldPinToTaskbarResult{PinAppToTaskbarChannel}"
-    enum="TaskbarPinResult" expires_after="2027-02-14">
+    enum="TaskbarPinResult" expires_after="2027-04-18">
   <owner>davidbienvenu@chromium.org</owner>
   <owner>jessemckenna@google.com</owner>
   <summary>
@@ -685,7 +675,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.TaskbarPinFromFRESucceeded" enum="Boolean"
-    expires_after="2027-02-14">
+    expires_after="2027-04-18">
   <owner>davidbienvenu@chromium.org</owner>
   <owner>jessemckenna@google.com</owner>
   <summary>
@@ -708,13 +698,26 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.TaskbarPinResult{PinAppToTaskbarChannel}"
-    enum="TaskbarPinResult" expires_after="2027-02-14">
+    enum="TaskbarPinResult" expires_after="2027-04-18">
   <owner>davidbienvenu@chromium.org</owner>
   <owner>jessemckenna@google.com</owner>
   <summary>
     The result of calling PinAppToTaskbar(), logged when it is
     called{PinAppToTaskbarChannel}. It is called when the user has agreed to pin
     Chrome (or an installed web app) to the taskbar.
+  </summary>
+</histogram>
+
+<histogram name="Windows.TaskbarShortcutMigrationCount" units="shortcuts"
+    expires_after="2027-03-28">
+  <owner>songhaoli@chromium.org</owner>
+  <owner>davidbienvenu@chromium.org</owner>
+  <summary>
+    The number of taskbar and implicit app shortcuts migrated (to fix their
+    AppUserModelID or add --source-shortcut-location=taskbar) during a taskbar
+    pin migration scan. Recorded once per MigrateTaskbarPins() run. A value of 0
+    indicates that all existing taskbar shortcuts were already properly
+    configured.
   </summary>
 </histogram>
 
@@ -728,6 +731,42 @@ chromium-metrics-reviews@google.com.
     Eliminating hangs that occur when opening the file select dialog should move
     this metric. Reported every time ui::ExecuteSelectFile is called via
     UtilWinImpl::CallExecuteSelectFile.
+  </summary>
+</histogram>
+
+<histogram name="Windows.VmDetection.Agreement" enum="VmDetectionAgreement"
+    expires_after="2027-06-30">
+  <owner>sorin@chromium.org</owner>
+  <owner>ganesh@chromium.org</owner>
+  <summary>
+    Which of the CPUID-based and SMBIOS-based implementations detected a virtual
+    machine guest. The Hyper-V root partition, an unrecognized CPUID hypervisor,
+    ARM64 and unreadable firmware tables all count as not detected. Generic VM
+    firmware strings from an unrecognized vendor count as detected. Recorded
+    each time browser activity is reported, at most once every 5 hours.
+  </summary>
+</histogram>
+
+<histogram name="Windows.VmDetection.FirmwareVmVendor" enum="FirmwareVmVendor"
+    expires_after="2027-06-30">
+  <owner>sorin@chromium.org</owner>
+  <owner>ganesh@chromium.org</owner>
+  <summary>
+    The virtualization vendor identified from the SMBIOS/firmware strings.
+    Recorded each time browser activity is reported, at most once every 5 hours.
+    The cloud vendor buckets (Google Compute Engine, Amazon EC2, Alibaba Cloud,
+    Nutanix) may include bare-metal machines, which report the same firmware
+    strings as that vendor's VMs.
+  </summary>
+</histogram>
+
+<histogram name="Windows.VmDetection.HypervisorType" enum="HypervisorType"
+    expires_after="2027-06-30">
+  <owner>sorin@chromium.org</owner>
+  <owner>ganesh@chromium.org</owner>
+  <summary>
+    The hypervisor identified via the CPUID hypervisor leaves. Recorded each
+    time browser activity is reported, at most once every 5 hours.
   </summary>
 </histogram>
 

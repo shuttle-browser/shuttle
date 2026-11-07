@@ -16,6 +16,7 @@
 #include "third_party/blink/renderer/platform/text/text_direction.h"
 #include "third_party/blink/renderer/platform/text/writing_mode.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
+#include "ui/gfx/geometry/outsets.h"
 #include "ui/gfx/geometry/outsets_f.h"
 
 namespace blink {
@@ -62,6 +63,7 @@ struct CORE_EXPORT BoxStrut {
   LayoutUnit BlockSum() const { return block_start + block_end; }
 
   LogicalOffset StartOffset() const { return {inline_start, block_start}; }
+  LogicalOffset EndOffset() const { return {inline_end, block_end}; }
 
   bool IsEmpty() const { return *this == BoxStrut(); }
 
@@ -175,6 +177,10 @@ struct CORE_EXPORT PhysicalBoxStrut {
   PhysicalBoxStrut(const PhysicalSize& outer_size,
                    const PhysicalRect& inner_rect);
 
+  // Create a strut based on an outer and inner rectangle (insets are inwards).
+  PhysicalBoxStrut(const PhysicalRect& outer_rect,
+                   const PhysicalRect& inner_rect);
+
   // Creates new PhysicalBoxStrut instance from the specified `outsets`.
   // A data member of `outsets` is rounded up to the minimum LayoutUnit value
   // which is equal or lager than the data member.
@@ -272,6 +278,14 @@ struct CORE_EXPORT PhysicalBoxStrut {
   bool operator==(const PhysicalBoxStrut& other) const {
     return top == other.top && right == other.right && bottom == other.bottom &&
            left == other.left;
+  }
+
+  gfx::Outsets ToRoundedOutsets() const {
+    return gfx::Outsets()
+        .set_top(top.Round())
+        .set_right(right.Round())
+        .set_bottom(bottom.Round())
+        .set_left(left.Round());
   }
 
   explicit operator gfx::OutsetsF() const {

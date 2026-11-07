@@ -28,26 +28,6 @@ source_set("access_handler_impl") {
   ]
 }
 
-source_set("audio_process_ml_model_forwarder") {
-  sources = [
-    "audio_process_ml_model_forwarder.cc",
-    "audio_process_ml_model_forwarder.h",
-  ]
-  public_deps = [
-    "//base",
-    "//components/optimization_guide/core:prediction",
-    "//components/optimization_guide/proto:optimization_guide_proto",
-    "//mojo/public/cpp/bindings",
-    "//services/audio/public/mojom",
-  ]
-  deps = [
-    "//chrome/browser/media/webrtc",
-    "//chrome/common:constants",
-    "//components/prefs",
-    "//content/public/browser",
-  ]
-}
-
 source_set("media") {
   public = [
     "audio_service_util.h",
@@ -187,17 +167,17 @@ source_set("impl") {
     "unified_autoplay_config.cc",
   ]
 
-  public_deps = [
-    ":media",
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = [ ":media" ]
 
   deps = [
     ":media_engagement_preload_proto",
+    "//chrome/app:generated_resources",
+    "//chrome/app/theme:theme_resources",
     "//chrome/browser:browser_process",
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/history",
     "//chrome/browser/media/webrtc",
+    "//chrome/browser/policy",
     "//chrome/browser/preloading/prefetch/no_state_prefetch",
     "//chrome/browser/ui:recently_audible_helper",
     "//chrome/browser/ui:ui_features",
@@ -221,6 +201,7 @@ source_set("impl") {
       "platform_verification_chromeos.cc",
     ]
     deps += [
+      "//chrome/browser/ui:screen_capture_notification_ui",
       "//chrome/browser/ui/ash/login",
       "//chrome/browser/ui/webui/ash/lock_screen_reauth",
       "//chromeos/ash/components/settings",

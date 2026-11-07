@@ -22,6 +22,7 @@
 #include "ui/views/controls/button/md_text_button.h"
 #include "ui/views/layout/box_layout.h"
 #include "ui/views/view_class_properties.h"
+#include "ui/views/window/dialog_client_view.h"
 
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(
     FileSystemAccessRestorePermissionBubbleView,
@@ -132,8 +133,9 @@ FileSystemAccessRestorePermissionBubbleView::CreateAndShow(
     const FileSystemAccessPermissionRequestManager::RequestData& request,
     base::OnceCallback<void(permissions::PermissionAction)> callback,
     content::WebContents* web_contents) {
-  DCHECK(request.request_type == FileSystemAccessPermissionRequestManager::
-                                     RequestType::kRestorePermissions);
+  CHECK(request.request_type == FileSystemAccessPermissionRequestManager::
+                                    RequestType::kRestorePermissions,
+        base::NotFatalUntil::M162);
 
   auto* browser =
       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(web_contents);
@@ -195,8 +197,15 @@ void FileSystemAccessRestorePermissionBubbleView::UpdateAnchor(
 }
 
 void FileSystemAccessRestorePermissionBubbleView::OnButtonPressed(
-    RestorePermissionButton button) {
+    RestorePermissionButton button,
+    const ui::Event& event) {
   if (!callback_) {
+    return;
+  }
+  // Extra-view buttons bypass DialogClientView::ButtonPressed, so check for
+  // unintended input before handling the choice.
+  if (GetDialogClientView()->IsPossiblyUnintendedInteraction(
+          event, /*allow_key_events=*/false)) {
     return;
   }
 

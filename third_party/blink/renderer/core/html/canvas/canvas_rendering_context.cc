@@ -32,6 +32,7 @@
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_union_element_elementimage.h"
 #include "third_party/blink/renderer/core/animation_frame/worker_animation_frame_provider.h"
+#include "third_party/blink/renderer/core/dom/dom_node_ids.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_context_creation_attributes_core.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_image_source.h"
@@ -46,13 +47,14 @@
 #include "third_party/blink/renderer/core/paint/paint_layer_painter.h"
 #include "third_party/blink/renderer/core/workers/worker_global_scope.h"
 #include "third_party/blink/renderer/platform/graphics/accelerated_static_bitmap_image.h"
-#include "third_party/blink/renderer/platform/graphics/canvas_non_2d_resource_provider.h"
 #include "third_party/blink/renderer/platform/graphics/gpu/shared_gpu_context.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_canvas.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_record_builder.h"
 #include "third_party/blink/renderer/platform/graphics/unaccelerated_static_bitmap_image.h"
+#include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 #include "ui/accessibility/accessibility_features.h"
@@ -63,11 +65,70 @@ namespace blink {
 namespace {
 BASE_FEATURE(kAllowAcceleratedTexElement, base::FEATURE_ENABLED_BY_DEFAULT);
 
-// Delay for recording the UKM for canvas accessibility to allow the canvas
-// element to update its accessibility related information. This value is chosen
-// arbitrarily and can be subject to optimization.
-constexpr base::TimeDelta kAccessibilityUkmRecordingDelay = base::Seconds(5);
+void RecordAccessibilityUKMForCanvasElement(
+    HTMLCanvasElement* canvas_element,
+    CanvasRenderingContext::CanvasRenderingAPI canvas_rendering_type,
+    bool is_offscreen,
+    bool did_draw_text) {
+  DCHECK(IsMainThread());
+  DCHECK(canvas_element);
+
+  DEFINE_STATIC_LOCAL(const Vector<AtomicString>, keyboard_event_types,
+                      ({event_type_names::kKeydown, event_type_names::kKeypress,
+                        event_type_names::kKeyup}));
+  // Include modern pointer and touch events in addition to legacy mouse
+  // events, as interactive canvas applications frequently bind to pointer
+  // or touch handlers instead of mouse handlers.
+  DEFINE_STATIC_LOCAL(
+      const Vector<AtomicString>, interactive_event_types,
+      ({event_type_names::kClick, event_type_names::kMousedown,
+        event_type_names::kMouseup, event_type_names::kMousemove,
+        event_type_names::kMouseover, event_type_names::kMouseout,
+        event_type_names::kPointerdown, event_type_names::kPointerup,
+        event_type_names::kPointermove, event_type_names::kPointercancel,
+        event_type_names::kPointerover, event_type_names::kPointerout,
+        event_type_names::kTouchstart, event_type_names::kTouchmove,
+        event_type_names::kTouchend, event_type_names::kTouchcancel}));
+
+  bool has_keyboard_listener =
+      canvas_element->HasAnyEventListeners(keyboard_event_types);
+  bool has_mouse_listener =
+      canvas_element->HasAnyEventListeners(interactive_event_types);
+
+  const auto& ukm_params = canvas_element->GetUkmParameters();
+  auto ukm_builder = ukm::builders::Accessibility_Canvas(ukm_params.source_id);
+  ukm_builder.SetRenderingContext(static_cast<int>(canvas_rendering_type))
+      .SetIsOffscreen(is_offscreen)
+      .SetHasKeyboardListener(has_keyboard_listener)
+      .SetHasMouseListener(has_mouse_listener)
+      .SetHasText(did_draw_text);
+
+  if (base::FeatureList::IsEnabled(
+          ::features::kEnableCollectAccessibilityHeuristicInCanvasUkm)) {
+    ukm_builder.SetNeedsAccessibilitySupport(
+        canvas_element->GetNeedsAccessibilitySupportHeuristic());
+  }
+
+  ukm_builder.Record(ukm_params.ukm_recorder);
 }
+
+void RecordPlaceholderCanvasUKMOnMainThread(
+    DOMNodeId placeholder_canvas_id,
+    CanvasRenderingContext::CanvasRenderingAPI canvas_rendering_type,
+    bool did_draw_text) {
+  DCHECK(IsMainThread());
+  auto* placeholder = DynamicTo<HTMLCanvasElement>(
+      DOMNodeIds::NodeForId(placeholder_canvas_id));
+  if (!placeholder || !placeholder->IsDisplayed()) {
+    // If the placeholder element is undisplayed or detached, recording is
+    // skipped (worker contexts do not reschedule).
+    return;
+  }
+  RecordAccessibilityUKMForCanvasElement(placeholder, canvas_rendering_type,
+                                         /*is_offscreen=*/true, did_draw_text);
+}
+
+}  // namespace
 
 CanvasRenderingContext::CanvasRenderingContext(
     CanvasRenderingContextHost* host,
@@ -103,7 +164,9 @@ void CanvasRenderingContext::Dispose() {
   // an error when CanvasRenderingContext::DidProcessTask() is invoked
   // after the HTMLCanvasElement is destroyed.
   if (CanvasRenderingContextHost* host = Host()) [[likely]] {
-    host->DetachContext();
+    if (host->RenderingContext() == this) {
+      host->DetachContext();
+    }
     host_ = nullptr;
   }
 }
@@ -114,11 +177,12 @@ CanvasRenderingContext::GetEnclosingContextForDrawElement(
     Element* element,
     const String& func_name,
     ExceptionState& exception_state) {
-  auto* canvas = DynamicTo<HTMLCanvasElement>(element->parentNode());
+  auto* canvas = element->CanvasForDrawing();
   if (!canvas) {
-    exception_state.ThrowTypeError(StrCat(
-        {"Only immediate children of the <canvas> element can be passed to ",
-         func_name, "."}));
+    exception_state.ThrowTypeError(
+        StrCat({"Only drawable descendants of the <canvas> element can be "
+                "passed to ",
+                func_name, "."}));
     return nullptr;
   }
   CanvasRenderingContext* context = canvas->RenderingContext();
@@ -191,9 +255,9 @@ bool CanvasRenderingContext::IsDrawElementImageEligible(
   return true;
 }
 
-std::optional<CanvasChildPaintRecord>
-CanvasRenderingContext::GetChildPaintRecord(Element* element) {
-  return Host()->GetCanvasChildPaintRecord(element->GetDomNodeId());
+std::optional<CanvasDrawablePaintRecord>
+CanvasRenderingContext::GetDrawablePaintRecord(Element* element) {
+  return Host()->GetCanvasDrawablePaintRecord(element->GetDomNodeId());
 }
 
 scoped_refptr<StaticBitmapImage> CanvasRenderingContext::GetElementImage(
@@ -211,16 +275,16 @@ scoped_refptr<StaticBitmapImage> CanvasRenderingContext::GetElementImage(
     return nullptr;
   }
 
-  std::optional<CanvasChildPaintRecord> child_paint_record;
+  std::optional<CanvasDrawablePaintRecord> drawable_paint_record;
   if (element->IsElement()) {
-    child_paint_record = GetChildPaintRecord(element->GetAsElement());
+    drawable_paint_record = GetDrawablePaintRecord(element->GetAsElement());
   } else {
     if (const auto& record = element->GetAsElementImage()->PaintRecord()) {
-      child_paint_record = *record;
+      drawable_paint_record = *record;
     }
   }
 
-  if (!child_paint_record) {
+  if (!drawable_paint_record) {
     if (element->IsElementImage()) {
       exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
                                         "The ElementImage has been closed.");
@@ -232,10 +296,17 @@ scoped_refptr<StaticBitmapImage> CanvasRenderingContext::GetElementImage(
   }
 
   // Element size in physical coordinates.
-  gfx::RectF src_rect(child_paint_record->paint_state.box_size);
+  gfx::RectF src_rect(drawable_paint_record->paint_state.box_size);
   if (sx && sy && swidth && sheight) {
-    float dpr = child_paint_record->paint_state.effective_zoom;
+    if (!CanvasRenderingContext::ValidateRectForCanvas(*sx, *sy, *swidth,
+                                                       *sheight)) {
+      exception_state.ThrowDOMException(
+          DOMExceptionCode::kDataError,
+          "The source rect is empty or not finite");
+      return nullptr;
+    }
     AdjustRectForCanvas(*sx, *sy, *swidth, *sheight);
+    float dpr = drawable_paint_record->paint_state.effective_zoom;
     src_rect = gfx::RectF(*sx * dpr, *sy * dpr, *swidth * dpr, *sheight * dpr);
   }
 
@@ -244,8 +315,8 @@ scoped_refptr<StaticBitmapImage> CanvasRenderingContext::GetElementImage(
   // the same proportions when appearing inside the canvas as it would have
   // were it painted outside the canvas.
   gfx::SizeF intrinsic_size(src_rect.size());
-  gfx::Vector2dF canvas_scale =
-      GetCanvasGridScaleFactor(child_paint_record->paint_state, Host()->Size());
+  gfx::Vector2dF canvas_scale = GetCanvasGridScaleFactor(
+      drawable_paint_record->paint_state, Host()->Size());
   intrinsic_size.Scale(canvas_scale.x(), canvas_scale.y());
   gfx::Size intrinsic_dest_size = gfx::ToCeiledSize(intrinsic_size);
   gfx::Size dest_size(intrinsic_dest_size);
@@ -262,32 +333,23 @@ scoped_refptr<StaticBitmapImage> CanvasRenderingContext::GetElementImage(
   auto draw_to_canvas = [&](cc::PaintCanvas& canvas) {
     canvas.scale(canvas_scale.x(), canvas_scale.y());
     canvas.translate(-src_rect.x(), -src_rect.y());
-    canvas.drawPicture(child_paint_record->record);
+    canvas.drawPicture(drawable_paint_record->record);
   };
 
   if (base::FeatureList::IsEnabled(kAllowAcceleratedTexElement) &&
       SharedGpuContext::IsGpuCompositingEnabled()) {
     if (auto wrapper = SharedGpuContext::ContextProviderWrapper()) {
-      auto resource_provider = CanvasNon2DResourceProvider::Create(
+      return AcceleratedStaticBitmapImage::CreateFromRaster(
           dest_size, GetN32FormatForCanvas(), kPremul_SkAlphaType,
-          gfx::ColorSpace::CreateSRGB(), gfx::HDRMetadata(), wrapper,
-          gpu::SHARED_IMAGE_USAGE_RASTER_WRITE | usage);
-
-      // GetOrCreateImageProvider() to make sure one is created prior to the
-      // call to SetAnimatedImageFrameIndexMaps().
-      resource_provider->GetOrCreateImageProvider();
-      resource_provider->SetAnimatedImageFrameIndexes(
-          child_paint_record->paint_state.animated_image_frame_index_map);
-
-      return resource_provider->DoExternalOverdrawAndSnapshot(
-          [&](cc::PaintCanvas& canvas) { draw_to_canvas(canvas); },
-          ImageOrientation());
+          gfx::ColorSpace::CreateSRGB(), gfx::HDRMetadata(), wrapper, usage,
+          draw_to_canvas,
+          drawable_paint_record->paint_state.animated_image_frame_index_map);
     }
   }
 
   return UnacceleratedStaticBitmapImage::CreateFromRaster(
       dest_size, draw_to_canvas,
-      child_paint_record->paint_state.animated_image_frame_index_map);
+      drawable_paint_record->paint_state.animated_image_frame_index_map);
 }
 
 void CanvasRenderingContext::DidDraw(
@@ -332,14 +394,7 @@ void CanvasRenderingContext::DidProcessTask(
 }
 
 void CanvasRenderingContext::MaybeRecordUKMCanvasAccessibility() {
-  if (did_record_accessibility_ukm_ || !did_process_task_) {
-    return;
-  }
-
-  // If heuristic collection is disabled, record the UKM immediately.
-  if (!base::FeatureList::IsEnabled(
-          ::features::kEnableCollectAccessibilityHeuristicInCanvasUkm)) {
-    RecordUKMCanvasAccessibility();
+  if (!should_record_accessibility_ukm_ || !did_process_task_) {
     return;
   }
 
@@ -348,6 +403,11 @@ void CanvasRenderingContext::MaybeRecordUKMCanvasAccessibility() {
   }
   CanvasRenderingContextHost* const host = Host();
   if (!host) {
+    return;
+  }
+  if (host->IsOffscreenCanvas() &&
+      !static_cast<OffscreenCanvas*>(host)->HasPlaceholderCanvas()) {
+    should_record_accessibility_ukm_ = false;
     return;
   }
   ExecutionContext* execution_context = host->GetTopExecutionContext();
@@ -364,7 +424,7 @@ void CanvasRenderingContext::MaybeRecordUKMCanvasAccessibility() {
 }
 
 void CanvasRenderingContext::RecordUKMCanvasAccessibility() {
-  if (did_record_accessibility_ukm_ || !did_process_task_) {
+  if (!should_record_accessibility_ukm_ || !did_process_task_) {
     return;
   }
 
@@ -373,57 +433,68 @@ void CanvasRenderingContext::RecordUKMCanvasAccessibility() {
     return;
   }
 
-  bool has_keyboard_listener = false;
-  bool has_mouse_listener = false;
   bool is_offscreen = host->IsOffscreenCanvas();
   if (is_offscreen) {
-    // Offscreen canvases are collected only if they push their rendered output
-    // to a placeholder element in DOM.
-    if (!static_cast<OffscreenCanvas*>(host)->HasPlaceholderCanvas()) {
+    auto* offscreen_canvas = static_cast<OffscreenCanvas*>(host);
+    if (!offscreen_canvas->HasPlaceholderCanvas()) {
+      should_record_accessibility_ukm_ = false;
       return;
     }
-  } else {
-    HTMLCanvasElement* canvas_element = static_cast<HTMLCanvasElement*>(host);
-    // Non offscreen canvases are only collected if they are visible.
-    if (!canvas_element->IsDisplayed()) {
-      return;
+    DOMNodeId placeholder_id = offscreen_canvas->PlaceholderCanvasId();
+    if (IsMainThread()) {
+      auto* placeholder =
+          DynamicTo<HTMLCanvasElement>(DOMNodeIds::NodeForId(placeholder_id));
+      if (!placeholder) {
+        // Placeholder DOM node has been destroyed. Fail closed to prevent
+        // infinite rescheduling loops.
+        should_record_accessibility_ukm_ = false;
+        return;
+      }
+      if (!placeholder->IsDisplayed()) {
+        // Reset the scheduling flag so that when the placeholder becomes
+        // displayed later, UKM recording will be rescheduled.
+        did_schedule_accessibility_ukm_recording_ = false;
+        return;
+      }
+      RecordAccessibilityUKMForCanvasElement(
+          placeholder, canvas_rendering_type_,
+          /*is_offscreen=*/true, did_draw_text_);
+      should_record_accessibility_ukm_ = false;
+    } else {
+      // Worker thread: post a cross-thread task to query the placeholder on
+      // the main thread and record the UKM event there.
+      if (auto* context = host->GetTopExecutionContext()) {
+        if (auto task_runner =
+                context->GetAgentGroupSchedulerCompositorTaskRunner()) {
+          // Note: UKM recording for worker offscreen canvases is attempted
+          // once. If the placeholder element is not displayed when this task
+          // executes, no metrics are emitted and recording is not rescheduled.
+          PostCrossThreadTask(
+              *task_runner, FROM_HERE,
+              CrossThreadBindOnce(&RecordPlaceholderCanvasUKMOnMainThread,
+                                  placeholder_id, canvas_rendering_type_,
+                                  did_draw_text_));
+        }
+      }
+      should_record_accessibility_ukm_ = false;
     }
-
-    DEFINE_STATIC_LOCAL(
-        const Vector<AtomicString>, keyboard_event_types,
-        ({event_type_names::kKeydown, event_type_names::kKeypress,
-          event_type_names::kKeyup}));
-    DEFINE_STATIC_LOCAL(
-        const Vector<AtomicString>, mouse_event_types,
-        ({event_type_names::kClick, event_type_names::kMousedown,
-          event_type_names::kMouseup, event_type_names::kMousemove,
-          event_type_names::kMouseover, event_type_names::kMouseout}));
-
-    has_keyboard_listener =
-        canvas_element->HasAnyEventListeners(keyboard_event_types);
-    has_mouse_listener =
-        canvas_element->HasAnyEventListeners(mouse_event_types);
+    return;
   }
 
-  const auto& ukm_params = host->GetUkmParameters();
-  auto ukm_builder = ukm::builders::Accessibility_Canvas(ukm_params.source_id);
-  ukm_builder.SetRenderingContext(static_cast<int>(canvas_rendering_type_))
-      .SetIsOffscreen(is_offscreen)
-      .SetHasKeyboardListener(has_keyboard_listener)
-      .SetHasMouseListener(has_mouse_listener)
-      .SetHasText(did_draw_text_);
-
-  if (!is_offscreen &&
-      base::FeatureList::IsEnabled(
-          ::features::kEnableCollectAccessibilityHeuristicInCanvasUkm)) {
-    HTMLCanvasElement* canvas_element = static_cast<HTMLCanvasElement*>(host);
-    ukm_builder.SetNeedsAccessibilitySupport(
-        canvas_element->GetNeedsAccessibilitySupportHeuristic());
+  HTMLCanvasElement* canvas_element = static_cast<HTMLCanvasElement*>(host);
+  // Non offscreen canvases are only collected if they are visible.
+  if (!canvas_element->IsDisplayed()) {
+    // Reset the scheduling flag so that when the canvas becomes displayed
+    // later, UKM recording will be rescheduled.
+    did_schedule_accessibility_ukm_recording_ = false;
+    return;
   }
 
-  ukm_builder.Record(ukm_params.ukm_recorder);
+  RecordAccessibilityUKMForCanvasElement(canvas_element, canvas_rendering_type_,
+                                         /*is_offscreen=*/false,
+                                         did_draw_text_);
 
-  did_record_accessibility_ukm_ = true;
+  should_record_accessibility_ukm_ = false;
 }
 
 void CanvasRenderingContext::RecordUMACanvasRenderingAPI() {

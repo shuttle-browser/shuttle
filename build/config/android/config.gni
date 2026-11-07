@@ -4,26 +4,16 @@
 
 # This file contains common system config stuff for the Android build.
 
-# Some arguments that are needed across all builds that import this file, for
-# example by is_robolectric.
-declare_args() {
-  # Build incremental targets whenever possible.
-  # See //build/android/incremental_install/README.md for more details.
-  incremental_install = false
-}
-
 declare_args() {
   # Java debug on Android. Having this on enables multidexing, and turning it
   # off will enable proguard.
-  is_java_debug = is_debug || incremental_install
+  is_java_debug = is_debug
 }
 
-# These two combinations could theoretically be made to work, but they are
+# This combination could theoretically be made to work, but it is
 # not useful and so not worth the effort.
 assert(!(is_java_debug && is_official_build),
        "Cannot have is_official_build && is_java_debug")
-assert(!(incremental_install && !is_java_debug),
-       "Cannot have incremental_install without is_java_debug")
 
 # Toolchain used to create native libraries for robolectric_binary() targets.
 robolectric_toolchain = "//build/toolchain/android:robolectric_$host_cpu"
@@ -131,7 +121,10 @@ if (is_android) {
   }
 
   # Our build system no longer supports legacy multidex.
+  # LINT.IfChange(min_supported_sdk_version)
   min_supported_sdk_version = 23
+
+  # LINT.ThenChange(//third_party/r8/3pp/3pp.py:min_supported_sdk_version)
 
   # ASAN requires O MR1.
   # https://github.com/google/sanitizers/wiki/AddressSanitizerOnAndroid/01f8df1ac1a447a8475cdfcb03e8b13140042dbd#running-with-wrapsh-recommended
@@ -161,7 +154,7 @@ if (is_android) {
   android_ndk_root = "//third_party/android_toolchain/ndk"
 
   public_android_sdk_root = "//third_party/android_sdk/public"
-  public_android_sdk_platform_version = "37.0"
+  public_android_sdk_platform_version = "37.2"
   public_android_sdk_build_tools_version = "37.0.0"
   if (android_sdk_release == "public") {
     default_android_sdk_root = public_android_sdk_root
@@ -172,7 +165,7 @@ if (is_android) {
   }
 
   if (!defined(default_target_sdk_version)) {
-    default_target_sdk_version = "37"
+    default_target_sdk_version = "36"
   }
 
   if (!defined(default_lint_android_sdk_root)) {
@@ -306,6 +299,9 @@ if (is_android) {
     # names).
     optimize_android_resources = !is_java_debug
 
+    # Converts PNG resources (except 9-patch files) to lossless WebP.
+    png_to_webp = !is_java_debug && build_with_chromium && !is_cronet_build
+
     # Controls whether specifying |art_profile_path| automatically adds a binary
     # baseline profile to the APK/AAB.
     # Currently disabled while bundletool does not support baseline profiles in
@@ -391,8 +387,6 @@ if (is_android) {
     tiered_dex_partitions = read_file(tiered_dex_partitions_file, "json")
   }
 
-  assert(!incremental_install || is_java_debug,
-         "incremental_install=true && is_java_debug=false is not supported.")
   assert(!tiered_dex_assembly || is_java_debug,
          "tiered_dex_assembly=true && is_java_debug=false is not supported.")
 
@@ -477,44 +471,10 @@ if (is_android) {
 
   android_sdk_tools_bundle_aapt2 = "${android_sdk_tools_bundle_aapt2_dir}/aapt2"
 
-  _common_inputs_for_jre_jdk = [
-    "//third_party/jdk/current/conf/logging.properties",
-    "//third_party/jdk/current/conf/security/java.security",
-    "//third_party/jdk/current/lib/ct.sym",
-    "//third_party/jdk/current/lib/jrt-fs.jar",
-    "//third_party/jdk/current/lib/jvm.cfg",
-    "//third_party/jdk/current/lib/libawt.so",
-    "//third_party/jdk/current/lib/libawt_headless.so",
-    "//third_party/jdk/current/lib/libawt_xawt.so",
-    "//third_party/jdk/current/lib/libjava.so",
-    "//third_party/jdk/current/lib/libjimage.so",
-    "//third_party/jdk/current/lib/libjli.so",
-    "//third_party/jdk/current/lib/libjsvml.so",
-    "//third_party/jdk/current/lib/libmanagement.so",
-    "//third_party/jdk/current/lib/libmanagement_ext.so",
-    "//third_party/jdk/current/lib/libnet.so",
-    "//third_party/jdk/current/lib/libnio.so",
-    "//third_party/jdk/current/lib/libverify.so",
-    "//third_party/jdk/current/lib/libzip.so",
-    "//third_party/jdk/current/lib/modules",
-    "//third_party/jdk/current/lib/server/classes.jsa",
-    "//third_party/jdk/current/lib/server/libjvm.so",
-    "//third_party/jdk/current/lib/tzdb.dat",
-  ]
-
-  # Actions that use java should add this as inputs so that they are rebuilt
-  # when the JDK changes.
-  java_paths_for_inputs = [
-                            "//third_party/jdk/current/bin/java",
-                            "//third_party/jdk/current/bin/java.chromium",
-                          ] + _common_inputs_for_jre_jdk
-
-  javac_paths_for_inputs =
-      [ "//third_party/jdk/current/bin/javac" ] + _common_inputs_for_jre_jdk
-
   kotlinc_paths_for_inputs = [
     "//third_party/kotlinc",
     "//third_party/kotlinc/current/bin/kotlinc",
+    "//third_party/kotlinc/current/bin/kotlinc-graalvm",
     "//third_party/kotlinc/current/lib/jvm-abi-gen.jar",
     "//third_party/kotlinc/current/lib/annotations-13.0.jar",
     "//third_party/kotlinc/current/lib/kotlin-compiler.jar",

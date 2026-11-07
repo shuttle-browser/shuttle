@@ -29,7 +29,6 @@
 #include "components/history/core/browser/history_service_observer.h"
 #include "components/history/core/browser/history_types.h"
 #include "components/keyed_service/core/keyed_service.h"
-#include "components/optimization_guide/core/hints/optimization_guide_decision.h"
 #include "components/sqlite_proto/key_value_data.h"
 #include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/preconnect_request.h"
@@ -96,18 +95,6 @@ struct PreconnectPrediction {
   std::string host;
   std::vector<content::PreconnectRequest> requests;
   std::vector<PrefetchRequest> prefetch_requests;
-};
-
-// Stores a result of a prediction from the optimization guide.
-struct OptimizationGuidePrediction {
-  OptimizationGuidePrediction();
-  OptimizationGuidePrediction(const OptimizationGuidePrediction& other);
-  ~OptimizationGuidePrediction();
-
-  optimization_guide::OptimizationGuideDecision decision;
-  PreconnectPrediction preconnect_prediction;
-  std::vector<GURL> predicted_subresources;
-  std::optional<base::TimeTicks> optimization_guide_prediction_arrived;
 };
 
 // Contains logic for learning what can be prefetched and for kicking off

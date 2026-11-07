@@ -99,7 +99,8 @@ linux_memory_builder(
             "asan",
             "lsan",
             "fail_on_san_warnings",
-            "release_try_builder",
+            "release_builder",
+            "dcheck_always_on",
             "minimal_symbols",
             "remoteexec",
             "linux",
@@ -159,13 +160,17 @@ linux_memory_builder(
                     "--gtest_filter=-AXPlatformNodeAuraLinuxTest.AtkComponentScrollTo:AtkUtilAuraLinuxTest.*",
                 ],
             ),
-            "blink_unittests": targets.mixin(
-                # These are very slow on the ASAN trybot for some reason.
-                # crbug.com/1257927
-                swarming = targets.swarming(
-                    shards = 5,
+            "blink_unittests": [
+                targets.mixin(
+                    # These are very slow on the ASAN trybot for some reason.
+                    # crbug.com/1257927
+                    swarming = targets.swarming(
+                        shards = 5,
+                    ),
                 ),
-            ),
+                # TODO(crbug.com/579036960): Remove once e4 failures are fixed.
+                "e2-standard-8",
+            ],
             "browser_tests": targets.mixin(
                 args = [
                     "--test-launcher-filter-file=../../testing/buildbot/filters/linux.asan.browser_tests.filter",
@@ -184,6 +189,7 @@ linux_memory_builder(
                 ci_only = True,
             ),
             "components_unittests": targets.mixin(
+                enable_rts_filtering = True,
                 # These are very slow on the ASAN trybot for some reason.
                 # crbug.com/1257927
                 swarming = targets.swarming(
@@ -191,6 +197,7 @@ linux_memory_builder(
                 ),
             ),
             "content_browsertests": targets.mixin(
+                enable_rts_filtering = True,
                 swarming = targets.swarming(
                     shards = 24,
                 ),
@@ -246,6 +253,7 @@ linux_memory_builder(
                     # TODO(crbug.com/542347163): Re-enable when the runtime regression is fixed.
                     "--disable-features=WebUIOmniboxPopup,WebUIOmniboxAimPopup",
                 ],
+                enable_rts_filtering = True,
                 swarming = targets.swarming(
                     shards = 8,
                 ),
@@ -423,7 +431,8 @@ linux_memory_builder(
             "asan",
             "lsan",
             "chromeos",
-            "release_try_builder",
+            "release_builder",
+            "dcheck_always_on",
             "minimal_symbols",
             "remoteexec",
             "x64",
@@ -1007,6 +1016,7 @@ linux_memory_builder(
     ),
     builderless = True,
     cores = 32,
+    ssd = None,
     console_view_entry = consoles.console_view_entry(
         category = "linux|ubsan",
         short_name = "bld",
@@ -1068,7 +1078,7 @@ linux_memory_builder(
                     "--disable-features=WebUIOmniboxPopup,WebUIOmniboxAimPopup",
                 ],
                 swarming = targets.swarming(
-                    shards = 6,
+                    shards = 12,
                 ),
             ),
             "unit_tests": targets.mixin(
@@ -1463,11 +1473,13 @@ ci.builder(
                 # Tests shows tests run faster with fewer retries by using fewer jobs crbug.com/1411912
                 args = [
                     "--test-launcher-jobs=3",
+                    # TODO(crbug.com/542347163): Re-enable when the runtime regression is fixed.
+                    "--disable-features=WebUIOmniboxPopup,WebUIOmniboxAimPopup",
                 ],
                 # These are very slow on the ASAN trybot for some reason.
                 # crbug.com/1257927
                 swarming = targets.swarming(
-                    shards = 120,
+                    shards = 140,
                 ),
             ),
             "components_unittests": targets.mixin(
@@ -1496,6 +1508,8 @@ ci.builder(
                 # Tests shows tests run faster with fewer retries by using fewer jobs crbug.com/1411912
                 args = [
                     "--test-launcher-jobs=3",
+                    # TODO(crbug.com/542347163): Re-enable when the runtime regression is fixed.
+                    "--disable-features=WebUIOmniboxPopup,WebUIOmniboxAimPopup",
                 ],
                 swarming = targets.swarming(
                     shards = 24,
@@ -1511,6 +1525,8 @@ ci.builder(
                 # Tests shows tests run faster with fewer retries by using fewer jobs crbug.com/1411912
                 args = [
                     "--test-launcher-jobs=3",
+                    # TODO(crbug.com/542347163): Re-enable when the runtime regression is fixed.
+                    "--disable-features=WebUIOmniboxPopup,WebUIOmniboxAimPopup",
                 ],
                 swarming = targets.swarming(
                     shards = 6,

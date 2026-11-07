@@ -11,6 +11,7 @@ import unittest
 
 import setup_modules  # pylint: disable=unused-import
 
+
 import chromium_src.tools.metrics.structured.sync.model as model
 
 
@@ -331,6 +332,30 @@ class ModelTest(unittest.TestCase):
         </event>
         </project>
         </structured-metrics>""")
+
+  def test_targets_are_printed_in_a_fixed_order(self):
+    # `targets` is parsed into a set, so the printed order must not depend
+    # on the hash seed or pretty-printing is non-deterministic.
+    xml = """\
+        <structured-metrics>
+        <project name="project" targets="webui,chromium">
+        <owner>test@chromium.org</owner>
+        <id>none</id>
+        <scope>profile</scope>
+        <summary> Test project. </summary>
+        <key-rotation>60</key-rotation>
+        <event name="EventOne">
+          <summary> Test event. </summary>
+          <metric name="MetricOne" type="int">
+            <summary> Test metric. </summary>
+          </metric>
+        </event>
+        </project>
+        </structured-metrics>"""
+    printed = repr(model.Model(xml, 'chrome'))
+    self.assertIn('targets="chromium,webui"', printed)
+    # Pretty-printing is idempotent.
+    self.assertEqual(repr(model.Model(printed, 'chrome')), printed)
 
 
 if __name__ == '__main__':

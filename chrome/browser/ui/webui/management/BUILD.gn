@@ -16,16 +16,15 @@ source_set("management") {
     "management_ui_constants.h",
     "management_ui_handler.h",
   ]
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
   deps = [
     "//base",
     "//chrome/app:generated_resources",
     "//chrome/app/theme:theme_resources",
+    "//chrome/browser:browser_features",
     "//chrome/browser:browser_process",
     "//chrome/browser:browser_process_platform_part",
     "//chrome/browser/enterprise",
     "//chrome/browser/enterprise/browser_management:management_identity",
-    "//chrome/browser/enterprise/data_controls",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/policy",
     "//chrome/browser/profiles:profile",
@@ -38,7 +37,6 @@ source_set("management") {
     "//components/content_settings/core/common",
     "//components/enterprise",
     "//components/enterprise/browser/identifiers",
-    "//components/enterprise/browser/promotion",
     "//components/policy/core/browser",
     "//components/policy/core/common",
     "//components/prefs",
@@ -54,6 +52,7 @@ source_set("management") {
   if (!is_android) {
     deps += [
       "//chrome/browser/device_api",
+      "//chrome/browser/ui/webui:theme_source",
     ]
   }
 
@@ -81,7 +80,6 @@ source_set("management") {
       "//chrome/browser/bitmap_fetcher",
       "//chrome/browser/chromeos/policy/dlp",
       "//chrome/browser/chromeos/reporting",
-      "//chrome/browser/enterprise/data_controls",
       "//chrome/browser/net",
       "//chrome/browser/policy:onc",
       "//chromeos/ash/components/browser_context_helper",
@@ -90,10 +88,7 @@ source_set("management") {
     ]
   }
   if (enable_extensions_core) {
-    deps += [
-      "//chrome/browser/extensions",
-      "//chrome/browser/ui/webui:theme_source",
-    ]
+    deps += [ "//chrome/browser/extensions" ]
   }
 }
 

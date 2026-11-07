@@ -16,13 +16,12 @@ source_set("common") {
     "tab_collection_z_order_manager.h",
     "tab_drag_scroll_handler.h",
     "tab_group_style.h",
-    "tab_group_view_layout.h",
+    "tab_group_unfocus_button.h",
     "tab_strip_layout_utils.h",
     "tab_strip_utils.h",
     "tab_strip_view.h",
     "tab_strip_view_layout.h",
     "unpinned_tab_container_view.h",
-    "unpinned_tab_container_view_layout.h",
   ]
 
   deps = [
@@ -50,6 +49,8 @@ source_set("impl") {
     "horizontal_tab_style_views.cc",
     "horizontal_tab_style_views.h",
     "pinned_tab_container_view.cc",
+    "pinned_tab_container_view_horizontal_layout.cc",
+    "pinned_tab_container_view_horizontal_layout.h",
     "root_tab_collection_node.cc",
     "split_tab_view.cc",
     "tab_collection_animating_layout_manager.cc",
@@ -63,9 +64,11 @@ source_set("impl") {
     "tab_group_line_view.cc",
     "tab_group_line_view.h",
     "tab_group_style.cc",
+    "tab_group_unfocus_button.cc",
     "tab_group_view.cc",
     "tab_group_view.h",
-    "tab_group_view_layout.cc",
+    "tab_group_view_horizontal_layout.cc",
+    "tab_group_view_horizontal_layout.h",
     "tab_link_drop_handler.cc",
     "tab_link_drop_handler.h",
     "tab_strip_collection_controller.cc",
@@ -78,12 +81,9 @@ source_set("impl") {
     "tab_view.h",
     "tab_view_horizontal_layout.cc",
     "tab_view_horizontal_layout.h",
-    "tab_view_vertical_layout.cc",
-    "tab_view_vertical_layout.h",
     "unpinned_tab_container_view.cc",
-    "unpinned_tab_container_view_layout.cc",
-    "vertical_tab_style_views.cc",
-    "vertical_tab_style_views.h",
+    "unpinned_tab_container_view_horizontal_layout.cc",
+    "unpinned_tab_container_view_horizontal_layout.h",
   ]
 
   deps = [
@@ -100,6 +100,7 @@ source_set("impl") {
     "//chrome/browser/ui/actions:actions_headers",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/color:color_headers",
+    "//chrome/browser/ui/startup",
     "//chrome/browser/ui/tab_contents",
     "//chrome/browser/ui/tabs",
     "//chrome/browser/ui/tabs:tab_group",
@@ -121,10 +122,8 @@ source_set("impl") {
     "//chrome/browser/ui/views/tabs/dragging:tab_drag_target",
     "//chrome/browser/ui/views/tabs/groups",
     "//chrome/browser/ui/views/tabs/horizontal",
-    "//chrome/browser/ui/views/tabs/hovercard",
     "//chrome/browser/ui/views/tabs/shared",
     "//chrome/browser/ui/views/tabs/tab",
-    "//chrome/browser/ui/views/tabs/vertical",
     "//chrome/browser/ui/views/toolbar",
     "//chrome/browser/ui/window_metadata",
     "//components/performance_manager",
@@ -153,15 +152,17 @@ source_set("impl") {
   if (is_chromeos) {
     deps += [
       "//chrome/browser/ash/boca/on_task",
+      "//chrome/browser/ui/chromeos/locked_state",
       "//chromeos/ash/experiences/system_web_apps/types",
     ]
   }
 
   public_deps = [
     ":common",
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/ui/tabs/alert:tab_alert",
     "//chrome/browser/ui/views/tabs/dragging",
+    "//chrome/browser/ui/views/tabs/hovercard",
+    "//components/sessions",
   ]
 }
 

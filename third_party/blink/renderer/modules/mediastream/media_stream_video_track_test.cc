@@ -15,6 +15,7 @@
 #include "base/functional/callback_helpers.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/run_loop.h"
 #include "base/strings/utf_string_conversions.h"
@@ -22,7 +23,9 @@
 #include "base/test/gmock_callback_support.h"
 #include "base/test/gtest_util.h"
 #include "base/test/metrics/histogram_tester.h"
+#include "base/test/test_future.h"
 #include "base/threading/thread_checker.h"
+#include "build/build_config.h"
 #include "media/base/video_frame.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -378,6 +381,77 @@ TEST_F(MediaStreamVideoTrackTest, StopLastTrack) {
   sink2.DisconnectFromTrack();
 }
 
+class GarbageCollectingSourceObserver final
+    : public GarbageCollected<GarbageCollectingSourceObserver>,
+      public MediaStreamSource::Observer {
+ public:
+  explicit GarbageCollectingSourceObserver(base::OnceClosure on_state_changed)
+      : on_state_changed_(std::move(on_state_changed)) {}
+
+  void SourceChangedState() override {
+    if (on_state_changed_) {
+      std::move(on_state_changed_).Run();
+    }
+  }
+  void SourceChangedCaptureConfiguration() override {}
+  void SourceChangedCaptureHandle() override {}
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+  void SourceChangedZoomLevel(int) override {}
+#endif
+
+  void Trace(Visitor* visitor) const override {
+    MediaStreamSource::Observer::Trace(visitor);
+  }
+
+ private:
+  base::OnceClosure on_state_changed_;
+};
+
+// Regression test for https://crbug.com/576215540: verifies that
+// MediaStreamVideoTrack::StopAndNotify() does not UAF if stopping the source
+// synchronously triggers garbage collection of the owning
+// MediaStreamComponentImpl and destroys the MediaStreamVideoTrack.
+TEST_F(MediaStreamVideoTrackTest,
+       StopAndNotifyComponentGarbageCollectedOnSourceStop) {
+  InitializeSource();
+  WebMediaStreamTrack track = CreateTrack();
+  MediaStreamVideoTrack* raw_track = MediaStreamVideoTrack::From(track);
+  ASSERT_TRUE(raw_track);
+  base::WeakPtr<MediaStreamVideoTrack> weak_track =
+      raw_track->GetWeakPtrForTesting();
+  ASSERT_TRUE(weak_track);
+  EXPECT_EQ(MediaStreamSource::kReadyStateLive,
+            stream_source()->GetReadyState());
+
+  bool observer_called = false;
+  Persistent<GarbageCollectingSourceObserver> observer =
+      MakeGarbageCollected<GarbageCollectingSourceObserver>(
+          base::BindLambdaForTesting([&]() {
+            observer_called = true;
+            // Drop the last reference to the MediaStreamComponentImpl owning
+            // |raw_track| and collect it, which destroys |raw_track| while
+            // StopAndNotify() is still on the stack.
+            track.Reset();
+            WebHeap::CollectAllGarbageForTesting();
+            EXPECT_FALSE(weak_track);
+          }));
+  stream_source()->AddObserver(observer.Get());
+
+  bool notify_callback_called = false;
+  raw_track->StopAndNotify(
+      base::BindLambdaForTesting([&]() { notify_callback_called = true; }));
+
+  EXPECT_TRUE(observer_called);
+  EXPECT_FALSE(weak_track);
+  EXPECT_EQ(MediaStreamSource::kReadyStateEnded,
+            stream_source()->GetReadyState());
+
+  // The source runs the callback once it has actually stopped, which happens
+  // on a separate task.
+  base::RunLoop().RunUntilIdle();
+  EXPECT_TRUE(notify_callback_called);
+}
+
 TEST_F(MediaStreamVideoTrackTest, CheckTrackRequestsFrame) {
   InitializeSource();
   UpdateVideoSourceToRespondToRequestRefreshFrame();
@@ -464,7 +538,7 @@ TEST_F(MediaStreamVideoTrackTest, DeliverFramesAndGetSettings) {
   auto frame2 = media::VideoFrame::CreateBlackFrame(gfx::Size(200, 300));
 
   media::VideoFrameMetadata metadata = frame2->metadata();
-  metadata.source_size = gfx::Size(600, 400);
+  metadata.capture.source_size = gfx::Size(600, 400);
   frame2->set_metadata(metadata);
   DeliverVideoFrameAndWaitForRenderer(std::move(frame2), &sink);
   native_track->GetSettings(settings);
@@ -490,7 +564,7 @@ TEST_F(MediaStreamVideoTrackTest, ScreenPixelRatioDoesNotIncludePageZoom) {
 
   auto frame1 = media::VideoFrame::CreateBlackFrame(gfx::Size(600, 400));
   media::VideoFrameMetadata metadata = frame1->metadata();
-  metadata.source_size = gfx::Size(600, 400);
+  metadata.capture.source_size = gfx::Size(600, 400);
   metadata.device_scale_factor = 2.0f;
   frame1->set_metadata(metadata);
   DeliverVideoFrameAndWaitForRenderer(frame1, &sink);
@@ -540,9 +614,9 @@ TEST_F(MediaStreamVideoTrackTest,
   EXPECT_EQ(std::nullopt, settings.physical_frame_size);
   EXPECT_EQ(2.0f, settings.device_scale_factor);
 
-  // Changing metadata source_size triggers an event.
+  // Changing metadata capture.source_size triggers an event.
   auto frame2 = media::VideoFrame::CreateBlackFrame(gfx::Size(600, 400));
-  metadata.source_size = gfx::Size(600, 400);
+  metadata.capture.source_size = gfx::Size(600, 400);
   frame2->set_metadata(metadata);
   DeliverVideoFrameAndWaitForRenderer(std::move(frame2), &sink);
   native_track->GetSettings(settings);
@@ -1349,7 +1423,7 @@ class MediaStreamVideoTrackCaptureVersionTest
       media::CaptureVersion capture_version = media::CaptureVersion()) {
     scoped_refptr<media::VideoFrame> frame =
         media::VideoFrame::CreateBlackFrame(gfx::Size(600, 400));
-    frame->metadata().capture_version = capture_version;
+    frame->metadata().capture.version = capture_version;
     return frame;
   }
 
@@ -1596,6 +1670,46 @@ TEST_F(MediaStreamVideoTrackCaptureVersionTest,
   // To avoid false positives, ensure a rendezvous with the FrameDeliverer by
   // delivering a frame.
   DeliverFrame(capture_version);
+}
+
+// Makes sure that callbacks registered for an already-observed
+// `media::CaptureVersion` are invoked without waiting for a new frame.
+TEST_F(MediaStreamVideoTrackCaptureVersionTest,
+       CallbackForAlreadyObservedCaptureVersionInvoked) {
+  constexpr uint32_t kSource = 2;
+  constexpr uint32_t kSubCapture = 3;
+  const media::CaptureVersion older_version(kSource, kSubCapture - 1);
+  const media::CaptureVersion current_version(kSource, kSubCapture);
+
+  DeliverFrame(current_version);
+
+  base::test::TestFuture<void> older_version_future;
+  native_track_->AddCaptureVersionCallback(older_version,
+                                           older_version_future.GetCallback());
+  EXPECT_TRUE(older_version_future.Wait());
+
+  base::test::TestFuture<void> current_version_future;
+  native_track_->AddCaptureVersionCallback(
+      current_version, current_version_future.GetCallback());
+  EXPECT_TRUE(current_version_future.Wait());
+}
+
+// Makes sure that a callback is invoked if the source already announced its
+// `media::CaptureVersion`, even if no frame is ever delivered.
+TEST_F(MediaStreamVideoTrackCaptureVersionTest,
+       CallbackForAlreadyAnnouncedCaptureVersionInvoked) {
+  constexpr uint32_t kSource = 2;
+  constexpr uint32_t kSubCapture = 3;
+  const media::CaptureVersion capture_version(kSource, kSubCapture);
+
+  // Both tasks are posted to the video task runner, so the announcement is
+  // processed before the callback is registered.
+  mock_source()->DeliverNewCaptureVersion(capture_version);
+
+  base::test::TestFuture<void> future;
+  native_track_->AddCaptureVersionCallback(capture_version,
+                                           future.GetCallback());
+  EXPECT_TRUE(future.Wait());
 }
 
 }  // namespace media_stream_video_track_test

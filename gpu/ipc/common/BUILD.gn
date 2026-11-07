@@ -70,8 +70,8 @@ source_set("ipc_common_sources") {
   }
 
   configs += [
+    "//gpu:gl_headers",
     "//gpu:gpu_implementation",
-    "//third_party/khronos:khronos_headers",
   ]
 
   public_deps = [
@@ -253,7 +253,6 @@ mojom("interfaces") {
   }
 
   public_deps = [
-    ":gpu_preferences_interface",
     ":shared_image_pool_client_interface",
     ":surface_handle",
     "//mojo/public/mojom/base",

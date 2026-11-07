@@ -22,29 +22,9 @@
 #include "third_party/blink/renderer/platform/loader/fetch/resource_load_timing.h"
 
 namespace blink {
-namespace {
-std::optional<base::TimeTicks> MergeLargestContentfulPaintValues(
-    const LargestContentfulPaintDetails& timing) {
-  const uint64_t text_paint_size = timing.largest_text_paint_size;
-  const uint64_t image_paint_size = timing.largest_image_paint_size;
-  if (text_paint_size == 0 && image_paint_size == 0) {
-    return std::nullopt;
-  }
-
-  const base::TimeTicks largest_text_paint = timing.largest_text_paint_time;
-  const base::TimeTicks largest_image_paint = timing.largest_image_paint_time;
-
-  if (text_paint_size == image_paint_size) {
-    return std::min(largest_text_paint, largest_image_paint);
-  }
-  return text_paint_size > image_paint_size ? largest_text_paint
-                                            : largest_image_paint;
-}
-}  // namespace
-
 static uint64_t ToIntegerMilliseconds(base::TimeDelta duration,
                                       bool cross_origin_isolated_capability) {
-  // TODO(npm): add histograms to understand when/why |duration| is sometimes
+  // TODO: add histograms to understand when/why |duration| is sometimes
   // negative.
   // TODO(crbug.com/1063989): stop clamping when it is not needed (i.e. for
   // methods which do not expose the timestamp to a web perf API).
@@ -58,34 +38,39 @@ LargestContentfulPaintDetailsForReporting PerformanceTimingForReporting::
   // The largest_image_paint_time and the largest_text_paint_time are converted
   // into seconds.
   double largest_image_paint_time =
-      base::Milliseconds(
-          MonotonicTimeToIntegerMilliseconds(timing.largest_image_paint_time))
+      base::Milliseconds(MonotonicTimeToIntegerMilliseconds(
+                             timing.largest_image.presentation_time))
           .InSecondsF();
 
   double largest_text_paint_time =
-      base::Milliseconds(
-          MonotonicTimeToIntegerMilliseconds(timing.largest_text_paint_time))
+      base::Milliseconds(MonotonicTimeToIntegerMilliseconds(
+                             timing.largest_text.presentation_time))
           .InSecondsF();
 
+  const ResourceLoadTimings& load_timings =
+      timing.largest_image.resource_load_timings;
   ResourceLoadTimingsForReporting resource_load_timings = {
-      MonotonicTimeToPseudoWallTime(
-          timing.resource_load_timings.discovery_time),
-      MonotonicTimeToPseudoWallTime(timing.resource_load_timings.load_start),
-      MonotonicTimeToPseudoWallTime(timing.resource_load_timings.load_end)};
+      MonotonicTimeToPseudoWallTime(load_timings.discovery_time),
+      MonotonicTimeToPseudoWallTime(load_timings.load_start),
+      MonotonicTimeToPseudoWallTime(load_timings.load_end)};
 
+  // Specify nullopt if neither text nor image has been painted to distinguish
+  // between no value and a null value for a pending image.
   std::optional<base::TimeTicks> merged_unclamped_paint_time =
-      MergeLargestContentfulPaintValues(timing);
+      timing.largest_text.paint_size > 0 || timing.largest_image.paint_size > 0
+          ? std::make_optional(timing.PresentationTime())
+          : std::nullopt;
 
   return {largest_image_paint_time,
-          timing.largest_image_paint_size,
+          timing.largest_image.paint_size,
           resource_load_timings,
-          timing.largest_contentful_paint_type,
+          timing.Type(),
 
-          timing.largest_contentful_paint_image_bpp,
+          timing.largest_image.bpp,
           largest_text_paint_time,
-          timing.largest_text_paint_size,
+          timing.largest_text.paint_size,
 
-          timing.largest_contentful_paint_image_request_priority,
+          timing.largest_image.request_priority,
           merged_unclamped_paint_time};
 }
 
@@ -98,8 +83,9 @@ PerformanceTimingForReporting::PerformanceTimingForReporting(
 
 uint64_t PerformanceTimingForReporting::inputStart() const {
   DocumentLoadTiming* timing = GetDocumentLoadTiming();
-  if (!timing)
+  if (!timing) {
     return 0;
+  }
 
   return MonotonicTimeToIntegerMilliseconds(timing->InputStart());
 }
@@ -107,8 +93,9 @@ uint64_t PerformanceTimingForReporting::inputStart() const {
 base::TimeTicks PerformanceTimingForReporting::NavigationStartAsMonotonicTime()
     const {
   DocumentLoadTiming* timing = GetDocumentLoadTiming();
-  if (!timing)
+  if (!timing) {
     return base::TimeTicks();
+  }
 
   return timing->NavigationStart();
 }
@@ -116,16 +103,19 @@ base::TimeTicks PerformanceTimingForReporting::NavigationStartAsMonotonicTime()
 PerformanceTimingForReporting::BackForwardCacheRestoreTimings
 PerformanceTimingForReporting::BackForwardCacheRestore() const {
   DocumentLoadTiming* load_timing = GetDocumentLoadTiming();
-  if (!load_timing)
+  if (!load_timing) {
     return {};
+  }
 
   const PaintTiming* paint_timing = GetPaintTiming();
-  if (!paint_timing)
+  if (!paint_timing) {
     return {};
+  }
 
   const InteractiveDetector* interactive_detector = GetInteractiveDetector();
-  if (!interactive_detector)
+  if (!interactive_detector) {
     return {};
+  }
 
   Vector<base::TimeTicks> navigation_starts =
       load_timing->BackForwardCacheRestoreNavigationStarts();
@@ -161,8 +151,9 @@ PerformanceTimingForReporting::BackForwardCacheRestore() const {
 
 uint64_t PerformanceTimingForReporting::FirstPaintForMetrics() const {
   const PaintTiming* timing = GetPaintTiming();
-  if (!timing)
+  if (!timing) {
     return 0;
+  }
 
   return MonotonicTimeToIntegerMilliseconds(timing->FirstPaintForMetrics());
 }
@@ -178,16 +169,18 @@ PerformanceTimingForReporting::FirstPaintAsMonotonicTimeForMetrics() const {
 
 uint64_t PerformanceTimingForReporting::FirstImagePaint() const {
   const PaintTiming* timing = GetPaintTiming();
-  if (!timing)
+  if (!timing) {
     return 0;
+  }
 
   return MonotonicTimeToIntegerMilliseconds(timing->FirstImagePaint());
 }
 
 uint64_t PerformanceTimingForReporting::FirstContentfulPaint() const {
   const PaintTiming* timing = GetPaintTiming();
-  if (!timing)
+  if (!timing) {
     return 0;
+  }
 
   return MonotonicTimeToIntegerMilliseconds(timing->FirstContentfulPaint());
 }
@@ -195,8 +188,9 @@ uint64_t PerformanceTimingForReporting::FirstContentfulPaint() const {
 base::TimeTicks PerformanceTimingForReporting::
     FirstContentfulPaintRenderedButNotPresentedAsMonotonicTime() const {
   const PaintTiming* timing = GetPaintTiming();
-  if (!timing)
+  if (!timing) {
     return base::TimeTicks();
+  }
 
   return timing->FirstContentfulPaintRenderedButNotPresentedAsMonotonicTime();
 }
@@ -205,24 +199,27 @@ base::TimeTicks
 PerformanceTimingForReporting::FirstContentfulPaintAsMonotonicTimeForMetrics()
     const {
   const PaintTiming* timing = GetPaintTiming();
-  if (!timing)
+  if (!timing) {
     return base::TimeTicks();
+  }
 
   return timing->FirstContentfulPaint();
 }
 
 uint64_t PerformanceTimingForReporting::FirstMeaningfulPaint() const {
   const PaintTiming* timing = GetPaintTiming();
-  if (!timing)
+  if (!timing) {
     return 0;
+  }
 
   return MonotonicTimeToIntegerMilliseconds(timing->FirstMeaningfulPaint());
 }
 
 uint64_t PerformanceTimingForReporting::FirstMeaningfulPaintCandidate() const {
   const PaintTiming* timing = GetPaintTiming();
-  if (!timing)
+  if (!timing) {
     return 0;
+  }
 
   return MonotonicTimeToIntegerMilliseconds(
       timing->FirstMeaningfulPaintCandidate());
@@ -240,8 +237,9 @@ uint64_t PerformanceTimingForReporting::FirstEligibleToPaint() const {
 std::optional<base::TimeDelta> PerformanceTimingForReporting::FirstInputDelay()
     const {
   const InteractiveDetector* interactive_detector = GetInteractiveDetector();
-  if (!interactive_detector)
+  if (!interactive_detector) {
     return std::nullopt;
+  }
 
   return interactive_detector->GetFirstInputDelay();
 }
@@ -249,8 +247,9 @@ std::optional<base::TimeDelta> PerformanceTimingForReporting::FirstInputDelay()
 std::optional<base::TimeDelta>
 PerformanceTimingForReporting::FirstInputTimestamp() const {
   const InteractiveDetector* interactive_detector = GetInteractiveDetector();
-  if (!interactive_detector)
+  if (!interactive_detector) {
     return std::nullopt;
+  }
 
   return MonotonicTimeToPseudoWallTime(
       interactive_detector->GetFirstInputTimestamp());
@@ -259,8 +258,9 @@ PerformanceTimingForReporting::FirstInputTimestamp() const {
 std::optional<base::TimeTicks>
 PerformanceTimingForReporting::FirstInputTimestampAsMonotonicTime() const {
   const InteractiveDetector* interactive_detector = GetInteractiveDetector();
-  if (!interactive_detector)
+  if (!interactive_detector) {
     return std::nullopt;
+  }
 
   return interactive_detector->GetFirstInputTimestamp();
 }
@@ -268,8 +268,9 @@ PerformanceTimingForReporting::FirstInputTimestampAsMonotonicTime() const {
 std::optional<base::TimeDelta> PerformanceTimingForReporting::FirstScrollDelay()
     const {
   const InteractiveDetector* interactive_detector = GetInteractiveDetector();
-  if (!interactive_detector)
+  if (!interactive_detector) {
     return std::nullopt;
+  }
 
   return interactive_detector->GetFirstScrollDelay();
 }
@@ -277,8 +278,9 @@ std::optional<base::TimeDelta> PerformanceTimingForReporting::FirstScrollDelay()
 std::optional<base::TimeDelta>
 PerformanceTimingForReporting::FirstScrollTimestamp() const {
   const InteractiveDetector* interactive_detector = GetInteractiveDetector();
-  if (!interactive_detector)
+  if (!interactive_detector) {
     return std::nullopt;
+  }
 
   return MonotonicTimeToPseudoWallTime(
       interactive_detector->GetFirstScrollTimestamp());
@@ -286,16 +288,18 @@ PerformanceTimingForReporting::FirstScrollTimestamp() const {
 
 uint64_t PerformanceTimingForReporting::ParseStart() const {
   const DocumentParserTiming* timing = GetDocumentParserTiming();
-  if (!timing)
+  if (!timing) {
     return 0;
+  }
 
   return MonotonicTimeToIntegerMilliseconds(timing->ParserStart());
 }
 
 uint64_t PerformanceTimingForReporting::ParseStop() const {
   const DocumentParserTiming* timing = GetDocumentParserTiming();
-  if (!timing)
+  if (!timing) {
     return 0;
+  }
 
   return MonotonicTimeToIntegerMilliseconds(timing->ParserStop());
 }
@@ -303,8 +307,9 @@ uint64_t PerformanceTimingForReporting::ParseStop() const {
 uint64_t PerformanceTimingForReporting::ParseBlockedOnScriptLoadDuration()
     const {
   const DocumentParserTiming* timing = GetDocumentParserTiming();
-  if (!timing)
+  if (!timing) {
     return 0;
+  }
 
   return ToIntegerMilliseconds(timing->ParserBlockedOnScriptLoadDuration(),
                                cross_origin_isolated_capability_);
@@ -313,8 +318,9 @@ uint64_t PerformanceTimingForReporting::ParseBlockedOnScriptLoadDuration()
 uint64_t PerformanceTimingForReporting::
     ParseBlockedOnScriptLoadFromDocumentWriteDuration() const {
   const DocumentParserTiming* timing = GetDocumentParserTiming();
-  if (!timing)
+  if (!timing) {
     return 0;
+  }
 
   return ToIntegerMilliseconds(
       timing->ParserBlockedOnScriptLoadFromDocumentWriteDuration(),
@@ -324,8 +330,9 @@ uint64_t PerformanceTimingForReporting::
 uint64_t PerformanceTimingForReporting::ParseBlockedOnScriptExecutionDuration()
     const {
   const DocumentParserTiming* timing = GetDocumentParserTiming();
-  if (!timing)
+  if (!timing) {
     return 0;
+  }
 
   return ToIntegerMilliseconds(timing->ParserBlockedOnScriptExecutionDuration(),
                                cross_origin_isolated_capability_);
@@ -334,8 +341,9 @@ uint64_t PerformanceTimingForReporting::ParseBlockedOnScriptExecutionDuration()
 uint64_t PerformanceTimingForReporting::
     ParseBlockedOnScriptExecutionFromDocumentWriteDuration() const {
   const DocumentParserTiming* timing = GetDocumentParserTiming();
-  if (!timing)
+  if (!timing) {
     return 0;
+  }
 
   return ToIntegerMilliseconds(
       timing->ParserBlockedOnScriptExecutionFromDocumentWriteDuration(),
@@ -345,12 +353,14 @@ uint64_t PerformanceTimingForReporting::
 std::optional<base::TimeDelta>
 PerformanceTimingForReporting::PrerenderActivationStart() const {
   DocumentLoadTiming* timing = GetDocumentLoadTiming();
-  if (!timing)
+  if (!timing) {
     return std::nullopt;
+  }
 
   base::TimeTicks activation_start = timing->ActivationStart();
-  if (activation_start.is_null())
+  if (activation_start.is_null()) {
     return std::nullopt;
+  }
 
   return timing->MonotonicTimeToZeroBasedDocumentTime(activation_start);
 }
@@ -358,8 +368,9 @@ PerformanceTimingForReporting::PrerenderActivationStart() const {
 std::optional<base::TimeTicks> PerformanceTimingForReporting::UnloadStart()
     const {
   DocumentLoadTiming* timing = GetDocumentLoadTiming();
-  if (!timing)
+  if (!timing) {
     return std::nullopt;
+  }
 
   return timing->UnloadEventStart();
 }
@@ -367,8 +378,9 @@ std::optional<base::TimeTicks> PerformanceTimingForReporting::UnloadStart()
 std::optional<base::TimeTicks> PerformanceTimingForReporting::UnloadEnd()
     const {
   DocumentLoadTiming* timing = GetDocumentLoadTiming();
-  if (!timing)
+  if (!timing) {
     return std::nullopt;
+  }
 
   return timing->UnloadEventEnd();
 }
@@ -376,8 +388,9 @@ std::optional<base::TimeTicks> PerformanceTimingForReporting::UnloadEnd()
 std::optional<base::TimeTicks>
 PerformanceTimingForReporting::CommitNavigationEnd() const {
   DocumentLoadTiming* timing = GetDocumentLoadTiming();
-  if (!timing)
+  if (!timing) {
     return std::nullopt;
+  }
 
   return timing->CommitNavigationEnd();
 }
@@ -385,8 +398,9 @@ PerformanceTimingForReporting::CommitNavigationEnd() const {
 std::optional<base::TimeDelta>
 PerformanceTimingForReporting::UserTimingMarkFullyLoaded() const {
   DocumentLoadTiming* timing = GetDocumentLoadTiming();
-  if (!timing)
+  if (!timing) {
     return std::nullopt;
+  }
 
   return timing->UserTimingMarkFullyLoaded();
 }
@@ -394,8 +408,9 @@ PerformanceTimingForReporting::UserTimingMarkFullyLoaded() const {
 std::optional<base::TimeDelta>
 PerformanceTimingForReporting::UserTimingMarkFullyVisible() const {
   DocumentLoadTiming* timing = GetDocumentLoadTiming();
-  if (!timing)
+  if (!timing) {
     return std::nullopt;
+  }
 
   return timing->UserTimingMarkFullyVisible();
 }
@@ -403,8 +418,9 @@ PerformanceTimingForReporting::UserTimingMarkFullyVisible() const {
 std::optional<base::TimeDelta>
 PerformanceTimingForReporting::UserTimingMarkInteractive() const {
   DocumentLoadTiming* timing = GetDocumentLoadTiming();
-  if (!timing)
+  if (!timing) {
     return std::nullopt;
+  }
 
   return timing->UserTimingMarkInteractive();
 }
@@ -425,49 +441,56 @@ DocumentLoader* PerformanceTimingForReporting::GetDocumentLoader() const {
 }
 
 const DocumentTiming* PerformanceTimingForReporting::GetDocumentTiming() const {
-  if (!DomWindow() || !DomWindow()->document())
+  if (!DomWindow() || !DomWindow()->document()) {
     return nullptr;
+  }
   return &DomWindow()->document()->GetTiming();
 }
 
 const PaintTiming* PerformanceTimingForReporting::GetPaintTiming() const {
-  if (!DomWindow() || !DomWindow()->document())
+  if (!DomWindow() || !DomWindow()->document()) {
     return nullptr;
+  }
   return &PaintTiming::From(*DomWindow()->document());
 }
 
 const DocumentParserTiming*
 PerformanceTimingForReporting::GetDocumentParserTiming() const {
-  if (!DomWindow() || !DomWindow()->document())
+  if (!DomWindow() || !DomWindow()->document()) {
     return nullptr;
+  }
   return &DocumentParserTiming::From(*DomWindow()->document());
 }
 
 DocumentLoadTiming* PerformanceTimingForReporting::GetDocumentLoadTiming()
     const {
   DocumentLoader* loader = GetDocumentLoader();
-  if (!loader)
+  if (!loader) {
     return nullptr;
+  }
 
   return &loader->GetTiming();
 }
 
 InteractiveDetector* PerformanceTimingForReporting::GetInteractiveDetector()
     const {
-  if (!DomWindow() || !DomWindow()->document())
+  if (!DomWindow() || !DomWindow()->document()) {
     return nullptr;
+  }
   return InteractiveDetector::From(*DomWindow()->document());
 }
 
 std::optional<base::TimeDelta>
 PerformanceTimingForReporting::MonotonicTimeToPseudoWallTime(
     const std::optional<base::TimeTicks>& time) const {
-  if (!time.has_value())
+  if (!time.has_value()) {
     return std::nullopt;
+  }
 
   const DocumentLoadTiming* timing = GetDocumentLoadTiming();
-  if (!timing)
+  if (!timing) {
     return std::nullopt;
+  }
 
   return timing->MonotonicTimeToPseudoWallTime(*time);
 }
@@ -483,8 +506,9 @@ PerformanceTimingForReporting::GetNavigationTracingData() {
 uint64_t PerformanceTimingForReporting::MonotonicTimeToIntegerMilliseconds(
     base::TimeTicks time) const {
   const DocumentLoadTiming* timing = GetDocumentLoadTiming();
-  if (!timing)
+  if (!timing) {
     return 0;
+  }
 
   return ToIntegerMilliseconds(timing->MonotonicTimeToPseudoWallTime(time),
                                cross_origin_isolated_capability_);

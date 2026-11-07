@@ -107,7 +107,7 @@ bool PageActionView::IsChipVisible() const {
 }
 
 bool PageActionView::IsAnchoredMessageVisible() const {
-  return (anchored_message_ != nullptr);
+  return anchored_message_ && !anchored_message_->is_closing();
 }
 
 base::CallbackListSubscription PageActionView::AddChipVisibilityChangedCallback(
@@ -158,10 +158,24 @@ void PageActionView::SetAnchoredMessageCollapseCallback(
   anchored_message_collapse_callback_ = std::move(callback);
 }
 
+void PageActionView::SetAnchoredMessageDowngradeCallback(
+    base::RepeatingClosure callback) {
+  anchored_message_downgrade_callback_ = std::move(callback);
+}
+
 void PageActionView::OnNewActiveController(PageActionController* controller) {
+  // No-op if the active tab hasn't changed (e.g. LocationBarView::Update()).
+  if (controller == current_controller_) {
+    return;
+  }
+  current_controller_ = controller;
   chip_shown_metric_recorded_ = false;
   observation_.Reset();
   action_item_controller_subscription_ = {};
+  // Close without animating so it doesn't animate over the new tab.
+  if (anchored_message_widget_ && !anchored_message_widget_->IsClosed()) {
+    anchored_message_widget_->Close();
+  }
   if (controller) {
     controller->RegisterCallbacks(PassKey(),
                                   action_item_->GetActionId().value(), this);
@@ -179,6 +193,7 @@ void PageActionView::OnNewActiveController(PageActionController* controller) {
     SetClickCallback(base::DoNothing());
     SetAnchoredMessageExpandCallback(base::DoNothing());
     SetAnchoredMessageCollapseCallback(base::DoNothing());
+    SetAnchoredMessageDowngradeCallback(base::DoNothing());
     SetVisible(false);
   }
 }
@@ -209,14 +224,7 @@ void PageActionView::OnPageActionModelChanged(
 
   UpdateIconImage();
   UpdateAnimationState(model);
-
-  if (visible && model.ShouldShowAnchoredMessage()) {
-    CreateAndShowAnchoredMessage(model);
-  } else if (anchored_message_ && anchored_message_widget_ &&
-             !anchored_message_widget_->IsClosed()) {
-    anchored_message_widget_->Close();
-  }
-
+  UpdateAnchoredMessage(model);
   UpdateTooltipText();
 
   // Announce the chip only if announcements are enabled and the chip was
@@ -276,6 +284,7 @@ void PageActionView::HandleSuggestionChipTransition(
 
 void PageActionView::OnPageActionModelWillBeDeleted(
     const PageActionModelInterface& model) {
+  current_controller_ = nullptr;
   anchored_message_ = nullptr;
   anchored_message_widget_ = nullptr;
   observation_.Reset();
@@ -348,6 +357,7 @@ bool PageActionView::ShouldUpdateInkDropOnClickCanceled() const {
 
 void PageActionView::NotifyClick(const ui::Event& event) {
   if (IsAnchoredMessageVisible()) {
+    anchored_message_downgrade_callback_.Run();
     return;
   }
 
@@ -407,8 +417,12 @@ void PageActionView::UpdateIconImage() {
     SetImageModel(ui::ImageModel::FromVectorIcon(
         *icon_image.GetVectorIcon().vector_icon(), icon_color,
         drawing_icon_size));
+    image_container_view()->SetFlipCanvasOnPaintForRTLUI(true);
   } else {
     SetImageModel(icon_image);
+    // Non-vector icons (such as site favicons or PWA/app icons) should not be
+    // mirrored in RTL layouts.
+    image_container_view()->SetFlipCanvasOnPaintForRTLUI(false);
     // For non-vector icons, the border needs to be updated to accommodate the
     // icon, as the icon size may vary. For vector icons, the border gets
     // set on instantiation and does not need to be updated again.
@@ -474,6 +488,7 @@ const gfx::Insets PageActionView::GetInsetsForNonVectorIcon() const {
 }
 
 void PageActionView::SetModel(PageActionModelInterface* model) {
+  current_controller_ = nullptr;
   observation_.Reset();
   observation_.Observe(model);
   UpdateTooltipText();
@@ -498,10 +513,6 @@ bool PageActionView::IsBubbleShowing() const {
 }
 
 bool PageActionView::IsTriggerableEvent(const ui::Event& event) {
-  if (IsAnchoredMessageVisible()) {
-    return false;
-  }
-
   // Returns whether the bubble should be shown given the event. Only trigger an
   // action when action UI isn't already showing (managed at the
   // IconLabelBubbleView level), and if mouse input, when event is a left button
@@ -550,12 +561,23 @@ void PageActionView::NotifyIsChipShowingChange() {
       base::BindOnce(is_chip_showing_changed_callback_, is_chip_showing));
 }
 
+void PageActionView::UpdateAnchoredMessage(
+    const PageActionModelInterface& model) {
+  if (model.GetVisible() && model.ShouldShowAnchoredMessage()) {
+    CreateAndShowAnchoredMessage(model);
+  } else if (IsAnchoredMessageVisible()) {
+    anchored_message_->AnimateOut();
+    OnAnchoredMessageClosed();
+  }
+}
+
 void PageActionView::CreateAndShowAnchoredMessage(
     const PageActionModelInterface& model) {
   const std::u16string chip_text(label()->GetText());
 
   if (anchored_message_) {
     anchored_message_->UpdateContent(model);
+    anchored_message_->AnimateIn();
     UpdateTooltipText();
     return;
   }
@@ -578,6 +600,7 @@ void PageActionView::CreateAndShowAnchoredMessage(
 
     // Don't steal focus when shown
     anchored_message_widget_->ShowInactive();
+    anchored_message_->AnimateIn();
   } else {
     anchored_message_ = nullptr;
   }
@@ -594,11 +617,19 @@ void PageActionView::OnAnchoredMessageWidgetClose(
     return;
   }
   CHECK(anchored_message_widget_);
+  // UpdateAnchoredMessage() already handles messages closed by AnimateOut().
+  const bool already_closing = anchored_message_->is_closing();
   anchored_message_ = nullptr;
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(&PageActionView::CloseWidgetDeferred,
                                 weak_factory_.GetWeakPtr(),
                                 anchored_message_widget_->GetWeakPtr()));
+  if (!already_closing) {
+    OnAnchoredMessageClosed();
+  }
+}
+
+void PageActionView::OnAnchoredMessageClosed() {
   UpdateBackground();
   UpdateIconImage();
   UpdateTooltipText();

@@ -29,6 +29,7 @@ export type ChangeQueryEvent = CustomEvent<{
   after: string | null,
   includeUserVisits?: boolean,
   includeActorVisits?: boolean,
+  clientIds?: string[],
 }>;
 
 declare global {
@@ -66,6 +67,7 @@ export class HistoryQueryManagerElement extends CrLitElement {
     after: null,
     includeUserVisits: true,
     includeActorVisits: true,
+    clientIds: [],
   };
   accessor queryResult: QueryResult = {
     info: null,
@@ -117,7 +119,7 @@ export class HistoryQueryManagerElement extends CrLitElement {
             this.queryState.searchTerm, RESULTS_PER_PAGE,
             null,
             this.queryState.includeUserVisits,
-            this.queryState.includeActorVisits);
+            this.queryState.includeActorVisits, this.queryState.clientIds);
     // Ignore rejected (cancelled) queries.
     promise.then((result) => this.onQueryResult_(result.results), () => {});
   }
@@ -149,6 +151,20 @@ export class HistoryQueryManagerElement extends CrLitElement {
         includeActorVisits: changes.includeActorVisits,
       };
       needsUpdate = true;
+    }
+
+    if (changes.clientIds !== undefined) {
+      const newClientIds = changes.clientIds;
+      const oldClientIds = this.queryState.clientIds;
+      const changed = newClientIds.length !== oldClientIds.length ||
+          newClientIds.some((id, i) => id !== oldClientIds[i]);
+      if (changed) {
+        this.queryState = {
+          ...this.queryState,
+          clientIds: newClientIds,
+        };
+        needsUpdate = true;
+      }
     }
 
     if (needsUpdate) {

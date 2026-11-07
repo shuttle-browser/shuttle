@@ -8,6 +8,7 @@
 #include "chrome/browser/ui/views/permissions/permission_prompt_bubble_one_origin_view.h"
 #include "chrome/browser/ui/views/permissions/permission_prompt_bubble_two_origins_view.h"
 #include "components/permissions/permission_request.h"
+#include "components/permissions/request_type.h"
 
 raw_ptr<PermissionPromptBubbleBaseView> CreatePermissionPromptBubbleView(
     content::WebContents* web_contents,
@@ -15,6 +16,7 @@ raw_ptr<PermissionPromptBubbleBaseView> CreatePermissionPromptBubbleView(
     PermissionPromptStyle prompt_style) {
   CHECK(delegate);
   CHECK(!delegate->Requests().empty());
+  // Shuttle: no ambient login bubble (password manager / ambient sign-in are removed).
   if (delegate->Requests()[0]->ShouldUseTwoOriginPrompt()) {
     return new PermissionPromptBubbleTwoOriginsView(web_contents, delegate,
                                                     prompt_style);

@@ -21,8 +21,6 @@
 #include "components/omnibox/browser/base_search_provider.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
 #include "components/omnibox/browser/on_device_model_update_listener.h"
-#include "components/omnibox/browser/on_device_tail_model_executor.h"
-#include "components/omnibox/browser/on_device_tail_model_service.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/search/search.h"
 #include "components/search_engines/search_terms_data.h"
@@ -240,38 +238,7 @@ void OnDeviceHeadProvider::DoSearch(
 void OnDeviceHeadProvider::HeadModelSearchDone(
     std::unique_ptr<OnDeviceHeadProviderParams> params) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(main_sequence_checker_);
-  if (!ShouldFetchTailSuggestions(*params, client()->GetApplicationLocale()) ||
-      client()->GetOnDeviceTailModelService() == nullptr) {
-    AllSearchDone(std::move(params));
-    return;
-  }
-
-  // Extract search query from current URL.
-  std::string previous_query, query_str;
-  const GURL& current_url = params->input.current_url();
-  if (current_url.GetPath() == "/search" &&
-      net::GetValueForKeyInQuery(current_url, "q", &query_str)) {
-    previous_query = query_str;
-  }
-
-  OnDeviceTailModelExecutor::ModelInput input(
-      /*prefix=*/SanitizeInput(params->input.text()),
-      /*previous_query=*/previous_query,
-      /*max_num_suggestions=*/provider_max_matches_);
-
-  client()->GetOnDeviceTailModelService()->GetPredictionsForInput(
-      input, base::BindOnce(&OnDeviceHeadProvider::TailModelSearchDone,
-                            weak_ptr_factory_.GetWeakPtr(), std::move(params)));
-}
-
-void OnDeviceHeadProvider::TailModelSearchDone(
-    std::unique_ptr<OnDeviceHeadProviderParams> params,
-    std::vector<OnDeviceTailModelExecutor::Prediction> predictions) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(main_sequence_checker_);
-  for (const auto& prediction : predictions) {
-    params->suggestions.emplace_back(
-        Suggestion(prediction.suggestion, SuggestionType::TAIL));
-  }
+  // Shuttle: the on-device tail model is removed; head suggestions only.
   AllSearchDone(std::move(params));
 }
 
@@ -342,35 +309,4 @@ std::string OnDeviceHeadProvider::GetOnDeviceHeadModelFilename() const {
   return model_update_listener != nullptr
              ? model_update_listener->head_model_filename()
              : "";
-}
-
-// static
-bool OnDeviceHeadProvider::ShouldFetchTailSuggestions(
-    const OnDeviceHeadProviderParams& params,
-    const std::string& locale) {
-  if (!OmniboxFieldTrial::IsOnDeviceTailSuggestEnabled(locale)) {
-    return false;
-  }
-
-  if (!base::GetFieldTrialParamByFeatureAsBool(
-          omnibox::kOnDeviceTailModel, "EnableForSingleWordPrefix", false)) {
-    std::string sanitized_input = SanitizeInput(params.input.text());
-    // Determines if the prefix contains multiple words by checking if it has
-    // whitespaces; Note this does not work when the prefix is not using
-    // whitespace as delimiter, e.g. CJK languages.
-    bool is_single_word_prefix = !sanitized_input.contains(" ");
-    if (is_single_word_prefix) {
-      return false;
-    }
-  }
-
-  // Always triggers tail model when head suggestion does not present.
-  if (params.suggestions.empty()) {
-    return true;
-  }
-
-  // Now allows triggering tail model even if head suggestions are available, if
-  // the flag is set.
-  return base::GetFieldTrialParamByFeatureAsBool(
-      omnibox::kOnDeviceTailModel, "MixHeadAndTailSuggestions", false);
 }

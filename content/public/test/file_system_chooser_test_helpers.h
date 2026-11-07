@@ -5,6 +5,7 @@
 #ifndef CONTENT_PUBLIC_TEST_FILE_SYSTEM_CHOOSER_TEST_HELPERS_H_
 #define CONTENT_PUBLIC_TEST_FILE_SYSTEM_CHOOSER_TEST_HELPERS_H_
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -74,6 +75,25 @@ class FakeSelectFileDialogFactory : public ui::SelectFileDialogFactory {
  private:
   std::vector<ui::SelectedFileInfo> result_;
   raw_ptr<SelectFileDialogParams, DanglingUntriaged> out_params_;
+};
+
+// Sets ui::SelectFileDialogFactory for the duration of this object's lifetime.
+// Preserves and restores any previously active factory configuration across
+// nested scopes, and ensures configured results are consumed on first use
+// (one-shot) to prevent state leaks into subsequent dialog requests.
+class ScopedSelectFileDialogFactory {
+ public:
+  explicit ScopedSelectFileDialogFactory(
+      std::optional<std::vector<base::FilePath>> result = std::nullopt);
+  explicit ScopedSelectFileDialogFactory(
+      std::vector<ui::SelectedFileInfo> result);
+  ~ScopedSelectFileDialogFactory();
+  ScopedSelectFileDialogFactory(const ScopedSelectFileDialogFactory&) = delete;
+  ScopedSelectFileDialogFactory& operator=(
+      const ScopedSelectFileDialogFactory&) = delete;
+
+ private:
+  ui::ScopedSetSelectFileDialogFactory scoped_factory_;
 };
 
 // A dialog that signals when it is created and/or destroyed to an observer.

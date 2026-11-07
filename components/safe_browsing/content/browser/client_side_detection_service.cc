@@ -22,8 +22,6 @@
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
 #include "base/values.h"
-#include "components/optimization_guide/core/delivery/optimization_guide_model_provider.h"
-#include "components/optimization_guide/proto/models.pb.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/content/browser/web_ui/web_ui_content_info_singleton.h"
 #include "components/safe_browsing/content/common/safe_browsing.mojom.h"
@@ -52,8 +50,6 @@
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/simple_url_loader.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
-#include "tensorflow_lite_support/cc/port/statusor.h"
-#include "third_party/tflite_support/src/tensorflow_lite_support/cc/task/vision/image_embedder.h"
 #include "url/gurl.h"
 
 using content::BrowserThread;
@@ -61,9 +57,8 @@ using content::BrowserThread;
 namespace safe_browsing {
 
 ClientSideDetectionService::ClientSideDetectionService(
-    std::unique_ptr<Delegate> delegate_ptr,
-    optimization_guide::OptimizationGuideModelProvider* opt_guide)
-    : ClientSideDetectionServiceBase(std::move(delegate_ptr), opt_guide) {
+    std::unique_ptr<Delegate> delegate_ptr)
+    : ClientSideDetectionServiceBase(std::move(delegate_ptr)) {
   if (!delegate() || !prefs()) {
     return;
   }
@@ -108,10 +103,7 @@ void ClientSideDetectionService::SendModelToRenderers() {
       }
     }
   }
-  if (client_side_phishing_model_) {
-    trigger_model_version_ =
-        client_side_phishing_model_->GetTriggerModelVersion();
-  }
+  trigger_model_version_ = GetTriggerModelVersion();
 }
 
 void ClientSideDetectionService::SetURLLoaderFactoryForTesting(
@@ -185,7 +177,7 @@ void ClientSideDetectionService::SetPhishingModel(
           "SBClientPhishing.ImageEmbeddingModelVersionMatch", true);
       if (!new_renderer_process_host &&
           trigger_model_version_ ==
-              client_side_phishing_model_->GetTriggerModelVersion()) {
+              GetTriggerModelVersion()) {
         // If the trigger model version remains the same in the same
         // renderer process host, we can just attach the complementary
         // image embedding model to the current scorer.

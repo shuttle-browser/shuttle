@@ -5,6 +5,7 @@
 #ifndef COMPONENTS_POLICY_CORE_COMMON_POLICY_LOGGER_H_
 #define COMPONENTS_POLICY_CORE_COMMON_POLICY_LOGGER_H_
 
+#include <atomic>
 #include <deque>
 #include <sstream>
 #include <string>
@@ -67,6 +68,7 @@
 #define OIDC_ENROLLMENT ::policy::PolicyLogger::Log::Source::kOidcEnrollment
 #define EXTENSIBLE_SSO ::policy::PolicyLogger::Log::Source::kExtensibleSSO
 #define REPORTING ::policy::PolicyLogger::Log::Source::kReporting
+#define ENTERPRISE_PROXY ::policy::PolicyLogger::Log::Source::kEnterpriseProxy
 
 namespace policy {
 
@@ -87,7 +89,8 @@ class POLICY_EXPORT PolicyLogger {
       kOidcEnrollment,
       kExtensibleSSO,
       kReporting,
-      kMaxValue = kReporting,
+      kEnterpriseProxy,
+      kMaxValue = kEnterpriseProxy,
     };
     enum class Severity {
       kInfo,
@@ -242,6 +245,8 @@ class POLICY_EXPORT PolicyLogger {
   // Compressed logs are stored in this buffer.
   std::string compressed_buffer_
       GUARDED_BY_CONTEXT(compression_sequence_checker_);
+  std::atomic<size_t> compressed_buffer_size_{0};
+  std::atomic<size_t> compressed_log_count_{0};
 };
 
 }  // namespace policy

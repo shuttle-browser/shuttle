@@ -13,6 +13,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "build/build_config.h"
+#include "chrome/browser/browser_process.h"
 #include "chrome/browser/devtools/chrome_devtools_session.h"
 #include "chrome/browser/devtools/device/android_device_manager.h"
 #include "chrome/browser/devtools/device/tcp_device_provider.h"
@@ -21,6 +22,8 @@
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/devtools/protocol/target_handler.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
+#include "chrome/browser/infobars/browser_infobar_manager.h"
+#include "chrome/browser/infobars/infobar_features.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/policy/developer_tools_policy_handler.h"
 #include "chrome/browser/policy/profile_policy_connector.h"
@@ -139,7 +142,7 @@ ChromeDevToolsManagerDelegate* ChromeDevToolsManagerDelegate::GetInstance() {
 }
 
 ChromeDevToolsManagerDelegate::ChromeDevToolsManagerDelegate() {
-  DCHECK(!g_instance);
+  CHECK(!g_instance, base::NotFatalUntil::M161);
   g_instance = this;
 
 #if !BUILDFLAG(IS_CHROMEOS)
@@ -183,7 +186,7 @@ ChromeDevToolsManagerDelegate::ChromeDevToolsManagerDelegate() {
 }
 
 ChromeDevToolsManagerDelegate::~ChromeDevToolsManagerDelegate() {
-  DCHECK(g_instance == this);
+  CHECK(g_instance == this, base::NotFatalUntil::M161);
   g_instance = nullptr;
 }
 
@@ -386,8 +389,12 @@ bool ChromeDevToolsManagerDelegate::AllowInspectingRenderFrameHost(
     content::RenderFrameHost* rfh) {
   Profile* profile =
       Profile::FromBrowserContext(rfh->GetProcess()->GetBrowserContext());
-  return IsInspectionAllowed(profile,
-                             content::WebContents::FromRenderFrameHost(rfh));
+  if (!profile) {
+    return true;
+  }
+  // Evaluate policy for the specific RenderFrameHost so target-level URL
+  // restrictions apply to both main frames and subframes.
+  return IsInspectionAllowed(profile, rfh);
 }
 
 bool ChromeDevToolsManagerDelegate::AllowInspectingTarget(
@@ -404,7 +411,7 @@ bool ChromeDevToolsManagerDelegate::AllowInspectingTarget(
 
 void ChromeDevToolsManagerDelegate::ClientAttached(
     content::DevToolsAgentHostClientChannel* channel) {
-  DCHECK(sessions_.find(channel) == sessions_.end());
+  CHECK(sessions_.find(channel) == sessions_.end(), base::NotFatalUntil::M161);
   sessions_.emplace(channel, std::make_unique<ChromeDevToolsSession>(channel));
 }
 
@@ -417,9 +424,13 @@ scoped_refptr<DevToolsAgentHost> ChromeDevToolsManagerDelegate::CreateNewTarget(
     const GURL& url,
     DevToolsManagerDelegate::TargetType target_type,
     bool new_window) {
-  NavigateParams params(ProfileManager::GetLastUsedProfile(), url,
-                        ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
-  params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
+  Profile* profile = ProfileManager::GetLastUsedProfile();
+  if (!profile) {
+    // The last used profile can't be loaded.
+    return nullptr;
+  }
+  NavigateParams params(profile, url, ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
+  params.disposition = WindowOpenDisposition::kNewForegroundTab;
   Navigate(&params);
   if (!params.navigated_or_inserted_contents)
     return nullptr;

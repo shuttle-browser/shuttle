@@ -297,6 +297,12 @@ void MediaSessionImpl::RenderFrameDeleted(RenderFrameHost* rfh) {
 
 void MediaSessionImpl::PrimaryPageChanged(content::Page& page) {
   last_auto_picture_in_picture_info_.reset();
+
+  // Source icons are the primary page's favicons, so sync them with the new
+  // primary page, like Initialize() does. Waiting for DidUpdateFaviconURL() is
+  // not enough: pages without favicons (e.g. WebUIs) never call it, and pages
+  // restored from the back/forward cache don't call it again.
+  SetSourceIconsFromFavicons(web_contents()->GetFaviconURLs());
 }
 
 void MediaSessionImpl::DidFinishNavigation(
@@ -789,7 +795,9 @@ void MediaSessionImpl::Stop(SuspendType suspend_type) {
 }
 
 void MediaSessionImpl::Seek(base::TimeDelta seek_time) {
-  CHECK(!seek_time.is_zero(), base::NotFatalUntil::M160);
+  // TODO(crbug.com/577759362): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(!seek_time.is_zero());
 
   if (seek_time.is_positive()) {
     // If the site has registered an action handler for seek forward then we
@@ -1356,6 +1364,10 @@ void MediaSessionImpl::EnterAutoPictureInPicture() {
   if (!ShouldRouteAction(
           media_session::mojom::MediaSessionAction::kEnterPictureInPicture)) {
     MaybeEnterBrowserInitiatedAutomaticPictureInPicture();
+    return;
+  }
+  if (!routed_service_->GetRenderFrameHost() ||
+      !routed_service_->GetRenderFrameHost()->IsInPrimaryMainFrame()) {
     return;
   }
 
@@ -1933,11 +1945,15 @@ void MediaSessionImpl::RebuildAndNotifyActionsChanged() {
   }
 
   // If the website has specified an action handler for 'enterpictureinpicture',
-  // then we should expose EnterAutoPictureInPicture as an available action.
+  // then we should expose EnterAutoPictureInPicture as an available action if
+  // the routed service is in the primary main frame.
   if (actions.contains(
           media_session::mojom::MediaSessionAction::kEnterPictureInPicture)) {
-    actions.insert(
-        media_session::mojom::MediaSessionAction::kEnterAutoPictureInPicture);
+    if (routed_service_ && routed_service_->GetRenderFrameHost() &&
+        routed_service_->GetRenderFrameHost()->IsInPrimaryMainFrame()) {
+      actions.insert(
+          media_session::mojom::MediaSessionAction::kEnterAutoPictureInPicture);
+    }
     actions.insert(
         media_session::mojom::MediaSessionAction::kExitPictureInPicture);
   }

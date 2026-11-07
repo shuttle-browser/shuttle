@@ -150,30 +150,6 @@ HorizontalTabStripRegionViewOld::HorizontalTabStripRegionViewOld(
 
   BrowserWindowInterface* const browser = browser_view->browser();
 
-  if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
-    unfocus_button_ = AddChildView(std::make_unique<TabStripControlButton>(
-        browser, views::Button::PressedCallback(),
-        features::IsRoundedIconsEnabled() ? vector_icons::kArrowBackIcon
-                                          : vector_icons::kArrowBackOldIcon,
-        Edge::kNone, Edge::kNone));
-
-    actions::ActionItem* const unfocus_action =
-        actions::ActionManager::Get().FindAction(
-            kActionUnfocusTabGroup,
-            BrowserActions::From(browser)->root_action_item());
-    CHECK(unfocus_action);
-    action_view_controller_->CreateActionViewRelationship(
-        unfocus_button_.get(), unfocus_action->GetAsWeakPtr());
-
-    unfocus_button_subscription_ =
-        unfocus_button_->AddVisibleChangedCallback(base::BindRepeating(
-            &HorizontalTabStripRegionViewOld::OnUnfocusButtonVisibilityChanged,
-            base::Unretained(this)));
-
-    unfocus_button_->SetProperty(views::kCrossAxisAlignmentKey,
-                                 views::LayoutAlignment::kCenter);
-  }
-
   tab_strip_ = AddChildView(CreateTabStrip(this, browser_view));
 
   // Allow the |tab_strip_| to grow into the free space available in
@@ -229,9 +205,6 @@ HorizontalTabStripRegionViewOld::~HorizontalTabStripRegionViewOld() {
   if (new_tab_button_) {
     RemoveChildViewT(std::exchange(new_tab_button_, nullptr));
   }
-  if (unfocus_button_) {
-    RemoveChildViewT(std::exchange(unfocus_button_, nullptr));
-  }
 }
 
 bool HorizontalTabStripRegionViewOld::IsPositionInWindowCaption(
@@ -279,10 +252,6 @@ views::View::Views HorizontalTabStripRegionViewOld::GetChildrenInZOrder() {
   }
 
 
-  if (unfocus_button_) {
-    children.emplace_back(unfocus_button_.get());
-  }
-
   if (reserved_grab_handle_space_) {
     children.emplace_back(reserved_grab_handle_space_.get());
   }
@@ -301,10 +270,6 @@ void HorizontalTabStripRegionViewOld::Layout(PassKey) {
   UpdateTabStripMargin();
   LayoutSuperclass<views::AccessiblePaneView>(this);
 
-  if (unfocus_button_ && unfocus_button_->GetVisible()) {
-    AdjustViewBoundsRect(unfocus_button_, /*leading_offset=*/0);
-  }
-
   views::View* button_to_paint_to_layer = new_tab_button_;
 
   if (button_to_paint_to_layer) {
@@ -315,7 +280,7 @@ void HorizontalTabStripRegionViewOld::Layout(PassKey) {
     // The y position is measured from the bottom of the tabstrip, and then
     // padding and button height are removed.
     int x = tab_strip_->bounds().right() -
-            TabStyle::Get()->GetBottomCornerRadius() +
+            TabStyle::Get()->GetBottomExtensionWidth() +
             GetLayoutConstant(LayoutConstant::kTabStripPadding) +
             GetLayoutConstant(LayoutConstant::kNewTabButtonLeadingMargin);
 
@@ -474,11 +439,6 @@ void HorizontalTabStripRegionViewOld::OnTabGroupFocusChanged(
                                      old_focused_group_id);
 }
 
-void HorizontalTabStripRegionViewOld::OnUnfocusButtonVisibilityChanged() {
-  UpdateTabStripMargin();
-  InvalidateLayout();
-}
-
 TabDragContext* HorizontalTabStripRegionViewOld::GetDragContext() {
   return tab_strip_->GetDragContext();
 }
@@ -526,9 +486,7 @@ HorizontalTabStripRegionViewOld::GetExpandOnHoverLock(
 }
 
 bool HorizontalTabStripRegionViewOld::HasLeadingButtons() const {
-  if (unfocus_button_ && unfocus_button_->GetVisible()) {
-    return true;
-  }
+  // Shuttle: no combo button; upstream 158 moved the unfocus button out.
   return false;
 }
 
@@ -557,9 +515,6 @@ void HorizontalTabStripRegionViewOld::UpdateButtonBorders() {
   const auto border_insets = gfx::Insets::TLBR(top_inset, 0, bottom_inset, 0);
   if (new_tab_button_) {
     UpdateBorderInsetsIfNeeded(new_tab_button_, border_insets);
-  }
-  if (unfocus_button_) {
-    UpdateBorderInsetsIfNeeded(unfocus_button_, border_insets);
   }
 }
 
@@ -597,15 +552,6 @@ void HorizontalTabStripRegionViewOld::UpdateTabStripMargin() {
   std::optional<int> tab_strip_left_margin;
   int current_leading_width = 0;
 
-  if (unfocus_button_ && unfocus_button_->GetVisible()) {
-    unfocus_button_->SetPaintToLayer();
-    unfocus_button_->layer()->SetFillsBoundsOpaquely(false);
-    unfocus_button_->SetProperty(views::kViewIgnoredByLayoutKey, true);
-    current_leading_width +=
-        unfocus_button_->GetPreferredSize().width() +
-        GetLayoutConstant(LayoutConstant::kTabStripPadding);
-  }
-
   if (current_leading_width > 0) {
     tab_strip_left_margin = current_leading_width +
                             GetLayoutConstant(LayoutConstant::kTabStripPadding);
@@ -625,7 +571,7 @@ void HorizontalTabStripRegionViewOld::UpdateTabStripMargin() {
 #endif
 
   if (subtract_radius) {
-    tab_strip_left_margin.value() -= TabStyle::Get()->GetBottomCornerRadius();
+    tab_strip_left_margin.value() -= TabStyle::Get()->GetBottomExtensionWidth();
   }
 
   UpdateButtonBorders();
@@ -641,7 +587,7 @@ void HorizontalTabStripRegionViewOld::UpdateTabStripMargin() {
 void HorizontalTabStripRegionViewOld::AdjustViewBoundsRect(View* view,
                                                            int offset) {
   const gfx::Size view_size = view->GetPreferredSize();
-  const int x = tab_strip_->x() + TabStyle::Get()->GetBottomCornerRadius() -
+  const int x = tab_strip_->x() + TabStyle::Get()->GetBottomExtensionWidth() -
                 GetLayoutConstant(LayoutConstant::kTabStripPadding) -
                 view_size.width() - offset;
   const gfx::Rect new_bounds =
@@ -903,6 +849,7 @@ void HorizontalTabStripRegionViewNew::UpdateTabStripMargin() {
   ClearProperty(views::kInternalPaddingKey);
 #endif
   if (tab_strip_view()) {
+    tab_strip_view()->SetLeadingOverlap(0);
     tab_strip_view()->ClearProperty(views::kMarginsKey);
   }
 }

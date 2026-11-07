@@ -33,7 +33,7 @@ ci.defaults.set(
         "chromium_tests.resultdb_module": 100,
     },
     health_spec = health_spec.default(),
-    notifies = ["chrome-fuzzing-core"],
+    notifies = ["chrome-fuzzing-infra"],
     service_account = ci_constants.DEFAULT_SERVICE_ACCOUNT,
     shadow_service_account = ci_constants.DEFAULT_SHADOW_SERVICE_ACCOUNT,
     siso_project = siso.project.DEFAULT_TRUSTED,
@@ -1233,12 +1233,6 @@ libfuzzer_linux_v8_arm64_builder(
     build_config = builder_config.build_config.RELEASE,
     clusterfuzz_archive_path = "linux-release-asan-arm64-sim/libfuzzer-v8-arm64-linux-release",
     console_short_name = "v8-arm64",
-    gclient_apply_configs_for_ci = [
-        "checkout_mesa",
-    ],
-    gn_extra_configs_for_ci = [
-        "tint_mesa_fuzz",
-    ],
 )
 
 libfuzzer_linux_v8_arm64_builder(
@@ -1248,12 +1242,6 @@ libfuzzer_linux_v8_arm64_builder(
     build_config = builder_config.build_config.DEBUG,
     clusterfuzz_archive_path = "linux-debug-asan-arm64-sim/libfuzzer-v8-arm64-linux-debug",
     console_short_name = "v8-arm64-dbg",
-    gclient_apply_configs_for_ci = [
-        "checkout_mesa",
-    ],
-    gn_extra_configs_for_ci = [
-        "tint_mesa_fuzz",
-    ],
 )
 
 libfuzzer_linux_asan_builder(
@@ -1265,14 +1253,8 @@ libfuzzer_linux_asan_builder(
     clusterfuzz_archive_path = "linux32-release-asan/libfuzzer-linux32-release",
     console_short_name = "x86",
     execution_timeout = 5 * time.hour,
-    gclient_apply_configs_for_ci = [
-        "checkout_mesa",
-    ],
     gn_extra_configs = [
         "disable_seed_corpus",
-    ],
-    gn_extra_configs_for_ci = [
-        "tint_mesa_fuzz",
     ],
     max_concurrent_invocations = 3,
     siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CI,
@@ -1299,12 +1281,6 @@ libfuzzer_linux32_v8_arm_builder(
     build_config = builder_config.build_config.RELEASE,
     clusterfuzz_archive_path = "linux32-release-asan-arm-sim/libfuzzer-v8-arm-linux32-release",
     console_short_name = "x86-v8-arm",
-    gclient_apply_configs_for_ci = [
-        "checkout_mesa",
-    ],
-    gn_extra_configs_for_ci = [
-        "tint_mesa_fuzz",
-    ],
     siso_remote_jobs = siso.remote_jobs.DEFAULT,
 )
 
@@ -1315,12 +1291,6 @@ libfuzzer_linux32_v8_arm_builder(
     build_config = builder_config.build_config.DEBUG,
     clusterfuzz_archive_path = "linux32-debug-asan-arm-sim/libfuzzer-v8-arm-linux32-debug",
     console_short_name = "x86-v8-arm-dbg",
-    gclient_apply_configs_for_ci = [
-        "checkout_mesa",
-    ],
-    gn_extra_configs_for_ci = [
-        "tint_mesa_fuzz",
-    ],
 )
 
 libfuzzer_linux_asan_builder(
@@ -1341,8 +1311,11 @@ libfuzzer_linux_asan_builder(
         "asan",
         "android_fastbuild",
         "android_desktop",
+        "disable_jni_multiplexing",
     ],
     max_concurrent_invocations = 2,
+    # TODO(b/570770824): Remove once the APK compilation fix lands.
+    notifies = args.ignore_default(None),
     siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CI,
     use_component_build = False,
 )
@@ -1365,8 +1338,11 @@ libfuzzer_linux_builder(
         "android",
         "android_fastbuild",
         "hwasan",
+        "disable_jni_multiplexing",
     ],
     max_concurrent_invocations = 2,
+    # TODO(b/570770824): Remove once the APK compilation fix lands.
+    notifies = args.ignore_default(None),
     sanitizer = "hwasan",
     siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CI,
     use_component_build = False,

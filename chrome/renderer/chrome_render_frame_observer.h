@@ -27,10 +27,6 @@ namespace gfx {
 class Size;
 }
 
-namespace optimization_guide {
-class PageTextAgent;
-}
-
 namespace safe_browsing {
 class ContentPhishingClassifierDelegate;
 class ContentPhishingImageEmbedderDelegate;
@@ -153,8 +149,6 @@ class ChromeRenderFrameObserver : public content::RenderFrameObserver,
   // feature flag
   static bool IsAnimatedWebp(const std::vector<uint8_t>& image_data);
 
-  // Have the same lifetime as us.
-  raw_ptr<optimization_guide::PageTextAgent> page_text_agent_;
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
   raw_ptr<safe_browsing::ContentPhishingClassifierDelegate>
       phishing_classifier_ = nullptr;

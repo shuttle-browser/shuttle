@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 import("//chrome/common/features.gni")
-import("//components/enterprise/buildflags/buildflags.gni")
 import("//extensions/buildflags/buildflags.gni")
 
 assert(enable_extensions)
@@ -30,7 +29,4 @@ source_set("safe_browsing_private") {
     "//chrome/browser/safe_browsing",
     "//content/public/browser",
   ]
-}
-
-if (enterprise_cloud_content_analysis) {
 }

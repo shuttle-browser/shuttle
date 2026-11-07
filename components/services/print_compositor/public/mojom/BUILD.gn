@@ -18,8 +18,6 @@ mojom("mojom") {
 
   enabled_features = []
   if (enterprise_watermark) {
-    public_deps += [ "//components/enterprise/watermarking/mojom" ]
-
     enabled_features += [ "enterprise_watermark" ]
   }
 }

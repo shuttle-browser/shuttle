@@ -93,7 +93,8 @@ class FrameClipboardContext : public ClipboardHostImpl::Context {
   bool CanWrite() override { return true; }
 
   BrowserContext* GetBrowserContext() override {
-    return render_frame_host_->GetBrowserContext();
+    return GetContentClient()->browser()->GetUserBrowserContext(
+        *render_frame_host_);
   }
   StoragePartitionImpl* GetStoragePartition() override {
     return static_cast<StoragePartitionImpl*>(
@@ -166,7 +167,14 @@ class ServiceWorkerClipboardContext : public ClipboardHostImpl::Context {
   bool CanObserveChanges() override { return false; }
   bool CanRead() override { return false; }
   bool IsPasteAllowed() override { return false; }
-  bool CanWrite() override { return false; }
+  bool CanWrite() override {
+    // Asked per call, not cached at bind time: the embedder's answer can change
+    // while the worker is still running.
+    BrowserContext* browser_context = GetBrowserContext();
+    return browser_context &&
+           GetContentClient()->browser()->AllowWorkerWriteToClipboard(
+               host_->version()->key().origin(), browser_context);
+  }
 
   BrowserContext* GetBrowserContext() override {
     return BrowserContextForWorker(*host_);
@@ -238,10 +246,10 @@ class ClipboardHostDocumentHelper
  public:
   ClipboardHostDocumentHelper(
       RenderFrameHost& render_frame_host,
-      mojo::PendingReceiver<blink::mojom::ClipboardHost> receiver)
-      : DocumentService(render_frame_host, std::move(receiver)),
+      mojo::PendingReceiver<blink::mojom::ClipboardHost> receiver,
+      base::SelfDeletingPassKey key)
+      : DocumentService(render_frame_host, std::move(receiver), key),
         impl_(new ClipboardHostImpl(render_frame_host)) {}
-  ~ClipboardHostDocumentHelper() override = default;
 
   void RegisterClipboardListener(
       mojo::PendingRemote<blink::mojom::ClipboardListener> listener) override {
@@ -337,6 +345,8 @@ class ClipboardHostDocumentHelper
 #endif
 
  private:
+  ~ClipboardHostDocumentHelper() override = default;
+
   std::unique_ptr<ClipboardHostImpl> impl_;
 };
 
@@ -361,7 +371,8 @@ void ClipboardHostImpl::Create(
   CHECK(render_frame_host);
   // The object is bound to the lifetime of |render_frame_host| and the mojo
   // connection. See DocumentService for details.
-  new ClipboardHostDocumentHelper(*render_frame_host, std::move(receiver));
+  base::MakeSelfDeleting<ClipboardHostDocumentHelper>(*render_frame_host,
+                                                      std::move(receiver));
 }
 
 ClipboardHostImpl::~ClipboardHostImpl() {

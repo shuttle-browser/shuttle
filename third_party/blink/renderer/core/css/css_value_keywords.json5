@@ -1676,6 +1676,7 @@
     // scroll-snap-stop
     // normal
     // always
+    // before
 
     // containment
     // paint
@@ -2013,7 +2014,6 @@
 
     // position-visibility
     // always
-    // TODO(crbug.com/332933527): Support anchor-valid.
     "anchor-valid",
     "anchor-visible",
     "anchors-visible",
@@ -2038,6 +2038,9 @@
     "per-line",
     "per-line-all",
     "consistent",
+
+    // progress()
+    "no-clamp",
 
     // media-progress()
     "media-progress",

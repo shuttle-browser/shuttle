@@ -30,7 +30,6 @@
 #include "components/certificate_matching/certificate_principal_pattern.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/pref_names.h"
-#include "components/device_signals/core/browser/pref_names.h"
 #include "components/image_fetcher/core/image_fetcher.h"
 #include "components/image_fetcher/core/image_fetcher_service.h"
 #include "components/image_fetcher/core/image_fetcher_types.h"
@@ -59,7 +58,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/managed_ui.h"
 #include "components/enterprise/browser/reporting/common_pref_names.h"
-#include "components/enterprise/connectors/core/features.h"
 #include "components/safe_browsing/core/common/features.h"
 
 // Must come after other includes, because FromJniType() uses Profile.
@@ -242,7 +240,7 @@ net::NetworkTrafficAnnotationTag GetTrafficAnnotationForPolicy(
 }  // namespace
 
 bool IsBrowserManaged(Profile* profile) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M161);
   return policy::ManagementServiceFactory::GetForProfile(profile)->IsManaged();
 }
 
@@ -299,13 +297,6 @@ void SetUserAcceptedAccountManagement(Profile* profile, bool accepted) {
   // Some tests do not have a profile manager.
   if (!g_browser_process->profile_manager())
     return;
-  // The updated consent screen also ask the user for consent to share device
-  // signals.
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-  profile->GetPrefs()->SetBoolean(
-      device_signals::prefs::kDeviceSignalsPermanentConsentReceived, accepted);
-#endif
   ProfileManager* profile_manager = g_browser_process->profile_manager();
   ProfileAttributesEntry* entry =
       profile_manager->GetProfileAttributesStorage()
@@ -494,7 +485,7 @@ static bool JNI_ManagedBrowserUtils_IsProfileReportingEnabled(
 static bool JNI_ManagedBrowserUtils_IsOnSecurityEventEnterpriseConnectorEnabled(
     JNIEnv* env,
     Profile* profile) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M161);
 
   auto* service =
       enterprise_connectors::ConnectorsServiceFactory::GetForBrowserContext(
@@ -510,7 +501,7 @@ static bool JNI_ManagedBrowserUtils_IsOnSecurityEventEnterpriseConnectorEnabled(
 static bool JNI_ManagedBrowserUtils_IsEnterpriseRealTimeUrlCheckModeEnabled(
     JNIEnv* env,
     Profile* profile) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M161);
 
   auto* service =
       enterprise_connectors::ConnectorsServiceFactory::GetForBrowserContext(
@@ -528,12 +519,7 @@ static bool
 JNI_ManagedBrowserUtils_IsOnFileDownloadedEnterpriseConnectorEnabled(
     JNIEnv* env,
     Profile* profile) {
-  DCHECK(profile);
-
-  if (!base::FeatureList::IsEnabled(
-          enterprise_connectors::kEnableDownloadEnterpriseScanOnClank)) {
-    return false;
-  }
+  CHECK(profile, base::NotFatalUntil::M161);
 
   auto* service =
       enterprise_connectors::ConnectorsServiceFactory::GetForBrowserContext(

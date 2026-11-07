@@ -43,7 +43,6 @@
 #include "third_party/blink/renderer/platform/loader/fetch/resource_loader_options.h"
 #include "third_party/blink/renderer/platform/testing/testing_platform_support.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/text/text_position.h"
 #include "third_party/blink/renderer/platform/wtf/threading.h"
@@ -104,11 +103,9 @@ class AudioWorkletThreadTest : public PageTestBase, public ModuleTestBase {
             window->GetFrame()->Loader().UserAgentMetadata(),
             nullptr /* web_worker_fetch_context */,
             Vector<network::mojom::blink::ContentSecurityPolicyPtr>(),
-            Vector<network::mojom::blink::ContentSecurityPolicyPtr>(),
-            window->GetReferrerPolicy(), DocumentPolicy::DocumentPolicyBundle{},
-            window->GetSecurityOrigin(), window->IsSecureContext(),
-            window->GetHttpsState(), nullptr /* worker_clients */,
-            nullptr /* content_settings_client */,
+            window->GetReferrerPolicy(), window->GetSecurityOrigin(),
+            window->IsSecureContext(), window->GetHttpsState(),
+            nullptr /* worker_clients */, nullptr /* content_settings_client */,
             OriginTrialContext::GetInheritedTrialFeatures(window).get(),
             base::UnguessableToken::Create(), nullptr /* worker_settings */,
             mojom::blink::V8CacheOptions::kDefault,

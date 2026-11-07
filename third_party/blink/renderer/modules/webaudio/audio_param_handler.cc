@@ -95,9 +95,8 @@ bool IsNonNegativeAudioParamTime(double time,
     return true;
   }
 
-  exception_state.ThrowRangeError(StrCat(
-      {message,
-       " must be a finite non-negative number: ", String::Number(time)}));
+  exception_state.ThrowRangeError(
+      Format("{} must be a finite non-negative number: {:g}", message, time));
   return false;
 }
 
@@ -108,8 +107,8 @@ bool IsPositiveAudioParamTime(double time,
     return true;
   }
 
-  exception_state.ThrowRangeError(StrCat(
-      {message, " must be a finite positive number: ", String::Number(time)}));
+  exception_state.ThrowRangeError(
+      Format("{} must be a finite positive number: {:g}", message, time));
   return false;
 }
 
@@ -432,8 +431,7 @@ double AudioParamHandler::ClampedToCurrentTime(double time) {
 String AudioParamHandler::EventToString(const ParamEvent& event) const {
   // The default arguments for most automation methods is the value and the
   // time.
-  String args = StrCat(
-      {String::Number(event.Value()), ", ", String::Number(event.Time(), 16)});
+  String args = Format("{:g}, {:.16g}", event.Value(), event.Time());
 
   // Get a nice printable name for the event and update the args if necessary.
   String s;
@@ -450,13 +448,12 @@ String AudioParamHandler::EventToString(const ParamEvent& event) const {
     case ParamEvent::Type::kSetTarget:
       s = "setTargetAtTime";
       // This has an extra time constant arg
-      args = StrCat({args, ", ", String::Number(event.TimeConstant(), 16)});
+      args = Format("{}, {:.16g}", args, event.TimeConstant());
       break;
     case ParamEvent::Type::kSetValueCurve:
       s = "setValueCurveAtTime";
       // Replace the default arg, using "..." to denote the curve argument.
-      args = StrCat({"..., ", String::Number(event.Time(), 16), ", ",
-                     String::Number(event.Duration(), 16)});
+      args = Format("..., {:.16g}, {:.16g}", event.Time(), event.Duration());
       break;
     case ParamEvent::Type::kCancelValues:
     case ParamEvent::Type::kSetValueCurveEnd:
@@ -760,11 +757,11 @@ void AudioParamHandler::ExponentialRampToValueAtTime(
   }
 
   if (!value) {
-    exception_state.ThrowRangeError(StrCat(
-        {"The float target value provided (", String::Number(value),
-         ") should not be in the range (",
-         String::Number(-std::numeric_limits<float>::denorm_min()), ", ",
-         String::Number(std::numeric_limits<float>::denorm_min()), ")."}));
+    exception_state.ThrowRangeError(
+        Format("The float target value provided ({:g}) should not be in the "
+               "range ({:g}, {:g}).",
+               value, -std::numeric_limits<float>::denorm_min(),
+               std::numeric_limits<float>::denorm_min()));
     return;
   }
 
@@ -1281,7 +1278,7 @@ std::tuple<bool, float> AudioParamHandler::ValueForContextTime(
   }
 
   // Ask for just a single value.
-  float value;
+  float value = 0.0f;
   double sample_rate = audio_destination.SampleRate();
   size_t start_frame = audio_destination.CurrentSampleFrame();
   // One parameter change per render quantum.
@@ -2031,7 +2028,7 @@ std::tuple<size_t, float, size_t> AudioParamHandler::ProcessSetTarget(
       const float c2 = c0 * ((c0 - 3) * c0 + 3);
       const float c3 = c0 * (c0 * ((4 - c0) * c0 - 6) + 4);
 
-      float delta;
+      float delta = 0.0f;
       __m128 v_c = _mm_set_ps(c2, c1, c0, 0);
       __m128 v_delta, v_value, v_result;
 
@@ -2225,7 +2222,7 @@ std::tuple<size_t, float, size_t> AudioParamHandler::ProcessSetValueCurve(
         // occurred by incrementing the index by curvePointsPerFrame.
         double current_virtual_index =
             curve_virtual_index + k * curve_points_per_frame;
-        size_t curve_index0;
+        size_t curve_index0 = 0;
 
         // Clamp index to the last element of the array.
         if (current_virtual_index < curve_data.size()) {

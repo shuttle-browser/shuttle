@@ -77,6 +77,7 @@ const ALL_BROWSING_DATATYPES_LIST: BrowsingDataType[] = [
   BrowsingDataType.DOWNLOADS,
   BrowsingDataType.SITE_SETTINGS,
   BrowsingDataType.HOSTED_APPS_DATA,
+  BrowsingDataType.SKILLS,
 ];
 
 /** The list of Browsing Data types that should be expanded by default. */
@@ -106,6 +107,8 @@ function getDataTypeLabel(datatypes: BrowsingDataType) {
       return loadTimeData.getString('clearDownloadHistory');
     case BrowsingDataType.HOSTED_APPS_DATA:
       return loadTimeData.getString('clearHostedAppData');
+    case BrowsingDataType.SKILLS:
+      return loadTimeData.getString('clearSkills');
     default:
       assertNotReachedCase(datatypes);
   }
@@ -125,6 +128,8 @@ export function getDataTypePrefName(datatypes: BrowsingDataType) {
       return 'browser.clear_data.download_history';
     case BrowsingDataType.HOSTED_APPS_DATA:
       return 'browser.clear_data.hosted_apps_data';
+    case BrowsingDataType.SKILLS:
+      return 'browser.clear_data.skills';
     default:
       assertNotReachedCase(datatypes);
   }
@@ -195,9 +200,6 @@ export class SettingsClearBrowsingDataDialogElement extends
 
     PrefService.getInstance().whenInitialized().then(() => {
       this.setUpDataTypeOptionLists_();
-      // Wait for checkbox lists to be populated before checking if the delete
-      // button should be disabled.
-      this.updateComplete.then(() => this.updateDeleteButtonState_());
     });
   }
 
@@ -212,6 +214,13 @@ export class SettingsClearBrowsingDataDialogElement extends
     const moreOptionsList: BrowsingDataTypeOption[] = [];
 
     ALL_BROWSING_DATATYPES_LIST.forEach((datatype) => {
+      // The Skills data type is only available when the Skills feature is
+      // enabled for this profile.
+      if (datatype === BrowsingDataType.SKILLS &&
+          !loadTimeData.getBoolean('showDeleteSkillsDataType')) {
+        return;
+      }
+
       const datatypeOption: BrowsingDataTypeOption = {
         label: getDataTypeLabel(datatype),
         prefKey: getDataTypePrefName(datatype),
@@ -226,6 +235,9 @@ export class SettingsClearBrowsingDataDialogElement extends
 
     this.expandedBrowsingDataTypeOptionsList_ = expandedOptionsList;
     this.moreBrowsingDataTypeOptionsList_ = moreOptionsList;
+    this.isNoDatatypeSelected_ = !expandedOptionsList.some(
+        option =>
+            PrefService.getInstance().getPref<boolean>(option.prefKey).value);
   }
 
   /**
@@ -279,7 +291,14 @@ export class SettingsClearBrowsingDataDialogElement extends
   }
 
   protected onCancelClick_() {
+    this.metricsBrowserProxy_.recordClearBrowsingDataCancelled();
     this.$.deleteBrowsingDataDialog.close();
+  }
+
+  protected onDialogCancel_() {
+    if (!this.isDeletionInProgress_) {
+      this.metricsBrowserProxy_.recordClearBrowsingDataCancelled();
+    }
   }
 
   /**

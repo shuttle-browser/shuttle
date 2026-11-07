@@ -93,7 +93,7 @@ bool ShouldInjectScripts(const UserScript::ContentList& script_contents,
                          const std::set<std::string>& injected_files) {
   for (const std::unique_ptr<UserScript::Content>& content : script_contents) {
     // Check if the script is already injected.
-    if (injected_files.count(content->url().GetPath()) == 0) {
+    if (!injected_files.contains(content->url().GetPath())) {
       return true;
     }
   }
@@ -122,12 +122,14 @@ std::optional<blink::ExtensionScriptStreamer> TakeScriptStreamerIfAvailable(
 
 UserScriptInjector::UserScriptInjector(const UserScript* script,
                                        UserScriptSet* script_list,
-                                       bool is_declarative)
+                                       bool is_declarative,
+                                       mojom::InjectionType script_type)
     : script_(script),
       user_script_set_(script_list),
       script_id_(script_->id()),
       host_id_(script_->host_id()),
-      is_declarative_(is_declarative) {
+      is_declarative_(is_declarative),
+      script_type_(script_type) {
   user_script_set_observation_.Observe(script_list);
 }
 
@@ -149,7 +151,7 @@ void UserScriptInjector::OnUserScriptSetDestroyed() {
 }
 
 mojom::InjectionType UserScriptInjector::script_type() const {
-  return mojom::InjectionType::kContentScript;
+  return script_type_;
 }
 
 blink::mojom::UserActivationOption UserScriptInjector::IsUserGesture() const {
@@ -273,7 +275,7 @@ std::vector<blink::WebScriptSource> UserScriptInjector::GetJsSources(
   for (const std::unique_ptr<UserScript::Content>& file : js_scripts) {
     const GURL& script_url = file->url();
     // Check if the script is already injected.
-    if (executing_scripts->count(script_url.GetPath()) != 0) {
+    if (executing_scripts->contains(script_url.GetPath())) {
       continue;
     }
 
@@ -307,8 +309,9 @@ std::vector<ScriptInjector::CSSSource> UserScriptInjector::GetCssSources(
        script_->css_scripts()) {
     const std::string& stylesheet_path = file->url().GetPath();
     // Check if the stylesheet is already injected.
-    if (injected_stylesheets->count(stylesheet_path) != 0)
+    if (injected_stylesheets->contains(stylesheet_path)) {
       continue;
+    }
 
     sources.push_back(CSSSource{user_script_set_->GetCssSource(*file),
                                 blink::WebStyleSheetKey()});

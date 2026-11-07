@@ -21,6 +21,7 @@
 #include "angle_project.h"
 #include "chrome_project.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/IgnoreExpr.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
@@ -197,6 +198,38 @@ bool IsInExcludedMacro(clang::SourceLocation loc,
   return true;
 }
 
+// Returns true if `loc` is spelled in the source as (part of) an argument of
+// the project's unsafe-buffers macro, e.g. `ptr++` in `UNSAFE_TODO(ptr++)`.
+bool IsInUnsafeBuffersMacroArg(clang::SourceLocation loc,
+                               const clang::ASTContext& ast_context,
+                               const clang::SourceManager& source_manager) {
+  if (!loc.isMacroID()) {
+    return false;
+  }
+  // Like in IsInExcludedMacro(), the outermost macro is the interesting one,
+  // e.g. ANGLE_UNSAFE_TODO rather than the ANGLE_UNSAFE_BUFFERS it expands to.
+  std::string outermost_macro_name;
+  while (source_manager.isMacroArgExpansion(loc)) {
+    outermost_macro_name = std::string(clang::Lexer::getImmediateMacroName(
+        loc, source_manager, ast_context.getLangOpts()));
+    loc = source_manager.getImmediateSpellingLoc(loc);
+  }
+  return !loc.isMacroID() &&
+         GetProject()->IsUnsafeBufferMacroName(outermost_macro_name);
+}
+
+// Returns true if `loc` is in a macro that prevents rewriting it in place.
+// Like IsInExcludedMacro(), except that an argument of the project's
+// unsafe-buffers macro is spelled in the source, so it is rewritten in place,
+// e.g. `*ptr++` in `UNSAFE_TODO(*ptr++)`.
+bool IsInExcludedMacroExceptUnsafeBuffersArg(
+    clang::SourceLocation loc,
+    const clang::ASTContext& ast_context,
+    const clang::SourceManager& source_manager) {
+  return !IsInUnsafeBuffersMacroArg(loc, ast_context, source_manager) &&
+         IsInExcludedMacro(loc, ast_context, source_manager);
+}
+
 // Returns true if the Node is inside a macro expansion, except for the case
 // that the Node is inside a macro argument of the exceptional macros (EXPECT_
 // and ASSERT_ family).
@@ -210,6 +243,13 @@ AST_POLYMORPHIC_MATCHER(isInExcludedMacroLocation,
   const clang::SourceManager& source_manager = ast_context.getSourceManager();
 
   return IsInExcludedMacro(std::move(loc), ast_context, source_manager);
+}
+
+// Matcher version of IsInExcludedMacroExceptUnsafeBuffersArg().
+AST_MATCHER(clang::Stmt, isInExcludedMacroLocationExceptUnsafeBuffersArg) {
+  const clang::ASTContext& ast_context = Finder->getASTContext();
+  return IsInExcludedMacroExceptUnsafeBuffersArg(
+      Node.getBeginLoc(), ast_context, ast_context.getSourceManager());
 }
 
 // This iterates over function parameters and matches the ones that match
@@ -500,6 +540,10 @@ std::string NodeKey(const T* node,
 
 std::string GetRHS(const MatchFinder::MatchResult& result);
 std::string GetLHS(const MatchFinder::MatchResult& result);
+
+bool IsRewrittenToStringView(const clang::DeclaratorDecl* array_decl,
+                             clang::QualType element_type,
+                             const clang::ASTContext& ast_context);
 
 // Emit a generic instruction to the output stream. This removes duplicates.
 void Emit(const std::string& line) {
@@ -804,6 +848,115 @@ const clang::Expr* GetParenAwareExpr(const clang::Expr* expr,
     current = paren;
   }
   return current;
+}
+
+// Strips implicit nodes (casts, full-expression wrappers, ...) and parentheses.
+const clang::Stmt* StripImplicitAndParens(const clang::Stmt* stmt) {
+  const auto* expr = clang::dyn_cast_or_null<clang::Expr>(stmt);
+  if (!expr) {
+    return stmt;
+  }
+  return clang::IgnoreExprNodes(const_cast<clang::Expr*>(expr),
+                                clang::IgnoreImplicitSingleStep,
+                                clang::IgnoreParensSingleStep);
+}
+
+// Returns the parent of `expr` as written in the source, skipping implicit
+// nodes and parentheses, to tell how `expr`'s value is used. `child` is set
+// to the parent's direct child, to tell which operand `expr` is.
+clang::DynTypedNode GetSpelledParent(const clang::Expr& expr,
+                                     clang::ASTContext& context,
+                                     const clang::Stmt*& child) {
+  child = &expr;
+  while (true) {
+    const auto parents = context.getParents(*child);
+    if (parents.empty()) {
+      return {};
+    }
+    const auto* parent = parents[0].get<clang::Stmt>();
+    if (parent &&
+        clang::isa<clang::ImplicitCastExpr, clang::FullExpr,
+                   clang::MaterializeTemporaryExpr, clang::CXXBindTemporaryExpr,
+                   clang::ParenExpr>(parent)) {
+      child = parent;
+      continue;
+    }
+    return parents[0];
+  }
+}
+
+// Returns true if `a` and `b` are the same expression, ignoring implicit nodes
+// and parentheses.
+bool IsSameSpelledExpr(const clang::Stmt* a, const clang::Stmt* b) {
+  return a && b && StripImplicitAndParens(a) == StripImplicitAndParens(b);
+}
+
+// Returns true if `expr`'s value is discarded and `expr` can be replaced by an
+// assignment without parentheses. For example `++ptr` in:
+//     ++ptr;
+//     for (...; ...; ++ptr) {}
+//     ++ptr, ++other;
+bool CanBeRewrittenAsBareAssignment(const clang::Expr& expr,
+                                    clang::ASTContext& context) {
+  const clang::Stmt* child = nullptr;
+  const clang::DynTypedNode parent = GetSpelledParent(expr, context, child);
+  const auto* stmt = parent.get<clang::Stmt>();
+  if (!stmt) {
+    return false;  // E.g. a variable initializer.
+  }
+  if (const auto* op = clang::dyn_cast<clang::BinaryOperator>(stmt)) {
+    if (!op->isCommaOp()) {
+      return false;
+    }
+    // The left operand of a comma is always discarded. The right one is the
+    // value of the whole expression, e.g. `argv++` in:
+    //     for (...; ...; argc--, argv++) {}
+    return IsSameSpelledExpr(op->getLHS(), child) ||
+           (IsSameSpelledExpr(op->getRHS(), child) &&
+            CanBeRewrittenAsBareAssignment(*op, context));
+  }
+  if (const auto* cast = clang::dyn_cast<clang::ExplicitCastExpr>(stmt)) {
+    // A C-style cast has higher precedence than `=`, so an increment in a
+    // C-style cast whose operand isn't parenthesized, e.g. `(void)ptr++`,
+    // can't be rewritten as a bare assignment.
+    if (clang::isa<clang::CStyleCastExpr>(cast) &&
+        !clang::isa<clang::ParenExpr>(cast->getSubExprAsWritten())) {
+      return false;
+    }
+    return cast->getType()->isVoidType();
+  }
+  if (clang::isa<clang::CompoundStmt, clang::SwitchCase, clang::LabelStmt,
+                 clang::AttributedStmt>(stmt)) {
+    return true;
+  }
+  if (const auto* if_stmt = clang::dyn_cast<clang::IfStmt>(stmt)) {
+    return IsSameSpelledExpr(if_stmt->getThen(), child) ||
+           IsSameSpelledExpr(if_stmt->getElse(), child);
+  }
+  if (const auto* while_stmt = clang::dyn_cast<clang::WhileStmt>(stmt)) {
+    return IsSameSpelledExpr(while_stmt->getBody(), child);
+  }
+  if (const auto* do_stmt = clang::dyn_cast<clang::DoStmt>(stmt)) {
+    return IsSameSpelledExpr(do_stmt->getBody(), child);
+  }
+  if (const auto* for_stmt = clang::dyn_cast<clang::ForStmt>(stmt)) {
+    return IsSameSpelledExpr(for_stmt->getInit(), child) ||
+           IsSameSpelledExpr(for_stmt->getInc(), child) ||
+           IsSameSpelledExpr(for_stmt->getBody(), child);
+  }
+  if (const auto* range_for = clang::dyn_cast<clang::CXXForRangeStmt>(stmt)) {
+    return IsSameSpelledExpr(range_for->getBody(), child);
+  }
+  return false;
+}
+
+// Returns true if `result` binds, as "unaryOperator", an increment rewritten by
+// RewriteUnaryOperation(). Its rewrite is a parenthesized assignment or a call,
+// so it needs no extra parentheses before `.data()` or `[0]`.
+bool IsBoundToIncrement(const MatchFinder::MatchResult& result) {
+  const auto* op =
+      result.Nodes.getNodeAs<clang::UnaryOperator>("unaryOperator");
+  return op && op->isIncrementOp();
 }
 
 // It is intentional that this function ignores cast expressions and applies
@@ -1229,7 +1382,8 @@ void DecaySpanToPointer(const MatchFinder::MatchResult& result) {
   // Replacement to delete the leading '*'
   std::string begin_replacement_text = " ";
   std::string end_replacement_text = "[0]";
-  if (result.Nodes.getNodeAs<clang::Expr>("unaryOperator")) {
+  if (result.Nodes.getNodeAs<clang::Expr>("unaryOperator") &&
+      !IsBoundToIncrement(result)) {
     // For unaryOperators we still encapsulate the expression with parenthesis.
     begin_replacement_text = "(";
     end_replacement_text = ")[0]";
@@ -1437,6 +1591,38 @@ std::string CreateSubspanCloser(
   return llvm::formatv("{0})", maybe_closer);
 }
 
+// Returns whether an `ArrayTypeLoc` is bound under `id`.
+//
+// For `constexpr int arr[2]`, the `const` comes from `constexpr`, so Clang
+// wraps the declaration's `ArrayTypeLoc` in a `QualifiedTypeLoc`. This
+// unwraps it, like `getNodeFromArrayDecl()` does. Without it, `constexpr`
+// arrays aren't treated as C arrays, and `arr + n` becomes `arr.subspan(n)`
+// on a `std::array`, which doesn't compile.
+bool HasBoundArrayTypeLoc(const MatchFinder::MatchResult& result,
+                          llvm::StringRef id) {
+  const auto* type_loc = result.Nodes.getNodeAs<clang::TypeLoc>(id);
+  return type_loc &&
+         !type_loc->getUnqualifiedLoc().getAs<clang::ArrayTypeLoc>().isNull();
+}
+
+// Returns the element type of the array bound under `id`, including
+// qualifiers on the array itself, like the `const` from `constexpr`.
+//
+// For `constexpr int arr[2]`, `ArrayTypeLoc::getInnerType()` returns plain
+// `int`, and a `span<int>` over a const array doesn't compile.
+// `ASTContext::getAsArrayType()` moves the `const` down to the element type.
+//
+// Requires `HasBoundArrayTypeLoc(result, id)`.
+clang::QualType GetBoundArrayElementType(const MatchFinder::MatchResult& result,
+                                         llvm::StringRef id) {
+  const auto* type_loc = result.Nodes.getNodeAs<clang::TypeLoc>(id);
+  assert(type_loc);
+  const clang::ArrayType* array_type =
+      result.Context->getAsArrayType(type_loc->getType());
+  assert(array_type);
+  return array_type->getElementType();
+}
+
 void AdaptBinaryOperation(const MatchFinder::MatchResult& result) {
   const clang::ASTContext& ast_context = *result.Context;
   const clang::SourceManager& source_manager = *result.SourceManager;
@@ -1458,9 +1644,9 @@ void AdaptBinaryOperation(const MatchFinder::MatchResult& result) {
   BinaryOperationData bin_op_data =
       GetBinaryOperationDataOrCrash(binary_operation, result);
 
-  const auto* rhs_array_type =
-      result.Nodes.getNodeAs<clang::ArrayTypeLoc>("rhs_array_type_loc");
-  if (rhs_array_type) {
+  const bool rhs_is_c_array =
+      HasBoundArrayTypeLoc(result, "rhs_array_type_loc");
+  if (rhs_is_c_array) {
     // Built-in binary operators on C-style arrays (like `arr + 1`) decay
     // the array to a pointer and perform pointer arithmetic. Overloaded
     // operators (like `arr + val` where val is an enum/class) have custom
@@ -1483,10 +1669,11 @@ void AdaptBinaryOperation(const MatchFinder::MatchResult& result) {
     EmitReplacement(
         key, GetReplacementDirective(
                  bin_op_data.lhs->getBeginLoc(),
-                 llvm::formatv("{0}<{1}>(",
-                               GetProject()->GetSpanRelativePath(result),
-                               GetTypeAsString(rhs_array_type->getInnerType(),
-                                               *result.Context)),
+                 llvm::formatv(
+                     "{0}<{1}>(", GetProject()->GetSpanRelativePath(result),
+                     GetTypeAsString(
+                         GetBoundArrayElementType(result, "rhs_array_type_loc"),
+                         *result.Context)),
                  source_manager, kAdaptBinaryOperationPrecedence));
     // Emit the closing `)` of `base::span(...)` below.
   }
@@ -1510,7 +1697,7 @@ void AdaptBinaryOperation(const MatchFinder::MatchResult& result) {
       GetSubspanExprReplacement(binary_op_RHS, result, key);
 
   // Close the open `base::span(` expression if present.
-  std::string_view prefix = rhs_array_type ? ")" : "";
+  std::string_view prefix = rhs_is_c_array ? ")" : "";
   std::string subspan_opener =
       CreateSubspanOpener(prefix, &subspan_expr_replacement);
 
@@ -1690,30 +1877,21 @@ void AppendDataCall(const MatchFinder::MatchResult& result) {
   const std::string key = GetRHS(result);
   auto rep_range = clang::SourceRange(getSourceRange(result).getEnd());
 
-  std::string replacement_text = ".data()";
-
   if (result.Nodes.getNodeAs<clang::Expr>("unaryOperator")) {
     if (result.Nodes.getNodeAs<clang::Expr>("container_buff_address")) {
-      if (result.Nodes.getNodeAs<clang::ArrayTypeLoc>("rhs_array_type_loc") &&
+      if (HasBoundArrayTypeLoc(result, "rhs_array_type_loc") &&
           !result.Nodes.getNodeAs<clang::IntegerLiteral>(
               "zero_container_offset")) {
         return;
       }
       rep_range = EmitContainerPointerRewrites(
           result, key, ContainerPointerRewritesMode::kDontWrapWithBaseSpan);
-    } else {
-      // Insert enclosing parenthesis for expressions with UnaryOperators
-      auto begin_range = clang::SourceRange(getSourceRange(result).getBegin());
-      EmitReplacement(key,
-                      GetReplacementDirective(begin_range, "(", source_manager,
-                                              kAppendDataCallPrecedence));
-      replacement_text = ").data()";
     }
   }
 
-  EmitReplacement(
-      key, GetReplacementDirective(rep_range, replacement_text, source_manager,
-                                   -kAppendDataCallPrecedence));
+  EmitReplacement(key,
+                  GetReplacementDirective(rep_range, ".data()", source_manager,
+                                          -kAppendDataCallPrecedence));
 }
 
 // Given that we want to emit `.subspan(expr)`,
@@ -1824,14 +2002,14 @@ clang::SourceLocation EmitContainerPointerRewrites(
   const auto* subscript_expr =
       GetNodeOrCrash<clang::Expr>(result, "subscript_expr", __FUNCTION__);
 
-  const auto* rhs_array_type =
-      result.Nodes.getNodeAs<clang::ArrayTypeLoc>("rhs_array_type_loc");
+  const bool rhs_is_c_array =
+      HasBoundArrayTypeLoc(result, "rhs_array_type_loc");
 
   std::string_view declref_bind_name = "container_decl_ref";
   std::string_view subspan_opener = ").subspan(";
   if (mode == ContainerPointerRewritesMode::kDontWrapWithBaseSpan) {
     declref_bind_name = "rhs_expr";
-    if (!rhs_array_type) {
+    if (!rhs_is_c_array) {
       subspan_opener = ".subspan(";
     }
   }
@@ -1844,22 +2022,38 @@ clang::SourceLocation EmitContainerPointerRewrites(
       FindRightBracket(result, subscript_expr);
 
   // Special case: we detected and bound a zero offset (`&buf[0]`).
-  // Rather than emit a `.subspan(...)`, we delete the subscript
-  // expression entirely.
+  // Replace all of `&buf[0]` with `buf` in one non-empty edit. apply_edits.py
+  // extends an empty deletion over a preceding `,`, so `f(x, &buf[0])` would
+  // become `f(xbuf)`.
   if (result.Nodes.getNodeAs<clang::IntegerLiteral>("zero_container_offset")) {
-    EmitReplacement(key, GetReplacementDirective(replacement_range, "",
-                                                 *result.SourceManager));
-    replacement_range = {left_bracket, right_bracket.getLocWithOffset(1)};
-    EmitReplacement(key, GetReplacementDirective(replacement_range, "",
-                                                 *result.SourceManager));
+    const clang::SourceRange container_range(container_decl_ref.getBeginLoc(),
+                                             left_bracket);
+    const std::string container_text =
+        clang::Lexer::getSourceText(
+            clang::CharSourceRange::getCharRange(container_range),
+            source_manager, lang_opts)
+            .str();
+    replacement_range.setEnd(right_bracket.getLocWithOffset(1));
+    EmitReplacement(key,
+                    GetReplacementDirective(replacement_range, container_text,
+                                            *result.SourceManager));
     return right_bracket.getLocWithOffset(1);
   }
 
   // Step 1
   if (mode == ContainerPointerRewritesMode::kWrapWithBaseSpan) {
     // Emit the opening `base::span(`.
-    const auto& contained_type = *GetNodeOrCrash<clang::QualType>(
-        result, "contained_type", __FUNCTION__);
+    //
+    // For a C array, take the element type from the array type, like
+    // `GetBoundArrayElementType()`. `contained_type` is bound through
+    // `arrayType()`, which drops the `const` from `constexpr`, and a
+    // `span<int>` over a const array doesn't compile.
+    const clang::ArrayType* array_type =
+        result.Context->getAsArrayType(container_decl_ref.getType());
+    const clang::QualType contained_type =
+        array_type ? array_type->getElementType()
+                   : *GetNodeOrCrash<clang::QualType>(result, "contained_type",
+                                                      __FUNCTION__);
     EmitReplacement(
         key, GetReplacementDirective(
                  replacement_range,
@@ -2162,25 +2356,36 @@ std::string GetNodeFromSizeExpr(const clang::Expr* size_expr,
 }
 
 // Rewrite:
-//   `ptr++` or `++ptr`
+//   `++ptr` or `ptr++`
 // Into:
-//   `base::PreIncrementSpan(span)` or `base::PostIncrementSpan(span)`.
+//   `ptr = ptr.subspan(1u)`                if the value is discarded,
+//   `(ptr = ptr.subspan(1u))`              for a pre-increment otherwise,
+//   `std::exchange(ptr, ptr.subspan(1u))`  for a post-increment otherwise.
+// This only uses the span's `subspan()`, so it is the same in every project.
+// Like the pointer arithmetic, incrementing past the end is not allowed.
+//
+// Tests are in: tests/chrome/basics-original.cc,
+// tests/chrome/increment-operands-original.cc and
+// tests/chrome/increment-in-macro-arg-original.cc
 void RewriteUnaryOperation(const MatchFinder::MatchResult& result) {
   const clang::SourceManager& source_manager = *result.SourceManager;
   const auto& lang_opts = result.Context->getLangOpts();
 
+  const clang::Expr* increment_expr = nullptr;
   const clang::Expr* operand = nullptr;
   bool is_prefix = false;
   clang::SourceLocation operator_loc;
 
   if (const auto* unary_op =
           result.Nodes.getNodeAs<clang::UnaryOperator>("unaryOperator")) {
+    increment_expr = unary_op;
     operand = unary_op->getSubExpr();
     is_prefix = unary_op->isPrefix();
     operator_loc = unary_op->getOperatorLoc();
   } else if (const auto* cxx_op_call =
                  result.Nodes.getNodeAs<clang::CXXOperatorCallExpr>(
                      "raw_ptr_operator++")) {
+    increment_expr = cxx_op_call;
     operand = cxx_op_call->getArg(0);
     const auto* method_decl =
         clang::dyn_cast<clang::CXXMethodDecl>(cxx_op_call->getCalleeDecl());
@@ -2204,61 +2409,102 @@ void RewriteUnaryOperation(const MatchFinder::MatchResult& result) {
 
   assert(operator_loc.isValid());
 
-  // Exclude macros because spanifier will generate closing parenthesis in
-  // unexpected locations.
-  if (IsInExcludedMacro(operator_loc, *result.Context, source_manager)) {
+  const std::string key = GetRHS(result);
+
+  // An increment in a macro argument of an unsafe-buffers macro, e.g.
+  //     UNSAFE_TODO(ptr++);
+  // or of the macros allowed by IsInExcludedMacro(), e.g.
+  //     EXPECT_EQ(*ptr++, 1);
+  // is spelled in the source, so it can be rewritten in place. Other macros are
+  // excluded: the spanifier would generate text in unexpected locations, and
+  // leaving the `++` as is would apply it to a span, which doesn't compile.
+  // `deref_expression` uses the same check, so the `*` of `*ptr++` is rewritten
+  // together with the increment.
+  if (IsInExcludedMacroExceptUnsafeBuffersArg(operator_loc, *result.Context,
+                                              source_manager)) {
+    EmitExclusion(key);
+    return;
+  }
+  operator_loc = source_manager.getSpellingLoc(operator_loc);
+
+  // The rewrite writes the operand twice (`p = p.subspan(1u)`), so an operand
+  // with side effects would run them twice, e.g. `items[i++].ptr++`. Don't
+  // rewrite it.
+  const clang::Expr* bare_operand = operand->IgnoreParenImpCasts();
+  if (bare_operand->HasSideEffects(*result.Context)) {
+    EmitExclusion(key);
     return;
   }
 
-  // Get the source range of the operand (the 'ptr' part).
-  clang::SourceRange operand_range =
-      GetExprRange(*operand->IgnoreParenImpCasts(), source_manager, lang_opts);
-  assert(operand_range.isValid());
+  // Get the source range of the operand, including its object if any (e.g.
+  // `obj.ptr`).
+  const clang::CharSourceRange operand_range = clang::Lexer::makeFileCharRange(
+      clang::CharSourceRange::getTokenRange(bare_operand->getSourceRange()),
+      source_manager, lang_opts);
+  // The same range, including the operand's parentheses if any, e.g. `(ptr)`
+  // in `(ptr)++`.
+  const clang::CharSourceRange written_operand_range =
+      clang::Lexer::makeFileCharRange(
+          clang::CharSourceRange::getTokenRange(
+              operand->IgnoreImpCasts()->getSourceRange()),
+          source_manager, lang_opts);
+  // The operand's text can't be copied if it isn't one contiguous piece of
+  // the file, e.g. if part of it comes from a macro body. Don't rewrite it.
+  if (operand_range.isInvalid() || written_operand_range.isInvalid()) {
+    EmitExclusion(key);
+    return;
+  }
+  const std::string operand_text =
+      clang::Lexer::getSourceText(operand_range, source_manager, lang_opts)
+          .str();
+  const std::string advanced_operand =
+      llvm::formatv("{0}.subspan(1u)", operand_text);
 
   clang::SourceLocation operator_end_loc = clang::Lexer::getLocForEndOfToken(
       operator_loc, 0, source_manager, lang_opts);
   assert(operator_end_loc.isValid());
-  clang::SourceRange op_token_range(operator_loc, operator_end_loc);
+  const clang::SourceRange op_token_range(operator_loc, operator_end_loc);
+  // A post-increment's `std::exchange(` is closed where the `++` was, so it
+  // opens before the operand's parentheses:
+  //     (ptr)++  ==>  std::exchange((ptr), ptr.subspan(1u))
+  // A pre-increment's ` = ...` stays inside them, next to the `[0]` or
+  // `.data()` that other rewrites add at the end of "rhs_expr", which the
+  // matchers bind without parentheses:
+  //     *++(ptr)  ==>  ((ptr = ptr.subspan(1u))[0])
+  const clang::SourceRange operand_begin(written_operand_range.getBegin());
+  const clang::SourceRange operand_end(operand_range.getEnd());
 
-  std::string begin_insert_text;
-  clang::SourceRange begin_replacement_range;
-  clang::SourceRange end_replacement_range;
-
-  if (is_prefix) {
-    begin_insert_text =
-        std::string(GetProject()->GetPreIncrementSpanName()) + "(";
-    // Replace the '++' with the helper call.
-    begin_replacement_range = op_token_range;
-    // Insert ")" at the end of the operand.
-    end_replacement_range =
-        clang::SourceRange(operand_range.getEnd(), operand_range.getEnd());
+  // `before_operand` replaces the `++` of a pre-increment, or is inserted
+  // before the operand of a post-increment. `after_operand` is inserted after
+  // the operand of a pre-increment, or replaces the `++` of a post-increment.
+  //
+  // A removed `++` is replaced by a space: `apply_edits.py` treats a deletion
+  // after a `,` as a list element removal, and would remove the comma too.
+  std::string before_operand;
+  std::string after_operand;
+  if (CanBeRewrittenAsBareAssignment(*increment_expr, *result.Context)) {
+    before_operand = is_prefix ? " " : "";
+    after_operand = " = " + advanced_operand;
+  } else if (is_prefix) {
+    before_operand = "(";
+    after_operand = " = " + advanced_operand + ")";
   } else {
-    begin_insert_text =
-        std::string(GetProject()->GetPostIncrementSpanName()) + "(";
-    // Insert the helper call at the beginning of the operand.
-    begin_replacement_range =
-        clang::SourceRange(operand_range.getBegin(), operand_range.getBegin());
-    // Replace "++"" with ")".
-    end_replacement_range = op_token_range;
+    before_operand = "std::exchange(";
+    after_operand = ", " + advanced_operand + ")";
+    EmitReplacement(
+        key, GetIncludeDirective(operand_begin, source_manager, "<utility>"));
   }
 
-  assert(begin_replacement_range.isValid());
-  assert(end_replacement_range.isValid());
-
-  const std::string key = GetRHS(result);
-
-  EmitReplacement(key, GetReplacementDirective(
-                           begin_replacement_range, begin_insert_text,
-                           source_manager, kRewriteUnaryOperationPrecedence));
-
+  if (!before_operand.empty()) {
+    EmitReplacement(
+        key, GetReplacementDirective(is_prefix ? op_token_range : operand_begin,
+                                     before_operand, source_manager,
+                                     kRewriteUnaryOperationPrecedence));
+  }
   EmitReplacement(
-      key, GetReplacementDirective(end_replacement_range, ")", source_manager,
+      key, GetReplacementDirective(is_prefix ? operand_end : op_token_range,
+                                   after_operand, source_manager,
                                    -kRewriteUnaryOperationPrecedence));
-
-  EmitReplacement(key,
-                  GetIncludeDirective(
-                      operand_range, source_manager,
-                      GetProject()->GetAutoSpanificationHelperIncludePath()));
 }
 
 // Rewrite:
@@ -2268,13 +2514,26 @@ void RewriteUnaryOperation(const MatchFinder::MatchResult& result) {
 // Tests are in: tests/chrome/array-tests-original.cc
 void RewriteArraySizeof(const MatchFinder::MatchResult& result) {
   clang::SourceManager& source_manager = *result.SourceManager;
+  const clang::ASTContext& ast_context = *result.Context;
 
   const auto* sizeof_expr =
       result.Nodes.getNodeAs<clang::UnaryExprOrTypeTraitExpr>("sizeof_expr");
 
-  const std::string& array_decl_as_string =
-      result.Nodes.getNodeAs<clang::DeclaratorDecl>("rhs_begin")
-          ->getNameAsString();
+  const auto* array_decl =
+      result.Nodes.getNodeAs<clang::DeclaratorDecl>("rhs_begin");
+
+  // `sizeof` of a `std::string_view` gives the size of the view, not of the
+  // buffer. Exclude the rewrite so `sizeof` keeps measuring the buffer.
+  if (const clang::ArrayType* array_type =
+          ast_context.getAsArrayType(array_decl->getType())) {
+    if (IsRewrittenToStringView(array_decl, array_type->getElementType(),
+                                ast_context)) {
+      EmitExclusion(GetRHS(result));
+      return;
+    }
+  }
+
+  const std::string& array_decl_as_string = array_decl->getNameAsString();
 
   // sizeof_expr matches with "sizeof(c_array)" in case of
   // `sizeof(c_array)`, and "sizeof " in case of `sizeof c_array`. In the
@@ -2325,7 +2584,8 @@ void AddSpanFrontierChange(const std::string& lhs_key,
           .str();
   std::string replacement_text = ".data()";
 
-  if (result.Nodes.getNodeAs<clang::Expr>("unaryOperator")) {
+  if (result.Nodes.getNodeAs<clang::Expr>("unaryOperator") &&
+      !IsBoundToIncrement(result)) {
     // Insert enclosing parenthesis for expressions with UnaryOperators
     auto begin_range = clang::SourceRange(getSourceRange(result).getBegin());
     EmitFrontier(lhs_key, rhs_key,
@@ -2700,6 +2960,18 @@ bool IsConstexpr(const clang::DeclaratorDecl* decl) {
   return false;
 }
 
+// Returns true if `array_decl` is rewritten into a `std::string_view` instead
+// of a `std::array`. Shared with `RewriteArraySizeof()` so both agree.
+bool IsRewrittenToStringView(const clang::DeclaratorDecl* array_decl,
+                             clang::QualType element_type,
+                             const clang::ASTContext& ast_context) {
+  if (!clang::dyn_cast_or_null<clang::StringLiteral>(GetInitExpr(array_decl))) {
+    return false;
+  }
+  // Only const arrays will be rewritten to `std::string_view`.
+  return element_type.isConstant(ast_context) || IsConstexpr(array_decl);
+}
+
 bool IsInlineVarDecl(const clang::DeclaratorDecl* decl) {
   if (const auto* var_decl = clang::dyn_cast_or_null<clang::VarDecl>(decl)) {
     return var_decl->isInlineSpecified();
@@ -2711,6 +2983,43 @@ bool IsStaticLocalOrStaticStorageClass(const clang::DeclaratorDecl* decl) {
   if (const auto* var_decl = clang::dyn_cast_or_null<clang::VarDecl>(decl)) {
     return var_decl->isStaticLocal() ||
            var_decl->getStorageClass() == clang::SC_Static;
+  }
+  return false;
+}
+
+// True if `decl` shares its declaration with other declarators, e.g.
+// `int a[3], b[3];`. The array rewrite's range starts at the shared type
+// specifier, so the overlapping edits collide and the surviving one deletes
+// the other declarators. Such arrays are not rewritten.
+bool HasSiblingDeclarators(const clang::DeclaratorDecl& decl,
+                           clang::ASTContext& ast_context) {
+  // Block scope: count the declarators in the `DeclStmt`. An unnamed tag
+  // definition (`struct { int v; } buf[4];`) is not a sibling.
+  for (const auto& parent : ast_context.getParents(decl)) {
+    if (const auto* decl_stmt = parent.get<clang::DeclStmt>()) {
+      int declarators = 0;
+      for (const clang::Decl* grouped : decl_stmt->decls()) {
+        declarators += clang::isa<clang::DeclaratorDecl>(grouped) ? 1 : 0;
+      }
+      return declarators > 1;
+    }
+  }
+
+  // Fields and globals have no `DeclStmt`: siblings share the begin location.
+  const clang::DeclContext* lexical_context = decl.getLexicalDeclContext();
+  if (!lexical_context) {
+    return false;
+  }
+  for (const clang::Decl* other : lexical_context->decls()) {
+    if (other == &decl) {
+      continue;
+    }
+    const auto* other_declarator =
+        clang::dyn_cast<clang::DeclaratorDecl>(other);
+    if (other_declarator &&
+        other_declarator->getBeginLoc() == decl.getBeginLoc()) {
+      return true;
+    }
   }
   return false;
 }
@@ -2770,6 +3079,12 @@ std::string getNodeFromArrayDecl(const clang::TypeLoc* type_loc,
   std::string key = NodeKey(array_decl, *result.SourceManager);
   EmitEdge(key, proxy_node);
   EmitSource(key);
+
+  // Rewriting one of several declarators would delete the others.
+  if (HasSiblingDeclarators(*array_decl, *result.Context)) {
+    EmitExclusion(key);
+    return key;
+  }
 
   const clang::ArrayTypeLoc& array_type_loc =
       type_loc->getUnqualifiedLoc().getAs<clang::ArrayTypeLoc>();
@@ -2873,8 +3188,8 @@ std::string getNodeFromArrayDecl(const clang::TypeLoc* type_loc,
   std::string additional_replacement;
   if (init_string_literal) {
     assert(original_element_type->isAnyCharacterType());
-    if (original_element_type.isConstant(ast_context) ||
-        IsConstexpr(array_decl)) {
+    if (IsRewrittenToStringView(array_decl, original_element_type,
+                                ast_context)) {
       replacement_text = llvm::formatv(
           "{0} {1}", GetStringViewType(new_element_type, ast_context),
           array_variable_as_string);
@@ -3808,6 +4123,20 @@ class Spanifier {
       EmitSource(GetLHS(result));  // Declare unsafe buffer access.
     });
 
+    // An explicit cast of `&ptr`, e.g. `reinterpret_cast<void**>(&ptr)` or
+    // `(void**)&ptr`, lets code write a raw pointer into `ptr`'s storage.
+    // That would still compile, and be UB, if `ptr` became a span, so `ptr`
+    // is excluded. Arrays are not matched.
+    auto cast_address_of_pointer = traverse(
+        clang::TK_IgnoreUnlessSpelledInSource,
+        explicitCastExpr(hasSourceExpression(ignoringParenImpCasts(
+            unaryOperator(hasOperatorName("&"),
+                          hasUnaryOperand(expr(
+                              rhs_expr, unless(hasType(arrayType())))))))));
+    Match(cast_address_of_pointer, [](const MatchFinder::MatchResult& result) {
+      EmitExclusion(GetRHS(result));
+    });
+
     // `sizeof(c_array)` is rewritten to
     // `std_array.size() * sizeof(element_size)`.
     auto sizeof_array_expr = traverse(
@@ -3815,6 +4144,8 @@ class Spanifier {
         sizeOfExpr(has(rhs_exprs_without_size_nodes)).bind("sizeof_expr"));
     Match(sizeof_array_expr, RewriteArraySizeof);
 
+    // Same macro check as RewriteUnaryOperation(), so that `*` is rewritten
+    // together with the increment in `UNSAFE_TODO(*ptr++)`.
     auto deref_expression = traverse(
         clang::TK_IgnoreUnlessSpelledInSource,
         expr(anyOf(unaryOperator(hasOperatorName("*"),
@@ -3822,7 +4153,7 @@ class Spanifier {
                    cxxOperatorCallExpr(
                        hasOverloadedOperatorName("*"),
                        hasArgument(0, rhs_exprs_without_size_nodes))),
-             unless(isInExcludedMacroLocation()))
+             unless(isInExcludedMacroLocationExceptUnsafeBuffersArg()))
             .bind("deref_expr"));
     Match(deref_expression, DecaySpanToPointer);
 

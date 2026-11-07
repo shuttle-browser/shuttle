@@ -8,29 +8,24 @@
 #include "chrome/browser/chrome_browser_interface_binders.h"
 #include "chrome/browser/chrome_browser_interface_binders_webui_parts.h"
 #include "chrome/browser/media/media_engagement_score_details.mojom.h"
-#include "chrome/browser/optimization_guide/optimization_guide_internals_ui.h"
 #include "chrome/browser/ui/webui/bluetooth_internals/bluetooth_internals.mojom.h"
 #include "chrome/browser/ui/webui/bluetooth_internals/bluetooth_internals_ui.h"
 #include "chrome/browser/ui/webui/chrome_urls/chrome_urls_ui.h"
-#include "chrome/browser/ui/webui/connectors_internals/connectors_internals_ui.h"
 #include "chrome/browser/ui/webui/content_settings/content_settings_internals.mojom.h"
 #include "chrome/browser/ui/webui/content_settings/content_settings_ui.h"
 #include "chrome/browser/ui/webui/engagement/site_engagement_ui.h"
 #include "chrome/browser/ui/webui/location_internals/location_internals.mojom.h"
 #include "chrome/browser/ui/webui/location_internals/location_internals_ui.h"
 #include "chrome/browser/ui/webui/media/media_engagement_ui.h"
-#include "chrome/browser/ui/webui/omnibox/omnibox_internals.mojom.h"
-#include "chrome/browser/ui/webui/omnibox/omnibox_ui.h"
+#include "chrome/browser/ui/webui/omnibox_internals/omnibox_internals.mojom.h"
+#include "chrome/browser/ui/webui/omnibox_internals/omnibox_internals_ui.h"
 #include "chrome/browser/ui/webui/policy/policy_ui.h"
-#include "chrome/browser/ui/webui/segmentation_internals/segmentation_internals_ui.h"
 #include "chrome/browser/ui/webui/subresource_filter/subresource_filter_internals_ui.h"
 #include "chrome/browser/ui/webui/suggest_internals/suggest_internals.mojom.h"
 #include "chrome/browser/ui/webui/suggest_internals/suggest_internals_ui.h"
 #include "chrome/browser/ui/webui/usb_internals/usb_internals.mojom.h"
 #include "chrome/browser/ui/webui/usb_internals/usb_internals_ui.h"
 #include "chrome/common/webui_url_constants.h"
-#include "components/enterprise/connectors/connectors_internals.mojom.h"
-#include "components/history_clusters/history_clusters_internals/webui/history_clusters_internals_ui.h"
 #include "components/policy/core/common/features.h"
 #include "components/site_engagement/core/mojom/site_engagement_details.mojom.h"
 #include "content/public/browser/navigation_controller.h"
@@ -39,6 +34,8 @@
 #include "mojo/public/cpp/bindings/binder_map.h"
 #include "mojo/public/cpp/bindings/message.h"
 #include "ui/webui/buildflags.h"
+#include "ui/webui/color_change_listener/color_change_handler.h"
+#include "ui/webui/resources/cr_components/color_change_listener/color_change_listener.mojom.h"
 #include "ui/webui/resources/js/tracked_element/tracked_element.mojom.h"
 #include "ui/webui/tracked_element/tracked_element_handler.h"
 #include "ui/webui/tracked_element/tracked_element_handler_document_singleton.h"
@@ -52,10 +49,6 @@
 #endif
 #endif
 
-#if !BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_DESKTOP_ANDROID)
-#include "ui/webui/color_change_listener/color_change_handler.h"
-#include "ui/webui/resources/cr_components/color_change_listener/color_change_listener.mojom.h"
-#endif  // !BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_DESKTOP_ANDROID)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_DESKTOP_ANDROID)
@@ -72,7 +65,6 @@ namespace chrome::internal {
 using content::RegisterWebUIControllerInterfaceBinder;
 
 namespace {
-#if !BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_DESKTOP_ANDROID)
 void BindColorChangeListener(
     content::RenderFrameHost* frame_host,
     mojo::PendingReceiver<color_change_listener::mojom::PageHandler>
@@ -81,7 +73,6 @@ void BindColorChangeListener(
       ui::ColorChangeHandler::GetOrCreateForCurrentDocument(frame_host);
   color_change_handler->Bind(std::move(pending_receiver));
 }
-#endif  // !BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_DESKTOP_ANDROID)
 
 void FinishBindTrackedElementHandler(
     mojo::PendingReceiver<tracked_element::mojom::TrackedElementHandler>
@@ -144,8 +135,8 @@ void PopulateChromeWebUIFrameBindersPartsAllPlatforms(
   RegisterWebUIControllerInterfaceBinder<
       webnn_internals::mojom::PageHandlerFactory, WebNNInternalsUI>(map);
 #endif
-  RegisterWebUIControllerInterfaceBinder<::mojom::OmniboxPageHandler,
-                                         OmniboxUI>(map);
+  RegisterWebUIControllerInterfaceBinder<::mojom::OmniboxInternalsPageHandler,
+                                         OmniboxInternalsUI>(map);
 
   RegisterWebUIControllerInterfaceBinder<
       site_engagement::mojom::SiteEngagementDetailsProvider, SiteEngagementUI>(
@@ -154,24 +145,8 @@ void PopulateChromeWebUIFrameBindersPartsAllPlatforms(
   RegisterWebUIControllerInterfaceBinder<::mojom::UsbInternalsPageHandler,
                                          UsbInternalsUI>(map);
 
-  RegisterWebUIControllerInterfaceBinder<
-      history_clusters_internals::mojom::PageHandlerFactory,
-      HistoryClustersInternalsUI>(map);
-
-  RegisterWebUIControllerInterfaceBinder<
-      optimization_guide_internals::mojom::PageHandlerFactory,
-      OptimizationGuideInternalsUI>(map);
-
-  RegisterWebUIControllerInterfaceBinder<
-      segmentation_internals::mojom::PageHandlerFactory,
-      SegmentationInternalsUI>(map);
-
   RegisterWebUIControllerInterfaceBinder<chrome_urls::mojom::PageHandlerFactory,
                                          chrome_urls::ChromeUrlsUI>(map);
-
-  RegisterWebUIControllerInterfaceBinder<
-      connectors_internals::mojom::PageHandler,
-      enterprise_connectors::ConnectorsInternalsUI>(map);
 
   RegisterWebUIControllerInterfaceBinder<::mojom::LocationInternalsHandler,
                                          LocationInternalsUI>(map);
@@ -193,10 +168,8 @@ void PopulateChromeWebUIFrameBindersPartsAllPlatforms(
       content_settings_internals::mojom::PageHandlerFactory,
       content_settings_internals::ContentSettingsUI>(map);
 
-#if !BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_DESKTOP_ANDROID)
   map->Add<color_change_listener::mojom::PageHandler>(
       base::BindRepeating(&BindColorChangeListener));
-#endif  // !BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_DESKTOP_ANDROID)
 
   map->Add<tracked_element::mojom::TrackedElementHandler>(
       base::BindRepeating(&BindTrackedElementHandlerRestricted));
@@ -249,12 +222,12 @@ void PopulateTrustedChromeWebUIFrameInterfaceBrokers(
 
 #if !BUILDFLAG(IS_ANDROID)
   PopulateChromeWebUIFrameInterfaceBrokersTrustedPartsDesktop(registry);
+#else
+  PopulateChromeWebUIFrameInterfaceBrokersTrustedPartsAndroid(registry);
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-#if !BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_DESKTOP_ANDROID)
   registry.AddGlobal<color_change_listener::mojom::PageHandler>(
       base::BindRepeating(&BindColorChangeListener));
-#endif  // !BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_DESKTOP_ANDROID)
 
   registry.AddGlobal<tracked_element::mojom::TrackedElementHandler>(
       base::BindRepeating(&BindTrackedElementHandler));
@@ -275,10 +248,8 @@ void PopulateUntrustedChromeWebUIFrameInterfaceBrokers(
   PopulateChromeWebUIFrameInterfaceBrokersUntrustedPartsDesktop(registry);
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-#if !BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_DESKTOP_ANDROID)
   registry.AddGlobal<color_change_listener::mojom::PageHandler>(
       base::BindRepeating(&BindColorChangeListener));
-#endif  // !BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_DESKTOP_ANDROID)
 
   registry.AddGlobal<tracked_element::mojom::TrackedElementHandler>(
       base::BindRepeating(&BindTrackedElementHandler));

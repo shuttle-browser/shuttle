@@ -1,4 +1,4 @@
-﻿// Copyright 2023 The Chromium Authors
+// Copyright 2023 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -127,9 +127,7 @@ TEST_F(HanKerningTest, FontDataVertical) {
 TEST_F(HanKerningTest, FontDataSizeError) {
   class EnableAntialiasedText {
    public:
-    EnableAntialiasedText()
-        : is_antialiased_text_enabled_(
-              FontCache::Get().AntialiasedTextEnabled()) {
+    EnableAntialiasedText() {
       FontCache::Get().SetAntialiasedTextEnabled(true);
     }
     ~EnableAntialiasedText() {
@@ -137,7 +135,8 @@ TEST_F(HanKerningTest, FontDataSizeError) {
     }
 
    private:
-    bool is_antialiased_text_enabled_;
+    bool is_antialiased_text_enabled_ =
+        FontCache::Get().AntialiasedTextEnabled();
   } enable_antialias_text;
 
   FontDescription font_description;
@@ -175,7 +174,7 @@ TEST_F(HanKerningTest, ResetFeatures) {
   EXPECT_TRUE(noto_cjk_data);
   FontFeatureRanges features;
   features.push_back(FontFeatureRange{
-      {{'T', 'E', 'S', 'T'}, 1}, 0, static_cast<unsigned>(-1)});
+      {{'T', 'E', 'S', 'T'}, 1}, 0, static_cast<wtf_size_t>(-1)});
   EXPECT_EQ(features.size(), 1u);
   const String text(u"国）（国");
   {

@@ -15,8 +15,6 @@ source_set("management") {
     "management_api_delegate.h",
   ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   public_deps = [
     "//base",
     "//components/keyed_service/core",
@@ -29,8 +27,6 @@ source_set("management") {
 
   deps = [
     "//build:chromeos_buildflags",
-    "//components/supervised_user/core/common:buildflags",
-    "//components/supervised_user/core/common:features",
     "//content/public/browser",
     "//extensions/browser/api:extensions_api_client",
     "//extensions/common:mojom",

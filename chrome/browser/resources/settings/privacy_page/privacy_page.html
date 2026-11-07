@@ -1,35 +1,34 @@
-  <style include="cr-shared-style cr-hidden-style settings-shared"></style>
   <settings-section page-title="$i18n{privacyPageTitle}">
-    <template is="dom-if" if="[[showClearBrowsingDataDialog_]]" restamp>
+    ${this.showClearBrowsingDataDialog_ ? html`
       <settings-clear-browsing-data-dialog
-          on-close="onCbdDialogClosed_"
-          on-browsing-data-deleted="onBrowsingDataDeleted_">
+          @close="${this.onCbdDialogClose_}"
+          @browsing-data-deleted="${this.onBrowsingDataDeleted_}">
       </settings-clear-browsing-data-dialog>
-    </template>
+    ` : ''}
     <cr-link-row id="clearBrowsingData"
         start-icon="cr:delete"
         label="$i18n{clearBrowsingData}"
         sub-label="$i18n{clearBrowsingDataDescription}"
-        on-click="onClearBrowsingDataClick_"></cr-link-row>
+        @click="${this.onClearBrowsingDataClick_}"></cr-link-row>
     <cr-link-row id="thirdPartyCookiesLinkRow"
         start-icon="privacy:cookie"
         class="hr"
-        label="[[thirdPartyCookiesLabel_]]"
-        sub-label="[[thirdPartyCookiesSublabel_]]"
-        on-click="onCookiesClick_"
+        label="${this.getThirdPartyCookiesLabel_()}"
+        sub-label="${this.getThirdPartyCookiesSublabel_()}"
+        @click="${this.onCookiesClick_}"
         role-description="$i18n{subpageArrowRoleDescription}">
     </cr-link-row>
     <cr-link-row id="securityLinkRow" start-icon="privacy:lock"
         class="hr" label="$i18n{securityPageTitle}"
         sub-label="$i18n{securityPageDescription}"
-        on-click="onSecurityPageClick_"
+        @click="${this.onSecurityPageClick_}"
         role-description="$i18n{subpageArrowRoleDescription}"></cr-link-row>
     <cr-link-row id="siteSettingsLinkRow" start-icon="privacy:page-info"
         class="hr" label="$i18n{siteSettings}"
         sub-label="$i18n{siteSettingsSublabel}"
-        on-click="onSiteSettingsLinkRowClick_"
+        @click="${this.onSiteSettingsLinkRowClick_}"
         role-description="$i18n{subpageArrowRoleDescription}"></cr-link-row>
     <cr-toast id="deleteBrowsingDataToast" duration="5000">
-      <div>[[dbdDeletionConfirmationToastLabel_]]</div>
+      <div>${this.dbdDeletionConfirmationToastLabel_}</div>
     </cr-toast>
   </settings-section>

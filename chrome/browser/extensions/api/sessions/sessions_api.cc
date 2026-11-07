@@ -276,7 +276,7 @@ api::tabs::Tab SessionsGetRecentlyClosedFunction::CreateTabModel(
 
 api::windows::Window SessionsGetRecentlyClosedFunction::CreateWindowModel(
     const sessions::tab_restore::Window& window) {
-  DCHECK(!window.tabs.empty());
+  CHECK(!window.tabs.empty(), base::NotFatalUntil::M161);
 
   std::vector<api::tabs::Tab> tabs;
   for (const auto& tab : window.tabs) {
@@ -291,7 +291,7 @@ api::windows::Window SessionsGetRecentlyClosedFunction::CreateWindowModel(
 
 api::tab_groups::TabGroup SessionsGetRecentlyClosedFunction::CreateGroupModel(
     const sessions::tab_restore::Group& group) {
-  DCHECK(!group.tabs.empty());
+  CHECK(!group.tabs.empty(), base::NotFatalUntil::M161);
 
   return ExtensionTabUtil::CreateTabGroupObject(group.group_id,
                                                 group.visual_data);
@@ -512,7 +512,7 @@ SessionsRestoreFunction::GetRestoredWindowResult(int window_id) {
           extension(), WindowController::kPopulateTabs, source_context_type());
   std::optional<api::windows::Window> window =
       api::windows::Window::FromValue(window_value);
-  DCHECK(window);
+  CHECK(window, base::NotFatalUntil::M161);
   return ArgumentList(Restore::Results::Create(
       CreateSessionModelHelper(base::Time::Now().ToTimeT(), std::nullopt,
                                std::move(*window), std::nullopt)));
@@ -730,7 +730,7 @@ ExtensionFunction::ResponseAction SessionsRestoreFunction::RestoreLocalSession(
   std::optional<std::vector<sessions::LiveTab*>> restored_tabs =
       tab_restore_service->RestoreEntryById(
           context, SessionID::FromSerializedValue(session_id.id()),
-          WindowOpenDisposition::UNKNOWN);
+          WindowOpenDisposition::kUnknown);
   if (!restored_tabs.has_value()) {
     return RespondNow(Error(kInvalidSessionIdError, session_id.ToString()));
   }
@@ -847,9 +847,9 @@ void SessionsEventRouter::OnRecentlyClosedUpdated(int64_t j_browser_context) {
 // static
 void SessionsEventRouter::BroadcastOnChangedEvent(Profile* profile) {
   CHECK(profile);
-  EventRouter::Get(profile)->BroadcastEvent(std::make_unique<Event>(
-      events::SESSIONS_ON_CHANGED, api::sessions::OnChanged::kEventName,
-      base::ListValue()));
+  EventRouter::Get(profile)->BroadcastEvent(
+      std::make_unique<Event>(events::SESSIONS_ON_CHANGED,
+                              api::sessions::OnChanged::kEventName, nullptr));
 }
 
 SessionsAPI::SessionsAPI(content::BrowserContext* context)

@@ -8,6 +8,7 @@
 
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/metrics/user_metrics.h"
 #include "base/metrics/user_metrics_action.h"
@@ -286,10 +287,20 @@ void LogToggleVisibility(bool visible) {
   }
 }
 
-void OpenUrl(content::WebContents* web_contents, const GURL& url) {
+content::WebContents* GetActiveTabWebContents(BrowserWindowInterface* browser) {
+  tabs::TabInterface* active_tab =
+      TabListInterface::From(browser)->GetActiveTab();
+  return active_tab ? active_tab->GetContents() : nullptr;
+}
+
+void OpenUrl(BrowserWindowInterface* browser, const GURL& url) {
+  content::WebContents* web_contents = GetActiveTabWebContents(browser);
+  if (!web_contents) {
+    return;
+  }
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
-          url, WindowOpenDisposition::NEW_FOREGROUND_TAB,
+          url, WindowOpenDisposition::kNewForegroundTab,
           ui::PAGE_TRANSITION_LINK);
   web_contents->OpenURL(params, /*navigation_handle_callback=*/{});
 }
@@ -440,7 +451,8 @@ bool ExtensionContextMenuModel::IsCommandIdEnabled(int command_id) const {
     case OPTIONS:
       // Options is always enabled since it will only be visible if it has an
       // options page.
-      DCHECK(OptionsPageInfo::HasOptionsPage(extension));
+      CHECK(OptionsPageInfo::HasOptionsPage(extension),
+            base::NotFatalUntil::M161);
       return true;
     case INSPECT_POPUP: {
       content::WebContents* web_contents = GetActiveWebContents();
@@ -507,7 +519,7 @@ void ExtensionContextMenuModel::ExecuteCommand(int command_id,
     return;
 
   if (ContextMenuMatcher::IsExtensionsCustomCommandId(command_id)) {
-    DCHECK(extension_items_);
+    CHECK(extension_items_, base::NotFatalUntil::M161);
     extension_items_->ExecuteCommand(command_id, GetActiveWebContents(),
                                      nullptr, content::ContextMenuParams());
     action_taken_ = ContextMenuAction::kCustomCommand;
@@ -518,13 +530,13 @@ void ExtensionContextMenuModel::ExecuteCommand(int command_id,
 
   switch (command_id) {
     case HOME_PAGE: {
-      OpenUrl(GetActiveWebContents(), ManifestURL::GetHomepageURL(extension));
+      OpenUrl(browser_, ManifestURL::GetHomepageURL(extension));
       break;
     }
     case OPTIONS:
-      DCHECK(OptionsPageInfo::HasOptionsPage(extension));
-      ExtensionTabUtil::OpenOptionsPageFromWebContents(extension,
-                                                       GetActiveWebContents());
+      CHECK(OptionsPageInfo::HasOptionsPage(extension),
+            base::NotFatalUntil::M161);
+      ExtensionTabUtil::OpenOptionsPage(extension, browser_);
       break;
     case TOGGLE_VISIBILITY: {
       bool visible = !is_pinned_;
@@ -567,7 +579,7 @@ void ExtensionContextMenuModel::ExecuteCommand(int command_id,
         replacements.SetQueryStr(query);
         url = url.ReplaceComponents(replacements);
       }
-      OpenUrl(GetActiveWebContents(), url);
+      OpenUrl(browser_, url);
 #endif
       break;
     }
@@ -593,7 +605,7 @@ void ExtensionContextMenuModel::ExecuteCommand(int command_id,
       const GURL review_url =
           util::GetCWSWritingReviewUrl(extension->id(), review_source);
       CHECK(review_url.is_valid());
-      OpenUrl(GetActiveWebContents(), review_url);
+      OpenUrl(browser_, review_url);
       break;
     }
     case POLICY_INSTALLED:
@@ -628,13 +640,13 @@ void ExtensionContextMenuModel::ExecuteCommand(int command_id,
     case PAGE_ACCESS_PERMISSIONS_PAGE:
       LogPageAccessAction(command_id);
       OpenUrl(
-          GetActiveWebContents(),
+          browser_,
           GURL(extension_permissions_constants::kExtensionsSitePermissionsURL));
       break;
     case PAGE_ACCESS_LEARN_MORE:
       LogPageAccessAction(command_id);
       OpenUrl(
-          GetActiveWebContents(),
+          browser_,
           GURL(
               extension_permissions_constants::kRuntimeHostPermissionsHelpURL));
 
@@ -654,6 +666,24 @@ void ExtensionContextMenuModel::MenuClosed(ui::SimpleMenuModel* menu) {
     ContextMenuAction action = *action_taken_;
     UMA_HISTOGRAM_ENUMERATION("Extensions.ContextMenuAction", action);
 
+    // If the "Rate it" item was shown, records whether it was clicked for this
+    // menu session, split by surface (ExtensionsMenu vs. ContextMenu). The menu
+    // is populated in Init() and never mutated afterwards, so querying `this`
+    // here is equivalent to checking what ShouldShowReviewPrompt() decided.
+    // Note this deliberately queries `this` and not `menu`, which may be a
+    // submenu.
+    if (GetIndexOfCommandId(RATE_EXTENSION).has_value()) {
+      RateExtensionOutcome rate_outcome = RateExtensionOutcome::kNotClicked;
+      if (action == ContextMenuAction::kRateExtension) {
+        rate_outcome = RateExtensionOutcome::kClicked;
+      }
+      base::UmaHistogramEnumeration(
+          source_ == ContextMenuSource::kMenuItem
+              ? "Extensions.ContextMenuRateExtension.ExtensionsMenu"
+              : "Extensions.ContextMenuRateExtension.ContextMenu",
+          rate_outcome);
+    }
+
     // Clear out the action to avoid any possible UAF if we close the parent
     // menu.
     action_taken_ = std::nullopt;
@@ -665,9 +695,10 @@ ExtensionContextMenuModel::~ExtensionContextMenuModel() = default;
 void ExtensionContextMenuModel::InitMenuWithFeature(
     const Extension* extension,
     bool can_show_icon_in_toolbar) {
-  DCHECK(base::FeatureList::IsEnabled(
-      extensions_features::kExtensionsMenuAccessControl));
-  DCHECK(extension);
+  CHECK(base::FeatureList::IsEnabled(
+            extensions_features::kExtensionsMenuAccessControl),
+        base::NotFatalUntil::M161);
+  CHECK(extension, base::NotFatalUntil::M161);
 
   extension_action_ =
       ExtensionActionManager::Get(profile_)->GetExtensionAction(*extension);
@@ -873,7 +904,7 @@ void ExtensionContextMenuModel::InitMenuWithFeature(
 
 void ExtensionContextMenuModel::InitMenu(const Extension* extension,
                                          bool can_show_icon_in_toolbar) {
-  DCHECK(extension);
+  CHECK(extension, base::NotFatalUntil::M161);
 
   std::optional<ActionInfo::Type> action_type;
   extension_action_ =
@@ -932,7 +963,7 @@ void ExtensionContextMenuModel::InitMenu(const Extension* extension,
       source_ == ContextMenuSource::kToolbarAction) {
     int visibility_string_id =
         GetVisibilityStringId(profile_, extension, is_pinned_);
-    DCHECK_NE(-1, visibility_string_id);
+    CHECK_NE(-1, visibility_string_id, base::NotFatalUntil::M161);
     AddItemWithStringId(TOGGLE_VISIBILITY, visibility_string_id);
     if (IsExtensionForcePinned(*extension, profile_)) {
       size_t toggle_visibility_index =
@@ -981,8 +1012,9 @@ void ExtensionContextMenuModel::AppendExtensionItems() {
 void ExtensionContextMenuModel::CreatePageAccessItems(
     const Extension* extension,
     content::WebContents* web_contents) {
-  DCHECK(!base::FeatureList::IsEnabled(
-      extensions_features::kExtensionsMenuAccessControl));
+  CHECK(!base::FeatureList::IsEnabled(
+            extensions_features::kExtensionsMenuAccessControl),
+        base::NotFatalUntil::M161);
 
   const GURL& url = web_contents->GetLastCommittedURL();
   auto* permissions_manager = PermissionsManager::Get(profile_);
@@ -1025,10 +1057,19 @@ void ExtensionContextMenuModel::CreatePageAccessItems(
                          page_access_submenu_.get());
 }
 
+content::WebContents*
+ExtensionContextMenuModel::PopupDelegate::GetCurrentWebContents() const {
+  return nullptr;
+}
+
 content::WebContents* ExtensionContextMenuModel::GetActiveWebContents() const {
-  tabs::TabInterface* active_tab =
-      TabListInterface::From(browser_)->GetActiveTab();
-  return active_tab ? active_tab->GetContents() : nullptr;
+  if (delegate_) {
+    if (content::WebContents* web_contents =
+            delegate_->GetCurrentWebContents()) {
+      return web_contents;
+    }
+  }
+  return GetActiveTabWebContents(browser_);
 }
 
 

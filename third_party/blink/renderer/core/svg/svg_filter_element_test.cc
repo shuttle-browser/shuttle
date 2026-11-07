@@ -41,11 +41,10 @@ TEST_F(SVGFilterElementSimTest,
   Compositor().BeginFrame();
   test::RunPendingTasks();
 
-  const Element* target_element =
-      GetDocument().getElementById(AtomicString("target"));
+  const Element* target_element = GetElementById("target");
   const LayoutObject* target = target_element->GetLayoutObject();
 
-  EXPECT_TRUE(target->StyleRef().HasFilter());
+  EXPECT_TRUE(target->Style().HasFilter());
   ASSERT_FALSE(target->NeedsPaintPropertyUpdate());
   EXPECT_NE(nullptr, target->FirstFragment().PaintProperties()->Filter());
 

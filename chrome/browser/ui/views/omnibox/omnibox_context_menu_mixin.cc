@@ -103,6 +103,8 @@ class StandinTextfield : public views::Textfield {
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(OmniboxContextMenuMixinBase,
                                       kCopyMenuItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(OmniboxContextMenuMixinBase,
+                                      kPasteMenuItem);
+DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(OmniboxContextMenuMixinBase,
                                       kShowFullUrlsMenuItem);
 
 views::Widget* OmniboxContextMenuMixinBase::GetWidgetForTextServices() {
@@ -123,7 +125,7 @@ bool OmniboxContextMenuMixinBase::HandleIsItemForCommandIdDynamic(
 
 std::u16string OmniboxContextMenuMixinBase::HandleGetLabelForCommandId(
     int command_id) const {
-  DCHECK_EQ(IDC_PASTE_AND_GO, command_id);
+  CHECK_EQ(IDC_PASTE_AND_GO, command_id, base::NotFatalUntil::M162);
 
   // If the originator marked the clipboard data as confidential, then
   // paste-and-go is unavailable, so use a menu label that doesn't contain
@@ -384,6 +386,12 @@ void OmniboxContextMenuMixinBase::AddTextfieldItems(
               std::to_underlying(ui::TouchEditable::MenuCommands::kCopy))
           .value(),
       kCopyMenuItem);
+  menu_contents->SetElementIdentifierAt(
+      menu_contents
+          ->GetIndexOfCommandId(
+              std::to_underlying(ui::TouchEditable::MenuCommands::kPaste))
+          .value(),
+      kPasteMenuItem);
 }
 
 void OmniboxContextMenuMixinBase::AddOmniboxSpecificItems(
@@ -392,7 +400,7 @@ void OmniboxContextMenuMixinBase::AddOmniboxSpecificItems(
   const std::optional<size_t> paste_position =
       menu_contents->GetIndexOfCommandId(
           std::to_underlying(ui::TouchEditable::MenuCommands::kPaste));
-  DCHECK(paste_position.has_value());
+  CHECK(paste_position.has_value(), base::NotFatalUntil::M162);
   menu_contents->InsertItemWithStringIdAt(paste_position.value() + 1,
                                           IDC_PASTE_AND_GO, IDS_PASTE_AND_GO);
 

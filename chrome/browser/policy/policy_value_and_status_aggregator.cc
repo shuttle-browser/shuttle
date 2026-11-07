@@ -26,6 +26,7 @@
 #include "extensions/buildflags/buildflags.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
+#include "base/check_deref.h"
 #include "chrome/browser/ash/policy/core/browser_policy_connector_ash.h"
 #include "chrome/browser/ash/policy/core/device_local_account_policy_service.h"
 #include "chrome/browser/ash/policy/core/user_cloud_policy_manager_ash.h"
@@ -34,15 +35,9 @@
 #include "chrome/browser/policy/status_provider/device_cloud_policy_status_provider_chromeos.h"
 #include "chrome/browser/policy/status_provider/device_local_account_policy_status_provider.h"
 #include "chrome/browser/policy/status_provider/user_cloud_policy_status_provider_chromeos.h"
+#include "components/session_manager/core/session.h"
+#include "components/session_manager/core/session_manager.h"
 #include "components/user_manager/user_manager.h"
-#else
-#include "chrome/browser/policy/status_provider/user_cloud_policy_status_provider.h"
-#include "components/enterprise/browser/controller/browser_dm_token_storage.h"
-#include "components/enterprise/browser/reporting/common_pref_names.h"
-#include "components/policy/core/browser/webui/machine_level_user_cloud_policy_status_provider.h"
-#include "components/policy/core/common/cloud/machine_level_user_cloud_policy_manager.h"
-#include "components/policy/core/common/cloud/user_cloud_policy_manager.h"
-#include "components/prefs/pref_service.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
@@ -50,14 +45,8 @@
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-#include "chrome/browser/policy/cloud/extension_install_policy_service_factory.h"
-#include "chrome/browser/policy/value_provider/extension_install_policies_value_provider.h"
 #include "chrome/browser/policy/value_provider/extension_policies_value_provider.h"
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-#include "components/policy/core/common/cloud/profile_cloud_policy_manager.h"
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
 namespace {
 void AppendPolicyIdsToList(const base::DictValue& policy_values,
@@ -103,18 +92,13 @@ std::unique_ptr<policy::PolicyStatusProvider> GetUserPolicyStatusProvider(
       profile->GetUserCloudPolicyManagerAsh();
   if (local_account_service) {
     return std::make_unique<DeviceLocalAccountPolicyStatusProvider>(
-        user_manager->GetActiveUser()->GetAccountId().GetUserEmail(),
+        CHECK_DEREF(session_manager::SessionManager::Get()->GetActiveSession())
+            .account_id()
+            .GetUserEmail(),
         local_account_service);
   } else if (user_cloud_policy) {
     return std::make_unique<UserCloudPolicyStatusProviderChromeOS>(
         user_cloud_policy, profile);
-  }
-#else   // BUILDFLAG(IS_CHROMEOS)
-  policy::CloudPolicyManager* cloud_policy_manager =
-      profile->GetCloudPolicyManager();
-  if (cloud_policy_manager) {
-    return std::make_unique<UserCloudPolicyStatusProvider>(cloud_policy_manager,
-                                                           profile);
   }
 #endif  // BUILDFLAG(IS_CHROMEOS)
   return std::make_unique<policy::PolicyStatusProvider>();
@@ -129,23 +113,7 @@ GetChromeOSDevicePolicyStatusProvider(
   return std::make_unique<DeviceCloudPolicyStatusProviderChromeOS>(connector,
                                                                    profile);
 }
-#else
-// Returns policy status provider for machine policies for non-ChromeOS
-// platforms.
-std::unique_ptr<policy::PolicyStatusProvider> GetMachinePolicyStatusProvider(
-    policy::MachineLevelUserCloudPolicyManager* manager) {
-  policy::BrowserDMTokenStorage* dmTokenStorage =
-      policy::BrowserDMTokenStorage::Get();
-
-  return std::make_unique<policy::MachineLevelUserCloudPolicyStatusProvider>(
-      manager->core(), manager->extension_install_core(),
-      g_browser_process->local_state(),
-      new policy::MachineLevelUserCloudPolicyContext(
-          {dmTokenStorage->RetrieveEnrollmentToken(),
-           dmTokenStorage->RetrieveClientId(),
-           enterprise_reporting::kLastUploadSucceededTimestamp}));
-}
-#endif  // !BUILDFLAG(IS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 }  // namespace
 
@@ -156,10 +124,6 @@ const char kUserStatusKey[] = "user";
 #if BUILDFLAG(IS_CHROMEOS)
 const char kDeviceStatusKey[] = "device";
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-#if !BUILDFLAG(IS_CHROMEOS)
-constexpr char kMachineStatusKey[] = "machine";
-#endif  // !BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 constexpr char kUpdaterStatusKey[] = "updater";
@@ -175,16 +139,6 @@ PolicyValueAndStatusAggregator::CreateDefaultPolicyValueAndStatusAggregator(
   aggregator->AddPolicyValueProvider(
       std::make_unique<ChromePoliciesValueProvider>(profile));
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-  if (base::FeatureList::IsEnabled(
-          policy::features::kEnableExtensionInstallPolicyFetching)) {
-    if (auto* extension_install_policy_service =
-            policy::ExtensionInstallPolicyServiceFactory::GetForBrowserContext(
-                profile)) {
-      aggregator->AddPolicyValueProvider(
-          std::make_unique<ExtensionInstallPoliciesValueProvider>(
-              profile, extension_install_policy_service));
-    }
-  }
   aggregator->AddPolicyValueProvider(
       std::make_unique<ExtensionPoliciesValueProvider>(profile));
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
@@ -203,24 +157,6 @@ PolicyValueAndStatusAggregator::CreateDefaultPolicyValueAndStatusAggregator(
                                            ->browser_policy_connector_ash()));
 #endif  // BUILDFLAG(IS_CHROMEOS)
   }
-
-  // Machine policies.
-#if !BUILDFLAG(IS_CHROMEOS)
-  policy::MachineLevelUserCloudPolicyManager* manager =
-      g_browser_process->browser_policy_connector()
-          ->machine_level_user_cloud_policy_manager();
-  if (manager) {
-    policy::BrowserDMTokenStorage* dmTokenStorage =
-        policy::BrowserDMTokenStorage::Get();
-    LOG_POLICY(INFO, POLICY_PROCESSING)
-        << "Retrieved Enrollment Token = "
-        << dmTokenStorage->RetrieveEnrollmentToken()
-        << " and client ID = " << dmTokenStorage->RetrieveClientId();
-
-    aggregator->AddPolicyStatusProvider(
-        kMachineStatusKey, GetMachinePolicyStatusProvider(manager));
-  }
-#endif  // !BUILDFLAG(IS_CHROMEOS)
 
   // Updater policies.
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
@@ -359,7 +295,8 @@ void PolicyValueAndStatusAggregator::OnPolicyStatusChanged() {
 
 void PolicyValueAndStatusAggregator::OnProfileWillBeDestroyed(
     Profile* profile) {
-  DCHECK(profile_observation_.IsObservingSource(profile));
+  CHECK(profile_observation_.IsObservingSource(profile),
+        base::NotFatalUntil::M162);
   profile_observation_.Reset();
   policy_value_provider_observations_.RemoveAllObservations();
   value_providers_.clear();

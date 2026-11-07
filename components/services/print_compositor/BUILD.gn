@@ -34,22 +34,5 @@ static_library("print_compositor") {
     "//printing/buildflags",
     "//skia",
   ]
-
-  if (enterprise_watermark) {
-    sources += [
-      "print_watermark.cc",
-      "print_watermark.h",
-    ]
-
-    deps += [
-      "//components/enterprise/watermarking",
-      "//pdf",
-      "//pdf:pdf_watermark_overlayer",
-    ]
-
-    public_deps += [ "//components/enterprise/watermarking/mojom" ]
-  }
 }
 
-if (enable_printing) {
-}

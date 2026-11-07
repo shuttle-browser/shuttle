@@ -8,9 +8,13 @@
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "base/functional/bind.h"
+#include "base/test/tracing/test_trace_processor.h"
+#include "base/test/tracing/trace_test_utils.h"
 #include "media/base/audio_codecs.h"
 #include "media/base/fake_single_thread_task_runner.h"
 #include "media/base/video_codecs.h"
@@ -92,6 +96,10 @@ class OpenscreenFrameSenderTest : public TestWithCastEnvironment,
   OpenscreenFrameSender& audio_sender() { return *audio_sender_; }
 
   OpenscreenFrameSender& video_sender() { return *video_sender_; }
+
+  MockSender& mock_video_sender() {
+    return *static_cast<MockSender*>(video_sender_->sender_.get());
+  }
 
  private:
   OpenscreenTestSenders openscreen_test_senders_;
@@ -225,6 +233,135 @@ TEST_F(OpenscreenFrameSenderTest, HandlesReferencingUnknownFrameIds) {
             video_sender().EnqueueFrame(std::move(video_frame_two)));
 }
 
+// Frames that reference a FrameId that was never enqueued (for example, because
+// the frame was dropped after encoding) cannot be decoded by the receiver and
+// must be dropped until the next key frame.
+TEST_F(OpenscreenFrameSenderTest, DropsFramesReferencingNeverEnqueuedFrames) {
+  RtpTimeTicks rtp_timestamp{0};
+  const auto enqueue = [&](int frame_id, int referenced_frame_id) {
+    rtp_timestamp += RtpTimeDelta::FromTicks(300);
+    auto frame = std::make_unique<SenderEncodedFrame>();
+    frame->is_key_frame = frame_id == referenced_frame_id;
+    frame->frame_id = FrameId::first() + frame_id;
+    frame->referenced_frame_id = FrameId::first() + referenced_frame_id;
+    frame->reference_time = base::TimeTicks::Now();
+    frame->rtp_timestamp = rtp_timestamp;
+    frame->data = base::HeapArray<uint8_t>::WithSize(10);
+    return video_sender().EnqueueFrame(std::move(frame));
+  };
+
+  EXPECT_EQ(CastStreamingFrameDropReason::kNotDropped, enqueue(0, 0));
+  EXPECT_EQ(CastStreamingFrameDropReason::kNotDropped, enqueue(1, 0));
+
+  // Frame 2 is never enqueued, so frames depending on it are dropped until the
+  // next key frame.
+  EXPECT_EQ(CastStreamingFrameDropReason::kInvalidReferencedFrameId,
+            enqueue(3, 2));
+  EXPECT_EQ(CastStreamingFrameDropReason::kInvalidReferencedFrameId,
+            enqueue(4, 3));
+  EXPECT_EQ(CastStreamingFrameDropReason::kNotDropped, enqueue(5, 5));
+  EXPECT_EQ(CastStreamingFrameDropReason::kNotDropped, enqueue(6, 5));
+
+  // Same again, now that the frame IDs have already diverged.
+  EXPECT_EQ(CastStreamingFrameDropReason::kInvalidReferencedFrameId,
+            enqueue(8, 7));
+  EXPECT_EQ(CastStreamingFrameDropReason::kInvalidReferencedFrameId,
+            enqueue(9, 8));
+  EXPECT_EQ(CastStreamingFrameDropReason::kNotDropped, enqueue(10, 10));
+  EXPECT_EQ(CastStreamingFrameDropReason::kNotDropped, enqueue(11, 10));
+}
+
+// Verifies the frame IDs handed to the Open Screen sender when it rejects a
+// frame after encoding.
+TEST_F(OpenscreenFrameSenderTest, MapsFrameIdsAfterOpenscreenRejectsFrame) {
+  auto mock_sender = std::make_unique<testing::NiceMock<MockSender>>();
+  MockSender& mock = *mock_sender;
+  FrameId next_openscreen_frame_id = FrameId::first();
+  ON_CALL(mock, GetNextFrameId()).WillByDefault([&] {
+    return next_openscreen_frame_id;
+  });
+
+  OpenscreenFrameSender sender(cast_environment(), kVideoConfig,
+                               std::move(mock_sender), *this);
+
+  struct EnqueuedIds {
+    FrameId frame_id;
+    FrameId referenced_frame_id;
+    bool operator==(const EnqueuedIds&) const = default;
+  };
+  std::vector<EnqueuedIds> enqueued;
+  const auto enqueue =
+      [&](int frame_id, int referenced_frame_id,
+          openscreen::cast::Sender::EnqueueFrameResult result) {
+        EXPECT_CALL(mock, EnqueueFrame(testing::_))
+            .WillOnce([&, result](const openscreen::cast::EncodedFrame& frame) {
+              enqueued.push_back({frame.frame_id, frame.referenced_frame_id});
+              if (result == openscreen::cast::Sender::OK) {
+                ++next_openscreen_frame_id;
+              }
+              return result;
+            });
+        auto frame = std::make_unique<SenderEncodedFrame>();
+        frame->is_key_frame = frame_id == referenced_frame_id;
+        frame->frame_id = FrameId::first() + frame_id;
+        frame->referenced_frame_id = FrameId::first() + referenced_frame_id;
+        frame->reference_time = base::TimeTicks::Now();
+        frame->data = base::HeapArray<uint8_t>::WithSize(10);
+        const CastStreamingFrameDropReason reason =
+            sender.EnqueueFrame(std::move(frame));
+        testing::Mock::VerifyAndClearExpectations(&mock);
+        return reason;
+      };
+
+  EXPECT_EQ(CastStreamingFrameDropReason::kNotDropped,
+            enqueue(0, 0, openscreen::cast::Sender::OK));
+  EXPECT_EQ(CastStreamingFrameDropReason::kInFlightDurationTooHighAfterEncoding,
+            enqueue(1, 0, openscreen::cast::Sender::MAX_DURATION_IN_FLIGHT));
+
+  // Frame 2 depends on rejected frame 1, so it must never reach Open Screen.
+  EXPECT_CALL(mock, EnqueueFrame(testing::_)).Times(0);
+  auto frame_2 = std::make_unique<SenderEncodedFrame>();
+  frame_2->frame_id = FrameId::first() + 2;
+  frame_2->referenced_frame_id = FrameId::first() + 1;
+  frame_2->reference_time = base::TimeTicks::Now();
+  frame_2->data = base::HeapArray<uint8_t>::WithSize(10);
+  EXPECT_EQ(CastStreamingFrameDropReason::kInvalidReferencedFrameId,
+            sender.EnqueueFrame(std::move(frame_2)));
+  testing::Mock::VerifyAndClearExpectations(&mock);
+
+  EXPECT_EQ(CastStreamingFrameDropReason::kNotDropped,
+            enqueue(3, 3, openscreen::cast::Sender::OK));
+  EXPECT_EQ(CastStreamingFrameDropReason::kNotDropped,
+            enqueue(4, 3, openscreen::cast::Sender::OK));
+  EXPECT_EQ(CastStreamingFrameDropReason::kNotDropped,
+            enqueue(5, 4, openscreen::cast::Sender::OK));
+
+  const FrameId first = FrameId::first();
+  EXPECT_THAT(enqueued,
+              testing::ElementsAre(EnqueuedIds{first, first},
+                                   // Rejected by Open Screen.
+                                   EnqueuedIds{first + 1, first},
+                                   // Key frame 3 takes over Open Screen ID 1.
+                                   EnqueuedIds{first + 1, first + 1},
+                                   EnqueuedIds{first + 2, first + 1},
+                                   EnqueuedIds{first + 3, first + 2}));
+}
+
+TEST_F(OpenscreenFrameSenderTest, ReportsFramesDroppedByEncoder) {
+  auto mock_sender = std::make_unique<testing::NiceMock<MockSender>>();
+  MockSender& mock = *mock_sender;
+  constexpr FrameId kNextFrameId = FrameId::first() + 42;
+  ON_CALL(mock, GetNextFrameId()).WillByDefault(testing::Return(kNextFrameId));
+
+  OpenscreenFrameSender sender(cast_environment(), kVideoConfig,
+                               std::move(mock_sender), *this);
+
+  constexpr RtpTimeTicks kRtpTimestamp{1234};
+  EXPECT_CALL(mock, ReportFrameDropEvent(kNextFrameId, kRtpTimestamp,
+                                         ToOpenscreenTimePoint(NowTicks())));
+  sender.ReportFrameDroppedByEncoder(kRtpTimestamp);
+}
+
 TEST_F(OpenscreenFrameSenderTest, ClampsLargePlayoutDelay) {
   FrameSenderConfig large_config = kVideoConfig;
   large_config.min_playout_delay = base::Milliseconds(100);
@@ -241,6 +378,104 @@ TEST_F(OpenscreenFrameSenderTest, ClampsLargePlayoutDelay) {
   // It should be clamped to std::numeric_limits<uint16_t>::max() (65535ms).
   EXPECT_EQ(base::Milliseconds(std::numeric_limits<uint16_t>::max()),
             sender.GetTargetPlayoutDelay());
+}
+
+TEST_F(OpenscreenFrameSenderTest, RejectedFrameDoesNotCorruptState) {
+  constexpr RtpTimeTicks kFrame0Rtp{900};
+  auto frame0 = std::make_unique<SenderEncodedFrame>();
+  frame0->is_key_frame = true;
+  frame0->frame_id = openscreen::cast::FrameId::first();
+  frame0->referenced_frame_id = frame0->frame_id;
+  frame0->reference_time = base::TimeTicks::Now();
+  frame0->rtp_timestamp = kFrame0Rtp;
+  frame0->data = base::HeapArray<uint8_t>::WithSize(10);
+  EXPECT_EQ(CastStreamingFrameDropReason::kNotDropped,
+            video_sender().EnqueueFrame(std::move(frame0)));
+
+  // Simulate Open Screen rejecting Frame 1 due to MAX_DURATION_IN_FLIGHT.
+  EXPECT_CALL(mock_video_sender(), EnqueueFrame(testing::_))
+      .WillOnce(testing::Return(openscreen::cast::Sender::EnqueueFrameResult::
+                                    MAX_DURATION_IN_FLIGHT));
+
+  constexpr RtpTimeTicks kRejectedFrame1Rtp{9900};
+  auto frame1 = std::make_unique<SenderEncodedFrame>();
+  frame1->is_key_frame = false;
+  frame1->frame_id = openscreen::cast::FrameId::first() + 1;
+  frame1->referenced_frame_id = openscreen::cast::FrameId::first();
+  frame1->reference_time = base::TimeTicks::Now() + base::Milliseconds(100);
+  frame1->rtp_timestamp = kRejectedFrame1Rtp;
+  frame1->data = base::HeapArray<uint8_t>::WithSize(10);
+  EXPECT_EQ(CastStreamingFrameDropReason::kInFlightDurationTooHighAfterEncoding,
+            video_sender().EnqueueFrame(std::move(frame1)));
+
+  // ShouldDropNextFrame must query GetInFlightMediaDuration using the last
+  // successfully enqueued frame's RTP timestamp (kFrame0Rtp), not the rejected
+  // frame's RTP timestamp (kRejectedFrame1Rtp).
+  EXPECT_CALL(mock_video_sender(), GetInFlightMediaDuration(kFrame0Rtp))
+      .WillOnce(testing::Return(std::chrono::milliseconds(0)));
+  EXPECT_EQ(CastStreamingFrameDropReason::kNotDropped,
+            video_sender().ShouldDropNextFrame(base::Milliseconds(33)));
+
+  // A subsequent dependent frame referencing the rejected Frame 1 must be
+  // dropped with kInvalidReferencedFrameId.
+  auto frame2 = std::make_unique<SenderEncodedFrame>();
+  frame2->is_key_frame = false;
+  frame2->frame_id = openscreen::cast::FrameId::first() + 2;
+  frame2->referenced_frame_id = openscreen::cast::FrameId::first() + 1;
+  frame2->reference_time = base::TimeTicks::Now() + base::Milliseconds(133);
+  frame2->rtp_timestamp = RtpTimeTicks{12900};
+  frame2->data = base::HeapArray<uint8_t>::WithSize(10);
+  EXPECT_EQ(CastStreamingFrameDropReason::kInvalidReferencedFrameId,
+            video_sender().EnqueueFrame(std::move(frame2)));
+}
+
+// Each accepted frame gets a transport slice named for its media type. The
+// slice ends when the frame is canceled, usually because the Receiver ACKed it.
+TEST_F(OpenscreenFrameSenderTest, TracesEachFrameUntilItIsCanceled) {
+  base::test::TracingEnvironment tracing_environment;
+  base::test::TestTraceProcessor trace_processor;
+  trace_processor.StartTrace("cast.stream");
+
+  const auto make_key_frame = [](size_t payload_bytes) {
+    auto frame = std::make_unique<SenderEncodedFrame>();
+    frame->is_key_frame = true;
+    frame->frame_id = FrameId::first();
+    frame->referenced_frame_id = frame->frame_id;
+    frame->reference_time = base::TimeTicks::Now();
+    frame->rtp_timestamp = RtpTimeTicks{100};
+    frame->data = base::HeapArray<uint8_t>::WithSize(payload_bytes);
+    return frame;
+  };
+
+  // Audio goes first. The video slice must still be named for video.
+  ASSERT_EQ(CastStreamingFrameDropReason::kNotDropped,
+            audio_sender().EnqueueFrame(make_key_frame(20)));
+  ASSERT_EQ(CastStreamingFrameDropReason::kNotDropped,
+            video_sender().EnqueueFrame(make_key_frame(1000)));
+
+  // The Receiver ACKs the video frame. The audio frame stays in flight.
+  mock_video_sender().observer()->OnFrameCanceled(FrameId::first());
+
+  const absl::Status status = trace_processor.StopAndParseTrace();
+  ASSERT_TRUE(status.ok()) << status.message();
+  const auto result = trace_processor.RunQuery(R"(
+    SELECT
+      name,
+      dur >= 0 AS ended,
+      extract_arg(arg_set_id, 'debug.payload_bytes') AS payload_bytes,
+      extract_arg(arg_set_id, 'debug.is_key_frame') AS is_key_frame
+    FROM slice
+    WHERE category = 'cast.stream'
+    ORDER BY name
+  )");
+  ASSERT_TRUE(result.has_value()) << result.error();
+  EXPECT_THAT(
+      result.value(),
+      testing::ElementsAre(
+          std::vector<std::string>{"name", "ended", "payload_bytes",
+                                   "is_key_frame"},
+          std::vector<std::string>{"Audio Transport", "0", "20", "1"},
+          std::vector<std::string>{"Video Transport", "1", "1000", "1"}));
 }
 
 }  // namespace media::cast

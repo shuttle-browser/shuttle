@@ -4,20 +4,27 @@
 
 #include "third_party/blink/renderer/modules/ai/language_model.h"
 
+#include "base/notreached.h"
 #include "base/test/run_until.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
+#include "mojo/public/cpp/bindings/remote.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/mojom/ai/ai_language_model.mojom-blink.h"
+#include "third_party/blink/public/mojom/ai/ai_manager.mojom-blink-test-utils.h"
+#include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_tester.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_testing.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_dom_exception.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_readable_stream_read_result.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_language_model.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_language_model_append_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_language_model_clone_options.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_language_model_create_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_language_model_message.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_language_model_message_content.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_language_model_prompt_options.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_language_model_sampling_mode.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_union_blob_htmlcanvaselement_htmlimageelement_htmlvideoelement_imagebitmap_imagedata_offscreencanvas_svgimageelement_videoframe.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_union_language_model_message_value.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_union_language_model_prompt.h"
@@ -32,6 +39,7 @@
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
 #include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
+#include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/skia/include/core/SkSurface.h"
 
 namespace blink {
@@ -50,6 +58,11 @@ class MockAILanguageModel : public mojom::blink::AILanguageModel {
     call_count_++;
     if (reset_client_on_call_) {
       pending_responder.reset();
+    } else {
+      mojo::Remote<mojom::blink::ModelStreamingResponder> responder(
+          std::move(pending_responder));
+      responder->OnStreaming("Hello response");
+      responder->OnCompletion(nullptr);
     }
   }
   void Append(Vector<mojom::blink::AILanguageModelPromptPtr> prompt,
@@ -82,6 +95,51 @@ class MockAILanguageModel : public mojom::blink::AILanguageModel {
   int call_count_ = 0;
   bool reset_client_on_call_ = false;
   mojo::Receiver<mojom::blink::AILanguageModel> receiver_;
+};
+
+class MockAIManager : public mojom::blink::AIManagerInterceptorForTesting {
+ public:
+  MockAIManager() = default;
+  ~MockAIManager() override = default;
+
+  mojom::blink::AIManager* GetForwardingInterface() override { NOTREACHED(); }
+
+  void Bind(mojo::ScopedMessagePipeHandle handle) {
+    receiver_.reset();
+    receiver_.Bind(
+        mojo::PendingReceiver<mojom::blink::AIManager>(std::move(handle)));
+  }
+
+  void CanCreateLanguageModel(
+      mojom::blink::AILanguageModelCreateOptionsPtr options,
+      CanCreateLanguageModelCallback callback) override {
+    last_can_create_options_ = std::move(options);
+    std::move(callback).Run(
+        mojom::blink::ModelAvailabilityCheckResult::kAvailable);
+  }
+
+  void CreateLanguageModel(
+      mojo::PendingRemote<mojom::blink::AIManagerCreateLanguageModelClient>
+          client,
+      mojom::blink::AILanguageModelCreateOptionsPtr options,
+      mojo::PendingRemote<on_device_model::mojom::blink::DownloadObserver>
+          monitor) override {
+    last_create_options_ = std::move(options);
+    mojo::PendingRemote<mojom::blink::AILanguageModel> pending_remote;
+    mock_language_model_ = std::make_unique<MockAILanguageModel>(
+        pending_remote.InitWithNewPipeAndPassReceiver());
+    auto info = mojom::blink::AILanguageModelInstanceInfo::New();
+    info->sampling_params =
+        mojom::blink::AILanguageModelSamplingParams::New(3, 1.0f);
+    mojo::Remote<mojom::blink::AIManagerCreateLanguageModelClient>(
+        std::move(client))
+        ->OnResult(std::move(pending_remote), std::move(info));
+  }
+
+  mojom::blink::AILanguageModelCreateOptionsPtr last_can_create_options_;
+  mojom::blink::AILanguageModelCreateOptionsPtr last_create_options_;
+  std::unique_ptr<MockAILanguageModel> mock_language_model_;
+  mojo::Receiver<mojom::blink::AIManager> receiver_{this};
 };
 
 class LanguageModelTest : public testing::Test {
@@ -254,6 +312,39 @@ TEST_F(LanguageModelTest, VerifyMojoConversion) {
   }
 }
 
+TEST_F(LanguageModelTest, TextPrefixWithoutMultimodalInput) {
+  ScopedAIPromptAPIMultimodalInputForTest scoped_multimodal(false);
+  V8TestingScope scope;
+  LanguageModel* language_model =
+      CreateLanguageModel(scope.GetExecutionContext());
+  auto* message = MakeGarbageCollected<LanguageModelMessage>();
+  message->setRole(
+      V8LanguageModelMessageRole(V8LanguageModelMessageRole::Enum::kAssistant));
+  message->setContent(
+      MakeGarbageCollected<V8UnionLanguageModelMessageContentSequenceOrString>(
+          "hello, "));
+  message->setPrefix(true);
+  HeapVector<Member<LanguageModelMessage>> messages;
+  messages.push_back(message);
+  auto* input = MakeGarbageCollected<V8LanguageModelPrompt>(messages);
+
+  DummyExceptionStateForTesting exception_state;
+  auto promise = language_model->prompt(scope.GetScriptState(), input,
+                                        LanguageModelPromptOptions::Create(),
+                                        exception_state);
+  ASSERT_FALSE(exception_state.HadException());
+  ScriptPromiseTester tester(scope.GetScriptState(), promise);
+  tester.WaitUntilSettled();
+
+  EXPECT_EQ(mock_remote_->call_count_, 1);
+  ASSERT_EQ(mock_remote_->last_prompts_.size(), 1u);
+  const auto& prompt = mock_remote_->last_prompts_[0];
+  EXPECT_EQ(prompt->role, mojom::blink::AILanguageModelPromptRole::kAssistant);
+  EXPECT_TRUE(prompt->is_prefix);
+  ASSERT_EQ(prompt->content.size(), 1u);
+  EXPECT_EQ(prompt->content[0]->get_text(), "hello, ");
+}
+
 TEST_F(LanguageModelTest, MojoDisconnectPrompt) {
   V8TestingScope scope;
   LanguageModel* language_model =
@@ -410,6 +501,122 @@ TEST_F(LanguageModelTest, PromptStreamingWithTaintedImage) {
   auto read_promise = reader->read(script_state, ASSERT_NO_EXCEPTION);
   EXPECT_EQ(GetRejectedExceptionCode(script_state, read_promise),
             DOMExceptionCode::kSecurityError);
+}
+
+TEST_F(LanguageModelTest, PromptResolvesToStringWhenOutputTypesIsTextOnly) {
+  V8TestingScope scope;
+  auto info = mojom::blink::AILanguageModelInstanceInfo::New();
+  info->output_types = Vector<mojom::blink::AILanguageModelPromptType>{
+      mojom::blink::AILanguageModelPromptType::kText};
+  LanguageModel* language_model =
+      CreateLanguageModel(scope.GetExecutionContext(), std::move(info));
+
+  ScriptState* script_state = scope.GetScriptState();
+  DummyExceptionStateForTesting exception_state;
+  auto promise = language_model->prompt(
+      script_state, CreateStringPrompt("Hello"),
+      LanguageModelPromptOptions::Create(), exception_state);
+
+  ScriptPromiseTester tester(script_state, promise);
+  tester.WaitUntilSettled();
+  EXPECT_TRUE(tester.IsFulfilled());
+  EXPECT_TRUE(tester.Value().V8Value()->IsString());
+}
+
+TEST_F(LanguageModelTest,
+       PromptResolvesToSequenceWhenOutputTypesIncludesToolCall) {
+  V8TestingScope scope;
+  ScopedAIPromptAPIToolUseForTest scoped_tool_use(true);
+  auto info = mojom::blink::AILanguageModelInstanceInfo::New();
+  info->output_types = Vector<mojom::blink::AILanguageModelPromptType>{
+      mojom::blink::AILanguageModelPromptType::kText,
+      mojom::blink::AILanguageModelPromptType::kToolCall};
+  LanguageModel* language_model =
+      CreateLanguageModel(scope.GetExecutionContext(), std::move(info));
+
+  ScriptState* script_state = scope.GetScriptState();
+  DummyExceptionStateForTesting exception_state;
+  auto promise = language_model->prompt(
+      script_state, CreateStringPrompt("Hello"),
+      LanguageModelPromptOptions::Create(), exception_state);
+
+  ScriptPromiseTester tester(script_state, promise);
+  tester.WaitUntilSettled();
+  EXPECT_TRUE(tester.IsFulfilled());
+  EXPECT_TRUE(tester.Value().V8Value()->IsArray());
+  auto array = tester.Value().V8Value().As<v8::Array>();
+  EXPECT_EQ(array->Length(), 1u);
+}
+
+TEST_F(LanguageModelTest, SamplingModeTakesPrecedenceOverLegacyParams) {
+  ScopedAIPromptAPIForTest scoped_prompt_api(true);
+  ScopedAIPromptAPIParamsForTest scoped_params(true);
+  ScopedAIPromptAPILegacyParamsForTest scoped_legacy_params(true);
+  V8TestingScope scope;
+  ScriptState* script_state = scope.GetScriptState();
+
+  MockAIManager mock_ai_manager;
+  scope.GetExecutionContext()->GetBrowserInterfaceBroker().SetBinderForTesting(
+      mojom::blink::AIManager::Name_,
+      BindRepeating(&MockAIManager::Bind, Unretained(&mock_ai_manager)));
+
+  auto check_create =
+      [&](LanguageModelCreateOptions* options,
+          mojom::blink::AILanguageModelSamplingMode expected_mojo_mode) {
+        DummyExceptionStateForTesting exception_state;
+        auto promise =
+            LanguageModel::create(script_state, options, exception_state);
+        ASSERT_FALSE(exception_state.HadException());
+
+        ScriptPromiseTester tester(script_state, promise);
+        tester.WaitUntilSettled();
+        ASSERT_TRUE(tester.IsFulfilled());
+
+        LanguageModel* model = V8LanguageModel::ToWrappable(
+            scope.GetIsolate(), tester.Value().V8Value());
+        ASSERT_TRUE(model);
+        EXPECT_EQ(model->samplingMode(), options->samplingMode());
+        EXPECT_NE(model->temperature(), 0.8f);
+        EXPECT_NE(model->topK(), 10u);
+
+        ASSERT_TRUE(mock_ai_manager.last_can_create_options_);
+        EXPECT_EQ(mock_ai_manager.last_can_create_options_->sampling_mode,
+                  expected_mojo_mode);
+        EXPECT_FALSE(mock_ai_manager.last_can_create_options_->sampling_params);
+
+        ASSERT_TRUE(mock_ai_manager.last_create_options_);
+        EXPECT_EQ(mock_ai_manager.last_create_options_->sampling_mode,
+                  expected_mojo_mode);
+        EXPECT_FALSE(mock_ai_manager.last_create_options_->sampling_params);
+      };
+
+  {
+    auto* options = LanguageModelCreateOptions::Create();
+    options->setSamplingMode(
+        V8LanguageModelSamplingMode::Enum::kMostPredictable);
+    options->setTemperature(0.8);
+    check_create(options,
+                 mojom::blink::AILanguageModelSamplingMode::kMostPredictable);
+  }
+
+  {
+    auto* options = LanguageModelCreateOptions::Create();
+    options->setSamplingMode(V8LanguageModelSamplingMode::Enum::kPredictable);
+    options->setTopK(10);
+    check_create(options,
+                 mojom::blink::AILanguageModelSamplingMode::kPredictable);
+  }
+
+  {
+    auto* options = LanguageModelCreateOptions::Create();
+    options->setSamplingMode(V8LanguageModelSamplingMode::Enum::kCreative);
+    options->setTemperature(0.8);
+    options->setTopK(10);
+    check_create(options, mojom::blink::AILanguageModelSamplingMode::kCreative);
+  }
+
+  scope.GetExecutionContext()->GetBrowserInterfaceBroker().SetBinderForTesting(
+      mojom::blink::AIManager::Name_, {});
 }
 
 }  // namespace blink

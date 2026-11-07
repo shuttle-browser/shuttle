@@ -107,7 +107,7 @@ extern const char kHistogramPrerenderHostReused[];
 extern const char kHistogramGWSPrerenderNavigationToActivation[];
 extern const char kHistogramGWSActivationToFirstContentfulPaint[];
 extern const char kHistogramGWSActivationToLargestContentfulPaint[];
-extern const char kHistogramGWSPrewarmPrerenderCoverageStatus[];
+extern const char kHistogramGWSPrewarmPrerenderCoverageStatus2[];
 
 extern const char kHistogramBrowserInitiatedSuffix[];
 extern const char kHistogramRendererInitiatedSuffix[];
@@ -254,6 +254,7 @@ class GWSPageLoadMetricsObserver
       content::NavigationHandle* navigation_handle) = 0;
   virtual bool IsBrowserStartupComplete() = 0;
   virtual bool IsIncognitoProfile() const = 0;
+  virtual bool IsIsolatedProfile() const = 0;
   virtual bool IsSignedIn(content::BrowserContext* browser_context) const = 0;
   virtual content::BrowserContext* GetOriginalBrowserContext() = 0;
   std::string AddHistogramSuffix(const std::string& histogram_name);

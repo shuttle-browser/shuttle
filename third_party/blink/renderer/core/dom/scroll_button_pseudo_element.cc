@@ -10,6 +10,7 @@
 #include "cc/input/scroll_snap_data.h"
 #include "cc/input/snap_selection_strategy.h"
 #include "third_party/blink/renderer/core/css/style_change_reason.h"
+#include "third_party/blink/renderer/core/css_value_keywords.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/focus_params.h"
 #include "third_party/blink/renderer/core/event_type_names.h"
@@ -29,8 +30,12 @@
 namespace blink {
 
 PseudoId ScrollButtonPseudoElement::PseudoIdFromScrollButtonArgument(
-    const AtomicString& argument,
+    const AtomicString& raw_argument,
     const ComputedStyle& originating_element_style) {
+  // The selector parser keeps the argument as written (e.g. "UP"), but the
+  // direction keywords are ASCII case-insensitive.
+  const AtomicString argument = raw_argument.ToAsciiLower();
+
   DEFINE_STATIC_LOCAL(AtomicString, wildcard, ("*"));
   DEFINE_STATIC_LOCAL(AtomicString, block_start, ("block-start"));
   DEFINE_STATIC_LOCAL(AtomicString, inline_start, ("inline-start"));
@@ -79,6 +84,29 @@ PseudoId ScrollButtonPseudoElement::PseudoIdFromScrollButtonArgument(
   return kPseudoIdScrollButtonBlockEnd;
 }
 
+// static
+AtomicString ScrollButtonPseudoElement::ScrollButtonArgumentFromPseudoId(
+    PseudoId pseudo_id) {
+  switch (pseudo_id) {
+    case kPseudoIdScrollButtonBlockStart:
+      return GetCSSValueNameAs<AtomicString>(CSSValueID::kBlockStart);
+    case kPseudoIdScrollButtonInlineStart:
+      return GetCSSValueNameAs<AtomicString>(CSSValueID::kInlineStart);
+    case kPseudoIdScrollButtonInlineEnd:
+      return GetCSSValueNameAs<AtomicString>(CSSValueID::kInlineEnd);
+    case kPseudoIdScrollButtonBlockEnd:
+      return GetCSSValueNameAs<AtomicString>(CSSValueID::kBlockEnd);
+    default:
+      NOTREACHED();
+  }
+}
+
+std::pair<PseudoId, AtomicString>
+ScrollButtonPseudoElement::GetSelectorPseudoIdAndArgument() const {
+  return {kPseudoIdScrollButton,
+          ScrollButtonArgumentFromPseudoId(GetPseudoId())};
+}
+
 namespace {
 
 PaintLayerScrollableArea* ScrollableAreaForScroller(const LayoutBox& scroller) {
@@ -87,11 +115,14 @@ PaintLayerScrollableArea* ScrollableAreaForScroller(const LayoutBox& scroller) {
              : scroller.GetScrollableArea();
 }
 
-std::optional<ScrollDirectionPhysical> ScrollDirectionForButton(
+std::optional<mojom::blink::ScrollDirectionPhysical> ScrollDirectionForButton(
     PseudoId pseudo_id,
     WritingDirectionMode writing_direction) {
-  const PhysicalToLogical<ScrollDirectionPhysical> directions(
-      writing_direction, kScrollUp, kScrollRight, kScrollDown, kScrollLeft);
+  const PhysicalToLogical<mojom::blink::ScrollDirectionPhysical> directions(
+      writing_direction, mojom::blink::ScrollDirectionPhysical::kUp,
+      mojom::blink::ScrollDirectionPhysical::kRight,
+      mojom::blink::ScrollDirectionPhysical::kDown,
+      mojom::blink::ScrollDirectionPhysical::kLeft);
   switch (pseudo_id) {
     case kPseudoIdScrollButtonInlineStart:
       return directions.InlineStart();
@@ -108,7 +139,7 @@ std::optional<ScrollDirectionPhysical> ScrollDirectionForButton(
 
 ScrollOffset CalculateSnappedScrollPosition(
     const ScrollableArea* scrollable_area,
-    ScrollDirectionPhysical direction) {
+    mojom::blink::ScrollDirectionPhysical direction) {
   gfx::PointF current_position = scrollable_area->ScrollPosition();
   std::unique_ptr<cc::SnapSelectionStrategy> strategy =
       scrollable_area->PageScrollSnapStrategy(direction);
@@ -215,7 +246,7 @@ bool ScrollButtonPseudoElement::CalculateEnabledState() const {
   const ScrollOffset current_position = gfx::ToRoundedVector2d(
       scrollable_area->ScrollPosition().OffsetFromOrigin());
   const auto direction = ScrollDirectionForButton(
-      GetPseudoId(), scroller->StyleRef().GetWritingDirection());
+      GetPseudoId(), scroller->Style().GetWritingDirection());
   if (!direction) {
     return enabled_;
   }
@@ -223,13 +254,13 @@ bool ScrollButtonPseudoElement::CalculateEnabledState() const {
   const ScrollOffset target_position =
       CalculateSnappedScrollPosition(scrollable_area, *direction);
   switch (*direction) {
-    case kScrollUp:
+    case mojom::blink::ScrollDirectionPhysical::kUp:
       return target_position.y() < current_position.y();
-    case kScrollDown:
+    case mojom::blink::ScrollDirectionPhysical::kDown:
       return target_position.y() > current_position.y();
-    case kScrollLeft:
+    case mojom::blink::ScrollDirectionPhysical::kLeft:
       return target_position.x() < current_position.x();
-    case kScrollRight:
+    case mojom::blink::ScrollDirectionPhysical::kRight:
       return target_position.x() > current_position.x();
   }
   return enabled_;

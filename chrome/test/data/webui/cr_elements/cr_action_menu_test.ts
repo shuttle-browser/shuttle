@@ -241,9 +241,22 @@ suite('CrActionMenu', function() {
   test('close on click away', function() {
     menu.showAt(dots);
     assertTrue(dialog.open);
-    menu.click();
+    dialog.click();
     assertFalse(dialog.open);
   });
+
+  test(
+      'does not close when click targets host from drag across items',
+      function() {
+        menu.showAt(dots);
+        assertTrue(dialog.open);
+
+        // When dragging across slotted items or selecting text, the browser
+        // fires the 'click' event on the common ancestor (<cr-action-menu>).
+        // This should not dismiss the menu.
+        menu.click();
+        assertTrue(dialog.open);
+      });
 
   test('close on resize', function() {
     menu.showAt(dots);
@@ -820,6 +833,64 @@ suite('CrActionMenu', function() {
       assertTrue(menu.getDialog().hasAttribute('unbounded'));
       menu.close();
     });
+
+    test(
+        'fires unbounded-shown event on successful unbounded presentation',
+        async () => {
+          const shownPromise = eventToPromise('unbounded-shown', menu);
+          menu.showAt(dots);
+          await shownPromise;
+          assertTrue(menu.open);
+          assertTrue(menu.getDialog().matches(':unbounded'));
+          menu.close();
+        });
+
+    test(
+        'fires unbounded-show-error when showUnboundedElement rejects with non-AbortError',
+        async () => {
+          const dialog = menu.getDialog() as UnboundedDialogElement;
+          const originalShow = dialog.showUnboundedElement;
+          dialog.showUnboundedElement = () =>
+              Promise.reject(new Error('Presentation failed'));
+
+          const errorPromise = eventToPromise('unbounded-show-error', menu);
+          const originalConsoleError = console.error;
+          console.error = () => {};
+          try {
+            menu.showAt(dots);
+            await errorPromise;
+          } finally {
+            console.error = originalConsoleError;
+          }
+
+          dialog.showUnboundedElement = originalShow;
+          menu.close();
+        });
+
+    test(
+        'does not fire unbounded-shown or unbounded-show-error on AbortError',
+        async () => {
+          const dialog = menu.getDialog() as UnboundedDialogElement;
+          const originalShow = dialog.showUnboundedElement;
+          dialog.showUnboundedElement = () =>
+              Promise.reject(new DOMException('Dismissed', 'AbortError'));
+
+          let eventFired = false;
+          const onEvent = () => {
+            eventFired = true;
+          };
+          menu.addEventListener('unbounded-shown', onEvent);
+          menu.addEventListener('unbounded-show-error', onEvent);
+
+          menu.showAt(dots);
+          await microtasksFinished();
+          assertFalse(eventFired);
+
+          menu.removeEventListener('unbounded-shown', onEvent);
+          menu.removeEventListener('unbounded-show-error', onEvent);
+          dialog.showUnboundedElement = originalShow;
+          menu.close();
+        });
 
     test(
         'activates and deactivates unbounded dialog in unbounded mode', () => {

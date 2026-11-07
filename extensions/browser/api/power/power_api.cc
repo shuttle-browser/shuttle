@@ -97,6 +97,12 @@ void PowerAPI::SetWakeLockFunctionsForTesting(
                                 base::Unretained(this));
 }
 
+void PowerAPI::FlushWakeLockForTesting() {
+  if (wake_lock_) {
+    wake_lock_.FlushForTesting();  // IN-TEST
+  }
+}
+
 void PowerAPI::OnExtensionUnloaded(content::BrowserContext* browser_context,
                                    const Extension* extension,
                                    UnloadedExtensionReason reason) {
@@ -113,7 +119,8 @@ PowerAPI::PowerAPI(content::BrowserContext* context)
                                                      base::Unretained(this))),
       is_wake_lock_active_(false),
       current_level_(api::power::Level::kSystem) {
-  ExtensionRegistry::Get(browser_context_)->AddObserver(this);
+  extension_registry_observation_.Observe(
+      ExtensionRegistry::Get(browser_context_));
 }
 
 PowerAPI::~PowerAPI() = default;
@@ -134,15 +141,17 @@ void PowerAPI::UpdateWakeLock() {
 
   if (!is_wake_lock_active_ || new_level != current_level_) {
     device::mojom::WakeLockType type = LevelToWakeLockType(new_level);
-    activate_wake_lock_function_.Run(type);
+    // Update `current_level_` before activating. GetWakeLock() binds lazily and
+    // reads this field to pick the type it is created with, so activating first
+    // would create the wake lock at the previous level and leave ChangeType()
+    // to correct it.
     current_level_ = new_level;
+    activate_wake_lock_function_.Run(type);
   }
 }
 
 void PowerAPI::Shutdown() {
-  // Unregister here rather than in the d'tor; otherwise this call will recreate
-  // the already-deleted ExtensionRegistry.
-  ExtensionRegistry::Get(browser_context_)->RemoveObserver(this);
+  extension_registry_observation_.Reset();
   cancel_wake_lock_function_.Run();
 }
 

@@ -311,9 +311,11 @@ def get_next_event_for_url(network_events, url):
     )
 
 
-# Array of status and status text expected to be available in network events
+# Array of status and status text expected to be available in network events.
+# 101 is an interim response for non-WebSocket requests and 407 triggers proxy
+# authentication, so fetch() cannot receive either of them as a final response
+# from an origin server: https://fetch.spec.whatwg.org/#http-network-fetch
 HTTP_STATUS_AND_STATUS_TEXT = [
-    (101, "Switching Protocols"),
     (200, "OK"),
     (201, "Created"),
     (202, "Accepted"),
@@ -334,7 +336,6 @@ HTTP_STATUS_AND_STATUS_TEXT = [
     (404, "Not Found"),
     (405, "Method Not Allowed"),
     (406, "Not Acceptable"),
-    (407, "Proxy Authentication Required"),
     (408, "Request Timeout"),
     (409, "Conflict"),
     (410, "Gone"),
@@ -399,12 +400,9 @@ PHASE_TO_EVENT_MAP = {
 
 expires_a_day_from_now = datetime.now(timezone.utc) + timedelta(days=1)
 expires_a_day_from_now_timestamp = int(expires_a_day_from_now.timestamp())
-# Bug 1916221, the parsed expiry can have a slightly different value than the
-# computed timestamp as Firefox tries to accommodate for the difference between
-# the server clock and the system clock.
 expires_interval = int_interval(
-    expires_a_day_from_now_timestamp - 1,
-    expires_a_day_from_now_timestamp + 1,
+    expires_a_day_from_now_timestamp - 5,
+    expires_a_day_from_now_timestamp + 5,
 )
 
 # Common parameters for Set-Cookie headers tests used for network interception

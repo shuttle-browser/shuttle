@@ -23,7 +23,6 @@ class BrowserViewLayoutDelegateImpl : public BrowserViewLayoutDelegate {
   ~BrowserViewLayoutDelegateImpl() override;
 
   TabStripType GetTabStripType() const override;
-  bool IsVerticalTabStripCollapsed() const override;
   BrowserLayoutParams GetBrowserLayoutParams(
       bool use_browser_bounds) const override;
   WindowState GetBrowserWindowState() const override;
@@ -47,6 +46,7 @@ class BrowserViewLayoutDelegateImpl : public BrowserViewLayoutDelegate {
   base::CallbackListSubscription AddOnGlassModeChangedCallback(
       base::RepeatingCallback<void(bool)> callback,
       bool* current_state_out) override;
+  int GetRestoredWindowCornerRadius() const override;
 
  protected:
   BrowserView& browser_view() { return browser_view_.get(); }

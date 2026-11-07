@@ -10,8 +10,6 @@
 #include "base/types/optional_util.h"
 #include "build/build_config.h"
 #include "chrome/browser/external_protocol/external_protocol_handler.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_occlusion_observer.h"
-#include "chrome/browser/picture_in_picture/scoped_picture_in_picture_occlusion_observation.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/shell_integration.h"
 #include "chrome/browser/tab_contents/tab_util.h"
@@ -52,44 +50,6 @@ std::u16string GetMessageTextForOrigin(
 
 }  // namespace
 
-class ExternalProtocolDialog::PictureInPictureWatcher
-    : public PictureInPictureOcclusionObserver {
- public:
-  explicit PictureInPictureWatcher(ExternalProtocolDialog* dialog)
-      : dialog_(dialog) {
-    CHECK(dialog_);
-    occlusion_observation_.Observe(dialog_->GetWidget());
-  }
-
-  PictureInPictureWatcher(const PictureInPictureWatcher&) = delete;
-  PictureInPictureWatcher& operator=(const PictureInPictureWatcher&) = delete;
-  ~PictureInPictureWatcher() override = default;
-
-  // Returns true whenever `dialog_` is occluded by Picture-in-Picture windows,
-  // false otherwise.
-  bool OccludedByPictureInPicture() { return occluded_by_picture_in_picture_; }
-
-  // Simulates Picture-in-Picture occlussion changed for testing.
-  void SimulateOcclusionStateChangedForTesting(bool occluded) {
-    OnOcclusionStateChanged(occluded);
-  }
-
- private:
-  // PictureInPictureOcclusionObserver:
-  void OnOcclusionStateChanged(bool occluded) override {
-    // Protect from immediate input if the dialog has just become unoccluded.
-    if (occluded_by_picture_in_picture_ && !occluded) {
-      dialog_->TriggerInputProtection();
-    }
-
-    occluded_by_picture_in_picture_ = occluded;
-  }
-
-  ScopedPictureInPictureOcclusionObservation occlusion_observation_{this};
-  bool occluded_by_picture_in_picture_ = false;
-  const raw_ptr<ExternalProtocolDialog> dialog_;
-};
-
 #if !BUILDFLAG(IS_CHROMEOS)
 // static
 void ExternalProtocolHandler::RunExternalProtocolDialog(
@@ -101,7 +61,7 @@ void ExternalProtocolHandler::RunExternalProtocolDialog(
     const std::optional<url::Origin>& initiating_origin,
     content::WeakDocumentPtr initiator_document,
     const std::u16string& program_name) {
-  DCHECK(web_contents);
+  CHECK(web_contents, base::NotFatalUntil::M162);
 
   if (program_name.empty()) {
     // ShellExecute won't do anything. Don't bother warning the user.
@@ -178,7 +138,6 @@ ExternalProtocolDialog::ExternalProtocolDialog(
   }
 
   constrained_window::ShowWebModalDialogViews(this, web_contents);
-  picture_in_picture_watcher_ = std::make_unique<PictureInPictureWatcher>(this);
   // Observe the top-level widget hosting the WebContents (the browser
   // window), not the web-modal child widget: only top-level widgets receive
   // native activation changes.
@@ -213,7 +172,7 @@ void ExternalProtocolDialog::OnDialogAccepted() {
   }
 
   if (remember) {
-    DCHECK(initiating_origin_);
+    CHECK(initiating_origin_, base::NotFatalUntil::M162);
     Profile* profile =
         Profile::FromBrowserContext(web_contents_->GetBrowserContext());
 
@@ -224,10 +183,6 @@ void ExternalProtocolDialog::OnDialogAccepted() {
 
   ExternalProtocolHandler::LaunchUrlWithoutSecurityCheck(
       url_, web_contents_.get(), initiator_document_);
-}
-
-void ExternalProtocolDialog::TriggerInputProtection() {
-  GetDialogClientView()->TriggerInputProtection();
 }
 
 void ExternalProtocolDialog::OnWidgetActivationChanged(views::Widget* widget,
@@ -246,26 +201,8 @@ void ExternalProtocolDialog::OnWidgetDestroying(views::Widget* widget) {
   widget_observation_.Reset();
 }
 
-bool ExternalProtocolDialog::ShouldIgnoreButtonPressedEventHandling(
-    View* button,
-    const ui::Event& event) const {
-  // Ignore button pressed events whenever we are occluded by a
-  // Picture-in-Picture window.
-  return picture_in_picture_watcher_
-             ? picture_in_picture_watcher_->OccludedByPictureInPicture()
-             : false;
-}
-
 bool ExternalProtocolDialog::ShouldAllowKeyEventsDuringInputProtection() const {
   return false;
-}
-
-void ExternalProtocolDialog::SimulateOcclusionStateChangedForTesting(
-    bool occluded) {
-  CHECK(picture_in_picture_watcher_);
-  picture_in_picture_watcher_
-      ->SimulateOcclusionStateChangedForTesting(  // IN-TEST
-          occluded);
 }
 
 void ExternalProtocolDialog::SetRememberSelectionCheckboxCheckedForTesting(

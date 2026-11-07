@@ -7,10 +7,11 @@
 
 #include <optional>
 
+#include "base/auto_reset.h"
 #include "base/callback_list.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
+#include "chrome/browser/ui/views/tabs/common/tab_collection_animating_layout_manager.h"
 #include "chrome/browser/ui/views/tabs/common/tab_drag_handler.h"
 #include "chrome/browser/ui/views/tabs/shared/tab_strip_types.h"
 #include "chrome/browser/ui/views/tabs/tab/tab_context_menu_controller.h"
@@ -28,7 +29,6 @@ class TabHoverCardController;
 
 namespace tabs {
 class TabInterface;
-class VerticalTabStripStateController;
 }  // namespace tabs
 
 namespace views {
@@ -62,6 +62,11 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
 
   void ShiftTabNext(const tabs::TabInterface* tab_interface);
   void ShiftTabPrevious(const tabs::TabInterface* tab_interface);
+  void ExtendSelectionNext(const tabs::TabInterface* tab_interface,
+                           const TabStripUserGestureDetails& gesture_detail);
+  void ExtendSelectionPrevious(
+      const tabs::TabInterface* tab_interface,
+      const TabStripUserGestureDetails& gesture_detail);
   void ShiftGroupUp(const tab_groups::TabGroupId& group);
   void ShiftGroupDown(const tab_groups::TabGroupId& group);
   void MoveTabFirst(const tabs::TabInterface* tab_interface);
@@ -85,9 +90,6 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
       views::View* anchor_view,
       bool stop_context_menu_propagation);
 
-  tabs::VerticalTabStripStateController* GetStateController();
-  const tabs::VerticalTabStripStateController* GetStateController() const;
-
   TabContextMenuController* GetTabContextMenuController() {
     return context_menu_controller_.get();
   }
@@ -107,6 +109,11 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
 
   HorizontalTabClosingHelper* tab_closing_helper() const {
     return tab_closing_helper_.get();
+  }
+
+  TabCollectionAnimatingLayoutManager::AnimationCoordinator&
+  animation_coordinator() {
+    return animation_coordinator_;
   }
 
   // Notifies BrowserCommandController that the tab with keyboard focus has
@@ -131,6 +138,9 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
   bool IsLockedForOnTask() const;
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
+  [[nodiscard]] base::AutoReset<bool> ScopedAnimateLayout();
+  bool ShouldAnimateLayout() const;
+
  private:
   // TabContextMenuController::Delegate:
   bool IsContextMenuCommandChecked(
@@ -151,7 +161,13 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
   void RecordMetricsOnTabSelectionChange(
       std::optional<tab_groups::TabGroupId> group);
 
+  void ExpandCollapsedGroupsInSelectionRange(int target_index);
+
   void ShiftTabRelative(const tabs::TabInterface* tab_interface, int offset);
+  void ExtendSelectionRelative(
+      const tabs::TabInterface* tab_interface,
+      bool leading,
+      const TabStripUserGestureDetails& gesture_detail);
   void ShiftGroupRelative(const tab_groups::TabGroupId& group, int offset);
 
   void AnnounceTabAddedToGroup(tab_groups::TabGroupId group_id);
@@ -165,6 +181,11 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
   const raw_ref<RootTabCollectionNode> root_node_;
   const raw_ref<TabDragHandler> drag_handler_;
   raw_ptr<TabHoverCardController> hover_card_controller_;
+
+  TabCollectionAnimatingLayoutManager::AnimationCoordinator
+      animation_coordinator_;
+
+  bool is_animating_layout_change_ = false;
 
   std::unique_ptr<HorizontalTabClosingHelper> tab_closing_helper_;
 

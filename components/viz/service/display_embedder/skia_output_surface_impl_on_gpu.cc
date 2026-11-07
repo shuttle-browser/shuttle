@@ -87,6 +87,7 @@
 #include "third_party/skia/include/gpu/ganesh/SkSurfaceGanesh.h"
 #include "third_party/skia/include/gpu/ganesh/gl/GrGLBackendSurface.h"
 #include "third_party/skia/include/gpu/graphite/Context.h"
+#include "third_party/skia/include/gpu/graphite/GraphiteTypes.h"
 #include "third_party/skia/include/gpu/graphite/Surface.h"
 #include "third_party/skia/include/private/chromium/GrDeferredDisplayList.h"
 #include "third_party/skia/include/private/chromium/GrPromiseImageTexture.h"
@@ -279,15 +280,13 @@ std::unique_ptr<SkiaOutputSurfaceImplOnGpu> SkiaOutputSurfaceImplOnGpu::Create(
     return nullptr;
   }
 
-  // Even with Vulkan/Dawn compositing, the SharedImageFactory constructor
-  // always initializes a GL-backed SharedImage factory to fall back on.
-  // Creating the GLTextureImageBackingFactory invokes GL API calls, so
-  // we need to ensure there is a current GL context.
-  if (!context_state->MakeCurrent(nullptr, true /* need_gl */)) {
-    LOG(ERROR) << "Failed to make current during initialization.";
-    return nullptr;
+  if (context_state->IsGLInitialized()) {
+    if (!context_state->MakeCurrent(nullptr, true /* need_gl */)) {
+      LOG(ERROR) << "Failed to make current during initialization.";
+      return nullptr;
+    }
+    context_state->set_need_context_state_reset(true);
   }
-  context_state->set_need_context_state_reset(true);
 
   auto impl_on_gpu = std::make_unique<SkiaOutputSurfaceImplOnGpu>(
       base::PassKey<SkiaOutputSurfaceImplOnGpu>(), deps,
@@ -391,26 +390,31 @@ SkiaOutputSurfaceImplOnGpu::~SkiaOutputSurfaceImplOnGpu() {
   // SharedContextState, we need to explicitly invoke the factory's destructor
   // before deleting ImplOnGpu's other member variables.
   shared_image_factory_.reset();
-  if (has_context && gr_context()) {
-    TRACE_EVENT0("viz", "Cleanup");
-    std::optional<gpu::raster::GrShaderCache::ScopedCacheUse> cache_use;
-    if (dependency_->GetGrShaderCache()) {
-      cache_use.emplace(dependency_->GetGrShaderCache(),
-                        gpu::kDisplayCompositorClientId);
+  if (has_context) {
+    if (gr_context()) {
+      TRACE_EVENT0("viz", "Cleanup");
+      std::optional<gpu::raster::GrShaderCache::ScopedCacheUse> cache_use;
+      if (dependency_->GetGrShaderCache()) {
+        cache_use.emplace(dependency_->GetGrShaderCache(),
+                          gpu::kDisplayCompositorClientId);
+      }
+      // This ensures any outstanding callbacks for promise images are
+      // performed.
+      GrFlushInfo flush_info = {};
+      gpu::AddVulkanCleanupTaskForSkiaFlush(
+          context_state_->vk_context_provider(), &flush_info);
+      gl::ScopedProgressReporter scoped_process_reporter(
+          context_state_->progress_reporter());
+      gr_context()->flush(flush_info);
+      gr_context()->submit(GrSyncCpu::kYes);
+    } else if (context_state_->IsGraphiteVulkan()) {
+      context_state_->FlushAndSubmit(/*sync_to_cpu=*/true);
     }
-    // This ensures any outstanding callbacks for promise images are
-    // performed.
-    GrFlushInfo flush_info = {};
-    gpu::AddVulkanCleanupTaskForSkiaFlush(context_state_->vk_context_provider(),
-                                          &flush_info);
-    gl::ScopedProgressReporter scoped_process_reporter(
-        context_state_->progress_reporter());
-    gr_context()->flush(flush_info);
-    gr_context()->submit(GrSyncCpu::kYes);
 
 #if BUILDFLAG(ENABLE_VULKAN)
     // No frame will come for us, make sure that all the cleanup is done.
-    if (context_state_->GrContextIsVulkan()) {
+    if (context_state_->GrContextIsVulkan() ||
+        context_state_->IsGraphiteVulkan()) {
       DCHECK(context_state_->vk_context_provider());
       auto* fence_helper = context_state_->vk_context_provider()
                                ->GetDeviceQueue()
@@ -644,14 +648,15 @@ void SkiaOutputSurfaceImplOnGpu::FinishPaintRenderPass(
   std::vector<GrBackendSemaphore> begin_semaphores;
   std::vector<GrBackendSemaphore> end_semaphores;
 
-  int sample_count = 0;
   SkSurfaceProps surface_props;
   if (ddl) {
-    sample_count = ddl->characterization().sampleCount();
     surface_props = ddl->characterization().surfaceProps();
   }
+  // Render pass DDLs are always characterized without MSAA (see
+  // SkiaOutputSurfaceImpl::CreateGrSurfaceCharacterizationRenderPass()), and
+  // Graphite ignores the sample count.
   auto local_scoped_access = skia_representation->BeginScopedWriteAccess(
-      sample_count, surface_props, update_rect, &begin_semaphores,
+      /*final_msaa_count=*/1, surface_props, update_rect, &begin_semaphores,
       &end_semaphores,
       gpu::SharedImageRepresentation::AllowUnclearedAccess::kYes);
   if (!local_scoped_access) {
@@ -716,6 +721,7 @@ void SkiaOutputSurfaceImplOnGpu::FinishPaintRenderPass(
     }
     bool insert_success = graphite_shared_context()->insertRecording(info);
     RecordInsertRenderPassRecording(insert_success);
+    scoped_access->ApplyBackendSurfaceEndState();
     if (local_scoped_access &&
         local_scoped_access->NeedGraphiteContextSubmit()) {
       graphite_shared_context()->submit();
@@ -1186,15 +1192,19 @@ bool SkiaOutputSurfaceImplOnGpu::FlushSurface(
 
   CHECK(graphite_recorder());
   auto recording = graphite_recorder()->snap();
+  bool success = false;
   if (recording) {
     skgpu::graphite::InsertRecordingInfo info = {};
     info.fRecording = recording.get();
     info.fTargetSurface = surface;
     info.fFinishedContext = finished_context;
     info.fFinishedProc = graphite_finished_proc;
-    return graphite_shared_context()->insertRecording(info);
+    success = graphite_shared_context()->insertRecording(info);
   }
-  return false;
+  if (scoped_write_access) {
+    scoped_write_access->ApplyBackendSurfaceEndState();
+  }
+  return success;
 }
 
 bool SkiaOutputSurfaceImplOnGpu::FlushAndSubmitCopyOutput(
@@ -1417,6 +1427,7 @@ void SkiaOutputSurfaceImplOnGpu::CopyOutputNV12(
 
   if (!intermediate_surface) {
     DVLOG(1) << "failed to create surface for the intermediate texture";
+    mailbox_access_data.scoped_write->ApplyBackendSurfaceEndState();
     // Send empty result.
     return;
   }
@@ -1445,6 +1456,7 @@ void SkiaOutputSurfaceImplOnGpu::CopyOutputNV12(
   auto intermediate_image = intermediate_surface->makeImageSnapshot();
   if (!intermediate_image) {
     DLOG(ERROR) << "failed to retrieve `intermediate_image`.";
+    mailbox_access_data.scoped_write->ApplyBackendSurfaceEndState();
     return;
   }
 

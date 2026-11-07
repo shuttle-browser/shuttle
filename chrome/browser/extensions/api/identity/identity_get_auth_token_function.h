@@ -15,6 +15,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
 #include "base/time/time.h"
+#include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/extensions/api/identity/gaia_remote_consent_flow.h"
 #include "chrome/browser/extensions/api/identity/identity_mint_queue.h"
@@ -22,9 +23,14 @@
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "extensions/browser/extension_function.h"
 #include "extensions/browser/extension_function_histogram_value.h"
+#include "extensions/buildflags/buildflags.h"
 #include "google_apis/gaia/gaia_id.h"
 #include "google_apis/gaia/google_service_auth_error.h"
 #include "google_apis/gaia/oauth2_mint_token_flow.h"
+
+#if BUILDFLAG(IS_ANDROID) && BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+#include "components/signin/public/browser/web_signin_tracker.h"
+#endif
 
 namespace signin {
 class AccessTokenFetcher;
@@ -84,6 +90,21 @@ class IdentityGetAuthTokenFunction : public ExtensionFunction,
                              EXPERIMENTAL_IDENTITY_GETAUTHTOKEN)
 
   IdentityGetAuthTokenFunction();
+
+#if BUILDFLAG(IS_ANDROID) && BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  // Overrides how long the function waits for the Gaia cookies to be updated
+  // before giving up and failing the request. Restores the default value on
+  // destruction. Must not be nested.
+  class ScopedCookieWaiterTimeoutForTesting {
+   public:
+    explicit ScopedCookieWaiterTimeoutForTesting(base::TimeDelta timeout);
+    ScopedCookieWaiterTimeoutForTesting(
+        const ScopedCookieWaiterTimeoutForTesting&) = delete;
+    ScopedCookieWaiterTimeoutForTesting& operator=(
+        const ScopedCookieWaiterTimeoutForTesting&) = delete;
+    ~ScopedCookieWaiterTimeoutForTesting();
+  };
+#endif
 
   const ExtensionTokenKey* GetExtensionTokenKeyForTest() { return &token_key_; }
 
@@ -146,9 +167,6 @@ class IdentityGetAuthTokenFunction : public ExtensionFunction,
   FRIEND_TEST_ALL_PREFIXES(GetAuthTokenFunctionTest, NoninteractiveShutdown);
 
   class RefreshTokensLoadedWaiter;
-#if BUILDFLAG(ENABLE_DESKTOP_ANDROID_EXTENSIONS)
-  class AccountsInCookieUpdatedWaiter;
-#endif
   enum class InteractionType { kSignin, kConsent };
 #if BUILDFLAG(IS_CHROMEOS)
   class DeviceOAuth2TokenFetcher;
@@ -159,9 +177,8 @@ class IdentityGetAuthTokenFunction : public ExtensionFunction,
   // might be started.
   void GetAuthTokenForAccount(const GaiaId& gaia_id);
 
-#if BUILDFLAG(ENABLE_DESKTOP_ANDROID_EXTENSIONS)
-  void OnCookiesUpdatedForRemoteConsent(bool success);
-  bool ShouldDelayRemoteConsent();
+#if BUILDFLAG(IS_ANDROID) && BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  void OnWebSigninTrackerResult(signin::WebSigninTracker::Result result);
   void StartWaitingForCookies();
 #endif
 
@@ -230,6 +247,12 @@ class IdentityGetAuthTokenFunction : public ExtensionFunction,
 #if !BUILDFLAG(IS_CHROMEOS)
   virtual void ShowExtensionLoginPrompt();
 #endif
+
+  // Entry point for the remote consent flow. On platforms where Gaia cookies
+  // are reconciled asynchronously, this may first wait for the cookies to be
+  // updated before invoking `ShowRemoteConsentDialog()`.
+  void StartRemoteConsentFlow();
+
   virtual void ShowRemoteConsentDialog();
 
   std::string GetOAuth2ClientId() const;
@@ -272,9 +295,10 @@ class IdentityGetAuthTokenFunction : public ExtensionFunction,
   // a permissions prompt will be popped up to the user.
   RemoteConsentResolutionData resolution_data_;
   std::unique_ptr<RefreshTokensLoadedWaiter> refresh_tokens_loaded_waiter_;
-#if BUILDFLAG(ENABLE_DESKTOP_ANDROID_EXTENSIONS)
-  std::unique_ptr<AccountsInCookieUpdatedWaiter>
-      accounts_in_cookie_updated_waiter_;
+#if BUILDFLAG(IS_ANDROID) && BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  // Waits for the account to be available in the cookie jar before showing the
+  // remote consent dialog.
+  std::unique_ptr<signin::WebSigninTracker> web_signin_tracker_;
 #endif
   std::unique_ptr<GaiaRemoteConsentFlow> gaia_remote_consent_flow_;
   std::string consent_result_;

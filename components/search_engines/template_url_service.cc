@@ -57,7 +57,6 @@
 #include "components/search_engines/search_engine_split_metrics.h"
 #include "components/search_engines/search_engine_type.h"
 #include "components/search_engines/search_engines_pref_names.h"
-#include "components/search_engines/search_engines_switches.h"
 #include "components/search_engines/search_terms_data.h"
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_data.h"
@@ -488,6 +487,26 @@ bool TemplateURLService::IsPrepopulatedOrDefaultProviderByPolicy(
 bool TemplateURLService::ShowInDefaultList(const TemplateURL* t_url) const {
   return t_url == default_search_provider_ ||
          IsPrepopulatedOrDefaultProviderByPolicy(t_url);
+}
+
+bool TemplateURLService::ShowInDsePickerList(const TemplateURL* t_url) const {
+  if (t_url == default_search_provider_) {
+    return true;
+  }
+
+  if (!t_url->SupportsReplacement(search_terms_data())) {
+    return false;
+  }
+
+  if (t_url->CreatedByDefaultSearchProviderPolicy()) {
+    return true;
+  }
+  if (t_url->CreatedByRegulatoryProgram()) {
+    return true;
+  }
+  return t_url->prepopulate_id() > 0 &&
+         prepopulate_data_resolver_->GetPrepopulatedEngine(
+             t_url->prepopulate_id()) != nullptr;
 }
 
 bool TemplateURLService::ShowInActivesList(const TemplateURL* t_url) const {
@@ -1149,6 +1168,34 @@ void TemplateURLService::SetUserSelectedDefaultSearchProvider(
   // TODO(b/316887441): Investigate removing this.
   prefs_->CommitPendingWrite();
 #endif
+}
+
+void TemplateURLService::SetUserSelectedDefaultSearchProviderByPrepopulateId(
+    int prepopulate_id,
+    search_engines::ChoiceMadeLocation choice_made_location) {
+  CHECK_NE(prepopulate_id, 0);
+
+  // Reuse the existing entry if there is one. Passing freshly resolved data
+  // instead would overwrite existing properties and user edits.
+  if (TemplateURL* existing = FindPrepopulatedTemplateURL(prepopulate_id)) {
+    SetUserSelectedDefaultSearchProvider(existing, choice_made_location);
+    return;
+  }
+
+  // No engine with this ID yet: it gets added when selected as default.
+  std::unique_ptr<TemplateURLData> data =
+      prepopulate_data_resolver_->GetEngineFromFullList(prepopulate_id);
+  if (!data) {
+    // Failing here would indicate a coding error or that something attempted to
+    // call WebUI APIs with an invalid prepopulated ID.
+    // Note: If making this fatal or removing base::NotFatalUntil::M165, update
+    // TemplateURLServiceSetDseByPrepopulateIdTest.CrashesOnInvalidIds to use
+    // EXPECT_CHECK_DEATH.
+    NOTREACHED(base::NotFatalUntil::M165);
+    return;
+  }
+  TemplateURL engine(*data);
+  SetUserSelectedDefaultSearchProvider(&engine, choice_made_location);
 }
 
 DefaultSearchManager* TemplateURLService::GetDefaultSearchManager() {
@@ -2236,9 +2283,7 @@ bool TemplateURLService::ApplyDefaultSearchChangeNoMetrics(
           ? nullptr
           : GetTemplateURLForGUID(previous_default_search_engine_guid);
   if (previous_turl && !ShowInDefaultList(previous_turl) &&
-      CanMakeDefault(previous_turl) &&
-      base::FeatureList::IsEnabled(
-          switches::kVisitCustomSearchOnUndefaulting)) {
+      CanMakeDefault(previous_turl)) {
     UpdateTemplateURLVisitTime(previous_turl);
   }
 
@@ -2352,7 +2397,8 @@ TemplateURL* TemplateURLService::Add(std::unique_ptr<TemplateURL> template_url,
   if (newly_adding) {
     DCHECK_EQ(kInvalidTemplateURLID, template_url->id());
     DCHECK(!Contains(&template_urls_, template_url.get()));
-    template_url->set_id(++next_id_);
+    next_id_ = TemplateURLID(next_id_.value() + 1);
+    template_url->set_id(next_id_);
   }
 
   template_url->ResetKeywordIfNecessary(search_terms_data(), false);
@@ -2715,4 +2761,3 @@ TemplateURLService::GetEnterpriseSearchManager(PrefService* prefs) {
   return nullptr;
 #endif
 }
-

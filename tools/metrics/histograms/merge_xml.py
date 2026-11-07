@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 
 import setup_modules  # pylint: disable=unused-import
 
+
 import chromium_src.tools.metrics.common.xml_utils as xml_utils
 import chromium_src.tools.metrics.histograms.expand_owners as expand_owners
 import chromium_src.tools.metrics.histograms.histogram_configuration_model as histogram_configuration_model
@@ -170,7 +171,9 @@ def MergeFiles(
 
   Args:
     filenames: A list of histograms.xml filenames.
-    files: A list of histograms.xml file-like objects.
+    files: A list of histograms.xml filenames or file-like objects. Files
+      opened from filenames are closed after parsing; caller-provided streams
+      remain open.
     expand_owners_and_extract_components: Whether we want to expand owners and
       extract components.
 

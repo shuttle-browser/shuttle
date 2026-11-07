@@ -19,16 +19,13 @@
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/history/history_service_factory.h"
-#include "chrome/browser/page_image_service/image_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/webui/cr_components/history/history_util.h"
-#include "chrome/browser/ui/webui/cr_components/history_clusters/history_clusters_util.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/browser/ui/webui/history/browsing_history_handler.h"
 #include "chrome/browser/ui/webui/history/navigation_handler.h"
-#include "chrome/browser/ui/webui/history_clusters/history_clusters_handler.h"
 #include "chrome/browser/ui/webui/managed_ui_handler.h"
 #include "chrome/browser/ui/webui/metrics_handler.h"
 #include "chrome/browser/ui/webui/theme_source.h"
@@ -39,11 +36,6 @@
 #include "components/grit/components_scaled_resources.h"
 #include "components/history/core/browser/features.h"
 #include "components/history/core/common/pref_names.h"
-#include "components/history_clusters/core/config.h"
-#include "components/history_clusters/core/features.h"
-#include "components/history_clusters/core/history_clusters_prefs.h"
-#include "components/page_image_service/image_service.h"
-#include "components/page_image_service/image_service_handler.h"
 #include "components/prefs/pref_service.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/tabs/public/tab_interface.h"
@@ -88,17 +80,20 @@ content::WebUIDataSource* CreateAndAddHistoryUIHTMLSource(Profile* profile) {
   source->AddBoolean("isGlicEnabled", false);
   source->AddBoolean("isGlicWebActuationAvailable", false);
 
-  source->AddBoolean("isBrowsingHistoryActorIntegrationM3Enabled",
-                     history::IsBrowsingHistoryActorIntegrationM3Enabled());
+  source->AddBoolean(
+      "isBrowsingHistoryFilterByActorEnabled",
+      base::FeatureList::IsEnabled(history::kBrowsingHistoryFilterByActor));
+  // Shuttle: no sync device info, so no filtering by device.
+  source->AddBoolean("isBrowsingHistoryFilterByDeviceEnabled", false);
+  source->AddBoolean(
+      "isBrowsingHistoryFilterByTimePeriodEnabled",
+      base::FeatureList::IsEnabled(history::kBrowsingHistoryFilterByTime));
   source->AddBoolean("isCriticalActionsEnabled", false);
   source->AddBoolean("isCriticalActionsChatLinkoutsEnabled", false);
 
   source->AddString("webuiRefresh2026", features::IsWebuiRefresh2026Enabled()
                                             ? "webui-refresh-2026"
                                             : "");
-
-  // History clusters
-  HistoryClustersUtil::PopulateSource(source, profile, /*in_side_panel=*/false);
 
   return source;
 }
@@ -116,6 +111,17 @@ HistoryUIConfig::CreateWebUIController(content::WebUI* web_ui,
   return std::make_unique<HistoryUI>(web_ui);
 }
 
+#if BUILDFLAG(IS_ANDROID)
+bool HistoryUIConfig::IsWebUIEnabled(content::BrowserContext* browser_context) {
+  // LINT.IfChange(AndroidDesktopWebUiHistory)
+  return base::android::device_info::is_desktop() &&
+         base::FeatureList::IsEnabled(
+             chrome::android::kAndroidDesktopWebUiHistory);
+  // LINT.ThenChange(//chrome/browser/history/java/src/org/chromium/chrome/browser/history/HistoryFeatures.java:AndroidDesktopWebUiHistory,
+  // //chrome/browser/android/ntp/new_tab_page_url_handler.cc:AndroidDesktopWebUiHistory)
+}
+#endif  // BUILDFLAG(IS_ANDROID)
+
 HistoryUI::HistoryUI(content::WebUI* web_ui)
     : ui::MojoWebUIController(web_ui, /*enable_chrome_send=*/true) {
   Profile* profile = Profile::FromWebUI(web_ui);
@@ -124,11 +130,6 @@ HistoryUI::HistoryUI(content::WebUI* web_ui)
   ManagedUIHandler::Initialize(web_ui, data_source);
 
   content::URLDataSource::Add(profile, std::make_unique<ThemeSource>(profile));
-
-  pref_change_registrar_.Init(profile->GetPrefs());
-  pref_change_registrar_.Add(history_clusters::prefs::kVisible,
-                             base::BindRepeating(&HistoryUI::UpdateDataSource,
-                                                 base::Unretained(this)));
 
   web_ui->AddMessageHandler(std::make_unique<webui::NavigationHandler>());
   web_ui->AddMessageHandler(std::make_unique<MetricsHandler>());
@@ -150,57 +151,4 @@ void HistoryUI::BindInterface(
   browsing_history_handler_ = std::make_unique<BrowsingHistoryHandler>(
       std::move(pending_page_handler), Profile::FromWebUI(web_ui()),
       web_ui()->GetWebContents());
-}
-
-void HistoryUI::BindInterface(
-    mojo::PendingReceiver<history_clusters::mojom::PageHandlerFactory>
-        pending_page_handler_factory) {
-  history_clusters_handler_factory_receiver_.reset();
-  history_clusters_handler_factory_receiver_.Bind(
-      std::move(pending_page_handler_factory));
-}
-
-void HistoryUI::CreatePageHandler(
-    mojo::PendingRemote<history_clusters::mojom::Page> page,
-    mojo::PendingReceiver<history_clusters::mojom::PageHandler> receiver) {
-  history_clusters_handler_ =
-      std::make_unique<history_clusters::HistoryClustersHandler>(
-          std::move(receiver), std::move(page), Profile::FromWebUI(web_ui()),
-          web_ui()->GetWebContents(),
-          // HistoryUI should always be in a tab. Look it up unconditionally.
-          tabs::TabInterface::GetFromContents(web_ui()->GetWebContents()));
-}
-
-void HistoryUI::BindInterface(
-    mojo::PendingReceiver<page_image_service::mojom::PageImageServiceHandler>
-        pending_page_handler) {
-  base::WeakPtr<page_image_service::ImageService> image_service_weak;
-  if (auto* image_service =
-          page_image_service::ImageServiceFactory::GetForBrowserContext(
-              Profile::FromWebUI(web_ui()))) {
-    image_service_weak = image_service->GetWeakPtr();
-  }
-  image_service_handler_ =
-      std::make_unique<page_image_service::ImageServiceHandler>(
-          std::move(pending_page_handler), std::move(image_service_weak));
-}
-
-void HistoryUI::UpdateDataSource() {
-  CHECK(web_ui());
-
-  Profile* profile = Profile::FromWebUI(web_ui());
-
-  base::DictValue update;
-
-  const bool is_managed = profile->GetPrefs()->IsManagedPreference(
-      history_clusters::prefs::kVisible);
-  // History clusters are always visible unless the visibility prefs
-  // is set to false by policy.
-  update.Set(
-      kIsHistoryClustersVisibleKey,
-      profile->GetPrefs()->GetBoolean(history_clusters::prefs::kVisible) ||
-          !is_managed);
-
-  content::WebUIDataSource::Update(profile, chrome::kChromeUIHistoryHost,
-                                   std::move(update));
 }

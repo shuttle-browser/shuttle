@@ -15,13 +15,12 @@ source_set("clipboard") {
     "clipboard_api.h",
   ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   public_deps = [
     ":clipboard_types",
     "//base",
     "//extensions/browser:browser_sources",
     "//extensions/browser/api:extensions_api_client",
+    "//extensions/common",
     "//extensions/common/api",
     "//ui/base/clipboard",
   ]
@@ -31,6 +30,4 @@ source_set("clipboard") {
 
 source_set("clipboard_types") {
   sources = [ "clipboard_api_types.h" ]
-
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 }

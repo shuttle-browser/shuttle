@@ -49,9 +49,7 @@ LoadingStatsCollector::LoadingStatsCollector(
 LoadingStatsCollector::~LoadingStatsCollector() = default;
 
 void LoadingStatsCollector::RecordPageRequestSummary(
-    const PageRequestSummary& summary,
-    const std::optional<OptimizationGuidePrediction>&
-        optimization_guide_prediction) {
+    const PageRequestSummary& summary) {
   if (!summary.main_frame_load_complete) {
     return;
   }
@@ -74,98 +72,6 @@ void LoadingStatsCollector::RecordPageRequestSummary(
           std::min(ukm_cap, correctly_predicted_origins));
       recorded_ukm = true;
     }
-  }
-  if (optimization_guide_prediction) {
-    builder.SetOptimizationGuidePredictionDecision(
-        static_cast<int64_t>(optimization_guide_prediction->decision));
-    if (optimization_guide_prediction->optimization_guide_prediction_arrived) {
-      builder.SetNavigationStartToOptimizationGuidePredictionArrived(
-          (optimization_guide_prediction->optimization_guide_prediction_arrived
-               .value() -
-           summary.navigation_started)
-              .InMilliseconds());
-    }
-    if (!optimization_guide_prediction->predicted_subresources.empty()) {
-      url::Origin main_frame_origin = url::Origin::Create(summary.initial_url);
-      size_t cross_origin_predicted_subresources = 0;
-      size_t correctly_predicted_subresources = 0;
-      size_t correctly_predicted_cross_origin_subresources = 0;
-      size_t correctly_predicted_low_priority_subresources = 0;
-      size_t correctly_predicted_low_priority_cross_origin_subresources = 0;
-
-      for (const GURL& subresource_url :
-           optimization_guide_prediction->predicted_subresources) {
-        const bool is_cross_origin =
-            !main_frame_origin.IsSameOriginWith(subresource_url);
-        const bool is_correctly_predicted =
-            summary.subresource_urls.contains(subresource_url);
-        const bool is_correctly_predicted_low_priority =
-            !is_correctly_predicted &&
-            summary.low_priority_subresource_urls.contains(subresource_url);
-        if (is_cross_origin) {
-          cross_origin_predicted_subresources++;
-        }
-        if (is_correctly_predicted) {
-          correctly_predicted_subresources++;
-        }
-        if (is_cross_origin && is_correctly_predicted) {
-          correctly_predicted_cross_origin_subresources++;
-        }
-        if (is_correctly_predicted_low_priority) {
-          correctly_predicted_low_priority_subresources++;
-        }
-        if (is_cross_origin && is_correctly_predicted_low_priority) {
-          correctly_predicted_low_priority_cross_origin_subresources++;
-        }
-      }
-
-      builder.SetOptimizationGuidePredictionSubresources(std::min(
-          ukm_cap,
-          optimization_guide_prediction->predicted_subresources.size()));
-      builder.SetOptimizationGuidePredictionSubresources_CrossOrigin(
-          std::min(ukm_cap, cross_origin_predicted_subresources));
-      builder.SetOptimizationGuidePredictionCorrectlyPredictedSubresources(
-          std::min(ukm_cap, correctly_predicted_subresources));
-      builder
-          .SetOptimizationGuidePredictionCorrectlyPredictedSubresources_CrossOrigin(
-              std::min(ukm_cap, correctly_predicted_cross_origin_subresources));
-      builder
-          .SetOptimizationGuidePredictionCorrectlyPredictedLowPrioritySubresources(
-              std::min(ukm_cap, correctly_predicted_low_priority_subresources));
-      builder
-          .SetOptimizationGuidePredictionCorrectlyPredictedLowPrioritySubresources_CrossOrigin(
-              std::min(
-                  ukm_cap,
-                  correctly_predicted_low_priority_cross_origin_subresources));
-
-      std::set<url::Origin> predicted_origins;
-      for (const auto& subresource :
-           optimization_guide_prediction->predicted_subresources) {
-        url::Origin subresource_origin = url::Origin::Create(subresource);
-        if (subresource_origin == main_frame_origin) {
-          // Do not count the main frame origin as a predicted origin.
-          continue;
-        }
-        predicted_origins.insert(subresource_origin);
-      }
-      builder.SetOptimizationGuidePredictionOrigins(
-          std::min(ukm_cap, predicted_origins.size()));
-      size_t correctly_predicted_origins = std::ranges::count_if(
-          predicted_origins, [&summary](const url::Origin& subresource_origin) {
-            return summary.origins.contains(subresource_origin);
-          });
-      builder.SetOptimizationGuidePredictionCorrectlyPredictedOrigins(
-          std::min(ukm_cap, correctly_predicted_origins));
-      size_t correctly_predicted_low_priority_origins = std::ranges::count_if(
-          predicted_origins, [&summary](const url::Origin& subresource_origin) {
-            return summary.low_priority_origins.contains(subresource_origin) &&
-                   !summary.origins.contains(subresource_origin);
-          });
-      builder
-          .SetOptimizationGuidePredictionCorrectlyPredictedLowPriorityOrigins(
-              std::min(ukm_cap, correctly_predicted_low_priority_origins));
-    }
-    recorded_ukm = true;
   }
   if (!summary.preconnect_origins.empty()) {
     builder.SetSubresourceOriginPreconnectsInitiated(
@@ -199,7 +105,7 @@ void LoadingStatsCollector::RecordPageRequestSummary(
     recorded_ukm = true;
   }
   if (summary.first_prefetch_initiated) {
-    DCHECK(!summary.prefetch_urls.empty());
+    CHECK(!summary.prefetch_urls.empty(), base::NotFatalUntil::M162);
     builder.SetNavigationStartToFirstSubresourcePrefetchInitiated(
         (summary.first_prefetch_initiated.value() - summary.navigation_started)
             .InMilliseconds());

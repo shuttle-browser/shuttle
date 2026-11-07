@@ -26,7 +26,6 @@
 #include "chrome/browser/accessibility/accessibility_prefs/android/accessibility_prefs_controller.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/common/buildflags.h"
-#include "components/activity_reporter/activity_reporter.h"
 #include "components/keep_alive_registry/keep_alive_state_observer.h"
 #include "components/metrics_services_manager/metrics_services_manager.h"
 #include "components/prefs/persistent_pref_store.h"
@@ -57,6 +56,12 @@ class SecureOriginPrefsObserver;
 class SiteIsolationPrefsObserver;
 class SystemNotificationHelper;
 class StartupData;
+
+#if !BUILDFLAG(IS_CHROMEOS)
+namespace activity_reporter {
+class ActivityReporter;
+}  // namespace activity_reporter
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 
 namespace speech {
 }  // namespace speech
@@ -95,10 +100,6 @@ class WebRtcEventLogManager;
 namespace speech {
 class SodaInstaller;
 }  // namespace speech
-
-namespace supervised_user {
-class DeviceParentalControls;
-}  // namespace supervised_user
 
 // Real implementation of BrowserProcess that creates and returns the services.
 class BrowserProcessImpl : public BrowserProcess,
@@ -186,7 +187,6 @@ class BrowserProcessImpl : public BrowserProcess,
   printing::PrintPreviewDialogController* print_preview_dialog_controller()
       override;
   printing::BackgroundPrintingManager* background_printing_manager() override;
-  supervised_user::DeviceParentalControls& device_parental_controls() override;
   IntranetRedirectDetector* intranet_redirect_detector() override;
   const std::string& GetApplicationLocale() override;
   void SetApplicationLocale(const std::string& actual_locale) override;
@@ -210,7 +210,9 @@ class BrowserProcessImpl : public BrowserProcess,
   void StartAutoupdateTimer() override;
 #endif
 
+#if !BUILDFLAG(IS_CHROMEOS)
   activity_reporter::ActivityReporter* activity_reporter() override;
+#endif  // !BUILDFLAG(IS_CHROMEOS)
   component_updater::ComponentUpdateService* component_updater() override;
 #if BUILDFLAG(IS_CHROMEOS)
   MediaFileSystemRegistry* media_file_system_registry() override;
@@ -267,7 +269,6 @@ class BrowserProcessImpl : public BrowserProcess,
 #endif
   void CreateSubresourceFilterRulesetService();
   void CreateFingerprintingProtectionRulesetService();
-  void CreateOptimizationGuideService();
   void CreateStatusTray();
   void CreateBackgroundModeManager();
   void CreateGCMDriver();
@@ -362,9 +363,6 @@ class BrowserProcessImpl : public BrowserProcess,
       background_printing_manager_;
 #endif
 
-  std::unique_ptr<supervised_user::DeviceParentalControls>
-      device_parental_controls_;
-
 #if BUILDFLAG(ENABLE_CHROME_NOTIFICATIONS)
   // Manager for desktop notification UI.
   bool created_notification_ui_manager_ = false;
@@ -432,7 +430,9 @@ class BrowserProcessImpl : public BrowserProcess,
   void RestartBackgroundInstance();
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
 
+#if !BUILDFLAG(IS_CHROMEOS)
   std::unique_ptr<activity_reporter::ActivityReporter> activity_reporter_;
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 
   // component updater is normally not used under ChromeOS due
   // to concerns over integrity of data shared between profiles,

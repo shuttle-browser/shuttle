@@ -38,7 +38,6 @@
 #include "cc/input/scrollbar_animation_controller.h"
 #include "cc/layers/layer_collections.h"
 #include "cc/metrics/average_lag_tracking_manager.h"
-#include "cc/metrics/event_latency_tracker.h"
 #include "cc/metrics/event_metrics.h"
 #include "cc/metrics/events_metrics_manager.h"
 #include "cc/metrics/frame_sequence_metrics.h"
@@ -70,6 +69,7 @@
 #include "components/viz/common/frame_sinks/begin_frame_args.h"
 #include "components/viz/common/gpu/context_cache_controller.h"
 #include "components/viz/common/quads/compositor_render_pass.h"
+#include "components/viz/common/quads/frame_interval_inputs.h"
 #include "components/viz/common/quads/trees_in_viz_timing.h"
 #include "components/viz/common/surfaces/child_local_surface_id_allocator.h"
 #include "components/viz/common/surfaces/local_surface_id.h"
@@ -144,7 +144,6 @@ class CC_EXPORT LayerTreeHostImpl : public TileManagerClient,
                                     public MutatorHostDelegate,
                                     public ImageAnimationController::Delegate,
                                     public CompositorDelegateForInput,
-                                    public EventLatencyTracker,
                                     public ScrollJankOsReporter {
  public:
   // A struct of data for a single UIResource, including the backing
@@ -431,6 +430,7 @@ class CC_EXPORT LayerTreeHostImpl : public TileManagerClient,
       FrameData& frame,
       std::vector<ui::LatencyInfo> latency_info,
       viz::TrackedElementRects tracked_element_rects,
+      std::optional<viz::FrameIntervalInputs> frame_interval_inputs,
       bool is_flush = false);
 
   // Synchronizes the current tree state to Viz without triggering a draw.
@@ -539,11 +539,6 @@ class CC_EXPORT LayerTreeHostImpl : public TileManagerClient,
   void OnCompositorFrameTransitionDirectiveProcessed(
       uint32_t sequence_id) override;
   void OnSurfaceEvicted(const viz::LocalSurfaceId& local_surface_id) override;
-
-  // EventLatencyTracker implementation.
-  void ReportEventLatency(
-      const viz::BeginFrameArgs& args,
-      std::vector<EventLatencyTracker::LatencyData> latencies) override;
 
   // ScrollJankOsReporter implementation.
   void ReportScrollJankStats(uint32_t total_frames,
@@ -1059,14 +1054,8 @@ class CC_EXPORT LayerTreeHostImpl : public TileManagerClient,
   // Requests scrollbars' flashes. Returns true if a scrollbar with
   // |tracking_element_id| has been flashed as part of the bulk flash. If
   // `settings.scrollbar_flash_once_after_scroll_update` is true, invokes
-  // `MaybeFlashAllScrollbarsOnce`. If
-  // `settings.scrollbar_flash_after_any_scroll_update` is true, invokes
-  // FlashAllScrollbars.
+  // `MaybeFlashAllScrollbarsOnce`.
   bool MaybeFlashAllScrollbars(ElementId tracking_element_id, bool did_scroll);
-
-  // Flashes all scrollbars. Can be used when
-  // `settings.scrollbar_flash_after_any_scroll_update` is true.
-  void FlashAllScrollbars(bool did_scroll);
 
   // Erases track of flashed scrollbars. Can be used when
   // `settings.scrollbar_flash_once_after_scroll_update` is true.
@@ -1395,6 +1384,11 @@ class CC_EXPORT LayerTreeHostImpl : public TileManagerClient,
   // Only used in TreesInViz mode. Stores tracked element rects passed from the
   // client so that they can be added to generated frame metadata in Viz.
   viz::TrackedElementRects tracked_element_rects_from_client_;
+
+  // Only used in TreesInViz mode. Stores the frame interval inputs of the frame
+  // the client drew for its latest update, if any. Used once, by the next frame
+  // generated in Viz.
+  std::optional<viz::FrameIntervalInputs> frame_interval_inputs_from_client_;
 
   // Settings whether we dump generated compositor frame during DrawLayers.
   // They are for debug purposes for TreesInViz and TreeAnimationsInViz.

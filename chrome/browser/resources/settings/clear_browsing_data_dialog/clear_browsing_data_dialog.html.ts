@@ -9,7 +9,8 @@ import type {SettingsClearBrowsingDataDialogElement} from './clear_browsing_data
 export function getHtml(this: SettingsClearBrowsingDataDialogElement) {
   return html`<!--_html_template_start_-->
 <cr-dialog id="deleteBrowsingDataDialog" close-text="$i18n{close}"
-    show-on-attach ignore-popstate ignore-enter-key>
+    show-on-attach ignore-popstate ignore-enter-key
+    @cancel="${this.onDialogCancel_}">
   <div slot="title" class="dialog-title">$i18n{clearBrowsingData}</div>
   <div slot="header">
     <settings-clear-browsing-data-time-picker id="timePicker"

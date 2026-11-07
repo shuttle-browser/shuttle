@@ -48,7 +48,6 @@
 #include "third_party/blink/renderer/core/animation/element_animations.h"
 #include "third_party/blink/renderer/core/animation/keyframe_effect_model.h"
 #include "third_party/blink/renderer/core/css/background_color_paint_image_generator.h"
-#include "third_party/blink/renderer/core/css/box_shadow_paint_image_generator.h"
 #include "third_party/blink/renderer/core/css/clip_path_paint_image_generator.h"
 #include "third_party/blink/renderer/core/css/properties/computed_style_utils.h"
 #include "third_party/blink/renderer/core/css/properties/longhands.h"
@@ -238,7 +237,6 @@ CompositorAnimations::CompositorElementNamespaceForProperty(
     case CSSPropertyID::kFilter:
       return CompositorElementIdNamespace::kEffectFilter;
     case CSSPropertyID::kBackgroundColor:
-    case CSSPropertyID::kBoxShadow:
     case CSSPropertyID::kClipPath:
     case CSSPropertyID::kVariable:
       // TODO(crbug.com/883721): Variables and these raster-inducing properties
@@ -278,7 +276,7 @@ CompositorAnimations::CheckCanStartEffectOnCompositor(
   // Elements with subtrees containing will-change: contents are not
   // composited for animations as if the contents change the tiles
   // would need to be rerastered anyways.
-  if (layout_object && layout_object->StyleRef().SubtreeWillChangeContents()) {
+  if (layout_object && layout_object->Style().SubtreeWillChangeContents()) {
     state.disposition |= kTargetHasInvalidCompositingState;
   }
 
@@ -350,7 +348,6 @@ CompositorAnimations::CheckCanStartEffectOnCompositor(
           if (HasNativePaintWorketReason(
                   npw_reasons, Animation::NativePaintWorkletProperties::
                                    kBackgroundColorPaintWorklet)) {
-            DCHECK(RuntimeEnabledFeatures::CompositeBGColorAnimationEnabled());
             generator = target_element.GetDocument()
                             .GetFrame()
                             ->GetBackgroundColorPaintImageGenerator();
@@ -416,7 +413,15 @@ CompositorAnimations::CheckCanStartEffectOnCompositor(
           break;
         case CSSPropertyID::kBackdropFilter:
           // Backdrop-filter pixel moving filters do not change the layer bounds
-          // like regular filters do, so they can still be composited.
+          // like regular filters do, so they can still be composited. However,
+          // reference filters cannot be interpolated or composited.
+          if (keyframe->GetCompositorKeyframeValue() &&
+              To<CompositorKeyframeFilterOperations>(
+                  keyframe->GetCompositorKeyframeValue())
+                  ->Operations()
+                  .HasReferenceFilter()) {
+            DefaultToUnsupportedProperty(state, property);
+          }
           break;
         case CSSPropertyID::kBackgroundColor:
         case CSSPropertyID::kClipPath:
@@ -433,7 +438,7 @@ CompositorAnimations::CheckCanStartEffectOnCompositor(
             // If a custom property is not used by CSS Paint, then we should not
             // support that on the compositor thread.
             if (layout_object &&
-                !layout_object->StyleRef().HasCSSPaintImagesUsingCustomProperty(
+                !layout_object->Style().HasCSSPaintImagesUsingCustomProperty(
                     property.CustomPropertyName(),
                     layout_object->GetDocument())) {
               DefaultToUnsupportedProperty(state, property);
@@ -523,7 +528,7 @@ bool CompositorAnimations::CompositorPropertyAnimationsHaveNoEffect(
     return false;
   }
 
-  if (layout_object && layout_object->StyleRef().SubtreeWillChangeContents()) {
+  if (layout_object && layout_object->Style().SubtreeWillChangeContents()) {
     // If the element has will-change: contents, then this function cannot
     // return a meaningful result, as we decline to generate layers in this
     // case. See also crbug.com/40061259 - some assumptions made in the below
@@ -536,11 +541,23 @@ bool CompositorAnimations::CompositorPropertyAnimationsHaveNoEffect(
 
   const auto& keyframe_effect = To<KeyframeEffectModelBase>(effect);
   const auto& groups = keyframe_effect.GetPropertySpecificKeyframeGroups();
+  // Static properties aren't animated on the compositor (see
+  // GetAnimationOnCompositor()), so they don't need composited property nodes.
+  // E.g. a static backdrop-filter animation isn't composited, see
+  // CompositingReasonFinder::CompositingReasonsForAnimation().
+  const bool skip_static_properties = RuntimeEnabledFeatures::
+      SkipCompositingStaticBackdropFilterAnimationEnabled();
+  const auto dynamic_properties =
+      keyframe_effect.DynamicProperties(&target_element);
   bool has_paint_properties =
       layout_object && layout_object->FirstFragment().PaintProperties();
   for (const PropertyHandle& property : groups.Keys()) {
     if (!CompositedAnimationRequiresProperties(property, layout_object))
       continue;
+
+    if (skip_static_properties && !dynamic_properties.Contains(property)) {
+      continue;
+    }
 
     if (!has_paint_properties) {
       // We have an animated property that requires a property node but no paint
@@ -868,11 +885,18 @@ namespace {
 void AddKeyframeToCurve(cc::KeyframedFilterAnimationCurve& curve,
                         Keyframe::PropertySpecificKeyframe* keyframe,
                         const CompositorKeyframeValue* value,
-                        const TimingFunction& keyframe_timing_function) {
+                        const TimingFunction& keyframe_timing_function,
+                        bool is_backdrop_filter) {
+  // Composited animations are not supported for html-in-canvas, and
+  // drawElementImage() uses main-thread paint records rather than compositor
+  // animation curves, so `is_in_canvas_subtree` can be false here.
   FilterEffectBuilder builder(gfx::RectF(), std::nullopt, 1, Color::kBlack,
-                              mojom::blink::ColorScheme::kLight);
+                              mojom::blink::ColorScheme::kLight,
+                              /*is_in_canvas_subtree=*/false);
   CompositorFilterOperations operations = builder.BuildFilterOperations(
-      To<CompositorKeyframeFilterOperations>(value)->Operations());
+      To<CompositorKeyframeFilterOperations>(value)->Operations(),
+      is_backdrop_filter);
+  DCHECK(!operations.HasReferenceFilter());
   std::unique_ptr<cc::FilterKeyframe> filter_keyframe =
       cc::FilterKeyframe::Create(base::Seconds(keyframe->Offset()),
                                  operations.ReleaseCcFilterOperations(),
@@ -1010,7 +1034,8 @@ void CompositorAnimations::GetAnimationOnCompositor(
       case CSSPropertyID::kFilter:
       case CSSPropertyID::kBackdropFilter: {
         auto filter_curve = cc::KeyframedFilterAnimationCurve::Create();
-        AddKeyframesToCurve(*filter_curve, values);
+        AddKeyframesToCurve(*filter_curve, values,
+                            css_property_id == CSSPropertyID::kBackdropFilter);
         filter_curve->SetTimingFunction(timing.timing_function->CloneToCC());
         filter_curve->set_scaled_duration(scale);
         curve = std::move(filter_curve);
@@ -1195,7 +1220,7 @@ CompositorAnimations::CheckCanStartTransformAnimationOnCompositorForSVG(
     const SVGElement& svg_element) {
   FailureReasons reasons = kNoFailure;
   if (const auto* layout_object = svg_element.GetLayoutObject()) {
-    if (layout_object->StyleRef().EffectiveZoom() != 1) {
+    if (layout_object->Style().EffectiveZoom() != 1) {
       // TODO(crbug.com/1186312): Composited transform animation with non-1
       // effective zoom is incorrectly scaled for now.
       // TODO(crbug.com/1134775): If a foreignObject's effect zoom is not 1,

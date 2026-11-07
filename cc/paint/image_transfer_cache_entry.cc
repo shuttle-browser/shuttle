@@ -20,10 +20,10 @@
 #include "base/numerics/safe_conversions.h"
 #include "cc/paint/paint_op_reader.h"
 #include "cc/paint/paint_op_writer.h"
-#include "third_party/skia/include/core/SkCPURecorder.h"
 #include "third_party/skia/include/core/SkColorSpace.h"
 #include "third_party/skia/include/core/SkImage.h"
 #include "third_party/skia/include/core/SkPixmap.h"
+#include "third_party/skia/include/core/SkRecorder.h"
 #include "third_party/skia/include/core/SkYUVAInfo.h"
 #include "third_party/skia/include/gpu/GpuTypes.h"
 #include "third_party/skia/include/gpu/ganesh/GrBackendSurface.h"
@@ -32,8 +32,6 @@
 #include "third_party/skia/include/gpu/ganesh/SkImageGanesh.h"
 #include "third_party/skia/include/gpu/graphite/Image.h"
 #include "third_party/skia/include/gpu/graphite/Recorder.h"
-#include "ui/gfx/hdr_metadata.h"
-#include "ui/gfx/mojom/hdr_metadata.mojom.h"
 
 namespace cc {
 namespace {
@@ -645,17 +643,8 @@ bool ServiceImageTransferCacheEntry::Deserialize(
     reader.Read(&gainmap_info_);
   }
 
-  // Skip color space conversion if this image will be tone mapped.
-  // TODO(https://crbug.com/395659818): This will inappropriately color convert
-  // SDR images with AGTM metadata. This will not affect the rendering result,
-  // but is odd. All of the caching of the color space conversion here should be
-  // removed.
-  const bool is_tone_mapped =
-      has_gainmap_ || ToneMapUtil::UseGlobalToneMapFilter(image_->colorSpace(),
-                                                          gfx::HDRMetadata());
-
-  // Perform color conversion (if no tone mapping is needed).
-  if (target_color_space && !is_tone_mapped) {
+  // Perform color conversion (unless the client opted out).
+  if (target_color_space) {
     if (graphite_recorder_) {
       SkImage::RequiredProperties props{.fMipmapped = needs_mips};
       image_ =
@@ -666,7 +655,7 @@ bool ServiceImageTransferCacheEntry::Deserialize(
       // Need to handle this case (currently just goes through gr_context path
       // with nullptr context).
       image_ = image_->makeColorSpace(
-          gr_context_ ? gr_context_->asRecorder() : skcpu::Recorder::TODO(),
+          gr_context_ ? gr_context_->asRecorder() : SkRecorder::TODO(),
           target_color_space, {});
       if (needs_mips && gr_context_ && image_ && image_->isTextureBacked()) {
         image_ = SkImages::TextureFromImage(

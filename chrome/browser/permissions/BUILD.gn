@@ -41,16 +41,6 @@ source_set("permissions") {
     "permission_manager_factory.h",
     "permission_revocation_request.cc",
     "permission_revocation_request.h",
-    "prediction_service/permissions_ai_ui_selector.cc",
-    "prediction_service/permissions_ai_ui_selector.h",
-    "prediction_service/prediction_model_handler_provider.cc",
-    "prediction_service/prediction_model_handler_provider.h",
-    "prediction_service/prediction_model_handler_provider_factory.cc",
-    "prediction_service/prediction_model_handler_provider_factory.h",
-    "prediction_service/prediction_service_factory.cc",
-    "prediction_service/prediction_service_factory.h",
-    "prediction_service/prediction_service_request.cc",
-    "prediction_service/prediction_service_request.h",
     "pref_based_quiet_permission_ui_selector.cc",
     "pref_based_quiet_permission_ui_selector.h",
     "quiet_notification_permission_ui_config.cc",
@@ -60,7 +50,6 @@ source_set("permissions") {
   ]
 
   public_deps = [
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/permissions/system",
     "//chrome/browser/ui/navigator",
@@ -83,7 +72,6 @@ source_set("permissions") {
     "//chrome/browser/media",
     "//chrome/browser/metrics",
     "//chrome/browser/nfc",
-    "//chrome/browser/optimization_guide",
     "//chrome/browser/profiles",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/pwc",
@@ -109,10 +97,7 @@ source_set("permissions") {
     "//components/google/core/common",
     "//components/infobars/content",
     "//components/keyed_service/content",
-    "//components/optimization_guide/core",
-    "//components/optimization_guide/proto:optimization_guide_proto",
     "//components/permissions",
-    "//components/permissions/prediction_service",
     "//components/pref_registry",
     "//components/prefs",
     "//components/safe_browsing/core/browser:safe_browsing_metrics_collector",
@@ -120,10 +105,8 @@ source_set("permissions") {
     "//components/safe_browsing/core/browser/db:v5_get_hash_protocol_manager",
     "//components/safe_browsing/core/common",
     "//components/safe_browsing/core/common:safe_browsing_prefs",
-    "//components/segmentation_platform/internal:optimization_guide_segmentation_handler",
     "//components/site_engagement/content",
     "//components/subresource_filter/content/browser",
-    "//components/supervised_user/core/common:features",
     "//components/unified_consent",
     "//components/vector_icons",
     "//content/public/browser",
@@ -156,7 +139,6 @@ source_set("permissions") {
       deps += [ "//device/vr/public/cpp:features" ]
     }
   }
-  allow_circular_includes_from = []
 
   if (enable_extensions_core) {
     deps += [ "//extensions/common" ]
@@ -193,8 +175,6 @@ source_set("permissions") {
 
   if (safe_browsing_mode != 0) {
     sources += [
-      "prediction_service/contextual_notification_permission_ui_selector.cc",
-      "prediction_service/contextual_notification_permission_ui_selector.h",
     ]
   }
 }

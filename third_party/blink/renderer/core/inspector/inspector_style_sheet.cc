@@ -27,8 +27,8 @@
 
 #include <algorithm>
 #include <memory>
+#include <ranges>
 
-#include "base/containers/adapters.h"
 #include "third_party/blink/public/common/dom/dom_node_id.h"
 #include "third_party/blink/renderer/core/css/css_container_rule.h"
 #include "third_party/blink/renderer/core/css/css_counter_style_rule.h"
@@ -206,7 +206,8 @@ BuildSpecificityComponents(const CSSSelector* selector) {
   }
   auto components =
       std::make_unique<protocol::Array<protocol::CSS::SpecificityComponent>>();
-  for (const Vector<const CSSSelector*>& compound : base::Reversed(compounds)) {
+  for (const Vector<const CSSSelector*>& compound :
+       std::views::reverse(compounds)) {
     for (const CSSSelector* simple_selector : compound) {
       std::array<uint8_t, 3> tuple =
           simple_selector->SimpleSelectorSpecificityTuple();
@@ -2394,6 +2395,16 @@ InspectorStyleSheet::BuildObjectForRuleUsage(CSSRule* rule, bool was_used) {
       type == CSSRule::kScopeRule || type == CSSRule::kContainerRule ||
       type == CSSRule::kStartingStyleRule || type == CSSRule::kNavigationRule) {
     whole_rule_range.end = source_data->rule_header_range.end + 1;
+  } else if (type == CSSRule::kStyleRule) {
+    if (!source_data->child_rules.empty()) {
+      whole_rule_range.end = source_data->property_data.empty()
+                                 ? source_data->rule_header_range.end + 1
+                                 : source_data->rule_declarations_range.end;
+    } else if (source_data->rule_header_range.length() == 0) {
+      // CSSNestedDeclarations rules have no prelude or `{}` braces, so
+      // `rule_declarations_range.end` is already the exclusive end offset.
+      whole_rule_range.end = source_data->rule_declarations_range.end;
+    }
   }
 
   std::unique_ptr<protocol::CSS::RuleUsage> result =

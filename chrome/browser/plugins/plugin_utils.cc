@@ -55,10 +55,12 @@ bool IsExtensionAllowedInProfile(Profile* profile,
   return true;
 }
 
-bool IsExtensionAllowedForMimeType(Profile* profile,
-                                   const extensions::ExtensionId& extension_id,
-                                   const std::string& mime_type,
-                                   bool embedded) {
+bool IsExtensionAllowedForMimeType(
+    Profile* profile,
+    const extensions::MimeHandlerRegistry& registry,
+    const extensions::ExtensionId& extension_id,
+    const std::string& mime_type,
+    bool embedded) {
   if (!IsExtensionAllowedInProfile(profile, extension_id, mime_type)) {
     return false;
   }
@@ -70,8 +72,7 @@ bool IsExtensionAllowedForMimeType(Profile* profile,
     return false;
   }
 
-  const MimeTypesHandler* handler = MimeTypesHandler::Get(*extension);
-  if (!handler) {
+  if (!MimeTypesHandler::Get(*extension)) {
     return false;
   }
 
@@ -79,7 +80,7 @@ bool IsExtensionAllowedForMimeType(Profile* profile,
     return true;
   }
 
-  return handler->IsPluginExtension() || handler->CanEmbedMimeType(mime_type);
+  return registry.CanEmbedForMimeType(extension_id, mime_type, profile);
 }
 
 }  // namespace
@@ -115,9 +116,9 @@ std::string PluginUtils::GetExtensionIdForMimeType(
   auto* registry = extensions::MimeHandlerRegistry::Get(browser_context);
   CHECK(registry);
   for (const extensions::ExtensionId& extension_id :
-       registry->GetHandlersForMimeType(mime_type)) {
-    if (IsExtensionAllowedForMimeType(profile, extension_id, mime_type,
-                                      embedded)) {
+       registry->GetHandlersForMimeType(mime_type, browser_context)) {
+    if (IsExtensionAllowedForMimeType(profile, *registry, extension_id,
+                                      mime_type, embedded)) {
       return extension_id;
     }
   }
@@ -140,7 +141,8 @@ PluginUtils::GetMimeTypeToExtensionIdMap(
   extensions::MimeHandlerRegistry* registry =
       extensions::MimeHandlerRegistry::Get(browser_context);
   CHECK(registry);
-  for (const auto& [mime_type, handlers] : registry->GetHandlersByMimeType()) {
+  for (const auto& [mime_type, handlers] :
+       registry->GetHandlersByMimeType(browser_context)) {
     for (const extensions::ExtensionId& extension_id : handlers) {
       if (IsExtensionAllowedInProfile(profile, extension_id, mime_type)) {
         mime_type_to_extension_id_map[mime_type] = extension_id;

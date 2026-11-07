@@ -33,7 +33,6 @@
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_selection_state.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
 #include "components/sessions/content/content_live_tab.h"
@@ -47,6 +46,7 @@
 #include "components/tab_groups/tab_group_visual_data.h"
 #include "components/tabs/public/split_tab_data.h"
 #include "components/tabs/public/tab_group.h"
+#include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/session_storage_namespace_handle.h"
 #include "content/public/browser/web_contents.h"
@@ -163,18 +163,10 @@ std::map<std::string, std::string>
 BrowserLiveTabContext::GetExtraDataForWindow() const {
   std::map<std::string, std::string> data;
 
-  auto* controller =
-      tabs::VerticalTabStripStateController::From(&browser_.get());
-  if (controller) {
-    data[tabs::VerticalTabStripStateController::kCollapsedKey] =
-        base::ToString(controller->IsCollapsed());
-    data[tabs::VerticalTabStripStateController::kUncollapsedWidthKey] =
-        base::NumberToString(controller->GetUncollapsedWidth());
-  }
-
   if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
     if (std::optional<tab_groups::TabGroupId> focused_group =
-            tab_strip_model_->GetFocusedGroup()) {
+            tab_strip_model_->GetFocusedGroup();
+        focused_group.has_value() && !IsEphemeralTabGroup(*focused_group)) {
       data[tabs::TabStripModelSelectionState::kFocusedTabGroupIdKey] =
           focused_group->ToString();
     }
@@ -223,6 +215,11 @@ BrowserLiveTabContext::GetSavedTabGroupIdForGroup(
 const std::optional<tab_groups::TabGroupId>
 BrowserLiveTabContext::GetGroupIdForSavedGroup(const base::Uuid& saved) const {
   return std::nullopt;
+}
+
+bool BrowserLiveTabContext::IsEphemeralTabGroup(
+    const tab_groups::TabGroupId& group) const {
+  return tab_strip_model_->IsEphemeralTabGroup(group);
 }
 
 bool BrowserLiveTabContext::IsTabPinned(int index) const {
@@ -292,6 +289,11 @@ sessions::LiveTab* BrowserLiveTabContext::AddRestoredTab(
   // normal tab instead. See crbug.com/368139715.
   std::optional<tab_groups::TabGroupId> group_id =
       tab_strip_model_->SupportsTabGroups() ? tab.group : std::nullopt;
+  if (tab.is_group_ephemeral && group_id.has_value() &&
+      (!tab_strip_model_->group_model() ||
+       !tab_strip_model_->group_model()->ContainsTabGroup(group_id.value()))) {
+    group_id = std::nullopt;
+  }
   content::WebContents* web_contents = nullptr;
 
   BrowserWindowInterface* const browser = &*browser_;
@@ -394,24 +396,6 @@ sessions::LiveTabContext* BrowserLiveTabContext::Create(
   create_params->initial_show_state = show_state;
   create_params->initial_workspace = workspace;
   create_params->user_title = user_title;
-
-  if (extra_data.contains(
-          tabs::VerticalTabStripStateController::kCollapsedKey)) {
-    create_params->vertical_tab_strip_collapsed =
-        extra_data.at(tabs::VerticalTabStripStateController::kCollapsedKey) ==
-        "true";
-  }
-
-  if (extra_data.contains(
-          tabs::VerticalTabStripStateController::kUncollapsedWidthKey)) {
-    int uncollapsed_width = 0;
-    if (base::StringToInt(
-            extra_data.at(
-                tabs::VerticalTabStripStateController::kUncollapsedWidthKey),
-            &uncollapsed_width)) {
-      create_params->vertical_tab_strip_uncollapsed_width = uncollapsed_width;
-    }
-  }
 
   if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
     auto it = extra_data.find(

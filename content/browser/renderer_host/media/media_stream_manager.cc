@@ -35,6 +35,7 @@
 #include "content/browser/media/media_devices_permission_checker.h"
 #include "content/browser/media/media_devices_util.h"
 #include "content/browser/permissions/permission_controller_impl.h"
+#include "content/browser/permissions/permission_subscription_impl.h"
 #include "content/browser/renderer_host/media/audio_input_device_manager.h"
 #include "content/browser/renderer_host/media/in_process_video_capture_provider.h"
 #include "content/browser/renderer_host/media/media_capture_devices_impl.h"
@@ -125,7 +126,14 @@ using ::blink::mojom::StreamSelectionInfoPtr;
 // If enabled, the device name is also used when comparing devices in
 // FindExistingRequestedDevice.
 BASE_FEATURE(kEnumerateDevicesUseNameInDeviceComparison,
-             base::FEATURE_ENABLED_BY_DEFAULT);
+#if BUILDFLAG(IS_CHROMEOS)
+             // Disabled on ChromeOS as CRAS default streams automatically track
+             // the active input node (https://crbug.com/531681896).
+             base::FEATURE_DISABLED_BY_DEFAULT
+#else
+             base::FEATURE_ENABLED_BY_DEFAULT
+#endif
+);
 
 namespace {
 enum class StopAudioEvent {
@@ -1676,7 +1684,9 @@ MediaStreamManager::~MediaStreamManager() {
 
 VideoCaptureManager* MediaStreamManager::video_capture_manager() const {
   CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M158);
-  CHECK(video_capture_manager_.get(), base::NotFatalUntil::M158);
+  // TODO(crbug.com/565233977): CHECK-exclusion: Convert to a CHECK once we
+  // are confident it won't be triggered.
+  DCHECK(video_capture_manager_.get());
   return video_capture_manager_.get();
 }
 
@@ -2113,10 +2123,9 @@ void MediaStreamManager::CloseDevice(MediaStreamType type,
         // Notify observers that this device is being closed.
         // Note that only one device per type can be opened.
         request->SetState(type, MEDIA_REQUEST_STATE_CLOSING);
-        // AudioInputDeviceManager does not have a mechanism to stop the audio
-        // stream when the session is closed, while VideoCaptureManager does.
-        // To ensure consistent behavior when sessions are closed, use the
-        // stop callback to stop audio streams.
+        // AudioInputDeviceManager::Close() above has already torn down the
+        // browser-side audio streams of this session. Notify the renderer so
+        // that it ends the corresponding tracks.
         if (blink::IsAudioInputMediaType(device.type) &&
             request->device_stopped_callback) {
           request->device_stopped_callback.Run(labeled_request.first, device);
@@ -4568,16 +4577,6 @@ void MediaStreamManager::RegisterVideoCaptureHost(
 #endif
 }
 
-std::optional<url::Origin> MediaStreamManager::GetOriginByVideoSessionId(
-    const base::UnguessableToken& session_id) {
-  SessionType actual_type;
-  DeviceRequest* request = FindRequestBySessionId(session_id, &actual_type);
-  if (request == nullptr || actual_type != SessionType::kVideo) {
-    return std::nullopt;
-  }
-  return request->salt_and_origin.origin();
-}
-
 bool MediaStreamManager::IsSessionAllowedOnLockScreen(
     const base::UnguessableToken& session_id) {
   SessionType actual_type;
@@ -4641,34 +4640,54 @@ void MediaStreamManager::SubscribeToPermissionControllerOnUIThread(
   PermissionController::SubscriptionId audio_subscription_id;
   PermissionController::SubscriptionId video_subscription_id;
 
+  // These subscriptions cannot be owned by a PermissionSubscription handle:
+  // they are tracked by the DeviceRequest on the IO thread, while they must be
+  // torn down on the UI thread. Release() hands ownership back to the manual
+  // UnsubscribeFromPermissionControllerOnUIThread() bookkeeping below.
+  // TODO(crbug.com/40056329): Keep the handles in a UI-thread-owned map keyed
+  // by `label` so that the subscriptions are also RAII-managed here.
   if (is_audio_request) {
     // It is safe to bind base::Unretained(this) because MediaStreamManager is
     // owned by BrowserMainLoop.
-    audio_subscription_id = controller->SubscribeToPermissionResultChange(
-        PermissionDescriptorUtil::CreatePermissionDescriptorForPermissionType(
-            blink::PermissionType::AUDIO_CAPTURE),
-        /*render_process_host=*/nullptr,
-        RenderFrameHost::FromID(requesting_render_frame_host_id), origin,
-        /*should_include_device_status=*/false,
-        base::BindRepeating(&MediaStreamManager::PermissionChangedCallback,
-                            base::Unretained(this),
-                            requesting_render_frame_host_id, requester_id,
-                            page_request_id));
+    audio_subscription_id =
+        static_cast<PermissionSubscriptionImpl*>(
+            controller
+                ->SubscribeToPermissionResultChange(
+                    PermissionDescriptorUtil::
+                        CreatePermissionDescriptorForPermissionType(
+                            blink::PermissionType::AUDIO_CAPTURE),
+                    /*render_process_host=*/nullptr,
+                    RenderFrameHost::FromID(requesting_render_frame_host_id),
+                    origin,
+                    /*should_include_device_status=*/false,
+                    base::BindRepeating(
+                        &MediaStreamManager::PermissionChangedCallback,
+                        base::Unretained(this), requesting_render_frame_host_id,
+                        requester_id, page_request_id))
+                .get())
+            ->Release();
   }
 
   if (is_video_request) {
     // It is safe to bind base::Unretained(this) because MediaStreamManager is
     // owned by BrowserMainLoop.
-    video_subscription_id = controller->SubscribeToPermissionResultChange(
-        PermissionDescriptorUtil::CreatePermissionDescriptorForPermissionType(
-            blink::PermissionType::VIDEO_CAPTURE),
-        /*render_process_host=*/nullptr,
-        RenderFrameHost::FromID(requesting_render_frame_host_id), origin,
-        /*should_include_device_status=*/false,
-        base::BindRepeating(&MediaStreamManager::PermissionChangedCallback,
-                            base::Unretained(this),
-                            requesting_render_frame_host_id, requester_id,
-                            page_request_id));
+    video_subscription_id =
+        static_cast<PermissionSubscriptionImpl*>(
+            controller
+                ->SubscribeToPermissionResultChange(
+                    PermissionDescriptorUtil::
+                        CreatePermissionDescriptorForPermissionType(
+                            blink::PermissionType::VIDEO_CAPTURE),
+                    /*render_process_host=*/nullptr,
+                    RenderFrameHost::FromID(requesting_render_frame_host_id),
+                    origin,
+                    /*should_include_device_status=*/false,
+                    base::BindRepeating(
+                        &MediaStreamManager::PermissionChangedCallback,
+                        base::Unretained(this), requesting_render_frame_host_id,
+                        requester_id, page_request_id))
+                .get())
+            ->Release();
   }
 
   // It is safe to bind base::Unretained(this) because MediaStreamManager is

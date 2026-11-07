@@ -300,33 +300,6 @@ SafeBrowsingUIManager::CreateBlockingPage(
     bool forward_extension_event,
     std::optional<base::TimeTicks> blocked_page_shown_timestamp) {
   security_interstitials::SecurityInterstitialPage* blocking_page = nullptr;
-  if (unsafe_resource.threat_type ==
-      SBThreatType::SB_THREAT_TYPE_MANAGED_POLICY_WARN) {
-    blocking_page = blocking_page_factory_->CreateEnterpriseWarnPage(
-        this, contents, blocked_url, {unsafe_resource});
-
-    // Report that we showed an interstitial.
-    if (forward_extension_event) {
-      ForwardUrlFilteringInterstitialExtensionEventToEmbedder(
-          contents, blocked_url, "ENTERPRISE_WARNED_SEEN",
-          unsafe_resource.rt_lookup_response,
-          /*is_bypassing_interstitial=*/false);
-    }
-    return blocking_page;
-  } else if (unsafe_resource.threat_type ==
-             SBThreatType::SB_THREAT_TYPE_MANAGED_POLICY_BLOCK) {
-    blocking_page = blocking_page_factory_->CreateEnterpriseBlockPage(
-        this, contents, blocked_url, {unsafe_resource});
-
-    // Report that we showed an interstitial.
-    if (forward_extension_event) {
-      ForwardUrlFilteringInterstitialExtensionEventToEmbedder(
-          contents, blocked_url, "ENTERPRISE_BLOCKED_SEEN",
-          unsafe_resource.rt_lookup_response,
-          /*is_bypassing_interstitial=*/false);
-    }
-    return blocking_page;
-  }
   blocking_page = blocking_page_factory_->CreateSafeBrowsingPage(
       this, contents, blocked_url, {unsafe_resource},
       blocked_page_shown_timestamp);

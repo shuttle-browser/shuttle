@@ -139,6 +139,7 @@ void SodaInstallerImpl::UninstallSoda(PrefService* global_prefs) {
       base::BindOnce(&SodaInstallerImpl::DeleteSodaFiles));
 
   SodaInstaller::UnregisterLanguages(global_prefs);
+  global_prefs->ClearPref(prefs::kSodaBinaryPath);
 
   soda_binary_installed_ = false;
   is_soda_downloading_ = false;
@@ -160,7 +161,7 @@ void SodaInstallerImpl::OnEvent(const update_client::CrxUpdateItem& item) {
   if (item.id !=
       component_updater::SodaComponentInstallerPolicy::GetExtensionId()) {
     language_code = GetLanguageCodeByComponentId(item.id);
-    DCHECK_NE(language_code, LanguageCode::kNone);
+    CHECK_NE(language_code, LanguageCode::kNone, base::NotFatalUntil::M161);
   }
 
   switch (item.state) {

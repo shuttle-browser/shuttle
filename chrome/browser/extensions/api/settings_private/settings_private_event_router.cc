@@ -36,7 +36,7 @@ SettingsPrivateEventRouter::SettingsPrivateEventRouter(
 }
 
 SettingsPrivateEventRouter::~SettingsPrivateEventRouter() {
-  DCHECK(!listening_);
+  CHECK(!listening_, base::NotFatalUntil::M161);
 }
 
 void SettingsPrivateEventRouter::OnGeneratedPrefChanged(
@@ -88,7 +88,7 @@ PrefChangeRegistrar* SettingsPrivateEventRouter::FindRegistrarForPref(
 }
 
 void SettingsPrivateEventRouter::StartOrStopListeningForPrefsChanges() {
-  DCHECK(prefs_util_);
+  CHECK(prefs_util_, base::NotFatalUntil::M161);
   EventRouter* event_router = EventRouter::Get(context_);
   bool should_listen = event_router->HasEventListener(
       api::settings_private::OnPrefsChanged::kEventName);
@@ -161,12 +161,12 @@ void SettingsPrivateEventRouter::SendPrefChange(const std::string& pref_name) {
     prefs.push_back(std::move(*pref_object));
   }
 
-  auto args(api::settings_private::OnPrefsChanged::Create(prefs));
-
-  std::unique_ptr<Event> extension_event =
+  auto event_args = base::MakeRefCounted<EventArgs>(
+      api::settings_private::OnPrefsChanged::Create(prefs));
+  auto extension_event =
       std::make_unique<Event>(events::SETTINGS_PRIVATE_ON_PREFS_CHANGED,
                               api::settings_private::OnPrefsChanged::kEventName,
-                              std::move(args), context_);
+                              std::move(event_args), context_);
   event_router->BroadcastEvent(std::move(extension_event));
 }
 

@@ -10,8 +10,6 @@
 //     third_party/blink/public/mojom/speculation_rules/speculation_rules.mojom
 //
 
-private let mojoPrefix = "blink.mojom."
-
 ///
 /// Interfaces
 ///
@@ -27,9 +25,10 @@ extension ILType {
         ])
     fileprivate static let jsBlinkMojomSpeculationHostRemoteWrapper: ILType = .object(
         ofGroup: "blink.mojom.SpeculationHostRemoteWrapper",
-        withMethods: ["close", "isBound", "associateAndPassReceiver"])
-    fileprivate static let jsBlinkMojomSpeculationHostPendingReceiver: ILType = .object(
-        ofGroup: "blink.mojom.SpeculationHostPendingReceiver")
+        withMethods: [
+          "close",
+          "isBound",
+        ])
 }
 
 extension ObjectGroup {
@@ -40,7 +39,7 @@ extension ObjectGroup {
         properties: ["$": .jsBlinkMojomSpeculationHostRemoteWrapper],
         methods: [
             "updateSpeculationCandidates": [
-                .plain(.jsBlinkMojomSpeculationCandidateArray),
+                .plain(.jsBlinkMojomSpeculationCandidateMojoArray),
                 .plain(.boolean),
             ] => .undefined,
             "onLCPPredicted": [
@@ -59,16 +58,7 @@ extension ObjectGroup {
         methods: [
             "close": [] => .undefined,
             "isBound": [] => .boolean,
-            "associateAndPassReceiver": [] => .jsBlinkMojomSpeculationHostPendingReceiver,
-        ]
-    )
-
-    fileprivate static let blinkMojomSpeculationHostPendingReceiver = ObjectGroup(
-        name: "blink.mojom.SpeculationHostPendingReceiver",
-        instanceType: .jsBlinkMojomSpeculationHostPendingReceiver,
-        properties: [:],
-        methods: [:]
-    )
+        ])
 }
 
 ///
@@ -98,7 +88,7 @@ extension ILType {
         .plain(.jsBlinkMojomSpeculationEagerness),
         .either(.jsNetworkMojomNoVarySearch, .undefined),
         .plain(.jsBlinkMojomSpeculationInjectionType),
-        .plain(.jsStringArray),
+        .plain(.jsStringMojoArray),
         .plain(.boolean),
     ] => .jsBlinkMojomSpeculationCandidate)
     fileprivate static let jsBlinkMojomReferrer: ILType = .object(
@@ -118,7 +108,7 @@ extension ILType {
             "varyOnKeyOrder",
         ])
     fileprivate static let jsNetworkMojomNoVarySearchConstructor: ILType = .constructor([
-        .plain(.jsNetworkMojomSearchParamsVariance),
+        .plain(.jsNetworkMojomSearchParamsVarianceUnion),
         .plain(.boolean),
     ] => .jsNetworkMojomNoVarySearch)
 }
@@ -136,7 +126,7 @@ extension ObjectGroup {
             "eagerness": .jsBlinkMojomSpeculationEagerness,
             "noVarySearchHint": .jsNetworkMojomNoVarySearch,
             "injectionType": .jsBlinkMojomSpeculationInjectionType,
-            "tags": .jsStringArray,
+            "tags": .jsStringMojoArray,
             "formSubmission": .boolean,
         ],
         methods: [:]
@@ -154,7 +144,7 @@ extension ObjectGroup {
         name: "network.mojom.NoVarySearch",
         instanceType: .jsNetworkMojomNoVarySearch,
         properties: [
-            "searchVariance": .jsNetworkMojomSearchParamsVariance,
+            "searchVariance": .jsNetworkMojomSearchParamsVarianceUnion,
             "varyOnKeyOrder": .boolean,
         ],
         methods: [:]
@@ -165,10 +155,10 @@ extension ObjectGroup {
 /// Arrays
 ///
 extension ILType {
-    fileprivate static let jsBlinkMojomSpeculationCandidateArray: ILType =
+    fileprivate static let jsBlinkMojomSpeculationCandidateMojoArray: ILType =
         .createJsArrayType(ofElementType: .jsBlinkMojomSpeculationCandidate)
-    fileprivate static let jsStringArray: ILType =
-        .createJsArrayType(ofElementType: .jsStringElement)
+    fileprivate static let jsStringMojoArray: ILType =
+        .createJsArrayType(ofElementType: .string)
 }
 
 /// As Fuzzilli runs, the OperationMutator and VariadicInputReducer will modify
@@ -182,29 +172,23 @@ extension ILType {
 /// to prevent the CodeGenerator from being scheduled first when there are
 /// no visible variables, as `findOrGenerateType` causes a crash if there
 /// are no visibile variables.
-private let MojoBlinkMojomSpeculationCandidateArrayGenerator = CodeGenerator(
-    "MojoBlinkMojomSpeculationCandidateArrayGenerator",
+private let MojoBlinkMojomSpeculationCandidateMojoArrayGenerator = CodeGenerator(
+    "MojoBlinkMojomSpeculationCandidateMojoArrayGenerator",
     inputs: .one,
-    produces: [.jsBlinkMojomSpeculationCandidateArray]
+    produces: [.jsBlinkMojomSpeculationCandidateMojoArray]
 ) { b, _ in
     let elem = b.findOrGenerateType(.jsBlinkMojomSpeculationCandidate)
     var elements: [Variable] = [elem]
-    b.createArray(
-        with: elements,
-        elementGroupName:
-            ObjectGroup.blinkMojomSpeculationCandidate.name)
+    b.createArray(with: elements)
 }
-private let MojoStringArrayGenerator = CodeGenerator(
-    "MojoStringArrayGenerator",
+private let MojoStringMojoArrayGenerator = CodeGenerator(
+    "MojoStringMojoArrayGenerator",
     inputs: .one,
-    produces: [.jsStringArray]
+    produces: [.jsStringMojoArray]
 ) { b, _ in
     let elem = b.findOrGenerateType(.string)
     var elements: [Variable] = [elem]
-    b.createArray(
-        with: elements,
-        elementGroupName:
-            ObjectGroup.stringElement.name)
+    b.createArray(with: elements)
 }
 
 ///
@@ -235,28 +219,39 @@ extension ILType {
 /// Unions
 ///
 extension ILType {
-    fileprivate static let jsNetworkMojomSearchParamsVariance: ILType =
-        OptionsBag.networkMojomSearchParamsVariance.group.instanceType
+    fileprivate static let jsNetworkMojomSearchParamsVarianceUnion: ILType = .object(
+        ofGroup: "network.mojom.SearchParamsVariance",
+        withProperties: [
+            "noVaryParams",
+            "varyParams",
+        ])
+    fileprivate static let jsNetworkMojomSearchParamsVarianceUnionNoVaryParamsConstructor: ILType = .constructor(
+        [.plain(.jsStringMojoArray)] => .jsNetworkMojomSearchParamsVarianceUnion)
+    fileprivate static let jsNetworkMojomSearchParamsVarianceUnionVaryParamsConstructor: ILType = .constructor(
+        [.plain(.jsStringMojoArray)] => .jsNetworkMojomSearchParamsVarianceUnion)
 }
 
-extension OptionsBag {
-    fileprivate static let networkMojomSearchParamsVariance = OptionsBag(
+extension ObjectGroup {
+    fileprivate static let networkMojomSearchParamsVarianceUnion = ObjectGroup(
         name: "network.mojom.SearchParamsVariance",
+        instanceType: .jsNetworkMojomSearchParamsVarianceUnion,
         properties: [
-            "noVaryParams": .jsStringArray,
-            "varyParams": .jsStringArray,
+            "noVaryParams": .jsStringMojoArray,
+            "varyParams": .jsStringMojoArray,
         ],
-        selectionMode: .exactlyOne,
+        methods: [:]
     )
 }
 
 ///
 /// Generators
 ///
-// TODO(crbug.com/500386713) Consider using mojoBuiltins or another list instead of regex
+/// Names of every ObjectGroup registered by this profile.
+private let mojoTargetGroups = Set(mojoObjectGroups.map { $0.name })
+
 private func isTargetObject(type: ILType) -> Bool {
     guard type.Is(.object()), let group = type.group else { return false }
-    return group.starts(with: mojoPrefix)
+    return mojoTargetGroups.contains(group)
 }
 
 /// Mojo variant of the builtin `MethodCallGenerator` that operates only on
@@ -281,7 +276,7 @@ private let MojoMethodCallGenerator = CodeGenerator("MojoMethodCallGenerator") {
     let methodName = b.type(of: obj).randomMethod()!
     let signatures = b.methodSignatures(of: methodName, on: obj)
     let signature = chooseUniform(from: signatures)
-    let arguments = b.findOrGenerateArguments(forSignature: signature)
+    let arguments = b.findOrGenerateArguments(forSignature: signature, maxNumberOfVariablesToGenerate: 1000)
     b.callMethod(methodName, on: obj, withArgs: arguments, guard: false)
 }
 
@@ -300,21 +295,37 @@ private let MojoPropertyRetrievalGenerator = CodeGenerator(
     b.getProperty(propertyName, of: obj)
 }
 
+/// Every ObjectGroup registered by this profile. Also used by `isTargetObject`
+/// to decide which variables the Mojo generators operate on.
+private let mojoObjectGroups: [ObjectGroup] = [
+    .blinkMojomSpeculationHostRemote,
+    .blinkMojomSpeculationHostRemoteWrapper,
+    .blinkMojomSpeculationCandidate,
+    .blinkMojomReferrer,
+    .networkMojomNoVarySearch,
+    .networkMojomSearchParamsVarianceUnion,
+] + commonMojoObjectGroups
+
 private let mojoBuiltins: [String: ILType] = [
     /// Profiles declare this method, a wrapper method around `getRemote` that follows
     /// the Singleton pattern, in `codePrefix`. This method ensures: (1) `getRemote`
     /// is only called once, and (2) the remote is saved to a global variable so it
     /// can be closed at the end of the program.
     "getOrCreatePrimaryRemote": .function([] => .jsBlinkMojomSpeculationHostRemote),
+    /// Declared in `codePrefix`. `MojoAsyncFunctionGenerator` pushes the promise
+    /// of every async function it emits, and `codeSuffix` awaits them all. Typed
+    /// as an opaque object Fuzzilli does not use it as a general-purpose array.
+    "mojoAsyncFunctionPromises": .object(withMethods: ["push"]),
     "blink.mojom.SpeculationCandidate": .jsBlinkMojomSpeculationCandidateConstructor,
     "blink.mojom.Referrer": .jsBlinkMojomReferrerConstructor,
     "network.mojom.NoVarySearch": .jsNetworkMojomNoVarySearchConstructor,
+    "network.mojom.SearchParamsVariance.noVaryParams": .jsNetworkMojomSearchParamsVarianceUnionNoVaryParamsConstructor,
+    "network.mojom.SearchParamsVariance.varyParams": .jsNetworkMojomSearchParamsVarianceUnionVaryParamsConstructor,
 ]
 
 private let keepGenerators = [
     "IntegerGenerator", "StringGenerator", "TernaryOperationGenerator",
-    "PlainFunctionGenerator", "AsyncFunctionGenerator", "AwaitGenerator",
-    "SubroutineReturnGenerator", "TryCatchGenerator",
+    "PlainFunctionGenerator", "SubroutineReturnGenerator", "TryCatchGenerator",
 ]
 
 private let mojoDisabledGenerators: [String] = CodeGenerators.map { $0.name }
@@ -328,18 +339,35 @@ let mojoSpeculationHostProfile = Profile(
     processEnv: [
         "ASAN_OPTIONS": "detect_odr_violation=0:abort_on_error=1", "DISPLAY": ":20",
     ],
-    maxExecsBeforeRespawn: 1000,
+    maxExecsBeforeRespawn: 50,
     timeout: Timeout.interval(11000, 11000),
+    // The first statement tells js_in_process_fuzzer which Mojo scripts page to
+    // load before running the program.
     codePrefix: """
+        // --- Begin program prefix ---
+        'mojo-scripts-page: /gen/third_party/blink/public/mojom/speculation_rules/speculation_rules.mojom-scripts-page.html';
         let globalRemote = null;
+        const mojoAsyncFunctionPromises = [];
         function getOrCreatePrimaryRemote() {
             if (!globalRemote) {
                 globalRemote = blink.mojom.SpeculationHost.getRemote();
             }
             return globalRemote;
         }
+        // --- End program prefix ---
         """,
-    codeSuffix: "if (globalRemote) {globalRemote.$.close()}",
+    codeSuffix: """
+        // --- Begin program suffix ---
+        // ExecJs awaits the promise returned by the last statement, so the
+        // async functions run to completion (including code after `await`)
+        // before the primary remote is closed. The leading `;` stops this from
+        // being parsed as a call on the program's last line.
+        ;(async () => {
+            await Promise.allSettled(mojoAsyncFunctionPromises);
+            if (globalRemote) {globalRemote.$.close()}
+        })();
+        // --- End program suffix ---
+        """,
     ecmaVersion: v8Profile.ecmaVersion,
     startupTests: [
         ("fuzzilli('FUZZILLI_PRINT', 'test')", .shouldSucceed),
@@ -355,8 +383,8 @@ let mojoSpeculationHostProfile = Profile(
     additionalCodeGenerators: [
         (MojoMethodCallGenerator, 10000),
         (MojoPropertyRetrievalGenerator, 10000),
-        (MojoBlinkMojomSpeculationCandidateArrayGenerator, 1),
-        (MojoStringArrayGenerator, 1),
+        (MojoBlinkMojomSpeculationCandidateMojoArrayGenerator, 1),
+        (MojoStringMojoArrayGenerator, 1),
     ] + commonMojoCodeGenerators,
     additionalProgramTemplates: WeightedList([]),
     disabledCodeGenerators: mojoDisabledGenerators,
@@ -364,14 +392,7 @@ let mojoSpeculationHostProfile = Profile(
         "ExplorationMutator", "ProbingMutator", "PropertyAccessorMutator"
     ],
     additionalBuiltins: mojoBuiltins.merging(commonMojoBuiltins) { (existing, _) in existing },
-    additionalObjectGroups: [
-        .blinkMojomSpeculationHostRemote,
-        .blinkMojomSpeculationHostRemoteWrapper,
-        .blinkMojomSpeculationHostPendingReceiver,
-        .blinkMojomSpeculationCandidate,
-        .blinkMojomReferrer,
-        .networkMojomNoVarySearch,
-    ] + commonMojoObjectGroups,
+    additionalObjectGroups: mojoObjectGroups,
     additionalEnumerations: [
         .jsBlinkMojomSpeculationAction,
         .jsNetworkMojomReferrerPolicy,
@@ -380,8 +401,6 @@ let mojoSpeculationHostProfile = Profile(
         .jsBlinkMojomSpeculationInjectionType,
         .jsBlinkMojomSpeculationHeuristic,
     ] + commonMojoEnumerations,
-    additionalOptionsBags: [
-        .networkMojomSearchParamsVariance,
-    ] + commonMojoOptionsBags,
+    additionalOptionsBags: [] + commonMojoOptionsBags,
     optionalPostProcessor: nil
 )

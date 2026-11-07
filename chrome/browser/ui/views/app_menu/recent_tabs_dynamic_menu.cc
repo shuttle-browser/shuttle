@@ -14,7 +14,6 @@
 #include "base/metrics/user_metrics_action.h"
 #include "chrome/browser/favicon/favicon_service_factory.h"
 #include "chrome/browser/favicon/history_ui_favicon_request_handler_factory.h"
-#include "chrome/browser/sessions/session_restore.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "chrome/browser/ui/actions/chrome_action_properties.h"
 #include "chrome/browser/ui/browser_actions.h"
@@ -31,10 +30,26 @@
 #include "components/sessions/core/live_tab_context.h"
 #include "components/sessions/core/session_id.h"
 #include "components/sessions/core/tab_restore_service.h"
-#include "components/tabs/public/tab_interface.h"
 #include "ui/actions/actions.h"
+#include "ui/base/accelerators/menu_label_accelerator_util.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/color/color_id.h"
+
+namespace {
+
+bool MayHaveMnemonics(const RecentTabItem& item) {
+  if (item.type() == RecentTabItem::Type::kCommand) {
+    return true;
+  }
+  // The "Restore split view" action uses Type::kSplit for metrics tracking,
+  // but acts as a command item that allows mnemonics.
+  if (item.type() == RecentTabItem::Type::kSplit && item.children().empty()) {
+    return true;
+  }
+  return false;
+}
+
+}  // namespace
 
 RecentTabsDynamicMenu::RecentTabsDynamicMenu(BrowserWindowInterface* browser)
     : browser_window_interface_(browser) {}
@@ -61,9 +76,9 @@ void RecentTabsDynamicMenu::ExecuteRecentTab(
   // Foreign-session (synced) tabs no longer exist; only local entries.
   WindowOpenDisposition disposition =
       context.GetProperty(chrome::kDispositionKey);
-  if (disposition == WindowOpenDisposition::CURRENT_TAB ||
-      disposition == WindowOpenDisposition::UNKNOWN) {
-    disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
+  if (disposition == WindowOpenDisposition::kCurrentTab ||
+      disposition == WindowOpenDisposition::kUnknown) {
+    disposition = WindowOpenDisposition::kNewForegroundTab;
   }
   if (recent_item.is_local()) {
     base::RecordAction(
@@ -109,9 +124,9 @@ void RecentTabsDynamicMenu::ExecuteRecentSplit(
   }
   WindowOpenDisposition disposition =
       context.GetProperty(chrome::kDispositionKey);
-  if (disposition == WindowOpenDisposition::CURRENT_TAB ||
-      disposition == WindowOpenDisposition::UNKNOWN) {
-    disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
+  if (disposition == WindowOpenDisposition::kCurrentTab ||
+      disposition == WindowOpenDisposition::kUnknown) {
+    disposition = WindowOpenDisposition::kNewForegroundTab;
   }
   ExecuteRestoreEntry(recent_item.session_id(), disposition);
 }
@@ -160,27 +175,28 @@ void RecentTabsDynamicMenu::CreateRecentTabsAction(
       continue;
     }
 
+    const std::u16string title =
+        MayHaveMnemonics(recent_tab)
+            ? recent_tab.title()
+            : ui::EscapeMenuLabelAmpersands(recent_tab.title());
+
     std::unique_ptr<actions::BaseAction> action_item;
     if (recent_tab.type() == RecentTabItem::Type::kHeader) {
-      action_item = AppMenuActionItem::CreateHeader(recent_tab.title());
+      action_item = AppMenuActionItem::CreateHeader(title);
     } else {
       if (recent_tab.action_id().has_value()) {
         action_item = AppMenuActionItem::CreateIndirect(
             recent_tab.action_id().value(),
-            BrowserActions::From(browser_window_interface_)
-                ->root_action_item());
-
-        action_item.get()->GetActionItem()->SetText(recent_tab.title());
-        action_item.get()->GetActionItem()->SetImage(recent_tab.icon());
-        action_item.get()->GetActionItem()->SetProperty(
-            AppMenuActionItem::kContainerColorKey, ui::kColorMenuBackground);
-        if (recent_tab.accelerator().has_value()) {
-          action_item.get()->GetActionItem()->SetAccelerator(
-              recent_tab.accelerator().value());
-        }
+            BrowserActions::From(browser_window_interface_)->root_action_item(),
+            {.container_color = ui::kColorMenuBackground,
+             .text_override =
+                 title.empty() ? std::nullopt : std::make_optional(title),
+             .icon_override = recent_tab.icon().IsEmpty()
+                                  ? std::nullopt
+                                  : std::make_optional(recent_tab.icon())});
       } else {
         auto builder = actions::ActionItem::Builder();
-        builder.SetText(recent_tab.title())
+        builder.SetText(title)
             .SetImage(recent_tab.icon())
             .SetEnabled(recent_tab.enabled())
             .SetInvokeActionCallback(GetInvokeCallback(recent_tab))

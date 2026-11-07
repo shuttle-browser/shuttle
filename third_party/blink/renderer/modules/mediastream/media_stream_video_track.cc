@@ -22,6 +22,7 @@
 #include "media/base/limits.h"
 #include "media/capture/video_capture_types.h"
 #include "third_party/blink/public/mojom/mediastream/media_stream.mojom-blink.h"
+#include "third_party/blink/public/platform/modules/mediastream/web_media_stream_sink.h"
 #include "third_party/blink/public/web/modules/mediastream/media_stream_video_sink.h"
 #include "third_party/blink/public/web/web_local_frame.h"
 #include "third_party/blink/renderer/modules/mediastream/media_stream_constraints_util_video_device.h"
@@ -29,9 +30,6 @@
 #include "third_party/blink/renderer/platform/mediastream/media_stream_component_impl.h"
 #include "third_party/blink/renderer/platform/scheduler/public/main_thread.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_media.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_std.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
@@ -569,6 +567,13 @@ void MediaStreamVideoTrack::FrameDeliverer::
   CHECK_NE(capture_version, media::CaptureVersion());
   CHECK(!capture_version_callbacks_.Contains(capture_version));
 
+  // Registration is posted from the main thread, so `capture_version` may
+  // already have been observed by the time this runs.
+  if (capture_version <= capture_version_) {
+    std::move(callback).Run();
+    return;
+  }
+
   capture_version_callbacks_.Set(capture_version, std::move(callback));
 }
 
@@ -605,9 +610,9 @@ void MediaStreamVideoTrack::FrameDeliverer::DeliverFrameOnVideoTaskRunner(
 
   frame_drop_log_state_ = FrameDropLogState();
 
-  OnCaptureVersion(frame->metadata().capture_version);
+  OnCaptureVersion(frame->metadata().capture.version);
 
-  if (frame->metadata().capture_version < capture_version_) {
+  if (frame->metadata().capture.version < capture_version_) {
     OnFrameDroppedOnVideoTaskRunner(
         media::VideoCaptureFrameDropReason::kOldCaptureVersion);
     return;
@@ -964,18 +969,17 @@ static void RemoveSinkInternal(Vector<WebMediaStreamSink*>* sinks,
   sinks->erase(it);
 }
 
-void MediaStreamVideoTrack::AddSink(
-    WebMediaStreamSink* sink,
-    const VideoCaptureDeliverFrameCB& callback,
-    MediaStreamVideoSink::IsSecure is_secure,
-    MediaStreamVideoSink::UsesAlpha uses_alpha) {
+void MediaStreamVideoTrack::AddSink(WebMediaStreamSink* sink,
+                                    const VideoCaptureDeliverFrameCB& callback,
+                                    WebMediaStreamSink::IsSecure is_secure,
+                                    WebMediaStreamSink::UsesAlpha uses_alpha) {
   DCHECK_CALLED_ON_VALID_THREAD(main_render_thread_checker_);
   AddSinkInternal(&sinks_, sink);
   frame_deliverer_->AddCallback(sink, callback);
-  secure_tracker_.Add(sink, is_secure == MediaStreamVideoSink::IsSecure::kYes);
-  if (uses_alpha == MediaStreamVideoSink::UsesAlpha::kDefault) {
+  secure_tracker_.Add(sink, is_secure == WebMediaStreamSink::IsSecure::kYes);
+  if (uses_alpha == WebMediaStreamSink::UsesAlpha::kDefault) {
     alpha_using_sinks_.insert(sink);
-  } else if (uses_alpha == MediaStreamVideoSink::UsesAlpha::kNo) {
+  } else if (uses_alpha == WebMediaStreamSink::UsesAlpha::kNo) {
     alpha_discarding_sinks_.insert(sink);
   }
 
@@ -1106,8 +1110,25 @@ void MediaStreamVideoTrack::StopAndNotify(base::OnceClosure callback) {
   TRACE_EVENT("media", "MediaStreamVideoTrack::StopAndNotify");
   DCHECK_CALLED_ON_VALID_THREAD(main_render_thread_checker_);
   if (source_) {
-    source_->RemoveTrack(this, std::move(callback));
-    source_ = nullptr;
+    // MediaStreamVideoSource::RemoveTrack() stops the source if this was its
+    // last track. That synchronously fires 'ended' on other
+    // MediaStreamTrackImpls sharing the source, which runs script, which can
+    // trigger a GC. If nothing else references the MediaStreamComponentImpl
+    // owning |this|, its pre-finalizer deletes |this| while this frame is still
+    // on the stack. See https://crbug.com/576215540.
+    //
+    // Clear |source_| before calling RemoveTrack() so that the re-entrant
+    // Stop() call from ~MediaStreamVideoTrack() does not try to remove |this|
+    // from the source a second time. The destructor's Stop() call takes care
+    // of ending the sinks and stopping |refresh_timer_|, and |callback| is
+    // owned by the source once RemoveTrack() has been called, so there is
+    // nothing left to do here if |this| is gone.
+    base::WeakPtr<MediaStreamVideoTrack> weak_this = weak_factory_.GetWeakPtr();
+    MediaStreamVideoSource* source = std::exchange(source_, nullptr).get();
+    source->RemoveTrack(this, std::move(callback));
+    if (!weak_this) {
+      return;
+    }
   } else if (callback) {
     std::move(callback).Run();
   }

@@ -8,9 +8,6 @@
 #include "base/feature_list.h"
 #include "base/task/bind_post_task.h"
 #include "base/task/thread_pool.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_features.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_navigation_controller.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_page_user_data.h"
 #include "chrome/browser/favicon/favicon_utils.h"
 #include "chrome/browser/media/webrtc/desktop_media_picker_utils.h"
 #include "chrome/grit/generated_resources.h"
@@ -85,31 +82,12 @@ void HandleCapturedBitmap(
 
 }  // namespace
 
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-// static
-bool ShareThisTabSourceView::IsTabSharingBlocked(
-    content::WebContents* web_contents) {
-  if (!base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection) ||
-      !web_contents) {
-    return false;
-  }
-  if (enterprise_data_protection::IsScreenShareBlocked(web_contents)) {
-    return true;
-  }
-  auto* page_user_data =
-      enterprise_data_protection::DataProtectionPageUserData::GetForPage(
-          web_contents->GetPrimaryPage());
-  return page_user_data && !page_user_data->settings().allow_screenshots;
-}
-#endif
-
 ShareThisTabSourceView::ShareThisTabSourceView(
     base::WeakPtr<content::WebContents> web_contents)
     : web_contents_(web_contents),
       thumbnail_task_runner_(base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskPriority::USER_VISIBLE})) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   CHECK(web_contents_);
 
   constexpr int kThrobberRadius = 14;
@@ -159,7 +137,7 @@ ShareThisTabSourceView::ShareThisTabSourceView(
 ShareThisTabSourceView::~ShareThisTabSourceView() = default;
 
 void ShareThisTabSourceView::Activate() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   throbber_->Stop();
   throbber_->SetVisible(false);
   activated_ = true;
@@ -167,26 +145,17 @@ void ShareThisTabSourceView::Activate() {
 }
 
 void ShareThisTabSourceView::StopRefreshing() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   refreshing_ = false;
 }
 
 void ShareThisTabSourceView::UpdateBlockedState() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   UpdateFaviconAndTabTitle();
 
   if (!activated_) {
     return;
   }
-
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (IsTabSharingBlocked(web_contents_.get())) {
-    StopRefreshing();
-    image_view_->SetVisible(false);
-    blocked_label_->SetVisible(true);
-    return;
-  }
-#endif
 
   blocked_label_->SetVisible(false);
   image_view_->SetVisible(true);
@@ -198,30 +167,17 @@ void ShareThisTabSourceView::UpdateBlockedState() {
 
 gfx::Size ShareThisTabSourceView::CalculatePreferredSize(
     const views::SizeBounds& /*available_size*/) const {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   // TODO(crbug.com/40262420): Use distances from LayoutProvider
   return gfx::Size(kPreviewWidth + 2 * kPadding,
                    kTabTitleMaxRect.bottom() + kPadding);
 }
 
 void ShareThisTabSourceView::UpdateFaviconAndTabTitle() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   if (!web_contents_) {
     return;
   }
-
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (IsTabSharingBlocked(web_contents_.get())) {
-    favicon_view_->SetImage(ui::ImageModel::FromVectorIcon(
-        features::IsRoundedIconsEnabled() ? vector_icons::kDomainIcon
-                                          : vector_icons::kBusinessOldIcon,
-        ui::kColorIcon, kFaviconWidth));
-    favicon_view_->SetTooltipText(
-        l10n_util::GetStringUTF16(IDS_POLICY_DLP_SCREEN_SHARE_BLOCKED_TITLE));
-    tab_title_label_->SetText(web_contents_->GetTitle());
-    return;
-  }
-#endif
 
   favicon_view_->SetTooltipText(std::u16string());
   const gfx::Image favicon =
@@ -233,7 +189,7 @@ void ShareThisTabSourceView::UpdateFaviconAndTabTitle() {
 }
 
 void ShareThisTabSourceView::Refresh() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (!refreshing_) {
     return;  // No further refreshes scheduled.
@@ -242,12 +198,6 @@ void ShareThisTabSourceView::Refresh() {
   if (!web_contents_) {
     return;
   }
-
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (IsTabSharingBlocked(web_contents_.get())) {
-    return;
-  }
-#endif
 
   content::RenderFrameHost* const host = web_contents_->GetPrimaryMainFrame();
   if (!host) {
@@ -272,18 +222,12 @@ void ShareThisTabSourceView::Refresh() {
 void ShareThisTabSourceView::OnCaptureHandled(
     uint32_t hash,
     const std::optional<gfx::ImageSkia>& image) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   CHECK((hash != last_hash_) == image.has_value());  // Only new frames passed.
 
   if (!refreshing_) {
     return;
   }
-
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (IsTabSharingBlocked(web_contents_.get())) {
-    return;
-  }
-#endif
 
   UpdateFaviconAndTabTitle();
 

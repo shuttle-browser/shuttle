@@ -279,7 +279,6 @@ AutocompleteMatch::AutocompleteMatch(const AutocompleteMatch& match)
       description_class_for_shortcuts(match.description_class_for_shortcuts),
       suggestion_group_id(match.suggestion_group_id),
       swap_contents_and_description(match.swap_contents_and_description),
-      answer_template(match.answer_template),
       suggest_template(match.suggest_template),
       transition(match.transition),
       type(match.type),
@@ -356,7 +355,6 @@ AutocompleteMatch& AutocompleteMatch::operator=(
   suggestion_group_id = std::move(match.suggestion_group_id);
   swap_contents_and_description =
       std::move(match.swap_contents_and_description);
-  answer_template = std::move(match.answer_template);
   suggest_template = std::move(match.suggest_template);
   transition = std::move(match.transition);
   type = std::move(match.type);
@@ -433,7 +431,6 @@ AutocompleteMatch& AutocompleteMatch::operator=(
   description_class_for_shortcuts = match.description_class_for_shortcuts;
   suggestion_group_id = match.suggestion_group_id;
   swap_contents_and_description = match.swap_contents_and_description;
-  answer_template = match.answer_template;
   suggest_template = match.suggest_template;
   transition = match.transition;
   type = match.type;
@@ -754,8 +751,8 @@ bool AutocompleteMatch::BetterDuplicate(const AutocompleteMatch& match1,
     }
   }
 
-  // Prefer entity and answer matches over non-entity & non-answer matches, if
-  // they have the same `fill_into_edit` value.
+  // Prefer entity matches over non-entity matches, if they have the same
+  // `fill_into_edit` value.
   if (match1.fill_into_edit == match2.fill_into_edit) {
     bool rich1 =
         match1.type == omnibox::AutocompleteMatchType::kSearchSuggestEntity;
@@ -1002,6 +999,10 @@ omnibox::GroupId AutocompleteMatch::GetDefaultGroupId(Type type) {
 
   if (type == omnibox::AutocompleteMatchType::kCrossDeviceTab) {
     return omnibox::GROUP_CROSS_DEVICE_TABS;
+  }
+
+  if (type == omnibox::AutocompleteMatchType::kRecentlyClosedTab) {
+    return omnibox::GROUP_RECENTLY_CLOSED_TABS;
   }
 
   return omnibox::GROUP_OTHER_NAVS;
@@ -1595,6 +1596,8 @@ AutocompleteMatch::GetOmniboxEventResultType(int action_index) const {
       return OmniboxEventProto::Suggestion::TAB_GROUP;
     case omnibox::AutocompleteMatchType::kCrossDeviceTab:
       return OmniboxEventProto::Suggestion::CROSS_DEVICE_TAB;
+    case omnibox::AutocompleteMatchType::kRecentlyClosedTab:
+      return OmniboxEventProto::Suggestion::RECENTLY_CLOSED_TAB;
     case omnibox::AutocompleteMatchType::kContactDeprecated:
     case omnibox::AutocompleteMatchType::kPhysicalWebDeprecated:
     case omnibox::AutocompleteMatchType::kPhysicalWebOverflowDeprecated:
@@ -1737,8 +1740,8 @@ bool AutocompleteMatch::IsMlScoringEligible() const {
     return false;
   }
 
-  // Do not apply ML scoring to calculator or answer suggestions as the ML model
-  // currently doesn't provide accurate scores for suggestions that have a low
+  // Do not apply ML scoring to calculator suggestions as the ML model currently
+  // doesn't provide accurate scores for suggestions that have a low
   // click-through rate.
   if (type == omnibox::AutocompleteMatchType::kCalculator) {
     return false;
@@ -2076,9 +2079,9 @@ void AutocompleteMatch::MergeScoringSignals(const AutocompleteMatch& other) {
   // - autocomplete_controller.cc `RecordScoringSignalCoverageForProvider()`
   // - omnibox_metrics_provider.cc `GetScoringSignalsForLogging()`
   // - omnibox.mojom `struct Signals`
-  // - omnibox_page_handler.cc
+  // - omnibox_internals_page_handler.cc
   //   `TypeConverter<AutocompleteMatch::ScoringSignals, mojom::SignalsPtr>`
-  // - omnibox_page_handler.cc `TypeConverter<mojom::SignalsPtr,
+  // - omnibox_internals_page_handler.cc `TypeConverter<mojom::SignalsPtr,
   //   AutocompleteMatch::ScoringSignals>`
   // - omnibox_util.ts `signalNames`
   // - omnibox/histograms.xml

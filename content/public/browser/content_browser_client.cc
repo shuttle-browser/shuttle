@@ -12,6 +12,7 @@
 #include "base/check.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
+#include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/functional/callback_helpers.h"
 #include "base/memory/safe_ref.h"
@@ -25,9 +26,7 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
-#include "components/language_detection/content/browser/content_language_detection_driver.h"
 #include "components/language_detection/content/common/language_detection.mojom.h"
-#include "components/language_detection/core/browser/language_detection_model_provider.h"
 #include "content/browser/ai/echo_ai_manager_impl.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/webauth/default_authenticator_request_client_delegate.h"
@@ -62,12 +61,14 @@
 #include "content/public/browser/webid/native_idp_fetcher.h"
 #include "content/public/common/alternative_error_page_override_info.mojom.h"
 #include "content/public/common/content_features.h"
+#include "content/public/common/url_constants.h"
 #include "content/public/common/url_utils.h"
 #include "media/audio/audio_manager.h"
 #include "media/capture/content/screen_enumerator.h"
 #include "media/mojo/mojom/media_service.mojom.h"
 #include "media/mojo/mojom/speech_recognizer.mojom.h"
 #include "mojo/public/cpp/bindings/message.h"
+#include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "net/base/isolation_info.h"
 #include "net/cookies/cookie_setting_override.h"
 #include "net/cookies/site_for_cookies.h"
@@ -584,6 +585,17 @@ bool ContentBrowserClient::WebPreferencesNeedUpdateForColorRelatedStateChanges(
   return false;
 }
 
+ui::ColorProviderKey::ForcedColors
+ContentBrowserClient::GetForcedColorsForWebContents(
+    WebContents& web_contents) const {
+  return ui::ColorProviderKey::ForcedColors::kNone;
+}
+
+bool ContentBrowserClient::
+    ShouldUpdateFontRendererPreferencesFromSystemSettings() const {
+  return true;
+}
+
 bool ContentBrowserClient::IsDataSaverEnabled(BrowserContext* context) {
   DCHECK(context);
   return false;
@@ -660,8 +672,6 @@ bool ContentBrowserClient::IsPrivacySandboxReportingDestinationAttested(
     content::PrivacySandboxInvokingAPI invoking_api) {
   return false;
 }
-
-
 
 bool ContentBrowserClient::IsFullCookieAccessAllowed(
     content::BrowserContext* browser_context,
@@ -745,7 +755,7 @@ bool ContentBrowserClient::ShouldDenyRequestOnCertificateError(
 
 base::OnceClosure ContentBrowserClient::SelectClientCertificate(
     BrowserContext* browser_context,
-    int process_id,
+    ChildProcessId process_id,
     WebContents* web_contents,
     net::SSLCertRequestInfo* cert_request_info,
     net::ClientCertIdentityList client_certs,
@@ -806,6 +816,18 @@ bool ContentBrowserClient::IsPopupBypassAllowed(
 
 bool ContentBrowserClient::IsUnboundedElementAllowed(
     RenderFrameHost* render_frame_host) {
+  return false;
+}
+
+bool ContentBrowserClient::IsUnboundedElementEscapingAllowed(
+    RenderFrameHost* subframe,
+    RenderFrameHost* outermost_main_frame) {
+  return false;
+}
+
+bool ContentBrowserClient::IsUnboundedElementAllowedForSubframesOf(
+    const url::Origin& origin) {
+  // TODO(crbug.com/571879162): Remove this temporary allowlist.
   return false;
 }
 
@@ -994,6 +1016,12 @@ bool ContentBrowserClient::PreSpawnChild(sandbox::TargetConfig* config,
                                          sandbox::mojom::Sandbox sandbox_type,
                                          ChildSpawnFlags flags) {
   return true;
+}
+
+std::optional<ContentBrowserClient::RendererSandboxPolicyExtension>
+ContentBrowserClient::GetRendererSandboxPolicyExtension(
+    ChildProcessId render_process_id) {
+  return std::nullopt;
 }
 
 bool ContentBrowserClient::IsUtilityCetCompatible(
@@ -1287,6 +1315,7 @@ SmartCardDelegate* ContentBrowserClient::GetSmartCardDelegate() {
 bool ContentBrowserClient::ShowPaymentHandlerWindow(
     content::BrowserContext* browser_context,
     const GURL& url,
+    const std::optional<gfx::Size>& preferred_web_contents_size,
     base::OnceCallback<void(bool, int, int)> callback) {
   DCHECK(browser_context);
   return false;
@@ -1327,6 +1356,7 @@ std::unique_ptr<LoginDelegate> ContentBrowserClient::CreateLoginDelegate(
     const GURL& url,
     scoped_refptr<net::HttpResponseHeaders> response_headers,
     bool first_auth_attempt,
+    bool do_not_prompt_for_login,
     GuestPageHolder* guest,
     LoginDelegate::LoginAuthRequiredCallback auth_required_callback) {
   return nullptr;
@@ -1412,6 +1442,10 @@ bool ContentBrowserClient::ShouldRunOutOfProcessSystemDnsResolution() {
 #else
   return false;
 #endif
+}
+
+net::InsecureDnsMode ContentBrowserClient::GetInitialInsecureDnsMode() {
+  return net::InsecureDnsMode::kDisabled;
 }
 
 std::string ContentBrowserClient::GetProduct() {
@@ -1533,9 +1567,19 @@ ContentBrowserClient::MaybeOverrideSourceURLForClipboardAccess(
   return std::nullopt;
 }
 
+BrowserContext* ContentBrowserClient::GetUserBrowserContext(
+    RenderFrameHost& render_frame_host) {
+  return render_frame_host.GetBrowserContext();
+}
+
 bool ContentBrowserClient::IsClipboardPasteAllowed(
     content::RenderFrameHost* render_frame_host) {
   return true;
+}
+
+bool ContentBrowserClient::IsClipboardAllowedForServiceWorker(
+    const url::Origin& origin) {
+  return false;
 }
 
 void ContentBrowserClient::IsClipboardPasteAllowedByPolicy(
@@ -1709,14 +1753,6 @@ bool ContentBrowserClient::ShouldPreconnectNavigation(
   return false;
 }
 
-bool ContentBrowserClient::IsFirstPartySetsEnabled() {
-  return true;
-}
-
-bool ContentBrowserClient::WillProvidePublicFirstPartySets() {
-  return false;
-}
-
 mojom::AlternativeErrorPageOverrideInfoPtr
 ContentBrowserClient::GetAlternativeErrorPageOverrideInfo(
     content::NavigationHandle& navigation_handle,
@@ -1737,7 +1773,17 @@ bool ContentBrowserClient::IsFileSystemURLNavigationAllowed(
   return false;
 }
 
-base::FilePath ContentBrowserClient::GetChildProcessPath(int flags) {
+#if BUILDFLAG(IS_ANDROID)
+bool ContentBrowserClient::IsContentSchemeURLNavigationAllowed(
+    const GURL& url) {
+  return !base::FeatureList::IsEnabled(
+      features::kBlockContentUriNavigationByDefault);
+}
+#endif
+
+base::FilePath ContentBrowserClient::GetChildProcessPath(
+    int flags,
+    ChildProcessId child_process_id) {
   return base::FilePath();
 }
 
@@ -1833,12 +1879,13 @@ bool ContentBrowserClient::
   return true;
 }
 
-bool ContentBrowserClient::IsBlobUrlPartitioningEnabled(
-    content::BrowserContext* browser_context) {
+bool ContentBrowserClient::IsUrlAllowedForBackForwardCache(
+    content::BrowserContext* browser_context,
+    const GURL& url) {
   return true;
 }
 
-bool ContentBrowserClient::ShouldReduceAcceptLanguage(
+bool ContentBrowserClient::IsBlobUrlPartitioningEnabled(
     content::BrowserContext* browser_context) {
   return true;
 }
@@ -1906,40 +1953,23 @@ void ContentBrowserClient::BindTranslationManager(
     mojo::PendingReceiver<blink::mojom::TranslationManager> receiver) {}
 
 namespace {
-// TODO(https://crbug.com/383035345): Use BASE_FEATURE_PARAM.
-const base::FeatureParam<std::string> kLanguageDetectionLocalFileModelPath{
-    &blink::features::kLanguageDetectionAPI,
-    "language_detection_local_file_model_path", ""};
-
-// We need to initialize the provider after it is created. This should not be
-// inside `GetContentLanguageDetectionDriver` or it will be performed on every
-// call.
-language_detection::LanguageDetectionModelProvider*
-CreateLanguageDetectionModelProvider() {
-  auto* provider = new language_detection::LanguageDetectionModelProvider(
-      base::ThreadPool::CreateSequencedTaskRunner(
-          {base::MayBlock(), base::TaskPriority::BEST_EFFORT}));
-  const std::string model_file_path =
-      kLanguageDetectionLocalFileModelPath.Get();
-  if (model_file_path.length()) {
-    provider->ReplaceModelFile(base::FilePath::FromASCII(model_file_path));
-  } else {
-    // There is no model and there's not going to be one. If we don't call this
-    // the provider will queue requests, expecting that some time in the future
-    // a model will become available.
-    provider->UnloadModelFile();
+// Shuttle: the language detection model service (components/language_detection
+// browser side) is removed. This driver always reports the model as not
+// available, so blink's LanguageDetector resolves "unavailable" instead of
+// waiting for a model that never arrives.
+class UnavailableLanguageDetectionDriver
+    : public language_detection::mojom::ContentLanguageDetectionDriver {
+ public:
+  void GetLanguageDetectionModel(
+      GetLanguageDetectionModelCallback callback) override {
+    std::move(callback).Run(base::File());
   }
-  return provider;
-}
-
-// Returns a singleton of `ContentLanguageDetectionDriver`. This will provide
-// the model from a flag-param path.
-language_detection::ContentLanguageDetectionDriver&
-GetContentLanguageDetectionDriver() {
-  static base::NoDestructor<language_detection::ContentLanguageDetectionDriver>
-      driver(CreateLanguageDetectionModelProvider());
-  return *driver.get();
-}
+  void GetLanguageDetectionModelStatus(
+      GetLanguageDetectionModelStatusCallback callback) override {
+    std::move(callback).Run(
+        language_detection::mojom::LanguageDetectionModelStatus::kNotAvailable);
+  }
+};
 }  // namespace
 
 void ContentBrowserClient::BindLanguageDetectionDriver(
@@ -1947,9 +1977,9 @@ void ContentBrowserClient::BindLanguageDetectionDriver(
     base::SupportsUserData* context_user_data,
     mojo::PendingReceiver<
         language_detection::mojom::ContentLanguageDetectionDriver> receiver) {
-  if (base::FeatureList::IsEnabled(blink::features::kLanguageDetectionAPI)) {
-    GetContentLanguageDetectionDriver().AddReceiver(std::move(receiver));
-  }
+  mojo::MakeSelfOwnedReceiver(
+      std::make_unique<UnavailableLanguageDetectionDriver>(),
+      std::move(receiver));
 }
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -2070,5 +2100,13 @@ bool ContentBrowserClient::ShouldAllowSystemUiPopups(
   return true;
 }
 #endif
+
+bool ContentBrowserClient::IsExemptFromWindowSizeCheck(const GURL& url) {
+  return url.SchemeIs(kChromeUIScheme) || url.SchemeIs(kChromeDevToolsScheme);
+}
+
+bool ContentBrowserClient::IsNoStatePrefetch(WebContents* web_contents) {
+  return false;
+}
 
 }  // namespace content

@@ -60,7 +60,7 @@ constexpr double kGeometryTolerance = 0.01;
 // Result strings for InstallResultEvent.
 constexpr char kResultSuccess[] = "success";
 constexpr char kResultAborted[] = "aborted";
-constexpr char kResultInvalidData[] = "invalid_data";
+constexpr char kResultInvalidData[] = "invalid-data";
 
 String ResourceIdToString(int resource_id) {
   switch (resource_id) {
@@ -452,7 +452,7 @@ TEST_F(HTMLInstallElementTestBase, InstallurlWithManifestReturnsInvalidData) {
 }
 
 // The `oninstallresult` content attribute should map to the `installresult`
-// event, matching the `oninstallresult` IDL attribute.
+// event.
 TEST_F(HTMLInstallElementTestBase, OnInstallResultContentAttribute) {
   EXPECT_EQ(
       event_type_names::kInstallresult,
@@ -529,6 +529,42 @@ TEST_F(HTMLInstallElementFiringSimTest, OnInstallResultContentAttributeFires) {
   EXPECT_TRUE(
       base::test::RunUntil([&]() { return !ConsoleMessages().empty(); }));
   EXPECT_TRUE(ConsoleMessages()[0].contains("installresult: success"));
+}
+
+TEST_F(HTMLInstallElementFiringSimTest, OnInstallResultAncestorHandlerFires) {
+  SimRequest resource("https://example.test", "text/html");
+  LoadURL("https://example.test");
+  resource.Complete(R"HTML(
+    <body>
+      <div id="ancestor">
+        <install id="i"
+          manifestid="https://site.example/manifest.json"
+          style="display:inline-block; width:100px; height:30px">
+        </install>
+      </div>
+      <script>
+        ancestor.oninstallresult = event => {
+          console.log(event.currentTarget.id + ':' + event.target.id + ':' +
+                      event.result);
+        };
+      </script>
+    </body>
+  )HTML");
+
+  Compositor().BeginFrame();
+  auto* element = To<HTMLInstallElement>(
+      GetDocument().QuerySelector(AtomicString("install")));
+  ASSERT_TRUE(element);
+  GetDocument().View()->UpdateAllLifecyclePhasesForTest();
+  WaitForPermissionElementRegistration(element);
+
+  element->DispatchSimulatedClick(nullptr);
+
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return !ConsoleMessages().empty(); }));
+  const String expected_message = String("ancestor:i:") + kResultInvalidData;
+  EXPECT_TRUE(ConsoleMessages()[0].contains(expected_message));
+  EXPECT_FALSE(web_install_service_.WasCalled());
 }
 
 TEST_F(HTMLInstallElementTestBase, ActivationWithManifestAttribute) {
@@ -710,7 +746,7 @@ TEST_F(HTMLInstallElementTestBase, ActivationWithManifestDataError) {
   web_install_service_.WaitForCall();
 
   // DataError should trigger an `installresult` event with result
-  // "invalid_data".
+  // "invalid-data".
   web_install_service_.RespondManifestWithDataError();
   InstallResultEvent* event = WaitForInstallResultEvent(element);
   ASSERT_TRUE(event);
@@ -719,7 +755,7 @@ TEST_F(HTMLInstallElementTestBase, ActivationWithManifestDataError) {
 
 TEST_F(HTMLInstallElementTestBase, ManifestIdOnlyReturnsInvalidData) {
   // manifestid alone is not supported and should trigger an `installresult`
-  // event with result "invalid_data" without calling the service.
+  // event with result "invalid-data" without calling the service.
   HTMLInstallElement* element =
       MakeGarbageCollected<HTMLInstallElement>(GetDocument());
   element->setAttribute(html_names::kManifestidAttr,

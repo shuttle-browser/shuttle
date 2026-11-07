@@ -9,12 +9,7 @@
 #include "base/functional/callback_forward.h"
 #include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "ui/views/widget/widget.h"
-
-namespace tabs {
-class VerticalTabStripStateController;
-}
 
 namespace views {
 class ScrollView;
@@ -24,8 +19,7 @@ class ScrollView;
 // at once.
 class TabGroupEditorBubbleTracker {
  public:
-  explicit TabGroupEditorBubbleTracker(
-      tabs::VerticalTabStripStateController* state_controller);
+  TabGroupEditorBubbleTracker();
   ~TabGroupEditorBubbleTracker();
 
   void SetScrollView(views::ScrollView* scroll_view);
@@ -39,8 +33,6 @@ class TabGroupEditorBubbleTracker {
       base::RepeatingCallback<void()> callback);
 
  private:
-  void OnVerticalTabStripModeWillChange(
-      tabs::VerticalTabStripStateController* controller);
   void OnContentsScrolled();
 
   void CloseWidget(views::Widget::ClosedReason reason);
@@ -51,7 +43,6 @@ class TabGroupEditorBubbleTracker {
   std::unique_ptr<views::Widget> widget_;
   base::RepeatingCallbackList<void()> on_bubble_opened_callback_list_;
   base::RepeatingCallbackList<void()> on_bubble_closed_callback_list_;
-  base::CallbackListSubscription vertical_tab_mode_will_change_subscription_;
   base::CallbackListSubscription scroll_view_subscription_;
 
   base::WeakPtrFactory<TabGroupEditorBubbleTracker> weak_ptr_factory_{this};

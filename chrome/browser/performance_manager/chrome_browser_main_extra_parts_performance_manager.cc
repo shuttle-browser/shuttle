@@ -47,10 +47,10 @@
 #include "components/performance_manager/public/decorators/page_live_state_decorator.h"
 #include "components/performance_manager/public/decorators/page_load_tracker_decorator_helper.h"
 #include "components/performance_manager/public/decorators/process_metrics_decorator.h"
-#include "components/performance_manager/public/execution_context_priority/priority_voting_system.h"
 #include "components/performance_manager/public/features.h"
 #include "components/performance_manager/public/graph/graph.h"
 #include "components/performance_manager/public/metrics/page_resource_monitor.h"
+#include "components/performance_manager/public/priority/priority_voting_system.h"
 #include "components/performance_manager/public/user_tuning/tab_revisit_tracker.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -75,13 +75,14 @@
 #endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE) && !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/performance_manager/execution_context_priority/extension_service_worker_priority_voter.h"
+#include "chrome/browser/performance_manager/priority/extension_service_worker_priority_voter.h"
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/flags/android/chrome_feature_list.h"
 #include "chrome/browser/performance_manager/policies/discard_page_with_crashed_subframe_policy.h"
 #include "chrome/browser/performance_manager/policies/process_rank_policy_android.h"
+#include "chrome/browser/performance_manager/policies/swap_pressure_discarding_policy_android.h"
 #else
 #include "chrome/browser/performance_manager/policies/memory_saver_mode_policy.h"
 #include "chrome/browser/performance_manager/policies/urgent_page_discarding_policy.h"
@@ -292,20 +293,27 @@ void ChromeBrowserMainExtraPartsPerformanceManager::CreatePoliciesAndDecorators(
         std::make_unique<performance_manager::policies::
                              DiscardPageWithCrashedSubframePolicy>());
   }
+
+  if (base::FeatureList::IsEnabled(
+          chrome::android::kAndroidSwapPressureTabDiscard) &&
+      base::FeatureList::IsEnabled(features::kWebContentsDiscard)) {
+    graph->PassToGraph(
+        std::make_unique<performance_manager::policies::
+                             SwapPressureDiscardingPolicyAndroid>());
+  }
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
-  if (auto* voting_system = graph->GetRegisteredObjectAs<
-                            performance_manager::execution_context_priority::
-                                PriorityVotingSystem>()) {
+  if (auto* voting_system =
+          graph->GetRegisteredObjectAs<
+              performance_manager::priority::PriorityVotingSystem>()) {
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
     // Keeps the renderer of a navigation-blocking extension service worker out
     // of EcoQoS. See crbug.com/484218883.
     if (base::FeatureList::IsEnabled(
             features::kExtensionServiceWorkerPriorityVoter)) {
-      voting_system
-          ->AddPriorityVoter<performance_manager::execution_context_priority::
-                                 ExtensionServiceWorkerPriorityVoter>();
+      voting_system->AddPriorityVoter<
+          performance_manager::priority::ExtensionServiceWorkerPriorityVoter>();
     }
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   }

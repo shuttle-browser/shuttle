@@ -6,6 +6,7 @@
 #define CHROME_BROWSER_NET_PROXY_CONFIG_MONITOR_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "base/memory/raw_ptr.h"
@@ -61,6 +62,12 @@ class ProxyConfigMonitor : public net::ProxyConfigService::Observer,
   // multiple NetworkContexts of proxy changes.
   void AddToNetworkContextParams(
       network::mojom::NetworkContextParams* network_context_params);
+
+  // Returns true if an explicit proxy is configured (manual proxy rules, PAC
+  // URL, proxy override rules, or dynamic routing rules), false if direct (or
+  // only WPAD auto-detect), or std::nullopt if the proxy configuration is
+  // pending/unknown.
+  std::optional<bool> IsProxyConfigured() const;
 
   // Flushes all pending data on the pipe, blocking the current thread until
   // they're received, to allow tests to wait until all pending proxy

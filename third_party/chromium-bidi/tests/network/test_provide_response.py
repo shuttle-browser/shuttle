@@ -21,6 +21,7 @@ from test_helpers import (
     ANY_UUID,
     AnyExtending,
     execute_command,
+    goto_url,
     send_JSON_command,
     subscribe,
     wait_for_command,
@@ -85,7 +86,7 @@ async def test_provide_response_invalid_status_code(websocket, context_id, url_e
             str(
                 {
                     "error": "invalid argument",
-                    "message": 'Number must be greater than or equal to 0 in "statusCode".*',
+                    "message": 'Too small: expected number to be >=0 in "statusCode".*',
                 }
             )
         ),
@@ -115,7 +116,7 @@ async def test_provide_response_invalid_reason_phrase(
         match=str(
             {
                 "error": "invalid argument",
-                "message": 'Expected string, received array in "reasonPhrase".',
+                "message": 'Invalid input: expected string, received array in "reasonPhrase".',
             }
         ),
     ):
@@ -142,7 +143,7 @@ async def test_provide_response_invalid_headers(websocket, context_id, url_examp
         match=str(
             {
                 "error": "invalid argument",
-                "message": 'Expected array, received string in "headers".',
+                "message": 'Invalid input: expected array, received string in "headers".',
             }
         ),
     ):
@@ -654,3 +655,32 @@ async def test_provide_response_works_with_non_latin(
     )
 
     assert result["result"]["value"] == "Hello 🌍!"
+
+
+@pytest.mark.asyncio
+async def test_provide_response_status_only_does_not_hit_server(
+    websocket, context_id, url_base, url_example
+):
+    await goto_url(websocket, context_id, url_base)
+
+    network_id = await create_blocked_request(
+        websocket, context_id, url=url_example, phase="beforeRequestSent"
+    )
+
+    await subscribe(websocket, ["network.responseCompleted"], [context_id])
+
+    await execute_command(
+        websocket,
+        {
+            "method": "network.provideResponse",
+            "params": {
+                "request": network_id,
+                "statusCode": 503,
+                "reasonPhrase": "Service Unavailable",
+            },
+        },
+    )
+
+    event_response = await wait_for_event(websocket, "network.responseCompleted")
+    assert event_response["params"]["response"]["status"] == 503
+    assert event_response["params"]["response"]["statusText"] == "Service Unavailable"

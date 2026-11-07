@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include "base/containers/to_vector.h"
 #include "base/functional/callback.h"
 #include "base/memory/ptr_util.h"
 #include "base/notimplemented.h"
@@ -128,7 +129,16 @@ ViewAccessibility::ViewAccessibility(View* view) : view_(view) {
   CHECK(data_.id != ui::kInvalidAXNodeID);
 }
 
-ViewAccessibility::~ViewAccessibility() = default;
+ViewAccessibility::~ViewAccessibility() {
+#if defined(USE_AURA)
+  // On Aura, `AXAuraObjCache` tracks the `View*` popup focus override.
+  // Platforms using `ViewAXPlatformNodeDelegate` clear their override in
+  // `~ViewAXPlatformNodeDelegate()`.
+  if (AXAuraObjCache::GetPopupFocusOverride() == view_) {
+    AXAuraObjCache::SetPopupFocusOverride(nullptr);
+  }
+#endif
+}
 
 void ViewAccessibility::AddVirtualChildView(
     std::unique_ptr<AXVirtualView> virtual_view) {
@@ -307,16 +317,31 @@ bool ViewAccessibility::IsAccessibilityFocusable() const {
 }
 
 bool ViewAccessibility::IsFocusedForTesting() const {
+#if defined(USE_AURA)
+  // Transient popups take accessibility focus without taking FocusManager focus
+  // (`HasFocus()`), so only the overridden view is considered focused.
+  if (AXAuraObjCache::GetPopupFocusOverride()) {
+    return AXAuraObjCache::GetPopupFocusOverride() == view_;
+  }
+#endif
   return view_->HasFocus() &&
          !data_.HasIntAttribute(ax::mojom::IntAttribute::kActivedescendantId);
 }
 
 void ViewAccessibility::SetPopupFocusOverride() {
+#if defined(USE_AURA)
+  AXAuraObjCache::SetPopupFocusOverride(view_);
+#else
   NOTIMPLEMENTED();
+#endif
 }
 
 void ViewAccessibility::EndPopupFocusOverride() {
+#if defined(USE_AURA)
+  AXAuraObjCache::SetPopupFocusOverride(nullptr);
+#else
   NOTIMPLEMENTED();
+#endif
 }
 
 void ViewAccessibility::FireFocusAfterMenuClose() {
@@ -395,7 +420,7 @@ void ViewAccessibility::SetCharacterOffsets(
   SetIntListAttribute(ax::mojom::IntListAttribute::kCharacterOffsets, offsets);
 }
 
-const std::vector<int32_t>& ViewAccessibility::GetCharacterOffsets() const {
+base::span<const int32_t> ViewAccessibility::GetCharacterOffsets() const {
   return data_.GetIntListAttribute(
       ax::mojom::IntListAttribute::kCharacterOffsets);
 }
@@ -404,7 +429,7 @@ void ViewAccessibility::SetWordStarts(const std::vector<int32_t>& offsets) {
   SetIntListAttribute(ax::mojom::IntListAttribute::kWordStarts, offsets);
 }
 
-const std::vector<int32_t>& ViewAccessibility::GetWordStarts() const {
+base::span<const int32_t> ViewAccessibility::GetWordStarts() const {
   return data_.GetIntListAttribute(ax::mojom::IntListAttribute::kWordStarts);
 }
 
@@ -412,7 +437,7 @@ void ViewAccessibility::SetWordEnds(const std::vector<int32_t>& offsets) {
   SetIntListAttribute(ax::mojom::IntListAttribute::kWordEnds, offsets);
 }
 
-const std::vector<int32_t>& ViewAccessibility::GetWordEnds() const {
+base::span<const int32_t> ViewAccessibility::GetWordEnds() const {
   return data_.GetIntListAttribute(ax::mojom::IntListAttribute::kWordEnds);
 }
 
@@ -1784,14 +1809,14 @@ void ViewAccessibility::Announce(std::u16string_view text,
 void ViewAccessibility::AddAriaNotification(
     std::u16string_view text,
     ax::mojom::AriaNotificationPriority priority) {
-  auto announcements = data_.GetStringListAttribute(
-      ax::mojom::StringListAttribute::kAriaNotificationAnnouncements);
-  auto priority_properties = data_.GetIntListAttribute(
-      ax::mojom::IntListAttribute::kAriaNotificationPriorityProperties);
-  auto interrupt_properties = data_.GetIntListAttribute(
-      ax::mojom::IntListAttribute::kAriaNotificationInterruptProperties);
-  auto types = data_.GetStringListAttribute(
-      ax::mojom::StringListAttribute::kAriaNotificationTypes);
+  auto announcements = base::ToVector(data_.GetStringListAttribute(
+      ax::mojom::StringListAttribute::kAriaNotificationAnnouncements));
+  auto priority_properties = base::ToVector(data_.GetIntListAttribute(
+      ax::mojom::IntListAttribute::kAriaNotificationPriorityProperties));
+  auto interrupt_properties = base::ToVector(data_.GetIntListAttribute(
+      ax::mojom::IntListAttribute::kAriaNotificationInterruptProperties));
+  auto types = base::ToVector(data_.GetStringListAttribute(
+      ax::mojom::StringListAttribute::kAriaNotificationTypes));
 
   announcements.push_back(base::UTF16ToUTF8(text));
   priority_properties.push_back(static_cast<int32_t>(priority));

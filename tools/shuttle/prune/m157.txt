@@ -1,0 +1,282 @@
+# Prune manifest: features removed with the Chromium 157 merge (Toby's calls, 2026-11-04).
+# remove-only manifest: scripts/prune.py deletes these unconditionally (no build analysis).
+# Rerun after every upstream merge; references are cut by hand (see REMOVAL-LOG, 157 merge).
+# Engine code stays close to upstream (content/, blink, device/vr public mojom): the web APIs remain and report
+# "not available" without the browser-side features.
+
+# Platform Runtime / request-header-integrity: a Google library delivered by the component updater that stamps
+# integrity headers on requests (157: all requests, in a utility process). Already off (enable_request_header_integrity
+# = false); removed so it can't come back.
+remove chrome/common/request_header_integrity
+remove chrome/browser/component_updater/platform_runtime_component_installer.cc
+remove chrome/browser/component_updater/platform_runtime_component_installer.h
+remove chrome/services/platform_runtime
+
+# History clusters (Journeys leftovers; Journeys was removed with 155)
+remove components/history_clusters
+remove chrome/browser/history_clusters
+remove chrome/browser/ui/webui/history_clusters
+remove chrome/browser/ui/webui/cr_components/history_clusters
+remove ui/webui/resources/cr_components/history_clusters
+remove components/omnibox/browser/actions/history_clusters_action.cc
+remove components/omnibox/browser/actions/history_clusters_action.h
+remove chrome/test/data/webui/cr_components/history_clusters
+remove chrome/test/data/webui/history_clusters_internals
+remove chrome/test/data/webui/history/history_clusters
+
+# VR browser side (enable_vr = false already; content's WebXR and device/vr's public mojom stay)
+remove chrome/browser/vr
+
+# Vertical tabs
+remove chrome/browser/ui/views/tabs/vertical
+remove chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h
+remove chrome/browser/ui/tabs/vertical_tab_strip_metrics.cc
+remove chrome/browser/ui/tabs/vertical_tab_strip_metrics.h
+remove chrome/browser/ui/tabs/vertical_tab_strip_state.h
+remove chrome/browser/ui/tabs/vertical_tab_strip_state_controller.cc
+remove chrome/browser/ui/tabs/vertical_tab_strip_state_controller_impl.cc
+remove chrome/browser/ui/tabs/vertical_tab_strip_state_controller_impl.h
+remove chrome/browser/ui/views/frame/vertical_tab_strip_background_blur_backdrop.cc
+remove chrome/browser/ui/views/frame/vertical_tab_strip_background_blur_backdrop.h
+remove chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
+remove chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
+remove chrome/browser/ui/views/tabs/common/tab_view_vertical_layout.cc
+remove chrome/browser/ui/views/tabs/common/tab_view_vertical_layout.h
+remove chrome/browser/ui/views/tabs/common/vertical_tab_style_views.cc
+remove chrome/browser/ui/views/tabs/common/vertical_tab_style_views.h
+
+# Picture-in-picture browser UI (video PiP window, Document PiP window, auto-PiP); content/blink APIs stay
+remove chrome/browser/picture_in_picture
+remove chrome/browser/ui/views/overlay
+remove chrome/browser/ui/views/picture_in_picture
+remove chrome/browser/ui/views/frame/picture_in_picture_browser_frame_view.cc
+remove chrome/browser/ui/views/frame/picture_in_picture_browser_frame_view.h
+remove chrome/browser/ui/views/frame/picture_in_picture_browser_frame_view_linux.cc
+remove chrome/browser/ui/views/frame/picture_in_picture_browser_frame_view_linux.h
+
+# Site token provider: OAuth site tokens injected into requests (feature-gated off upstream)
+remove components/site_token_provider
+remove chrome/browser/site_token_provider
+
+# --- Wave B, batch 1 (Toby 2026-11-06): optimization_guide and what hangs off it, segmentation platform, visited URL
+# ranking, language detection, supervised users. Phishing (CSD) and language-detection models are dropped with it.
+# Carve-out: CDP Page.getAnnotatedPageContent (page_handler -> WebContentsDelegate::GetAIPageContent ->
+# optimization_guide::GetAIPageContent) keeps the page-content proto provider/serializer and the protos it needs.
+keep components/optimization_guide/content/browser/page_content_proto_provider.cc
+keep components/optimization_guide/content/browser/page_content_proto_provider.h
+keep components/optimization_guide/content/browser/page_content_proto_util.cc
+keep components/optimization_guide/content/browser/page_content_proto_util.h
+keep components/optimization_guide/content/browser/autofill_annotations_provider.cc
+keep components/optimization_guide/content/browser/autofill_annotations_provider.h
+keep components/optimization_guide/content/browser/media_transcript_provider.cc
+keep components/optimization_guide/content/browser/media_transcript_provider.h
+keep components/optimization_guide/content/browser/BUILD.gn
+keep components/optimization_guide/core/page_content_proto_serializer.cc
+keep components/optimization_guide/core/page_content_proto_serializer.h
+keep components/optimization_guide/core/optimization_guide_proto_util.cc
+keep components/optimization_guide/core/optimization_guide_proto_util.h
+keep components/optimization_guide/core/optimization_guide_features.cc
+keep components/optimization_guide/core/optimization_guide_features.h
+keep components/optimization_guide/core/optimization_guide_enums.h
+keep components/optimization_guide/core/BUILD.gn
+keep components/optimization_guide/proto
+keep components/optimization_guide/BUILD.gn
+keep components/optimization_guide/features.gni
+# TFLite op resolver: WebRTC voice isolation and on_device_model safety use it.
+keep components/optimization_guide/core/tflite_op_resolver.cc
+keep components/optimization_guide/core/tflite_op_resolver.h
+keep components/optimization_guide/core/inference/BUILD.gn
+remove components/optimization_guide
+remove chrome/browser/optimization_guide
+remove components/page_content_annotations
+remove chrome/browser/page_content_annotations
+remove components/permissions/prediction_service
+remove chrome/browser/permissions/prediction_service
+remove components/multistep_filter
+remove chrome/browser/multistep_filter
+remove chrome/browser/ui/webui/multistep_filter_internals
+remove chrome/browser/resources/multistep_filter_internals
+remove chrome/test/data/webui/multistep_filter_internals
+remove chrome/test/data/webui/optimization_guide_internals
+remove chrome/browser/resources/family_link_user_internals
+remove chrome/browser/ui/webui/family_link_user_internals
+remove chrome/browser/resources/segmentation_internals
+remove chrome/browser/ui/webui/segmentation_internals
+remove chrome/browser/v8_compile_hints
+remove components/page_image_service
+remove chrome/browser/page_image_service
+remove ui/webui/resources/cr_components/page_image_service
+remove chrome/browser/page_load_metrics/observers/optimization_guide_page_load_metrics_observer.cc
+remove chrome/browser/page_load_metrics/observers/optimization_guide_page_load_metrics_observer.h
+remove tools/mb/mb_config_expectations/internal.optimization_guide.json
+remove tools/mb/mb_config_expectations/tryserver.internal.optimization_guide.json
+remove testing/buildbot/internal.optimization_guide.json
+remove components/segmentation_platform
+remove chrome/browser/segmentation_platform
+remove components/visited_url_ranking
+remove chrome/browser/visited_url_ranking
+# components/language_detection core + renderer stay (blink's LanguageDetector and content use them; no model
+# arrives without the browser-side model service, so the web API reports unavailable).
+remove components/language_detection/core/browser
+remove components/language_detection/content/browser
+remove chrome/browser/language_detection
+remove components/supervised_user
+remove chrome/browser/supervised_user
+remove chrome/browser/ui/supervised_user
+remove chrome/browser/ui/views/supervised_user
+remove chrome/renderer/supervised_user
+remove chrome/test/supervised_user
+remove extensions/browser/supervised_user_extensions_delegate.cc
+remove extensions/browser/supervised_user_extensions_delegate.h
+remove chrome/common/supervised_user_commands.mojom
+# Single files of the omnibox ML scoring / tail model, the OG component installers, audio ML forwarder, AX tree
+# fixing OG service and the page-context eligibility helper: listed by the batch-1 surgery (they need ref cuts).
+remove components/omnibox/browser/autocomplete_scoring_model_executor.cc
+remove components/omnibox/browser/autocomplete_scoring_model_executor.h
+remove components/omnibox/browser/autocomplete_scoring_model_handler.cc
+remove components/omnibox/browser/autocomplete_scoring_model_handler.h
+remove components/omnibox/browser/autocomplete_scoring_model_service.cc
+remove components/omnibox/browser/autocomplete_scoring_model_service.h
+remove components/omnibox/browser/on_device_tail_model_executor.cc
+remove components/omnibox/browser/on_device_tail_model_executor.h
+remove components/omnibox/browser/on_device_tail_model_service.cc
+remove components/omnibox/browser/on_device_tail_model_service.h
+remove components/omnibox/browser/on_device_tail_tokenizer.cc
+remove components/omnibox/browser/on_device_tail_tokenizer.h
+remove chrome/browser/autocomplete/autocomplete_scoring_model_service_factory.cc
+remove chrome/browser/autocomplete/autocomplete_scoring_model_service_factory.h
+remove chrome/browser/autocomplete/on_device_tail_model_service_factory.cc
+remove chrome/browser/autocomplete/on_device_tail_model_service_factory.h
+remove components/component_updater/installer_policies/optimization_hints_component_installer.cc
+remove components/component_updater/installer_policies/optimization_hints_component_installer.h
+remove components/component_updater/installer_policies/prediction_model_component_installer.cc
+remove components/component_updater/installer_policies/prediction_model_component_installer.h
+remove components/safe_browsing/core/browser/client_side_phishing_model.cc
+remove components/safe_browsing/core/browser/client_side_phishing_model.h
+# hints.proto drops its filter_execution_metadata field (reserved 2): it imported the removed multistep_filter proto.
+remove components/optimization_guide/proto/filter_execution_metadata.proto
+# PermissionUiSelector (quiet-UI interface, not prediction) moved out of the removed prediction_service dir to
+# components/permissions/permission_ui_selector.{h,cc}.
+
+# --- Wave B, batch 2 (Toby 2026-11-06): enterprise connectors / reporting / device trust / Isolated Mode / DLP /
+# watermark / client certs / platform auth / idle, device signals, cloud policy (CBCM, DM server), encrypted
+# reporting (components/reporting). Keeps local policy loading, chrome://policy, chrome://management (generic
+# "managed" disclosure), browser_management, util, identifiers (ProfileIdService). Written after batch 1.
+# Enterprise features. components/enterprise/common stays (strings, scan protos used by safe_browsing).
+remove chrome/browser/enterprise/connectors
+remove chrome/browser/enterprise/reporting
+remove chrome/browser/enterprise/signals
+remove chrome/browser/enterprise/data_protection
+remove chrome/browser/enterprise/data_controls
+remove chrome/browser/enterprise/watermark
+remove chrome/browser/enterprise/isolated_mode
+remove chrome/browser/enterprise/client_certificates
+remove chrome/browser/enterprise/profile_management
+remove chrome/browser/enterprise/network_header_injection
+remove chrome/browser/enterprise/platform_auth
+remove chrome/browser/enterprise/encryption
+remove chrome/browser/enterprise/idle
+remove chrome/browser/enterprise/webstore
+remove chrome/browser/enterprise/groups
+remove chrome/browser/enterprise/remote_commands
+remove chrome/browser/enterprise/test
+remove chrome/browser/enterprise/core
+remove chrome/browser/enterprise/chrome_browser_main_extra_parts_enterprise.cc
+remove chrome/browser/enterprise/chrome_browser_main_extra_parts_enterprise.h
+remove components/enterprise/connectors
+remove components/enterprise/device_trust
+remove components/enterprise/device_attestation
+remove components/enterprise/client_certificates
+remove components/enterprise/data_controls
+remove components/enterprise/data_protection
+remove components/enterprise/obfuscation
+remove components/enterprise/watermarking
+remove components/enterprise/network_header_injection
+remove components/enterprise/platform_auth
+remove components/enterprise/idle
+remove components/enterprise/encryption
+remove components/enterprise/isolated_mode
+remove components/enterprise/content
+remove components/enterprise/core
+remove components/enterprise/browser/reporting
+remove components/enterprise/browser/promotion
+remove components/enterprise/browser/groups
+remove components/enterprise/browser/data_region
+remove components/enterprise/browser/controller
+remove components/device_signals
+remove chrome/browser/ui/webui/connectors_internals
+remove chrome/browser/ui/webui/watermark
+remove chrome/browser/extensions/api/enterprise_reporting_private
+remove chrome/browser/extensions/api/enterprise_platform_keys
+remove chrome/browser/extensions/api/enterprise_platform_keys_private
+remove chrome/browser/extensions/api/enterprise_device_attributes
+remove chrome/browser/extensions/api/enterprise_networking_attributes
+remove chrome/common/extensions/api/enterprise_reporting_private.webidl
+remove chrome/common/extensions/api/enterprise_platform_keys_private.json
+# Cloud policy: CBCM controller + enrollment dialog, DM server client, user/machine cloud policy managers, remote
+# commands, encrypted reporting. ProfileIdService gets its device id from a small machine-id helper instead of
+# BrowserDMTokenStorage. The `keep` files are generic helpers other policy code includes (constants, machine name).
+remove components/policy/core/common/remote_commands
+remove components/policy/core/common/policy_proto_decoders.cc
+remove components/policy/core/common/policy_proto_decoders.h
+remove components/policy/core/browser/cloud
+remove components/policy/core/browser/signin
+remove components/policy/core/browser/policy_data_utils.cc
+remove components/policy/core/browser/policy_data_utils.h
+remove components/policy/core/browser/webui/machine_level_user_cloud_policy_status_provider.cc
+remove components/policy/core/browser/webui/machine_level_user_cloud_policy_status_provider.h
+remove components/policy/test_support
+remove components/policy/proto/chrome_extension_policy.proto
+remove components/policy/proto/policy_signing_key.proto
+remove components/policy/proto/secure_connect.proto
+remove components/policy/core/common/cloud
+keep components/policy/core/common/cloud/cloud_policy_constants.cc
+keep components/policy/core/common/cloud/cloud_policy_constants.h
+keep components/policy/core/common/cloud/cloud_policy_util.cc
+keep components/policy/core/common/cloud/cloud_policy_util.h
+keep components/policy/core/common/cloud/enterprise_metrics.h
+keep components/policy/core/common/cloud/affiliation.cc
+keep components/policy/core/common/cloud/affiliation.h
+keep components/policy/core/common/cloud/policy_invalidation_scope.h
+keep components/policy/core/common/cloud/DEPS
+remove chrome/browser/policy/cloud
+remove chrome/browser/policy/messaging_layer
+remove chrome/browser/policy/chrome_browser_cloud_management_controller_desktop.cc
+remove chrome/browser/policy/chrome_browser_cloud_management_controller_desktop.h
+remove chrome/browser/policy/chrome_browser_cloud_management_register_watcher.cc
+remove chrome/browser/policy/chrome_browser_cloud_management_register_watcher.h
+remove chrome/browser/policy/client_data_delegate_desktop.cc
+remove chrome/browser/policy/client_data_delegate_desktop.h
+remove chrome/browser/policy/device_management_service_configuration.cc
+remove chrome/browser/policy/device_management_service_configuration.h
+remove chrome/browser/policy/dm_token_utils.cc
+remove chrome/browser/policy/dm_token_utils.h
+remove chrome/browser/policy/browser_dm_token_storage_linux.cc
+remove chrome/browser/policy/browser_dm_token_storage_linux.h
+remove chrome/browser/policy/browser_dm_token_storage_mac.h
+remove chrome/browser/policy/browser_dm_token_storage_mac.mm
+remove chrome/browser/policy/status_provider/cloud_policy_core_status_provider.cc
+remove chrome/browser/policy/status_provider/cloud_policy_core_status_provider.h
+remove chrome/browser/policy/status_provider/user_cloud_policy_status_provider.cc
+remove chrome/browser/policy/status_provider/user_cloud_policy_status_provider.h
+remove chrome/browser/policy/value_provider/extension_install_policies_value_provider.cc
+remove chrome/browser/policy/value_provider/extension_install_policies_value_provider.h
+remove chrome/browser/profiles/reporting_util.cc
+remove chrome/browser/profiles/reporting_util.h
+remove chrome/browser/ui/enterprise_startup_dialog.h
+remove chrome/browser/ui/views/policy/enterprise_startup_dialog_mac_util.h
+remove chrome/browser/ui/views/policy/enterprise_startup_dialog_mac_util.mm
+remove chrome/browser/ui/views/policy/enterprise_startup_dialog_view.cc
+remove chrome/browser/ui/views/policy/enterprise_startup_dialog_view.h
+remove components/reporting
+remove components/safe_browsing/core/browser/realtime/chrome_enterprise_url_lookup_service.cc
+remove components/safe_browsing/core/browser/realtime/chrome_enterprise_url_lookup_service.h
+remove chrome/browser/safe_browsing/chrome_enterprise_url_lookup_service_factory.cc
+remove chrome/browser/safe_browsing/chrome_enterprise_url_lookup_service_factory.h
+# Found while fixing GN: device-signals utility service + consent dialog, DM-server-only protos, ChromeOS-only helper.
+remove chrome/services/system_signals
+remove chrome/browser/ui/views/device_signals_consent
+remove chrome/browser/policy/device_account_initializer.cc
+remove chrome/browser/policy/device_account_initializer.h
+remove components/enterprise/common/proto/synced_from_google3/chrome_reporting_entity.proto
+remove components/enterprise/common/proto/upload_request_response.proto

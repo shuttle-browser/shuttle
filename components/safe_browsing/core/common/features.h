@@ -182,6 +182,14 @@ extern const base::FeatureParam<int>
     kClientSideDetectionServerModelMaxScansPerDayIos;
 #endif
 
+// Controls whether screenshots are captured and sent to the server-side model
+// for scam detection.
+BASE_DECLARE_FEATURE(kClientSideDetectionServerModelMultimodal);
+// Controls whether low-end devices are excluded from capturing screenshots for
+// multimodal scam detection.
+extern const base::FeatureParam<bool>
+    kClientSideDetectionServerModelMultimodalExcludeLowEndDevices;
+
 #if BUILDFLAG(IS_ANDROID)
 // Dedicated long-lived feature flag to control future server model rollout and
 // set the model version. This flag should not be cleaned up after the server
@@ -221,6 +229,10 @@ extern const base::FeatureParam<int>
 BASE_DECLARE_FEATURE(kClientSideDetectionSkipErrorPage);
 
 BASE_DECLARE_FEATURE(kClientSideDetectionTierSystem);
+
+// Enables showing the trick-to-bill (billing) interstitial when the
+// intelligent scan returns a SCAM_EXPERIMENT_VERDICT_BILLING verdict.
+BASE_DECLARE_FEATURE(kClientSideDetectionTrickToBill);
 
 // Set a RESIZE_BEST preference for image resizing algorithm in Client Side
 // Detection renderer processes for both image classification and image
@@ -283,6 +295,11 @@ BASE_DECLARE_FEATURE(kEnterprisePasswordReuseUiRefresh);
 
 // Use a new URL for the enterprise real-time URL check.
 BASE_DECLARE_FEATURE(kEnterpriseRealTimeUrlCheckNewUrl);
+
+// Skips enterprise real-time URL lookups for URLs in
+// `ChromeEnterpriseRealTimeUrlLookupService::CanCheckUrl` (about:blank on
+// Android, chrome-native://newtab/ and the search warmup URL).
+BASE_DECLARE_FEATURE(kEnterpriseRealTimeUrlCheckUrlSkiplist);
 
 // Makes the Enhanced Protection a syncable setting.
 // Check the design doc (go/esb-as-a-synced-setting-dd) for further details.
@@ -365,10 +382,6 @@ extern const base::FeatureParam<int> kHashPrefixRealTimeLookupsSampleRate;
 // how often the checks are triggered (they are still not in real time).
 BASE_DECLARE_FEATURE(kLocalListsUseSBv5);
 
-// If enabled, V5 GetHash lookups are logged to WebUIInfoSingleton for display
-// on the chrome://safe-browsing debugging page.
-BASE_DECLARE_FEATURE(kLocalListsUseSBv5WebUI);
-
 #if BUILDFLAG(IS_ANDROID)
 // Enables ClientDownloadRequests for APK downloads on Android.
 BASE_DECLARE_FEATURE(kMaliciousApkDownloadCheck);
@@ -410,13 +423,12 @@ BASE_DECLARE_FEATURE_PARAM(
 BASE_DECLARE_FEATURE_PARAM(bool,
                            kMigrateToBlockV8OptimizerOnUnfamiliarSitesDryRun);
 
-// When enabled, the Password Leak detection toggle is moved out from under the
-// 'Standard protection' Safe Browsing option to the top-level 'Privacy and
-// security' page.
-BASE_DECLARE_FEATURE(kMovePasswordLeakDetectionToggleIos);
-
 // Enables the notice queue integration for the ESB notice.
 BASE_DECLARE_FEATURE(kNoticeQueueForEsb);
+
+// Routes synchronous navigation SafeBrowsing database lookup replies onto the
+// high-priority kNavigationNetworkResponse UI task runner.
+BASE_DECLARE_FEATURE(kPrioritizeSafeBrowsingNavigationCallbacks);
 
 // Enables proactive password protection, which triggers a CSD scan when
 // focusing on a password field.
@@ -453,6 +465,10 @@ extern const base::FeatureParam<std::string>
 // update required.
 BASE_DECLARE_FEATURE(kRelaunchNotificationForAdvancedProtection);
 
+// Enables the Rust implementation of mojom::PhishingModelSetter in the
+// renderer process.
+BASE_DECLARE_FEATURE(kRustPhishingModelSetter);
+
 // Enables client side phishing daily reports limit to be configured via Finch
 // for ESB and SBER users
 BASE_DECLARE_FEATURE(kSafeBrowsingDailyPhishingReportsLimit);
@@ -462,6 +478,23 @@ extern const base::FeatureParam<int> kSafeBrowsingDailyPhishingReportsLimitESB;
 // Enables automatic cleanup of unrecognized or deprecated Safe Browsing stores
 // and stale hash files on disk during database startup.
 BASE_DECLARE_FEATURE(kSafeBrowsingDeleteUnusedStores);
+
+// Suppresses dangerous file warnings when Safe Browsing is in No Protection
+// mode.
+BASE_DECLARE_FEATURE(kSafeBrowsingNoProtectionSuppressWarnings);
+
+// Enables temporary (24-hour) Safe Browsing opt-out by default.
+BASE_DECLARE_FEATURE(kSafeBrowsingNoProtectionTemporary);
+// Specifies the temporary No Protection reversion duration in seconds.
+extern const base::FeatureParam<int>
+    kSafeBrowsingNoProtectionTemporaryDurationInSeconds;
+
+// Uses the Rust implementation of the macOS DMG (UDIF/HFS+) parser in place of
+// the C++ implementation.
+BASE_DECLARE_FEATURE(kSafeBrowsingRustDmgParser);
+
+// Skips Safe Browsing Real-Time URL lookups when the device is offline.
+BASE_DECLARE_FEATURE(kSafeBrowsingSkipRealTimeLookupIfOffline);
 
 #if BUILDFLAG(IS_ANDROID)
 // Enables sync checker to check allowlist first on Chrome on Android. This is
@@ -480,6 +513,12 @@ BASE_DECLARE_FEATURE(kSavePasswordHashFromProfilePicker);
 // Enables showing manual notification auto-revocations in Safety Hub, allowing
 // users to review and manage the revoked permissions.
 BASE_DECLARE_FEATURE(kShowManualNotificationRevocationsSafetyHub);
+
+// Controls whether the checked URLs are displayed for V5 GetHash lookups on
+// the chrome://safe-browsing debugging page.
+// TODO(crbug.com/564637472): enabling this is blocked on making the debugging
+// page chrome://safe-browsing be profile-specific to avoid regressing privacy.
+BASE_DECLARE_FEATURE(kShowUrlsInV5GetHashLookupsWebUI);
 
 // Enables replacing notification contents with a Chrome warning when the
 // on-device model returns a sufficiently suspicious verdict.

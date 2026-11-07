@@ -17,7 +17,6 @@
 #include "chrome/browser/defaults.h"
 #include "chrome/browser/download/download_core_service.h"
 #include "chrome/browser/download/download_core_service_factory.h"
-#include "chrome/browser/enterprise/connectors/connectors_service.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager.h"
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager_factory.h"
@@ -286,7 +285,7 @@ void DownloadsUI::BindInterface(
 void DownloadsUI::CreatePageHandler(
     mojo::PendingRemote<downloads::mojom::Page> page,
     mojo::PendingReceiver<downloads::mojom::PageHandler> receiver) {
-  DCHECK(page);
+  CHECK(page, base::NotFatalUntil::M162);
   Profile* profile = Profile::FromWebUI(web_ui());
   // Make sure download history is initialized.
   DownloadCoreService* service =

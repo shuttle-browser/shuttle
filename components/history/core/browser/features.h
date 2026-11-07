@@ -61,20 +61,14 @@ extern const base::FeatureParam<int> kMvtScoringParamDailyVisitCountCap;
 COMPONENT_EXPORT(HISTORY_FEATURES)
 BASE_DECLARE_FEATURE(kRazeOldHistoryDatabase);
 
-#if !BUILDFLAG(IS_IOS)
-COMPONENT_EXPORT(HISTORY_FEATURES)
-bool IsBrowsingHistoryActorIntegrationM3Enabled();
-
-COMPONENT_EXPORT(HISTORY_FEATURES)
-BASE_DECLARE_FEATURE(kBrowsingHistoryActorIntegrationM3);
-#endif  // !BUILDFLAG(IS_IOS)
-
 COMPONENT_EXPORT(HISTORY_FEATURES)
 BASE_DECLARE_FEATURE(kBrowsingHistorySimilarVisitsGrouping);
 
 COMPONENT_EXPORT(HISTORY_FEATURES)
 BASE_DECLARE_FEATURE(kBrowsingHistoryImprovedHostnameSuffixMatching);
 
+// Do not check this feature directly; use
+// `IsBrowsingHistoryFilterByDeviceEnabled()` instead.
 COMPONENT_EXPORT(HISTORY_FEATURES)
 BASE_DECLARE_FEATURE(kBrowsingHistoryFilterByDevice);
 
@@ -82,7 +76,20 @@ COMPONENT_EXPORT(HISTORY_FEATURES)
 BASE_DECLARE_FEATURE(kBrowsingHistoryFilterByDomain);
 
 COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kBrowsingHistoryFilterByTime);
+
+#if !BUILDFLAG(IS_IOS)
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kBrowsingHistoryFilterByActor);
+#endif  // !BUILDFLAG(IS_IOS)
+
+COMPONENT_EXPORT(HISTORY_FEATURES)
 BASE_DECLARE_FEATURE(kWebHistoryUseNewApi);
+
+// Returns true if browsing history filtering by device is enabled (requires
+// both `kWebHistoryUseNewApi` and `kBrowsingHistoryFilterByDevice`).
+COMPONENT_EXPORT(HISTORY_FEATURES)
+bool IsBrowsingHistoryFilterByDeviceEnabled();
 
 COMPONENT_EXPORT(HISTORY_FEATURES)
 BASE_DECLARE_FEATURE(kHistoryDatabaseWriteAheadLogging);

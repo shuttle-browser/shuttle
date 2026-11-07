@@ -110,29 +110,19 @@ class ToolbarView : public views::AccessiblePaneView,
 
   OverflowButton* overflow_button() { return overflow_button_; }
 
-  // Returns true if the view is a descendant of the ToolbarView and should be
-  // treated as caption area for window dragging purposes.
-  // |test_point| is in coordinates of the Window to which this View belongs.
-  // The default implementation returns |false|, which means hit test events
-  // within the toolbar view are interactive and will not drag the window.
-  // In vertical tab strip (VTS) mode, buttons within the toolbar should remain
-  // interactive, but empty space between buttons should be treated as caption
-  // area.
-  bool IsPositionInWindowCaption(const gfx::Point& test_point) const;
-
-  // Records user metrics based on hit test results within the toolbar view.
-  void RecordHitTestMetrics(bool is_caption_area);
-
   // Accessors.
   BrowserWindowInterface* browser() const { return browser_; }
   views::Button* GetChromeLabsButton() const;
-  ExtensionsToolbarDesktop* extensions_container() const {
+  ExtensionsToolbarDesktop* extensions_container_for_testing() const {
     return extensions_container_;
   }
   ToolbarButton* contextual_tasks_button() const {
     return contextual_tasks_button_;
   }
   ToolbarButton* forward_button() const { return forward_; }
+  // Returns the Views extensions (puzzle piece) button, or null if the toolbar
+  // doesn't host the Views extensions container (e.g. when
+  // features::IsWebUIExtensionsContainerEnabled()).
   ExtensionsToolbarButton* GetExtensionsButton() const;
   ReloadButton* reload_button() const { return reload_; }
   LocationBarView* location_bar_view() const { return location_bar_view_; }
@@ -264,9 +254,6 @@ class ToolbarView : public views::AccessiblePaneView,
 
   void OnTouchUiChanged();
 
-  void OnVerticalTabStripModeChanged(
-      tabs::VerticalTabStripStateController* controller);
-
   void SetForwardButtonVisibility(bool visible);
 
   gfx::Size GetBackForwardButtonSize(bool minimum_size = false) const;
@@ -336,18 +323,15 @@ class ToolbarView : public views::AccessiblePaneView,
   // `toolbar_controller_`.
   raw_ptr<OverflowButton> overflow_button_ = nullptr;
 
-  // Subscription for when tab strip mode changes
-  base::CallbackListSubscription vertical_tab_subscription_;
-
   // Subscription for when contextual tasks button position should update.
   base::CallbackListSubscription
       contextual_tasks_button_position_subscription_;
-
-  bool should_display_vertical_tabs_ = false;
-
-  bool was_mouse_down_ = false;
 };
 
 extern const ui::ClassProperty<bool>* const kActionItemUnderlineIndicatorKey;
+extern const ui::ClassProperty<ActionItemEngagedIndicatorStyle>* const
+    kActionItemEngagedIndicatorStyleKey;
+
+DECLARE_UI_CLASS_PROPERTY_TYPE(ActionItemEngagedIndicatorStyle)
 
 #endif  // CHROME_BROWSER_UI_VIEWS_TOOLBAR_TOOLBAR_VIEW_H_

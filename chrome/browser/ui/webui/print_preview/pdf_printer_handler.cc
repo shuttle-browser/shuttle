@@ -228,7 +228,7 @@ void ConstructCapabilitiesAndCompleteCallback(
     const std::string& destination_id,
     PdfPrinterHandler::GetCapabilityCallback callback,
     PrinterSemanticCapsAndDefaults::Papers custom_papers) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   base::DictValue printer_info;
   printer_info.Set(kSettingDeviceName, destination_id);
@@ -266,7 +266,7 @@ void PdfPrinterHandler::StartGetPrinters(
 
 void PdfPrinterHandler::StartGetCapability(const std::string& destination_id,
                                            GetCapabilityCallback callback) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
 #if BUILDFLAG(IS_MAC)
   // Read the Mac custom paper sizes on a separate thread.
@@ -302,7 +302,7 @@ void PdfPrinterHandler::StartPrint(
     return;
   }
 
-  DCHECK(!print_callback_);
+  CHECK(!print_callback_, base::NotFatalUntil::M162);
   print_callback_ = std::move(callback);
 
   auto* dialog_controller = PrintPreviewDialogController::GetInstance();
@@ -357,7 +357,7 @@ void PdfPrinterHandler::SetPrintToPdfPathForTesting(
 // static
 base::FilePath PdfPrinterHandler::GetFileNameForPrintJobTitle(
     const std::u16string& job_title) {
-  DCHECK(!job_title.empty());
+  CHECK(!job_title.empty(), base::NotFatalUntil::M162);
 #if BUILDFLAG(IS_WIN)
   base::FilePath::StringType print_job_title(base::AsWString(job_title));
 #elif BUILDFLAG(IS_POSIX)
@@ -378,7 +378,7 @@ base::FilePath PdfPrinterHandler::GetFileNameForPrintJobTitle(
 
 // static
 base::FilePath PdfPrinterHandler::GetFileNameForURL(const GURL& url) {
-  DCHECK(url.is_valid());
+  CHECK(url.is_valid(), base::NotFatalUntil::M162);
 
   // TODO(thestig): This code is based on similar code in SavePackage in
   // content/ that is not exposed via the public content API. Consider looking
@@ -393,11 +393,11 @@ base::FilePath PdfPrinterHandler::GetFileNameForURL(const GURL& url) {
                             std::string(), std::string());
 
   // If host is used as file name, try to decode punycode.
-  if (name.AsUTF8Unsafe() == url.GetHost()) {
+  if (name.AsUTF8Unsafe() == url.host()) {
     name = base::FilePath::FromUTF16Unsafe(
-        url_formatter::IDNToUnicode(url.GetHost()));
+        url_formatter::IDNToUnicode(url.host()));
   }
-  if (name.AsUTF8Unsafe() == url.GetHost()) {
+  if (name.AsUTF8Unsafe() == url.host()) {
     return name.AddExtension(kPdfExtension);
   }
   return name.ReplaceExtension(kPdfExtension);

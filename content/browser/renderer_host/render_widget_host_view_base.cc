@@ -30,6 +30,7 @@
 #include "content/browser/renderer_host/frame_tree.h"
 #include "content/browser/renderer_host/input/mouse_wheel_phase_handler.h"
 #include "content/browser/renderer_host/input/synthetic_gesture_target_base.h"
+#include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/renderer_host/render_process_host_impl.h"
 #include "content/browser/renderer_host/render_widget_host_delegate.h"
 #include "content/browser/renderer_host/render_widget_host_impl.h"
@@ -201,6 +202,7 @@ void RenderWidgetHostViewBase::CopyMainAndPopupFromSurface(
     const gfx::Rect& src_subrect,
     const gfx::Size& dst_size,
     float scale_factor,
+    bool is_copy_request_secure,
     base::TimeDelta timeout,
     base::OnceCallback<void(const content::CopyFromSurfaceResult&)> callback) {
   if (!main_host || !main_frame_host) {
@@ -214,7 +216,7 @@ void RenderWidgetHostViewBase::CopyMainAndPopupFromSurface(
 
 #if BUILDFLAG(IS_ANDROID)
   NOTREACHED()
-      << "RenderWidgetHostViewAndroid::CopyFromSurface calls "
+      << "RenderWidgetHostViewAndroid::CopyFromSurfaceImpl calls "
          "DelegatedFrameHostAndroid::CopyFromCompositingSurface directly, "
          "and popups are not supported.";
 #else
@@ -231,7 +233,8 @@ void RenderWidgetHostViewBase::CopyMainAndPopupFromSurface(
   if (!has_popup && !unbounded_window) {
     // No popup or unbounded window - just call CopyFromCompositingSurface
     // once.
-    main_frame_host->CopyFromCompositingSurface(src_subrect, dst_size, timeout,
+    main_frame_host->CopyFromCompositingSurface(src_subrect, dst_size,
+                                                is_copy_request_secure, timeout,
                                                 std::move(callback));
     return;
   }
@@ -263,7 +266,7 @@ void RenderWidgetHostViewBase::CopyMainAndPopupFromSurface(
          base::WeakPtr<RenderWidgetHostImpl> popup_host,
          base::WeakPtr<DelegatedFrameHost> popup_frame_host,
          const gfx::Rect src_subrect, const gfx::Size dst_size,
-         base::TimeDelta timeout,
+         bool is_copy_request_secure, base::TimeDelta timeout,
          const content::CopyFromSurfaceResult& main_result) {
         RenderWidgetHostViewBase* main_view =
             main_host
@@ -316,7 +319,8 @@ void RenderWidgetHostViewBase::CopyMainAndPopupFromSurface(
           CHECK(has_popup);
           gfx::Rect popup_subrect(src_subrect - offset);
           popup_frame_host->CopyFromCompositingSurface(
-              popup_subrect, dst_size, timeout, std::move(popup_done_callback));
+              popup_subrect, dst_size, is_copy_request_secure, timeout,
+              std::move(popup_done_callback));
           return;
         } else {
           CHECK(unbounded_window);
@@ -324,23 +328,45 @@ void RenderWidgetHostViewBase::CopyMainAndPopupFromSurface(
               base::FeatureList::IsEnabled(blink::features::kUnboundedElement),
               base::NotFatalUntil::M158);
           gfx::Rect popup_subrect(src_subrect - offset);
+          // TODO(crbug.com/390329792): Plumb `is_copy_request_secure` to
+          // `UnboundedSurfaceWindow::CopyFromSurface` if needed.
           unbounded_window->CopyFromSurface(popup_subrect, dst_size, timeout,
                                             std::move(popup_done_callback));
           return;
         }
       },
       std::move(callback), offset_physical, has_popup, main_host, popup_host,
-      popup_frame_host, src_subrect, dst_size, timeout);
+      popup_frame_host, src_subrect, dst_size, is_copy_request_secure, timeout);
 
   // Request the main image (happens first).
   main_frame_host->CopyFromCompositingSurface(
-      src_subrect, dst_size, timeout, std::move(main_image_done_callback));
+      src_subrect, dst_size, is_copy_request_secure, timeout,
+      std::move(main_image_done_callback));
 #endif
 }
 
 void RenderWidgetHostViewBase::CopyFromSurface(
     const gfx::Rect& src_rect,
     const gfx::Size& output_size,
+    base::TimeDelta timeout,
+    base::OnceCallback<void(const content::CopyFromSurfaceResult&)> callback) {
+  CopyFromSurfaceImpl(src_rect, output_size, /*is_copy_request_secure=*/false,
+                      timeout, std::move(callback));
+}
+
+void RenderWidgetHostViewBase::CopyFromSurfaceSecure(
+    const gfx::Rect& src_rect,
+    const gfx::Size& output_size,
+    base::TimeDelta timeout,
+    base::OnceCallback<void(const content::CopyFromSurfaceResult&)> callback) {
+  CopyFromSurfaceImpl(src_rect, output_size, /*is_copy_request_secure=*/true,
+                      timeout, std::move(callback));
+}
+
+void RenderWidgetHostViewBase::CopyFromSurfaceImpl(
+    const gfx::Rect& src_rect,
+    const gfx::Size& output_size,
+    bool is_copy_request_secure,
     base::TimeDelta timeout,
     base::OnceCallback<void(const content::CopyFromSurfaceResult&)> callback) {
   NOTIMPLEMENTED_LOG_ONCE();
@@ -437,6 +463,11 @@ bool RenderWidgetHostViewBase::
   return false;
 }
 
+void RenderWidgetHostViewBase::SetHasFocusForTesting(
+    std::optional<bool> has_focus) {
+  has_focus_for_testing_ = has_focus;
+}
+
 bool RenderWidgetHostViewBase::CanBePointerLocked() {
   return HasFocus();
 }
@@ -511,6 +542,11 @@ ui::AXTreeID RenderWidgetHostViewBase::AccessibilityGetParentAXTreeID() {
 
 bool RenderWidgetHostViewBase::ShouldInitiateStylusWriting() {
   return false;
+}
+
+std::optional<gfx::Vector2dF>
+RenderWidgetHostViewBase::GetStylusHandwritingPixelsPerInch() {
+  return std::nullopt;
 }
 
 bool RenderWidgetHostViewBase::RequestRepaintOnNewSurface() {
@@ -590,8 +626,10 @@ void RenderWidgetHostViewBase::UpdateScreenInfo() {
   }
 #endif  // BUILDFLAG(IS_OZONE)
 
-  if (screen_infos_ == new_screen_infos && !force_sync_visual_properties)
+  if (screen_infos_ == new_screen_infos && !force_sync_visual_properties &&
+      has_updated_screen_info_) {
     return;
+  }
 
   // We need to look at `orientation_type` which is marked as kUndefined at
   // startup. Unlike `orientation_angle` that uses 0 degrees as the default.
@@ -599,10 +637,12 @@ void RenderWidgetHostViewBase::UpdateScreenInfo() {
   // as tablets. We do not want the first UpdateScreenInfo to be treated as a
   // rotation.
   const bool has_rotation_changed =
+      has_updated_screen_info_ &&
       screen_infos_.current().orientation_type !=
           display::mojom::ScreenOrientation::kUndefined &&
       screen_infos_.current().orientation_type !=
           new_screen_infos.current().orientation_type;
+  has_updated_screen_info_ = true;
   screen_infos_ = std::move(new_screen_infos);
 
   // Notify the associated RenderWidgetHostImpl when screen info has changed.
@@ -791,7 +831,17 @@ void RenderWidgetHostViewBase::ProcessMouseWheelEvent(
     NOTREACHED();
   }
 
-  host()->ForwardWheelEventWithLatencyInfo(event, latency);
+  blink::WebMouseWheelEvent wheel_event = event;
+  if (wheel_event.phase == blink::WebMouseWheelEvent::kPhaseNone &&
+      wheel_event.momentum_phase == blink::WebMouseWheelEvent::kPhaseNone) {
+    if (MouseWheelPhaseHandler* phase_handler = GetMouseWheelPhaseHandler()) {
+      phase_handler->AddPhaseIfNeededAndScheduleEndEvent(
+          wheel_event, /*should_route_event=*/false,
+          /*is_fling_capable=*/false);
+    }
+  }
+
+  host()->ForwardWheelEventWithLatencyInfo(wheel_event, latency);
 }
 
 void RenderWidgetHostViewBase::ProcessTouchEvent(
@@ -997,39 +1047,25 @@ void RenderWidgetHostViewBase::DidNavigate() {
 }
 
 void RenderWidgetHostViewBase::CreateUnboundedSurface(
-    mojo::PendingAssociatedReceiver<blink::mojom::UnboundedSurfaceHost> host,
-    mojo::PendingAssociatedRemote<blink::mojom::UnboundedSurfaceClient> client,
-    const gfx::Rect& bounds_in_dips,
+    const gfx::Rect& bounds_in_screen,
     base::WeakPtr<RenderWidgetHostViewBase> subframe_view) {}
 
-void RenderWidgetHostViewBase::UpdateUnboundedSurfaceBoundsInSubframeContext(
-    const gfx::Rect& bounds_in_dips,
-    RenderWidgetHostViewBase* subframe_view) {
-  if (!unbounded_surface_window_) {
-    return;
-  }
-  UpdateUnboundedSurfaceBounds(
-      ConvertSubframeBoundsToScreen(bounds_in_dips, subframe_view));
-}
-
-gfx::Rect RenderWidgetHostViewBase::ConvertSubframeBoundsToScreen(
+gfx::Rect
+RenderWidgetHostViewBase::ConvertSubframeBoundsToScreenWithoutConstraints(
     const gfx::Rect& bounds_in_dips,
     RenderWidgetHostViewBase* subframe_view) {
   gfx::Rect transformed_bounds = bounds_in_dips;
-  if (subframe_view) {
-    TransformPointAndRectToRootView(subframe_view, this, nullptr,
-                                    &transformed_bounds);
+  if (subframe_view && subframe_view != this) {
+    if (!TransformPointAndRectToRootView(subframe_view, this, nullptr,
+                                         &transformed_bounds)) {
+      transformed_bounds.Offset(
+          subframe_view->GetViewBounds().OffsetFromOrigin() -
+          GetViewBounds().OffsetFromOrigin());
+    }
   }
   gfx::Rect bounds_in_screen = transformed_bounds;
   bounds_in_screen.Offset(GetViewBounds().OffsetFromOrigin());
   return bounds_in_screen;
-}
-
-void RenderWidgetHostViewBase::UpdateUnboundedSurfaceBounds(
-    const gfx::Rect& bounds_in_screen) {
-  if (unbounded_surface_window_) {
-    unbounded_surface_window_->SetBounds(bounds_in_screen);
-  }
 }
 
 void RenderWidgetHostViewBase::DismissUnboundedSurface() {

@@ -8,7 +8,7 @@
 #include <optional>
 
 #include "components/viz/common/resources/shared_image_format.h"
-#include "third_party/khronos/EGL/eglplatform.h"
+#include "third_party/angle/include/EGL/eglplatform.h"
 #include "ui/gl/gl_implementation.h"
 #include "ui/gl/gl_surface_egl.h"
 #include "ui/ozone/public/gl_ozone.h"
@@ -40,9 +40,9 @@ class GLOzoneEGL : public GLOzone {
   bool CanImportNativePixmap(viz::SharedImageFormat format) override;
   std::unique_ptr<NativePixmapGLBinding> ImportNativePixmap(
       scoped_refptr<gfx::NativePixmap> pixmap,
-      viz::SharedImageFormat plane_format,
+      viz::SharedImageFormat format,
       std::optional<int> plane_index,
-      gfx::Size plane_size,
+      gfx::Size size,
       const gfx::ColorSpace& color_space,
       GLenum target,
       GLuint texture_id) override;

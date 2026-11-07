@@ -28,7 +28,6 @@
 #include "content/public/browser/webid/identity_request_account.h"
 #include "crypto/keypair.h"
 #include "third_party/blink/public/mojom/webid/email_verification_request.mojom-shared.h"
-#include "url/gurl.h"
 #include "url/origin.h"
 
 // This class implements the Email Verification Protocol as described here:
@@ -40,11 +39,11 @@ class RenderFrameHostImpl;
 
 namespace content::webid {
 
-// For a given email address, returns the domain. Returns std::nullopt if the
-// email is not valid.
+// For a given email address, returns the domain in lowercase. Returns
+// std::nullopt if the email is not valid.
 // e.g. "test@example.com" -> "example.com"
-CONTENT_EXPORT std::optional<std::string_view> GetDomainFromEmail(
-    std::string_view email LIFETIME_BOUND);
+CONTENT_EXPORT std::optional<std::string> GetDomainFromEmail(
+    std::string_view email);
 
 // Performs the email verification process, which involves making a DNS TXT
 // record request to determine the issuer, and then fetching a token from the

@@ -13,12 +13,11 @@ import type {PropertyValues} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 //  these values for better type check when `loadTimeData` is no longer needed.
 export const Page = {
   HISTORY: 'history',
-  HISTORY_CLUSTERS: 'grouped',
   PRODUCT_SPECIFICATIONS_LISTS: 'comparisonTables',
 };
 
 // The ids of pages with corresponding tabs in the order of their tab indices.
-export const TABBED_PAGES = [Page.HISTORY, Page.HISTORY_CLUSTERS];
+export const TABBED_PAGES = [Page.HISTORY];
 
 export class HistoryRouterElement extends CrLitElement {
   static get is() {
@@ -54,6 +53,7 @@ export class HistoryRouterElement extends CrLitElement {
     after: null,
     includeUserVisits: true,
     includeActorVisits: true,
+    clientIds: [],
   };
   timeRangeStart?: Date;
 
@@ -125,7 +125,8 @@ export class HistoryRouterElement extends CrLitElement {
     const sections = newPath.substr(1).split('/');
     const page = sections[0] ||
         (window.location.search ? 'history' :
-                                  TABBED_PAGES[this.lastSelectedTab]);
+                                  TABBED_PAGES[this.lastSelectedTab]) ||
+        Page.HISTORY;
     // TODO(b/338245900): This is kind of nasty. Without cr-tabs to constrain
     //   `selectedPage`, this can be set to an arbitrary value from the URL.
     //   To fix this, we should constrain the selected pages to an actual enum.

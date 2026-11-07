@@ -30,11 +30,16 @@
 #include "content/public/common/child_process_id.h"
 #include "third_party/blink/public/common/page/drag_operation.h"
 #include "third_party/blink/public/mojom/page/draggable_region.mojom-forward.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 
 namespace content {
 struct DropData;
 class NavigationHandle;
 class RenderFrameHost;
+}
+
+namespace url {
+class Origin;
 }
 
 namespace guest_view {
@@ -285,10 +290,11 @@ class GuestViewBase : public content::BrowserPluginGuestDelegate,
   // permission requests of the given `type`.
   virtual bool IsPermissionRequestable(ContentSettingsType type) const;
 
-  // If the GuestView overrides |type|, returns the permission result of |type|.
-  // Otherwise, returns nullopt.
+  // If the GuestView overrides the permission result for `type` and
+  // `requesting_origin`, returns that result. Otherwise, returns nullopt.
   virtual std::optional<content::PermissionResult> OverridePermissionResult(
-      ContentSettingsType type) const;
+      ContentSettingsType type,
+      const url::Origin& requesting_origin) const;
 
   content::RenderFrameHost* GetGuestMainFrame() const;
 
@@ -471,7 +477,7 @@ class GuestViewBase : public content::BrowserPluginGuestDelegate,
   void GuestResizeDueToAutoResize(const gfx::Size& new_size) final;
   void GuestUpdateWindowPreferredSize(const gfx::Size& pref_size) final;
   content::GuestPageHolder* GuestCreateNewWindow(
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       const GURL& url,
       const std::string& main_frame_name,
       content::RenderFrameHost* opener,

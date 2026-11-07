@@ -238,14 +238,6 @@ void DownloadFileImpl::Initialize(
     bytes_so_far = save_info_->GetStartingFileWriteOffset();
   }
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  // Create the obfuscator if enterprise deep scanning is enabled.
-  if (save_info_->needs_obfuscation) {
-    obfuscator_ =
-        std::make_unique<enterprise_obfuscation::DownloadObfuscator>();
-  }
-#endif
-
   int64_t bytes_wasted = 0;
   DownloadInterruptReason reason =
       file_.Initialize(save_info_->file_path, default_download_directory_,
@@ -310,9 +302,6 @@ DownloadInterruptReason DownloadFileImpl::ValidateAndWriteDataToFile(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   // Check if some of the data is for validation purpose.
   bool should_validate = to_validate.size() > 0;
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  should_validate = should_validate && !obfuscator_;
-#endif
   if (should_validate && !file_.ValidateDataInFile(offset, to_validate)) {
     return DOWNLOAD_INTERRUPT_REASON_FILE_HASH_MISMATCH;
   }
@@ -321,23 +310,6 @@ DownloadInterruptReason DownloadFileImpl::ValidateAndWriteDataToFile(
   if (to_write.size() <= 0) {
     return DOWNLOAD_INTERRUPT_REASON_NONE;
   }
-
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  if (obfuscator_) {
-    // All data chunks are obfuscated with `is_last_chunk = false`. An empty
-    // chunk with `is_last_chunk = true` is appended in `OnDownloadCompleted()`.
-    auto obfuscated_data =
-        obfuscator_->ObfuscateChunk(to_write, /*is_last_chunk=*/false);
-
-    // TODO(b/367259664): Add better error handling for file obfuscation.
-    if (!obfuscated_data.has_value()) {
-      return DOWNLOAD_INTERRUPT_REASON_FILE_FAILED;
-    }
-
-    WillWriteToDisk(obfuscated_data.value().size());
-    return file_.WriteDataToFile(file_.bytes_so_far(), obfuscated_data.value());
-  }
-#endif
 
   // Write the remaining data to disk.
   WillWriteToDisk(to_write.size());
@@ -474,18 +446,6 @@ void DownloadFileImpl::RenameWithRetryInternal(
 
   DownloadInterruptReason reason = file_.Rename(new_path);
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  // Handle the case where the file is shorter due to deobfuscation.
-  if (obfuscator_ && reason == DOWNLOAD_INTERRUPT_REASON_FILE_TOO_SHORT) {
-    int64_t expected_size = bytes_seen_ + obfuscator_->GetTotalOverhead();
-    int64_t actual_size = file_.bytes_so_far();
-    if (expected_size >= 0 && actual_size == expected_size) {
-      // Ignore error as the file was deobfuscated before being renamed.
-      reason = DOWNLOAD_INTERRUPT_REASON_NONE;
-    }
-  }
-#endif
-
   // Attempt to retry the rename if possible. If the rename failed and the
   // subsequent open also failed, then in_progress() would be false. We don't
   // try to retry renames if the in_progress() was false to begin with since we
@@ -576,12 +536,6 @@ void DownloadFileImpl::SetPotentialFileLength(int64_t length) {
       potential_file_length_ == kUnknownContentLength) {
     potential_file_length_ = length;
   }
-
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  if (obfuscator_) {
-    potential_file_length_ += obfuscator_->GetTotalOverhead();
-  }
-#endif
 
   // TODO(qinmin): interrupt the download if the received bytes are larger
   // than content length limit.
@@ -764,33 +718,8 @@ void DownloadFileImpl::OnDownloadCompleted() {
   RecordFileBandwidth(bytes_seen_, base::TimeTicks::Now() - download_start_);
   weak_factory_.InvalidateWeakPtrs();
 
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  // Append an empty obfuscated chunk to securely mark the end of the file
-  // and protect against truncation.
-  if (obfuscator_) {
-    auto obfuscated_empty_data =
-        obfuscator_->ObfuscateChunk({}, /*is_last_chunk=*/true);
-    if (!obfuscated_empty_data.has_value()) {
-      SendErrorUpdateIfFinished(DOWNLOAD_INTERRUPT_REASON_FILE_FAILED);
-      return;
-    }
-
-    DownloadInterruptReason reason = file_.WriteDataToFile(
-        file_.bytes_so_far(), obfuscated_empty_data.value());
-
-    if (reason != DOWNLOAD_INTERRUPT_REASON_NONE) {
-      SendErrorUpdateIfFinished(reason);
-      return;
-    }
-  }
-
-  std::optional<crypto::hash::Hasher> hash_state =
-      obfuscator_ ? obfuscator_->GetUnobfuscatedHash()
-                  : file_.Finish(potential_file_length_);
-#else
   std::optional<crypto::hash::Hasher> hash_state =
       file_.Finish(potential_file_length_);
-#endif
 
   update_timer_.reset();
   main_task_runner_->PostTask(

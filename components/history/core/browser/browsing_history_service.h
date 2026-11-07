@@ -136,6 +136,12 @@ class BrowsingHistoryService : public HistoryServiceObserver {
     bool reached_beginning = false;
   };
 
+  // Used to group sync IDs of clients that share a name.
+  struct ClientGroup {
+    std::string name;
+    std::vector<std::string> client_ids;
+  };
+
   BrowsingHistoryService(BrowsingHistoryDriver* driver,
                          HistoryService* local_history);
 

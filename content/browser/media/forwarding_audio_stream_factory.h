@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 
+#include "base/containers/flat_map.h"
 #include "base/containers/flat_set.h"
 #include "base/containers/unique_ptr_adapters.h"
 #include "base/functional/callback_helpers.h"
@@ -73,6 +74,7 @@ class CONTENT_EXPORT ForwardingAudioStreamFactory final
     void CreateInputStream(
         int render_process_id,
         int render_frame_id,
+        const base::UnguessableToken& session_id,
         const std::string& device_id,
         const media::AudioParameters& params,
         uint32_t shared_memory_count,
@@ -97,12 +99,16 @@ class CONTENT_EXPORT ForwardingAudioStreamFactory final
     void CreateLoopbackStream(
         int render_process_id,
         int render_frame_id,
+        const base::UnguessableToken& session_id,
         AudioStreamBroker::LoopbackSource* loopback_source,
         const media::AudioParameters& params,
         uint32_t shared_memory_count,
         bool mute_source,
         mojo::PendingRemote<blink::mojom::RendererAudioInputStreamFactoryClient>
             renderer_factory_client);
+
+    // Closes all active input and loopback streams created for |session_id|.
+    void CloseInputStreamsForSession(const base::UnguessableToken& session_id);
 
     // Sets the muting state for all output streams created through this
     // factory.
@@ -114,13 +120,25 @@ class CONTENT_EXPORT ForwardingAudioStreamFactory final
     const base::UnguessableToken& GetGroupID() final;  // Actually const.
 
    private:
-    // For CleanupStreamsBelongingTo.
+    // For CleanupOrReparentStreamsBelongingTo.
     friend class ForwardingAudioStreamFactory;
 
+    using InputStreamBrokerMap =
+        base::flat_map<std::unique_ptr<AudioStreamBroker>,
+                       base::UnguessableToken,
+                       base::UniquePtrComparator>;
     using StreamBrokerSet = base::flat_set<std::unique_ptr<AudioStreamBroker>,
                                            base::UniquePtrComparator>;
 
-    void CleanupStreamsBelongingTo(int render_process_id, int render_frame_id);
+    // Cleans up streams belonging to the specified frame. If
+    // `fallback_render_frame_id` is provided, output streams that support
+    // reparenting (such as default-device output streams that may be shared
+    // across same-process frames) are reparented to `*fallback_render_frame_id`
+    // instead of being destroyed.
+    void CleanupOrReparentStreamsBelongingTo(
+        int render_process_id,
+        int render_frame_id,
+        std::optional<int> fallback_render_frame_id = std::nullopt);
 
     void RemoveInput(AudioStreamBroker* handle);
     void RemoveOutput(AudioStreamBroker* handle);
@@ -156,7 +174,7 @@ class CONTENT_EXPORT ForwardingAudioStreamFactory final
     // Instantiated when |outputs_| should be muted, empty otherwise.
     std::optional<AudioMutingSession> muter_;
 
-    StreamBrokerSet inputs_;
+    InputStreamBrokerMap inputs_;
     StreamBrokerSet outputs_;
     base::flat_set<raw_ptr<AudioStreamBroker::LoopbackSink, CtnExperimental>>
         loopback_sinks_;

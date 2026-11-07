@@ -18,6 +18,7 @@
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_hash.h"
 
 namespace blink {
@@ -49,6 +50,7 @@ class CORE_EXPORT XMLDocumentParserRs final : public ScriptableDocumentParser,
   bool WellFormed() const override;
   OrdinalNumber LineNumber() const override;
   TextPosition GetTextPosition() const override;
+  bool SawXslTransformForTesting() const { return saw_xsl_transform_; }
 
   // XmlCallbacks
   void StartDocument(rust::Str version,
@@ -111,9 +113,12 @@ class CORE_EXPORT XMLDocumentParserRs final : public ScriptableDocumentParser,
   void CheckIfBlockingStyleSheetAdded();
 
   bool ShouldMarkScriptAlreadyStarted() const;
+  bool IsXSLTAllowed() const;
+  void UpdateScriptStartPositionIfNeeded();
 
   Member<XMLParserScriptRunner> script_runner_;
   TextPosition script_start_position_;
+  bool set_script_start_position_on_next_event_ = false;
   bool saw_error_ = false;
   bool saw_css_ = false;
 
@@ -135,8 +140,12 @@ class CORE_EXPORT XMLDocumentParserRs final : public ScriptableDocumentParser,
   const bool parsing_fragment_;
   bool saw_first_element_ = false;
   bool saw_end_document_ = false;
+  bool saw_xsl_transform_ = false;
+  StringBuilder original_source_for_transform_;
 
   bool parser_paused_ = false;
+  bool in_process_events_ = false;
+  StringBuilder pending_src_;
   bool requesting_script_ = false;
   bool waiting_for_stylesheets_ = false;
   bool added_pending_parser_blocking_stylesheet_ = false;

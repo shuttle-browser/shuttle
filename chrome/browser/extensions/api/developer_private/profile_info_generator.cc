@@ -7,7 +7,6 @@
 #include "build/build_config.h"
 #include "chrome/browser/extensions/extension_management.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/supervised_user/supervised_user_browser_utils.h"
 #include "chrome/common/pref_names.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_service.h"
@@ -31,8 +30,7 @@ developer::ProfileInfo CreateProfileInfo(Profile* profile) {
   info.in_developer_mode = !info.is_child_account &&
                            prefs->GetBoolean(prefs::kExtensionsUIDeveloperMode);
 
-  info.is_child_account =
-      supervised_user::AreExtensionsPermissionsEnabled(profile);
+  info.is_child_account = false;
   info.can_load_unpacked =
       ExtensionManagementFactory::GetForBrowserContext(profile)
           ->HasAllowlistedExtension();

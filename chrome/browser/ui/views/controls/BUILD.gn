@@ -47,3 +47,6 @@ source_set("controls") {
     "//url",
   ]
 }
+
+if (!is_chromeos) {
+}

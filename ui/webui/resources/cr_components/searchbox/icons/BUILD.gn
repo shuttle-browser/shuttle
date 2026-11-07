@@ -30,23 +30,25 @@ generate_grd("build_grdp") {
     "definition_cr23_old.svg",
     "dino_cr23.svg",
     "dino_cr23_old.svg",
-    "drive_docs.svg",
-    "drive_docs_old.svg",
-    "drive_folder.svg",
-    "drive_folder_old.svg",
-    "drive_form.svg",
-    "drive_form_old.svg",
-    "drive_image.svg",
-    "drive_image_old.svg",
+    "dock_to_right.svg",
+    "dogfood.svg",
+    "drive_docs_custom.svg",
+    "drive_docs_custom_old.svg",
+    "drive_folder_custom.svg",
+    "drive_folder_custom_old.svg",
+    "drive_form_custom.svg",
+    "drive_form_custom_old.svg",
+    "drive_image_custom.svg",
+    "drive_image_custom_old.svg",
     "drive_logo.svg",
-    "drive_pdf.svg",
-    "drive_pdf_old.svg",
-    "drive_sheets.svg",
-    "drive_sheets_old.svg",
-    "drive_slides.svg",
-    "drive_slides_old.svg",
-    "drive_video.svg",
-    "drive_video_old.svg",
+    "drive_pdf_custom.svg",
+    "drive_pdf_custom_old.svg",
+    "drive_sheets_custom.svg",
+    "drive_sheets_custom_old.svg",
+    "drive_slides_custom.svg",
+    "drive_slides_custom_old.svg",
+    "drive_video_custom.svg",
+    "drive_video_custom_old.svg",
     "enterprise.svg",
     "extension_app.svg",
     "extension_app_old.svg",
@@ -61,8 +63,8 @@ generate_grd("build_grdp") {
     "mac_share_cr23.svg",
     "mac_share_cr23_old.svg",
     "mic_old.svg",
-    "note.svg",
-    "note_old.svg",
+    "note_custom.svg",
+    "note_custom_old.svg",
     "notes_spark.svg",
     "notes_spark_old.svg",
     "page_cr23.svg",
@@ -124,5 +126,16 @@ if (is_chrome_branded) {
     ]
     input_files_base_dir =
         rebase_path("//chrome/app/theme/google_chrome/realbox", "//")
+  }
+
+  # The 2026 version of the Google logo, used by <ntp-logo> when
+  # ntp_features::kNtpGoogleLogo26 is enabled.
+  generate_grd("chrome_branded_google_logo_26_grdp") {
+    grd_prefix = "searchbox_icons_google_logo_26"
+    resource_path_prefix = "cr_components/searchbox/icons/google_logo_26"
+    out_grd = "$target_gen_dir/chrome_branded_google_logo_26_resources.grdp"
+    input_files = [ "google_logo.svg" ]
+    input_files_base_dir =
+        rebase_path("//chrome/app/theme/google_chrome/new_tab_page", "//")
   }
 }

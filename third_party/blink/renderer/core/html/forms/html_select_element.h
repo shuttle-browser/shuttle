@@ -134,6 +134,8 @@ class CORE_EXPORT HTMLSelectElement final
 
   // It is possible to pass WebAutofillState::kNotFilled here in case we need
   // to simulate a reset of a <select> element.
+  void SetAutofillState(
+      WebAutofillState = WebAutofillState::kAutofilled) override;
   void SetAutofillValue(const String& value, WebAutofillState);
   void SetAutofillOption(HTMLOptionElement* option, WebAutofillState);
 
@@ -219,7 +221,6 @@ class CORE_EXPORT HTMLSelectElement final
 
   // For use in the implementation of HTMLOptionElement.
   void OptionSelectionStateChanged(HTMLOptionElement*, bool option_is_selected);
-  void ElementInserted(Node& node);
   void OptionInserted(HTMLOptionElement&,
                       Node* nearest_ancestor_select_child,
                       bool option_is_selected);
@@ -232,6 +233,9 @@ class CORE_EXPORT HTMLSelectElement final
 
   void OptGroupInsertedOrRemoved(HTMLOptGroupElement&);
   void HrInsertedOrRemoved(HTMLHRElement&);
+  // ResetSelectedness calls ResetToDefaultSelection, but will also update all
+  // descendant selectedcontent elements if the selected option was changed.
+  void ResetSelectedness();
 
   HTMLOptionElement* SpatialNavigationFocusedOption();
 
@@ -376,6 +380,8 @@ class CORE_EXPORT HTMLSelectElement final
   void setSelectedContentElement(HTMLSelectedContentElement*);
 
   void DefaultEventHandler(Event&) override;
+  bool HasActivationBehavior() const override;
+  void RunActivationBehavior(Event&, EventDispatchHandlingState*) override;
   void ChildrenChanged(const ChildrenChange&) override;
 
   // UpdateAllSelectedcontentsSingle and UpdateAllSelectedcontentsMultiple both
@@ -432,6 +438,7 @@ class CORE_EXPORT HTMLSelectElement final
     return children_descendant_counts_map_;
   }
   unsigned NumDescendantInputs() const;
+  HTMLElement* ListBoxForFilter() const;
 
  private:
   mojom::blink::FormControlType FormControlType() const override;
@@ -481,7 +488,8 @@ class CORE_EXPORT HTMLSelectElement final
     kResetReasonOptionInsertedOrRemoved,
     kResetReasonOthers
   };
-  void ResetToDefaultSelection(ResetReason = kResetReasonOthers);
+  // Returns true if the selectedness of any option was changed.
+  bool ResetToDefaultSelection(ResetReason = kResetReasonOthers);
   void TypeAheadFind(const KeyboardEvent&);
 
   bool IsOptionalFormControl() const override {
@@ -538,7 +546,7 @@ class CORE_EXPORT HTMLSelectElement final
   // Helper to update the select descendants' mutation observer.
   void UpdateMutationObserver();
 
-  void DidChangeIsInCanvasSubtree() final;
+  void DidChangeIsInCanvasSubtree(CanvasSubtreePropagation) final;
 
   // last_on_change_option_ is the currently selected option. It provides faster
   // access to the currently selected option than iterating through each option

@@ -18,14 +18,13 @@
 #include "base/functional/callback_helpers.h"
 #include "base/functional/function_ref.h"
 #include "base/location.h"
-#include "base/memory/advanced_memory_safety_checks.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/sanitized_object.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/process/kill.h"
 #include "base/supports_user_data.h"
 #include "base/time/time.h"
-#include "base/types/strong_alias.h"
 #include "base/types/token_type.h"
 #include "base/unguessable_token.h"
 #include "build/build_config.h"
@@ -179,11 +178,10 @@ class SelectionPopupDelegate;
 class WebContents : public PageNavigator, public base::SupportsUserData {
   // Do not remove this macro!
   // The macro is maintained by the memory safety team.
-  ADVANCED_MEMORY_SAFETY_CHECKS();
+  SANITIZED_OBJECT();
 
  public:
   using UniqueToken = base::TokenType<class WebContentsTokenTag>;
-  using DragId = base::StrongAlias<class DragIdTag, base::UnguessableToken>;
 
   // Marks a WebContents as a privileged-contents host: it indicates that the
   // embedder (e.g., //chrome) is loading a trusted, network-hosted site and
@@ -451,12 +449,6 @@ class WebContents : public PageNavigator, public base::SupportsUserData {
   // return nullptr if the RenderFrameHost is shutting down.
   CONTENT_EXPORT static WebContents* FromFrameTreeNodeId(
       FrameTreeNodeId frame_tree_node_id);
-
-  // Returns the WebContents associated with the given drag ID, provided the
-  // drag originated from the given BrowserContext. Returns nullptr if the drag
-  // is not found or originated from a different BrowserContext.
-  CONTENT_EXPORT static WebContents* FromDragId(BrowserContext* browser_context,
-                                                const DragId& drag_id);
 
   // A callback that returns a pointer to a WebContents. The callback can
   // always be used, but it may return nullptr: if the info used to
@@ -1054,12 +1046,23 @@ class WebContents : public PageNavigator, public base::SupportsUserData {
 
   // This function checks *all* frames in this WebContents (not just the main
   // frame) and returns true if at least one frame has either a beforeunload or
-  // an unload/pagehide/visibilitychange handler.
+  // an unload/pagehide/visibilitychange handler. Such a page needs the slow
+  // close path: DispatchBeforeUnload() followed by ClosePage(), which runs the
+  // unload-time handlers, with the renderer kept out of fast shutdown until
+  // they have run.
   //
   // The value of this may change over time. For example, if true and the
   // beforeunload listener is executed and allows the user to exit, then this
   // returns false.
   virtual bool NeedToFireBeforeUnloadOrUnloadEvents() = 0;
+
+  // Like NeedToFireBeforeUnloadOrUnloadEvents(), but only considers
+  // beforeunload handlers: returns true if at least one live frame of the
+  // primary page has one, that is, if closing the page could show a
+  // beforeunload dialog. It does not say whether the page needs the slow close
+  // path, so it only suits a caller that runs DispatchBeforeUnload() to let the
+  // page ask the user to stay and then closes the page without ClosePage().
+  virtual bool NeedToFireBeforeUnload() = 0;
 
   // Runs the beforeunload handler for the main frame and all its subframes.
   // See also ClosePage in RenderViewHostImpl, which runs the unload handler.
@@ -1819,11 +1822,11 @@ class WebContents : public PageNavigator, public base::SupportsUserData {
   // if `std::nullopt`.
   // - `should_ignore_saver_modes` is used to ignore saver modes, e.g. data
   //   saver, battery saver, in eligibility checks.
-  // - `is_ahead_of_actual_navigation` should be true iff this prefetch is
-  //   triggered by a signal that the actual navigation to `prefetch_url` is
-  //   (almost) certain to happen soon, e.g. mouse down on an omnibox
-  //   suggestion. Such a prefetch is matched more aggressively. See
-  //   `features::kPrefetchAheadOfActualNavigation`.
+  // - `is_ahead_of_imminent_navigation` should be true iff this prefetch is
+  //   triggered by a signal that the navigation to `prefetch_url` is
+  //   imminent, i.e. (almost) certain to happen soon, e.g. mouse down on an
+  //   omnibox suggestion. Such a prefetch is matched more aggressively. See
+  //   `features::kPrefetchAheadOfImminentNavigation`.
   // - Returns `PrefetchHandle` to control prefetch resources. This can be
   //   nullptr when this function can't add `PrefetchContainer` to
   //   `PrefetchService`.
@@ -1840,7 +1843,7 @@ class WebContents : public PageNavigator, public base::SupportsUserData {
       PreloadingHoldbackStatus holdback_status_override,
       std::optional<base::TimeDelta> ttl,
       bool should_ignore_saver_modes,
-      bool is_ahead_of_actual_navigation) = 0;
+      bool is_ahead_of_imminent_navigation) = 0;
 
   // Starts an embedder triggered (browser-initiated) prerendering page and
   // returns the unique_ptr<PrerenderHandle>, which cancels prerendering on its

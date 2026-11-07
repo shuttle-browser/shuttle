@@ -751,7 +751,7 @@ be describing additional metrics about the same event.
 </event>
 
 <event name="Actor.Login">
-  <owner>npm@google.com</owner>
+  <owner>yigu@chromium.org</owner>
   <owner>web-identity-eng@google.com</owner>
   <summary>
     Metrics recorded for an actor login request. Recorded once per request when
@@ -2849,7 +2849,7 @@ be describing additional metrics about the same event.
 </event>
 
 <event name="Autofill.AiAmountExtraction.ApcFetchResult" singular="true">
-  <owner>jamessun@google.com</owner>
+  <owner>vinnypersky@google.com</owner>
   <owner>payments-autofill-team@google.com</owner>
   <summary>
     Records whether the Annotated Page Content (APC) fetch was successful. APC
@@ -2873,7 +2873,7 @@ be describing additional metrics about the same event.
 </event>
 
 <event name="Autofill.AiAmountExtraction.Result" singular="true">
-  <owner>jamessun@google.com</owner>
+  <owner>vinnypersky@google.com</owner>
   <owner>payments-autofill-team@google.com</owner>
   <summary>
     Records the final result of the AI-based checkout amount extraction process.
@@ -2948,8 +2948,9 @@ be describing additional metrics about the same event.
 </event>
 
 <event name="Autofill.AmountExtractionComplete" singular="true">
-  <owner>jamessun@google.com</owner>
   <owner>longsheng@google.com</owner>
+  <owner>vinnypersky@google.com</owner>
+  <owner>payments-autofill-team@google.com</owner>
   <summary>
     Records the result of the amount extraction process. This process is to
     search for the final checkout amount from the merchants' checkout page and
@@ -3001,7 +3002,7 @@ be describing additional metrics about the same event.
 </event>
 
 <event name="Autofill.Bnpl.AiAmountExtraction.AmountInIssuerRange">
-  <owner>jamessun@google.com</owner>
+  <owner>vinnypersky@google.com</owner>
   <owner>payments-autofill-team@google.com</owner>
   <summary>
     Records whether the AI-based checkout amount is within the issuer's
@@ -3549,6 +3550,13 @@ be describing additional metrics about the same event.
       kAfterFieldDetection and kBeforeFieldDetection, where an OTP form was
       detected and the URL can be reliably established.
     </summary>
+    <aggregation>
+      <history>
+        <statistics>
+          <enumeration/>
+        </statistics>
+      </history>
+    </aggregation>
   </metric>
   <metric name="Tickle.FormOutcome" enum="OneTimeTokensTickleFormOutcome">
     <summary>
@@ -3557,6 +3565,13 @@ be describing additional metrics about the same event.
       before user interaction, after user interaction, or no tickle received
       within timeout).
     </summary>
+    <aggregation>
+      <history>
+        <statistics>
+          <enumeration/>
+        </statistics>
+      </history>
+    </aggregation>
   </metric>
 </event>
 
@@ -4837,7 +4852,7 @@ be describing additional metrics about the same event.
 </event>
 
 <event name="Blink.EmailVerificationProtocol">
-  <owner>npm@google.com</owner>
+  <owner>yigu@chromium.org</owner>
   <owner>web-identity-eng@google.com</owner>
   <summary>
     Records metrics for the Email Verification Protocol (EVP) flow. Surfaced
@@ -4888,7 +4903,7 @@ be describing additional metrics about the same event.
 </event>
 
 <event name="Blink.EmailVerificationProtocol.FormSubmission">
-  <owner>npm@google.com</owner>
+  <owner>yigu@chromium.org</owner>
   <owner>web-identity-eng@google.com</owner>
   <summary>
     Records metrics for the Email Verification Protocol (EVP) when a form
@@ -5358,7 +5373,7 @@ be describing additional metrics about the same event.
 </event>
 
 <event name="Blink.FedCmIdp">
-  <owner>npm@chromium.org</owner>
+  <owner>yigu@chromium.org</owner>
   <owner>web-identity-eng@google.com</owner>
   <summary>
     Records performance metrics for FedCM (Federated Credential Management) API.
@@ -6032,7 +6047,6 @@ be describing additional metrics about the same event.
 </event>
 
 <event name="Blink.PaintTiming" singular="True">
-  <owner>npm@chromium.org</owner>
   <owner>sullivan@chromium.org</owner>
   <summary>
     Paint timing metrics recorded in Blink, usually used as debugging metrics
@@ -8499,7 +8513,6 @@ be describing additional metrics about the same event.
 
 <event name="ContentManagementSystemPageLoad" singular="True">
   <owner>felixarntz@google.com</owner>
-  <owner>npm@chromium.org</owner>
   <summary>
     Metrics stating whether the main frame of a page uses certain content
     management systems. This event is recorded when the page is going to be
@@ -10271,6 +10284,55 @@ be describing additional metrics about the same event.
       A 64-bit integer that represents the navigation ID of the page navigation
       that has the same category param value as the fetch keepalive request with
       the Id.Low and Id.High logged in this event.
+    </summary>
+  </metric>
+</event>
+
+<event name="FetchRequest.WithCategory">
+  <owner>sisidovski@chromium.org</owner>
+  <owner>chrome-loading@google.com</owner>
+  <summary>
+    Logged when a fetch() request with a recognized category parameter reaches a
+    terminal state in the renderer.
+  </summary>
+  <metric name="Category">
+    <summary>
+      An integer representing the numeric identifier parsed from the category
+      query parameter in the request URL.
+    </summary>
+  </metric>
+  <metric name="FetchAbortedReason" enum="FetchAbortedReason">
+    <summary>
+      Why the request ended with net::ERR_ABORTED.
+    </summary>
+  </metric>
+  <metric name="HttpStatusCode" enum="CombinedHttpResponseAndNetErrorCode">
+    <summary>
+      The HTTP response status code if response headers were received, or 0
+      otherwise.
+    </summary>
+  </metric>
+  <metric name="IsAbortSignalled" enum="Boolean">
+    <summary>
+      Whether the request received an explicit abort signal (e.g. from
+      AbortController.abort() or window stop).
+    </summary>
+  </metric>
+  <metric name="IsContextDetached" enum="Boolean">
+    <summary>
+      Whether the execution context or frame was detaching or destroyed when the
+      request terminated.
+    </summary>
+  </metric>
+  <metric name="NetError" enum="NetErrorCodes">
+    <summary>
+      The terminal net error code, recorded as -net_error (e.g. net::OK is 0,
+      net::ERR_ABORTED is 3).
+    </summary>
+  </metric>
+  <metric name="ResponseReceived" enum="Boolean">
+    <summary>
+      Whether response headers were received before the terminal state.
     </summary>
   </metric>
 </event>
@@ -12321,7 +12383,6 @@ be describing additional metrics about the same event.
 
 <event name="JavascriptFrameworkPageLoad" singular="True">
   <owner>houssein@chromium.org</owner>
-  <owner>npm@chromium.org</owner>
   <summary>
     Metrics stating whether the main frame of a page uses certain JavaScript
     frameworks. This event is recorded when the page is going to be unloaded or
@@ -12340,6 +12401,18 @@ be describing additional metrics about the same event.
   <metric name="GatsbyPageLoad" enum="Boolean">
     <summary>
       True if the page loaded in the main frame uses the Gatsby JavaScript
+      framework.
+    </summary>
+  </metric>
+  <metric name="LiteRTLMPageLoad" enum="Boolean">
+    <summary>
+      True if the page loaded in the main frame uses the LiteRT-LM JavaScript
+      framework.
+    </summary>
+  </metric>
+  <metric name="LiteRTPageLoad" enum="Boolean">
+    <summary>
+      True if the page loaded in the main frame uses the LiteRT.js JavaScript
       framework.
     </summary>
   </metric>
@@ -12957,7 +13030,8 @@ be describing additional metrics about the same event.
       page for low-priority subresource loads before it unloaded. This will be
       recorded if the Optimization Guide was consulted for the page load and the
       Optimization Guide had a prediction for it. If more than 100 subresource
-      origins were correctly predicted, this will be capped at 100.
+      origins were correctly predicted, this will be capped at 100. Only the
+      first 500 distinct origins of low-priority loads are considered.
     </summary>
   </metric>
   <metric
@@ -12967,7 +13041,8 @@ be describing additional metrics about the same event.
       low-priority subresource loads before it unloaded. This will be recorded
       if the Optimization Guide was consulted for the page load and the
       Optimization Guide had a prediction for it. If more than 100 subresources
-      were predicted, this will be capped at 100.
+      were predicted, this will be capped at 100. Only the first 500 distinct
+      low-priority subresources loaded by the page are considered.
     </summary>
   </metric>
   <metric
@@ -12977,7 +13052,8 @@ be describing additional metrics about the same event.
       the page for low-priority subresource loads before it unloaded. This will
       be recorded if the Optimization Guide was consulted for the page load and
       the Optimization Guide had a prediction for it. If more than 100
-      subresources were predicted, this will be capped at 100.
+      subresources were predicted, this will be capped at 100. Only the first
+      500 distinct low-priority subresources loaded by the page are considered.
     </summary>
   </metric>
   <metric name="OptimizationGuidePredictionCorrectlyPredictedOrigins">
@@ -17917,10 +17993,16 @@ be describing additional metrics about the same event.
       of the main frame request.
     </summary>
   </metric>
-  <metric name="Navigation.InitiatorLocation">
+  <metric name="Navigation.InitiatorLocation" enum="NavigationInitiatorType">
     <summary>
-      page_load_metrics::NavigationHandleUserData::InitiatorLocation enum value.
-      This field is used for identifying the types of prerender trigger.
+      Who or what triggered this navigation, as the id of a
+      page_load_metrics::NavigationInitiator.
+
+      Before M147 (2026-09) this was Other unless a navigation trigger, e.g. the
+      bookmark bar or the omnibox, attached the initiator explicitly. Since M147
+      the initiator is otherwise derived from ui::PageTransition, i.e. Forward,
+      Backward, Reload, Link Click or Form Submission, and only then falls back
+      to Other.
     </summary>
   </metric>
   <metric name="Navigation.PageEndReason3" enum="PageEndReason">
@@ -18548,7 +18630,7 @@ be describing additional metrics about the same event.
 </event>
 
 <event name="PageLoad.Internal" singular="True">
-  <owner>npm@chromium.org</owner>
+  <owner>mmocny@chromium.org</owner>
   <owner>speed-metrics-dev@chromium.org</owner>
   <summary>
     Debugging metrics for the PageLoad event that do not require the same amount
@@ -19457,6 +19539,14 @@ be describing additional metrics about the same event.
       Set to true when a 3D-Secure challenge request is detected in the form
       data of an HTTP POST navigation.
     </summary>
+    <aggregation>
+      <history>
+        <index fields="profile.country"/>
+        <statistics>
+          <enumeration/>
+        </statistics>
+      </history>
+    </aggregation>
   </metric>
 </event>
 
@@ -19471,6 +19561,14 @@ be describing additional metrics about the same event.
     <summary>
       The outcome of the 3D-Secure challenge response.
     </summary>
+    <aggregation>
+      <history>
+        <index fields="profile.country"/>
+        <statistics>
+          <enumeration/>
+        </statistics>
+      </history>
+    </aggregation>
   </metric>
 </event>
 
@@ -21158,123 +21256,6 @@ be describing additional metrics about the same event.
   </metric>
 </event>
 
-<event name="Preloading.NavigationPredictorModelTrainingData">
-  <owner>isaboori@google.com</owner>
-  <owner>mcnee@chromium.org</owner>
-  <summary>
-    Metrics that describe an anchor element, the user's interaction therewith,
-    and whether a prediction of a navigation to the target destination would be
-    accurate. This event is emitted on navigation. The number of events emitted
-    at a time depends on the number of predictions the model makes, subject to
-    sampling. See also NavigationPredictorAnchorElementMetrics and
-    NavigationPredictorUserInteractions.
-  </summary>
-  <metric name="ContainsImage">
-    <summary>
-      1 if the anchor element contains an image.
-    </summary>
-  </metric>
-  <metric name="FontSize">
-    <summary>
-      The bucketed font size of the anchor element, according to its computed
-      style. 1 corresponds to a pixel font size in [0, 10), 2 corresponds to a
-      fonts size in [10, 18) and 3 is logged when the font size is 18 pixels or
-      larger.
-    </summary>
-  </metric>
-  <metric name="HasTextSibling">
-    <summary>
-      1 if the anchor element has an immediate text sibling, 0 otherwise.
-    </summary>
-  </metric>
-  <metric name="HoverDwellTimeMs">
-    <summary>
-      Dwell time of pointer hovering over the anchor element in milliseconds.
-      Exponentially bucketed using GetExponentialBucketMin with a value of 1.3.
-    </summary>
-  </metric>
-  <metric name="IsAccurate">
-    <summary>
-      1 if a navigation to the anchor's destination occurs.
-    </summary>
-  </metric>
-  <metric name="IsBold">
-    <summary>
-      1 if the anchor's computed style's font-weight is greater than 500, 0
-      otherwise.
-    </summary>
-  </metric>
-  <metric name="IsInIframe">
-    <summary>
-      1 if the anchor element is in an iframe.
-    </summary>
-  </metric>
-  <metric name="IsURLIncrementedByOne">
-    <summary>
-      1 if the anchor element's target URL and the document's source URL only
-      differ by one number, and the target URL increments that number in the
-      source URL by 1.
-    </summary>
-  </metric>
-  <metric name="NavigationStartToLinkLoggedMs">
-    <summary>
-      The time in ms between navigation start and the moment the anchor was
-      first seen. Exponentially bucketed using GetExponentialBucketMin with a
-      value of 1.3.
-    </summary>
-  </metric>
-  <metric name="PathDepth">
-    <summary>
-      The number of slashes in the anchor element's href URL path. Truncated at
-      5.
-    </summary>
-  </metric>
-  <metric name="PathLength">
-    <summary>
-      The number of characters in the anchor element's href URL path. Buckets of
-      size 10, truncated at 100.
-    </summary>
-  </metric>
-  <metric name="PercentClickableArea">
-    <summary>
-      The percent of the total document area that this anchor element's
-      clickable area occupies.
-    </summary>
-  </metric>
-  <metric name="PercentVerticalDistance">
-    <summary>
-      How far down the document the top of the anchor element is, expressed as a
-      ratio with the total document height.
-    </summary>
-  </metric>
-  <metric name="PointerHoveringOverCount">
-    <summary>
-      How many times the pointer was hovering over the anchor element.
-      Exponentially bucketed using GetExponentialBucketMin a value of 1.3.
-    </summary>
-  </metric>
-  <metric name="SameHost">
-    <summary>
-      1 if the anchor element's target URL and the document's source URL are the
-      same host.
-    </summary>
-  </metric>
-  <metric name="SamplingAmount">
-    <summary>
-      Indicates whether the number of predictions for the associated page was
-      over a limit and needed to be downsampled. All events for a given page
-      logged at the same time have the same SamplingAmount. The value is the
-      exponentially bucketed value of (1,000,000 - (1,000,000 * sampling_rate)).
-      The multiplication by 1,000,000 is because we cannot log floating point
-      values in UKM, and we have larger values indicate more sampling so that a
-      lack of sampling can be unambiguous by having its own bucket. For example,
-      if the number of predictions was under the limit and no sampling was done,
-      then the value would be 0. If the number of predictions was double the
-      limit, the value would be 500,000.
-    </summary>
-  </metric>
-</event>
-
 <event name="Preloading.Prediction">
   <owner>domenic@chromium.org</owner>
   <owner>chrome-instant-ecosystem@google.com</owner>
@@ -21493,10 +21474,16 @@ be describing additional metrics about the same event.
       for main frame request.
     </summary>
   </metric>
-  <metric name="Navigation.InitiatorLocation">
+  <metric name="Navigation.InitiatorLocation" enum="NavigationInitiatorType">
     <summary>
-      page_load_metrics::NavigationHandleUserData::InitiatorLocation enum value.
-      This field is used for identifying the types of prerender trigger.
+      Who or what triggered the activation navigation that this prerendered page
+      load fulfilled, as the id of a page_load_metrics::NavigationInitiator.
+
+      Before M147 (2026-09) this was Other unless a navigation trigger, e.g. the
+      bookmark bar or the omnibox, attached the initiator explicitly. Since M147
+      the initiator is otherwise derived from ui::PageTransition, i.e. Forward,
+      Backward, Reload, Link Click or Form Submission, and only then falls back
+      to Other.
     </summary>
   </metric>
   <metric name="Navigation.PageTransition">
@@ -21661,42 +21648,6 @@ be describing additional metrics about the same event.
   </metric>
 </event>
 
-<event name="RequestStorageAccessFor.RequestStorageResult">
-  <owner>selya@google.com</owner>
-  <owner>cfredric@chromium.org</owner>
-  <summary>
-    Records invocations of document.requestStorageAccessFor and reasons the
-    request was approved or rejected. Recorded for every call to the function,
-    regardless of outcome.
-  </summary>
-  <metric name="RequestStorageResult" enum="RequestStorageResult">
-    <summary>
-      The result of the requestStorageAccessFor call.
-    </summary>
-  </metric>
-</event>
-
-<event name="RequestStorageAccessFor.TopLevelStorageIsExemptionReason">
-  <owner>selya@google.com</owner>
-  <owner>cfredric@chromium.org</owner>
-  <summary>
-    Tracks when a cookie is included in a network request due to the
-    ExemptionReason::kTopLevelStorageAccess. This state can only occur when a
-    request is cors-enabled and made from the top-level frame. Reads from
-    document.cookies (and requests that are not cors-enabled) are not included
-    because the value is always 0 and those are not recorded. Cookies that have
-    been written by document.cookies or network responses may be included if
-    subsequent request meets the requirments for kTopLevelStorageAccess.
-  </summary>
-  <metric name="NumberOfCookies">
-    <summary>
-      Number of cookies where ExemptionReason::kTopLevelStorageAccess is the
-      reason a cookie is included in a given request. The value is rounded down
-      to the nearest exponential bucket with factor of 2.0.
-    </summary>
-  </metric>
-</event>
-
 <event name="Responsiveness.UserInteraction">
   <owner>mmocny@chromium.org</owner>
   <owner>sullivan@chromium.org</owner>
@@ -21725,7 +21676,6 @@ be describing additional metrics about the same event.
 </event>
 
 <event name="ResponsivenessMeasurement">
-  <owner>npm@chromium.org</owner>
   <owner>tdresser@chromium.org</owner>
   <summary>
     Responsiveness metrics recorded once every 5 seconds.
@@ -23174,26 +23124,6 @@ be describing additional metrics about the same event.
     <summary>
       Whether the highlighting of a set of text fragments was a complete success
       or not.
-    </summary>
-  </metric>
-</event>
-
-<event name="SharedStorage.Worklet.OnDestroyed">
-  <owner>yaoxia@chromium.org</owner>
-  <owner>cammie@chromium.org</owner>
-  <summary>
-    Metrics for Shared Storage worklet. Each document can create zero or more
-    worklets, and the recorded URL represents the URL of the top-level page that
-    creates the worklet. (Note: The Storage.SharedStorage.Worklet.NumPerPage
-    histogram tracks the number of worklets per page.) Recorded when a worklet
-    is destroyed. See https://wicg.github.io/shared-storage/#worklet.
-  </summary>
-  <metric name="AbsoluteUsefulResourceDuration">
-    <summary>
-      The total duration (ms) that a Shared Storage worklet is actively
-      processing operations (i.e, from the worklet's creation until either its
-      last operation completes or it is destroyed). The number is exponentially
-      bucketed.
     </summary>
   </metric>
 </event>

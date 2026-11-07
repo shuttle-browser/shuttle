@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-# pylint: disable=too-many-lines
 
 import csv
 import os
@@ -49,6 +48,7 @@ class _PerfPlatform(object):
     pinpoint_only: bool = False,
     executables: Optional[frozenset[ExecutableConfig]] = None,
     crossbench: Optional[frozenset[CrossbenchConfig]] = None,
+    allowed_benchmarks: Optional[frozenset[str]] = None,
   ):
     benchmark_config_set = benchmark_configs.Frozenset()
     self._name = name
@@ -61,9 +61,9 @@ class _PerfPlatform(object):
     self.pinpoint_only = pinpoint_only
     self.executables = executables or frozenset()
     self.crossbench = crossbench or frozenset()
+    self.allowed_benchmarks = allowed_benchmarks
     assert num_shards
     self._num_shards = num_shards
-    # pylint: disable=redefined-outer-name
     self._benchmark_configs: frozenset[TelemetryConfig] = frozenset(
       [
         b
@@ -71,11 +71,25 @@ class _PerfPlatform(object):
         if _IsPlatformSupported(b.benchmark, self._platform_os)
       ]
     )
-    # pylint: enable=redefined-outer-name
     benchmark_names = [config.name for config in self._benchmark_configs]
     assert len(set(benchmark_names)) == len(benchmark_names), (
       'Make sure that a benchmark does not appear twice.'
     )
+    if self.allowed_benchmarks is not None:
+      scheduled_names = {
+        c.name
+        for c in (
+          *self._benchmark_configs,
+          *self.executables,
+          *self.crossbench,
+        )
+      }
+      disallowed = scheduled_names - self.allowed_benchmarks
+      assert not disallowed, (
+        f'Bot {self._name!r} only allows benchmarks '
+        f'{sorted(self.allowed_benchmarks)}, but found disallowed '
+        f'benchmarks: {sorted(disallowed)}'
+      )
 
     base_file_name = name.replace(' ', '_').lower()
     self._timing_file_path = os.path.join(
@@ -89,7 +103,6 @@ class _PerfPlatform(object):
   def __lt__(self, other):
     if not isinstance(other, type(self)):
       return NotImplemented
-    # pylint: disable=protected-access
     return self._sort_key < other._sort_key
 
   @property
@@ -244,6 +257,20 @@ class CrossbenchConfig(BenchmarkConfig):
     self.estimated_runtime: Final[int] = estimated_runtime
     self.stories: Final[tuple[str, ...]] = stories or ('default',)
 
+  @property
+  def flags(self) -> tuple[str, ...]:
+    # The repeat count is part of the crossbench flags. It is derived on
+    # access rather than baked in at construction time because the schedule
+    # csv can override self.repeat after the config was created (see
+    # _ParseScheduleConfigRow).
+    if self.repeat > 1:
+      return (*self._flags, f'--repeat={self.repeat}')
+    return self._flags
+
+  @flags.setter
+  def flags(self, flags: tuple[str, ...]) -> None:
+    self._flags = flags
+
   def _process_flags(
     self, flags: tuple[str, ...], auto_enable_field_trials: bool
   ) -> tuple[str, ...]:
@@ -253,6 +280,9 @@ class CrossbenchConfig(BenchmarkConfig):
         "--disable-field-trial-config" not in flags
       ):
         flags += ("--enable-field-trials=benchmarking",)
+    assert not any(flag.startswith('--repeat') for flag in flags), (
+      f"Use the repeat= argument instead of passing --repeat in {flags}"
+    )
     assert len(flags) == len(set(flags)), (
       f"Found duplicate arguments in {flags}"
     )
@@ -345,6 +375,18 @@ def _base_perftests(
 ):
   return ExecutableConfig(
     'base_perftests',
+    path=path,
+    flags=('--test-launcher-jobs=1', '--test-launcher-retry-limit=0', *flags),
+    estimated_runtime=estimated_runtime,
+  )
+
+
+@_register('partition_alloc_perftests')
+def _partition_alloc_perftests(
+  estimated_runtime: int = 60, path=None, flags: tuple[str, ...] = ()
+):
+  return ExecutableConfig(
+    'partition_alloc_perftests',
     path=path,
     flags=('--test-launcher-jobs=1', '--test-launcher-retry-limit=0', *flags),
     estimated_runtime=estimated_runtime,
@@ -576,14 +618,20 @@ def _browser_startup_crossbench(
 
   # NOTE: Keep this list in sync with:
   # third_party/crossbench/config/benchmark/browser_startup/browser.config.hjson
+  # The shard maps in tools/perf/core/shard_maps/ also embed these flags, so
+  # update them too.
   INITIAL_WEBUI_FEATURES = (
-    "InitialWebUI:high_stream_priority/true,"
-    "WebUIReloadButton:WebUIReloadButtonDeferBrowserViewShow/true/"
+    "InitialWebUI:high_stream_priority/true/without_spellcheck/true/"
+    "without_translate/true,"
+    "WebUIReloadButton:WebUIReloadButtonDeferBrowserViewShow/false/"
     "WebUIReloadButtonKeepVisibleUntilPaint/true/"
-    "WebUIReloadButtonPrewarmWebUI/true,"
-    "SkipIPCChannelPausingForNonGuests,WebUIInProcessResourceLoadingV2,"
-    "InitialWebUISyncNavStartToCommit,InitialWebUIWithoutExtensions,"
-    "WebUIBundledCodeCache,SendGPUChannelEarly"
+    "WebUIReloadButtonPrewarmWebUI/true/"
+    "WebUIReloadButtonPrewarmWebUIPreNavigate/true,"
+    "WebUIInProcessResourceLoadingV2,InitialWebUISyncNavStartToCommit,"
+    "InitialWebUIWithoutExtensions,WebUIBundledCodeCache,SendGPUChannelEarly,"
+    "InitialWebUISurfaceSync:deadline_in_frames/12000/"
+    "renderer_commit_delay_ms/100000,"
+    "BypassOutdatedSurfaceActivation,OnlyUseWindowResizeHelperOnResize"
   )
   return CrossbenchConfig(
     'browser_startup.crossbench',
@@ -873,6 +921,19 @@ def _crossbench_shell_embedder(
   )
 
 
+@_register('notification.embedder.crossbench')
+def _crossbench_notification_embedder(
+  estimated_runtime: int = 900, flags: tuple[str, ...] = ()
+):
+  return CrossbenchConfig(
+    'notification.embedder.crossbench',
+    'embedder',
+    estimated_runtime=estimated_runtime,
+    flags=flags,
+    auto_enable_field_trials=False,
+  )
+
+
 @_register('devtools_frontend.crossbench')
 def _devtools_frontend_crossbench(
   estimated_runtime: int = 60, flags: tuple[str, ...] = ()
@@ -932,6 +993,15 @@ PLATFORM_INFO = {
     'num_shards': 1,
     'platform_os': 'linux',
     'is_fyi': False,
+  },
+  # Uses the shared chrome.tests.intelligence pool and is reserved exclusively
+  # for blink-ai.crossbench. Do not schedule other benchmarks on this bot.
+  'linux-rtx4070-perf': {
+    'description': 'Ubuntu-24.04, NVIDIA GeForce RTX 4070',
+    'num_shards': 1,
+    'platform_os': 'linux',
+    'is_fyi': False,
+    'allowed_benchmarks': frozenset({'blink-ai.crossbench'}),
   },
   'linux-nvidia-dgx-spark-arm-perf': {
     'description': 'Ubuntu-24.04, Nvidia DGX Spark',
@@ -995,7 +1065,7 @@ PLATFORM_INFO = {
   },
   'mac-m5-pro-perf': {
     'description': 'Mac M5 PRO ARM',
-    'num_shards': 2,
+    'num_shards': 24,
     'platform_os': 'mac',
     'is_fyi': False,
   },
@@ -1080,18 +1150,6 @@ PLATFORM_INFO = {
   'android-brya-kano-i5-8gb-perf': {
     'description': 'Brya SKU kano_12th_Gen_IntelR_CoreTM_i5_1235U_8GB',
     'num_shards': 8,
-    'platform_os': 'android',
-    'is_fyi': False,
-  },
-  'android-corsola-steelix-8gb-perf': {
-    'description': 'Corsola SKU steelix_MT8186_8GB',
-    'num_shards': 7,
-    'platform_os': 'android',
-    'is_fyi': False,
-  },
-  'android-nissa-uldren-8gb-perf': {
-    'description': 'Nissa SKU uldren_99C4LZ/Q1XT/6W_8GB',
-    'num_shards': 7,
     'platform_os': 'android',
     'is_fyi': False,
   },
@@ -1193,6 +1251,13 @@ PLATFORM_INFO = {
     'platform_os': 'android',
     'is_fyi': False,
   },
+  'android-pixel10_webview-perf-cq': {
+    'description': 'Android B',
+    'num_shards': 2,
+    'platform_os': 'android',
+    'is_fyi': False,
+    'pinpoint_only': True,
+  },
   'android-pixel10_webview-perf-pgo-heapdump': {
     'description': 'Android B',
     'num_shards': 1,
@@ -1268,6 +1333,7 @@ def LoadAllScheduleFiles() -> set[_PerfPlatform]:
       pinpoint_only=platform_info.get('pinpoint_only', False),
       executables=executable_configs,
       crossbench=crossbench_configs,
+      allowed_benchmarks=platform_info.get('allowed_benchmarks'),
     )
     new_platforms.add(new_platform)
   return new_platforms
@@ -1278,9 +1344,7 @@ def LoadScheduleFile(
 ):
   name = file_path.stem
   factory = _BENCHMARKS_CONFIG_FACTORIES[name]
-  # pylint: disable=comparison-with-callable)
   is_telemetry = factory == _TelemetryConfig
-  # pylint: enable=comparison-with-callable)
   reader = ReadCSV(file_path)
   fieldnames = reader.fieldnames
   assert fieldnames, 'Missing field names'
@@ -1294,6 +1358,12 @@ def LoadScheduleFile(
       f'Duplicate bot {bot!r} in schedule file {file_path}'
     )
     seen_bots.add(bot)
+    allowed_benchmarks = PLATFORM_INFO.get(bot, {}).get('allowed_benchmarks')
+    if allowed_benchmarks is not None:
+      assert name in allowed_benchmarks, (
+        f'Bot {bot!r} only allows benchmarks {sorted(allowed_benchmarks)}, '
+        f'cannot schedule {name!r} in {file_path}'
+      )
     config = _ParseScheduleConfigRow(row, name, factory, is_telemetry)
     configs.setdefault(bot, []).append(config)
 
@@ -1326,7 +1396,9 @@ def ParseFlags(file_path: pathlib.Path, row, has_flags: bool) -> str | None:
 def _ParseScheduleConfigRow(
   row, name: str, factory: BenchmarkConfigFactory, is_telemetry: bool
 ) -> BenchmarkConfig:
-  repeat = int(row.get('repeat', 1))
+  # An absent or empty "repeat" column means "use the config's own default"
+  # (e.g. browser_startup.crossbench is registered with repeat=10).
+  repeat: int | None = int(row['repeat']) if row.get('repeat') else None
   kwargs = {}
   for k, v in row.items():
     if k in ('bot', 'repeat', 'shard'):
@@ -1337,10 +1409,8 @@ def _ParseScheduleConfigRow(
     return factory(name, pageset_repeat=repeat, **kwargs)
 
   config = factory(**kwargs)
-  if hasattr(config, 'repeat'):
+  if repeat is not None:
     config.repeat = repeat
-  else:
-    assert repeat == 1, f'Cannot use repeat > 1 yet on {name}'
 
   return config
 

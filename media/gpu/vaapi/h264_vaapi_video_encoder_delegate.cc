@@ -7,6 +7,7 @@
 #include <va/va.h>
 #include <va/va_enc_h264.h>
 
+#include <array>
 #include <climits>
 #include <utility>
 
@@ -17,6 +18,7 @@
 #include "base/memory/ref_counted_memory.h"
 #include "base/notimplemented.h"
 #include "base/numerics/checked_math.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/system/sys_info.h"
 #include "build/build_config.h"
 #include "media/base/media_switches.h"
@@ -171,26 +173,28 @@ void UpdatePictureForTemporalLayerEncoding(
   DCHECK_GE(num_layers, kMinSupportedH264TemporalLayers);
   DCHECK_LE(num_layers, kMaxSupportedH264TemporalLayers);
   constexpr size_t kTemporalLayerCycle = 4;
-  constexpr std::pair<H264Metadata, bool>
-      kFrameMetadata[][kTemporalLayerCycle] = {
-          {
-              // For two temporal layers.
+  using FrameMetadata = std::pair<H264Metadata, bool>;
+  static constexpr std::array<std::array<FrameMetadata, kTemporalLayerCycle>, 2>
+      kFrameMetadata = {{
+          // For two temporal layers.
+          {{
               {{.temporal_idx = 0, .layer_sync = false}, true},
               {{.temporal_idx = 1, .layer_sync = true}, false},
               {{.temporal_idx = 0, .layer_sync = false}, true},
               {{.temporal_idx = 1, .layer_sync = true}, false},
-          },
-          {
-              // For three temporal layers.
+          }},
+          // For three temporal layers.
+          {{
               {{.temporal_idx = 0, .layer_sync = false}, true},
               {{.temporal_idx = 2, .layer_sync = true}, false},
               {{.temporal_idx = 1, .layer_sync = true}, true},
               {{.temporal_idx = 2, .layer_sync = false}, false},
-          }};
+          }},
+      }};
 
   // Fill |pic.metadata_for_encoding| and |pic.ref|.
-  std::tie(pic.metadata_for_encoding.emplace(), pic.ref) = UNSAFE_TODO(
-      kFrameMetadata[num_layers - 2])[num_encoded_frames % kTemporalLayerCycle];
+  std::tie(pic.metadata_for_encoding.emplace(), pic.ref) =
+      kFrameMetadata[num_layers - 2][num_encoded_frames % kTemporalLayerCycle];
 
   UpdatePrevRefFrameNumAndSetFrameNum(pic, prev_ref_frame_num);
 
@@ -393,11 +397,11 @@ bool H264VaapiVideoEncoderDelegate::Initialize(
     return false;
   }
   constexpr int kH264MacroblockSizeInPixels = 16;
-  coded_size_ =
-      gfx::Size(base::bits::AlignUpDeprecatedDoNotUse(
-                    visible_size_.width(), kH264MacroblockSizeInPixels),
-                base::bits::AlignUpDeprecatedDoNotUse(
-                    visible_size_.height(), kH264MacroblockSizeInPixels));
+  coded_size_ = gfx::Size(
+      base::bits::AlignUp(base::checked_cast<uint32_t>(visible_size_.width()),
+                          uint32_t{kH264MacroblockSizeInPixels}),
+      base::bits::AlignUp(base::checked_cast<uint32_t>(visible_size_.height()),
+                          uint32_t{kH264MacroblockSizeInPixels}));
   mb_width_ = coded_size_.width() / kH264MacroblockSizeInPixels;
   mb_height_ = coded_size_.height() / kH264MacroblockSizeInPixels;
 

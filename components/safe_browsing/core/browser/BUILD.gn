@@ -29,8 +29,6 @@ source_set("browser") {
     "user_population.h",
   ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   public_deps = [
     # TODO(crbug.com/502615476): Remove this once all downstream targets depend
     # on these directly.
@@ -46,8 +44,6 @@ source_set("browser") {
     "//components/content_settings/core/browser",
     "//components/history/core/browser",
     "//components/keyed_service/core",
-    "//components/optimization_guide/core",
-    "//components/optimization_guide/proto:optimization_guide_proto",
     "//components/prefs",
     "//components/safe_browsing/core/browser:intelligent_scan_delegate",
     "//components/safe_browsing/core/browser:referring_app_info",
@@ -85,20 +81,14 @@ source_set("client_side_detection_service_base") {
     "client_side_detection_feature_cache_base.h",
     "client_side_detection_service_base.cc",
     "client_side_detection_service_base.h",
-    "client_side_phishing_model.cc",
-    "client_side_phishing_model.h",
     "csd_model_type.h",
   ]
-
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   public_deps = [ "//components/safe_browsing/core/common/fbs:client_model" ]
 
   deps = [
     "//base",
     "//components/keyed_service/core",
-    "//components/optimization_guide/core",
-    "//components/optimization_guide/proto:optimization_guide_proto",
     "//components/prefs",
     "//components/safe_browsing/core/common",
     "//components/safe_browsing/core/common:features",
@@ -127,8 +117,6 @@ source_set("verdict_cache_manager") {
     "verdict_cache_manager.h",
   ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   deps = [
     "//base",
     "//components/content_settings/core/browser",
@@ -146,8 +134,6 @@ source_set("verdict_cache_manager") {
 source_set("referrer_chain_provider") {
   sources = [ "referrer_chain_provider.h" ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   deps = [
     "//components/safe_browsing/core/common/proto:csd_proto",
     "//components/sessions",
@@ -160,8 +146,6 @@ source_set("token_fetcher") {
     "safe_browsing_token_fetch_tracker.h",
     "safe_browsing_token_fetcher.h",
   ]
-
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   deps = [ "//base" ]
 }
@@ -196,8 +180,6 @@ source_set("intelligent_scan_delegate") {
     "//components/keyed_service/core",
     "//components/safe_browsing/core/common/proto:csd_proto",
   ]
-
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 }
 
 source_set("safe_browsing_metrics_collector") {
@@ -205,8 +187,6 @@ source_set("safe_browsing_metrics_collector") {
     "safe_browsing_metrics_collector.cc",
     "safe_browsing_metrics_collector.h",
   ]
-
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   deps = [
     "//base",

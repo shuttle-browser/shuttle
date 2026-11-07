@@ -21,10 +21,9 @@ source_set("system_info") {
     ]
   }
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   deps = [
     "//content/public/browser",
+    "//extensions/common",
     "//extensions/common/api",
   ]
 

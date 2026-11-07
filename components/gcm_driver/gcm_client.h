@@ -13,10 +13,9 @@
 
 #include "base/memory/scoped_refptr.h"
 #include "base/time/time.h"
+#include "components/fcm/fcm_activity.h"
 #include "components/gcm_driver/common/gcm_message.h"
-#include "components/gcm_driver/gcm_activity.h"
 #include "components/gcm_driver/registration_info.h"
-#include "google_apis/gaia/core_account_id.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "services/network/public/mojom/proxy_resolving_socket.mojom-forward.h"
 
@@ -25,6 +24,11 @@ class FilePath;
 class RetainingOneShotTimer;
 class SequencedTaskRunner;
 }  // namespace base
+
+namespace fcm {
+struct ChromeBuildInfo;
+enum class FcmDecryptionResult;
+}  // namespace fcm
 
 namespace net {
 class IPEndPoint;
@@ -37,9 +41,7 @@ class SharedURLLoaderFactory;
 
 namespace gcm {
 
-struct AccountMapping;
 class Encryptor;
-enum class GCMDecryptionResult;
 
 // Interface that encapsulates the network communications with the Google Cloud
 // Messaging server. This interface is not supposed to be thread-safe.
@@ -80,34 +82,6 @@ class GCMClient {
     kMaxValue = UNKNOWN_ERROR
   };
 
-  enum ChromePlatform {
-    PLATFORM_WIN,
-    PLATFORM_MAC,
-    PLATFORM_LINUX,
-    PLATFORM_CROS,
-    PLATFORM_IOS,
-    PLATFORM_ANDROID,
-    PLATFORM_UNSPECIFIED
-  };
-
-  enum ChromeChannel {
-    CHANNEL_STABLE,
-    CHANNEL_BETA,
-    CHANNEL_DEV,
-    CHANNEL_CANARY,
-    CHANNEL_UNKNOWN
-  };
-
-  struct ChromeBuildInfo {
-    ChromeBuildInfo();
-    ~ChromeBuildInfo();
-
-    ChromePlatform platform;
-    ChromeChannel channel;
-    std::string version;
-    std::string product_category_for_subtypes;
-  };
-
   // Detailed information of the Send Error event.
   struct SendErrorDetails {
     SendErrorDetails();
@@ -139,14 +113,7 @@ class GCMClient {
     int send_queue_size;
     int resend_queue_size;
 
-    RecordedActivities recorded_activities;
-  };
-
-  // Information about account.
-  struct AccountTokenInfo {
-    CoreAccountId account_id;
-    std::string email;
-    std::string access_token;
+    fcm::RecordedActivities recorded_activities;
   };
 
   // A delegate interface that allows the GCMClient instance to interact with
@@ -206,11 +173,7 @@ class GCMClient {
     // Called when the GCM becomes ready. To get to this state, GCMClient
     // finished loading from the GCM store and retrieved the device check-in
     // from the server if it hadn't yet.
-    // |account_mappings|: a persisted list of accounts mapped to this GCM
-    //                     client.
-    // |last_token_fetch_time|: time of a last successful token fetch.
-    virtual void OnGCMReady(const std::vector<AccountMapping>& account_mappings,
-                            const base::Time& last_token_fetch_time) = 0;
+    virtual void OnGCMReady() = 0;
 
     // Called when activities are being recorded and a new activity has just
     // been recorded.
@@ -246,7 +209,7 @@ class GCMClient {
   // |delegate|: the delegate whose methods will be called asynchronously in
   //     response to events and messages.
   virtual void Initialize(
-      const ChromeBuildInfo& chrome_build_info,
+      const fcm::ChromeBuildInfo& chrome_build_info,
       const base::FilePath& store_path,
       const scoped_refptr<base::SequencedTaskRunner>& blocking_task_runner,
       scoped_refptr<base::SequencedTaskRunner> io_task_runner,
@@ -303,7 +266,7 @@ class GCMClient {
 
   // Records a decryption failure due to |result| for the |app_id|.
   virtual void RecordDecryptionFailure(const std::string& app_id,
-                                       GCMDecryptionResult result) = 0;
+                                       fcm::FcmDecryptionResult result) = 0;
 
   // Enables or disables internal activity recording.
   virtual void SetRecording(bool recording) = 0;
@@ -313,22 +276,6 @@ class GCMClient {
 
   // Gets internal states and statistics.
   virtual GCMStatistics GetStatistics() const = 0;
-
-  // Sets a list of accounts with OAuth2 tokens for the next checkin.
-  // |account_tokens|: list of email addresses, account IDs and OAuth2 access
-  //                   tokens.
-  virtual void SetAccountTokens(
-      const std::vector<AccountTokenInfo>& account_tokens) = 0;
-
-  // Persists the |account_mapping| in the store.
-  virtual void UpdateAccountMapping(const AccountMapping& account_mapping) = 0;
-
-  // Removes the account mapping related to |account_id| from the persistent
-  // store.
-  virtual void RemoveAccountMapping(const CoreAccountId& account_id) = 0;
-
-  // Sets last token fetch time in persistent store.
-  virtual void SetLastTokenFetchTime(const base::Time& time) = 0;
 
   // Updates the timer used by the HeartbeatManager for sending heartbeats.
   virtual void UpdateHeartbeatTimer(

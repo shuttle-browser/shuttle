@@ -14,7 +14,6 @@
 #include "chrome/browser/ui/managed_ui.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/webui_url_constants.h"
-#include "components/supervised_user/core/common/pref_names.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
 
@@ -88,10 +87,6 @@ void ManagedUIHandler::AddObservers() {
     auto domain = static_cast<policy::PolicyDomain>(i);
     policy_service->AddObserver(domain, this);
   }
-
-  pref_registrar_.Add(prefs::kSupervisedUserId,
-                      base::BindRepeating(&ManagedUIHandler::NotifyIfChanged,
-                                          base::Unretained(this)));
 }
 
 void ManagedUIHandler::RemoveObservers() {

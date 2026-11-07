@@ -45,6 +45,7 @@ source_set("device_identity") {
     ]
     public_deps += [ "//chromeos/ash/components/settings" ]
     deps += [
+      "//ash/constants",
       "//chrome/common:constants",
       "//chromeos/ash/components/cryptohome",
     ]

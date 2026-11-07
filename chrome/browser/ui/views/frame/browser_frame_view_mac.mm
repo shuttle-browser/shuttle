@@ -16,7 +16,6 @@
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "chrome/browser/headless/headless_mode_util.h"
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/themes/theme_properties.h"
 #include "chrome/browser/themes/theme_service.h"
@@ -122,11 +121,6 @@ BrowserFrameViewMac::~BrowserFrameViewMac() {
 // BrowserFrameViewMac, BrowserFrameView implementation:
 
 void BrowserFrameViewMac::OnFullscreenStateChanged() {
-  if (GetBrowserView()->IsFullscreen()) {
-    PictureInPictureWindowManager::GetInstance()
-        ->OnAnyBrowserEnteredFullscreen();
-  }
-
   // Record the start of a browser fullscreen session. Content fullscreen is
   // ignored.
   if (GetBrowserView()->IsFullscreen() &&
@@ -304,7 +298,9 @@ bool BrowserFrameViewMac::ShouldHideTopUIInFullscreen() const {
 void BrowserFrameViewMac::UpdateThrobber(bool running) {}
 
 void BrowserFrameViewMac::PaintAsActiveChanged() {
-  BrowserFrameView::PaintAsActiveChanged();
+  if (!is_glass_frame_eligible_) {
+    BrowserFrameView::PaintAsActiveChanged();
+  }
 }
 
 void BrowserFrameViewMac::OnThemeChanged() {
@@ -328,6 +324,14 @@ gfx::RoundedCornersF BrowserFrameViewMac::GetWindowRoundedCorners() const {
   return gfx::RoundedCornersF();
 }
 
+int BrowserFrameViewMac::GetRestoredWindowCornerRadius() const {
+  // These values are determined empirically.
+  if (@available(macOS 26, *)) {
+    return 20;
+  }
+  return 16;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // BrowserFrameViewMac, views::FrameView implementation:
 
@@ -344,7 +348,7 @@ gfx::Rect BrowserFrameViewMac::GetWindowBoundsForClientBounds(
   // explicitly add it. If a custom titlebar is being drawn, this calculation
   // will be zero.
   NSWindow* window = GetWidget()->GetNativeWindow().GetNativeNSWindow();
-  DCHECK(window);
+  CHECK(window, base::NotFatalUntil::M162);
   top_inset += window.frame.size.height -
                [window contentRectForFrameRect:window.frame].size.height;
 

@@ -8,6 +8,7 @@
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/logging.h"
 #include "base/memory/raw_ref.h"
 #include "base/run_loop.h"
 #include "base/strings/stringprintf.h"
@@ -113,14 +114,16 @@ class ValidateCrxHelper : public SandboxedUnpackerClient {
                        const Extension* extension,
                        const SkBitmap& install_icon,
                        base::DictValue ruleset_install_prefs) override {
-    DCHECK(GetExtensionFileTaskRunner()->RunsTasksInCurrentSequence());
+    CHECK(GetExtensionFileTaskRunner()->RunsTasksInCurrentSequence(),
+          base::NotFatalUntil::M161);
     success_ = true;
     content::GetUIThreadTaskRunner({})->PostTask(
         FROM_HERE, base::BindOnce(&ValidateCrxHelper::FinishOnUIThread, this));
   }
 
   void OnUnpackFailure(const CrxInstallError& error) override {
-    DCHECK(GetExtensionFileTaskRunner()->RunsTasksInCurrentSequence());
+    CHECK(GetExtensionFileTaskRunner()->RunsTasksInCurrentSequence(),
+          base::NotFatalUntil::M161);
     success_ = false;
     error_ = error.message();
     content::GetUIThreadTaskRunner({})->PostTask(
@@ -128,12 +131,13 @@ class ValidateCrxHelper : public SandboxedUnpackerClient {
   }
 
   void FinishOnUIThread() {
-    DCHECK_CURRENTLY_ON(BrowserThread::UI);
+    CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
     std::move(quit_closure_).Run();
   }
 
   void StartOnBlockingThread() {
-    DCHECK(GetExtensionFileTaskRunner()->RunsTasksInCurrentSequence());
+    CHECK(GetExtensionFileTaskRunner()->RunsTasksInCurrentSequence(),
+          base::NotFatalUntil::M161);
     auto unpacker = base::MakeRefCounted<SandboxedUnpacker>(
         mojom::ManifestLocation::kInternal, 0, /* no special creation flags */
         *temp_dir_, GetExtensionFileTaskRunner().get(), this);

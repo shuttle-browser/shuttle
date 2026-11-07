@@ -48,7 +48,7 @@ enum Sandbox {
   // used for ORT graph compilation which may require access to GPU/NPU
   // drivers. Unlike kOnDeviceModelExecution, this does not enable AppContainer
   // since hardware accelerator drivers are incompatible with LPAC.
-  [EnableIf=is_win|is_mac] kWebNNModelCompilation,
+  [EnableIf=is_win|is_apple] kWebNNModelCompilation,
 
   // Runs with the same rights as the browser. Usually needed to improve
   // stability by hosting code that interacts with third party code in another
@@ -139,8 +139,7 @@ enum Sandbox {
   // new sandbox later in its lifetime.
   [EnableIf=is_chromeos|is_linux] kZygoteIntermediateSandbox,
 
-  // Hosts the shared Nearby library for both Nearby Connections and
-  // Nearby Presence.
+  // Hosts the shared Nearby Connections library.
   [EnableIf=is_chromeos] kNearby,
 
   // Hosts On Device Translation service.

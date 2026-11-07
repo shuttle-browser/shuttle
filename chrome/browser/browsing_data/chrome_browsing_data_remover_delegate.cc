@@ -44,6 +44,7 @@
 #include "chrome/browser/download/download_core_service_factory.h"
 #include "chrome/browser/download/download_prefs.h"
 #include "chrome/browser/external_protocol/external_protocol_handler.h"
+#include "chrome/browser/favicon/favicon_service_factory.h"
 #include "chrome/browser/file_system_access/chrome_file_system_access_permission_context.h"
 #include "chrome/browser/file_system_access/file_system_access_permission_context_factory.h"
 #include "chrome/browser/heavy_ad_intervention/heavy_ad_service_factory.h"
@@ -53,8 +54,6 @@
 #include "chrome/browser/media/media_engagement_service.h"
 #include "chrome/browser/media/webrtc/media_device_salt_service_factory.h"
 #include "chrome/browser/media/webrtc/webrtc_event_log_manager.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/permissions/permission_actions_history_factory.h"
 #include "chrome/browser/permissions/permission_decision_auto_blocker_factory.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_manager_factory.h"
@@ -85,6 +84,7 @@
 #include "components/crash/core/app/crashpad.h"
 #include "components/custom_handlers/protocol_handler_registry.h"
 #include "components/device_event_log/device_event_log.h"
+#include "components/favicon/core/favicon_service.h"
 #include "components/heavy_ad_intervention/heavy_ad_blocklist.h"
 #include "components/heavy_ad_intervention/heavy_ad_service.h"
 #include "components/history/core/browser/history_service.h"
@@ -455,11 +455,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
       heavy_ad_service->heavy_ad_blocklist()->ClearBlockList(delete_begin_,
                                                              delete_end_);
     }
-
-    OptimizationGuideKeyedService* optimization_guide_keyed_service =
-        OptimizationGuideKeyedServiceFactory::GetForProfile(profile_);
-    if (optimization_guide_keyed_service)
-      optimization_guide_keyed_service->ClearData();
 
     content::PrefetchServiceDelegate::ClearData(profile_);
 
@@ -961,6 +956,22 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
   }
 
   //////////////////////////////////////////////////////////////////////////////
+  // Clear URLs that failed to download from the favicon service.
+  // This in-memory negative cache reveals some history and would otherwise
+  // survive a cache deletion and could be used to re-identify the user, so
+  // clear it for both DATA_TYPE_HISTORY and DATA_TYPE_CACHE. It only stores URL
+  // hashes, so it cannot be filtered by origin or time; clear it entirely.
+  if (remove_mask & (constants::DATA_TYPE_HISTORY |
+                     content::BrowsingDataRemover::DATA_TYPE_CACHE)) {
+    favicon::FaviconService* favicon_service =
+        FaviconServiceFactory::GetForProfile(
+            profile_, ServiceAccessType::EXPLICIT_ACCESS);
+    if (favicon_service) {
+      favicon_service->ClearUnableToDownloadFavicons();
+    }
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
   // DATA_TYPE_MEDIA_LICENSES
   if (remove_mask & content::BrowsingDataRemover::DATA_TYPE_MEDIA_LICENSES) {
     // TODO(jrummell): This UMA should be renamed to indicate it is for Media
@@ -1180,7 +1191,7 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
       tab_model->CloseTabsNavigatedInTimeWindow(delete_begin, delete_end);
     }
 
-    TabModel* archived_tab_model = TabModelList::GetArchivedTabModel();
+    TabModel* archived_tab_model = TabModelList::GetArchivedTabModel(profile_);
     if (archived_tab_model) {
       archived_tab_model->CloseTabsNavigatedInTimeWindow(delete_begin,
                                                          delete_end);

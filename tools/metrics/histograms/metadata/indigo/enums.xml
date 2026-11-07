@@ -41,6 +41,15 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//chrome/browser/indigo/indigo_metrics.h:IndigoApiStatus) -->
 
+<!-- LINT.IfChange(IndigoContextMenuTargetType) -->
+
+<enum name="IndigoContextMenuTargetType">
+  <int value="0" label="Page"/>
+  <int value="1" label="Image"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/indigo/indigo_metrics.h:IndigoContextMenuTargetType) -->
+
 <!-- LINT.IfChange(IndigoMaybeInvokeGlicResult) -->
 
 <enum name="IndigoMaybeInvokeGlicResult">
@@ -63,6 +72,7 @@ chromium-metrics-reviews@google.com.
   <int value="1" label="Proactive Anchored Message"/>
   <int value="2" label="Reactive Anchored Message"/>
   <int value="3" label="Error Toast"/>
+  <int value="4" label="Context Menu"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/indigo/indigo_metrics.h:IndigoPageActionEntryPoint) -->
@@ -101,6 +111,7 @@ chromium-metrics-reviews@google.com.
   <int value="1" label="Error Toast Retry"/>
   <int value="2" label="Regenerate"/>
   <int value="3" label="Replace Photo"/>
+  <int value="4" label="Context Menu"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/indigo/indigo_metrics.h:IndigoTransformationTriggerSource) -->

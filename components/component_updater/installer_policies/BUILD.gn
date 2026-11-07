@@ -2,6 +2,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//third_party/tflite/tf_version.gni")
+
 group("installer_policies") {
   public_deps = [
     ":installer_policies_no_content_deps",
@@ -46,10 +48,6 @@ static_library("installer_policies_with_content_deps") {
   sources = [
     "on_device_head_suggest_component_installer.cc",
     "on_device_head_suggest_component_installer.h",
-    "optimization_hints_component_installer.cc",
-    "optimization_hints_component_installer.h",
-    "prediction_model_component_installer.cc",
-    "prediction_model_component_installer.h",
   ]
 
   deps = [
@@ -57,7 +55,6 @@ static_library("installer_policies_with_content_deps") {
     "//components/component_updater",
     "//components/omnibox/browser",
     "//components/omnibox/common",
-    "//components/optimization_guide/core",
     "//components/update_client",
     "//third_party/zlib/google:zip",
   ]

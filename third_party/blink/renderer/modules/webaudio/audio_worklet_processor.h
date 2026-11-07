@@ -5,9 +5,11 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_AUDIO_WORKLET_PROCESSOR_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_AUDIO_WORKLET_PROCESSOR_H_
 
+#include <optional>
+
+#include "base/containers/span.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/modules/webaudio/audio_worklet_processor_error_details.h"
-#include "third_party/blink/renderer/platform/audio/audio_array.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
 #include "third_party/blink/renderer/platform/bindings/trace_wrapper_v8_reference.h"
@@ -39,30 +41,32 @@ class MODULES_EXPORT AudioWorkletProcessor : public ScriptWrappable {
   // AudioWorkletNode gets created by user-supplied JS code in the main
   // thread. This factory must not be called by user in
   // AudioWorkletGlobalScope.
-  static AudioWorkletProcessor* Create(ExecutionContext*, ExceptionState&);
+  static AudioWorkletProcessor* Create(ExecutionContext* context,
+                                       ExceptionState& exception_state);
 
-  AudioWorkletProcessor(AudioWorkletGlobalScope*,
+  AudioWorkletProcessor(AudioWorkletGlobalScope* global_scope,
                         const String& name,
-                        MessagePort*);
+                        MessagePort* port);
   ~AudioWorkletProcessor() override;
 
-  void Trace(Visitor*) const override;
+  void Trace(Visitor* visitor) const override;
 
   // IDL
   MessagePort* port() const;
 
   // `AudioWorkletHandler` invokes this method to process audio.
-  bool Process(
-      const Vector<scoped_refptr<AudioBus>>& inputs,
-      Vector<scoped_refptr<AudioBus>>& outputs,
-      const HashMap<String, std::unique_ptr<AudioFloatArray>>& param_value_map);
+  bool Process(const Vector<scoped_refptr<AudioBus>>& inputs,
+               Vector<scoped_refptr<AudioBus>>& outputs,
+               const HashMap<String, base::span<const float>>& param_value_map);
 
-  bool hasErrorOccurred() const;
   const String& Name() const { return name_; }
-  const AudioWorkletProcessorErrorDetails& GetErrorDetails() const;
+  const std::optional<AudioWorkletProcessorErrorDetails>& error_details()
+      const {
+    return error_details_;
+  }
 
  private:
-  void SetErrorDetails(const AudioWorkletProcessorErrorDetails& error_details);
+  void SetErrorDetails(AudioWorkletProcessorErrorDetails error_details);
 
   Member<AudioWorkletGlobalScope> global_scope_;
   Member<MessagePort> processor_port_;
@@ -79,9 +83,7 @@ class MODULES_EXPORT AudioWorkletProcessor : public ScriptWrappable {
   HeapVector<HeapVector<TraceWrapperV8Reference<v8::ArrayBuffer>>>
       output_array_buffers_;
 
-  AudioWorkletProcessorErrorDetails error_details_;
-
-  const bool is_denormal_enabler_enabled_;
+  std::optional<AudioWorkletProcessorErrorDetails> error_details_;
 };
 
 }  // namespace blink

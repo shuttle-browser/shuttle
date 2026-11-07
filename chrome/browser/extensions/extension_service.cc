@@ -42,7 +42,6 @@
 #include "chrome/browser/extensions/component_loader.h"
 #include "chrome/browser/extensions/corrupted_extension_reinstaller.h"
 #include "chrome/browser/extensions/cws_info_service_factory.h"
-#include "chrome/browser/extensions/extension_action_storage_manager.h"
 #include "chrome/browser/extensions/extension_allowlist_factory.h"
 #include "chrome/browser/extensions/extension_disabled_ui.h"
 #include "chrome/browser/extensions/extension_error_controller.h"
@@ -58,7 +57,6 @@
 #include "chrome/browser/extensions/updater/extension_updater.h"
 #include "chrome/browser/google/google_brand.h"
 #include "chrome/browser/lifetime/termination_notification.h"
-#include "chrome/browser/policy/cloud/extension_install_policy_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
@@ -70,7 +68,6 @@
 #include "components/crx_file/id_util.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
-#include "components/supervised_user/core/browser/supervised_user_preferences.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/storage_partition.h"
@@ -259,13 +256,6 @@ ExtensionService::ExtensionService(
 
   ExtensionManagementFactory::GetForBrowserContext(profile_)->AddObserver(this);
 
-  if (auto* extension_install_policy_service =
-          policy::ExtensionInstallPolicyServiceFactory::GetForBrowserContext(
-              profile_)) {
-    extension_install_policy_observation_.Observe(
-        extension_install_policy_service);
-  }
-
   if (autoupdate_enabled) {
     // Initialize and enable the ExtensionUpdater.
     updater_->InitAndEnable(
@@ -285,9 +275,6 @@ ExtensionService::ExtensionService(
 
   error_controller_->set_is_first_run(is_first_run_);
   external_install_manager_->set_is_first_run(is_first_run_);
-
-  extension_action_storage_manager_ =
-      std::make_unique<ExtensionActionStorageManager>(profile_);
 
   SetCurrentDeveloperMode(
       util::GetBrowserContextId(profile),
@@ -313,7 +300,6 @@ ExtensionService::~ExtensionService() {
 void ExtensionService::Shutdown() {
   delayed_install_manager_ = nullptr;
   cws_info_service_observation_.Reset();
-  extension_install_policy_observation_.Reset();
   ExtensionManagementFactory::GetForBrowserContext(profile())->RemoveObserver(
       this);
   external_install_manager_->Shutdown();
@@ -344,8 +330,9 @@ void ExtensionService::Init() {
   CHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   TRACE_EVENT0("browser,startup", "ExtensionService::Init");
 
-  DCHECK(!system_->is_ready());  // Can't redo init.
-  DCHECK_EQ(registry_->enabled_extensions().size(), 0u);
+  CHECK(!system_->is_ready(), base::NotFatalUntil::M161);  // Can't redo init.
+  CHECK_EQ(registry_->enabled_extensions().size(), 0u,
+           base::NotFatalUntil::M161);
 
   component_loader_->LoadAll();
   bool load_saved_extensions = true;
@@ -440,7 +427,8 @@ void ExtensionService::LoadExtensionsFromCommandLineFlag(
   } else if (base::FeatureList::IsEnabled(
                  extensions_features::
                      kDisableDisableExtensionsExceptCommandLineSwitch)) {
-    DCHECK_EQ(switch_name, switches::kDisableExtensionsExcept);
+    CHECK_EQ(switch_name, switches::kDisableExtensionsExcept,
+             base::NotFatalUntil::M161);
     LOG(WARNING) << "--disable-extensions-except is not allowed in Google "
                     "Chrome, ignoring.";
     return;
@@ -486,7 +474,7 @@ void ExtensionService::LoadSigninProfileTestExtension(const std::string& path) {
 void ExtensionService::PerformActionBasedOnOmahaAttributes(
     const std::string& extension_id,
     const base::DictValue& attributes) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   omaha_attributes_handler_.PerformActionBasedOnOmahaAttributes(extension_id,
                                                                 attributes);
   allowlist_->PerformActionBasedOnOmahaAttributes(extension_id, attributes);
@@ -496,7 +484,7 @@ void ExtensionService::PerformActionBasedOnOmahaAttributes(
 
 void ExtensionService::PerformActionBasedOnExtensionTelemetryServiceVerdicts(
     const Blocklist::BlocklistStateMap& blocklist_state_map) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
 
   extension_telemetry_service_verdict_handler_.PerformActionBasedOnVerdicts(
       blocklist_state_map);
@@ -550,7 +538,8 @@ void ExtensionService::CheckManagementPolicy() {
     disable_reason::DisableReason disable_reason = disable_reason::DISABLE_NONE;
     if (system_->management_policy()->MustRemainDisabled(extension.get(),
                                                          &disable_reason)) {
-      DCHECK_NE(disable_reason, disable_reason::DISABLE_NONE);
+      CHECK_NE(disable_reason, disable_reason::DISABLE_NONE,
+               base::NotFatalUntil::M161);
       to_disable[extension->id()] = disable_reason;
     }
   }
@@ -629,12 +618,9 @@ void ExtensionService::CheckManagementPolicy() {
       to_remove.insert(disable_reason::DISABLE_UNSUPPORTED_MANIFEST_VERSION);
     }
 
-    // If this profile is not supervised, then remove any supervised user
-    // related disable reasons.
-    bool is_supervised = profile() && profile()->IsChild();
-    if (!is_supervised) {
-      to_remove.insert(disable_reason::DISABLE_CUSTODIAN_APPROVAL_REQUIRED);
-    }
+    // There are no supervised profiles, so remove any supervised user related
+    // disable reasons.
+    to_remove.insert(disable_reason::DISABLE_CUSTODIAN_APPROVAL_REQUIRED);
 
     DisableReasonSet shared_disable_reasons =
         base::STLSetIntersection<DisableReasonSet>(to_remove, to_add);
@@ -775,10 +761,6 @@ void ExtensionService::OnExtensionManagementSettingsChanged() {
   }
 }
 
-void ExtensionService::OnExtensionInstallPolicyUpdated() {
-  CheckManagementPolicy();
-}
-
 bool ExtensionService::FinishDelayedInstallationIfReady(
     const std::string& extension_id,
     bool install_immediately) {
@@ -794,8 +776,8 @@ const Extension* ExtensionService::GetPendingExtensionUpdate(
 void ExtensionService::OnExtensionHostRenderProcessGone(
     content::BrowserContext* browser_context,
     ExtensionHost* extension_host) {
-  DCHECK(
-      profile_->IsSameOrParent(Profile::FromBrowserContext(browser_context)));
+  CHECK(profile_->IsSameOrParent(Profile::FromBrowserContext(browser_context)),
+        base::NotFatalUntil::M161);
 
   // Mark the extension as terminated and deactivated. We want it to
   // be in a consistent state: either fully working or not loaded
@@ -866,10 +848,18 @@ void ExtensionService::RenderProcessHostDestroyed(
 }
 
 void ExtensionService::OnBlocklistUpdated() {
+  ExtensionIdSet ids;
+  for (const auto& extension : registry_->GenerateInstalledExtensionsSet()) {
+    // Component extensions (built-in kComponent and allowlisted Web Store
+    // kExternalComponent) are not expected to be blocklisted. Skipping them
+    // avoids a Safe Browsing database lookup when no others are installed.
+    if (!Manifest::IsComponentLocation(extension->location())) {
+      ids.insert(extension->id());
+    }
+  }
   blocklist_->GetBlocklistedIDs(
-      registry_->GenerateInstalledExtensionsSet().GetIDs(),
-      base::BindOnce(&ExtensionService::ManageBlocklist,
-                     AsExtensionServiceWeakPtr()));
+      ids, base::BindOnce(&ExtensionService::ManageBlocklist,
+                          AsExtensionServiceWeakPtr()));
 }
 
 void ExtensionService::OnCWSInfoChanged() {
@@ -895,7 +885,7 @@ void ExtensionService::OnProfileMarkedForPermanentDeletion(Profile* profile) {
 
 void ExtensionService::ManageBlocklist(
     const Blocklist::BlocklistStateMap& state_map) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
 
   safe_browsing_verdict_handler_.ManageBlocklist(state_map);
   error_controller_->ShowErrorIfNeeded();
@@ -949,7 +939,8 @@ void ExtensionService::OnInstalledExtensionsLoaded() {
 
   blocklist_->IsDatabaseReady(base::BindOnce(
       [](base::WeakPtr<ExtensionService> service, bool is_ready) {
-        DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+        CHECK(BrowserThread::CurrentlyOn(BrowserThread::UI),
+              base::NotFatalUntil::M161);
         if (!service || !is_ready) {
           // Either the service was torn down or the database isn't
           // ready yet (and is effectively empty). Either way, no need

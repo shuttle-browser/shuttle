@@ -16,7 +16,6 @@
 #include "chrome/services/file_util/public/cpp/temporary_file_getter.h"
 #include "chrome/services/file_util/public/mojom/file_util_service.mojom.h"
 #include "chrome/services/file_util/public/mojom/safe_archive_analyzer.mojom.h"
-#include "components/enterprise/obfuscation/core/utils.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/remote.h"
 
@@ -42,13 +41,6 @@ class SandboxedRarAnalyzer {
                  ResultCallback callback,
                  mojo::PendingRemote<chrome::mojom::FileUtilService> service);
 
-  static std::unique_ptr<SandboxedRarAnalyzer, base::OnTaskRunnerDeleter>
-  CreateObfuscatedAnalyzer(
-      const base::FilePath& rar_file_path,
-      base::optional_ref<const std::string> password,
-      ResultCallback callback,
-      mojo::PendingRemote<chrome::mojom::FileUtilService> service);
-
   ~SandboxedRarAnalyzer();
 
   SandboxedRarAnalyzer(const SandboxedRarAnalyzer&) = delete;
@@ -64,7 +56,6 @@ class SandboxedRarAnalyzer {
   SandboxedRarAnalyzer(
       const base::FilePath& rar_file_path,
       base::optional_ref<const std::string> password,
-      bool is_obfuscated_file,
       ResultCallback callback,
       mojo::PendingRemote<chrome::mojom::FileUtilService> service);
 
@@ -73,9 +64,7 @@ class SandboxedRarAnalyzer {
 
   // Starts the utility process and sends it a request to analyze the file
   // |file|.
-  void AnalyzeFile(
-      WrappedFilePtr file,
-      std::optional<enterprise_obfuscation::HeaderData> header_data);
+  void AnalyzeFile(WrappedFilePtr file);
 
   // The response containing the file analyze results.
   void AnalyzeFileDone(const safe_browsing::ArchiveAnalyzerResults& results);
@@ -88,8 +77,6 @@ class SandboxedRarAnalyzer {
 
   // The password to use for encrypted entries.
   const std::optional<std::string> password_;
-
-  const bool is_obfuscated_file_;
 
   // Callback invoked on the UI thread with the file analyze results.
   ResultCallback callback_;

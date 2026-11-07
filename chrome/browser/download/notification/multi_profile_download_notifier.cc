@@ -22,7 +22,7 @@ MultiProfileDownloadNotifier::MultiProfileDownloadNotifier(
     bool wait_for_manager_initialization)
     : client_(client),
       wait_for_manager_initialization_(wait_for_manager_initialization) {
-  DCHECK(client_);
+  CHECK(client_, base::NotFatalUntil::M161);
 }
 
 MultiProfileDownloadNotifier::~MultiProfileDownloadNotifier() = default;
@@ -97,7 +97,7 @@ void MultiProfileDownloadNotifier::OnManagerGoingDown(
 void MultiProfileDownloadNotifier::OnDownloadCreated(
     content::DownloadManager* manager,
     download::DownloadItem* item) {
-  DCHECK(manager);
+  CHECK(manager, base::NotFatalUntil::M161);
   if (IsManagerReady(manager))
     client_->OnDownloadCreated(manager, item);
 }
@@ -105,7 +105,7 @@ void MultiProfileDownloadNotifier::OnDownloadCreated(
 void MultiProfileDownloadNotifier::OnDownloadUpdated(
     content::DownloadManager* manager,
     download::DownloadItem* item) {
-  DCHECK(manager);
+  CHECK(manager, base::NotFatalUntil::M161);
   if (IsManagerReady(manager))
     client_->OnDownloadUpdated(manager, item);
 }
@@ -113,7 +113,7 @@ void MultiProfileDownloadNotifier::OnDownloadUpdated(
 void MultiProfileDownloadNotifier::OnDownloadDestroyed(
     content::DownloadManager* manager,
     download::DownloadItem* item) {
-  DCHECK(manager);
+  CHECK(manager, base::NotFatalUntil::M161);
   if (IsManagerReady(manager))
     client_->OnDownloadDestroyed(manager, item);
 }

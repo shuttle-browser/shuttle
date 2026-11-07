@@ -14,15 +14,16 @@
 #include "base/barrier_callback.h"
 #include "base/check_deref.h"
 #include "base/containers/map_util.h"
+#include "base/containers/span.h"
 #include "base/containers/to_vector.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/process/process.h"
+#include "base/strings/strcat.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "base/types/expected_macros.h"
-#include "base/types/optional_ref.h"
 #include "components/unexportable_keys/background_task_priority.h"
 #include "components/unexportable_keys/features.h"
 #include "components/unexportable_keys/service_error.h"
@@ -123,6 +124,8 @@ class DebugHeaderBuilder {
       case RefreshResult::kFatalError:
       case RefreshResult::kRefreshedAsWaiter:
       case RefreshResult::kInScopeRefreshNotYetNeeded:
+      // Only reported to requests that have already been destroyed.
+      case RefreshResult::kCanceled:
         return;
       case RefreshResult::kInitializedService:
         NOTREACHED();
@@ -201,15 +204,6 @@ void LogProactiveRefreshAttempt(
       "Net.DeviceBoundSessions.ProactiveRefreshAttempt", attempt);
 }
 
-bool CanAccessPreProvisionedKey(
-    const SessionServiceImpl::CookieAccessCallback& cookie_access_cb,
-    const url::Origin& provider_origin,
-    const url::Origin& rp_origin) {
-  return cookie_access_cb &&
-         cookie_access_cb.Run({.provider_origin{provider_origin},
-                               .relying_party_origin{rp_origin}});
-}
-
 }  // namespace
 
 SessionServiceImpl::SessionServiceImpl(
@@ -225,7 +219,7 @@ SessionServiceImpl::SessionServiceImpl(
       session_store_(store),
       restricted_sites_(restricted_sites),
       client_cert_handler_(std::move(client_cert_handler)),
-      has_cookie_access_cb_(std::move(has_cookie_access_cb)) {
+      sso_key_manager_(key_service, std::move(has_cookie_access_cb)) {
   ignore_signing_quota_ = !features::kDeviceBoundSessionsSigningQuota.Get();
   CHECK(context_);
   CHECK(client_cert_handler_);
@@ -457,13 +451,15 @@ void SessionServiceImpl::RegisterBoundSession(
           features::kDeviceBoundSessionsForSingleSignOn)) {
     ASSIGN_OR_RETURN(
         unexportable_keys::UnexportableSigningKeyId pre_provisioned_key,
-        FindPreProvisionedKey(*provider_params,
-                              registration_params.original_request_initiator),
+        sso_key_manager_.FindPreProvisionedKey(
+            provider_params->provider_key,
+            registration_params.original_request_initiator),
         [&](SessionError::ErrorType error) {
           OnRegistrationComplete(
               registration_params.access_callback,
               registration_params.fetcher_param.registration_endpoint(),
               RegistrationType::kSingleSignOn,
+              std::move(registration_params.timer_since_start),
               /*fetcher=*/nullptr, RegistrationResult(SessionError(error)));
         });
 
@@ -512,13 +508,13 @@ void SessionServiceImpl::RegisterFederatedBoundSession(
     RegistrationParams params,
     SessionErrorOr<Session*> federated_provider_session) {
   ASSIGN_OR_RETURN(
-      Session* provider_session, std::move(federated_provider_session),
+      Session * provider_session, std::move(federated_provider_session),
       [&](SessionError::ErrorType error) {
-        OnRegistrationComplete(params.access_callback,
-                               params.fetcher_param.registration_endpoint(),
-                               RegistrationType::kFederated,
-                               /*fetcher=*/nullptr,
-                               RegistrationResult(SessionError(error)));
+        OnRegistrationComplete(
+            params.access_callback,
+            params.fetcher_param.registration_endpoint(),
+            RegistrationType::kFederated, std::move(params.timer_since_start),
+            /*fetcher=*/nullptr, RegistrationResult(SessionError(error)));
       });
 
   CHECK(provider_session->unexportable_key_id().has_value());
@@ -571,10 +567,10 @@ void SessionServiceImpl::StartRegistration(
   RegistrationFetcher* fetcher_raw = fetcher.get();
   registration_fetchers_.insert(std::move(fetcher));
 
-  auto callback = base::BindOnce(&SessionServiceImpl::OnRegistrationComplete,
-                                 weak_factory_.GetWeakPtr(),
-                                 std::move(params.access_callback), endpoint,
-                                 registration_type_for_histograms);
+  auto callback = base::BindOnce(
+      &SessionServiceImpl::OnRegistrationComplete, weak_factory_.GetWeakPtr(),
+      std::move(params.access_callback), endpoint,
+      registration_type_for_histograms, std::move(params.timer_since_start));
 
   std::move(fetch_starter)
       .Run(fetcher_raw, std::move(request_params), std::move(callback));
@@ -611,6 +607,7 @@ void SessionServiceImpl::GetFederatedProviderSessionIfValid(
   if (!provider_session->unexportable_key_id().has_value()) {
     RestoreSessionKey(
         provider_session_key, on_access_callback,
+        unexportable_keys::BackgroundTaskPriority::kUserVisible,
         base::BindOnce(&SessionServiceImpl::CheckFederatedProviderKey,
                        weak_factory_.GetWeakPtr(), provider_session_key,
                        std::move(provider_params.provider_key),
@@ -643,25 +640,15 @@ void SessionServiceImpl::CheckFederatedProviderKey(
     return;
   }
 
-  unexportable_keys::ServiceErrorOr<crypto::sign::SignatureKind> algorithm =
-      key_service_->GetAlgorithm(*provider_session->unexportable_key_id());
-  if (!algorithm.has_value()) {
+  std::optional<std::string> thumbprint =
+      GetJwkThumbprint(*key_service_, *provider_key);
+  if (!thumbprint) {
     std::move(callback).Run(
         base::unexpected(SessionError::kInvalidFederatedKey));
     return;
   }
 
-  unexportable_keys::ServiceErrorOr<std::vector<uint8_t>> pub_key =
-      key_service_->GetSubjectPublicKeyInfo(
-          *provider_session->unexportable_key_id());
-  if (!pub_key.has_value()) {
-    std::move(callback).Run(
-        base::unexpected(SessionError::kInvalidFederatedKey));
-    return;
-  }
-
-  std::string thumbprint = CreateJwkThumbprint(*algorithm, *pub_key);
-  if (thumbprint != provider_key_thumbprint) {
+  if (*thumbprint != provider_key_thumbprint) {
     std::move(callback).Run(
         base::unexpected(SessionError::kFederatedKeyThumbprintMismatch));
     return;
@@ -690,8 +677,11 @@ void SessionServiceImpl::OnRegistrationComplete(
     OnAccessCallback on_access_callback,
     GURL endpoint,
     RegistrationType registration_type_for_histograms,
+    base::ElapsedTimer timer,
     RegistrationFetcher* fetcher,
     RegistrationResult registration_result) {
+  // Measure the elapsed time as soon as the method is called.
+  const base::TimeDelta duration = timer.Elapsed();
   if (IsSubdomainOf(endpoint.host(), "google.com")) {
     base::UmaHistogramBoolean(
         "Net.DeviceBoundSessions.GoogleRegistrationIsFromStandard", true);
@@ -705,6 +695,15 @@ void SessionServiceImpl::OnRegistrationComplete(
       absl::StrFormat("Net.DeviceBoundSessions.RegistrationResult.%v",
                       registration_type_for_histograms),
       result);
+
+  std::string_view outcome =
+      result == SessionError::kSuccess ? "Success" : "Failure";
+  base::UmaHistogramMediumTimes("Net.DeviceBoundSessions.RegistrationDuration",
+                                duration);
+  base::UmaHistogramMediumTimes(
+      absl::StrFormat("Net.DeviceBoundSessions.RegistrationDuration.%v.%s",
+                      registration_type_for_histograms, outcome),
+      duration);
 }
 
 std::ranges::subrange<SessionServiceImpl::SessionsMap::iterator>
@@ -859,8 +858,11 @@ void SessionServiceImpl::OnRefreshRequestCompletion(
     RefreshTrigger trigger,
     OnAccessCallback on_access_callback,
     SessionKey session_key,
+    base::ElapsedTimer timer,
     RegistrationFetcher* fetcher,
     RegistrationResult registration_result) {
+  // Measure the elapsed time as soon as the method is called.
+  const base::TimeDelta duration = timer.Elapsed();
   SessionError::ErrorType result = OnRefreshRequestCompletionInternal(
       std::move(on_access_callback), session_key, fetcher,
       std::move(registration_result));
@@ -871,8 +873,9 @@ void SessionServiceImpl::OnRefreshRequestCompletion(
         /*was_proactive=*/trigger != RefreshTrigger::kMissingCookie, result);
   }
 
-  std::string histogram_base = "Net.DeviceBoundSessions.RefreshResult";
-  std::string suffix;
+  static constexpr std::string_view kResultHistogramBase =
+      "Net.DeviceBoundSessions.RefreshResult";
+  std::string_view suffix;
   switch (trigger) {
     case RefreshTrigger::kProactive:
       suffix = ".Proactive";
@@ -881,8 +884,17 @@ void SessionServiceImpl::OnRefreshRequestCompletion(
       suffix = ".MissingCookie";
       break;
   }
-  base::UmaHistogramEnumeration(histogram_base, result);
-  base::UmaHistogramEnumeration(histogram_base + suffix, result);
+  base::UmaHistogramEnumeration(kResultHistogramBase, result);
+  base::UmaHistogramEnumeration(base::StrCat({kResultHistogramBase, suffix}),
+                                result);
+
+  static constexpr std::string_view kDurationHistogramBase =
+      "Net.DeviceBoundSessions.RefreshDuration";
+  std::string_view outcome =
+      result == SessionError::kSuccess ? ".Success" : ".Failure";
+  base::UmaHistogramMediumTimes(kDurationHistogramBase, duration);
+  base::UmaHistogramMediumTimes(
+      base::StrCat({kDurationHistogramBase, suffix, outcome}), duration);
 }
 
 // Continue or restart all deferred requests and complete any proactive
@@ -1246,25 +1258,13 @@ void SessionServiceImpl::DeleteAllSessions(
     DeletionReason reason,
     std::optional<base::Time> created_after_time,
     std::optional<base::Time> created_before_time,
-    base::RepeatingCallback<bool(const url::Origin&, const net::SchemefulSite&)>
-        origin_and_site_matcher,
+    OriginAndSiteMatcher origin_and_site_matcher,
     base::OnceClosure completion_callback) {
   // Delete potential zombie pre-provisioned keys. Zombie keys are signing
   // keys pre-provisioned for a certain relying party that were not consumed
   // during any device bound session registration.
   // Removing zombie keys regardless of time range is fine.
-  if (!origin_and_site_matcher) {
-    pre_provisioned_keys_.clear();
-  } else {
-    std::erase_if(pre_provisioned_keys_,
-                  [&](const PreProvisionedKeyEntry& key) {
-                    // We only delete a pre-provisioned key if the origin and
-                    // site matches the Relying Party's origin and site because
-                    // the key is considered RP's data, not IdP's.
-                    return origin_and_site_matcher.Run(
-                        key.rp_origin, net::SchemefulSite(key.rp_origin));
-                  });
-  }
+  sso_key_manager_.ClearPreProvisionedKeys(origin_and_site_matcher);
 
   if (pending_initialization_) {
     queued_operations_.push_back(base::BindOnce(
@@ -1397,18 +1397,10 @@ SessionError::ErrorType SessionServiceImpl::OnRegistrationCompleteInternal(
               [&](std::unique_ptr<Session> session) {
                 CHECK(session);
                 const SchemefulSite site(session->origin());
-                SessionError::ErrorType success_result = SessionError::kSuccess;
-                if (session->unexportable_key_id().has_value()) {
-                  // Consume the pre-provisioned key.
-                  std::erase_if(pre_provisioned_keys_,
-                                [&](const PreProvisionedKeyEntry& pk) {
-                                  return pk.key_id ==
-                                         session->unexportable_key_id();
-                                });
-                }
+                sso_key_manager_.ConsumeKeyForSession(*session);
                 AddSessionAndNotify(site, std::move(session),
                                     on_access_callback);
-                return success_result;
+                return SessionError::kSuccess;
               },
               [](RegistrationResult::NoSessionConfigChange)
                   -> SessionError::ErrorType {
@@ -1550,13 +1542,22 @@ SessionError::ErrorType SessionServiceImpl::OnRefreshRequestCompletionInternal(
 void SessionServiceImpl::RestoreSessionKey(
     const SessionKey& session_key,
     OnAccessCallback on_access_callback,
+    unexportable_keys::BackgroundTaskPriority priority,
     base::OnceCallback<void(
         std::optional<unexportable_keys::UnexportableSigningKeyId>)> callback) {
+  // Never unwrap below `kUserVisible`, even for best-effort refreshes (e.g.
+  // prewarm). The key service coalesces concurrent unwraps of the same key at
+  // the first caller's priority, and `DeferRequestForRefresh` joins an
+  // in-flight proactive refresh, so a deferred request could otherwise end up
+  // waiting on a best-effort unwrap.
+  const unexportable_keys::BackgroundTaskPriority unwrap_priority = std::max(
+      priority, unexportable_keys::BackgroundTaskPriority::kUserVisible);
   if (session_store_) {
     session_store_->RestoreSessionBindingKey(
-        session_key, base::BindOnce(&SessionServiceImpl::OnSessionKeyRestored,
-                                    weak_factory_.GetWeakPtr(), session_key,
-                                    on_access_callback, std::move(callback)));
+        session_key, unwrap_priority,
+        base::BindOnce(&SessionServiceImpl::OnSessionKeyRestored,
+                       weak_factory_.GetWeakPtr(), session_key,
+                       on_access_callback, std::move(callback)));
   } else {
     OnSessionKeyRestored(
         session_key, on_access_callback, std::move(callback),
@@ -1607,8 +1608,10 @@ void SessionServiceImpl::StartSessionRefresh(const SessionKey& session_key,
   if (!key_id.has_value()) {
     if (key_id.error() == unexportable_keys::ServiceError::kKeyNotReady) {
       SessionService::OnAccessCallback access_callback = params.access_callback;
+      const unexportable_keys::BackgroundTaskPriority priority =
+          params.priority;
       RestoreSessionKey(
-          session_key, access_callback,
+          session_key, access_callback, priority,
           base::BindOnce(&SessionServiceImpl::RefreshSessionInternal,
                          weak_factory_.GetWeakPtr(), std::move(params),
                          session_key));
@@ -1657,11 +1660,16 @@ void SessionServiceImpl::RefreshSessionInternal(
       auto req_it = std::ranges::find_if(
           *deferred_reqs, [](const auto& req) { return !!req.request; });
       if (req_it == deferred_reqs->end()) {
-        // All deferred requests were cancelled or destroyed.
-        // TODO(crbug.com/509885112): We should call UnblockWaitingRequests()
-        // here to drain the queue of deferred requests because all the requests
-        // have already been canceled. Use a new `RefreshResult::kCancelled` for
-        // this.
+        // All deferred requests were destroyed (e.g. canceled) while the key
+        // was being restored, so there is no request to refresh on behalf of.
+        // The queue must still be drained: a stale `deferred_requests_` entry
+        // looks like an in-flight refresh, so later deferred requests and
+        // pre-warms would wait on it, and proactive refreshes would not start.
+        // Note that this invalidates `deferred_reqs`.
+        if (base::FeatureList::IsEnabled(
+                features::kDeviceBoundSessionsDrainDeferredOnAllCanceled)) {
+          UnblockWaitingRequests(session_key, RefreshResult::kCanceled);
+        }
         return;
       }
 
@@ -1686,7 +1694,8 @@ void SessionServiceImpl::RefreshSessionInternal(
   auto callback =
       base::BindOnce(&SessionServiceImpl::OnRefreshRequestCompletion,
                      weak_factory_.GetWeakPtr(), params.trigger,
-                     std::move(params.access_callback), session_key);
+                     std::move(params.access_callback), session_key,
+                     std::move(params.timer_since_start));
 
   std::unique_ptr<RegistrationFetcher> fetcher =
       RegistrationFetcher::CreateFetcher(
@@ -1853,84 +1862,6 @@ void SessionServiceImpl::HandleResponseHeaders(DbscRequest& request,
     SetChallengeForBoundSession(request.device_bound_session_access_callback(),
                                 request, std::move(param));
   }
-}
-
-bool SessionServiceImpl::CanAddPreProvisionedKey(const GURL& provider_url,
-                                                 const url::Origin& rp_origin) {
-  if (!CanAccessPreProvisionedKey(has_cookie_access_cb_,
-                                  url::Origin::Create(provider_url),
-                                  rp_origin)) {
-    return false;
-  }
-
-  // If we haven't reached the max keys per Identity Provider overall, we can
-  // add it right away.
-  if (pre_provisioned_keys_.size() <
-      kMaxPreProvisionedKeysPerIdentityProvider) {
-    return true;
-  }
-
-  return static_cast<size_t>(std::ranges::count(
-             pre_provisioned_keys_, net::SchemefulSite(provider_url),
-             &PreProvisionedKeyEntry::provider_site)) <
-         kMaxPreProvisionedKeysPerIdentityProvider;
-}
-
-bool SessionServiceImpl::AddPreProvisionedKey(
-    const url::Origin& rp_origin,
-    std::string_view provider_key,
-    const GURL& provider_url,
-    unexportable_keys::UnexportableSigningKeyId key_id) {
-  if (!CanAddPreProvisionedKey(provider_url, rp_origin)) {
-    return false;
-  }
-
-  auto existing_key_it =
-      std::ranges::find_if(pre_provisioned_keys_, [&](const auto& pk) {
-        return pk.provider_url == provider_url && pk.rp_origin == rp_origin &&
-               pk.provider_key == provider_key;
-      });
-  if (existing_key_it != pre_provisioned_keys_.end()) {
-    return false;
-  }
-
-  pre_provisioned_keys_.push_back(
-      {.provider_url{provider_url},
-       .provider_site{net::SchemefulSite(provider_url)},
-       .rp_origin{rp_origin},
-       .provider_key{std::string(provider_key)},
-       .key_id{key_id}});
-  return true;
-}
-
-SessionErrorOr<unexportable_keys::UnexportableSigningKeyId>
-SessionServiceImpl::FindPreProvisionedKey(
-    const ProviderRegistrationParams& provider_params,
-    base::optional_ref<const url::Origin> original_request_initiator) {
-  if (!original_request_initiator) {
-    return base::unexpected(
-        SessionError::kInvalidPreProvisionedKeyInitiatorMissing);
-  }
-
-  if (!CanAccessPreProvisionedKey(
-          has_cookie_access_cb_,
-          url::Origin::Create(provider_params.provider_url),
-          *original_request_initiator)) {
-    return base::unexpected(SessionError::kPreProvisionedKeyAccessNotGranted);
-  }
-
-  auto key_it =
-      std::ranges::find_if(pre_provisioned_keys_, [&](const auto& pk) {
-        return pk.provider_url == provider_params.provider_url &&
-               pk.provider_key == provider_params.provider_key &&
-               pk.rp_origin == *original_request_initiator;
-      });
-  if (key_it == pre_provisioned_keys_.end()) {
-    return base::unexpected(
-        SessionError::ErrorType::kPreProvisionedKeyNotFound);
-  }
-
-  return key_it->key_id;
 }
 
 }  // namespace net::device_bound_sessions

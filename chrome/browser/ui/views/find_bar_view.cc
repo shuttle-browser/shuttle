@@ -13,7 +13,6 @@
 #include "base/strings/string_util.h"
 #include "build/build_config.h"
 #include "chrome/app/vector_icons/vector_icons.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_clipboard_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/themes/theme_properties.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
@@ -338,7 +337,7 @@ FindBarView::FindBarView(FindBarHost* host) {
   AddChildView(std::move(main_container));
 
   const float corner_radius = layout_provider->GetCornerRadiusMetric(
-      views::ShapeContextTokens::kFindBarViewRadius);
+      ChromeShapeContextTokens::kFindBarViewRadius);
   {
     auto border = std::make_unique<views::BubbleBorder>(
         views::BubbleBorder::NONE, views::BubbleBorder::STANDARD_SHADOW);
@@ -531,7 +530,7 @@ bool FindBarView::HandleMouseEvent(views::Textfield* sender,
     // On macOS, clicking on the find text field should also activate the owner
     // widget (if it isn't already), so that the user can interact with the text
     // field.
-    DCHECK(find_bar_host_);
+    CHECK(find_bar_host_, base::NotFatalUntil::M162);
     find_bar_host_->ActivateOwnerWidgetIfNecessary();
   }
 #endif  // BUILDFLAG(IS_MAC)
@@ -552,24 +551,6 @@ void FindBarView::OnAfterPaste() {
   // a paste operation, even if the pasted text is the same as before.
   // See http://crbug.com/40552385
   last_searched_text_.clear();
-}
-
-bool FindBarView::OnBeforeCutOrCopy(views::Textfield* sender,
-                                    std::u16string* copy_contents) {
-  CHECK(copy_contents);
-  CHECK(copy_contents->empty());
-
-  return enterprise_data_protection::ReplaceCopyFromFindBar(
-      sender->GetSelectedText(),
-      find_bar_host_->GetFindBarController()->web_contents(), copy_contents);
-}
-
-void FindBarView::OnBeforePaste(
-    views::Textfield* sender,
-    base::OnceCallback<void(std::optional<std::u16string>)> callback) {
-  enterprise_data_protection::ReplacePasteToFindBar(
-      find_bar_host_->GetFindBarController()->web_contents(),
-      std::move(callback));
 }
 
 std::unique_ptr<ui::ScopedClipboardWriter>
@@ -594,9 +575,9 @@ FindBarView::CreateClipboardWriter() {
 }
 
 void FindBarView::Find(std::u16string_view search_text) {
-  DCHECK(find_bar_host_);
+  CHECK(find_bar_host_, base::NotFatalUntil::M162);
   FindBarController* controller = find_bar_host_->GetFindBarController();
-  DCHECK(controller);
+  CHECK(controller, base::NotFatalUntil::M162);
   content::WebContents* web_contents = controller->web_contents();
   // We must guard against a NULL web_contents, which can happen if the text
   // in the Find box is changed right after the tab is destroyed. Otherwise, it

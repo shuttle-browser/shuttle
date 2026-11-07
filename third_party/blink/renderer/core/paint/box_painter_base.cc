@@ -97,9 +97,6 @@ void ApplySpreadToShadowShape(ContouredRect& shadow_shape, float spread) {
 
 BackgroundColorPaintImageGenerator* GetBackgroundColorPaintImageGenerator(
     const Document& document) {
-  if (!RuntimeEnabledFeatures::CompositeBGColorAnimationEnabled())
-    return nullptr;
-
   return document.GetFrame()->GetBackgroundColorPaintImageGenerator();
 }
 
@@ -403,7 +400,7 @@ void BoxPainterBase::PaintInsetBoxShadowWithInnerRect(
   if (!style.BoxShadow())
     return;
   auto bounds = ContouredBorderGeometry::PixelSnappedContouredBorderWithOutsets(
-      style, inner_rect, PhysicalBoxStrut());
+      style, inner_rect, gfx::Outsets());
   PaintInsetBoxShadow(info, bounds, style);
 }
 
@@ -668,7 +665,7 @@ BoxPainterBase::FillLayerInfo::FillLayerInfo(
   is_printing = doc.Printing();
 
   should_paint_image = image && image->CanRender() &&
-                       (!(paint_flags & PaintFlag::kPrivacyPreserving) ||
+                       (!(paint_flags & PaintFlag::kReadBackAllowedRendering) ||
                         image->IsCorsSameOrigin());
   if (should_paint_image) {
     respect_image_orientation =
@@ -676,7 +673,6 @@ BoxPainterBase::FillLayerInfo::FillLayerInfo(
   }
 
   bool composite_bgcolor_animation =
-      RuntimeEnabledFeatures::CompositeBGColorAnimationEnabled() &&
       style.HasCurrentBackgroundColorAnimation() &&
       layer.GetType() == EFillLayerType::kBackground &&
       !(paint_flags & PaintFlag::kOmitCompositingInfo);
@@ -948,17 +944,14 @@ bool PaintBGColorWithPaintWorklet(const Document& document,
 }
 
 void NotifyImageTimingOnWillDrawImage(
-    Node* generating_node,
+    const LayoutObject* paint_timing_layout_object,
     const Image& image,
     const StyleImage& style_image,
     const PropertyTreeStateOrAlias& current_paint_chunk_properties,
     const gfx::RectF& image_rect) {
-  // `generating_node` is null for anonymous boxes with no originating element,
-  // which leaves nothing to attribute the image paint to.
-  //
-  //  StyleFetchedImage and StyleImageSet are the only two that could be passed
-  //  here that could have a non-null CachedImage.
-  if (!generating_node || !style_image.CachedImage() ||
+  // StyleFetchedImage and StyleImageSet are the only two that could be passed
+  // here that could have a non-null CachedImage.
+  if (!paint_timing_layout_object || !style_image.CachedImage() ||
       (!style_image.IsImageResource() && !style_image.IsImageResourceSet())) {
     return;
   }
@@ -966,17 +959,18 @@ void NotifyImageTimingOnWillDrawImage(
   const gfx::Rect enclosing_rect = gfx::ToEnclosingRect(image_rect);
 
   PaintTimingDetector::NotifyBackgroundImagePaint(
-      *generating_node, image, style_image, current_paint_chunk_properties,
-      enclosing_rect);
+      *paint_timing_layout_object, image, style_image,
+      current_paint_chunk_properties, enclosing_rect);
 }
 
-ReportPaintTiming ComputeReportPaintTiming(Node* generating_node,
-                                           const Image& image,
-                                           const StyleImage& style_image,
-                                           const GraphicsContext& context,
-                                           const gfx::RectF& rect) {
+ReportPaintTiming ComputeReportPaintTiming(
+    const LayoutObject* paint_timing_layout_object,
+    const Image& image,
+    const StyleImage& style_image,
+    const GraphicsContext& context,
+    const gfx::RectF& rect) {
   NotifyImageTimingOnWillDrawImage(
-      generating_node, image, style_image,
+      paint_timing_layout_object, image, style_image,
       context.GetPaintController().CurrentPaintChunkProperties(), rect);
 
   return style_image.IsContentful() ? ReportPaintTiming::kReport
@@ -1022,7 +1016,7 @@ inline bool CanUseBottomLayerFastPath(
 
 inline bool PaintFastBottomLayer(const Document& document,
                                  Node* node,
-                                 Node* generating_node,
+                                 const LayoutObject* paint_timing_layout_object,
                                  const ComputedStyle& style,
                                  GraphicsContext& context,
                                  const BoxPainterBase::FillLayerInfo& info,
@@ -1135,8 +1129,8 @@ inline bool PaintFastBottomLayer(const Document& document,
 
   context.DrawImageRRect(
       *image, Image::kSyncDecode, image_auto_dark_mode,
-      ComputeReportPaintTiming(generating_node, *image, *info.image, context,
-                               image_border.Rect()),
+      ComputeReportPaintTiming(paint_timing_layout_object, *image, *info.image,
+                               context, image_border.Rect()),
       image_border, src_rect, composite_op, info.respect_image_orientation,
       clamping_mode, &image_animation);
   return true;
@@ -1216,7 +1210,8 @@ ContouredRect ContouredBorderRectForClip(
   if (bg_layer.Clip() == EFillBox::kFillBox ||
       bg_layer.Clip() == EFillBox::kContent) {
     border = ContouredBorderGeometry::PixelSnappedContouredBorderWithOutsets(
-        style, border_rect, border_padding_insets, info.sides_to_include);
+        style, border_rect, border_padding_insets.ToRoundedOutsets(),
+        info.sides_to_include);
     // Background of 'background-attachment: local' without visible/clip
     // overflow also needs to use inner border which is equivalent to kPadding.
   } else if (bg_layer.Clip() == EFillBox::kPadding ||
@@ -1231,7 +1226,7 @@ void PaintFillLayerBackground(const Document& document,
                               GraphicsContext& context,
                               const BoxPainterBase::FillLayerInfo& info,
                               Node* node,
-                              Node* generating_node,
+                              const LayoutObject* paint_timing_layout_object,
                               const ComputedStyle& style,
                               Image* image,
                               SkBlendMode composite_op,
@@ -1269,12 +1264,12 @@ void PaintFillLayerBackground(const Document& document,
         CSSImageAnimations::CreateImageNodeAnimationInfo(
             node, info.image ? info.image->CachedImage() : nullptr,
             style.ImageAnimation());
-    DrawTiledBackground(
-        document.GetFrame(), context, style, *image, geometry, composite_op,
-        info.respect_image_orientation,
-        ComputeReportPaintTiming(generating_node, *image, *info.image, context,
-                                 gfx::RectF(geometry.SnappedDestRect())),
-        &image_animation);
+    DrawTiledBackground(document.GetFrame(), context, style, *image, geometry,
+                        composite_op, info.respect_image_orientation,
+                        ComputeReportPaintTiming(
+                            paint_timing_layout_object, *image, *info.image,
+                            context, gfx::RectF(geometry.SnappedDestRect())),
+                        &image_animation);
   }
 }
 
@@ -1433,10 +1428,8 @@ void BoxPainterBase::PaintFillLayer(
         bg_paint_context.ComputeBorderShapeReferenceRects(rect, *border_shape));
   }
 
-  // Resolved here rather than in the constructor: box painters are constructed
-  // for every box in every paint phase, and resolving the generating node walks
-  // the layout tree and dereferences the Node.
-  Node* const generating_node = image ? ImageGeneratingNode() : nullptr;
+  const LayoutObject* const paint_timing_layout_object =
+      image ? PaintTimingLayoutObject() : nullptr;
 
   const PhysicalBoxStrut border = ComputeSnappedBorders(bg_paint_context);
   const PhysicalBoxStrut padding = bg_paint_context.PaddingOutsets();
@@ -1451,9 +1444,10 @@ void BoxPainterBase::PaintFillLayer(
   if (CanUseBottomLayerFastPath(fill_layer_info, bg_paint_context,
                                 bleed_avoidance, did_adjust_paint_rect) &&
       border_rect.HasRoundCurvature() && !border_shape &&
-      PaintFastBottomLayer(document_, node_, generating_node, style_, context,
-                           fill_layer_info, rect, border_rect.AsRoundedRect(),
-                           geometry, image.get(), composite_op)) {
+      PaintFastBottomLayer(document_, node_, paint_timing_layout_object, style_,
+                           context, fill_layer_info, rect,
+                           border_rect.AsRoundedRect(), geometry, image.get(),
+                           composite_op)) {
     return;
   }
 
@@ -1550,8 +1544,8 @@ void BoxPainterBase::PaintFillLayer(
   }
 
   PaintFillLayerBackground(document_, context, fill_layer_info, node_,
-                           generating_node, style_, image.get(), composite_op,
-                           geometry, scrolled_paint_rect);
+                           paint_timing_layout_object, style_, image.get(),
+                           composite_op, geometry, scrolled_paint_rect);
 }
 
 void BoxPainterBase::PaintFillLayerTextFillBox(
@@ -1570,9 +1564,8 @@ void BoxPainterBase::PaintFillLayerTextFillBox(
 
   GraphicsContext& context = paint_info.context;
 
-  // Only resolved when a layer actually draws an image: resolving it walks
-  // the layout tree and dereferences the Node.
-  Node* const generating_node = image ? ImageGeneratingNode() : nullptr;
+  const LayoutObject* const paint_timing_layout_object =
+      image ? PaintTimingLayoutObject() : nullptr;
 
   // We draw the background into a separate layer, to be later masked with
   // yet another layer holding the text content.
@@ -1581,9 +1574,9 @@ void BoxPainterBase::PaintFillLayerTextFillBox(
   context.Clip(mask_rect);
   context.BeginLayer(composite_op);
 
-  PaintFillLayerBackground(document_, context, info, node_, generating_node,
-                           style_, image, SkBlendMode::kSrcOver, geometry,
-                           scrolled_paint_rect);
+  PaintFillLayerBackground(
+      document_, context, info, node_, paint_timing_layout_object, style_,
+      image, SkBlendMode::kSrcOver, geometry, scrolled_paint_rect);
 
   // Create the text mask layer and draw the text into the mask. We do this by
   // painting using a special paint phase that signals to InlineTextBoxes that
@@ -1636,9 +1629,8 @@ void BoxPainterBase::PaintFillLayerBorderAreaFillBox(
     bool object_has_multiple_boxes) {
   GraphicsContext& context = paint_info.context;
 
-  // Only resolved when a layer actually draws an image: resolving it walks
-  // the layout tree and dereferences the Node.
-  Node* const generating_node = image ? ImageGeneratingNode() : nullptr;
+  const LayoutObject* const paint_timing_layout_object =
+      image ? PaintTimingLayoutObject() : nullptr;
 
   // Expand the paint rect to include border-shape outer bounds if needed.
   PhysicalRect background_paint_rect = scrolled_paint_rect;
@@ -1668,9 +1660,9 @@ void BoxPainterBase::PaintFillLayerBorderAreaFillBox(
     context.Clip(clip_rect);
     context.BeginLayer(composite_op);
 
-    PaintFillLayerBackground(document_, context, info, node_, generating_node,
-                             style_, image, SkBlendMode::kSrcOver, geometry,
-                             background_paint_rect);
+    PaintFillLayerBackground(
+        document_, context, info, node_, paint_timing_layout_object, style_,
+        image, SkBlendMode::kSrcOver, geometry, background_paint_rect);
 
     context.BeginLayer(SkBlendMode::kDstIn);
 
@@ -1702,9 +1694,9 @@ void BoxPainterBase::PaintFillLayerBorderAreaFillBox(
     context.ClipContouredRect(outer);
     context.ClipOutContouredRect(inner);
 
-    PaintFillLayerBackground(document_, context, info, node_, generating_node,
-                             style_, image, composite_op, geometry,
-                             background_paint_rect);
+    PaintFillLayerBackground(document_, context, info, node_,
+                             paint_timing_layout_object, style_, image,
+                             composite_op, geometry, background_paint_rect);
     return;
   }
 
@@ -1716,9 +1708,9 @@ void BoxPainterBase::PaintFillLayerBorderAreaFillBox(
   context.Clip(mask_rect);
   context.BeginLayer(composite_op);
 
-  PaintFillLayerBackground(document_, context, info, node_, generating_node,
-                           style_, image, SkBlendMode::kSrcOver, geometry,
-                           background_paint_rect);
+  PaintFillLayerBackground(
+      document_, context, info, node_, paint_timing_layout_object, style_,
+      image, SkBlendMode::kSrcOver, geometry, background_paint_rect);
 
   // Build a union mask: paint both border-area and text shapes as opaque
   // regions, then use DstIn to keep only where the mask has coverage.
@@ -1756,7 +1748,7 @@ void BoxPainterBase::PaintBorder(
   }
 
   // border-image is not affected by border-radius.
-  if (!(info.IsPrivacyPreserving() && style.BorderImage().GetImage() &&
+  if (!(info.IsReadBackAllowedRendering() && style.BorderImage().GetImage() &&
         !style.BorderImage().GetImage()->IsCorsSameOrigin())) {
     if (NinePieceImagePainter::Paint(info.context, obj, document, node, rect,
                                      style, style.BorderImage())) {
@@ -1780,7 +1772,8 @@ void BoxPainterBase::PaintMaskImages(
 
   PaintFillLayers(paint_info, Color::kTransparent, style_.MaskLayers(),
                   paint_rect, bg_paint_context);
-  if (!(paint_info.IsPrivacyPreserving() && style_.MaskBoxImage().GetImage() &&
+  if (!(paint_info.IsReadBackAllowedRendering() &&
+        style_.MaskBoxImage().GetImage() &&
         !style_.MaskBoxImage().GetImage()->IsCorsSameOrigin())) {
     NinePieceImagePainter::Paint(paint_info.context, obj, document_, node_,
                                  paint_rect, style_, style_.MaskBoxImage(),
@@ -1803,7 +1796,7 @@ bool BoxPainterBase::ShouldSkipPaintUnderInvalidationChecking(
 
   // We always paint a MediaSliderPart using the latest data (buffered ranges,
   // current time and duration) which may be different from the cached data.
-  if (box.StyleRef().EffectiveAppearance() == AppearanceValue::kMediaSlider) {
+  if (box.Style().EffectiveAppearance() == AppearanceValue::kMediaSlider) {
     return true;
   }
 

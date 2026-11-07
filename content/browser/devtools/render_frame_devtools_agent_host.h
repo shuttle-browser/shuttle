@@ -170,6 +170,10 @@ class CONTENT_EXPORT RenderFrameDevToolsAgentHost
 
   void DestroyOnRenderFrameGone();
   void UpdateFrameHost(RenderFrameHostImpl* frame_host);
+  // The method returns a pointer retaining this. Once the pointer goes
+  // out of scope, this may be destroyed.
+  [[nodiscard]] scoped_refptr<RenderFrameDevToolsAgentHost>
+  RevalidateSessionAccess(RenderFrameHostImpl* frame_host);
   void ChangeFrameHostAndObservedProcess(RenderFrameHostImpl* frame_host);
   void UpdateFrameAlive();
 
@@ -188,6 +192,7 @@ class CONTENT_EXPORT RenderFrameDevToolsAgentHost
   raw_ptr<RenderFrameHostImpl> frame_host_ = nullptr;
   base::flat_set<raw_ptr<NavigationRequest, CtnExperimental>>
       navigation_requests_;
+  bool is_initial_provisional_navigation_ = false;
   bool render_frame_alive_ = false;
   bool render_frame_crashed_ = false;
   bool did_try_to_initialize_prerender_primary_main_frame_ = false;

@@ -14,8 +14,6 @@ source_set("navigation_predictor") {
     "navigation_predictor_keyed_service_factory.h",
     "navigation_predictor_metrics_document_data.h",
     "navigation_predictor_preconnect_client.h",
-    "preloading_model_keyed_service.h",
-    "preloading_model_keyed_service_factory.h",
     "search_engine_preconnector.h",
     "search_engine_preconnector_keyed_service_factory.h",
   ]
@@ -45,20 +43,12 @@ source_set("impl") {
     "navigation_predictor_keyed_service_factory.cc",
     "navigation_predictor_metrics_document_data.cc",
     "navigation_predictor_preconnect_client.cc",
-    "preloading_model_executor.cc",
-    "preloading_model_executor.h",
-    "preloading_model_handler.cc",
-    "preloading_model_handler.h",
-    "preloading_model_keyed_service.cc",
-    "preloading_model_keyed_service_factory.cc",
     "search_engine_preconnector.cc",
     "search_engine_preconnector_keyed_service_factory.cc",
   ]
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
   deps = [
     ":navigation_predictor",
     "//chrome/browser/battery",
-    "//chrome/browser/optimization_guide",
     "//chrome/browser/predictors",
     "//chrome/browser/preloading",
     "//chrome/browser/preloading:prefs",

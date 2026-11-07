@@ -163,7 +163,7 @@ ExtensionHost::ExtensionHost(const Extension* extension,
   // be the same extension that this points to.
   auto* registry = ExtensionRegistry::Get(browser_context_);
   DCHECK(registry);
-  registry->AddObserver(this);
+  extension_registry_observation_.Observe(registry);
 
   // Set up web contents observers and pref observers.
   delegate_->OnExtensionHostCreated(host_contents());
@@ -175,7 +175,9 @@ ExtensionHost::ExtensionHost(const Extension* extension,
 }
 
 ExtensionHost::~ExtensionHost() {
-  ExtensionRegistry::Get(browser_context_)->RemoveObserver(this);
+  // Stop observing up front, rather than when the member is destroyed, so that
+  // no ExtensionRegistry events are received during the teardown below.
+  extension_registry_observation_.Reset();
 
   if (extension_host_type_ == mojom::ViewType::kExtensionBackgroundPage &&
       extension_ && BackgroundInfo::HasLazyBackgroundPage(extension_) &&
@@ -284,7 +286,7 @@ void ExtensionHost::OnBackgroundEventDispatched(
   // We don't expect unacked_messages to be written more than once per event_id
   // since event_ids are supposed to be unique per event dispatch to each
   // extension.
-  CHECK(unacked_messages_.count(event_id) == 0);
+  CHECK(!unacked_messages_.contains(event_id));
   unacked_messages_[event_id] =
       UnackedEventData{event_name, dispatch_start_time, dispatch_source,
                        lazy_background_active_on_dispatch};
@@ -618,14 +620,10 @@ std::string ExtensionHost::GetTitleForMediaControls(
 
 void ExtensionHost::RecordStopLoadingUMA() {
   CHECK(load_start_.get());
-  if (extension_host_type_ == mojom::ViewType::kExtensionBackgroundPage) {
-    if (extension_ && BackgroundInfo::HasLazyBackgroundPage(extension_)) {
-      DEPRECATED_UMA_HISTOGRAM_MEDIUM_TIMES("Extensions.EventPageLoadTime2",
-                                            load_start_->Elapsed());
-    } else {
-      DEPRECATED_UMA_HISTOGRAM_MEDIUM_TIMES(
-          "Extensions.BackgroundPageLoadTime2", load_start_->Elapsed());
-    }
+  if (extension_host_type_ == mojom::ViewType::kExtensionBackgroundPage &&
+      extension_ && BackgroundInfo::HasLazyBackgroundPage(extension_)) {
+    DEPRECATED_UMA_HISTOGRAM_MEDIUM_TIMES("Extensions.EventPageLoadTime2",
+                                          load_start_->Elapsed());
   }
 }
 

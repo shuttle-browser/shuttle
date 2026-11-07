@@ -193,6 +193,9 @@ InkTextBoxAttributes GetTextBoxAttributesFromDict(const base::DictValue& data) {
   bool is_strikethrough = styles.FindBool("strikethrough").value();
   bool is_underline = styles.FindBool("underline").value();
 
+  const std::string& text = *data.FindString("text");
+  CHECK(!text.empty());
+
   return InkTextBoxAttributes{
       .rect = textbox,
       .color = GetColorFromDict(text_attributes),
@@ -205,7 +208,7 @@ InkTextBoxAttributes GetTextBoxAttributesFromDict(const base::DictValue& data) {
       .is_italic = is_italic,
       .is_strikethrough = is_strikethrough,
       .is_underline = is_underline,
-      .text = *data.FindString("text"),
+      .text = text,
   };
 }
 
@@ -268,7 +271,7 @@ bool PdfInkModule::HasInputsToDraw() const {
   }
 
   CHECK(is_drawing_stroke());
-  return !drawing_stroke_state().inputs.empty();
+  return !drawing_stroke_state().in_progress_strokes.empty();
 }
 
 void PdfInkModule::Draw(SkCanvas& canvas) {
@@ -292,15 +295,15 @@ void PdfInkModule::Draw(SkCanvas& canvas) {
 
   CHECK(is_drawing_stroke());
 
-  auto in_progress_stroke = CreateInProgressStrokeSegmentsFromInputs();
-  CHECK(!in_progress_stroke.empty());
+  const DrawingStrokeState& state = drawing_stroke_state();
+  CHECK(!state.in_progress_strokes.empty());
 
   SkAutoCanvasRestore save_restore(&canvas, /*doSave=*/true);
-  const auto [transform, clip_rect] =
-      GetTransformAndClipRect(drawing_stroke_state().page_index);
+  const auto [transform, clip_rect] = GetTransformAndClipRect(state.page_index);
   canvas.clipRect(clip_rect);
-  for (const auto& segment : in_progress_stroke) {
-    auto status = skia_renderer.Draw(nullptr, segment, transform, canvas);
+  for (const auto& in_progress_stroke : state.in_progress_strokes) {
+    auto status =
+        skia_renderer.Draw(nullptr, in_progress_stroke, transform, canvas);
     CHECK(status.ok());
   }
 }
@@ -385,6 +388,8 @@ bool PdfInkModule::OnMessage(const base::DictValue& message) {
       base::MakeFixedFlatMap<std::string_view, MessageHandler>({
           {"annotationRedo", &PdfInkModule::HandleAnnotationRedoMessage},
           {"annotationUndo", &PdfInkModule::HandleAnnotationUndoMessage},
+          {"deleteTextAnnotation",
+           &PdfInkModule::HandleDeleteTextAnnotationMessage},
           {"editTextAnnotation",
            &PdfInkModule::HandleEditTextAnnotationMessage},
           {"finishTextAnnotation",
@@ -417,6 +422,9 @@ void PdfInkModule::OnGeometryChanged() {
 }
 
 void PdfInkModule::RecordMetricsOnSave() {
+  RecordSaveHasStrokes(HasStrokes());
+  RecordSaveHasTextAnnotations(!text_id_map_.empty());
+
   if (!baseline_text_annotation_count_.has_value()) {
     return;
   }
@@ -794,20 +802,13 @@ bool PdfInkModule::StartStroke(const gfx::PointF& position,
   CHECK(is_drawing_stroke());
   DrawingStrokeState& state = drawing_stroke_state();
 
-  gfx::PointF page_position =
-      GetEventToCanonicalTransformForPage(page_index).MapPoint(position);
-
   CHECK(!state.start_time.has_value());
   state.start_time = timestamp;
   state.page_index = page_index;
 
-  // Start of the first segment of a stroke.
-  ink::StrokeInputBatch segment;
-  auto result = segment.Append(CreateInkStrokeInputWithProperties(
-      tool_type, page_position, /*elapsed_time=*/base::TimeDelta(),
-      properties));
-  CHECK(result.ok());
-  state.inputs.push_back(std::move(segment));
+  // Start of the first in-progress stroke.
+  CHECK(state.in_progress_strokes.empty());
+  CHECK(RecordStrokePosition(position, timestamp, tool_type, properties));
 
   // Invalidate area around this one point.
   client_->Invalidate(GetDrawingBrush().GetInvalidateArea(position, position));
@@ -876,6 +877,14 @@ bool PdfInkModule::ContinueStroke(
       }
     }
 
+    CHECK(!state.in_progress_strokes.empty());
+    ink::InProgressStroke& stroke = state.in_progress_strokes.back();
+    if (!stroke.InputsAreFinished()) {
+      stroke.FinishInputs();
+      auto update_results = stroke.UpdateShape(ink::Duration32());
+      CHECK(update_results.ok());
+    }
+
     // Remember `position` and `timestamp` for use in the next event and treat
     // event as handled.
     state.input_last_event = EventDetails{position, timestamp, tool_type};
@@ -884,10 +893,9 @@ bool PdfInkModule::ContinueStroke(
 
   gfx::PointF invalidation_position = last_position;
   if (last_page_index != state.page_index) {
-    // If the stroke left the page and is now re-entering, then start a new
-    // segment.
-    CHECK(!state.inputs.back().IsEmpty());
-    state.inputs.push_back(ink::StrokeInputBatch());
+    // The stroke left the page and is now re-entering.
+    CHECK(!state.in_progress_strokes.empty());
+    CHECK(state.in_progress_strokes.back().InputsAreFinished());
     const gfx::PointF boundary_position = CalculatePageBoundaryIntersectPoint(
         client_->GetPageContentsRect(state.page_index), position,
         last_position);
@@ -925,25 +933,31 @@ bool PdfInkModule::FinishStroke(const gfx::PointF& position,
 
   CHECK(is_drawing_stroke());
   DrawingStrokeState& state = drawing_stroke_state();
-  auto in_progress_stroke_segments = CreateInProgressStrokeSegmentsFromInputs();
-  if (!in_progress_stroke_segments.empty()) {
-    CHECK_GE(state.page_index, 0);
-    ink::Envelope invalidate_envelope;
-    for (const auto& segment : in_progress_stroke_segments) {
-      InkStrokeId id = id_generator_.GetStrokeIdAndAdvance();
-      ink::Stroke stroke = segment.CopyToStroke();
-      client_->StrokeAdded(state.page_index, id, stroke);
-      invalidate_envelope.Add(stroke.GetShape().Bounds());
-      strokes_[state.page_index].push_back(
-          FinishedStrokeState(std::move(stroke), id));
-      bool undo_redo_success = undo_redo_model_.Add(id);
-      CHECK(undo_redo_success);
-    }
-
-    client_->Invalidate(CanonicalInkEnvelopeToInvalidationScreenRect(
-        invalidate_envelope,
-        GetCanonicalToEventTransformForPage(state.page_index)));
+  CHECK(!state.in_progress_strokes.empty());
+  CHECK_GE(state.page_index, 0);
+  if (!state.in_progress_strokes.back().InputsAreFinished()) {
+    state.in_progress_strokes.back().FinishInputs();
+    auto update_results =
+        state.in_progress_strokes.back().UpdateShape(ink::Duration32());
+    CHECK(update_results.ok());
   }
+
+  ink::Envelope invalidate_envelope;
+  for (const auto& in_progress_stroke : state.in_progress_strokes) {
+    CHECK(in_progress_stroke.InputsAreFinished());
+    InkStrokeId id = id_generator_.GetStrokeIdAndAdvance();
+    ink::Stroke stroke = in_progress_stroke.CopyToStroke();
+    client_->StrokeAdded(state.page_index, id, stroke);
+    invalidate_envelope.Add(stroke.GetShape().Bounds());
+    strokes_[state.page_index].push_back(
+        FinishedStrokeState(std::move(stroke), id));
+    bool undo_redo_success = undo_redo_model_.Add(id);
+    CHECK(undo_redo_success);
+  }
+
+  client_->Invalidate(CanonicalInkEnvelopeToInvalidationScreenRect(
+      invalidate_envelope,
+      GetCanonicalToEventTransformForPage(state.page_index)));
 
   client_->StrokeFinished(/*modified=*/true);
   RequestThumbnailUpdates({state.page_index});
@@ -954,7 +968,7 @@ bool PdfInkModule::FinishStroke(const gfx::PointF& position,
   ReportDrawStroke(state.brush_type, GetDrawingBrush().ink_brush(), tool_type);
 
   // Reset `state` now that the stroke operation is done.
-  state.inputs.clear();
+  state.in_progress_strokes.clear();
   state.start_time = std::nullopt;
   state.page_index = -1;
   state.input_last_event.reset();
@@ -1588,6 +1602,9 @@ void PdfInkModule::HandleSetAnnotationModeMessage(
   } else if (*mode == "text") {
     CHECK(features::kPdfInk2TextAnnotations.Get());
     mode_ = InkAnnotationMode::kText;
+  } else if (*mode == "signature") {
+    CHECK(features::kPdfInk2Signatures.Get());
+    mode_ = InkAnnotationMode::kSignature;
   } else {
     NOTREACHED();
   }
@@ -1605,6 +1622,35 @@ void PdfInkModule::HandleSetAnnotationModeMessage(
     }
   }
   MaybeSetCursor();
+}
+
+void PdfInkModule::HandleDeleteTextAnnotationMessage(
+    const base::DictValue& message) {
+  const base::DictValue& data = *message.FindDict("data");
+  const int frontend_id = data.FindInt("id").value();
+  const int page_index = data.FindInt("pageIndex").value();
+  const std::string& source = *data.FindString("source");
+  // Figure out if this message is for a user action, or for handling undo/redo.
+  // If this is for handling undo/redo, then do not modify `undo_redo_model_`.
+  const bool modify_undo_redo_model = source == "user";
+  if (modify_undo_redo_model) {
+    base::expected<std::optional<IdType>, std::monostate> lowest_discard =
+        undo_redo_model_.Start();
+    CHECK(lowest_discard.has_value());
+    ApplyUndoRedoDiscards(lowest_discard.value());
+  } else {
+    CHECK(source == "undo" || source == "redo");
+  }
+
+  std::optional<TextId> existing_id =
+      MaybeDeleteExistingTextAnnotation(frontend_id);
+  CHECK(existing_id.has_value());
+  if (modify_undo_redo_model) {
+    CHECK(undo_redo_model_.Remove(TextIdToIdType(existing_id.value())));
+    CHECK(undo_redo_model_.Finish());
+  }
+
+  RequestThumbnailUpdates({page_index});
 }
 
 void PdfInkModule::HandleEditTextAnnotationMessage(
@@ -1650,35 +1696,11 @@ void PdfInkModule::HandleFinishTextAnnotationMessage(
   // The edit can be one of the following, which breaks down into 1 or 2 steps:
   // - Addition: No existing annotation to delete. Only add new annotation.
   // - Modification: Delete existing annotation and add new annotation.
-  // - Deletion: Delete existing annotation only.
   // First do the deletion if needed.
-  if (auto it = text_id_map_.find(frontend_id); it != text_id_map_.end()) {
-    TextId existing_id = it->second;
-    // Make sure `existing_id` gets hidden before being discarded.
-    client_->UpdateTextActiveAndInvalidate(existing_id, /*active=*/false);
-    // "HandleFinishTextAnnotationMessageDiscard" note: This method will discard
-    // here before getting a new ID from `id_generator_` below. The block above
-    // this just called `ApplyUndoRedoDiscards()`. This complies with the
-    // assumptions `ApplyUndoRedoDiscards()` made regarding text annotation
-    // discards.
-    if (std::holds_alternative<InkTextId>(existing_id)) {
-      client_->DiscardText(std::get<InkTextId>(existing_id));
-    }
-    text_id_map_.erase(it);
-
-    if (modify_undo_redo_model) {
-      CHECK(undo_redo_model_.Remove(TextIdToIdType(existing_id)));
-    }
-
-    // Empty text means the annotation is being deleted. Return early since
-    // there is nothing to add.
-    if (data.FindString("text")->empty()) {
-      if (modify_undo_redo_model) {
-        CHECK(undo_redo_model_.Finish());
-      }
-      RequestThumbnailUpdates({page_index});
-      return;
-    }
+  std::optional<TextId> existing_id =
+      MaybeDeleteExistingTextAnnotation(frontend_id);
+  if (existing_id.has_value() && modify_undo_redo_model) {
+    CHECK(undo_redo_model_.Remove(TextIdToIdType(existing_id.value())));
   }
 
   std::optional<TextId> undo_redo_text_id;
@@ -1779,39 +1801,6 @@ const PdfInkBrush& PdfInkModule::GetBrush(PdfInkBrush::Type brush_type) const {
   NOTREACHED();
 }
 
-std::vector<ink::InProgressStroke>
-PdfInkModule::CreateInProgressStrokeSegmentsFromInputs() const {
-  if (!is_drawing_stroke()) {
-    return {};
-  }
-
-  const DrawingStrokeState& state = drawing_stroke_state();
-  const ink::Brush& brush = GetDrawingBrush().ink_brush();
-  CHECK(PdfInkBrush::IsToolSizeInRange(brush.GetSize()));
-  std::vector<ink::InProgressStroke> stroke_segments;
-  stroke_segments.reserve(state.inputs.size());
-  for (size_t segment_number = 0; const auto& segment : state.inputs) {
-    ++segment_number;
-    if (segment.IsEmpty()) {
-      // Only the last segment can possibly be empty, if the stroke left the
-      // page but never returned back in.
-      CHECK_EQ(segment_number, state.inputs.size());
-      break;
-    }
-
-    ink::InProgressStroke stroke;
-    stroke.Start(brush);
-    auto enqueue_results =
-        stroke.EnqueueInputs(segment, /*predicted_inputs=*/{});
-    CHECK(enqueue_results.ok());
-    stroke.FinishInputs();
-    auto update_results = stroke.UpdateShape(ink::Duration32());
-    CHECK(update_results.ok());
-    stroke_segments.push_back(std::move(stroke));
-  }
-  return stroke_segments;
-}
-
 gfx::Transform PdfInkModule::GetEventToCanonicalTransformForPage(
     int page_index) {
   // If the page is visible, then its screen rect must not be empty.
@@ -1836,10 +1825,33 @@ bool PdfInkModule::RecordStrokePosition(
   gfx::PointF canonical_position =
       GetEventToCanonicalTransformForPage(state.page_index).MapPoint(position);
   base::TimeDelta time_diff = timestamp - state.start_time.value();
-
-  auto result = state.inputs.back().Append(CreateInkStrokeInputWithProperties(
+  ink::StrokeInputBatch batch;
+  auto result = batch.Append(CreateInkStrokeInputWithProperties(
       tool_type, canonical_position, time_diff, properties));
-  return result.ok();
+  if (!result.ok()) {
+    return false;
+  }
+
+  if (state.in_progress_strokes.empty() ||
+      state.in_progress_strokes.back().InputsAreFinished()) {
+    // Start the first in-progress stroke, or start a new one if the stroke
+    // left the page and is now re-entering.
+    const ink::Brush& brush = GetDrawingBrush().ink_brush();
+    CHECK(PdfInkBrush::IsToolSizeInRange(brush.GetSize()));
+    state.in_progress_strokes.emplace_back();
+    state.in_progress_strokes.back().Start(brush);
+  }
+
+  ink::InProgressStroke& stroke = state.in_progress_strokes.back();
+  const int input_count = stroke.InputCount();
+  auto enqueue_results = stroke.EnqueueInputs(batch, /*predicted_inputs=*/{});
+  CHECK(enqueue_results.ok());
+  auto update_results = stroke.UpdateShape(ink::Duration32());
+  CHECK(update_results.ok());
+
+  // `EnqueueInputs()` succeeds and silently skips inputs with invalid position
+  // or time relative to previous inputs in `stroke`.
+  return stroke.InputCount() > input_count;
 }
 
 void PdfInkModule::ApplyUndoRedoCommands(
@@ -1861,7 +1873,8 @@ void PdfInkModule::ApplyUndoRedoCommandsHelper(
     if (std::holds_alternative<InkTextId>(id) ||
         std::holds_alternative<InkLoadedTextId>(id)) {
       // No need to handle text objects. The frontend will separately send
-      // "finishTextAnnotation" messages and make changes there.
+      // "deleteTextAnnotation" and "finishTextAnnotation" messages and make
+      // changes there.
       continue;
     }
 
@@ -1977,8 +1990,9 @@ void PdfInkModule::ApplyUndoRedoDiscards(std::optional<IdType> lowest_discard) {
   // Only discard Ink Strokes:
   // - InkModeledShapes cannot be discarded
   // - No need to discard text objects. The frontend will separately send
-  //   "finishTextAnnotation" messages and discard there. See the
-  //   "HandleFinishTextAnnotationMessageDiscard" comment in this file.
+  //   "deleteTextAnnotation" and "finishTextAnnotation" messages and discard
+  //   there. See the "HandleFinishTextAnnotationMessageDiscard" comment in this
+  //   file.
   CHECK(!std::holds_alternative<InkModeledShapeId>(lowest_discard.value()));
 
   const size_t lowest_discard_value = GetIdTypeValue(lowest_discard.value());
@@ -2011,6 +2025,29 @@ void PdfInkModule::ApplyUndoRedoDiscards(std::optional<IdType> lowest_discard) {
   id_generator_.ResetIdTo(lowest_discard_value);
 }
 
+std::optional<TextId> PdfInkModule::MaybeDeleteExistingTextAnnotation(
+    int frontend_id) {
+  auto it = text_id_map_.find(frontend_id);
+  if (it == text_id_map_.end()) {
+    return std::nullopt;
+  }
+
+  TextId existing_id = it->second;
+  // Make sure `existing_id` gets hidden before being discarded.
+  client_->UpdateTextActiveAndInvalidate(existing_id, /*active=*/false);
+  // "HandleFinishTextAnnotationMessageDiscard" note: When called from
+  // `HandleDeleteTextAnnotationMessage()` or
+  // `HandleFinishTextAnnotationMessage()`, this method will discard here before
+  // getting a new ID from `id_generator_`. The caller just called
+  // `ApplyUndoRedoDiscards()`. This complies with the assumptions
+  // `ApplyUndoRedoDiscards()` made regarding text annotation discards.
+  if (std::holds_alternative<InkTextId>(existing_id)) {
+    client_->DiscardText(std::get<InkTextId>(existing_id));
+  }
+  text_id_map_.erase(it);
+  return existing_id;
+}
+
 bool PdfInkModule::MaybeSetDrawingBrush() {
   if (!pending_drawing_brush_state_.has_value()) {
     return false;
@@ -2026,6 +2063,20 @@ bool PdfInkModule::MaybeSetDrawingBrush() {
   pending_drawing_brush_state_.reset();
 
   return true;
+}
+
+bool PdfInkModule::HasStrokes() const {
+  for (const auto& [page_index, page_strokes] : strokes_) {
+    if (std::ranges::any_of(page_strokes, &FinishedStrokeState::should_draw)) {
+      return true;
+    }
+  }
+  for (const auto& [page_index, page_shapes] : loaded_v2_shapes_) {
+    if (std::ranges::any_of(page_shapes, &LoadedV2ShapeState::should_draw)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void PdfInkModule::MaybeSetCursor() {
@@ -2065,6 +2116,9 @@ void PdfInkModule::MaybeSetCursor() {
       // TODO(crbug.com/402546153): Update cursor for text annotation, once
       // UX determines if it should always use I-beam.
       client_->UpdateInkCursor(ui::mojom::CursorType::kIBeam);
+      return;
+
+    case InkAnnotationMode::kSignature:
       return;
   }
   NOTREACHED();

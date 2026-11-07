@@ -7,23 +7,27 @@
  * 'settings-category-default-radio-group' is the polymer element for showing
  * a certain category under Site Settings.
  */
-import '../settings_shared.css.js';
 import '../controls/collapse_radio_button.js';
 import '../controls/settings_radio_group.js';
 
-import {WebUiListenerMixin} from 'chrome://resources/cr_elements/web_ui_listener_mixin.js';
+import {PrefService} from '/shared/settings/prefs2/pref_service.js';
+import {PrefServiceObserverMixinLit} from '/shared/settings/prefs2/pref_service_observer_mixin_lit.js';
+import {WebUiListenerMixinLit} from 'chrome://resources/cr_elements/web_ui_listener_mixin_lit.js';
 import {assert} from 'chrome://resources/js/assert.js';
-import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
+import type {PropertyValues} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
 import type {SettingsCollapseRadioButtonElement} from '../controls/collapse_radio_button.js';
 import type {SettingsRadioGroupElement} from '../controls/settings_radio_group.js';
 import {loadTimeData} from '../i18n_setup.js';
 
-import {ContentSetting, ContentSettingsTypes} from './constants.js';
-import {getTemplate} from './settings_category_default_radio_group.html.js';
-import type {DefaultContentSetting} from './site_settings_browser_proxy.js';
+import {ContentSettingsTypes} from './constants.js';
+import type {ContentSetting} from './constants.js';
+import {getCss} from './settings_category_default_radio_group.css.js';
+import {getHtml} from './settings_category_default_radio_group.html.js';
 import {DefaultSettingSource} from './site_settings_browser_proxy.js';
-import {SiteSettingsMixin} from './site_settings_mixin.js';
+import type {DefaultContentSetting} from './site_settings_browser_proxy.js';
+import {SiteSettingsMixinLit} from './site_settings_mixin_lit.js';
 
 export interface SettingsCategoryDefaultRadioGroupElement {
   $: {
@@ -35,7 +39,8 @@ export interface SettingsCategoryDefaultRadioGroupElement {
 }
 
 const SettingsCategoryDefaultRadioGroupElementBase =
-    SiteSettingsMixin(WebUiListenerMixin(PolymerElement));
+    PrefServiceObserverMixinLit(
+        SiteSettingsMixinLit(WebUiListenerMixinLit(CrLitElement)));
 
 export class SettingsCategoryDefaultRadioGroupElement extends
     SettingsCategoryDefaultRadioGroupElementBase {
@@ -43,129 +48,132 @@ export class SettingsCategoryDefaultRadioGroupElement extends
     return 'settings-category-default-radio-group';
   }
 
-  static get template() {
-    return getTemplate();
+  static override get styles() {
+    return getCss();
   }
 
-  static get properties() {
-    return {
-      header: {
-        type: String,
-        value() {
-          return loadTimeData.getString('siteSettingsDefaultBehavior');
-        },
-      },
+  override render() {
+    return getHtml.bind(this)();
+  }
 
-      description: {
-        type: String,
-        value() {
-          return loadTimeData.getString(
-              'siteSettingsDefaultBehaviorDescription');
-        },
-      },
+  static override get properties() {
+    return {
+      header: {type: String},
+      description: {type: String},
 
       // The default values here must be explicitly specified. The reason is
       // that even if the HTML for a specific category type does not supply,
       // say, an `allowOptionLabel`, the property cannot remain `undefined`, but
       // must be set to `null`, which causes the the computed property assigned
       // to the radio button's `hidden` attribute to be calculated.
-      allowOptionLabel: {type: String, value: null},
-      allowOptionSubLabel: String,
-      allowOptionIcon: String,
+      allowOptionLabel: {type: String},
+      allowOptionSubLabel: {type: String},
+      allowOptionIcon: {type: String},
 
-      askOptionLabel: {type: String, value: null},
-      askOptionSubLabel: String,
-      askOptionIcon: String,
+      askOptionLabel: {type: String},
+      askOptionSubLabel: {type: String},
+      askOptionIcon: {type: String},
 
-      blockOptionLabel: {type: String, value: null},
-      blockOptionSubLabel: String,
-      blockOptionIcon: String,
+      blockOptionLabel: {type: String},
+      blockOptionSubLabel: {type: String},
+      blockOptionIcon: {type: String},
 
       selectedValue: {
         type: String,
-        computed: 'getSelectedValue_(pref_.value)',
-        readOnly: true,
         notify: true,
       },
 
-      contentSettingEnum_: {
-        type: Object,
-        value: ContentSetting,
-      },
-
       /**
-       * Preference object used to keep track of the selected content setting
-       * option.
+       * Key of the synthetic preference used to keep track of the selected
+       * content setting option.
        */
-      pref_: {
-        type: Object,
-        value() {
-          return {
-            type: chrome.settingsPrivate.PrefType.STRING,
-            value: '',  // No element is selected until the value is loaded.
-          };
-        },
-      },
+      prefKey_: {type: String},
     };
   }
 
-  static get observers() {
-    return [
-      'onCategoryChanged_(category)',
-    ];
-  }
+  accessor header: string =
+      loadTimeData.getString('siteSettingsDefaultBehavior');
+  accessor description: string =
+      loadTimeData.getString('siteSettingsDefaultBehaviorDescription');
+  accessor allowOptionLabel: string = '';
+  accessor allowOptionSubLabel: string = '';
+  accessor allowOptionIcon: string = '';
+  accessor askOptionLabel: string = '';
+  accessor askOptionSubLabel: string = '';
+  accessor askOptionIcon: string = '';
+  accessor blockOptionLabel: string = '';
+  accessor blockOptionSubLabel: string = '';
+  accessor blockOptionIcon: string = '';
+  accessor selectedValue: string = '';
+  protected accessor prefKey_: string = '';
 
-  declare header: string;
-  declare description: string;
-  declare allowOptionLabel: string;
-  declare allowOptionSubLabel: string;
-  declare allowOptionIcon: string;
-  declare askOptionLabel: string;
-  declare askOptionSubLabel: string;
-  declare askOptionIcon: string;
-  declare blockOptionLabel: string;
-  declare blockOptionSubLabel: string;
-  declare blockOptionIcon: string;
-  declare selectedValue: string;
-
-  declare private pref_: chrome.settingsPrivate.PrefObject<ContentSetting>;
-
-  override ready() {
-    super.ready();
+  override connectedCallback() {
+    super.connectedCallback();
 
     this.addWebUiListener(
         'contentSettingCategoryChanged',
-        (category: ContentSettingsTypes) => this.onCategoryChanged_(category));
+        async (category: ContentSettingsTypes) => {
+          if (category === this.category) {
+            const defaultValue =
+                await this.browserProxy.getDefaultValueForContentType(
+                    this.category);
+            this.updatePref_(defaultValue);
+          }
+        });
   }
 
-  private getButtonClass_(subLabel: string): string {
+  override willUpdate(changedProperties: PropertyValues<this>) {
+    super.willUpdate(changedProperties);
+
+    if (changedProperties.has('category') && this.category !== undefined) {
+      assert(!changedProperties.get('category'));
+      this.initializePref_();
+    }
+  }
+
+  private async initializePref_() {
+    assert(this.category);
+    this.prefKey_ = `synthetic.settings.category_default.${this.category}`;
+    this.addPrefObserver<ContentSetting>(this.prefKey_, pref => {
+      this.selectedValue = pref.value;
+    });
+    const [defaultValue] = await Promise.all([
+      this.browserProxy.getDefaultValueForContentType(this.category),
+      PrefService.getInstance().whenInitialized(),
+    ]);
+    this.updatePref_(defaultValue);
+  }
+
+  protected getButtonClass_(subLabel: string): string {
     return subLabel ? 'two-line' : '';
   }
 
-  private getSelectedValue_(value: string): string {
-    return value;
-  }
-
-  /**
-   * A handler for when the user selects a differenet option in the nested
-   * radio group.
-   */
-  private onSelectedRadioChanged_() {
-    assert(
-        this.pref_.enforcement !== chrome.settingsPrivate.Enforcement.ENFORCED);
-    this.browserProxy.setDefaultValueForContentType(
-        this.category, this.pref_.value);
+  protected onSelectedRadioChange_() {
+    assert(this.prefKey_);
+    const pref =
+        PrefService.getInstance().getPref<ContentSetting>(this.prefKey_);
+    assert(pref.enforcement !== chrome.settingsPrivate.Enforcement.ENFORCED);
+    assert(this.category);
+    this.browserProxy.setDefaultValueForContentType(this.category, pref.value);
   }
 
   /**
    * Update the pref values from the content settings.
-   * @param update The updated content setting value.
    */
   private updatePref_(update: DefaultContentSetting) {
+    if (!this.isConnected) {
+      return;
+    }
+
+    const pref: chrome.settingsPrivate.PrefObject<ContentSetting> = {
+      key: this.prefKey_,
+      type: chrome.settingsPrivate.PrefType.STRING,
+      value: update.setting,
+    };
+
     if (update.source !== undefined &&
         update.source !== DefaultSettingSource.PREFERENCE) {
-      this.set(
-          'pref_.enforcement', chrome.settingsPrivate.Enforcement.ENFORCED);
+      pref.enforcement = chrome.settingsPrivate.Enforcement.ENFORCED;
       let controlledBy = chrome.settingsPrivate.ControlledBy.USER_POLICY;
       switch (update.source) {
         case DefaultSettingSource.POLICY:
@@ -180,29 +188,17 @@ export class SettingsCategoryDefaultRadioGroupElement extends
         default:
           break;
       }
-      this.set('pref_.controlledBy', controlledBy);
-    } else {
-      this.set('pref_.enforcement', undefined);
-      this.set('pref_.controlledBy', undefined);
+      pref.controlledBy = controlledBy;
     }
 
-    this.set('pref_.value', update.setting);
-  }
-
-  private async onCategoryChanged_(category: ContentSettingsTypes) {
-    if (category !== this.category) {
-      return;
-    }
-    const defaultValue =
-        await this.browserProxy.getDefaultValueForContentType(this.category);
-    this.updatePref_(defaultValue);
+    PrefService.getInstance().setSyntheticPref(pref);
   }
 
   /**
    * Check if the category is popups and the user is logged in guest mode.
    * Users in guest mode are not allowed to modify pop-ups content setting.
    */
-  private isRadioGroupDisabled_(): boolean {
+  protected isRadioGroupDisabled_(): boolean {
     return this.category === ContentSettingsTypes.POPUPS &&
         loadTimeData.getBoolean('isGuest');
   }

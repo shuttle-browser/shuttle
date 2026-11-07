@@ -20,7 +20,6 @@
 #include "chrome/browser/download/download_ui_safe_browsing_util.h"
 #include "chrome/browser/download/offline_item_utils.h"
 #include "chrome/browser/download/status_text_builder_utils.h"
-#include "chrome/browser/enterprise/connectors/common.h"
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager.h"
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager_factory.h"
 #include "chrome/browser/ui/chrome_pages.h"
@@ -256,7 +255,7 @@ std::u16string DownloadUIModel::GetStatusTextForLabel(
 
 std::u16string DownloadUIModel::StatusTextBuilderBase::GetStatusText(
     download::DownloadItem::DownloadState state) const {
-  DCHECK(model_);
+  CHECK(model_, base::NotFatalUntil::M161);
   switch (state) {
     case DownloadItem::IN_PROGRESS:
       return GetInProgressStatusText();
@@ -645,6 +644,7 @@ bool DownloadUIModel::IsCommandEnabled(
     case DownloadCommands::SHOW_IN_FOLDER:
     case DownloadCommands::OPEN_WHEN_COMPLETE:
     case DownloadCommands::PLATFORM_OPEN:
+    case DownloadCommands::OPEN_WITH:
     case DownloadCommands::ALWAYS_OPEN_TYPE:
     case DownloadCommands::OPEN_WITH_MEDIA_APP:
     case DownloadCommands::EDIT_WITH_MEDIA_APP:
@@ -672,11 +672,7 @@ bool DownloadUIModel::IsCommandEnabled(
     case DownloadCommands::CANCEL_DEEP_SCAN:
       return true;
     case DownloadCommands::REVIEW:
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-      return true;
-#else
       return false;
-#endif  // BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
     case DownloadCommands::OPEN_SAFE_BROWSING_SETTING:
       return CanUserTurnOnSafeBrowsing(profile());
   }
@@ -695,6 +691,7 @@ bool DownloadUIModel::IsCommandChecked(
       return IsPaused();
     case DownloadCommands::SHOW_IN_FOLDER:
     case DownloadCommands::PLATFORM_OPEN:
+    case DownloadCommands::OPEN_WITH:
     case DownloadCommands::CANCEL:
     case DownloadCommands::DISCARD:
     case DownloadCommands::KEEP:
@@ -723,6 +720,7 @@ void DownloadUIModel::ExecuteCommand(DownloadCommands* download_commands,
     case DownloadCommands::SHOW_IN_FOLDER:
     case DownloadCommands::OPEN_WHEN_COMPLETE:
     case DownloadCommands::ALWAYS_OPEN_TYPE:
+    case DownloadCommands::OPEN_WITH:
       NOTREACHED();
     case DownloadCommands::PLATFORM_OPEN:
       OpenUsingPlatformHandler();
@@ -740,7 +738,7 @@ void DownloadUIModel::ExecuteCommand(DownloadCommands* download_commands,
       download_commands->GetBrowser()->OpenURL(
           content::OpenURLParams::CreateBrowserInitiated(
               download_commands->GetLearnMoreURLForInterruptedDownload(),
-              WindowOpenDisposition::NEW_FOREGROUND_TAB,
+              WindowOpenDisposition::kNewForegroundTab,
               ui::PAGE_TRANSITION_LINK),
           /*navigation_handle_callback=*/{});
       break;
@@ -748,7 +746,7 @@ void DownloadUIModel::ExecuteCommand(DownloadCommands* download_commands,
       download_commands->GetBrowser()->OpenURL(
           content::OpenURLParams::CreateBrowserInitiated(
               GURL(chrome::kInsecureDownloadBlockingLearnMoreUrl),
-              WindowOpenDisposition::NEW_FOREGROUND_TAB,
+              WindowOpenDisposition::kNewForegroundTab,
               ui::PAGE_TRANSITION_LINK),
           /*navigation_handle_callback=*/{});
       break;
@@ -758,7 +756,7 @@ void DownloadUIModel::ExecuteCommand(DownloadCommands* download_commands,
               google_util::AppendGoogleLocaleParam(
                   GURL(chrome::kDownloadBlockedLearnMoreURL),
                   g_browser_process->GetApplicationLocale()),
-              WindowOpenDisposition::NEW_FOREGROUND_TAB,
+              WindowOpenDisposition::kNewForegroundTab,
               ui::PAGE_TRANSITION_LINK),
           /*navigation_handle_callback=*/{});
       break;
@@ -830,7 +828,8 @@ bool DownloadUIModel::IsExtensionDownload() const {
 
 std::u16string DownloadUIModel::StatusTextBuilder::GetInProgressStatusText()
     const {
-  DCHECK_EQ(DownloadItem::IN_PROGRESS, model_->GetState());
+  CHECK_EQ(DownloadItem::IN_PROGRESS, model_->GetState(),
+           base::NotFatalUntil::M161);
 
   base::TimeDelta time_remaining;
   // time_remaining is only known if the download isn't paused, and it isn't
@@ -1027,7 +1026,8 @@ DownloadUIModel::BubbleStatusTextBuilder::GetBubbleWarningStatusText() const {
 
 std::u16string
 DownloadUIModel::BubbleStatusTextBuilder::GetInProgressStatusText() const {
-  DCHECK_EQ(DownloadItem::IN_PROGRESS, model_->GetState());
+  CHECK_EQ(DownloadItem::IN_PROGRESS, model_->GetState(),
+           base::NotFatalUntil::M161);
 
   std::u16string warning_status_text = GetBubbleWarningStatusText();
   if (!warning_status_text.empty())
@@ -1343,7 +1343,7 @@ std::u16string DownloadUIModel::GetInProgressAccessibleAlertText() const {
 
   // Time remaining is unknown, try to announce percent remaining.
   if (PercentComplete() > 0) {
-    DCHECK_LE(PercentComplete(), 100);
+    CHECK_LE(PercentComplete(), 100, base::NotFatalUntil::M161);
     return l10n_util::GetStringFUTF16(
         IDS_DOWNLOAD_STATUS_PERCENT_COMPLETE_ACCESSIBLE_ALERT,
         GetFileNameToReportUser().LossyDisplayName(),

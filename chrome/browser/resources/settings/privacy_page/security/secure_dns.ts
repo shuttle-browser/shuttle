@@ -15,24 +15,24 @@
  */
 
 import 'chrome://resources/cr_elements/cr_collapse/cr_collapse.js';
-import 'chrome://resources/cr_elements/cr_shared_style.css.js';
-import 'chrome://resources/cr_elements/cr_shared_vars.css.js';
-import 'chrome://resources/cr_elements/md_select.css.js';
 import '../../controls/settings_toggle_button.js';
 import './secure_dns_input.js';
 
 import {PrefService} from '/shared/settings/prefs2/pref_service.js';
+import {PrefServiceObserverMixinLit} from '/shared/settings/prefs2/pref_service_observer_mixin_lit.js';
 import type {ResolverOption, SecureDnsSetting, SecurityPageBrowserProxy} from '/shared/settings/security_page/security_page_browser_proxy.js';
 import {SecureDnsMode, SecureDnsUiManagementMode, SecurityPageBrowserProxyImpl} from '/shared/settings/security_page/security_page_browser_proxy.js';
-import {I18nMixin} from 'chrome://resources/cr_elements/i18n_mixin.js';
-import {WebUiListenerMixin} from 'chrome://resources/cr_elements/web_ui_listener_mixin.js';
+import {I18nMixinLit} from 'chrome://resources/cr_elements/i18n_mixin_lit.js';
+import {WebUiListenerMixinLit} from 'chrome://resources/cr_elements/web_ui_listener_mixin_lit.js';
 import {assert, assertNotReached} from 'chrome://resources/js/assert.js';
 import {sanitizeInnerHtml} from 'chrome://resources/js/parse_html_subset.js';
-import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
+import type {SettingsToggleButtonElement} from '../../controls/settings_toggle_button.js';
 import {loadTimeData} from '../../i18n_setup.js';
 
-import {getTemplate} from './secure_dns.html.js';
+import {getCss} from './secure_dns.css.js';
+import {getHtml} from './secure_dns.html.js';
 import type {SecureDnsInputElement} from './secure_dns_input.js';
 
 export interface SettingsSecureDnsElement {
@@ -40,12 +40,13 @@ export interface SettingsSecureDnsElement {
     privacyPolicy: HTMLElement,
     secureDnsInput: SecureDnsInputElement,
     secureDnsInputContainer: HTMLElement,
+    secureDnsToggle: SettingsToggleButtonElement,
     resolverSelect: HTMLSelectElement,
   };
 }
 
-const SettingsSecureDnsElementBase =
-    WebUiListenerMixin(I18nMixin(PolymerElement));
+const SettingsSecureDnsElementBase = PrefServiceObserverMixinLit(
+    WebUiListenerMixinLit(I18nMixinLit(CrLitElement)));
 
 /**
  * Enum for the categories of options in the secure DNS resolver select
@@ -57,79 +58,52 @@ export enum SecureDnsResolverType {
   CUSTOM = 'custom',
 }
 
+export type SecureDnsElement = SettingsSecureDnsElement;
+
+const SECURE_DNS_TOGGLE_PREF_KEY =
+    'synthetic.settings.dns_over_https.secure_dns_toggle';
+
 export class SettingsSecureDnsElement extends SettingsSecureDnsElementBase {
   static get is() {
     return 'settings-secure-dns';
   }
 
-  static get template() {
-    return getTemplate();
+  static override get styles() {
+    return getCss();
   }
 
-  static get properties() {
+  override render() {
+    return getHtml.bind(this)();
+  }
+
+  static override get properties() {
     return {
-      /**
-       * Mirroring the secure DNS resolver enum so that it can be used from HTML
-       * bindings.
-       */
-      resolverTypeEnum_: {
-        type: Object,
-        value: SecureDnsResolverType,
-      },
-
-      /**
-       * The setting sublabel.
-       */
-      secureDnsDescription_: String,
-
-      /**
-       * Represents whether the main toggle for the secure DNS setting is
-       * switched on or off.
-       */
-      secureDnsToggle_: {
-        type: Object,
-        value() {
-          return {
-            type: chrome.settingsPrivate.PrefType.BOOLEAN,
-            value: false,
-          };
-        },
-      },
-
-      /**
-       * Whether the secure DNS resolver options should be shown.
-       */
-      showSecureDnsOptions_: Boolean,
-
-      /**
-       * List of secure DNS resolvers to display in dropdown menu.
-       */
-      resolverOptions_: Array,
-
-      /**
-       * String displaying the privacy policy of the resolver selected in the
-       * dropdown menu.
-       */
-      privacyPolicyString_: String,
-
-      /**
-       * String to display in the custom text field.
-       */
-      secureDnsInputValue_: String,
+      secureDnsDescription_: {type: String},
+      showSecureDnsOptions_: {type: Boolean},
+      resolverOptions_: {type: Array},
+      privacyPolicyString_: {type: String},
+      secureDnsInputValue_: {type: String},
     };
   }
 
-  declare private secureDnsDescription_: string;
-  declare private secureDnsToggle_: chrome.settingsPrivate.PrefObject<boolean>;
-  declare private showSecureDnsOptions_: boolean;
-  declare private resolverOptions_: ResolverOption[];
-  declare private privacyPolicyString_: TrustedHTML;
-  declare private secureDnsInputValue_: string;
+  protected accessor secureDnsDescription_: string = '';
+  protected accessor showSecureDnsOptions_: boolean = false;
+  protected accessor resolverOptions_: ResolverOption[] = [];
+  protected accessor privacyPolicyString_: TrustedHTML =
+      window.trustedTypes!.emptyHTML;
+  protected accessor secureDnsInputValue_: string = '';
+
   private browserProxy_: SecurityPageBrowserProxy =
       SecurityPageBrowserProxyImpl.getInstance();
 
   override connectedCallback() {
     super.connectedCallback();
+
+    this.addPrefObserver<boolean>(SECURE_DNS_TOGGLE_PREF_KEY, pref => {
+      this.showSecureDnsOptions_ =
+          pref.enforcement !== chrome.settingsPrivate.Enforcement.ENFORCED &&
+          pref.value;
+    });
 
     // Fetch the options for the dropdown menu before configuring the setting
     // to match the underlying host resolver configuration.
@@ -156,20 +130,21 @@ export class SettingsSecureDnsElement extends SettingsSecureDnsElementBase {
    * configuration.
    */
   private onSecureDnsPrefsChanged_(setting: SecureDnsSetting) {
+    let toggleValue = false;
     switch (setting.mode) {
       case SecureDnsMode.SECURE:
       case SecureDnsMode.AUTOMATIC:
-        this.set('secureDnsToggle_.value', true);
+        toggleValue = true;
         this.updateConfigRepresentation_(setting.mode, setting.config);
         break;
       case SecureDnsMode.OFF:
-        this.set('secureDnsToggle_.value', false);
+        toggleValue = false;
         break;
       default:
         assertNotReached('Received unknown secure DNS mode');
     }
 
-    this.updateManagementView_(setting);
+    this.updateManagementView_(setting, toggleValue);
   }
 
   /**
@@ -177,10 +152,10 @@ export class SettingsSecureDnsElement extends SettingsSecureDnsElementBase {
    * selection (and the underlying select menu if the toggle has just been
    * turned on).
    */
-  private onToggleChanged_() {
-    this.showSecureDnsOptions_ = this.secureDnsToggle_.value;
+  protected async onToggleChange_() {
+    this.showSecureDnsOptions_ = this.$.secureDnsToggle.checked;
 
-    if (!this.secureDnsToggle_.value) {
+    if (!this.$.secureDnsToggle.checked) {
       this.updateDnsPrefs_(SecureDnsMode.OFF);
       return;
     }
@@ -190,6 +165,7 @@ export class SettingsSecureDnsElement extends SettingsSecureDnsElementBase {
       this.updateDnsPrefs_(SecureDnsMode.AUTOMATIC);
     } else {
       if (resolver === SecureDnsResolverType.CUSTOM) {
+        await this.updateComplete;
         this.$.secureDnsInput.focus();
       }
       this.updateDnsPrefs_(SecureDnsMode.SECURE);
@@ -241,7 +217,7 @@ export class SettingsSecureDnsElement extends SettingsSecureDnsElementBase {
    * Updates the underlying secure DNS templates pref based on the selected
    * resolver and displays the corresponding privacy policy.
    */
-  private onDropdownSelectionChanged_() {
+  protected onDropdownSelectionChange_() {
     switch (this.$.resolverSelect.value) {
       case SecureDnsResolverType.AUTOMATIC:
         this.updateDnsPrefs_(SecureDnsMode.AUTOMATIC);
@@ -264,13 +240,14 @@ export class SettingsSecureDnsElement extends SettingsSecureDnsElementBase {
    * Updates the setting to communicate the type of management, if any. The
    * setting is always collapsed if there is any management.
    */
-  private updateManagementView_(setting: SecureDnsSetting) {
+  private updateManagementView_(
+      setting: SecureDnsSetting, toggleValue: boolean) {
     // If the underlying secure DNS mode pref has an enforced value, communicate
     // that via the toggle pref.
     const pref: chrome.settingsPrivate.PrefObject<boolean> = {
-      key: '',
+      key: SECURE_DNS_TOGGLE_PREF_KEY,
       type: chrome.settingsPrivate.PrefType.BOOLEAN,
-      value: this.secureDnsToggle_.value,
+      value: toggleValue,
     };
 
     // The message to be displayed when the device is managed. On Chrome OS, if
@@ -309,14 +286,7 @@ export class SettingsSecureDnsElement extends SettingsSecureDnsElementBase {
               setting.managementMode);
       }
     }
-    this.secureDnsToggle_ = pref;
-
-    if (this.secureDnsToggle_.enforcement ===
-        chrome.settingsPrivate.Enforcement.ENFORCED) {
-      this.showSecureDnsOptions_ = false;
-    } else {
-      this.showSecureDnsOptions_ = this.secureDnsToggle_.value;
-    }
+    PrefService.getInstance().setSyntheticPref(pref);
   }
 
   /**
@@ -354,8 +324,10 @@ export class SettingsSecureDnsElement extends SettingsSecureDnsElementBase {
 
     this.$.secureDnsInputContainer.hidden = hideCustomEntry;
     if (!hideCustomEntry) {
-      this.secureDnsInputValue_ = template;
-      if (!template) {
+      if (template) {
+        this.secureDnsInputValue_ = template;
+      } else {
+        this.secureDnsInputValue_ = this.$.secureDnsInput.value;
         this.$.secureDnsInput.focus();
       }
     }
@@ -385,7 +357,7 @@ export class SettingsSecureDnsElement extends SettingsSecureDnsElementBase {
   /**
    * Updates the underlying prefs if a custom entry was determined to be valid.
    */
-  private onSecureDnsInputEvaluated_(
+  protected onSecureDnsInputValueUpdate_(
       event: CustomEvent<{text: string, isValid: boolean}>) {
     if (event.detail.isValid) {
       this.updateDnsPrefs_(SecureDnsMode.SECURE, event.detail.text);

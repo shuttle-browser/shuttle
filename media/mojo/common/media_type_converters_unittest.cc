@@ -50,16 +50,16 @@ void CompareAudioBuffers(SampleFormat sample_format,
       original.frame_count() * SampleFormatToBytesPerChannel(sample_format);
   if (IsPlanar(sample_format)) {
     for (int i = 0; i < original.channel_count(); ++i) {
-      CompareBytes(original.channels()[i].first(bytes_per_channel),
-                   result.channels()[i].first(bytes_per_channel));
+      CompareBytes(original.planar_channel(i).first(bytes_per_channel),
+                   result.planar_channel(i).first(bytes_per_channel));
     }
     return;
   }
 
   DCHECK(IsInterleaved(sample_format)) << sample_format;
-  CompareBytes(
-      original.channels()[0].first(bytes_per_channel * original.channel_count()),
-      result.channels()[0].first(bytes_per_channel * original.channel_count()));
+  const size_t interleaved_bytes = bytes_per_channel * original.channel_count();
+  CompareBytes(original.interleaved_data().first(interleaved_bytes),
+               result.interleaved_data().first(interleaved_bytes));
 }
 
 }  // namespace
@@ -390,8 +390,7 @@ TEST(MediaTypeConvertersTest, ConvertDecryptConfig_RejectsUnboundedSubsamples) {
 TEST(MediaTypeConvertersTest, ConvertAudioBuffer_BitstreamEmptyData) {
   auto ptr = mojom::AudioBuffer::New();
   ptr->sample_format = SampleFormat::kSampleFormatAc3;
-  ptr->channel_layout = CHANNEL_LAYOUT_STEREO;
-  ptr->channel_count = 2;
+  ptr->channel_layout_config = ChannelLayoutConfig::Stereo();
   ptr->sample_rate = 48000;
   ptr->frame_count = 100;
   // Explicitly provide empty data for a bitstream buffer.

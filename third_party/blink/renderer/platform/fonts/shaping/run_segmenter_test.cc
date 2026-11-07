@@ -21,15 +21,15 @@ struct SegmenterTestRun {
 };
 
 struct SegmenterExpectedRun {
-  unsigned start;
-  unsigned limit;
+  wtf_size_t start;
+  wtf_size_t limit;
   UScriptCode script;
   OrientationIterator::RenderOrientation render_orientation;
   FontFallbackPriority font_fallback_priority;
 
   SegmenterExpectedRun(
-      unsigned the_start,
-      unsigned the_limit,
+      wtf_size_t the_start,
+      wtf_size_t the_limit,
       UScriptCode the_script,
       OrientationIterator::RenderOrientation the_render_orientation,
       FontFallbackPriority the_font_fallback_priority)
@@ -48,7 +48,7 @@ class RunSegmenterTest : public testing::Test {
     text.Ensure16Bit();
     Vector<SegmenterExpectedRun> expect;
     for (auto& run : runs) {
-      unsigned length_before = text.length();
+      wtf_size_t length_before = text.length();
       text.Append(String::FromUtf8(run.text));
       expect.push_back(SegmenterExpectedRun(length_before, text.length(),
                                             run.script, run.render_orientation,
@@ -189,7 +189,7 @@ TEST_F(RunSegmenterTest, PunctuationDevanagariCombining) {
         FontFallbackPriority::kText}});
 }
 
-TEST_F(RunSegmenterTest, EmojiZWJSequences) {
+TEST_F(RunSegmenterTest, EmojiZwjSequences) {
   CheckRunsHorizontal(
       {{"👩‍👩‍👧‍👦👩‍❤️‍💋‍👨", USCRIPT_LATIN,
         OrientationIterator::kOrientationKeep,
@@ -200,6 +200,12 @@ TEST_F(RunSegmenterTest, EmojiZWJSequences) {
         FontFallbackPriority::kEmojiEmoji},
        {"\U0000200D‍efg", USCRIPT_LATIN,
         OrientationIterator::kOrientationKeep, FontFallbackPriority::kText}});
+}
+
+TEST_F(RunSegmenterTest, EmojiZwjSequencesVerticalMixed) {
+  CheckRunsMixed({{"👩‍👩‍👧‍👦👩‍❤️‍💋‍👨",
+                   USCRIPT_COMMON, OrientationIterator::kOrientationKeep,
+                   FontFallbackPriority::kEmojiEmoji}});
 }
 
 TEST_F(RunSegmenterTest, JapaneseLetterlikeEnd) {
@@ -254,7 +260,7 @@ TEST_F(RunSegmenterTest, NonEmojiPresentationSymbols) {
         FontFallbackPriority::kText}});
 }
 
-TEST_F(RunSegmenterTest, CJKBracketsAfterLatinLetter) {
+TEST_F(RunSegmenterTest, CjkBracketsAfterLatinLetter) {
   CheckRunsHorizontal(
       {{"A", USCRIPT_LATIN, OrientationIterator::kOrientationKeep,
         FontFallbackPriority::kText},
@@ -265,7 +271,7 @@ TEST_F(RunSegmenterTest, CJKBracketsAfterLatinLetter) {
         FontFallbackPriority::kText}});
 }
 
-TEST_F(RunSegmenterTest, CJKBracketsAfterLatinParenthesis) {
+TEST_F(RunSegmenterTest, CjkBracketsAfterLatinParenthesis) {
   CheckRunsHorizontal(
       {{"A(", USCRIPT_LATIN, OrientationIterator::kOrientationKeep,
         FontFallbackPriority::kText},
@@ -278,7 +284,7 @@ TEST_F(RunSegmenterTest, CJKBracketsAfterLatinParenthesis) {
         FontFallbackPriority::kText}});
 }
 
-TEST_F(RunSegmenterTest, CJKBracketsWithLatinParenthesisInside) {
+TEST_F(RunSegmenterTest, CjkBracketsWithLatinParenthesisInside) {
   CheckRunsHorizontal(
       {{"A", USCRIPT_LATIN, OrientationIterator::kOrientationKeep,
         FontFallbackPriority::kText},
@@ -295,7 +301,7 @@ TEST_F(RunSegmenterTest, CJKBracketsWithLatinParenthesisInside) {
         FontFallbackPriority::kText}});
 }
 
-TEST_F(RunSegmenterTest, CJKBracketsAfterUnmatchingLatinParenthesis) {
+TEST_F(RunSegmenterTest, CjkBracketsAfterUnmatchingLatinParenthesis) {
   CheckRunsHorizontal(
       {{"A((", USCRIPT_LATIN, OrientationIterator::kOrientationKeep,
         FontFallbackPriority::kText},

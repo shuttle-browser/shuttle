@@ -162,7 +162,6 @@ export class SettingsAppearancePageElement extends
       glassEffectOptions_: {type: Array},
       tabStripOptions_: {type: Array},
       showGlassEffectEnabled_: {type: Boolean},
-      showVerticalTabsExpandOnHoverEnabled_: {type: Boolean},
       showOrganizerPanelEnabled_: {type: Boolean},
       showEverythingMenuEnabled_: {type: Boolean},
       showResetPinnedActionsButton_: {type: Boolean},
@@ -270,8 +269,6 @@ export class SettingsAppearancePageElement extends
   protected accessor showManagedThemeDialog_: boolean = false;
   protected accessor showGlassEffectEnabled_: boolean =
       loadTimeData.getBoolean('showGlassEffectEnabled');
-  protected accessor showVerticalTabsExpandOnHoverEnabled_: boolean =
-      loadTimeData.getBoolean('showVerticalTabsExpandOnHoverEnabled');
   protected accessor showOrganizerPanelEnabled_: boolean =
       loadTimeData.getBoolean('showOrganizerPanelEnabled');
   protected accessor showEverythingMenuEnabled_: boolean =
@@ -407,7 +404,7 @@ export class SettingsAppearancePageElement extends
   }
 
   protected onDisableExtensionClick_() {
-    this.fire('refresh-pref', 'homepage');
+    PrefService.getInstance().refreshPrefFromBackend('homepage');
   }
 
   /**
@@ -631,8 +628,7 @@ export class SettingsAppearancePageElement extends
       return false;
     }
 
-    return this.showVerticalTabsExpandOnHoverEnabled_ &&
-        this.verticalTabsEnabledPref_.value;
+    return this.verticalTabsEnabledPref_.value;
   }
 
 

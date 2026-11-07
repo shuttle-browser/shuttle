@@ -22,6 +22,7 @@ namespace extensions {
 class ChromeAutomationInternalApiDelegate;
 class ChromeMetricsPrivateDelegate;
 class ClipboardExtensionHelper;
+class CookiesApiDelegate;
 class NativeMessageHost;
 class NativeMessagePort;
 class NativeMessagePortDispatcher;
@@ -100,13 +101,11 @@ class ChromeExtensionsAPIClient : public ExtensionsAPIClient {
       content::BrowserContext* browser_context) const override;
 #endif  // BUILDFLAG(IS_CHROMEOS)
   ManagementAPIDelegate* CreateManagementAPIDelegate() const override;
-  std::unique_ptr<SupervisedUserExtensionsDelegate>
-  CreateSupervisedUserExtensionsDelegate(
-      content::BrowserContext* browser_context) const override;
   std::unique_ptr<DisplayInfoProvider> CreateDisplayInfoProvider()
       const override;
   MetricsPrivateDelegate* GetMetricsPrivateDelegate() override;
   MessagingDelegate* GetMessagingDelegate() override;
+  CookiesApiDelegate* GetCookiesApiDelegate() override;
 
 #if !BUILDFLAG(IS_ANDROID)
   AutomationInternalApiDelegate* GetAutomationInternalApiDelegate() override;
@@ -124,8 +123,6 @@ class ChromeExtensionsAPIClient : public ExtensionsAPIClient {
       base::OnceCallback<void(const std::string&)> error_callback) override;
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-  std::vector<KeyedServiceBaseFactory*> GetFactoryDependencies() override;
-
   WebstorePrivateAPIDelegate* GetWebstorePrivateAPIDelegate() override;
 
   std::unique_ptr<NativeMessagePortDispatcher>
@@ -137,6 +134,7 @@ class ChromeExtensionsAPIClient : public ExtensionsAPIClient {
  private:
   std::unique_ptr<ChromeMetricsPrivateDelegate> metrics_private_delegate_;
   std::unique_ptr<MessagingDelegate> messaging_delegate_;
+  std::unique_ptr<CookiesApiDelegate> cookies_api_delegate_;
   std::unique_ptr<WebstorePrivateAPIDelegate> webstore_private_api_delegate_;
 
 #if !BUILDFLAG(IS_ANDROID)

@@ -18,7 +18,6 @@
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/tribool.h"
-#include "components/supervised_user/core/browser/family_link_user_capabilities.h"
 #include "components/url_formatter/elide_url.h"
 #include "components/url_formatter/url_fixer.h"
 #include "components/url_formatter/url_formatter.h"
@@ -44,6 +43,11 @@
 #include "extensions/browser/mime_handler/mime_handler_ui_util.h"
 #endif
 
+#if BUILDFLAG(IS_CHROMEOS)
+#include "chromeos/components/kiosk/kiosk_utils.h"
+#include "chromeos/components/mgs/managed_guest_session_utils.h"
+#endif
+
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 
 namespace extensions {
@@ -52,7 +56,7 @@ namespace {
 
 bool IsBlockedByPolicy(const Extension* app, content::BrowserContext* context) {
   Profile* profile = Profile::FromBrowserContext(context);
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M161);
 
   return app->id() == extensions::kWebStoreAppId &&
          profile->GetPrefs()->GetBoolean(
@@ -167,17 +171,14 @@ bool ShouldShowReviewPrompt(const Extension& extension, Profile& profile) {
     return false;
   }
 
-  if (extension.location() != mojom::ManifestLocation::kInternal ||
-      !extension.from_webstore()) {
+#if BUILDFLAG(IS_CHROMEOS)
+  if (chromeos::IsManagedGuestSession() || chromeos::IsKioskSession()) {
     return false;
   }
+#endif
 
-  signin::IdentityManager* identity_manager =
-      IdentityManagerFactory::GetForProfile(&profile);
-  // Prompts are suppressed when capabilities are unknown (fail closed).
-  if (identity_manager &&
-      supervised_user::IsPrimaryAccountSubjectToParentalControls(
-          identity_manager) != signin::Tribool::kFalse) {
+  if (extension.location() != mojom::ManifestLocation::kInternal ||
+      !extension.from_webstore()) {
     return false;
   }
 

@@ -17,8 +17,6 @@
 #include "chrome/browser/infobars/browser_infobar_manager.h"
 #include "chrome/browser/infobars/infobar_features.h"
 #include "chrome/browser/local_network_access/ip_address_space_overrides_prefs_observer.h"
-#include "chrome/browser/media/audio_process_ml_model_forwarder.h"
-#include "chrome/browser/optimization_guide/model_execution/optimization_guide_global_state.h"
 #include "chrome/browser/permissions/system/platform_handle.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/safe_browsing/application_advanced_protection_status_detector.h"
@@ -32,15 +30,11 @@
 #include "ui/base/ui_base_features.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-// This causes a gn error on Android builds, because gn does not understand
-// buildflags, so we include it only on platforms where it is used.
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/tab_drag_api/desktop_tab_drag_impl/tab_drag_session_desktop_injector.h"
 #endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-// This causes a gn error on Android builds, because gn does not understand
-// buildflags, so we include it only on platforms where it is used.
 #endif
 
 #if BUILDFLAG(IS_WIN) && BUILDFLAG(GOOGLE_CHROME_BRANDING)
@@ -70,17 +64,12 @@
 #endif
 
 #if BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
-#include "chrome/browser/signin/bound_session_credentials/unexportable_key_obsolete_profile_garbage_collector.h"  // nogncheck
-#include "chrome/browser/signin/bound_session_credentials/unexportable_key_provider_config.h"  // nogncheck
+#include "chrome/browser/signin/bound_session_credentials/unexportable_key_obsolete_profile_garbage_collector.h"
+#include "chrome/browser/signin/bound_session_credentials/unexportable_key_provider_config.h"
 #include "components/unexportable_keys/features.h"
 #include "components/unexportable_keys/unexportable_key_service_impl.h"
 #endif  // BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
 
-
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-#include "chrome/browser/request_header_integrity/chrome_companero_host.h"  // nogncheck
-#include "chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.h"  // nogncheck
-#endif
 
 namespace {
 
@@ -191,14 +180,6 @@ void GlobalFeatures::PostBrowserProcessInitCore() {
           &ChromeMetricsServiceAccessor::IsMetricsAndCrashReportingEnabled)));
 #endif
 
-  optimization_guide_global_feature_ =
-      std::make_unique<optimization_guide::OptimizationGuideGlobalFeature>();
-
-  if (media::IsAudioProcessMlModelUsageEnabled()) {
-    audio_process_ml_model_forwarder_ =
-        AudioProcessMlModelForwarder::Create(g_browser_process->local_state());
-  }
-
   if (base::FeatureList::IsEnabled(
           safe_browsing::kRelaunchNotificationForAdvancedProtection)) {
     application_advanced_protection_status_detector_ = std::make_unique<
@@ -206,12 +187,6 @@ void GlobalFeatures::PostBrowserProcessInitCore() {
         g_browser_process->profile_manager());
   }
 
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-  if (request_header_integrity::RequestHeaderIntegrityURLLoaderThrottle::
-          IsFeatureEnabled()) {
-    chrome_companero_host_ = CreateChromeCompaneroHost();
-  }
-#endif
 }
 
 void GlobalFeatures::Init() {
@@ -242,17 +217,12 @@ void GlobalFeatures::PostMainMessageLoopRun() {
 
 #if !BUILDFLAG(IS_ANDROID)
 #endif
-  audio_process_ml_model_forwarder_.reset();
-  optimization_guide_global_feature_.reset();
 
   application_advanced_protection_status_detector_.reset();
   tab_drag_session_manager_.reset();
 
   glass_frame_service_.reset();
 
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-  chrome_companero_host_.reset();
-#endif
 }
 
 void GlobalFeatures::PostDestroyThreads() {
@@ -278,13 +248,6 @@ std::unique_ptr<scheduled_restart::ScheduledRestartManager>
 GlobalFeatures::CreateScheduledRestartManager() {
   return std::make_unique<scheduled_restart::ScheduledRestartManager>(
       *UpgradeDetector::GetInstance());
-}
-#endif
-
-#if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
-std::unique_ptr<request_header_integrity::ChromeCompaneroHost>
-GlobalFeatures::CreateChromeCompaneroHost() {
-  return std::make_unique<request_header_integrity::ChromeCompaneroHost>();
 }
 #endif
 

@@ -16,6 +16,7 @@
 #include "pdf/pdf_accessibility_constants.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/gfx/geometry/point.h"
+#include "ui/gfx/geometry/point_f.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/rect_f.h"
 
@@ -101,6 +102,7 @@ struct AccessibilityTextRunInfo {
   AccessibilityTextDirection direction = AccessibilityTextDirection::kNone;
   AccessibilityTextStyleInfo style;
   bool is_searchified = false;
+  std::string language;
 };
 
 struct AccessibilityImageInfo {
@@ -175,6 +177,7 @@ struct AccessibilityDocInfo {
   std::unique_ptr<AccessibilityStructureElement> structure_tree_root;
   bool text_accessible = false;
   bool text_copyable = false;
+  std::string language;
 };
 
 struct AccessibilityPageInfo {
@@ -238,6 +241,27 @@ struct AccessibilityHighlightInfo {
   AccessibilityTextRunRangeInfo text_range;
 };
 
+// Represents a composite graphic (a PDF Form XObject, such as a chart or
+// diagram) that combines graphical primitives with embedded visible text, as
+// opposed to `AccessibilityImageInfo`, which represents a single bitmap image
+// object.
+struct AccessibilityFormGraphicInfo {
+  // Bounding box of the graphic.
+  gfx::RectF bounds;
+  AccessibilityTextRunRangeInfo text_range;
+};
+
+// A straight line segment stroked on a page, such as a table border, column
+// divider, or decorative separator, in the same pixel coordinates as
+// `AccessibilityTextRunInfo::bounds`.
+struct AccessibilityLineSegment {
+  friend bool operator==(const AccessibilityLineSegment&,
+                         const AccessibilityLineSegment&) = default;
+
+  gfx::PointF start;
+  gfx::PointF end;
+};
+
 struct AccessibilityPageObjects {
   AccessibilityPageObjects();
   AccessibilityPageObjects(
@@ -250,6 +274,8 @@ struct AccessibilityPageObjects {
   std::vector<AccessibilityLinkInfo> links;
   std::vector<AccessibilityImageInfo> images;
   std::vector<AccessibilityHighlightInfo> highlights;
+  std::vector<AccessibilityFormGraphicInfo> graphics;
+  std::vector<AccessibilityLineSegment> line_segments;
 };
 
 enum class FocusObjectType {

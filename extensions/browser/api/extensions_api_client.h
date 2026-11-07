@@ -52,6 +52,7 @@ namespace extensions {
 class AutomationInternalApiDelegate;
 class AppViewGuestDelegate;
 class ContentRulesRegistry;
+class CookiesApiDelegate;
 class DisplayInfoProvider;
 class ExtensionOptionsGuest;
 class ExtensionOptionsGuestDelegate;
@@ -67,7 +68,6 @@ class NativeMessagePort;
 class NativeMessagePortDispatcher;
 class NonNativeFileSystemDelegate;
 class RulesCacheDelegate;
-class SupervisedUserExtensionsDelegate;
 class UsbDevicePermissionsPrompt;
 class ValueStoreCache;
 class VirtualKeyboardDelegate;
@@ -203,12 +203,6 @@ class ExtensionsAPIClient {
   // Creates a delegate for handling the management extension api.
   virtual ManagementAPIDelegate* CreateManagementAPIDelegate() const;
 
-  // Creates a delegate for calling into the SupervisedUserService from the
-  // Management API.
-  virtual std::unique_ptr<SupervisedUserExtensionsDelegate>
-  CreateSupervisedUserExtensionsDelegate(
-      content::BrowserContext* browser_context) const;
-
   // Creates and returns the DisplayInfoProvider used by the
   // chrome.system.display extension API.
   virtual std::unique_ptr<DisplayInfoProvider> CreateDisplayInfoProvider()
@@ -220,6 +214,9 @@ class ExtensionsAPIClient {
 
   // Returns a delegate for embedder-specific extension messaging.
   virtual MessagingDelegate* GetMessagingDelegate();
+
+  // Returns a delegate for embedder-specific chrome.cookies behavior.
+  virtual CookiesApiDelegate* GetCookiesApiDelegate();
 
 // The APIs that need these methods are not supported on desktop Android.
 #if !BUILDFLAG(IS_ANDROID)

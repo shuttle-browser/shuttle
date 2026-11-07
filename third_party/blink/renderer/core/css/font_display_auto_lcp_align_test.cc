@@ -27,12 +27,10 @@ class FontDisplayAutoLCPAlignTest : public SimTest {
   }
 
  protected:
-  Element* GetTarget() {
-    return GetDocument().getElementById(AtomicString("target"));
-  }
+  Element* GetTarget() { return GetElementById("target"); }
 
   const Font& GetFont(const Element* element) {
-    return *element->GetLayoutObject()->StyleRef().GetFont();
+    return *element->GetLayoutObject()->Style().GetFont();
   }
 
   const Font& GetTargetFont() { return GetFont(GetTarget()); }

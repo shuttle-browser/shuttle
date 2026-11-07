@@ -47,7 +47,7 @@
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/browser_widget.h"
 #include "chrome/browser/ui/views/frame/glass_frame_service.h"
-#include "chrome/browser/ui/views/frame/horizontal_tab_strip_region_view.h"
+#include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
 #include "chrome/browser/ui/views/tabs/groups/tab_group_accessibility.h"
 #include "chrome/browser/ui/views/tabs/shared/tab_strip_types.h"
 #include "chrome/browser/ui/views/tabs/tab.h"
@@ -502,13 +502,14 @@ BrowserTabStripController::GetFocusedGroup() const {
   return model_->GetFocusedGroup();
 }
 
-void BrowserTabStripController::SetFocusedGroup(
-    std::optional<tab_groups::TabGroupId> group) {
-  if (group.has_value()) {
-    model_->EnterFocusMode(*group);
-  } else {
-    model_->ExitFocusMode();
-  }
+void BrowserTabStripController::EnterFocusMode(
+    const tab_groups::TabGroupId& group) {
+  model_->EnterFocusMode(group);
+}
+
+void BrowserTabStripController::ExitFocusMode(
+    std::optional<TabGroupFocusExitReason> reason) {
+  model_->ExitFocusMode(reason);
 }
 
 void BrowserTabStripController::SetVisualDataForGroup(
@@ -539,8 +540,8 @@ std::u16string BrowserTabStripController::GetAccessibleTabName(
     return std::u16string();
   }
 
-  return tabs::GetAccessibleTabLabel(interface,
-                                     /*is_for_tab=*/true);
+  return tabs::GetAccessibleTabLabel(interface, /*is_for_tab=*/true,
+                                     &tab->data());
 }
 
 BrowserWindowInterface* BrowserTabStripController::GetBrowserWindowInterface() {
@@ -558,7 +559,7 @@ void BrowserTabStripController::OnTabStripModelChanged(
     case TabStripModelChange::kInserted: {
       std::vector<TabStrip::AddTabData> tabs_to_add;
       for (const auto& contents : change.GetInsert()->contents) {
-        DCHECK(model_->ContainsIndex(contents.index));
+        CHECK(model_->ContainsIndex(contents.index), base::NotFatalUntil::M162);
         tabs::TabInterface* const tab_interface = contents.tab;
         tabs_to_add.push_back({.index = contents.index,
                                .handle = tab_interface->GetHandle(),

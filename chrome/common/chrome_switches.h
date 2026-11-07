@@ -530,6 +530,9 @@ inline constexpr char kNoStartupWindow[] = "no-startup-window";
 // Overrides the default URL for the Notebook Home WebUI.
 inline constexpr char kNotebookHomeURL[] = "notebook-home-url";
 
+// Marks a renderer as a New Tab Page process.
+inline constexpr char kNtpProcess[] = "ntp-process";
+
 // Calculate the hash of an MHTML file as it is being saved.
 // The browser process will write the serialized MHTML contents to a file and
 // calculate its hash as it is streamed back from the renderer via a Mojo data
@@ -537,6 +540,12 @@ inline constexpr char kNotebookHomeURL[] = "notebook-home-url";
 inline constexpr char kOnTheFlyMhtmlHashComputation[] =
     "on-the-fly-mhtml-hash-computation";
 
+// Opens the URLs given on the command line as background tabs, without
+// activating or raising the browser window they are added to, so that handing a
+// URL to an already-running browser does not take the user's focus. A window
+// created to host the URLs is still shown and activated, and so is the first
+// tab added to an empty window.
+inline constexpr char kOpenInBackground[] = "open-in-background";
 // Launches URL in new browser window.
 inline constexpr char kOpenInNewWindow[] = "new-window";
 
@@ -558,11 +567,6 @@ inline constexpr char kPackExtensionKey[] = "pack-extension-key";
 // Causes the browser process to crash very early in startup, just before
 // crashpad (or breakpad) is initialized.
 inline constexpr char kPreCrashpadCrashTest[] = "pre-crashpad-crash-test";
-
-// Used to mock the response received from the Web Permission Prediction
-// Service. Used for testing.
-inline constexpr char kPredictionServiceMockLikelihood[] =
-    "prediction-service-mock-likelihood";
 
 // A directory where Chrome looks for json files describing default/preinstalled
 // web apps. This overrides any default directory to load preinstalled web apps
@@ -751,10 +755,12 @@ static_assert(std::string_view(kUserDataDir) ==
               std::string_view(ash::chrome_switches::kUserDataDir));
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-// Uses WinHttp to resolve proxies instead of using Chromium's normal proxy
-// resolution logic. This is only supported in Windows.
+// Uses the operating system to resolve proxies instead of using Chromium's
+// normal proxy resolution logic. On Windows this uses WinHttp, on macOS this
+// uses CFNetwork, and on Linux this uses the
+// org.freedesktop.portal.ProxyResolver XDG desktop portal.
 //
-// TODO(crbug.com/40111093): Only use WinHttp whenever Chrome is
+// TODO(crbug.com/40111093): Only use the system resolver whenever Chrome is
 // exclusively using system proxy configs.
 inline constexpr char kUseSystemProxyResolver[] = "use-system-proxy-resolver";
 
@@ -921,6 +927,12 @@ inline constexpr char kNoOpForTestingProcess[] = "no-op-for-testing";
 
 #if BUILDFLAG(IS_WIN)
 
+// The user path component identifying the directory in which the staged child
+// module resides (see child_module::GetModulesDirForUser()). The browser
+// computes this on behalf of renderers, which cannot.
+inline constexpr char kChildModuleUserPathComponent[] =
+    "child-module-user-path-component";
+
 // Force-enables the profile shortcut manager. This is needed for tests since
 // they use a custom-user-data-dir which disables this.
 inline constexpr char kEnableProfileShortcutManager[] =
@@ -1017,12 +1029,18 @@ inline constexpr char kDebugPrint[] = "debug-print";
 // Overrides the glic guest URL.
 inline constexpr char kGlicGuestURL[] = "glic-guest-url";
 
+// Overrides the GEiC guest URL.
+inline constexpr char kGeicGuestURL[] = "geic-guest-url";
+
+// Treats the GEiC FRE as completed without persisting anything. GEiC
+// counterpart of `--glic-always-skip-fre`.
+inline constexpr char kGeicAlwaysSkipFre[] = "geic-always-skip-fre";
+
+// Clears all GEiC FRE status at startup. `--geic-always-skip-fre` wins over it.
+inline constexpr char kGeicResetFre[] = "geic-reset-fre";
+
 inline constexpr char kSkillsV2Origin[] = "skills-v2-origin";
 
-// Overrides the Gemini Enterprise settings JSON dictionary for local
-// development.
-inline constexpr char kGlicGeminiEnterpriseSettingsOverride[] =
-    "glic-gemini-enterprise-settings-override";
 
 inline constexpr char kGlicAlwaysOpenFre[] = "glic-always-open-fre";
 

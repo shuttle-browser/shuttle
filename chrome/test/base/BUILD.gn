@@ -82,6 +82,9 @@ if (is_win) {
   }
 }
 
+if (is_mac) {
+}
+
 if (is_android) {
   source_set("android_ui_test_utils") {
     testonly = true
@@ -108,14 +111,21 @@ if (is_android) {
       "//base/test:test_support",
       "//chrome/browser/profiles:profile",
       "//content/test:test_support",
+      "//services/network:test_support",
     ]
     deps = [
       ":chrome_test_path_utils",
       ":test_launcher_utils",
+      "//chrome/browser:browser_features",
+      "//chrome/browser/navigation_predictor",
+      "//chrome/browser/net",
+      "//chrome/browser/preloading",
       "//chrome/browser/ui/android/tab_model",
       "//chrome/browser/ui/browser_window",
       "//components/keyed_service/content",
+      "//components/performance_manager",
       "//extensions/buildflags",
+      "//testing/android/native_test:native_browser_test_support",
     ]
     if (enable_extensions_core) {
       deps += [ "//extensions/common:extension_features" ]
@@ -188,12 +198,12 @@ if (is_chromeos) {
     ]
     public_deps = [
       ":in_process_browser_test",
+      ":js_test_api",
       "//base",
     ]
     deps = [
       ":js_test_api",
       "//chrome/browser/profiles:profile_manager",
-      "//chrome/browser/ui",
       "//chrome/common",
       "//components/privacy_sandbox:features",
       "//content/public/browser",
@@ -226,9 +236,6 @@ if (is_chromeos) {
       "ash/web_ui_browser_test.h",
     ]
 
-    # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-    # enable the diagnostic by removing this line.
-    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
     public_deps = [
       ":devtools_coverage",
       ":javascript_browser_test",
@@ -262,9 +269,6 @@ if (is_chromeos) {
       "ash/extension_js_browser_test.h",
     ]
 
-    # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-    # enable the diagnostic by removing this line.
-    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
     public_deps = [
       ":devtools_coverage",
       ":javascript_browser_test",

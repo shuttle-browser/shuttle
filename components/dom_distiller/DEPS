@@ -8,15 +8,8 @@ include_rules = [
   "+components/variations",
   "+crypto", # For sha256
   "+google", # For third_party/protobuf.
-  "+third_party/dom_distiller_js",
   "+third_party/re2",
   "+net/base",
-  "+net/http",
-  "+net/traffic_annotation",
-  "+net/url_request",
-  "+services/network/public/cpp",
-  "+services/network/public/mojom",
-  "+services/network/test",
   "+ui/base/l10n",
   "+ui/base/resource",
   "+ui/base/template_expressions.h",

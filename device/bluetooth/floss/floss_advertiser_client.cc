@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 #include "device/bluetooth/floss/floss_advertiser_client.h"
 
+#include "base/no_destructor.h"
 #include "components/device_event_log/device_event_log.h"
 #include "device/bluetooth/floss/floss_gatt_manager_client.h"
 
@@ -120,38 +121,43 @@ bool FlossDBusClient::ReadDBusParam(dbus::MessageReader* reader,
 
 template <>
 const DBusTypeInfo& GetDBusTypeInfo(const OwnAddressType*) {
-  static DBusTypeInfo info{"i", "OwnAddressType"};
-  return info;
+  static const base::NoDestructor<DBusTypeInfo> info{{"i", "OwnAddressType"}};
+  return *info;
 }
 
 template <>
 const DBusTypeInfo& GetDBusTypeInfo(const AdvertisingSetParametersOld*) {
-  static DBusTypeInfo info{"a{sv}", "AdvertisingSetParametersOld"};
-  return info;
+  static const base::NoDestructor<DBusTypeInfo> info{
+      {"a{sv}", "AdvertisingSetParametersOld"}};
+  return *info;
 }
 
 template <>
 const DBusTypeInfo& GetDBusTypeInfo(const AdvertisingSetParameters*) {
-  static DBusTypeInfo info{"a{sv}", "AdvertisingSetParameters"};
-  return info;
+  static const base::NoDestructor<DBusTypeInfo> info{
+      {"a{sv}", "AdvertisingSetParameters"}};
+  return *info;
 }
 
 template <>
 const DBusTypeInfo& GetDBusTypeInfo(const AdvertiseData*) {
-  static DBusTypeInfo info{"a{sv}", "AdvertiseData"};
-  return info;
+  static const base::NoDestructor<DBusTypeInfo> info{
+      {"a{sv}", "AdvertiseData"}};
+  return *info;
 }
 
 template <>
 const DBusTypeInfo& GetDBusTypeInfo(const PeriodicAdvertisingParameters*) {
-  static DBusTypeInfo info{"a{sv}", "PeriodicAdvertisingParameters"};
-  return info;
+  static const base::NoDestructor<DBusTypeInfo> info{
+      {"a{sv}", "PeriodicAdvertisingParameters"}};
+  return *info;
 }
 
 template <>
 const DBusTypeInfo& GetDBusTypeInfo(const AdvertisingStatus*) {
-  static DBusTypeInfo info{"u", "AdvertisingStatus*"};
-  return info;
+  static const base::NoDestructor<DBusTypeInfo> info{
+      {"u", "AdvertisingStatus*"}};
+  return *info;
 }
 
 // static
@@ -181,11 +187,11 @@ FlossAdvertiserClient::~FlossAdvertiserClient() {
         .Run(device::BluetoothAdvertisement::ERROR_STARTING_ADVERTISEMENT);
   }
   set_advertising_params_callbacks_.clear();
-  CallAdvertisingMethod<bool>(
-      base::BindOnce(&FlossAdvertiserClient::CompleteUnregisterCallback,
-                     weak_ptr_factory_.GetWeakPtr()),
-      advertiser::kUnregisterCallback, callback_id_);
   if (bus_) {
+    CallAdvertisingMethod<bool>(
+        base::BindOnce(&FlossAdvertiserClient::CompleteUnregisterCallback,
+                       weak_ptr_factory_.GetWeakPtr()),
+        advertiser::kUnregisterCallback, callback_id_);
     exported_callback_manager_.UnexportCallback(
         dbus::ObjectPath(kAdvertisingSetCallbackPath));
   }

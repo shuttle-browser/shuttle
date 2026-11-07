@@ -7,7 +7,6 @@
 #include <utility>
 
 #include "base/callback_list.h"
-#include "base/logging.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "build/build_config.h"
@@ -19,8 +18,6 @@
 #include "components/dom_distiller/core/distiller.h"
 #include "components/dom_distiller/core/distiller_options.h"
 #include "content/public/browser/browser_context.h"
-#include "content/public/browser/storage_partition.h"
-#include "services/network/public/cpp/shared_url_loader_factory.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/android/dom_distiller/distiller_ui_handle_android.h"
@@ -87,23 +84,8 @@ DomDistillerServiceFactory::BuildServiceInstanceForBrowserContext(
 
   std::unique_ptr<DistillerPageFactory> distiller_page_factory(
       new DistillerPageWebContentsFactory(context));
-  std::unique_ptr<DistillerURLFetcherFactory> distiller_url_fetcher_factory(
-      new DistillerURLFetcherFactory(
-          context->GetDefaultStoragePartition()
-              ->GetURLLoaderFactoryForBrowserProcess()));
-
-  dom_distiller::proto::DomDistillerOptions options;
-  if (VLOG_IS_ON(1)) {
-    options.set_debug_level(logging::GetVlogLevelHelper(
-        FROM_HERE.file_name(), ::strlen(FROM_HERE.file_name())));
-  }
-  // Options for pagination algorithm:
-  // - "next": detect anchors with "next" text
-  // - "pagenum": detect anchors with numeric page numbers
-  // Default is "next".
-  options.set_pagination_algo("next");
-  std::unique_ptr<DistillerFactory> distiller_factory(new DistillerFactoryImpl(
-      std::move(distiller_url_fetcher_factory), DistillerOptions(options)));
+  std::unique_ptr<DistillerFactory> distiller_factory =
+      std::make_unique<DistillerFactoryImpl>(DistillerOptions());
 
   std::unique_ptr<DistilledPagePrefs> distilled_page_prefs =
       std::make_unique<DistilledPagePrefs>(profile->GetPrefs());
@@ -132,7 +114,7 @@ void DomDistillerServiceFactory::UpdateDistilledPagePrefsDefaultFontScaling(
     content::BrowserContext* context) const {
   DomDistillerContextKeyedService* service =
       DomDistillerServiceFactory::GetForBrowserContext(context);
-  DCHECK(service);
+  CHECK(service, base::NotFatalUntil::M161);
   DistilledPagePrefs* distilled_page_prefs = service->GetDistilledPagePrefs();
 
   Profile* profile = Profile::FromBrowserContext(context);

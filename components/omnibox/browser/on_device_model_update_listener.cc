@@ -8,7 +8,6 @@
 #include "base/no_destructor.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/thread_pool.h"
-#include "components/optimization_guide/core/delivery/model_util.h"
 
 namespace {
 // Helper function which finds the model and return its filename from the model
@@ -19,7 +18,7 @@ std::string GetModelFilenameFromDirectory(const base::FilePath& model_dir) {
                                   FILE_PATH_LITERAL("*_index.bin"));
 
   base::FilePath model_file_path = model_enum.Next();
-  return optimization_guide::FilePathToString(model_file_path);
+  return model_file_path.AsUTF8Unsafe();
 }
 
 }  // namespace

@@ -29,16 +29,6 @@ class ListValue;
 class Value;
 }  // namespace base
 
-namespace enterprise_management {
-class GetUserEligiblePromotionsResponse;
-}  // namespace enterprise_management
-
-#if !BUILDFLAG(IS_ANDROID)
-namespace enterprise_promotion {
-class PromotionEligibilityChecker;
-}  // namespace enterprise_promotion
-#endif  // !BUILDFLAG(IS_ANDROID)
-
 // The JavaScript message handler for the chrome://policy page.
 class PolicyUIHandler : public content::WebUIMessageHandler,
                         public policy::mojom::PolicyPageHandler,
@@ -94,8 +84,9 @@ class PolicyUIHandler : public content::WebUIMessageHandler,
   void GetPoliciesJson(policy::mojom::GetPoliciesReason reason,
                        GetPoliciesJsonCallback callback) override;
 
+  void SendInitialState(const base::ListValue& args = base::ListValue());
+
  private:
-  void HandleListenPoliciesUpdates(const base::ListValue& args);
   void HandleReloadPolicies(const base::ListValue& args);
   void HandleSetLocalTestPolicies(const base::ListValue& args);
   void HandleRevertLocalTestPolicies(const base::ListValue& args);
@@ -159,13 +150,6 @@ class PolicyUIHandler : public content::WebUIMessageHandler,
 #if !BUILDFLAG(IS_ANDROID)
   void OnPromotionEligibilityFetchedWebUiWrapper(base::Value callback_id,
                                                  bool response);
-
-  void OnPromotionEligibilityFetched(
-      CheckPromotionEligibilityCallback callback,
-      enterprise_management::GetUserEligiblePromotionsResponse response);
-
-  std::unique_ptr<enterprise_promotion::PromotionEligibilityChecker>
-      promotion_eligibility_checker_;
 #endif
 
   // Builds a raw JSON string representation of all the policies.
@@ -182,8 +166,6 @@ class PolicyUIHandler : public content::WebUIMessageHandler,
   base::ScopedObservation<policy::SchemaRegistry,
                           policy::SchemaRegistry::Observer>
       schema_registry_observation_{this};
-
-  std::unique_ptr<PrefChangeRegistrar> pref_change_registrar_;
 
   uint32_t reload_policies_count_ = 0;
   uint32_t export_to_json_count_ = 0;

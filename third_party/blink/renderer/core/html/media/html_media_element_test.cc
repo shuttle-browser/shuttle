@@ -12,10 +12,13 @@
 #include "media/base/media_switches.h"
 #include "media/base/media_track.h"
 #include "media/mojo/mojom/media_player.mojom-blink.h"
+#include "partition_alloc/partition_alloc.h"
 #include "services/media_session/public/mojom/media_session.mojom-blink.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/mojom/autoplay/autoplay.mojom-blink.h"
+#include "third_party/blink/public/platform/scheduler/test/renderer_scheduler_test_support.h"
+#include "third_party/blink/public/platform/web_audio_source_provider_impl.h"
 #include "third_party/blink/public/platform/web_media_player.h"
 #include "third_party/blink/public/platform/web_media_player_source.h"
 #include "third_party/blink/renderer/core/css/css_default_style_sheets.h"
@@ -41,6 +44,8 @@
 #include "third_party/blink/renderer/core/html/track/video_track_list.h"
 #include "third_party/blink/renderer/core/loader/empty_clients.h"
 #include "third_party/blink/renderer/core/testing/dummy_page_holder.h"
+#include "third_party/blink/renderer/platform/audio/audio_bus.h"
+#include "third_party/blink/renderer/platform/audio/audio_source_provider_client.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/thread_state_scopes.h"
@@ -50,7 +55,9 @@
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
 #include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
+#include "third_party/blink/renderer/platform/wtf/allocator/partitions.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
+#include "third_party/blink/renderer/platform/wtf/text/format.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "ui/gfx/geometry/size.h"
 
@@ -72,6 +79,24 @@ void SimulateRequestPlay(HTMLMediaElement* element, bool triggered_by_user) {
 void SimulateRequestPause(HTMLMediaElement* element, bool triggered_by_user) {
   static_cast<media::mojom::blink::MediaPlayer*>(element)->RequestPause(
       triggered_by_user);
+}
+
+void SimulateRequestSeekForward(HTMLMediaElement* element,
+                                base::TimeDelta seek_time) {
+  static_cast<media::mojom::blink::MediaPlayer*>(element)->RequestSeekForward(
+      seek_time);
+}
+
+void SimulateRequestSeekBackward(HTMLMediaElement* element,
+                                 base::TimeDelta seek_time) {
+  static_cast<media::mojom::blink::MediaPlayer*>(element)->RequestSeekBackward(
+      seek_time);
+}
+
+void SimulateRequestSeekTo(HTMLMediaElement* element,
+                           base::TimeDelta seek_time) {
+  static_cast<media::mojom::blink::MediaPlayer*>(element)->RequestSeekTo(
+      seek_time);
 }
 
 enum class TestURLScheme {
@@ -133,6 +158,7 @@ class MockWebMediaPlayer : public EmptyWebMediaPlayer {
   MOCK_METHOD0(Play, void());
   MOCK_METHOD0(UnlockBackgroundPlayback, void());
   MOCK_METHOD1(Pause, void(PauseReason));
+  MOCK_METHOD1(Seek, void(double));
   MOCK_METHOD0(OnTimeUpdate, void());
   MOCK_CONST_METHOD0(Paused, bool());
   MOCK_CONST_METHOD0(Seekable, WebTimeRanges());
@@ -592,6 +618,11 @@ class HTMLMediaElementTest : public testing::TestWithParam<MediaTestParam> {
   void SetMediaSourceAttachment(
       scoped_refptr<MediaSourceAttachment> attachment) {
     Media()->media_source_attachment_ = std::move(attachment);
+  }
+
+  void WrapAudioSourceProviderForTesting(
+      scoped_refptr<WebAudioSourceProviderImpl> provider) {
+    Media()->audio_source_provider_.Wrap(std::move(provider));
   }
 
  protected:
@@ -2394,6 +2425,112 @@ TEST_P(HTMLMediaElementTest, RequestPause_SystemTriggered) {
       Media()->GetDocument().GetFrame()));
 }
 
+TEST_P(HTMLMediaElementTest, RequestSeek_Seekable) {
+  EXPECT_CALL(*MockMediaPlayer(), Duration()).WillRepeatedly(Return(30.0));
+  EXPECT_CALL(*MockMediaPlayer(), CurrentTime()).WillRepeatedly(Return(15.0));
+  WebTimeRanges seekable(0.0, 30.0);
+  EXPECT_CALL(*MockMediaPlayer(), Seekable()).WillRepeatedly(Return(seekable));
+
+  Media()->SetSrc(SrcSchemeToURL(TestURLScheme::kHttp));
+  test::RunPendingTasks();
+  SetReadyState(HTMLMediaElement::kHaveEnoughData);
+  test::RunPendingTasks();
+  ASSERT_EQ(15.0, Media()->currentTime());
+
+  EXPECT_CALL(*MockMediaPlayer(), Seek(20.0));
+  SimulateRequestSeekTo(Media(), base::Seconds(20));
+  EXPECT_EQ(20.0, Media()->currentTime());
+  testing::Mock::VerifyAndClearExpectations(MockMediaPlayer());
+  EXPECT_CALL(*MockMediaPlayer(), Duration()).WillRepeatedly(Return(30.0));
+  EXPECT_CALL(*MockMediaPlayer(), Seekable()).WillRepeatedly(Return(seekable));
+
+  EXPECT_CALL(*MockMediaPlayer(), Seek(25.0));
+  SimulateRequestSeekForward(Media(), base::Seconds(5));
+  EXPECT_EQ(25.0, Media()->currentTime());
+  testing::Mock::VerifyAndClearExpectations(MockMediaPlayer());
+  EXPECT_CALL(*MockMediaPlayer(), Duration()).WillRepeatedly(Return(30.0));
+  EXPECT_CALL(*MockMediaPlayer(), Seekable()).WillRepeatedly(Return(seekable));
+
+  // Seeking forward past duration clamps to duration.
+  EXPECT_CALL(*MockMediaPlayer(), Seek(30.0));
+  SimulateRequestSeekForward(Media(), base::Seconds(10));
+  EXPECT_EQ(30.0, Media()->currentTime());
+  testing::Mock::VerifyAndClearExpectations(MockMediaPlayer());
+  EXPECT_CALL(*MockMediaPlayer(), Duration()).WillRepeatedly(Return(30.0));
+  EXPECT_CALL(*MockMediaPlayer(), Seekable()).WillRepeatedly(Return(seekable));
+
+  EXPECT_CALL(*MockMediaPlayer(), Seek(10.0));
+  SimulateRequestSeekBackward(Media(), base::Seconds(20));
+  EXPECT_EQ(10.0, Media()->currentTime());
+  testing::Mock::VerifyAndClearExpectations(MockMediaPlayer());
+  EXPECT_CALL(*MockMediaPlayer(), Duration()).WillRepeatedly(Return(30.0));
+  EXPECT_CALL(*MockMediaPlayer(), Seekable()).WillRepeatedly(Return(seekable));
+
+  // Seeking backward past 0 clamps to 0.
+  EXPECT_CALL(*MockMediaPlayer(), Seek(0.0));
+  SimulateRequestSeekBackward(Media(), base::Seconds(15));
+  EXPECT_EQ(0.0, Media()->currentTime());
+  testing::Mock::VerifyAndClearExpectations(MockMediaPlayer());
+
+  // Seeking to a TimeDelta that rounds slightly above duration() (e.g. from
+  // ChunkDemuxer::SetDuration rounding to nearest microsecond) clamps to
+  // duration().
+  const double unaligned_duration = 20.0 / 3.0;
+  const base::TimeDelta rounded_up_duration = base::Microseconds(6666667);
+  ASSERT_GT(rounded_up_duration.InSecondsF(), unaligned_duration);
+  WebTimeRanges unaligned_seekable(0.0, unaligned_duration);
+  EXPECT_CALL(*MockMediaPlayer(), Duration())
+      .WillRepeatedly(Return(unaligned_duration));
+  EXPECT_CALL(*MockMediaPlayer(), Seekable())
+      .WillRepeatedly(Return(unaligned_seekable));
+  Media()->DurationChanged(unaligned_duration, /*request_seek=*/false);
+  EXPECT_CALL(*MockMediaPlayer(), Seek(unaligned_duration));
+  SimulateRequestSeekTo(Media(), rounded_up_duration);
+  EXPECT_EQ(unaligned_duration, Media()->currentTime());
+}
+
+TEST_P(HTMLMediaElementTest, RequestSeek_EmptySeekableRanges) {
+  EXPECT_CALL(*MockMediaPlayer(), Duration()).WillRepeatedly(Return(30.0));
+  EXPECT_CALL(*MockMediaPlayer(), CurrentTime()).WillRepeatedly(Return(15.0));
+  EXPECT_CALL(*MockMediaPlayer(), Seekable())
+      .WillRepeatedly(Return(WebTimeRanges()));
+
+  Media()->SetSrc(SrcSchemeToURL(TestURLScheme::kHttp));
+  test::RunPendingTasks();
+  SetReadyState(HTMLMediaElement::kHaveEnoughData);
+  test::RunPendingTasks();
+  ASSERT_EQ(15.0, Media()->currentTime());
+
+  EXPECT_CALL(*MockMediaPlayer(), Seek(_)).Times(0);
+  SimulateRequestSeekTo(Media(), base::Seconds(20));
+  SimulateRequestSeekTo(Media(), base::Seconds(0));
+  SimulateRequestSeekForward(Media(), base::Seconds(5));
+  SimulateRequestSeekBackward(Media(), base::Seconds(5));
+  EXPECT_EQ(15.0, Media()->currentTime());
+}
+
+TEST_P(HTMLMediaElementTest, RequestSeek_FiniteStreamingZeroRange) {
+  EXPECT_CALL(*MockMediaPlayer(), Duration()).WillRepeatedly(Return(30.0));
+  EXPECT_CALL(*MockMediaPlayer(), CurrentTime()).WillRepeatedly(Return(15.0));
+  // Non-seekable finite streaming media returns a single [0.0, 0.0] range.
+  EXPECT_CALL(*MockMediaPlayer(), Seekable())
+      .WillRepeatedly(Return(WebTimeRanges(0.0, 0.0)));
+
+  Media()->SetSrc(SrcSchemeToURL(TestURLScheme::kHttp));
+  test::RunPendingTasks();
+  SetReadyState(HTMLMediaElement::kHaveEnoughData);
+  test::RunPendingTasks();
+  ASSERT_EQ(15.0, Media()->currentTime());
+
+  EXPECT_CALL(*MockMediaPlayer(), Seek(_)).Times(0);
+  SimulateRequestSeekTo(Media(), base::Seconds(20));
+  SimulateRequestSeekTo(Media(), base::Seconds(0));
+  SimulateRequestSeekForward(Media(), base::Seconds(5));
+  SimulateRequestSeekBackward(Media(), base::Seconds(5));
+  SimulateRequestSeekBackward(Media(), base::Seconds(20));
+  EXPECT_EQ(15.0, Media()->currentTime());
+}
+
 TEST_P(HTMLMediaElementTest, PlayedWithUserActivation) {
   Media()->SetSrc(SrcSchemeToURL(TestURLScheme::kHttp));
   test::RunPendingTasks();
@@ -3537,7 +3674,7 @@ TEST_P(HTMLMediaElementTest, SelectNextSourceChildMediaQueryMatching) {
   source1->setAttribute(html_names::kMediaAttr, AtomicString("not all"));
   // Fill up inline attribute vector capacity to verify attribute stability.
   for (int i = 0; i < 6; ++i) {
-    source1->setAttribute(AtomicString("data-attr" + String::Number(i)),
+    source1->setAttribute(AtomicString(Format("data-attr{}", i)),
                           AtomicString("val"));
   }
   Media()->AppendChild(source1);
@@ -3592,6 +3729,59 @@ TEST_P(HTMLMediaElementTest, SourceWasAddedIgnoredWhenNetworkStateNotNoSource) {
   test::RunPendingTasks();
 
   EXPECT_EQ(Media()->getNetworkState(), HTMLMediaElement::kNetworkIdle);
+}
+
+class MockAudioSourceProviderClient final
+    : public GarbageCollected<MockAudioSourceProviderClient>,
+      public AudioSourceProviderClient {
+ public:
+  void SetFormat(uint32_t number_of_channels, float sample_rate) override {}
+  void lock() override {}
+  void unlock() override {}
+  void OnCurrentSrcChanged(const KURL& current_src) override {}
+  void Trace(Visitor* visitor) const override {
+    AudioSourceProviderClient::Trace(visitor);
+  }
+};
+
+TEST_P(HTMLMediaElementTest,
+       AudioSourceProviderProvideInputAvoidsDynamicAllocation) {
+  constexpr int kFrames = 128;
+  auto provider =
+      base::MakeRefCounted<WebAudioSourceProviderImpl>(nullptr, nullptr);
+  WrapAudioSourceProviderForTesting(provider);
+  auto* client = MakeGarbageCollected<MockAudioSourceProviderClient>();
+  Media()->GetAudioSourceProvider().SetClient(client);
+
+  scoped_refptr<AudioBus> bus = AudioBus::Create(2, kFrames);
+  // Warm up `WebAudioSourceProviderImpl::bus_wrapper_` on the first call.
+  Media()->GetAudioSourceProvider().ProvideInput(bus.get(), kFrames);
+
+  for (unsigned ch = 0; ch < bus->NumberOfChannels(); ++ch) {
+    std::ranges::fill(bus->Channel(ch)->MutableSpan(), 1.0f);
+  }
+  EXPECT_FALSE(bus->IsSilent());
+  EXPECT_EQ(bus->MaxAbsValue(), 1.0f);
+
+  auto* buffer_partition = Partitions::BufferPartition();
+  buffer_partition->ResetBookkeepingForTesting();
+  const size_t baseline_allocated_bytes =
+      buffer_partition->total_size_of_allocated_bytes_.load(
+          std::memory_order_relaxed);
+
+  Media()->GetAudioSourceProvider().ProvideInput(bus.get(), kFrames);
+
+  EXPECT_EQ(buffer_partition->max_size_of_allocated_bytes_.load(
+                std::memory_order_relaxed),
+            baseline_allocated_bytes);
+  // `ProvideInput()` mutable-spans each channel (keeping `AudioChannel`'s
+  // silent flag cleared, unlike the early `bus->Zero()` return) and delegates
+  // to `WebAudioSourceProviderImpl::ProvideInput()` to zero the sample data.
+  EXPECT_FALSE(bus->IsSilent());
+  EXPECT_EQ(bus->MaxAbsValue(), 0.0f);
+
+  Media()->GetAudioSourceProvider().SetClient(nullptr);
+  WrapAudioSourceProviderForTesting(nullptr);
 }
 
 }  // namespace blink

@@ -53,49 +53,25 @@ class BrowserViewTabbedLayoutImpl : public BrowserViewLayoutImpl {
   struct SeparatorInfo;
   struct TransientLayoutData;
   struct OrganizerPanelAnimation;
-  struct VerticalTabStripAnimation;
-
-  enum class VerticalTabStripCollapsedState {
-    kExpanded,
-    kCollapsing,
-    kCollapsed,
-    kExpanding
-  };
-
-  // Gets the amount of padding to place between
-  int GetMinimumGrabHandlePadding() const;
 
   // Returns the minimum size of all toolbar-height content except the side
   // panel.
   gfx::Size GetMinimumMainAreaSize(const BrowserLayoutParams& params) const;
 
-  // Returns the size of the vertical and horizontal tabstrips, as a pair.
-  std::pair<gfx::Size, gfx::Size> GetMinimumTabStripSize(
-      const BrowserLayoutParams& params) const;
+  // Returns the minimum size of the horizontal tabstrip, if any.
+  gfx::Size GetMinimumTabStripSize(const BrowserLayoutParams& params) const;
 
   // Returns the leading margin for the horizontal tab strip region.
   int GetHorizontalTabStripLeadingMargin(
       const BrowserLayoutParams& params) const;
 
-  // Returns the overlap in DIPs between the vertical tab strip and the content
-  // area to prevent subpixel seams on fractional displays.
-  int GetVerticalTabStripContentOverlap() const;
-
-  // Returns the current state of the vertical tabstrip.
-  VerticalTabStripCollapsedState GetVerticalTabStripCollapsedState() const;
-
   // These helper functions are called during `DoPreLayoutCalculations()` to set
   // up `layout_data_`.
   HorizontalLayout CalculateHorizontalLayout(BrowserLayoutParams& params) const;
   OrganizerPanelAnimation CalculateOrganizerPanelAnimation() const;
-  VerticalTabStripAnimation CalculateVerticalTabStripAnimation();
-  int GetCollapsedVerticalTabStripRelativeTop() const;
   SeparatorInfo CalculateSeparatorInfo() const;
 
   std::unique_ptr<TransientLayoutData> layout_data_;
-
-  // Ensure that the tab strip width changes monotonically when expanding.
-  mutable int last_vertical_tab_strip_width_ = 0;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_FRAME_LAYOUT_BROWSER_VIEW_TABBED_LAYOUT_IMPL_H_

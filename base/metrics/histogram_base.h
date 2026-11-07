@@ -120,15 +120,26 @@ class BASE_EXPORT HistogramBase {
     kCallbackExists = 0x20,
 
     // Indicates that the histogram is held in "persistent" memory and may
-    // be accessible between processes. This is only possible if such a
-    // memory segment has been created/attached, used to create a Persistent-
-    // MemoryAllocator, and that loaded into the Histogram module before this
-    // histogram is created.
+    // be accessible between processes. This flag is set internally by the
+    // allocator upon creation, rather than being passed as an input flag when
+    // defining or creating a histogram.
     kIsPersistent = 0x40,
 
     // Indicates that the histogram should be collected by PUMA, and its type is
     // PUMA for Regional Capabilities.
     kPumaRcTargetedHistogramFlag = 0x80,
+
+    // Mask of flags indicating that the histogram should be persisted in PMA
+    // files. Currently, only UMA-targeted histograms (including stability
+    // histograms, which include `kUmaTargetedHistogramFlag`) are persisted.
+    // Unlike `kIsPersistent` (which is a state flag set internally on histograms
+    // already allocated in persistent memory), this mask is checked against the
+    // histogram's creation flags (e.g. `kUmaTargetedHistogramFlag`) to determine
+    // whether to allocate the histogram in the GlobalHistogramAllocator.
+    // Note: This constant should only be used for testing whether a histogram
+    // should be persisted, and must not be passed as a flag when creating a
+    // histogram.
+    kPersistentHistogramFlagsMask = kUmaTargetedHistogramFlag,
 
     // A combination of all flags used in tests.
     kAllFlags = kUmaTargetedHistogramFlag | kUmaStabilityHistogramFlag |
@@ -307,8 +318,6 @@ class BASE_EXPORT HistogramBase {
   void WriteJSON(std::string* output, JSONVerbosityLevel verbosity_level) const;
 
  protected:
-  enum ReportActivity { HISTOGRAM_CREATED, HISTOGRAM_LOOKUP };
-
   struct BASE_EXPORT CountAndBucketData {
     Count32 count;
     int64_t sum;
@@ -331,20 +340,6 @@ class BASE_EXPORT HistogramBase {
   // counts to |buckets|, the total sample count to |count| and the total sum
   // to |sum|.
   CountAndBucketData GetCountAndBucketData() const;
-
-  // Produces an actual graph (set of blank vs non blank char's) for a bucket.
-  void WriteAsciiBucketGraph(double x_count,
-                             int line_length,
-                             std::string* output) const;
-
-  // Return a string description of what goes in a given bucket.
-  const std::string GetSimpleAsciiBucketRange(Sample32 sample) const;
-
-  // Write textual description of the bucket contents (relative to histogram).
-  // Output is the count in the buckets, as well as the percentage.
-  void WriteAsciiBucketValue(Count32 current,
-                             double scaled_sum,
-                             std::string* output) const;
 
   // Retrieves the registered callbacks for this histogram, if any, and runs
   // them passing |sample| as the parameter.

@@ -39,15 +39,20 @@
 #endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC) &&
         // PA_BUILDFLAG(IS_ANDROID)
 
-#if PA_BUILDFLAG(USE_ALLOCATOR_SHIM)
+#if PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
 #include "components/gwp_asan/client/lightweight_detector/malloc_shims.h"
 #include "components/gwp_asan/client/sampling_malloc_shims.h"
-#endif  // PA_BUILDFLAG(USE_ALLOCATOR_SHIM)
+#endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
 
 #if PA_BUILDFLAG(USE_PARTITION_ALLOC)
 #include "components/gwp_asan/client/lightweight_detector/partitionalloc_shims.h"
-#include "components/gwp_asan/client/sampling_partitionalloc_shims.h"
 #endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC)
+
+#if PA_BUILDFLAG(USE_PARTITION_ALLOC) && \
+    !PA_BUILDFLAG(MEMORY_TOOL_REPLACES_ALLOCATOR)
+#include "components/gwp_asan/client/sampling_partitionalloc_shims.h"
+#endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC) &&
+        // !PA_BUILDFLAG(MEMORY_TOOL_REPLACES_ALLOCATOR)
 
 namespace gwp_asan {
 
@@ -115,7 +120,7 @@ constexpr int kDefaultProcessSamplingBoost2 = 10;
 // The memory overhead of Lightweight UAF detector is:
 //   sizeof(LightweightSlotMetadata) * kDefaultMaxLightweightMetadata
 constexpr int kDefaultMaxLightweightMetadata = 3000;
-#if PA_BUILDFLAG(USE_ALLOCATOR_SHIM)
+#if PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
 constexpr int kDefaultMaxTotalSize = 65536;
 
 // A set of parameters temporarily used by the random sampling LUD experiment.
@@ -127,7 +132,7 @@ constexpr int kDefaultEvictionTaskIntervalMs = 1000;
 constexpr int kMaxMaxTotalSize = 2 * 1024 * 1024;
 constexpr int kMaxEvictionChunkSize = 1024;
 constexpr int kMaxEvictionTaskIntervalMs = 10000;
-#endif  // PA_BUILDFLAG(USE_ALLOCATOR_SHIM)
+#endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
 #endif  // defined(ARCH_CPU_64_BITS)
 
 BASE_FEATURE(kLightweightUafDetector,
@@ -202,8 +207,9 @@ bool SampleProcess(const base::Feature& feature, bool boost_sampling) {
 
   base::CheckedNumeric<double> sampling_prob_mult =
       process_sampling_probability;
-  if (boost_sampling)
+  if (boost_sampling) {
     sampling_prob_mult *= process_sampling_boost;
+  }
   if (!sampling_prob_mult.IsValid()) {
     DLOG(ERROR) << feature.name << " multiplier caused out-of-range multiply: "
                 << process_sampling_boost;
@@ -332,15 +338,47 @@ GWP_ASAN_EXPORT std::optional<AllocatorSettings> GetAllocatorSettingsImpl(
 
   size_t alloc_sampling_freq =
       AllocationSamplingFrequency(feature, process_type);
-  if (!alloc_sampling_freq)
+  if (!alloc_sampling_freq) {
     return std::nullopt;
+  }
 
-  return AllocatorSettings{static_cast<size_t>(max_allocations.value()),
-                           static_cast<size_t>(max_metadata.value()),
-                           static_cast<size_t>(total_pages.value()),
-                           alloc_sampling_freq,
-                           static_cast<size_t>(sampling_min_size.value()),
-                           static_cast<size_t>(sampling_max_size.value())};
+  bool smart_sampling_enabled = false;
+  int smart_sampling_rate_multiplier = 1;
+#if PA_BUILDFLAG(SHIM_SUPPORTS_ALLOC_TOKEN)
+  // Smart sampling requires per-type AllocTokens, which are only provided with
+  // SHIM_SUPPORTS_ALLOC_TOKEN. Otherwise every token is `kDefaultAllocToken`.
+  smart_sampling_enabled =
+      (&feature == &kGwpAsanMalloc) &&
+      base::FeatureList::IsEnabled(kGwpAsanMallocSmartSampling);
+  if (smart_sampling_enabled) {
+    // SmartSamplingRateMultiplier scales up the sampling rate when
+    // kGwpAsanMallocSmartSampling is enabled. It is capped to bound the
+    // overhead on the allocation hot path.
+    constexpr int kDefaultSmartSamplingRateMultiplier = 8;
+    constexpr int kMaxSmartSamplingRateMultiplier = 32;
+    const auto rate_multiplier = GetIntParam(
+        kGwpAsanMallocSmartSampling, "SmartSamplingRateMultiplier",
+        kDefaultSmartSamplingRateMultiplier, process_type, [](int param_int) {
+          return param_int > kMaxSmartSamplingRateMultiplier;
+        });
+    if (!rate_multiplier.has_value()) {
+      return std::nullopt;
+    }
+    smart_sampling_rate_multiplier = rate_multiplier.value();
+  }
+#endif  // PA_BUILDFLAG(SHIM_SUPPORTS_ALLOC_TOKEN)
+
+  return AllocatorSettings{
+      .max_allocated_pages = static_cast<size_t>(max_allocations.value()),
+      .num_metadata = static_cast<size_t>(max_metadata.value()),
+      .total_pages = static_cast<size_t>(total_pages.value()),
+      .sampling_frequency = alloc_sampling_freq,
+      .sampling_min_size = static_cast<size_t>(sampling_min_size.value()),
+      .sampling_max_size = static_cast<size_t>(sampling_max_size.value()),
+      .smart_sampling_enabled = smart_sampling_enabled,
+      .smart_sampling_rate_multiplier =
+          static_cast<size_t>(smart_sampling_rate_multiplier),
+  };
 }
 
 // Exported for testing.
@@ -415,7 +453,7 @@ bool MaybeEnableLightweightDetectorInternal(bool boost_sampling,
     }
 #endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC)
 
-#if PA_BUILDFLAG(USE_ALLOCATOR_SHIM)
+#if PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
     case LightweightDetectorMode::kRandom: {
       int max_allocations = GetFieldTrialParamByFeatureAsInt(
           feature, "MaxAllocations", kDefaultMaxAllocations);
@@ -498,7 +536,7 @@ bool MaybeEnableLightweightDetectorInternal(bool boost_sampling,
                               alloc_sampling_freq);
       return true;
     }
-#endif  // PA_BUILDFLAG(USE_ALLOCATOR_SHIM)
+#endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
 
     default: {
       DLOG(ERROR) << "Unsupported Lightweight UAF Detector mode.";
@@ -516,7 +554,7 @@ bool MaybeEnableLightweightDetectorInternal(bool boost_sampling,
 }  // namespace internal
 
 void EnableForMalloc(bool boost_sampling, std::string_view process_type) {
-#if PA_BUILDFLAG(USE_ALLOCATOR_SHIM)
+#if PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
   static bool init_once = [&]() -> bool {
     const auto settings = internal::GetAllocatorSettings(
         internal::kGwpAsanMalloc, boost_sampling, process_type);
@@ -535,13 +573,21 @@ void EnableForMalloc(bool boost_sampling, std::string_view process_type) {
   std::ignore = init_once;
 #else
   std::ignore = internal::kGwpAsanMalloc;
-  DLOG(WARNING) << "base::allocator shims are unavailable for GWP-ASan.";
-#endif  // PA_BUILDFLAG(USE_ALLOCATOR_SHIM)
+  DLOG(WARNING) << "GWP-ASan for malloc is disabled without PartitionAlloc as "
+                   "malloc.";
+#endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
 }
 
 void EnableForPartitionAlloc(bool boost_sampling,
                              std::string_view process_type) {
-#if PA_BUILDFLAG(USE_PARTITION_ALLOC)
+// When a memory tool (ASan, MSan, ...) replaces the allocator, PartitionAlloc
+// forwards every allocation to it so that the tool instruments all memory.
+// GWP-ASan's override hook would instead serve sampled allocations from its
+// own guarded pages, which the tool does not instrument and which
+// LeakSanitizer does not scan, so anything owned only by a sampled allocation
+// is reported as a leak (crbug.com/567811557).
+#if PA_BUILDFLAG(USE_PARTITION_ALLOC) && \
+    !PA_BUILDFLAG(MEMORY_TOOL_REPLACES_ALLOCATOR)
   static bool init_once = [&]() -> bool {
     const auto settings = internal::GetAllocatorSettings(
         internal::kGwpAsanPartitionAlloc, boost_sampling, process_type);
@@ -559,8 +605,9 @@ void EnableForPartitionAlloc(bool boost_sampling,
   std::ignore = init_once;
 #else
   std::ignore = internal::kGwpAsanPartitionAlloc;
-  DLOG(WARNING) << "PartitionAlloc hooks are unavailable for GWP-ASan.";
-#endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC)
+  DLOG(WARNING) << "GWP-ASan for PartitionAlloc is disabled in this build.";
+#endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC) &&
+        // !PA_BUILDFLAG(MEMORY_TOOL_REPLACES_ALLOCATOR)
 }
 
 void MaybeEnableLightweightDetector(bool boost_sampling,

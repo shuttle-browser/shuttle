@@ -16,8 +16,10 @@ source_set("app_menu") {
     "app_menu_block_button.h",
     "app_menu_block_view.h",
     "app_menu_chip_view.h",
+    "app_menu_drag_and_drop_delegate.h",
     "app_menu_footer_button.h",
     "app_menu_footer_view.h",
+    "app_menu_item_view.h",
     "app_menu_minor_text_view.h",
     "app_menu_search_bar_view.h",
     "app_menu_search_controller.h",
@@ -54,6 +56,7 @@ source_set("impl") {
     "app_menu_chip_view.cc",
     "app_menu_footer_button.cc",
     "app_menu_footer_view.cc",
+    "app_menu_item_view.cc",
     "app_menu_minor_text_view.cc",
     "app_menu_search_bar_view.cc",
     "app_menu_search_controller.cc",
@@ -74,7 +77,6 @@ source_set("impl") {
     "//chrome/browser:command_updater_impl",
     "//chrome/browser:defaults",
     "//chrome/browser:global_features",
-    "//chrome/browser/enterprise/isolated_mode",
     "//chrome/browser/favicon",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/profiles:profile_manager",
@@ -88,6 +90,7 @@ source_set("impl") {
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/actions",
     "//chrome/browser/ui/actions:actions_headers",
+    "//chrome/browser/ui/actions:actions_util",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/color:color_headers",
     "//chrome/browser/ui/tabs:tab_group",
@@ -133,6 +136,10 @@ source_set("impl") {
   if (!is_chromeos) {
     deps += [
     ]
+  }
+
+  if (is_win || is_mac || is_linux) {
+    deps += [ "//chrome/browser/lifetime" ]
   }
 }
 

@@ -31,8 +31,13 @@
 #include "media/base/supported_types.h"
 #include "media/base/test_helpers.h"
 #include "media/base/win/d3d11_mocks.h"
+#include "media/base/win/d3d12_mocks.h"
+#include "media/gpu/accelerated_video_decoder.h"
+#include "media/gpu/codec_picture.h"
 #include "media/gpu/test/fake_command_buffer_helper.h"
 #include "media/gpu/windows/d3d11_video_decoder_backend.h"
+#include "media/gpu/windows/d3d_picture_buffer.h"
+#include "media/gpu/windows/d3d_texture_wrapper.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 using ::testing::_;
@@ -45,6 +50,66 @@ using ::testing::SetArgPointee;
 
 namespace media {
 
+class MockAcceleratedVideoDecoder : public AcceleratedVideoDecoder {
+ public:
+  MockAcceleratedVideoDecoder() = default;
+  ~MockAcceleratedVideoDecoder() override = default;
+
+  MOCK_METHOD(void,
+              SetStream,
+              (int32_t, scoped_refptr<DecoderBuffer>),
+              (override));
+  MOCK_METHOD(bool, Flush, (), (override));
+  MOCK_METHOD(void, Reset, (), (override));
+  MOCK_METHOD(DecodeResult, Decode, (), (override));
+  MOCK_METHOD(gfx::Size, GetPicSize, (), (const, override));
+  MOCK_METHOD(gfx::Rect, GetVisibleRect, (), (const, override));
+  MOCK_METHOD(VideoCodecProfile, GetProfile, (), (const, override));
+  MOCK_METHOD(uint8_t, GetBitDepth, (), (const, override));
+  MOCK_METHOD(VideoChromaSampling, GetChromaSampling, (), (const, override));
+  MOCK_METHOD(VideoColorSpace, GetVideoColorSpace, (), (const, override));
+  MOCK_METHOD(size_t, GetRequiredNumOfPictures, (), (const, override));
+  MOCK_METHOD(size_t, GetNumReferenceFrames, (), (const, override));
+};
+
+class FakeTexture2DWrapper final : public D3DTextureWrapper {
+ public:
+  FakeTexture2DWrapper() = default;
+  ~FakeTexture2DWrapper() override = default;
+
+  D3DStatus Init(scoped_refptr<base::SingleThreadTaskRunner> gpu_task_runner,
+                 GetCommandBufferHelperCB get_helper_cb,
+                 ComD3D11Texture2D texture,
+                 size_t array_size,
+                 scoped_refptr<D3DPictureBuffer> picture_buffer,
+                 PictureBufferGPUResourceInitDoneCB
+                     picture_buffer_gpu_resource_init_done_cb) override {
+    return D3DStatus::Codes::kOk;
+  }
+
+  D3DStatus BeginSharedImageAccess() override { return D3DStatus::Codes::kOk; }
+
+  D3DStatus ProcessTexture(
+      scoped_refptr<gpu::ClientSharedImage>& shared_image_dest,
+      scoped_refptr<gfx::D3DSharedFence> decode_fence) override {
+    decode_fence_ = std::move(decode_fence);
+    // Intentionally fail after recording the decode fence so that
+    // D3DVideoDecoder::OutputResult doesn't proceed as if the texture
+    // processing succeeded.
+    return D3DStatus::Codes::kProcessTextureFailed;
+  }
+
+  const gfx::Size& GetSize() const override { return size_; }
+
+  const scoped_refptr<gfx::D3DSharedFence>& decode_fence() const {
+    return decode_fence_;
+  }
+
+ private:
+  const gfx::Size size_{100, 200};
+  scoped_refptr<gfx::D3DSharedFence> decode_fence_;
+};
+
 class D3DVideoDecoderTest : public ::testing::Test {
  public:
   const std::pair<uint16_t, uint16_t> LegacyIntelGPU = {0x8086, 0x102};
@@ -54,7 +119,6 @@ class D3DVideoDecoderTest : public ::testing::Test {
 
   void SetUp() override {
     // Set up some sane defaults.
-    gpu_preferences_.enable_zero_copy_dxgi_video = true;
     gpu_preferences_.use_passthrough_cmd_decoder = false;
     gpu_workarounds_.disable_dxgi_zero_copy_video = false;
     gpu_task_runner_ = task_environment_.GetMainThreadTaskRunner();
@@ -242,6 +306,19 @@ class D3DVideoDecoderTest : public ::testing::Test {
     EXPECT_TRUE(d3d_decoder_raw_->SubmitBitstreamBufferForTesting(bitstream));
   }
 
+  void SetAcceleratedVideoDecoder(
+      std::unique_ptr<AcceleratedVideoDecoder> decoder) {
+    d3d_decoder_raw_->accelerated_video_decoder_ = std::move(decoder);
+  }
+
+  void AddPictureBuffer(scoped_refptr<D3DPictureBuffer> picture_buffer) {
+    d3d_decoder_raw_->picture_buffers_.push_back(std::move(picture_buffer));
+  }
+
+  size_t GetPictureBufferCount() const {
+    return d3d_decoder_raw_->picture_buffers_.size();
+  }
+
   std::optional<base::test::ScopedFeatureList> scoped_feature_list_;
   base::test::TaskEnvironment task_environment_;
 
@@ -353,6 +430,62 @@ TEST_F(D3DVideoDecoderTest, WorkaroundTurnsOffDecoder) {
       false);
 }
 
+TEST_F(D3DVideoDecoderTest, OutputResultSendsDecodeFenceToTextureWrapper) {
+  CreateDecoder();
+  InitializeDecoder(
+      TestVideoConfig::NormalCodecProfile(VideoCodec::kH264, H264PROFILE_MAIN),
+      /*expect_success=*/true);
+
+  auto device = MakeComPtr<NiceMock<D3D12DeviceMock>>();
+  auto fence_impl = MakeComPtr<NiceMock<D3D12FenceMock>>();
+  ON_CALL(*fence_impl.Get(), GetDevice(_, _))
+      .WillByDefault([device](REFIID iid, void** out) {
+        if (!IsEqualIID(iid, IID_ID3D12Device)) {
+          return E_NOINTERFACE;
+        }
+        *out = device.Get();
+        device->AddRef();
+        return S_OK;
+      });
+  EXPECT_CALL(*device.Get(), CreateSharedHandle(_, _, _, _, _))
+      .Times(1)
+      .WillOnce([](ID3D12DeviceChild* object,
+                   const SECURITY_ATTRIBUTES* attributes, DWORD access,
+                   LPCWSTR name, HANDLE* handle) {
+        *handle = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        return *handle ? S_OK : HRESULT_FROM_WIN32(::GetLastError());
+      });
+
+  auto wrapper = std::make_unique<FakeTexture2DWrapper>();
+  FakeTexture2DWrapper* wrapper_ptr = wrapper.get();
+  const gfx::Size size = wrapper->GetSize();
+  auto resource = MakeComPtr<NiceMock<D3D12ResourceMock>>();
+  auto picture_buffer = base::MakeRefCounted<D3D12PictureBufferImpl>(
+      task_environment_.GetMainThreadTaskRunner(), std::move(resource),
+      /*array_slice=*/0, std::move(wrapper), size, /*picture_index=*/0);
+
+  constexpr uint64_t kFenceValue = 7;
+  ID3D12Fence* fence_ptr = fence_impl.Get();
+  auto decode_fence = base::MakeRefCounted<D3D12Fence>(std::move(fence_impl));
+  picture_buffer->SetFenceAndValue(decode_fence, kFenceValue);
+
+  auto picture = base::MakeRefCounted<CodecPicture>();
+  EXPECT_FALSE(
+      d3d_decoder_raw_->OutputResult(picture.get(), picture_buffer.get()));
+  ASSERT_TRUE(wrapper_ptr->decode_fence());
+  EXPECT_EQ(wrapper_ptr->decode_fence()->GetD3D12Fence().Get(), fence_ptr);
+  EXPECT_EQ(wrapper_ptr->decode_fence()->GetFenceValue(), kFenceValue);
+
+  scoped_refptr<gfx::D3DSharedFence> shared_fence = wrapper_ptr->decode_fence();
+  constexpr uint64_t kNextFenceValue = 8;
+  picture_buffer->SetFenceAndValue(decode_fence, kNextFenceValue);
+  scoped_refptr<gpu::ClientSharedImage> shared_image;
+  // The fake wrapper records the fence before intentionally failing.
+  EXPECT_FALSE(picture_buffer->ProcessTexture(shared_image).is_ok());
+  EXPECT_EQ(wrapper_ptr->decode_fence(), shared_fence);
+  EXPECT_EQ(wrapper_ptr->decode_fence()->GetFenceValue(), kNextFenceValue);
+}
+
 TEST_F(D3DVideoDecoderTest, CanReadWithoutStalling) {
   CreateDecoder();
 
@@ -372,6 +505,107 @@ TEST_F(D3DVideoDecoderTest, SubmitsDecoderBuffers) {
       true);
 
   SubmitBitstreamBuffer();
+}
+
+TEST_F(D3DVideoDecoderTest, ReinitializeWithSameCodecReusesDecoder) {
+  CreateDecoder();
+
+  VideoDecoderConfig normal =
+      TestVideoConfig::NormalCodecProfile(VideoCodec::kH264, H264PROFILE_MAIN);
+  EXPECT_CALL(*mock_d3d11_video_device_.Get(), CreateVideoDecoder(_, _, _))
+      .Times(1);
+  InitializeDecoder(normal, true);
+  InitializeDecoder(normal, true);
+
+  // Re-initializing with a different resolution of the same codec defers
+  // wrapper recreation to DoDecode()'s kConfigChange handling.
+  VideoDecoderConfig large = TestVideoConfig::Large(VideoCodec::kH264);
+  EXPECT_CALL(*mock_d3d11_video_device_.Get(), CreateVideoDecoder(_, _, _))
+      .Times(0);
+  InitializeDecoder(large, true);
+
+  // After a failed re-initialization, a subsequent Initialize() must not reuse
+  // the previous wrapper.
+  VideoDecoderConfig encrypted = large;
+  encrypted.SetIsEncrypted(true);
+  InitializeDecoder(encrypted, false);
+  EXPECT_CALL(*mock_d3d11_video_device_.Get(), CreateVideoDecoder(_, _, _))
+      .Times(1);
+  InitializeDecoder(large, true);
+}
+
+TEST_F(D3DVideoDecoderTest, ConfigChangeClearsExistingPictureBuffers) {
+  CreateDecoder();
+
+  VideoDecoderConfig normal =
+      TestVideoConfig::NormalCodecProfile(VideoCodec::kH264, H264PROFILE_MAIN);
+  EXPECT_CALL(*mock_d3d11_video_device_.Get(), CreateVideoDecoder(_, _, _))
+      .Times(1);
+  InitializeDecoder(normal, true);
+
+  auto install_mock_decoder = [&]() {
+    auto mock_decoder =
+        std::make_unique<NiceMock<MockAcceleratedVideoDecoder>>();
+    ON_CALL(*mock_decoder, GetProfile())
+        .WillByDefault(Return(normal.profile()));
+    ON_CALL(*mock_decoder, GetPicSize())
+        .WillByDefault(Return(normal.coded_size()));
+    ON_CALL(*mock_decoder, GetVisibleRect())
+        .WillByDefault(Return(normal.visible_rect()));
+    ON_CALL(*mock_decoder, GetBitDepth()).WillByDefault(Return(8u));
+    ON_CALL(*mock_decoder, GetChromaSampling())
+        .WillByDefault(Return(VideoChromaSampling::k420));
+    ON_CALL(*mock_decoder, GetVideoColorSpace())
+        .WillByDefault(Return(normal.color_space_info()));
+    MockAcceleratedVideoDecoder* raw = mock_decoder.get();
+    SetAcceleratedVideoDecoder(std::move(mock_decoder));
+    return raw;
+  };
+
+  // Initial kConfigChange when picture_buffers_ is empty should not recreate
+  // the wrapper.
+  MockAcceleratedVideoDecoder* mock_decoder = install_mock_decoder();
+  EXPECT_CALL(*mock_decoder, Decode())
+      .WillOnce(Return(AcceleratedVideoDecoder::kConfigChange))
+      .WillOnce(Return(AcceleratedVideoDecoder::kRanOutOfStreamData));
+  EXPECT_CALL(*mock_d3d11_video_device_.Get(), CreateVideoDecoder(_, _, _))
+      .Times(0);
+
+  const std::array<uint8_t, 1> bitstream = {1};
+  base::test::TestFuture<DecoderStatus> decode_future1;
+  decoder_->Decode(DecoderBuffer::CopyFrom(bitstream),
+                   decode_future1.GetCallback());
+  EXPECT_TRUE(decode_future1.Get().is_ok());
+
+  // Simulate picture buffers allocated during the first decode session and
+  // retained across a subsequent Initialize() (e.g. after flush()).
+  auto wrapper = std::make_unique<FakeTexture2DWrapper>();
+  const gfx::Size size = wrapper->GetSize();
+  auto resource = MakeComPtr<NiceMock<D3D12ResourceMock>>();
+  AddPictureBuffer(base::MakeRefCounted<D3D12PictureBufferImpl>(
+      task_environment_.GetMainThreadTaskRunner(), std::move(resource),
+      /*array_slice=*/0, std::move(wrapper), size, /*picture_index=*/0));
+
+  EXPECT_CALL(*mock_d3d11_video_device_.Get(), CreateVideoDecoder(_, _, _))
+      .Times(0);
+  InitializeDecoder(normal, true);
+  EXPECT_EQ(GetPictureBufferCount(), 1u);
+
+  // Decoding after re-initialization emits kConfigChange while picture_buffers_
+  // is non-empty, which must recreate the wrapper and clear picture_buffers_
+  // so buffers held by the client from prior sessions do not starve decoding.
+  mock_decoder = install_mock_decoder();
+  EXPECT_CALL(*mock_decoder, Decode())
+      .WillOnce(Return(AcceleratedVideoDecoder::kConfigChange))
+      .WillOnce(Return(AcceleratedVideoDecoder::kRanOutOfStreamData));
+  EXPECT_CALL(*mock_d3d11_video_device_.Get(), CreateVideoDecoder(_, _, _))
+      .Times(1);
+
+  base::test::TestFuture<DecoderStatus> decode_future2;
+  decoder_->Decode(DecoderBuffer::CopyFrom(bitstream),
+                   decode_future2.GetCallback());
+  EXPECT_TRUE(decode_future2.Get().is_ok());
+  EXPECT_EQ(GetPictureBufferCount(), 0u);
 }
 
 }  // namespace media

@@ -291,16 +291,24 @@ void ProxyImpl::SetNeedsRedrawOnImpl(const gfx::Rect& damage_rect) {
   SetNeedsRedrawOnImplThread();
 }
 
-void ProxyImpl::SetNeedsCommitOnImpl(BeginMainFrameReason reason,
+void ProxyImpl::SetNeedsCommitOnImpl(BeginMainFrameReasons reason,
                                      bool urgent,
                                      bool unthrottle) {
-  SetNeedsCommitOnImplThread(reason, urgent, unthrottle);
+  begin_main_frame_reason_ |= reason;
+  TRACE_EVENT0("cc", "ProxyImpl::SetNeedsCommitOnImplThread");
+  DCHECK(IsImplThread());
+  scheduler_->SetNeedsBeginMainFrame(urgent, unthrottle);
 }
 
 void ProxyImpl::SetTargetLocalSurfaceIdOnImpl(
     const viz::LocalSurfaceId& target_local_surface_id) {
   DCHECK(IsImplThread());
   host_impl_->SetTargetLocalSurfaceId(target_local_surface_id);
+}
+
+void ProxyImpl::SetMemoryPolicyOnImpl(const ManagedMemoryPolicy& policy) {
+  DCHECK(IsImplThread());
+  host_impl_->SetMemoryPolicy(policy);
 }
 
 void ProxyImpl::BeginMainFrameAbortedOnImpl(
@@ -572,10 +580,7 @@ void ProxyImpl::SetNeedsPrepareTilesOnImplThread() {
 void ProxyImpl::SetNeedsCommitOnImplThread(BeginMainFrameReason reason,
                                            bool urgent,
                                            bool unthrottled) {
-  set_begin_main_frame_reason(reason);
-  TRACE_EVENT0("cc", "ProxyImpl::SetNeedsCommitOnImplThread");
-  DCHECK(IsImplThread());
-  scheduler_->SetNeedsBeginMainFrame(urgent, unthrottled);
+  SetNeedsCommitOnImpl(reason, urgent, unthrottled);
 }
 
 void ProxyImpl::SetVideoNeedsBeginFrames(bool needs_begin_frames) {

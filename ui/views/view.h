@@ -22,9 +22,9 @@
 #include "base/check.h"
 #include "base/functional/callback.h"
 #include "base/gtest_prod_util.h"
-#include "base/memory/advanced_memory_safety_checks.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/sanitized_object.h"
 #include "base/observer_list.h"
 #include "base/scoped_observation.h"
 #include "base/types/pass_key.h"
@@ -61,6 +61,7 @@
 #include "ui/views/layout/layout_manager.h"
 #include "ui/views/layout/layout_types.h"
 #include "ui/views/paint_info.h"
+#include "ui/views/view_hierarchy_changed_details.h"
 #include "ui/views/view_targeter.h"
 #include "ui/views/views_export.h"
 
@@ -113,6 +114,7 @@ namespace views {
 class Background;
 class Border;
 class ContextMenuController;
+class DeprecatedLayoutImmediatelyPassKey;
 class DragController;
 class FillLayout;
 class FocusManager;
@@ -134,31 +136,6 @@ class PostEventDispatchHandler;
 class RootView;
 class ScopedChildrenLock;
 }  // namespace internal
-
-// Struct used to describe how a View hierarchy has changed. See
-// View::ViewHierarchyChanged.
-// TODO(pbos): Move to a separate view_hierarchy_changed_details.h header.
-struct VIEWS_EXPORT ViewHierarchyChangedDetails {
-  ViewHierarchyChangedDetails(bool is_add,
-                              View* parent,
-                              View* child,
-                              View* move_view)
-      : is_add(is_add), parent(parent), child(child), move_view(move_view) {}
-  const bool is_add;
-  // New parent if |is_add| is true, old parent if |is_add| is false.
-  const raw_ptr<View> parent;
-  // The view being added or removed.
-  const raw_ptr<View> child;
-  // If this is a move (reparent), meaning AddChildViewAt() is invoked with an
-  // existing parent, then a notification for the remove is sent first,
-  // followed by one for the add.  This case can be distinguished by a
-  // non-null |move_view|.
-  // For the remove part of move, |move_view| is the new parent of the View
-  // being removed.
-  // For the add part of move, |move_view| is the old parent of the View being
-  // added.
-  const raw_ptr<View> move_view;
-};
 
 using PropertyChangedCallback = ui::metadata::PropertyChangedCallback;
 
@@ -302,7 +279,7 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
                           public ui::metadata::MetaDataProvider {
   // Do not remove this macro!
   // The macro is maintained by the memory safety team.
-  ADVANCED_MEMORY_SAFETY_CHECKS();
+  SANITIZED_OBJECT();
 
  public:
   class OwnedByClientPassKey {
@@ -861,7 +838,13 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
   // synchronously lay out a view, but this will eventually be removed; see
   // https://crbug.com/1521108. Neither of these methods should be called from
   // Layout(); see https://crbug.com/1121681.
+  //
+  // New callers are banned by PRESUBMIT. Existing callers are being migrated
+  // either to InvalidateLayout() or, where synchronous layout is truly needed,
+  // to the overload taking a DeprecatedLayoutImmediatelyPassKey. Once all
+  // callers are migrated, the no-arg overload will be removed.
   void DeprecatedLayoutImmediately();
+  void DeprecatedLayoutImmediately(DeprecatedLayoutImmediatelyPassKey);
   virtual void Layout(PassKey);
 
   bool needs_layout() const { return needs_layout_; }
@@ -1988,14 +1971,6 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
   // order of the view tree.
   void ReorderLayers();
 
-  // This reorders the immediate children of |*parent_layer| to match the
-  // order of the view tree. Child layers which are owned by a view are
-  // reordered so that they are below any child layers not owned by a view.
-  // Widget::ReorderNativeViews() should be called to reorder any child layers
-  // with an associated view. Widget::ReorderNativeViews() may reorder layers
-  // below layers owned by a view.
-  virtual void ReorderChildLayers(ui::Layer* parent_layer);
-
   // Notifies parents about a layer being created or destroyed in a child. An
   // example where a subclass may override this method is when it wants to clip
   // the child by adding its own layer.
@@ -2336,6 +2311,18 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
   // parent in the correct order.
   void SetLayerParent(ui::Layer* parent_layer);
 
+  // This reorders the immediate children of |*parent_layer| to match the
+  // order of the view tree. Child layers which are owned by a view are
+  // reordered so that they are below any child layers not owned by a view.
+  // Widget::ReorderNativeViews() should be called to reorder any child layers
+  // with an associated view. Widget::ReorderNativeViews() may reorder layers
+  // below layers owned by a view.
+  //
+  // This is an implementation detail of ReorderLayers() and is deliberately
+  // not virtual: subclasses that need extra layers stacked relative to their
+  // own should use AddLayerToRegion() or a child view that paints to a layer.
+  void ReorderChildLayers(ui::Layer* parent_layer);
+
   // Returns true if this view is interested in VisibleBoundsChange event.
   bool GetNeedsNotificationWhenVisibleBoundsChangeImpl() const;
 
@@ -2554,17 +2541,6 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
   // available space. But there are some problems with `FlexLayout`. After we
   // fix the problem with FlexLayout. Remove this.
   bool layout_manager_use_constrained_space_ = true;
-
-  // Used to generate an UMA metric for the maximum reentrant call depth seen
-  // during layout. Normally the metric value will be one (Layout() was not
-  // reentered). But, we know Layout() is reentered at least sometimes and
-  // want to measure how often that is. We also want to know if it is ever
-  // reentered more than two deep.
-  int max_layout_call_depth_ = 0;
-
-  // Current Layout() reentrant call depth (used to help determine the
-  // max_layout_call_depth_, above).
-  int current_layout_call_depth_ = 0;
 
   // How many times this view has done layout since the last time it was
   // painted. This is used to compute metrics around unnecessary layout calls.

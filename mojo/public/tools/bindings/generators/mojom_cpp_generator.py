@@ -334,7 +334,7 @@ class Generator(generator.Generator):
       if interface.uuid:
         headers.add('base/token.h')
       for method in interface.methods:
-        if not method.result_response is None:
+        if method.result_response is not None:
           headers.add('base/types/expected.h')
 
     types = set(
@@ -599,7 +599,6 @@ class Generator(generator.Generator):
       "is_primary_nullable_value_kind_packed_field": pack.IsPrimaryNullableValueKindPackedField,
       "is_full_header_required_for_import": self._IsFullHeaderRequiredForImport,
       "is_integral_kind": mojom.IsIntegralKind,
-      "is_receiver_kind": self._IsReceiverKind,
       "is_native_only_kind": IsNativeOnlyKind,
       "is_any_handle_kind": mojom.IsAnyHandleKind,
       "is_any_interface_kind": mojom.IsAnyInterfaceKind,
@@ -1095,7 +1094,7 @@ class Generator(generator.Generator):
           self._IsTypemappedKind(kind)
           and not self._GetTypemappedForwardDeclaration(kind)
         )
-        or kind.parent_kind != None
+        or kind.parent_kind != None  # noqa: E711
       )
       for kind in self.module.imported_kinds.values()
     ):
@@ -1138,9 +1137,6 @@ class Generator(generator.Generator):
         return True
 
     return False
-
-  def _IsReceiverKind(self, kind):
-    return mojom.IsPendingReceiverKind(kind)
 
   def _IsCopyablePassByValue(self, kind):
     if not self._IsTypemappedKind(kind):
@@ -1268,28 +1264,6 @@ class Generator(generator.Generator):
         kind, add_same_module_namespaces=True
       )
     return self._GetCppWrapperType(kind, add_same_module_namespaces=True)
-
-  def _KindMustBeSerialized(self, kind, processed_kinds=None):
-    if not processed_kinds:
-      processed_kinds = set()
-    if kind in processed_kinds:
-      return False
-
-    if (
-      self._IsTypemappedKind(kind)
-      and self.typemap[self._GetFullMojomNameForKind(kind)]["force_serialize"]
-    ):
-      return True
-
-    processed_kinds.add(kind)
-
-    if mojom.IsStructKind(kind) or mojom.IsUnionKind(kind):
-      return any(
-        self._KindMustBeSerialized(field.kind, processed_kinds=processed_kinds)
-        for field in kind.fields
-      )
-
-    return False
 
   def _TranslateConstants(self, token, kind, add_same_module_namespaces=False):
     if isinstance(token, mojom.NamedValue):

@@ -71,7 +71,7 @@ TEST_P(FontFeaturesByOrientationTest,
        EastAsianContextualSpacingHonorsFontFeatureSettings) {
   constexpr hb_tag_t chws = HB_TAG('c', 'h', 'w', 's');
   constexpr hb_tag_t vchw = HB_TAG('v', 'c', 'h', 'w');
-  for (unsigned value = 0; value <= 1; ++value) {
+  for (uint32_t value = 0; value <= 1; ++value) {
     scoped_refptr<FontFeatureSettings> settings = FontFeatureSettings::Create();
     settings->Append({IsHorizontal() ? chws : vchw, static_cast<int>(value)});
     FontDescription font_description;
@@ -114,7 +114,7 @@ TEST_P(FontFeaturesByOrientationTest,
 // Test the current behavior when multiple glyph-width GPOS features are set via
 // `FontFeatureSettings`. Current |FontFeatureRanges| does not resolve
 // conflicts, just pass them all as specified to HarfBuzz.
-TEST_P(FontFeaturesByOrientationTest, MultipleGlyphWidthGPOS) {
+TEST_P(FontFeaturesByOrientationTest, MultipleGlyphWidthGpos) {
   const hb_tag_t tags[] = {
       HB_TAG('c', 'h', 'w', 's'), HB_TAG('v', 'c', 'h', 'w'),
       HB_TAG('h', 'a', 'l', 't'), HB_TAG('v', 'h', 'a', 'l'),

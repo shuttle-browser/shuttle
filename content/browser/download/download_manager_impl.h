@@ -115,7 +115,6 @@ class CONTENT_EXPORT DownloadManagerImpl
                        blob_url_loader_factory) override;
   void AddObserver(Observer* observer) override;
   void RemoveObserver(Observer* observer) override;
-  using DownloadManager::CreateDownloadItem;
   download::DownloadItem* CreateDownloadItem(
       const std::string& guid,
       uint32_t id,
@@ -298,6 +297,7 @@ class CONTENT_EXPORT DownloadManagerImpl
       network::mojom::URLResponseHeadPtr response_head,
       mojo::ScopedDataPipeConsumerHandle response_body,
       network::mojom::URLLoaderClientEndpointsPtr url_loader_client_endpoints,
+      const StoragePartitionConfig& storage_partition_config,
       bool is_download_allowed);
   void BeginResourceDownloadOnChecksComplete(
       std::unique_ptr<download::DownloadUrlParameters> params,

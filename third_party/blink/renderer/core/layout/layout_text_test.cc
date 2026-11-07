@@ -19,6 +19,7 @@
 #include "third_party/blink/renderer/core/testing/core_unit_test_helper.h"
 #include "third_party/blink/renderer/platform/testing/font_test_helpers.h"
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
+#include "third_party/blink/renderer/platform/wtf/text/format.h"
 
 namespace blink {
 
@@ -35,8 +36,8 @@ class LayoutTextTest : public RenderingTest {
 
   void SetAhemBody(const char* content, const unsigned width) {
     SetBodyInnerHTML(
-        StrCat({"<div id='target' style='font: 10px Ahem; width: ",
-                String::Number(width), "em'>", content, "</div>"}));
+        Format("<div id='target' style='font: 10px Ahem; width: {}em'>{}</div>",
+               width, content));
   }
 
   LayoutText* GetLayoutTextById(const char* id) {
@@ -172,7 +173,7 @@ TEST_F(LayoutTextTest, PrewarmFamily) {
   )HTML");
   EXPECT_THAT(prewarmer.PrewarmedFamilyNames(), ElementsAre("testfont"));
   LayoutObject* container = GetLayoutObjectByElementId("container");
-  EXPECT_TRUE(container->StyleRef()
+  EXPECT_TRUE(container->Style()
                   .GetFont()
                   ->GetFontDescription()
                   .Family()
@@ -201,7 +202,7 @@ TEST_F(LayoutTextTest, PrewarmFontFace) {
   )HTML");
   EXPECT_THAT(prewarmer.PrewarmedFamilyNames(), ElementsAre());
   LayoutObject* container = GetLayoutObjectByElementId("container");
-  EXPECT_FALSE(container->StyleRef()
+  EXPECT_FALSE(container->Style()
                    .GetFont()
                    ->GetFontDescription()
                    .Family()
@@ -219,7 +220,7 @@ TEST_F(LayoutTextTest, PrewarmGenericFamily) {
   // No prewarms because |GenericFontFamilySettings| is empty.
   EXPECT_THAT(prewarmer.PrewarmedFamilyNames(), ElementsAre());
   LayoutObject* container = GetLayoutObjectByElementId("container");
-  EXPECT_TRUE(container->StyleRef()
+  EXPECT_TRUE(container->Style()
                   .GetFont()
                   ->GetFontDescription()
                   .Family()

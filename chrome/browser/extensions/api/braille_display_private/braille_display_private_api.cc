@@ -66,10 +66,11 @@ BrailleDisplayPrivateAPI::GetFactoryInstance() {
 
 void BrailleDisplayPrivateAPI::OnBrailleDisplayStateChanged(
     const DisplayState& display_state) {
-  std::unique_ptr<Event> event(
-      new Event(events::BRAILLE_DISPLAY_PRIVATE_ON_DISPLAY_STATE_CHANGED,
-                OnDisplayStateChanged::kEventName,
-                OnDisplayStateChanged::Create(display_state)));
+  auto event_args = base::MakeRefCounted<EventArgs>(
+      OnDisplayStateChanged::Create(display_state));
+  auto event = std::make_unique<Event>(
+      events::BRAILLE_DISPLAY_PRIVATE_ON_DISPLAY_STATE_CHANGED,
+      OnDisplayStateChanged::kEventName, std::move(event_args));
   event_delegate_->BroadcastEvent(std::move(event));
 }
 
@@ -78,9 +79,11 @@ void BrailleDisplayPrivateAPI::OnBrailleKeyEvent(const KeyEvent& key_event) {
   if (!IsProfileActive()) {
     return;
   }
-  std::unique_ptr<Event> event(
-      new Event(events::BRAILLE_DISPLAY_PRIVATE_ON_KEY_EVENT,
-                OnKeyEvent::kEventName, OnKeyEvent::Create(key_event)));
+  auto event_args =
+      base::MakeRefCounted<EventArgs>(OnKeyEvent::Create(key_event));
+  auto event =
+      std::make_unique<Event>(events::BRAILLE_DISPLAY_PRIVATE_ON_KEY_EVENT,
+                              OnKeyEvent::kEventName, std::move(event_args));
   event_delegate_->BroadcastEvent(std::move(event));
 }
 
@@ -150,7 +153,7 @@ BrailleDisplayPrivateGetDisplayStateFunction::Run() {
           base::BindOnce(
               &BrailleDisplayPrivateGetDisplayStateFunction::ReplyWithState,
               this));
-  DCHECK(did_post_task);
+  CHECK(did_post_task, base::NotFatalUntil::M161);
   return RespondLater();
 }
 
@@ -176,7 +179,7 @@ BrailleDisplayPrivateWriteDotsFunction::Run() {
                      this),
       base::BindOnce(&BrailleDisplayPrivateWriteDotsFunction::Respond, this,
                      NoArguments()));
-  DCHECK(did_post_task);
+  CHECK(did_post_task, base::NotFatalUntil::M161);
   return RespondLater();
 }
 

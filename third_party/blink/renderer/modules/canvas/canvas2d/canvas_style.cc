@@ -60,17 +60,15 @@ namespace blink {
 
 static ColorParseResult ParseColor(Color& parsed_color,
                                    const String& color_string,
-                                   mojom::blink::ColorScheme color_scheme,
-                                   const ui::ColorProvider* color_provider,
-                                   bool can_expose_accent_color) {
+                                   const ColorThemeInfo& theme_info,
+                                   bool has_style_context) {
   if (EqualIgnoringAsciiCase(color_string, "currentcolor")) {
     return ColorParseResult::kCurrentColor;
   }
   if (CSSParser::ParseColor(parsed_color, color_string)) {
     return ColorParseResult::kColor;
   }
-  if (CSSParser::ParseSystemColor(parsed_color, color_string, color_scheme,
-                                  color_provider, can_expose_accent_color)) {
+  if (CSSParser::ParseSystemColor(parsed_color, color_string, theme_info)) {
     return ColorParseResult::kColor;
   }
   CSSParserTokenStream stream(color_string);
@@ -80,6 +78,10 @@ static ColorParseResult ParseColor(Color& parsed_color,
       css_parsing_utils::ConsumeColorWithoutElementAndPropertyContext(
           stream, *StrictCSSParserContext(SecureContextMode::kInsecureContext),
           local_context);
+  if (parsed_value && !has_style_context &&
+      !parsed_value->IsComputationallyIndependent()) {
+    return ColorParseResult::kParseFailed;
+  }
   if (parsed_value &&
       (parsed_value->IsAlphaColorValue() || parsed_value->IsColorMixValue() ||
        parsed_value->IsRelativeColorValue() ||
@@ -89,30 +91,27 @@ static ColorParseResult ParseColor(Color& parsed_color,
     const ResolveColorValueContext context{
         .length_resolver = CSSToLengthConversionData(/*element=*/nullptr),
         .text_link_colors = kDefaultTextLinkColors,
-        .used_color_scheme = color_scheme,
-        .color_provider = color_provider,
-        .can_expose_accent_color = can_expose_accent_color};
+        .theme_info = theme_info};
     const StyleColor style_color = ResolveColorValue(*parsed_value, context);
-    parsed_color = style_color.Resolve(Color::kBlack, color_scheme);
+    parsed_color = style_color.Resolve(Color::kBlack, theme_info.color_scheme);
     return ColorParseResult::kColorFunction;
   }
   return ColorParseResult::kParseFailed;
 }
 
 ColorParseResult ParseCanvasColorString(const String& color_string,
-                                        mojom::blink::ColorScheme color_scheme,
                                         Color& parsed_color,
-                                        const ui::ColorProvider* color_provider,
-                                        bool can_expose_accent_color) {
+                                        const ColorThemeInfo& theme_info,
+                                        bool has_style_context) {
   return ParseColor(parsed_color,
                     color_string.StripWhiteSpace(IsHTMLSpace<UChar>),
-                    color_scheme, color_provider, can_expose_accent_color);
+                    theme_info, has_style_context);
 }
 
 bool ParseCanvasColorString(const String& color_string, Color& parsed_color) {
-  const ColorParseResult parse_result = ParseCanvasColorString(
-      color_string, mojom::blink::ColorScheme::kLight, parsed_color,
-      /*color_provider=*/nullptr, /*can_expose_accent_color=*/false);
+  const ColorParseResult parse_result =
+      ParseCanvasColorString(color_string, parsed_color, ColorThemeInfo{},
+                             /*has_style_context=*/false);
   switch (parse_result) {
     case ColorParseResult::kColor:
     case ColorParseResult::kColorFunction:

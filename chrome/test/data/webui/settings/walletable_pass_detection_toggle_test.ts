@@ -5,26 +5,28 @@
 // clang-format off
 import 'chrome://settings/settings.js';
 
-import {flushTasks} from 'chrome://webui-test/polymer_test_util.js';
 import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
-import {CrSettingsPrefs, loadTimeData} from 'chrome://settings/settings.js';
+import {microtasksFinished} from 'chrome://webui-test/test_util.js';
+import {loadTimeData, PrefsBrowserProxy, PrefService} from 'chrome://settings/settings.js';
 import {EntityDataManagerProxyImpl} from 'chrome://settings/lazy_load.js';
 import type {SettingsWalletablePassDetectionToggleElement} from 'chrome://settings/lazy_load.js';
 
 import {TestEntityDataManagerProxy} from './test_entity_data_manager_proxy.js';
+import {TestPrefsBrowserProxy} from './test_prefs_browser_proxy.js';
 // clang-format on
 
 suite('WalletablePassDetectionToggleTest', function() {
   let entityDataManager: TestEntityDataManagerProxy;
+  let prefService: PrefService;
   let toggleComponent: SettingsWalletablePassDetectionToggleElement;
-
-  suiteSetup(function() {
-    document.createElement('settings-prefs');
-    return CrSettingsPrefs.initialized;
-  });
 
   setup(async function() {
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
+
+    PrefsBrowserProxy.setInstance(new TestPrefsBrowserProxy([]));
+    PrefService.resetInstanceForTesting();
+    prefService = PrefService.getInstance();
+    await prefService.whenInitialized();
 
     entityDataManager = new TestEntityDataManagerProxy();
     EntityDataManagerProxyImpl.setInstance(entityDataManager);
@@ -35,7 +37,7 @@ suite('WalletablePassDetectionToggleTest', function() {
     toggleComponent =
         document.createElement('settings-walletable-pass-detection-toggle');
     document.body.appendChild(toggleComponent);
-    await flushTasks();
+    await microtasksFinished();
     entityDataManager.reset();
   });
 
@@ -51,7 +53,7 @@ suite('WalletablePassDetectionToggleTest', function() {
 
     // Click to toggle.
     toggle.click();
-    await flushTasks();
+    await microtasksFinished();
 
     // Verify method called with true (since it started false).
     assertTrue(await entityDataManager.whenCalled(
@@ -60,7 +62,7 @@ suite('WalletablePassDetectionToggleTest', function() {
     // Reset and toggle again.
     entityDataManager.reset();
     toggle.click();
-    await flushTasks();
+    await microtasksFinished();
 
     // Verify method called with false.
     assertFalse(await entityDataManager.whenCalled(
@@ -76,7 +78,7 @@ suite('WalletablePassDetectionToggleTest', function() {
 
     // Click to toggle ON.
     toggle.click();
-    await flushTasks();
+    await microtasksFinished();
 
     // Verify method called.
     assertTrue(await entityDataManager.whenCalled(
@@ -84,7 +86,11 @@ suite('WalletablePassDetectionToggleTest', function() {
 
     // Verify the toggle is unchecked (reverted).
     assertFalse(toggle.checked);
-    assertFalse(toggleComponent.get('walletablePassDetectionOptedIn_.value'));
+    assertFalse(
+        prefService
+            .getPref<boolean>(
+                'synthetic.settings.autofill.walletable_pass_detection_opted_in')
+            .value);
     assertTrue(toggle.disabled);
   });
 });

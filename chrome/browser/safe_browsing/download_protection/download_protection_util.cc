@@ -4,19 +4,15 @@
 
 #include "chrome/browser/safe_browsing/download_protection/download_protection_util.h"
 
-#include "base/feature_list.h"
 #include "base/functional/callback_helpers.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/rand_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "chrome/browser/download/download_item_warning_data.h"
-#include "chrome/browser/enterprise/connectors/referrer_cache_utils.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/safe_browsing/download_protection/download_item_metadata.h"
 #include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
 #include "components/download/public/common/download_danger_type.h"
-#include "components/enterprise/connectors/core/reporting_utils.h"
 #include "components/safe_browsing/buildflags.h"
 #include "components/safe_browsing/content/common/file_type_policies.h"
 #include "components/safe_browsing/core/browser/referrer_chain_provider.h"
@@ -33,11 +29,6 @@
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/safe_browsing/download_protection/deep_scanning_request.h"
-#endif
-
-#if BUILDFLAG(IS_ANDROID)
-#include "components/enterprise/connectors/core/features.h"
 #endif
 
 namespace safe_browsing {
@@ -254,15 +245,6 @@ void LogDeepScanEvent(download::DownloadItem* item, DeepScanEvent event) {
   }
 }
 
-void LogDeepScanEvent(const DeepScanningMetadata& metadata,
-                      DeepScanEvent event) {
-  base::UmaHistogramEnumeration("SBClientDownload.DeepScanEvent3", event);
-  if (metadata.IsTopLevelEncryptedArchive()) {
-    base::UmaHistogramEnumeration(
-        "SBClientDownload.PasswordProtectedDeepScanEvent3", event);
-  }
-}
-
 void LogLocalDecryptionEvent(DeepScanEvent event) {
   base::UmaHistogramEnumeration("SBClientDownload.LocalDecryptionEvent", event);
 }
@@ -378,36 +360,6 @@ std::unique_ptr<ReferrerChainData> IdentifyReferrerChain(
                                              recent_navigations_to_collect);
 }
 
-ReferrerChain GetOrIdentifyReferrerChainForEnterprise(
-    download::DownloadItem& item) {
-  ReferrerChain referrer_chain =
-      enterprise_connectors::GetCachedReferrerChain(item);
-  if (!referrer_chain.empty()) {
-    return referrer_chain;
-  }
-
-  std::unique_ptr<safe_browsing::ReferrerChainData> new_referrer_chain_data =
-      safe_browsing::IdentifyReferrerChain(
-          item, enterprise_connectors::kReferrerUserGestureLimit);
-
-  // If the chain can't be obtained from `safe_browsing::IdentifyReferrerChain`
-  // or if the returned data only contains the download URL, fall back to
-  // enterprise-specific logic to cache a value.
-  if (!new_referrer_chain_data ||
-      !new_referrer_chain_data->GetReferrerChain() ||
-      new_referrer_chain_data->GetReferrerChain()->size() <= 1) {
-    referrer_chain = enterprise_connectors::GetOrCreateReferrerChain(item);
-  } else {
-    referrer_chain = *new_referrer_chain_data->GetReferrerChain();
-  }
-
-  if (!referrer_chain.empty()) {
-    enterprise_connectors::SetReferrerChain(referrer_chain, item);
-  }
-
-  return referrer_chain;
-}
-
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
 bool ShouldSendDangerousDownloadReport(
     download::DownloadItem* item,
@@ -460,27 +412,6 @@ bool ShouldSendDangerousDownloadReport(
   }
 }
 #endif
-
-bool IsDeepScanningEnabled() {
-#if BUILDFLAG(IS_ANDROID)
-  // On Android, only Enterprise scan may be enabled. Consumer deep scan is not
-  // (yet) supported.
-  return base::FeatureList::IsEnabled(
-      enterprise_connectors::kEnableDownloadEnterpriseScanOnClank);
-#else
-  return true;
-#endif
-}
-
-std::optional<enterprise_connectors::AnalysisSettings>
-ShouldUploadBinaryForDeepScanning(download::DownloadItem* item) {
-  if (!IsDeepScanningEnabled()) {
-    return std::nullopt;
-  }
-  // Create temporary metadata wrapper on the stack.
-  DownloadItemMetadata metadata(item);
-  return DeepScanningRequest::ShouldUploadBinary(metadata);
-}
 
 bool IsFiletypeSupportedForFullDownloadProtection(
     const base::FilePath& file_name) {

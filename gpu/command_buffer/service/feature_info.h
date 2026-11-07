@@ -121,6 +121,7 @@ class GPU_GLES2_EXPORT FeatureInfo : public base::RefCounted<FeatureInfo> {
     bool ext_clip_control = false;
     bool ext_polygon_offset_clamp = false;
     bool angle_blob_cache = false;
+    bool angle_trim_memory = false;
   };
 
   FeatureInfo();
@@ -239,7 +240,6 @@ class GPU_GLES2_EXPORT FeatureInfo : public base::RefCounted<FeatureInfo> {
   void EnableANGLEInstancedArrayIfPossible(const gfx::ExtensionSet& extensions);
   void EnableWEBGLMultiDrawIfPossible(const gfx::ExtensionSet& extensions);
 
-  bool enable_webgl_draft_extensions_ = false;
   bool initialized_ = false;
 
   Validators validators_;

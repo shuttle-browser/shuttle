@@ -978,7 +978,7 @@ TextDirection DirectionOfEnclosingBlockOfAlgorithm(
   if (!enclosing_block_element)
     return TextDirection::kLtr;
   LayoutObject* layout_object = enclosing_block_element->GetLayoutObject();
-  return layout_object ? layout_object->StyleRef().Direction()
+  return layout_object ? layout_object->Style().Direction()
                        : TextDirection::kLtr;
 }
 
@@ -995,7 +995,7 @@ TextDirection PrimaryDirectionOf(const Node& node) {
   TextDirection primary_direction = TextDirection::kLtr;
   for (const LayoutObject* r = node.GetLayoutObject(); r; r = r->Parent()) {
     if (r->IsLayoutBlockFlow()) {
-      primary_direction = r->StyleRef().Direction();
+      primary_direction = r->Style().Direction();
       break;
     }
   }
@@ -1010,7 +1010,7 @@ const ComputedStyle* GetComputedStyleForElementOrLayoutObject(
   }
   // Text nodes and Document.
   if (const LayoutObject* layout_object = node.GetLayoutObject()) {
-    return &layout_object->StyleRef();
+    return &layout_object->Style();
   }
   return nullptr;
 }
@@ -1927,8 +1927,11 @@ static scoped_refptr<Image> ImageFromNode(const Node& node) {
     return nullptr;
 
   if (layout_object->IsCanvas()) {
-    return To<HTMLCanvasElement>(const_cast<Node&>(node))
-        .Snapshot(kFrontBuffer);
+    const auto& canvas = To<HTMLCanvasElement>(node);
+    if (!canvas.OriginClean()) {
+      return nullptr;
+    }
+    return canvas.Snapshot(kFrontBuffer);
   }
 
   if (!layout_object->IsImage())

@@ -27,8 +27,6 @@ void CheckGpuPreferencesEqual(GpuPreferences left, GpuPreferences right) {
   EXPECT_EQ(left.disable_gpu_watchdog, right.disable_gpu_watchdog);
   EXPECT_EQ(left.gpu_sandbox_start_early, right.gpu_sandbox_start_early);
   EXPECT_EQ(left.enable_low_latency_dxva, right.enable_low_latency_dxva);
-  EXPECT_EQ(left.enable_zero_copy_dxgi_video,
-            right.enable_zero_copy_dxgi_video);
   EXPECT_EQ(left.enable_nv12_dxgi_video, right.enable_nv12_dxgi_video);
   EXPECT_EQ(left.disable_software_rasterizer,
             right.disable_software_rasterizer);
@@ -46,7 +44,6 @@ void CheckGpuPreferencesEqual(GpuPreferences left, GpuPreferences right) {
             right.enable_gpu_service_logging_gpu);
   EXPECT_EQ(left.enable_gpu_driver_debug_logging,
             right.enable_gpu_driver_debug_logging);
-  EXPECT_EQ(left.disable_gpu_program_cache, right.disable_gpu_program_cache);
   EXPECT_EQ(left.enforce_gl_minimums, right.enforce_gl_minimums);
   EXPECT_EQ(left.force_gpu_mem_discardable_limit_bytes,
             right.force_gpu_mem_discardable_limit_bytes);
@@ -131,7 +128,6 @@ TEST(GpuPreferencesTest, EncodeDecode) {
     GPU_PREFERENCES_FIELD(disable_gpu_watchdog, true)
     GPU_PREFERENCES_FIELD(gpu_sandbox_start_early, true)
     GPU_PREFERENCES_FIELD(enable_low_latency_dxva, false)
-    GPU_PREFERENCES_FIELD(enable_zero_copy_dxgi_video, true)
     GPU_PREFERENCES_FIELD(enable_nv12_dxgi_video, true)
     GPU_PREFERENCES_FIELD(disable_software_rasterizer, true)
     GPU_PREFERENCES_FIELD(log_gpu_control_list_decisions, true)
@@ -143,7 +139,6 @@ TEST(GpuPreferencesTest, EncodeDecode) {
     GPU_PREFERENCES_FIELD(enable_gpu_debugging, true)
     GPU_PREFERENCES_FIELD(enable_gpu_service_logging_gpu, true)
     GPU_PREFERENCES_FIELD(enable_gpu_driver_debug_logging, true)
-    GPU_PREFERENCES_FIELD(disable_gpu_program_cache, true)
     GPU_PREFERENCES_FIELD(enforce_gl_minimums, true)
     GPU_PREFERENCES_FIELD(force_gpu_mem_discardable_limit_bytes, 8092)
     GPU_PREFERENCES_FIELD(gpu_program_cache_size,
@@ -216,7 +211,6 @@ TEST(GpuPreferencesTest, DISABLED_DecodePreferences) {
   PRINT_BOOL(disable_gpu_watchdog);
   PRINT_BOOL(gpu_sandbox_start_early);
   PRINT_BOOL(enable_low_latency_dxva);
-  PRINT_BOOL(enable_zero_copy_dxgi_video);
   PRINT_BOOL(enable_nv12_dxgi_video);
   PRINT_BOOL(disable_software_rasterizer);
   PRINT_BOOL(log_gpu_control_list_decisions);
@@ -228,7 +222,6 @@ TEST(GpuPreferencesTest, DISABLED_DecodePreferences) {
   PRINT_BOOL(enable_gpu_debugging);
   PRINT_BOOL(enable_gpu_service_logging_gpu);
   PRINT_BOOL(enable_gpu_driver_debug_logging);
-  PRINT_BOOL(disable_gpu_program_cache);
   PRINT_BOOL(enforce_gl_minimums);
   PRINT_INT(force_gpu_mem_discardable_limit_bytes);
   PRINT_INT(gpu_program_cache_size);

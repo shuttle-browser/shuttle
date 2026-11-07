@@ -47,6 +47,7 @@
 #include "third_party/blink/renderer/core/html/html_document.h"
 #include "third_party/blink/renderer/core/html/html_install_element.h"
 #include "third_party/blink/renderer/core/html_names.h"
+#include "third_party/blink/renderer/core/script_tools/model_context.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
 #include "third_party/blink/renderer/platform/wtf/size_assertions.h"
@@ -174,6 +175,14 @@ void CSSSelector::CreateRareData() {
   // destruction of the old member followed by placement new of |rare_data_|.
   // A straight-assignment will compile and may kinda work, but will be
   // undefined behavior.
+  //
+  // The new Member is placement-new'ed empty and then *assigned*, rather
+  // than constructed from the pointer: Member's initializing constructor
+  // deliberately skips the marking write barrier (a freshly constructed
+  // object is always white), but this CSSSelector may already live inside a
+  // HeapVector backing that incremental marking has traced (the parser
+  // mutates selectors in its arena in place), in which case only the
+  // assigning barrier gets the new RareData marked.
   if (HasInlineSelectorList()) {
     CSSSelectorList* selector_list = data_.selector_list_.Get();
     auto* rare_data = MakeGarbageCollected<RareData>(
@@ -186,13 +195,15 @@ void CSSSelector::CreateRareData() {
     // (conservative scanning) meanwhile.
     bits_.set<HasInlineSelectorListField>(false);
     data_.selector_list_.~Member<CSSSelectorList>();
-    new (&data_.rare_data_) Member<RareData>(rare_data);
+    new (&data_.rare_data_) Member<RareData>();
+    data_.rare_data_ = rare_data;
     bits_.set<HasRareDataField>(true);
     return;
   }
   auto* rare_data = MakeGarbageCollected<RareData>(data_.value_);
   data_.value_.~AtomicString();
-  new (&data_.rare_data_) Member<RareData>(rare_data);
+  new (&data_.rare_data_) Member<RareData>();
+  data_.rare_data_ = rare_data;
   bits_.set<HasRareDataField>(true);
 }
 
@@ -545,6 +556,7 @@ PseudoId CSSSelector::GetPseudoId(PseudoType type) {
     case kPseudoOpen:
     case kPseudoOptional:
     case kPseudoOutOfRange:
+    case kPseudoOverscrollClosed:
     case kPseudoOverscrollOpen:
     case kPseudoParent:
     case kPseudoPart:
@@ -751,6 +763,7 @@ constexpr static NameToPseudoStruct kPseudoTypeWithoutArgumentsMap[] = {
     {"optional", CSSSelector::kPseudoOptional},
     {"out-of-range", CSSSelector::kPseudoOutOfRange},
     {"overscroll-backdrop", CSSSelector::kPseudoOverscrollBackdrop},
+    {"overscroll-closed", CSSSelector::kPseudoOverscrollClosed},
     {"overscroll-open", CSSSelector::kPseudoOverscrollOpen},
     {"past", CSSSelector::kPseudoPastCue},
     {"paused", CSSSelector::kPseudoPaused},
@@ -932,7 +945,8 @@ CSSSelector::PseudoType CSSSelector::NameToPseudoType(
   if ((match->type == CSSSelector::kPseudoToolFormActive ||
        match->type == CSSSelector::kPseudoToolSubmitActive) &&
       document &&
-      !RuntimeEnabledFeatures::WebMCPEnabled(document->GetExecutionContext())) {
+      !ModelContext::IsDeclarativeWebMCPEnabled(
+          document->GetExecutionContext())) {
     return CSSSelector::kPseudoUnknown;
   }
 
@@ -948,8 +962,10 @@ CSSSelector::PseudoType CSSSelector::NameToPseudoType(
 
   if ((match->type == CSSSelector::kPseudoOverscrollAreaParent ||
        match->type == CSSSelector::kPseudoOverscrollBackdrop ||
+       match->type == CSSSelector::kPseudoOverscrollClosed ||
        match->type == CSSSelector::kPseudoOverscrollOpen) &&
-      !RuntimeEnabledFeatures::OverscrollGesturesEnabled()) {
+      !RuntimeEnabledFeatures::OverscrollAreasEnabled(
+          document ? document->GetExecutionContext() : nullptr)) {
     return CSSSelector::kPseudoUnknown;
   }
 
@@ -1199,6 +1215,7 @@ void CSSSelector::UpdatePseudoType(AtomicString value,
     case kPseudoOpen:
     case kPseudoOptional:
     case kPseudoOutOfRange:
+    case kPseudoOverscrollClosed:
     case kPseudoOverscrollOpen:
     case kPseudoParent:
     case kPseudoPastCue:
@@ -1692,9 +1709,11 @@ void CSSSelector::SetSelectorList(CSSSelectorList* selector_list) {
   if (!HasRareData() && Match() == kPseudoClass &&
       CanStoreSelectorListInline(GetPseudoType()) &&
       data_.value_ == NameForInlineSelectorListPseudo(GetPseudoType())) {
-    // Same care as in CreateRareData(): switch the active union member.
+    // Same care as in CreateRareData(): switch the active union member, and
+    // assign rather than construct so the marking write barrier runs.
     data_.value_.~AtomicString();
-    new (&data_.selector_list_) Member<CSSSelectorList>(selector_list);
+    new (&data_.selector_list_) Member<CSSSelectorList>();
+    data_.selector_list_ = selector_list;
     bits_.set<HasInlineSelectorListField>(true);
     return;
   }
@@ -1872,6 +1891,9 @@ bool CSSSelector::IsTreeAbidingPseudoElement() const {
           GetPseudoType() == kPseudoViewTransitionNew ||
           GetPseudoType() == kPseudoOverscrollAreaParent ||
           GetPseudoType() == kPseudoSkeleton ||
+          GetPseudoType() == kPseudoScrollMarkerGroup ||
+          GetPseudoType() == kPseudoScrollMarker ||
+          GetPseudoType() == kPseudoScrollButton ||
           IsElementBackedPseudoElement(GetPseudoType()));
 }
 
@@ -1992,6 +2014,7 @@ bool CSSSelector::IsAllowedAfterPart() const {
     case kPseudoModal:
     case kPseudoMuted:
     case kPseudoOptional:
+    case kPseudoOverscrollClosed:
     case kPseudoOverscrollOpen:
     case kPseudoPermissionGranted:
     case kPseudoPlaceholderShown:

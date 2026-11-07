@@ -8,8 +8,6 @@
 #include <map>
 
 #include "base/containers/linked_list.h"
-#include "chrome/browser/ui/thumbnails/thumbnail_capture_driver.h"
-#include "chrome/browser/ui/thumbnails/thumbnail_readiness_tracker.h"
 #include "chrome/browser/ui/thumbnails/thumbnail_scheduler.h"
 
 // A basic scheduler that given two limits, |max_total_captures| and
@@ -59,14 +57,16 @@ class ThumbnailSchedulerImpl : public ThumbnailScheduler {
   // at most one of the lists below, or none.
   std::map<TabCapturer*, TabNode> tabs_;
 
+  using NodeList = base::SafeLinkedList<TabNode>;
+
   // Queue of tabs that want to capture but haven't been scheduled yet.
   // One for each priority.
-  base::LinkedList<TabNode> hi_prio_waiting_;
-  base::LinkedList<TabNode> lo_prio_waiting_;
+  NodeList hi_prio_waiting_;
+  NodeList lo_prio_waiting_;
 
   // List of currently capturing tabs for each priority.
-  base::LinkedList<TabNode> hi_prio_capturing_;
-  base::LinkedList<TabNode> lo_prio_capturing_;
+  NodeList hi_prio_capturing_;
+  NodeList lo_prio_capturing_;
 
   // Number of tabs in each capture list (since base::LinkedList doesn't
   // track its size).

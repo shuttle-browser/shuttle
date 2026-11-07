@@ -122,6 +122,12 @@ class StubWebTransport : public network::mojom::blink::WebTransport {
     NOTREACHED();
   }
 
+  void ExportKeyingMaterial(
+      network::mojom::blink::WebTransportKeyingMaterialParamsPtr params,
+      ExportKeyingMaterialCallback callback) override {
+    NOTREACHED();
+  }
+
   void CreateStream(
       mojo::ScopedDataPipeConsumerHandle output_consumer,
       mojo::ScopedDataPipeProducerHandle input_producer,
@@ -161,9 +167,12 @@ class StubWebTransport : public network::mojom::blink::WebTransport {
     was_send_fin_called_ = true;
   }
 
-  void AbortStream(uint32_t stream_id, uint8_t code) override {
+  void AbortStream(uint32_t stream_id,
+                   uint8_t code,
+                   AbortStreamCallback callback) override {
     EXPECT_EQ(stream_id, kDefaultStreamId);
     was_abort_stream_called_ = true;
+    std::move(callback).Run(nullptr);
   }
 
   void StopSending(uint32_t stream_id, uint8_t code) override {
@@ -185,9 +194,11 @@ class StubWebTransport : public network::mojom::blink::WebTransport {
     std::move(callback).Run(nullptr);
   }
 
-  void GetSendStreamStats(uint32_t stream_id,
+  void GetSendStreamStats(const Vector<uint32_t>& stream_ids,
                           GetSendStreamStatsCallback callback) override {
-    std::move(callback).Run(nullptr);
+    Vector<network::mojom::blink::WebTransportSendStreamStatsPtr> stats;
+    stats.resize(stream_ids.size());
+    std::move(callback).Run(std::move(stats));
   }
 
   void Close(network::mojom::blink::WebTransportCloseInfoPtr) override {}
@@ -412,7 +423,8 @@ TEST(BidirectionalStreamTest, OutgoingStreamCleanClose) {
       script_state, ASSERT_NO_EXCEPTION);
 
   scoped_web_transport.GetWebTransport()->OnOutgoingStreamClosed(
-      kDefaultStreamId);
+      kDefaultStreamId,
+      network::mojom::blink::WebTransportSendStreamStats::New());
 
   ScriptPromiseTester close_tester(script_state, close_promise);
   close_tester.WaitUntilSettled();
@@ -512,7 +524,8 @@ TEST(BidirectionalStreamTest, ReadAfterClosingOutgoing) {
       script_state, ASSERT_NO_EXCEPTION);
 
   scoped_web_transport.GetWebTransport()->OnOutgoingStreamClosed(
-      kDefaultStreamId);
+      kDefaultStreamId,
+      network::mojom::blink::WebTransportSendStreamStats::New());
 
   ScriptPromiseTester close_tester(script_state, close_promise);
   close_tester.WaitUntilSettled();

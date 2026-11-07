@@ -138,8 +138,8 @@ void ReportViolation(
     const String& sample = String(),
     const String& sample_prefix = String(),
     std::optional<base::UnguessableToken> issue_id = std::nullopt,
-    std::optional<String> eval_hash = std::nullopt,
-    std::optional<String> url_hash = std::nullopt) {
+    const String& eval_hash = String(),
+    const String& url_hash = String()) {
   String message =
       StrCat({console_message,
               CSPDirectiveListIsReportOnly(csp)
@@ -204,7 +204,7 @@ void ReportEvalViolation(
     const KURL& blocked_url,
     const ContentSecurityPolicy::ExceptionStatus exception_status,
     const String& content,
-    std::optional<String> eval_hash) {
+    const String& eval_hash = String()) {
   String report_message =
       StrCat({message, CSPDirectiveListIsReportOnly(csp)
                            ? " The policy is report-only, so the violation has "
@@ -412,13 +412,10 @@ bool CheckEvalAndReportViolation(
 
   String raw_directive =
       GetRawDirectiveForMessage(csp.raw_directives, directive.type);
-  std::optional<String> hash;
+  String hash;
   if (csp_extended_script_src_hashes_enabled) {
     hash = GetEvalSha256String(content);
-    suffix =
-        StrCat({suffix, " Hash of blocked script: \"", hash.value(), "\"."});
-  } else {
-    hash = std::nullopt;
+    suffix = StrCat({suffix, " Hash of blocked script: \"", hash, "\"."});
   }
 
   // The console message will only be printed inside ReportEvalViolation if the
@@ -636,7 +633,6 @@ void ReportViolationForCheckSource(
     case CSPDirectiveName::ReportURI:
     case CSPDirectiveName::RequireTrustedTypesFor:
     case CSPDirectiveName::Sandbox:
-    case CSPDirectiveName::TreatAsPublicAddress:
     case CSPDirectiveName::TrustedTypes:
     case CSPDirectiveName::UpgradeInsecureRequests:
     case CSPDirectiveName::Unknown:
@@ -669,7 +665,7 @@ void ReportViolationForCheckSource(
   String raw_directive =
       GetRawDirectiveForMessage(csp.raw_directives, directive.type);
 
-  std::optional<String> url_hash;
+  String url_hash;
   if (policy && policy->ScriptSrcExtendedHashesEnabled() &&
       (effective_type == CSPDirectiveName::ScriptSrc ||
        effective_type == CSPDirectiveName::ScriptSrcElem ||
@@ -687,7 +683,7 @@ void ReportViolationForCheckSource(
               "' violates the following Content Security Policy directive: \"",
               raw_directive, "\".", suffix}),
       url_before_redirects, ContentSecurityPolicyViolationType::kURLViolation,
-      String(), String(), std::nullopt, std::nullopt, url_hash);
+      String(), String(), std::nullopt, String(), url_hash);
 }
 
 CSPCheckResult CheckSource(
@@ -835,7 +831,14 @@ bool CSPDirectiveListAllowEval(
     ContentSecurityPolicy::ExceptionStatus exception_status,
     const String& content,
     const Vector<network::IntegrityMetadata>& script_hash_values,
-    bool csp_extended_script_src_hashes_enabled) {
+    bool csp_extended_script_src_hashes_enabled,
+    bool trusted_types_enforced) {
+  // https://w3c.github.io/webappsec-csp/#can-compile-strings: If Trusted Types
+  // are enforced and this policy's source list contains 'trusted-types-eval',
+  // this policy does not block (nor report) the evaluation.
+  if (trusted_types_enforced && CheckTrustedTypesEval(csp, policy)) {
+    return true;
+  }
   CSPOperativeDirective directive =
       OperativeDirective(csp, CSPDirectiveName::ScriptSrc);
   if (reporting_disposition == ReportingDisposition::kReport) {
@@ -904,16 +907,6 @@ bool CSPDirectiveListAllowWasmCodeGeneration(
         exception_status, content);
   }
   return CSPDirectiveListIsReportOnly(csp) || CheckWasmEval(csp, policy);
-}
-
-CORE_EXPORT
-bool CSPDirectiveListAllowTrustedTypesEval(
-    const network::mojom::blink::ContentSecurityPolicy& csp,
-    ContentSecurityPolicy* policy,
-    ReportingDisposition reporting_disposition,
-    ContentSecurityPolicy::ExceptionStatus exception_status) {
-  return !CSPDirectiveListIsReportOnly(csp) &&
-         CheckTrustedTypesEval(csp, policy);
 }
 
 bool CSPDirectiveListShouldDisableEval(

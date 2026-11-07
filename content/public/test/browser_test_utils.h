@@ -52,7 +52,6 @@
 #include "content/public/test/test_utils.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
-#include "mojo/public/cpp/bindings/self_owned_associated_receiver.h"
 #include "mojo/public/cpp/test_support/test_utils.h"
 #include "net/base/load_flags.h"
 #include "net/cookies/cookie_options.h"
@@ -67,8 +66,6 @@
 #include "third_party/blink/public/common/input/web_input_event.h"
 #include "third_party/blink/public/common/input/web_mouse_event.h"
 #include "third_party/blink/public/common/input/web_mouse_wheel_event.h"
-#include "third_party/blink/public/mojom/blob/blob_url_store.mojom-test-utils.h"
-#include "third_party/blink/public/mojom/blob/blob_url_store.mojom.h"
 #include "third_party/blink/public/mojom/frame/frame.mojom-test-utils.h"
 #include "third_party/blink/public/mojom/frame/user_activation_update_types.mojom.h"
 #include "third_party/blink/public/mojom/keyboard_lock/keyboard_lock.mojom-shared.h"
@@ -133,6 +130,7 @@ typedef int PROPERTYID;
 
 namespace blink {
 class StorageKey;
+class WebTouchEvent;
 struct TransferableMessage;
 
 namespace mojom {
@@ -140,10 +138,6 @@ class FrameWidget;
 }  // namespace mojom
 
 }  // namespace blink
-
-namespace storage {
-class BlobUrlRegistry;
-}
 
 namespace content {
 
@@ -488,6 +482,16 @@ void SimulateGestureEvent(RenderWidgetHost* render_widget_host,
 void SimulateGestureEvent(WebContents* web_contents,
                           const blink::WebGestureEvent& gesture_event,
                           const ui::LatencyInfo& latency);
+
+// Routes a gesture event asynchronously through the WebContents' input event
+// router. Events targeting the viewport bypass hit testing.
+void SimulateRoutedGestureEvent(WebContents* web_contents,
+                                const blink::WebGestureEvent& gesture_event);
+
+// Routes a touch event asynchronously through the WebContents' input event
+// router.
+void SimulateRoutedTouchEvent(WebContents* web_contents,
+                              const blink::WebTouchEvent& touch_event);
 
 // Taps the screen at |point|, using gesture Tap or TapDown.
 //
@@ -913,6 +917,10 @@ class EvalJsResult {
   }
   [[nodiscard]] bool is_bool() const { return is_ok() && value()->is_bool(); }
   [[nodiscard]] bool is_int() const { return is_ok() && value()->is_int(); }
+  [[nodiscard]] bool is_double() const {
+    return is_ok() && value()->is_double();
+  }
+  [[nodiscard]] bool is_none() const { return is_ok() && value()->is_none(); }
   [[nodiscard]] bool is_list() const { return is_ok() && value()->is_list(); }
   [[nodiscard]] bool is_dict() const { return is_ok() && value()->is_dict(); }
 
@@ -1285,6 +1293,9 @@ std::vector<RenderWidgetHostView*> GetInputEventRouterRenderWidgetHostViews(
 
 // Returns the focused RenderWidgetHost.
 RenderWidgetHost* GetFocusedRenderWidgetHost(WebContents* web_contents);
+
+// Returns whether or not the RenderWidgetHost thinks it is focused.
+bool IsRenderWidgetHostFocused(const RenderWidgetHost*);
 
 // Returns the focused WebContents.
 WebContents* GetFocusedWebContents(WebContents* web_contents);
@@ -2343,35 +2354,6 @@ size_t GetLockedCompositorFrameCount();
 // Purges all unlocked frames in the FrameEvictionManager.
 void PurgeUnlockedCompositorFrames();
 
-// Helper class to interpose on Blob URL registrations, replacing the URL
-// contained in incoming registration requests with the specified URL.
-class BlobURLStoreInterceptor
-    : public blink::mojom::BlobURLStoreInterceptorForTesting {
- public:
-  static void InterceptDeprecated(
-      GURL target_url,
-      mojo::SelfOwnedAssociatedReceiverRef<blink::mojom::BlobURLStore>
-          receiver);
-
-  static void Intercept(GURL target_url,
-                        storage::BlobUrlRegistry* registry,
-                        mojo::ReceiverId receiver_id);
-
-  ~BlobURLStoreInterceptor() override;
-
-  blink::mojom::BlobURLStore* GetForwardingInterface() override;
-
-  void Register(mojo::PendingRemote<blink::mojom::Blob> blob,
-                const GURL& url,
-                RegisterCallback callback) override;
-
- private:
-  explicit BlobURLStoreInterceptor(GURL target_url);
-
-  std::unique_ptr<blink::mojom::BlobURLStore> url_store_;
-  GURL target_url_;
-};
-
 // Load the given |url| with |network_context| and return the |net::Error| code.
 //
 // This overload simulates loading through a URLLoaderFactory created for a
@@ -2695,6 +2677,14 @@ RegisterWebContentsCreationCallback(
 // and/or main. This can be useful to enable when the process hosting the window
 // is a standalone executable without an Info.plist.
 bool EnableNativeWindowActivation();
+
+// Returns true if the most recent drag enter on `web_contents` was rejected
+// (e.g. by `WebContentsDelegate::CanDragEnter` or an invalid target view).
+bool IsDragCanceledForTesting(WebContents* web_contents);
+
+// Resets internal `WebDragDest` state on `web_contents` after a simulated
+// rejected drag exits.
+void CleanupDragStateForTesting(WebContents* web_contents);
 #endif  // BUILDFLAG(IS_MAC)
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
@@ -2723,11 +2713,11 @@ std::optional<int> GetDOMNodeId(content::RenderFrameHost& rfh,
 // Returns the DOMNodeId of the node matched by the given CSS query selector
 // inside the iframe (must be a direct child of main frame, i.e. no nested
 // iframes) identified by subframe_query_selector or std::nullopt if no node
-// matches. Note: This method makes multiple renderer IPC calls (via the
-// devtools protocol) and waits for a result (an IPC back from the renderer)
-// each time.
-std::optional<int> GetDOMNodeIdFromSubframe(
-    RenderFrameHost& rfh,
+// matches. OOPIFs should use GetDOMNodeId instead. Note: This method makes
+// multiple renderer IPC calls (via the devtools protocol) and waits for a
+// result (an IPC back from the renderer) each time.
+std::optional<int> GetDOMNodeIdFromLocalSubframe(
+    RenderFrameHost& parent_rfh,
     std::string_view subframe_query_selector,
     std::string_view query_selector);
 
@@ -2844,23 +2834,43 @@ class ShowPopupWidgetWaiter
 // discards the message. Individual test should override `RequestClosePopup()`
 // to customize the behavior.
 class RequestCloseWidgetInterceptor
-    : public blink::mojom::PopupWidgetHostInterceptorForTesting {
+    : public blink::mojom::PopupWidgetHostInterceptorForTesting,
+      public RenderWidgetHostObserver {
  public:
   explicit RequestCloseWidgetInterceptor(RenderWidgetHost* render_widget_host);
   ~RequestCloseWidgetInterceptor() override;
 
   // `blink::mojom::PopupWidgetHostInterceptorForTesting`:
+  // Must not be called once the popup widget has been destroyed.
   blink::mojom::PopupWidgetHost* GetForwardingInterface() override;
   void RequestClosePopup() override;
 
+  // `RenderWidgetHostObserver`:
+  // The browser can destroy the popup widget without the renderer ever sending
+  // `RequestClosePopup()`, e.g. when the owning RenderWidgetHostView loses
+  // focus to another views::Widget. Removes the interception then, while the
+  // receiver still exists, so this object may safely outlive the widget. Tests
+  // waiting for `RequestClosePopup()` should also watch for the widget
+  // disappearing.
+  void RenderWidgetHostDestroyed(RenderWidgetHost* widget_host) final;
+
  private:
-  mojo::test::ScopedSwapImplForTesting<blink::mojom::PopupWidgetHost>
+  // Engaged while the popup widget is alive.
+  std::optional<
+      mojo::test::ScopedSwapImplForTesting<blink::mojom::PopupWidgetHost>>
       swapped_impl_;
+  base::ScopedObservation<RenderWidgetHost, RenderWidgetHostObserver>
+      widget_observation_{this};
 };
 
 // Crash the process associated with `adapter`. Waits for the crash to be seen
 // by the browser process. Returns `false` if the test times out before that.
 [[nodiscard]] bool CrashFrameProcess(const ToRenderFrameHost& adapter);
+
+// Simulates the browser-side drag-start path for `source_rfh`, assigning
+// `drop_data->drag_id` and notifying `WebContentsObserver::DidStartDrag`.
+void SimulateDragStartForTesting(RenderFrameHost* source_rfh,
+                                 DropData* drop_data);
 
 }  // namespace content
 

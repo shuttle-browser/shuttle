@@ -92,8 +92,6 @@ export class SettingsPersonalizationOptionsElement extends
 
       showSearchAggregatorSuggest_: {type: Boolean},
 
-      searchAggregatorSuggestFakePref_: {type: Object},
-
       shouldUseMetricsConsentRestructure_: {type: Boolean},
 
       spellCheckDictionariesPref_: {type: Object},
@@ -107,14 +105,6 @@ export class SettingsPersonalizationOptionsElement extends
 
   protected accessor showSearchAggregatorSuggest_: boolean =
       loadTimeData.getBoolean('showSearchAggregatorSuggest');
-  protected accessor searchAggregatorSuggestFakePref_:
-      chrome.settingsPrivate.PrefObject<boolean> = {
-    key: 'enterprise_search_aggregator_settings.fake_pref',
-    type: chrome.settingsPrivate.PrefType.BOOLEAN,
-    value: true,
-    enforcement: chrome.settingsPrivate.Enforcement.ENFORCED,
-    controlledBy: chrome.settingsPrivate.ControlledBy.USER_POLICY,
-  };
 
   protected accessor shouldUseMetricsConsentRestructure_: boolean =
       loadTimeData.getBoolean('shouldUseMetricsConsentRestructure');
@@ -141,24 +131,6 @@ export class SettingsPersonalizationOptionsElement extends
     this.browserProxy_.getMetricsReporting().then(setMetricsReporting);
     // </if>
   }
-
-  // <if expr="is_chromeos">
-  /**
-   * @return the autocomplete search suggestions CrToggleElement.
-   */
-  getSearchSuggestToggle(): SettingsToggleButtonElement|null {
-    return this.shadowRoot.querySelector<SettingsToggleButtonElement>(
-        '#searchSuggestToggle');
-  }
-
-  /**
-   * @return the anonymized URL collection CrToggleElement.
-   */
-  getUrlCollectionToggle(): SettingsToggleButtonElement|null {
-    return this.shadowRoot.querySelector<SettingsToggleButtonElement>(
-        '#urlCollectionToggle');
-  }
-  // </if>
 
   // <if expr="_google_chrome and not is_chromeos">
   protected onMetricsReportingChange_(e: Event) {

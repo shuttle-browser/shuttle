@@ -258,8 +258,6 @@ TextIteratorAlgorithm<Strategy>::~TextIteratorAlgorithm() {
   const Document& document = OwnerDocument();
   if (behavior_.ForSelectionToString())
     document.CountUse(WebFeature::kSelectionToStringWithShadowTree);
-  if (behavior_.ForWindowFind())
-    document.CountUse(WebFeature::kWindowFindWithShadowTree);
 }
 
 template <typename Strategy>
@@ -598,7 +596,7 @@ void TextIteratorAlgorithm<Strategy>::HandleReplacedElement() {
     return;
 
   LayoutObject* layout_object = node_->GetLayoutObject();
-  if (layout_object->StyleRef().Visibility() != EVisibility::kVisible &&
+  if (layout_object->Style().Visibility() != EVisibility::kVisible &&
       !IgnoresStyleVisibility()) {
     return;
   }
@@ -796,8 +794,7 @@ bool TextIteratorAlgorithm<Strategy>::ShouldRepresentNodeOffsetZero() {
   // unrendered content, we would create VisiblePositions on every call to this
   // function without this check.
   if (!node_->GetLayoutObject() ||
-      node_->GetLayoutObject()->StyleRef().Visibility() !=
-          EVisibility::kVisible ||
+      node_->GetLayoutObject()->Style().Visibility() != EVisibility::kVisible ||
       (node_->GetLayoutObject()->IsLayoutBlockFlow() &&
        !To<LayoutBlock>(node_->GetLayoutObject())->StitchedSize().height &&
        !IsA<HTMLBodyElement>(*node_))) {

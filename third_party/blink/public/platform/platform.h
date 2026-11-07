@@ -631,6 +631,11 @@ class BLINK_PLATFORM_EXPORT Platform {
       base::OnceCallback<void(scoped_refptr<gpu::GpuChannelHost>)>;
   virtual void EstablishGpuChannel(EstablishGpuChannelCallback callback);
 
+  // Sends the deferred messages of the GPU channel right away, if a channel is
+  // established and not lost. Unlike the methods above, this never establishes
+  // a channel.
+  virtual void FlushGpuChannelIfEstablished();
+
   // Media stream ----------------------------------------------------
   virtual scoped_refptr<media::AudioCapturerSource> NewAudioCapturerSource(
       blink::WebLocalFrame* web_frame,
@@ -867,6 +872,14 @@ class BLINK_PLATFORM_EXPORT Platform {
   // subframe. To allow this viewer to function correctly, Chrome uses this
   // method to grant it access to the file picker.
   virtual bool IsFilePickerAllowedForCrossOriginSubframe(
+      const WebSecurityOrigin& origin) {
+    return false;
+  }
+
+  // Returns true if windows with the given origin should allocate isolated
+  // WindowAgents per BrowsingInstance rather than sharing a process-global
+  // agent.
+  virtual bool ShouldUsePerBrowsingInstanceWindowAgent(
       const WebSecurityOrigin& origin) {
     return false;
   }

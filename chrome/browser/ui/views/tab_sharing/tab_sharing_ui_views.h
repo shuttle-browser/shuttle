@@ -157,6 +157,12 @@ class TabSharingUIViews : public TabSharingUI,
 
   void CreateInfobarsForAllTabs();
   void CreateInfobarForWebContents(content::WebContents* contents);
+  infobars::InfoBar* CreateMigratedInfobarForWebContents(
+      content::WebContents* contents,
+      infobars::InfoBar* old_infobar,
+      TabSharingInfoBarDelegate::TabRole role,
+      TabSharingInfoBarDelegate::ButtonState
+          share_this_tab_instead_button_state);
   void RefreshAllTabSharingInfoBars(bool recreate_shared_tab);
   void RemoveInfobarsForAllTabs();
 
@@ -166,11 +172,6 @@ class TabSharingUIViews : public TabSharingUI,
 
   void UpdateTabCaptureData(content::WebContents* contents,
                             TabCaptureUpdate update);
-
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  void RegisterScreenshotProtectionObserver(content::WebContents* contents);
-  void OnScreenshotAllowedUpdated(content::WebContents* contents, bool allowed);
-#endif
 
   // Whether the share-this-tab-instead button may be shown for |web_contents|.
   bool IsShareInsteadButtonPossible(content::WebContents* web_contents) const;
@@ -236,11 +237,6 @@ class TabSharingUIViews : public TabSharingUI,
       browser_collection_observer_{this};
 
   ScreensharingControlsHistogramLogger uma_logger_;
-
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  std::map<content::WebContents*, base::CallbackListSubscription>
-      screenshot_allowed_subscriptions_;
-#endif
 
   base::WeakPtrFactory<TabSharingUIViews> weak_factory_{this};
 };

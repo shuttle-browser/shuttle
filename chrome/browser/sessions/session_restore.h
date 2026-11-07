@@ -44,6 +44,10 @@ class SessionRestore {
     int app_windows = 0;
   };
 
+  // Keys of the per-profile `kPreSmartRestartSessionState` dictionary pref,
+  // which holds the tab and window counts saved before a restart. Profile
+  // counts are saved separately in local state; see
+  // ProfileDiffAfterRestartRecorder.
   static constexpr char kNormalTabsKey[] = "normal_tabs";
   static constexpr char kNormalWindowsKey[] = "normal_windows";
   static constexpr char kAppTabsKey[] = "app_tabs";
@@ -120,6 +124,11 @@ class SessionRestore {
 
   // Returns true if we're in the process of restoring |profile|.
   static bool IsRestoring(const Profile* profile);
+
+  // Returns true if any profile's own last session is currently being
+  // restored. Restores of sessions from other devices (foreign sessions) are
+  // ignored.
+  static bool IsAnySessionCurrentlyRestoring();
 
   // Returns true if any session has been restored during the current process
   // lifetime.

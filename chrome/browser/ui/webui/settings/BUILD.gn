@@ -35,6 +35,7 @@ source_set("settings") {
     "settings_secure_dns_handler.h",
     "settings_security_key_handler.h",
     "settings_startup_pages_handler.h",
+    "settings_telemetry_handler.h",
     "settings_ui.h",
     "settings_utils.h",
     "shared_settings_localized_strings_provider.h",
@@ -44,13 +45,16 @@ source_set("settings") {
 
   public_deps = [
     "//base",
+    "//chrome/browser:shell_integration",
     "//chrome/browser/engagement",
     "//chrome/browser/net",
     "//chrome/browser/obsolete_system",
     "//chrome/browser/performance_manager/public/user_tuning",
     "//chrome/browser/permissions/system",
     "//chrome/browser/profile_resetter",
+    "//chrome/browser/profile_resetter:profile_reset_report_proto",
     "//chrome/browser/profiles:profile",
+    "//chrome/browser/speech",
     "//chrome/browser/themes",
     "//chrome/browser/ui/search_engines",
     "//chrome/browser/ui/webui/help",
@@ -69,6 +73,7 @@ source_set("settings") {
     "//components/signin/public/identity_manager",
     "//components/soda",
     "//components/soda:constants",
+    "//components/user_manager",
     "//content/public/browser",
     "//extensions/browser",
     "//extensions/common",
@@ -103,8 +108,6 @@ source_set("settings") {
 }
 
 source_set("impl") {
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
-
   sources = [
     "about_handler.cc",
     "accessibility_main_handler.cc",
@@ -132,6 +135,7 @@ source_set("impl") {
     "settings_secure_dns_handler.cc",
     "settings_security_key_handler.cc",
     "settings_startup_pages_handler.cc",
+    "settings_telemetry_handler.cc",
     "settings_ui.cc",
     "settings_utils.cc",
     "shared_settings_localized_strings_provider.cc",
@@ -144,6 +148,7 @@ source_set("impl") {
     "//chrome/app:command_ids",
     "//chrome/app:generated_resources",
     "//chrome/app/vector_icons",
+    "//chrome/browser:browser_features",
     "//chrome/browser:browser_process",
     "//chrome/browser:browser_process_platform_part",
     "//chrome/browser:chrome_content_browser_client",
@@ -168,6 +173,7 @@ source_set("impl") {
     "//chrome/browser/media",
     "//chrome/browser/media/prefs",
     "//chrome/browser/metrics",
+    "//chrome/browser/metrics/critical_user_journeys",
     "//chrome/browser/net",
     "//chrome/browser/obsolete_system",
     "//chrome/browser/permissions",
@@ -177,6 +183,7 @@ source_set("impl") {
     "//chrome/browser/privacy_sandbox:headers",
     "//chrome/browser/profiles:misc",
     "//chrome/browser/profiles:profile",
+    "//chrome/browser/regional_capabilities",
     "//chrome/browser/renderer_context_menu:bubble_models",
     "//chrome/browser/resources/settings:resources_grit",
     "//chrome/browser/resources/settings_shared:resources_grit",
@@ -195,6 +202,7 @@ source_set("impl") {
     "//chrome/browser/ui:singleton_tabs",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui:url_identity",
+    "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/interaction",
     "//chrome/browser/ui/omnibox",
     "//chrome/browser/ui/page_info",
@@ -217,6 +225,7 @@ source_set("impl") {
     "//chrome/browser/ui/webui/management",
     "//chrome/browser/ui/webui/sanitized_image:sanitized_image_source",
     "//chrome/browser/ui/webui/version",
+    "//chrome/browser/universal_optout",
     "//chrome/browser/usb",
     "//chrome/browser/webauthn",
     "//chrome/browser/webauthn:local_credential_management",
@@ -239,10 +248,12 @@ source_set("impl") {
     "//components/safe_browsing/core/common:safe_browsing_prefs",
     "//components/safe_browsing/core/common/hashprefix_realtime:hash_realtime_utils",
     "//components/search_engines",
+    "//components/search_engines/search_engine_choice:switches",
     "//components/signin/core/browser",
     "//components/signin/public/base",
     "//components/site_engagement/content",
     "//components/strings:components_strings",
+    "//components/tabs:public",
     "//components/universal_optout",
     "//components/user_manager:common",
     "//extensions/browser",
@@ -274,7 +285,6 @@ source_set("impl") {
 
   if (is_win) {
     sources += [ "settings_utils_win.cc" ]
-    deps += [ "//chrome/browser/win" ]
   }
 
   if (is_linux) {

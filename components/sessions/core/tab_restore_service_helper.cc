@@ -288,8 +288,7 @@ std::optional<SessionID> TabRestoreServiceHelper::CreateHistoricalTab(
   // browser to ensure the tab will reopen in the correct app window.
   if (context && context->GetTabCount() == 1 &&
       !context->GetAppName().empty()) {
-    BrowserClosing(context);
-    return std::nullopt;
+    return BrowserClosing(context);
   }
 
   auto local_tab = std::make_unique<Tab>();
@@ -298,14 +297,17 @@ std::optional<SessionID> TabRestoreServiceHelper::CreateHistoricalTab(
     return std::nullopt;
   }
 
-  SessionID id = local_tab->id;
-  AddEntry(std::move(local_tab), true, true);
+  const SessionID id = local_tab->id;
+  if (!AddEntry(std::move(local_tab), /*notify=*/true, /*to_front=*/true)) {
+    return std::nullopt;
+  }
   return id;
 }
 
-void TabRestoreServiceHelper::BrowserClosing(LiveTabContext* context) {
+std::optional<SessionID> TabRestoreServiceHelper::BrowserClosing(
+    LiveTabContext* context) {
   if (restoring_) {
-    return;
+    return std::nullopt;
   }
 
   closing_contexts_.insert(context);
@@ -330,6 +332,13 @@ void TabRestoreServiceHelper::BrowserClosing(LiveTabContext* context) {
     }
     tab->browser_id = context->GetSessionID().id();
 
+    if (tab->is_group_ephemeral) {
+      tab->group = std::nullopt;
+      tab->saved_group_id = std::nullopt;
+      tab->group_visual_data = std::nullopt;
+      tab->is_group_ephemeral = false;
+    }
+
     if (tab->group.has_value() &&
         !window->tab_groups.contains(tab->group.value())) {
       // Add new groups to the mapping if we haven't already.
@@ -348,12 +357,16 @@ void TabRestoreServiceHelper::BrowserClosing(LiveTabContext* context) {
 
   if (window->tabs.empty()) {
     // This can happen in tests.
-    return;
+    return std::nullopt;
   }
 
   window->selected_tab_index = std::min(
       static_cast<int>(window->tabs.size() - 1), window->selected_tab_index);
-  AddEntry(std::move(window), true, true);
+  const SessionID id = window->id;
+  if (!AddEntry(std::move(window), /*notify=*/true, /*to_front=*/true)) {
+    return std::nullopt;
+  }
+  return id;
 }
 
 void TabRestoreServiceHelper::BrowserClosed(LiveTabContext* context) {
@@ -387,19 +400,24 @@ TabRestoreServiceHelper::CreateHistoricalGroupImpl(
   return group;
 }
 
-void TabRestoreServiceHelper::CreateHistoricalGroup(
+std::optional<SessionID> TabRestoreServiceHelper::CreateHistoricalGroup(
     LiveTabContext* context,
     const tab_groups::TabGroupId& id) {
-  if (restoring_) {
-    return;
+  if (restoring_ || (context && context->IsEphemeralTabGroup(id))) {
+    return std::nullopt;
   }
 
   closing_groups_.insert(id);
 
   auto group = CreateHistoricalGroupImpl(context, id);
-  if (!group->tabs.empty()) {
-    AddEntry(std::move(group), true, true);
+  if (group->tabs.empty()) {
+    return std::nullopt;
   }
+  const SessionID group_id = group->id;
+  if (!AddEntry(std::move(group), /*notify=*/true, /*to_front=*/true)) {
+    return std::nullopt;
+  }
+  return group_id;
 }
 
 void TabRestoreServiceHelper::CreateHistoricalSplit(
@@ -661,7 +679,7 @@ std::vector<LiveTab*> TabRestoreServiceHelper::RestoreMostRecentEntry(
     return std::vector<LiveTab*>();
   }
   return RestoreEntryById(context, entries_.front()->id,
-                          WindowOpenDisposition::UNKNOWN)
+                          WindowOpenDisposition::kUnknown)
       .value();
 }
 
@@ -1070,7 +1088,7 @@ std::optional<std::vector<LiveTab*>> TabRestoreServiceHelper::RestoreEntryById(
 
       context->ShowBrowserWindow();
 
-      if (disposition == WindowOpenDisposition::CURRENT_TAB &&
+      if (disposition == WindowOpenDisposition::kCurrentTab &&
           current_context && current_context->GetActiveLiveTab()) {
         current_context->CloseTab();
       }
@@ -1254,11 +1272,11 @@ void TabRestoreServiceHelper::NotifyLoaded() {
   }
 }
 
-void TabRestoreServiceHelper::AddEntry(std::unique_ptr<Entry> entry,
+bool TabRestoreServiceHelper::AddEntry(std::unique_ptr<Entry> entry,
                                        bool notify,
                                        bool to_front) {
   if (!FilterEntry(*entry) || (entries_.size() >= kMaxEntries && !to_front)) {
-    return;
+    return false;
   }
 
   if (entry->type == sessions::tab_restore::GROUP) {
@@ -1311,6 +1329,8 @@ void TabRestoreServiceHelper::AddEntry(std::unique_ptr<Entry> entry,
   if (observer_) {
     observer_->OnAddEntry();
   }
+
+  return true;
 }
 
 void TabRestoreServiceHelper::PruneEntries() {
@@ -1502,6 +1522,8 @@ void TabRestoreServiceHelper::PopulateTab(Tab* tab,
     }
 
     if (tab->group.has_value()) {
+      tab->is_group_ephemeral =
+          context->IsEphemeralTabGroup(tab->group.value());
       tab->saved_group_id =
           context->GetSavedTabGroupIdForGroup(tab->group.value());
 
@@ -1531,11 +1553,11 @@ LiveTabContext* TabRestoreServiceHelper::RestoreTab(
     LiveTab** live_tab,
     bool is_restoring_group_or_window) {
   LiveTab* restored_tab;
-  if (disposition == WindowOpenDisposition::CURRENT_TAB && context) {
+  if (disposition == WindowOpenDisposition::kCurrentTab && context) {
     restored_tab = context->ReplaceRestoredTab(tab);
   } else {
     // We only respect the tab's original browser if there's no disposition.
-    if (disposition == WindowOpenDisposition::UNKNOWN && tab.browser_id) {
+    if (disposition == WindowOpenDisposition::kUnknown && tab.browser_id) {
       context = client_->FindLiveTabContextWithID(
           SessionID::FromSerializedValue(tab.browser_id));
     }
@@ -1557,7 +1579,7 @@ LiveTabContext* TabRestoreServiceHelper::RestoreTab(
     // |context| will be NULL in cases where one isn't already available (eg,
     // when invoked on Mac OS X with no windows open). In this case, create a
     // new browser into which we restore the tabs.
-    if (context && disposition != WindowOpenDisposition::NEW_WINDOW) {
+    if (context && disposition != WindowOpenDisposition::kNewWindow) {
       tab_index = tab.tabstrip_index;
     } else {
       context = client_->CreateLiveTabContext(
@@ -1572,13 +1594,13 @@ LiveTabContext* TabRestoreServiceHelper::RestoreTab(
     // Place the tab at the end if the tab index is no longer valid or
     // we were passed a specific disposition.
     if (tab_index < 0 || tab_index > context->GetTabCount() ||
-        disposition != WindowOpenDisposition::UNKNOWN) {
+        disposition != WindowOpenDisposition::kUnknown) {
       tab_index = context->GetTabCount();
     }
 
     restored_tab = context->AddRestoredTab(
         tab, tab_index,
-        /*select=*/disposition != WindowOpenDisposition::NEW_BACKGROUND_TAB,
+        /*select=*/disposition != WindowOpenDisposition::kNewBackgroundTab,
         is_restoring_group_or_window, session_restore_type);
   }
 

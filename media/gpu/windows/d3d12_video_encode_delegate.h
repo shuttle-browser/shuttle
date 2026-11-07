@@ -11,6 +11,7 @@
 #include <wrl.h>
 
 #include "base/functional/callback.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "gpu/config/gpu_driver_bug_workarounds.h"
 #include "media/base/bitstream_buffer.h"
 #include "media/base/encoder_status.h"
@@ -68,7 +69,7 @@ class MEDIA_GPU_EXPORT D3D12VideoEncodeDelegate {
   // of |picture_buffer| that holds picture content, i.e. the region that should
   // be encoded. It must be non-empty and contained in |picture_buffer|; callers
   // that do not crop pass the whole texture rather than an empty rectangle.
-  virtual EncoderStatus::Or<EncodeResult> Encode(
+  virtual base::expected<EncodeResult, EncoderStatus> Encode(
       D3D12PictureBuffer picture_buffer,
       const gfx::Rect& input_visible_rect,
       const gfx::ColorSpace& input_frame_color_space,
@@ -164,10 +165,10 @@ class MEDIA_GPU_EXPORT D3D12VideoEncodeDelegate {
   virtual EncoderStatus InitializeVideoEncoder(
       const VideoEncodeAccelerator::Config& config) = 0;
 
-  virtual EncoderStatus::Or<size_t> GetEncodedBitstreamWrittenBytesCount(
-      const ScopedD3D12ResourceMap& metadata);
+  virtual base::expected<size_t, EncoderStatus>
+  GetEncodedBitstreamWrittenBytesCount(const ScopedD3D12ResourceMap& metadata);
 
-  virtual EncoderStatus::Or<size_t> ReadbackBitstream(
+  virtual base::expected<size_t, EncoderStatus> ReadbackBitstream(
       base::span<uint8_t> bitstream_buffer);
 
   // Returns the size the D3D12 encoder driver expects the reference-only DPB
@@ -274,7 +275,9 @@ class D3D12VideoEncodeDecodedPictureBuffers {
   size_t size_ = 0;
   absl::InlinedVector<Microsoft::WRL::ComPtr<ID3D12Resource>, maxDpbSize + 1>
       resources_;
-  absl::InlinedVector<ID3D12Resource*, maxDpbSize + 1> raw_resources_;
+  // Exclusion: Used for OS structure interop with D3D12 API.
+  RAW_PTR_EXCLUSION absl::InlinedVector<ID3D12Resource*, maxDpbSize + 1>
+      raw_resources_;
   absl::InlinedVector<UINT, maxDpbSize + 1> subresources_;
 };
 

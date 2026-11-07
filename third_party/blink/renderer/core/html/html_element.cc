@@ -26,12 +26,14 @@
 #include "third_party/blink/renderer/core/html/html_element.h"
 
 #include <iterator>
+#include <ranges>
 
-#include "base/containers/adapters.h"
 #include "base/containers/enum_set.h"
 #include "base/feature_list.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/system/sys_info.h"
 #include "build/build_config.h"
+#include "third_party/blink/public/common/dom/dom_node_id.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/forms/form_control_type.mojom-blink.h"
 #include "third_party/blink/public/mojom/frame/frame.mojom-blink.h"
@@ -69,6 +71,7 @@
 #include "third_party/blink/renderer/core/dom/flat_tree_traversal.h"
 #include "third_party/blink/renderer/core/dom/focus_params.h"
 #include "third_party/blink/renderer/core/dom/id_target_observer.h"
+#include "third_party/blink/renderer/core/dom/interest_invoker_target_data.h"
 #include "third_party/blink/renderer/core/dom/invoker_data.h"
 #include "third_party/blink/renderer/core/dom/node-inl.h"
 #include "third_party/blink/renderer/core/dom/node_lists_node_data.h"
@@ -173,9 +176,11 @@ using AttributeChangedFunction =
 using mojom::blink::FormControlType;
 
 struct AttributeTriggers {
-  const QualifiedName& attribute;
+  // RAW_PTR_EXCLUSION: #global-scope
+  RAW_PTR_EXCLUSION const QualifiedName& attribute;
   WebFeature web_feature;
-  const AtomicString& event;
+  // RAW_PTR_EXCLUSION: #global-scope
+  RAW_PTR_EXCLUSION const AtomicString& event;
   AttributeChangedFunction function;
 };
 
@@ -1570,8 +1575,15 @@ bool HTMLElement::IsPopoverReady(PopoverTriggerAction action,
 }
 
 namespace {
-// We have to mark *all* invokers for the given popover dirty in the
-// ax tree, since they all should now have an updated expanded state.
+// Marks all invokers for `popover` dirty in the AX tree when `popover` opens,
+// closes, or is removed from the DOM, since the invokers' expanded/collapsed
+// state (`AXNodeObject::IsExpanded`) and details relation
+// (`AXObject::GetPopoverTargetForInvoker` /
+// `GetCommandForElementForDetailsRelation`) depend on whether `popover` is a
+// connected popover and whether it is open.
+// Note: When a target element is inserted into the DOM, or has its `popover`
+// or `id` attribute modified, `AXObjectCacheImpl` marks any referencing
+// invokers dirty via `AXRelationCache`.
 void MarkPopoverInvokersDirty(const HTMLElement& popover) {
   CHECK(popover.IsPopover());
   auto& document = popover.GetDocument();
@@ -1639,6 +1651,8 @@ ScriptPromise<IDLUndefined> HTMLElement::showUnboundedElement(
 
   if (auth !=
           ContextFeatureSettings::UnboundedElementAuth::kAllowedPrivileged &&
+      auth != ContextFeatureSettings::UnboundedElementAuth::
+                  kAllowedByPrivilegedMainFrame &&
       !LocalFrame::HasTransientUserActivation(frame)) {
     resolver->Reject(MakeGarbageCollected<DOMException>(
         DOMExceptionCode::kNotAllowedError,
@@ -2052,7 +2066,7 @@ void HTMLElement::ShowPopoverInternal(Element* invoker,
                   mojom::blink::ConsoleMessageSource::kOther,
                   mojom::blink::ConsoleMessageLevel::kError,
                   "Cannot open an auto popover nested inside a hint popover.");
-              Vector<DOMNodeId> nodes;
+              Vector<DOMNodeIdType> nodes;
               nodes.push_back(GetDomNodeId());
               message->SetNodes(original_document.GetFrame(), nodes);
               original_document.AddConsoleMessage(message);
@@ -2289,7 +2303,7 @@ PopoverHideResult HTMLElement::CloseEntirePopoverStack(
     // order.
     CHECK(probe::ToCoreProbeSink(popover_stack_for_inspector.back())
               ->HasDevToolsSessions());
-    stack.append_range(base::Reversed(popover_stack_for_inspector));
+    stack.append_range(std::views::reverse(popover_stack_for_inspector));
     return PopoverHideResult::kForcedOpenByInspector;
   }
   return PopoverHideResult::kHidden;
@@ -2426,7 +2440,7 @@ PopoverHideResult HTMLElement::HideAllPopoversUntil(
       }
 
       if (!popover_stack_for_inspector->empty()) {
-        stack.append_range(base::Reversed(*popover_stack_for_inspector));
+        stack.append_range(std::views::reverse(*popover_stack_for_inspector));
         result = PopoverHideResult::kForcedOpenByInspector;
       }
     } while (repeating_hide);
@@ -2721,6 +2735,23 @@ PopoverHideResult HTMLElement::HidePopoverInternal(
                                         Document::TopLayerReason::kPopover);
   } else {
     document.RemoveFromTopLayerImmediately(this);
+  }
+
+  // If this popover is the target of an active interest invoker, and the
+  // 'loseinterest' event was not fired above (either because events are not
+  // being fired, or because the invoker's `interestfor` relationship no longer
+  // resolves), move the invoker to the no-interest state without firing
+  // events. If 'loseinterest' was fired and canceled, interest is maintained.
+  if (InterestInvokerTargetData* target_data = GetInterestInvokerTargetData()) {
+    if (Element* interest_invoker = target_data->interestInvoker();
+        interest_invoker &&
+        interest_invoker->GetInterestState() != InterestState::kNoInterest &&
+        interest_invoker->GetInvokerData()->ActiveInterestTarget() == this &&
+        (transition_behavior ==
+             HidePopoverTransitionBehavior::kNoEventsNoWaiting ||
+         !SourceInterestInvoker())) {
+      interest_invoker->ChangeInterestState(this, InterestState::kNoInterest);
+    }
   }
 
   // Remove this popover from the stack.
@@ -3251,7 +3282,8 @@ bool HTMLElement::IsValidBuiltinCommand(HTMLElement& invoker,
     return true;
   }
   if (Element::IsOverscrollCommand(command)) {
-    CHECK(RuntimeEnabledFeatures::OverscrollGesturesEnabled());
+    CHECK(
+        RuntimeEnabledFeatures::OverscrollAreasEnabled(GetExecutionContext()));
     return GetTreeScope() == invoker.GetTreeScope();
   }
   return false;
@@ -3268,7 +3300,8 @@ bool HTMLElement::HandleCommandInternal(HTMLElement& invoker,
   }
 
   if (command == CommandEventType::kToggleOverscroll) {
-    CHECK(RuntimeEnabledFeatures::OverscrollGesturesEnabled());
+    CHECK(
+        RuntimeEnabledFeatures::OverscrollAreasEnabled(GetExecutionContext()));
     if (Element* container = GetOverscrollContainer()) {
       if (auto* tracker = container->GetOverscrollAreaTracker()) {
         tracker->ToggleArea(this);
@@ -3278,7 +3311,8 @@ bool HTMLElement::HandleCommandInternal(HTMLElement& invoker,
   }
 
   if (command == CommandEventType::kShowOverscroll) {
-    CHECK(RuntimeEnabledFeatures::OverscrollGesturesEnabled());
+    CHECK(
+        RuntimeEnabledFeatures::OverscrollAreasEnabled(GetExecutionContext()));
     if (Element* container = GetOverscrollContainer()) {
       if (auto* tracker = container->GetOverscrollAreaTracker()) {
         tracker->OpenArea(this);
@@ -3288,7 +3322,8 @@ bool HTMLElement::HandleCommandInternal(HTMLElement& invoker,
   }
 
   if (command == CommandEventType::kHideOverscroll) {
-    CHECK(RuntimeEnabledFeatures::OverscrollGesturesEnabled());
+    CHECK(
+        RuntimeEnabledFeatures::OverscrollAreasEnabled(GetExecutionContext()));
     if (Element* container = GetOverscrollContainer()) {
       if (auto* tracker = container->GetOverscrollAreaTracker()) {
         tracker->CloseArea(this);
@@ -3512,7 +3547,7 @@ CommandEventType HTMLElement::GetCommandEventType(
   }
 
   // Overscroll gestures.
-  if (RuntimeEnabledFeatures::OverscrollGesturesEnabled()) {
+  if (RuntimeEnabledFeatures::OverscrollAreasEnabled(execution_context)) {
     if (EqualIgnoringAsciiCase(action, keywords::kToggleOverscroll)) {
       return CommandEventType::kToggleOverscroll;
     }
@@ -3939,7 +3974,7 @@ const AtomicString& HTMLElement::GetDirectionalAttribute(
     if (const LayoutObject* layout_object = GetLayoutObject()) {
       // Note that this isn't part of the HTML spec's concept, but we've
       // always honored CSS directionality for the title attribute.
-      direction = layout_object->StyleRef().Direction();
+      direction = layout_object->Style().Direction();
     }
     if (HasDirectionAuto()) {
       if (const std::optional<TextDirection> string_direction =
@@ -3978,6 +4013,9 @@ void HTMLElement::RemovedFrom(ContainerNode& insertion_point) {
     // If a popover is removed from the document, make sure it gets
     // removed from the popover element stack and the top layer.
     if (was_in_document) {
+      if (!popoverOpen()) {
+        MarkPopoverInvokersDirty(*this);
+      }
       // We can't run focus event handlers while removing elements.
       HidePopoverInternal(
           /*invoker=*/nullptr, HidePopoverFocusBehavior::kNone,
@@ -4364,8 +4402,7 @@ void HTMLElement::HandleKeypressEvent(KeyboardEvent& event) {
 int HTMLElement::AdjustedOffsetForZoom(LayoutUnit offset) {
   const auto* layout_object = GetLayoutObject();
   DCHECK(layout_object);
-  return AdjustForAbsoluteZoom::AdjustLayoutUnit(offset,
-                                                 layout_object->StyleRef())
+  return AdjustForAbsoluteZoom::AdjustLayoutUnit(offset, layout_object->Style())
       .Round();
 }
 

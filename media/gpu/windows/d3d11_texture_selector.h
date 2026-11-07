@@ -32,11 +32,11 @@ class MEDIA_GPU_EXPORT TextureSelector {
                   viz::SharedImageFormat output_si_format,
                   ComD3D11VideoDevice1 video_device,
                   ComD3D11DeviceContext d3d11_device_context,
-                  bool use_shared_handle);
+                  bool use_shared_handle,
+                  gpu::GpuDriverBugWorkarounds workarounds = {});
   virtual ~TextureSelector();
 
   static std::unique_ptr<TextureSelector> Create(
-      const gpu::GpuPreferences& gpu_preferences,
       const gpu::GpuDriverBugWorkarounds& workarounds,
       DXGI_FORMAT decoder_output_format,
       const FormatSupportChecker* format_checker,
@@ -46,7 +46,7 @@ class MEDIA_GPU_EXPORT TextureSelector {
       gfx::ColorSpace input_color_space,
       bool shared_image_use_shared_handle = false);
 
-  virtual std::unique_ptr<Texture2DWrapper> CreateTextureWrapper(
+  virtual std::unique_ptr<D3DTextureWrapper> CreateTextureWrapper(
       ComD3D11Device device,
       gfx::ColorSpace color_space,
       gfx::Size size);
@@ -80,6 +80,7 @@ class MEDIA_GPU_EXPORT TextureSelector {
   ComD3D11DeviceContext device_context_;
 
   bool shared_image_use_shared_handle_;
+  const gpu::GpuDriverBugWorkarounds workarounds_;
 };
 
 class MEDIA_GPU_EXPORT CopyTextureSelector : public TextureSelector {
@@ -92,7 +93,7 @@ class MEDIA_GPU_EXPORT CopyTextureSelector : public TextureSelector {
                       gpu::GpuDriverBugWorkarounds workarounds);
   ~CopyTextureSelector() override;
 
-  std::unique_ptr<Texture2DWrapper> CreateTextureWrapper(
+  std::unique_ptr<D3DTextureWrapper> CreateTextureWrapper(
       ComD3D11Device device,
       gfx::ColorSpace color_space,
       gfx::Size size) override;
@@ -102,7 +103,6 @@ class MEDIA_GPU_EXPORT CopyTextureSelector : public TextureSelector {
   bool WillCopyForTesting() const override;
 
  private:
-  const gpu::GpuDriverBugWorkarounds workarounds_;
   scoped_refptr<VideoProcessorProxy> video_processor_proxy_;
 };
 

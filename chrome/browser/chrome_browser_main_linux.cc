@@ -12,16 +12,24 @@
 #include "base/feature_list.h"
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
+#include "base/logging.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
+#include "chrome/browser/lifetime/application_lifetime_desktop.h"
 #include "chrome/common/chrome_features.h"
 #include "content/public/browser/browser_thread.h"
 #include "device/bluetooth/dbus/bluez_dbus_manager.h"
 #include "ui/base/l10n/l10n_util.h"
 
 #if BUILDFLAG(IS_LINUX)
+#include "base/containers/to_vector.h"
+#include "chrome/browser/profiles/profile_attributes_entry.h"
+#include "chrome/browser/profiles/profile_attributes_storage.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/shell_integration_linux.h"
+#include "chrome/browser/ui/ui_features.h"
 #include "ui/ozone/public/ozone_platform.h"
 #if BUILDFLAG(USE_DBUS)
 #include "components/dbus/thread_linux/dbus_thread_linux.h"
@@ -50,6 +58,20 @@ ChromeBrowserMainPartsLinux::ChromeBrowserMainPartsLinux(
     : ChromeBrowserMainPartsPosix(is_integration_test, startup_data) {}
 
 ChromeBrowserMainPartsLinux::~ChromeBrowserMainPartsLinux() = default;
+
+#if !BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_DBUS)
+void ChromeBrowserMainPartsLinux::PreCreateMainMessageLoop() {
+  // Before content creates the PowerMonitor, which takes the system bus. Not
+  // torn down at browser shutdown; see PostDestroyThreads(). A lost bus (the
+  // session ending, or dbus restarted underneath us) ends the session the way
+  // a lost display server connection does in ChromeBrowserMainExtraPartsOzone.
+  dbus_thread_linux::Initialize(base::BindRepeating([] {
+    chrome::SessionEnding();
+    LOG(FATAL) << "Browser failed to shutdown.";
+  }));
+  ChromeBrowserMainPartsPosix::PreCreateMainMessageLoop();
+}
+#endif  // !BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_DBUS)
 
 void ChromeBrowserMainPartsLinux::PostCreateMainMessageLoop() {
 #if BUILDFLAG(IS_CHROMEOS)
@@ -91,6 +113,20 @@ void ChromeBrowserMainPartsLinux::PreProfileInit() {
       base::BindOnce(base::IgnoreResult(&base::GetLinuxDistro)));
 #endif
 
+#if BUILDFLAG(IS_LINUX)
+  // Browser windows pick their WM_CLASS / app_id when they are created, so
+  // find out which profiles have a per-profile desktop entry before the first
+  // window is opened. This is a handful of stat() calls for profiles other
+  // than the default profile.
+  if (base::FeatureList::IsEnabled(features::kLinuxPerProfileAppId)) {
+    shell_integration_linux::DetectInstalledPerProfileDesktopEntries(
+        base::ToVector(g_browser_process->profile_manager()
+                           ->GetProfileAttributesStorage()
+                           .GetAllProfilesAttributes(),
+                       &ProfileAttributesEntry::GetPath));
+  }
+#endif
+
   ChromeBrowserMainPartsPosix::PreProfileInit();
 }
 
@@ -115,6 +151,11 @@ void ChromeBrowserMainPartsLinux::PostDestroyThreads() {
   session_end_listener_.reset();
 #endif
   bluez::BluezDBusManager::Shutdown();
+  // TODO(shelley.vohr): Call dbus_thread_linux::Shutdown() here. It cannot run
+  // yet because the in-process device service (battery, wifi, wake lock) is
+  // destroyed after this last BrowserMainParts hook and still dereferences
+  // bus-owned dbus::ObjectProxy objects, so the buses are released at process
+  // exit instead.
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
   ChromeBrowserMainPartsPosix::PostDestroyThreads();

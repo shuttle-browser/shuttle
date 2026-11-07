@@ -38,7 +38,8 @@ namespace {
 TableTypes::Caption ComputeCaptionConstraint(
     const ConstraintSpace& table_space,
     const ComputedStyle& table_style,
-    const TableGroupedChildren& grouped_children) {
+    const TableGroupedChildren& grouped_children,
+    const MinMaxSizesInput& input) {
   // Caption inline size constraints.
   TableTypes::Caption caption_min_max;
   for (const BlockNode& caption : grouped_children.captions) {
@@ -49,15 +50,43 @@ TableTypes::Caption ComputeCaptionConstraint(
     builder.SetAvailableBlockSize(kIndefiniteSize);
     const auto space = builder.ToConstraintSpace();
 
-    MinMaxSizes min_max_sizes = ComputeMinAndMaxContentContribution(
-                                    table_style, caption, space,
-                                    MinMaxSizesInput::UnconstrainedUntriaged())
-                                    .sizes;
+    MinMaxSizes min_max_sizes =
+        ComputeMinAndMaxContentContribution(table_style, caption, space, input)
+            .sizes;
     min_max_sizes +=
         ComputeMarginsFor(space, caption.Style(), table_space).InlineSum();
     caption_min_max.Encompass(min_max_sizes);
   }
   return caption_min_max;
+}
+
+TableTypes::Caption ComputeCaptionConstraint(
+    const TableNode& table,
+    const ConstraintSpace& table_space,
+    const BoxStrut& table_border_padding,
+    const TableGroupedChildren& grouped_children) {
+  if (grouped_children.captions.empty()) {
+    return TableTypes::Caption();
+  }
+  LayoutUnit available_inline_size = table_space.AvailableSize().inline_size;
+  if (available_inline_size == kIndefiniteSize) {
+    available_inline_size = LayoutUnit::Max();
+  }
+  if (table.Style().IsInShrinkToFitSubtree()) {
+    const MinMaxSizes min_max = ComputeMinMaxInlineSizes(
+        table_space, table, table_border_padding,
+        /* auto_min_length */ nullptr, [](SizeType) -> MinMaxSizesResult {
+          return {{kIndefiniteSize, kIndefiniteSize},
+                  /* depends_on_block_constraints */ false};
+        });
+    available_inline_size =
+        (min_max.ClampSizeToMinAndMax(available_inline_size) -
+         table_border_padding.InlineSum())
+            .ClampNegativeToZero();
+  }
+  return ComputeCaptionConstraint(
+      table_space, table.Style(), grouped_children,
+      MinMaxSizesInput::Constrained(available_inline_size));
 }
 
 ConstraintSpace CreateCaptionConstraintSpace(
@@ -98,10 +127,9 @@ TableLayoutAlgorithm::CaptionResult LayoutCaption(
     const ConstraintSpace& caption_constraint_space,
     const BlockNode& caption,
     BoxStrut margins,
-    const BlockBreakToken* break_token = nullptr,
-    const EarlyBreak* early_break = nullptr) {
+    const FragmentationLayoutInput& fragmentation = {}) {
   const LayoutResult* layout_result =
-      caption.Layout(caption_constraint_space, break_token, early_break);
+      caption.Layout(caption_constraint_space, fragmentation);
   DCHECK_EQ(layout_result->Status(), LayoutResult::kSuccess);
 
   LogicalFragment fragment(table_constraint_space.GetWritingDirection(),
@@ -510,8 +538,8 @@ LayoutUnit TableLayoutAlgorithm::ComputeTableInlineSize(
   const scoped_refptr<const TableTypes::Columns> column_constraints =
       table.GetColumnConstraints(grouped_children, table_border_padding);
 
-  const TableTypes::Caption caption_constraint =
-      ComputeCaptionConstraint(space, table.Style(), grouped_children);
+  const TableTypes::Caption caption_constraint = ComputeCaptionConstraint(
+      table, space, table_border_padding, grouped_children);
 
   const LayoutUnit undistributable_space = ComputeUndistributableTableSpace(
       *column_constraints, table_border_padding.InlineSum(),
@@ -590,8 +618,8 @@ const LayoutResult* TableLayoutAlgorithm::Layout() {
   // - Generate fragment.
   const scoped_refptr<const TableTypes::Columns> column_constraints =
       Node().GetColumnConstraints(grouped_children, border_padding);
-  const TableTypes::Caption caption_constraint =
-      ComputeCaptionConstraint(GetConstraintSpace(), Style(), grouped_children);
+  const TableTypes::Caption caption_constraint = ComputeCaptionConstraint(
+      Node(), GetConstraintSpace(), border_padding, grouped_children);
   // Compute assignable table inline size.
   // Standard: https://www.w3.org/TR/css-tables-3/#width-distribution
   const LayoutUnit undistributable_space = ComputeUndistributableTableSpace(
@@ -701,7 +729,7 @@ const LayoutResult* TableLayoutAlgorithm::Layout() {
 }
 
 MinMaxSizesResult TableLayoutAlgorithm::ComputeMinMaxSizes(
-    const MinMaxSizesInput&) {
+    const MinMaxSizesInput& input) {
   const bool is_fixed_layout = Style().IsFixedTableLayout();
 
   const LogicalSize border_spacing = Style().TableBorderSpacing();
@@ -710,8 +738,8 @@ MinMaxSizesResult TableLayoutAlgorithm::ComputeMinMaxSizes(
 
   const scoped_refptr<const TableTypes::Columns> column_constraints =
       Node().GetColumnConstraints(grouped_children, border_padding);
-  const TableTypes::Caption caption_constraint =
-      ComputeCaptionConstraint(GetConstraintSpace(), Style(), grouped_children);
+  const TableTypes::Caption caption_constraint = ComputeCaptionConstraint(
+      GetConstraintSpace(), Style(), grouped_children, input);
 
   const LayoutUnit undistributable_space = ComputeUndistributableTableSpace(
       *column_constraints, border_padding.InlineSum(),
@@ -1173,22 +1201,21 @@ const LayoutResult* TableLayoutAlgorithm::GenerateFragment(
        BlockNode child = entry.GetNode(); entry = child_iterator.NextChild()) {
     DCHECK(child.IsTableCaption() || child.IsTableSection());
 
-    const EarlyBreak* early_break_in_child = nullptr;
-    if (early_break_) [[unlikely]] {
-      if (IsEarlyBreakTarget(*early_break_, container_builder_, child)) {
-        container_builder_.AddBreakBeforeChild(child, kBreakAppealPerfect,
-                                               /* is_forced_break */ false);
-        broke_inside = true;
+    if (early_break_ &&
+        IsEarlyBreakTarget(*early_break_, container_builder_, child)) {
+      container_builder_.AddBreakBeforeChild(child, kBreakAppealPerfect,
+                                             /*is_forced_break=*/false);
+      broke_inside = true;
 
-        if (child == grouped_children.footer)
-          has_pending_repeated_footer = false;
-
-        break;
+      if (child == grouped_children.footer) {
+        has_pending_repeated_footer = false;
       }
-      early_break_in_child = EnterEarlyBreakInChild(child, *early_break_);
+      break;
     }
 
     const BlockBreakToken* child_break_token = entry.GetBreakToken();
+    FragmentationLayoutInput fragmentation =
+        GetFragmentationLayoutInputForChild(child, child_break_token);
     const LayoutResult* child_result;
     std::optional<LayoutUnit> offset_before_repeated_header;
     LayoutUnit child_inline_offset;
@@ -1242,7 +1269,7 @@ const LayoutResult* TableLayoutAlgorithm::GenerateFragment(
           child_block_offset + child_block_start_margin);
       CaptionResult caption = LayoutCaption(
           constraint_space, Style(), container_builder_.InlineSize(),
-          child_space, child, margins, child_break_token, early_break_in_child);
+          child_space, child, margins, fragmentation);
       DCHECK_EQ(caption.layout_result->Status(), LayoutResult::kSuccess);
       child_result = caption.layout_result;
       child_inline_offset = caption.margins.inline_start;
@@ -1339,8 +1366,7 @@ const LayoutResult* TableLayoutAlgorithm::GenerateFragment(
         child_result =
             child.LayoutRepeatableRoot(child_space, child_break_token);
       } else {
-        child_result =
-            child.Layout(child_space, child_break_token, early_break_in_child);
+        child_result = child.Layout(child_space, fragmentation);
       }
       child_inline_offset = section_inline_offset;
 

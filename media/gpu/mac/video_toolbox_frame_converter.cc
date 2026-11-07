@@ -216,8 +216,6 @@ void VideoToolboxFrameConverter::Convert(
   // Releasing |image| must happen after command buffer commands are complete
   // (not just submitted).
   frame->metadata().read_lock_fences_enabled = true;
-  frame->metadata().is_webgpu_compatible =
-      shared_image->usage().Has(gpu::SHARED_IMAGE_USAGE_WEBGPU_READ);
 
   // TODO(crbug.com/40227557): VideoToolbox can report software usage, should
   // we plumb that through?
@@ -245,7 +243,7 @@ void VideoToolboxFrameConverter::OnVideoFrameReleased(
   // Release |image|.
   stub_->channel()->scheduler()->ScheduleTask(gpu::Scheduler::Task(
       wait_sequence_id_, base::DoNothingWithBoundArgs(std::move(image)),
-      std::vector<gpu::SyncToken>({sync_token})));
+      client_shared_image->GetSyncTokensForVideoFrame(sync_token)));
 }
 
 }  // namespace media

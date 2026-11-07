@@ -41,16 +41,20 @@ class ResponseBodyLoader::DelegatingBytesConsumer final
 
   Result BeginRead(base::span<const char>& buffer) override {
     buffer = {};
-    if (loader_->IsAborted()) {
-      return Result::kError;
+    switch (GetPublicState()) {
+      case PublicState::kReadableOrWaiting:
+        break;
+      case PublicState::kClosed:
+        HandleResult(Result::kDone);
+        return Result::kDone;
+      case PublicState::kErrored:
+        HandleResult(Result::kError);
+        return Result::kError;
     }
     // When the loader is suspended for non back/forward cache reason, return
     // with kShouldWait.
     if (IsSuspendedButNotForBackForwardCache()) {
       return Result::kShouldWait;
-    }
-    if (state_ == State::kCancelled) {
-      return Result::kDone;
     }
     auto result = bytes_consumer_->BeginRead(buffer);
     if (result == Result::kOk) {
@@ -78,8 +82,15 @@ class ResponseBodyLoader::DelegatingBytesConsumer final
     DCHECK_LE(read_size, lookahead_bytes_);
     lookahead_bytes_ -= read_size;
     auto result = bytes_consumer_->EndRead(read_size);
-    if (loader_->IsAborted()) {
-      return Result::kError;
+    switch (GetPublicState()) {
+      case PublicState::kReadableOrWaiting:
+        break;
+      case PublicState::kClosed:
+        HandleResult(Result::kDone);
+        return Result::kDone;
+      case PublicState::kErrored:
+        HandleResult(Result::kError);
+        return Result::kError;
     }
     HandleResult(result);
     return result;
@@ -105,27 +116,36 @@ class ResponseBodyLoader::DelegatingBytesConsumer final
     }
     return form_data;
   }
-  mojo::ScopedDataPipeConsumerHandle DrainAsDataPipe() override {
+  mojo::ScopedDataPipeConsumerHandle DrainAsDataPipe(
+      DrainedDataPipeClient** client) override {
+    if (client) {
+      *client = nullptr;
+    }
     if (loader_->IsAborted()) {
       return {};
     }
-    auto handle = bytes_consumer_->DrainAsDataPipe();
-    if (handle && bytes_consumer_->GetPublicState() == PublicState::kClosed) {
-      HandleResult(Result::kDone);
+    auto handle = bytes_consumer_->DrainAsDataPipe(nullptr);
+    if (handle) {
+      if (client) {
+        *client = loader_.Get();
+      }
+      if (bytes_consumer_->GetPublicState() == PublicState::kClosed) {
+        HandleResult(Result::kDone);
+      }
     }
     return handle;
   }
   void SetClient(BytesConsumer::Client* client) override {
     DCHECK(!bytes_consumer_client_);
     DCHECK(client);
-    if (state_ != State::kLoading) {
+    if (GetPublicState() != PublicState::kReadableOrWaiting) {
       return;
     }
     bytes_consumer_client_ = client;
   }
   void ClearClient() override { bytes_consumer_client_ = nullptr; }
   void Cancel() override {
-    if (state_ != State::kLoading) {
+    if (GetPublicState() != PublicState::kReadableOrWaiting) {
       return;
     }
 
@@ -140,8 +160,13 @@ class ResponseBodyLoader::DelegatingBytesConsumer final
                                           WrapWeakPersistent(this)));
   }
   PublicState GetPublicState() const override {
-    if (loader_->IsAborted())
+    // Once our public state is Closed or Errored, it must remain so.
+    if (state_ == State::kDone || state_ == State::kCancelled) {
+      return PublicState::kClosed;
+    }
+    if (state_ == State::kErrored) {
       return PublicState::kErrored;
+    }
     return bytes_consumer_->GetPublicState();
   }
   Error GetError() const override {
@@ -163,6 +188,9 @@ class ResponseBodyLoader::DelegatingBytesConsumer final
     if (state_ != State::kLoading) {
       return;
     }
+    state_ = (bytes_consumer_->GetPublicState() == PublicState::kClosed)
+                 ? State::kDone
+                 : State::kErrored;
     if (bytes_consumer_client_) {
       bytes_consumer_client_->OnStateChange();
     }
@@ -209,6 +237,9 @@ class ResponseBodyLoader::DelegatingBytesConsumer final
         // We have no information to notify the client.
         break;
       }
+      // Record the terminal state before notifying the client, which may
+      // Cancel() on seeing it.
+      HandleResult(result);
       if (bytes_consumer_client_) {
         bytes_consumer_client_->OnStateChange();
       }
@@ -387,7 +418,7 @@ mojo::ScopedDataPipeConsumerHandle ResponseBodyLoader::DrainAsDataPipe(
 
   *client = nullptr;
   DCHECK(bytes_consumer_);
-  auto data_pipe = bytes_consumer_->DrainAsDataPipe();
+  auto data_pipe = bytes_consumer_->DrainAsDataPipe(nullptr);
   if (!data_pipe) {
     return data_pipe;
   }
@@ -515,6 +546,20 @@ void ResponseBodyLoader::Start() {
   OnStateChange();
 }
 
+void ResponseBodyLoader::WillCreateBlobFromDrainedDataPipe() {
+  // Called synchronously from a drain, which is refused once aborted.
+  CHECK(!aborted_);
+  client_->WillCreateBlobFromDrainedDataPipe();
+}
+
+void ResponseBodyLoader::DidCreateBlobFromDrainedDataPipe(
+    const scoped_refptr<BlobDataHandle>& blob) {
+  if (aborted_) {
+    return;
+  }
+  client_->DidCreateBlobFromDrainedDataPipe(blob);
+}
+
 void ResponseBodyLoader::Abort() {
   if (aborted_)
     return;
@@ -579,6 +624,15 @@ void ResponseBodyLoader::Resume() {
     task_runner_->PostTask(
         FROM_HERE, base::BindOnce(&ResponseBodyLoader::DidCancelLoadingBody,
                                   WrapPersistent(this)));
+  } else if (delegating_bytes_consumer_) {
+    // While suspended, the drained consumer may have swallowed a readable
+    // notification without reading (and thus without re-arming the underlying
+    // consumer's watcher). Re-notify it so it reads the buffered data.
+    // https://crbug.com/571671613
+    task_runner_->PostTask(
+        FROM_HERE,
+        base::BindOnce(&DelegatingBytesConsumer::OnStateChange,
+                       WrapPersistent(delegating_bytes_consumer_.Get())));
   } else {
     task_runner_->PostTask(FROM_HERE,
                            base::BindOnce(&ResponseBodyLoader::OnStateChange,

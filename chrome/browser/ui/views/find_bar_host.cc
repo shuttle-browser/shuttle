@@ -9,7 +9,6 @@
 #include "base/check_is_test.h"
 #include "base/i18n/rtl.h"
 #include "build/build_config.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_clipboard_utils.h"
 #include "chrome/browser/ui/find_bar/find_bar_controller.h"
 #include "chrome/browser/ui/view_ids.h"
 #include "chrome/browser/ui/views/find_bar_view.h"
@@ -275,7 +274,7 @@ void FindBarHost::SetFindBarController(FindBarController* find_bar_controller) {
 
 void FindBarHost::Show(bool animate, bool focus) {
   RestoreOrCreateFocusTracker();
-  DCHECK(host_);
+  CHECK(host_, base::NotFatalUntil::M162);
 
   SetDialogPosition(GetDialogPosition(gfx::Rect()));
 
@@ -436,9 +435,7 @@ void FindBarHost::UpdateFindBarForChangedWebContents() {
 }
 
 bool FindBarHost::CanPopulateFromSelectedText() {
-  return !web_contents() ||
-         enterprise_data_protection::CanPopulateFindBarFromSelection(
-             web_contents());
+  return true;
 }
 
 const FindBarTesting* FindBarHost::GetFindBarTesting() const {
@@ -610,7 +607,7 @@ void FindBarHost::OnVisibilityChanged() {
 }
 
 void FindBarHost::RegisterAccelerators() {
-  DCHECK(!esc_accel_target_registered_);
+  CHECK(!esc_accel_target_registered_, base::NotFatalUntil::M162);
   ui::Accelerator escape(ui::VKEY_ESCAPE, ui::EF_NONE);
   focus_manager_->RegisterAccelerator(
       escape, ui::AcceleratorManager::kNormalPriority, this);
@@ -626,7 +623,7 @@ void FindBarHost::UnregisterAccelerators() {
   ui::Accelerator ctrl_ret(ui::VKEY_RETURN, ui::EF_CONTROL_DOWN);
   focus_manager_->UnregisterAccelerator(ctrl_ret, this);
 
-  DCHECK(esc_accel_target_registered_);
+  CHECK(esc_accel_target_registered_, base::NotFatalUntil::M162);
   ui::Accelerator escape(ui::VKEY_ESCAPE, ui::EF_NONE);
   focus_manager_->UnregisterAccelerator(escape, this);
   esc_accel_target_registered_ = false;
@@ -735,7 +732,7 @@ void FindBarHost::AnimationEnded(const gfx::Animation* animation) {
 
   if (!animation_->IsShowing()) {
     // Animation has finished closing.
-    DCHECK(host_);
+    CHECK(host_, base::NotFatalUntil::M162);
     host_->Hide();
     is_visible_ = false;
     OnVisibilityChanged();

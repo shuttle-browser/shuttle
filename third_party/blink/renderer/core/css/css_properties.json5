@@ -776,17 +776,21 @@
       valid_type: "bool",
     },
 
-    // Whether changing this property is so independent that we can apply
-    // a change to them incrementally on top of the old style. This happens
-    // only when inline style is changed. Conceptually, this could be a blocklist,
-    // but being conservative, we have chosen to make it an allowlist.
+    // Whether changes to an existing inline style declaration or SVG
+    // presentation attribute can be applied incrementally on top of the old
+    // style. Also selects which CSS values from SVG presentation attributes are
+    // applied before inline style; values from other presentation attributes
+    // remain in the cloned style.
+    // See CanApplyStyleIncrementally() for eligibility.
+    // Conceptually, this could be a blocklist, but being conservative, we have
+    // chosen to make it an allowlist.
     // The properties with known issue are explicitly marked as false,
     // so changing the default from false to true _should_ have no ill effects,
     // but bugs are of course possible. (There is a DCHECK verifying that we
     // computed the correct style when this optimization is in effect.)
     //
     // Since animations can affect pretty much anything else, and we don't
-    // support their interactions anyway (see CanApplyInlineStyleIncrementally()),
+    // support their interactions anyway (see CanApplyStyleIncrementally()),
     // animation properties are also never marked as supporting incremental style.
     // This is verified in validate_property().
     supports_incremental_style: {
@@ -794,9 +798,10 @@
       valid_type: "bool",
     },
 
-    // If false, this property is known to cause problems if setting
-    // it on an element's inline style will cause problems with computing
-    // that element's style incrementally.
+    // If false, specifying this property in inline style or through an SVG
+    // presentation attribute makes incremental style unsafe.
+    // StyleAdjuster runs again on the cloned style, even for property values
+    // retained from presentation attributes that are not reapplied.
     //
     // NOTE: Setting false here is probably indicative of a bug. Long-term,
     // we should fix all of these and remove the flag.
@@ -3573,6 +3578,7 @@
       keywords: ["nonzero", "evenodd"],
       default_value: "RULE_NONZERO",
       typedom_types: ["Keyword"],
+      valid_for_permission_icon: true,
       invalidate: ["paint"],
     },
     {
@@ -3593,6 +3599,24 @@
       typedom_types: ["Keyword"],
       invalidate: ["filter-data"],
       includes_currentcolor: true,
+      affected_by_zoom: true,
+    },
+    {
+      name: "fit-tolerance",
+      include_paths: ["third_party/blink/renderer/core/style/fit_tolerance.h"],
+      property_methods: ["CSSValueFromComputedStyleInternal"],
+      parse_helper: "ConsumeFitTolerance",
+      field_group: "*",
+      field_template: "external",
+      default_value: "FitTolerance(CSSValueID::kNormal)",
+      type_name: "FitTolerance",
+      converter: "ConvertFitTolerance",
+      typedom_types: ["Length", "Percentage", "Keyword"],
+      keywords: ["normal", "infinite"],
+      invalidate: ["layout", "paint"],
+      runtime_flag: "CSSGridLanesLayout",
+      interpolable: true,
+      percentages_depend_on_used_value: true,
       affected_by_zoom: true,
     },
     {
@@ -3724,24 +3748,6 @@
       accepts_numeric_literal: true,
       invalidate: ["paint"],
       percentages_depend_on_used_value: false,
-    },
-    {
-      name: "flow-tolerance",
-      include_paths: ["third_party/blink/renderer/core/style/flow_tolerance.h"],
-      property_methods: ["CSSValueFromComputedStyleInternal"],
-      parse_helper: "ConsumeFlowTolerance",
-      field_group: "*",
-      field_template: "external",
-      default_value: "FlowTolerance(CSSValueID::kNormal)",
-      type_name: "FlowTolerance",
-      converter: "ConvertFlowTolerance",
-      typedom_types: ["Length", "Percentage", "Keyword"],
-      keywords: ["normal", "infinite"],
-      invalidate: ["layout", "paint"],
-      runtime_flag: "CSSGridLanesLayout",
-      interpolable: true,
-      percentages_depend_on_used_value: true,
-      affected_by_zoom: true,
     },
     {
       name: "frame-sizing",
@@ -5036,7 +5042,7 @@
       keywords: ["none", "auto", "push", "overlay"],
       typedom_types: ["Keyword"],
       default_value: "auto",
-      runtime_flag: "OverscrollGestures",
+      runtime_flag: "OverscrollAreas",
     },
     {
       name: "overscroll-behavior-inline",
@@ -5094,17 +5100,7 @@
       keywords: ["none", "auto"],
       typedom_types: ["Keyword"],
       default_value: "none",
-      runtime_flag: "OverscrollGestures",
-    },
-    {
-      name: "-internal-overscroll-position",
-      property_methods: ["CSSValueFromComputedStyleInternal"],
-      field_group: "*",
-      field_template: "keyword",
-      keywords: ["none", "auto"],
-      typedom_types: ["Keyword"],
-      default_value: "none",
-      runtime_flag: "OverscrollGestures",
+      runtime_flag: "OverscrollAreas",
     },
     {
       name: "-internal-unbounded",
@@ -5402,14 +5398,9 @@
       getter: "GetPositionVisibility",
       type_name: "PositionVisibility",
       converter: "ConvertPositionVisibility",
-      // TODO(crbug.com/332933527): Support anchor-valid.
-      keywords: ["always", "anchor-visible", "anchors-visible", "no-overflow"],
+      keywords: ["always", "anchor-valid", "anchor-visible", "anchors-visible", "no-overflow"],
       typedom_types: ["Keyword"],
-      // TODO(crbug.com/526682332): When PositionVisibilitySingularValues is enabled:
-      // - remove typedom_keywords (typedom will fall back to keywords)
-      // - update devtools_keywords to ["always", "anchor-visible", "no-overflow"]
-      typedom_keywords: ["always", "anchors-visible", "no-overflow"],
-      devtools_keywords: ["always", "anchors-visible", "no-overflow"],
+      devtools_keywords: ["always", "anchor-valid", "anchor-visible", "no-overflow"],
       invalidate: ["layout", "paint"],
     },
     {
@@ -5436,6 +5427,7 @@
       converter: "ConvertQuotes",
       keywords: ["auto", "none"],
       typedom_types: ["Keyword"],
+      valid_for_marker: true,
       valid_for_page_context: true,
       invalidate: ["layout", "paint"],
     },
@@ -5907,9 +5899,13 @@
     {
       name: "scroll-snap-stop",
       property_methods: ["CSSValueFromComputedStyleInternal"],
-      field_template: "keyword",
+      field_group: "*",
+      field_template: "external",
+      include_paths: ["cc/input/scroll_snap_data.h"],
+      default_value: "cc::SnapStop::kNormal",
+      type_name: "cc::SnapStop",
+      converter: "ConvertSnapStop",
       keywords: ["normal", "always", "before"],
-      default_value: "normal",
       typedom_types: ["Keyword"],
     },
     {
@@ -9299,6 +9295,14 @@
       valid_for_page_context: true,
     },
     {
+      name: "border-block-end-radius",
+      longhands: ["border-end-start-radius", "border-end-end-radius"],
+      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
+      runtime_flag: "CSSBorderRadiusSideShorthands",
+      valid_for_page_context: true,
+      valid_for_permission_element: true,
+    },
+    {
       name: "border-block-end",
       longhands: [
         "border-block-end-width", "border-block-end-style",
@@ -9310,6 +9314,14 @@
         resolver: "block-end",
       },
       valid_for_page_context: true,
+    },
+    {
+      name: "border-block-start-radius",
+      longhands: ["border-start-start-radius", "border-start-end-radius"],
+      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
+      runtime_flag: "CSSBorderRadiusSideShorthands",
+      valid_for_page_context: true,
+      valid_for_permission_element: true,
     },
     {
       name: "border-block-start",
@@ -9335,6 +9347,14 @@
       longhands: ["border-block-start-width", "border-block-end-width"],
       property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
       valid_for_page_context: true,
+    },
+    {
+      name: "border-bottom-radius",
+      longhands: ["border-bottom-left-radius", "border-bottom-right-radius"],
+      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
+      runtime_flag: "CSSBorderRadiusSideShorthands",
+      valid_for_page_context: true,
+      valid_for_permission_element: true,
     },
     {
       name: "border-bottom",
@@ -9384,6 +9404,14 @@
       valid_for_page_context: true,
     },
     {
+      name: "border-inline-end-radius",
+      longhands: ["border-start-end-radius", "border-end-end-radius"],
+      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
+      runtime_flag: "CSSBorderRadiusSideShorthands",
+      valid_for_page_context: true,
+      valid_for_permission_element: true,
+    },
+    {
       name: "border-inline-end",
       longhands: [
         "border-inline-end-width", "border-inline-end-style",
@@ -9395,6 +9423,14 @@
         resolver: "inline-end",
       },
       valid_for_page_context: true,
+    },
+    {
+      name: "border-inline-start-radius",
+      longhands: ["border-start-start-radius", "border-end-start-radius"],
+      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
+      runtime_flag: "CSSBorderRadiusSideShorthands",
+      valid_for_page_context: true,
+      valid_for_permission_element: true,
     },
     {
       name: "border-inline-start",
@@ -9422,6 +9458,14 @@
       valid_for_page_context: true,
     },
     {
+      name: "border-left-radius",
+      longhands: ["border-top-left-radius", "border-bottom-left-radius"],
+      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
+      runtime_flag: "CSSBorderRadiusSideShorthands",
+      valid_for_page_context: true,
+      valid_for_permission_element: true,
+    },
+    {
       name: "border-left",
       longhands: [
         "border-left-width", "border-left-style", "border-left-color"
@@ -9442,6 +9486,14 @@
       property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
       valid_for_permission_element: true,
       valid_for_page_context: true,
+    },
+    {
+      name: "border-right-radius",
+      longhands: ["border-top-right-radius", "border-bottom-right-radius"],
+      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
+      runtime_flag: "CSSBorderRadiusSideShorthands",
+      valid_for_page_context: true,
+      valid_for_permission_element: true,
     },
     {
       name: "border-right",
@@ -9471,6 +9523,14 @@
       property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
       keywords: ["none"],
       valid_for_page_context: true,
+    },
+    {
+      name: "border-top-radius",
+      longhands: ["border-top-left-radius", "border-top-right-radius"],
+      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
+      runtime_flag: "CSSBorderRadiusSideShorthands",
+      valid_for_page_context: true,
+      valid_for_permission_element: true,
     },
     {
       name: "border-top",

@@ -198,7 +198,7 @@ class PerProcessInitializer final {
     return *instance;
   }
 
-  void Acquire(bool use_skia) {
+  void Acquire(bool enable_xfa, bool use_skia) {
     DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
     DCHECK_GE(init_count_, 0);
@@ -207,7 +207,8 @@ class PerProcessInitializer final {
     }
 
     DCHECK(!IsSDKInitializedViaPlugin());
-    InitializeSDK(/*enable_v8=*/true, use_skia, FontMappingMode::kBlink);
+    InitializeSDK(/*enable_v8=*/true, enable_xfa, use_skia,
+                  FontMappingMode::kBlink);
     SetIsSDKInitializedViaPlugin(true);
   }
 
@@ -590,7 +591,10 @@ bool PdfViewWebPlugin::InitializeCommon() {
   base::debug::SetCrashKeyString(subresource_url, params->original_url);
 
   use_skia_renderer_ = params->use_skia;
-  PerProcessInitializer::GetInstance().Acquire(params->use_skia);
+  PerProcessInitializer::GetInstance().Acquire(
+      /*enable_xfa=*/params->script_option ==
+          PDFiumFormFiller::ScriptOption::kJavaScriptAndXFA,
+      params->use_skia);
   initialized_ = true;
 
   // Check if the PDF is being loaded in the PDF chrome extension. We only allow
@@ -1872,12 +1876,13 @@ void PdfViewWebPlugin::HandleGetNamedDestinationMessage(
   std::optional<PDFiumEngine::NamedDestination> named_destination =
       engine_->GetNamedDestination(*message.FindString("namedDestination"));
 
-  const int page_number = named_destination.has_value()
-                              ? base::checked_cast<int>(named_destination->page)
-                              : -1;
+  const int page_index =
+      named_destination.has_value()
+          ? base::checked_cast<int>(named_destination->page_index)
+          : -1;
 
   base::DictValue reply = PrepareReplyMessage(message);
-  reply.Set("pageNumber", page_number);
+  reply.Set("pageIndex", page_index);
 
   if (named_destination.has_value() && !named_destination->view.empty()) {
     std::ostringstream view_stream;
@@ -2169,8 +2174,7 @@ void PdfViewWebPlugin::HandleViewportMessage(const base::DictValue& message) {
     }
 
     paint_manager_.SetTransform(zoom_ratio, pinch_center,
-                                pinch_vector + paint_offset + scroll_delta,
-                                true);
+                                pinch_vector + paint_offset + scroll_delta);
     needs_reraster_ = false;
     return;
   }
@@ -2464,18 +2468,8 @@ void PdfViewWebPlugin::DoPaint(const std::vector<gfx::Rect>& paint_rects,
 
   engine_->PostPaint();
 
-  if (base::FeatureList::IsEnabled(features::kPdfBufferedPaintManager)) {
-    for (const gfx::Rect& ready_rect : ready_rects) {
-      ready.emplace_back(ready_rect, nullptr);
-    }
-  } else {
-    // TODO(crbug.com/40203030): Write pixels directly to the `SkSurface` in
-    // `PaintManager`, rather than using an intermediate `SkBitmap` and
-    // `SkImage`.
-    sk_sp<SkImage> painted_image = image_data_.asImage();
-    for (const gfx::Rect& ready_rect : ready_rects) {
-      ready.emplace_back(ready_rect, painted_image);
-    }
+  for (const gfx::Rect& ready_rect : ready_rects) {
+    ready.emplace_back(ready_rect);
   }
 
   InvalidateAfterPaintDone();
@@ -2490,13 +2484,8 @@ void PdfViewWebPlugin::PrepareForFirstPaint(
   // Fill the image data buffer with the background color.
   first_paint_ = false;
   image_data_.eraseColor(background_color_);
-  if (base::FeatureList::IsEnabled(features::kPdfBufferedPaintManager)) {
-    ready.emplace_back(gfx::SkIRectToRect(image_data_.bounds()), nullptr,
-                       /*flush_now=*/true);
-  } else {
-    ready.emplace_back(gfx::SkIRectToRect(image_data_.bounds()),
-                       image_data_.asImage(), /*flush_now=*/true);
-  }
+  ready.emplace_back(gfx::SkIRectToRect(image_data_.bounds()),
+                     /*flush_now=*/true);
 }
 
 void PdfViewWebPlugin::OnGeometryChanged(double old_zoom,
@@ -2705,22 +2694,6 @@ void PdfViewWebPlugin::OnViewportChanged(
   SkAlphaType alpha_type =
       UseSkiaPremultipliedAlpha() ? kPremul_SkAlphaType : kUnpremul_SkAlphaType;
   paint_manager_.SetSize(plugin_rect_.size(), device_scale_, alpha_type);
-  // In the PdfBufferedPaintManager experiment, all these calculations and
-  // allocations are done in the PaintManager.
-  if (!base::FeatureList::IsEnabled(features::kPdfBufferedPaintManager)) {
-    // Initialize the image data buffer if the context size changes.
-    const gfx::Size old_image_size =
-        gfx::SkISizeToSize(image_data_.dimensions());
-    const gfx::Size new_image_size =
-        PaintManager::GetNewContextSize(old_image_size, plugin_rect_.size());
-    if (new_image_size != old_image_size) {
-      // Ignore the result. If the allocation fails, the image data buffer
-      // will be empty and the code below will handle that.
-      (void)image_data_.tryAllocPixels(SkImageInfo::MakeN32(
-          new_image_size.width(), new_image_size.height(), alpha_type));
-      first_paint_ = true;
-    }
-  }
 
   // Skip updating the geometry if the new image data buffer is empty.
   if (image_data_.drawsNothing()) {
@@ -3029,6 +3002,10 @@ void PdfViewWebPlugin::HandleResetPrintPreviewModeMessage(
   preview_pages_info_ = base::queue<PreviewPageInfo>();
   preview_document_load_state_ = DocumentLoadState::kComplete;
   document_load_state_ = DocumentLoadState::kLoading;
+  // Reload accessibility once the new document finishes loading.
+  if (accessibility_state_ == AccessibilityState::kLoaded) {
+    accessibility_state_ = AccessibilityState::kPending;
+  }
   last_progress_sent_ = 0;
   LoadUrl(url_, base::BindOnce(&PdfViewWebPlugin::DidOpen,
                                weak_factory_.GetWeakPtr()));
@@ -3232,6 +3209,10 @@ PdfViewWebPlugin::GetAccessibilityDocInfo() const {
   doc_info->text_accessible =
       engine_->HasPermission(DocumentPermission::kCopyAccessible);
   doc_info->text_copyable = engine_->HasPermission(DocumentPermission::kCopy);
+  const auto& language_tag = engine_->GetDocumentMetadata().language_tag;
+  if (language_tag.has_value()) {
+    doc_info->language = std::string(language_tag->tag_string());
+  }
   return doc_info;
 }
 

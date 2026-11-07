@@ -201,7 +201,7 @@ bool CanUseUpdateSubresource(const std::vector<SkPixmap>& pixmaps) {
   return true;
 }
 
-Microsoft::WRL::ComPtr<ID3D11Device> GetD3D11Device(
+Microsoft::WRL::ComPtr<ID3D11Device> GetDawnD3D11Device(
     const wgpu::Device& device,
     wgpu::BackendType backend_type,
     const bool is_graphite_device) {
@@ -1001,11 +1001,8 @@ std::unique_ptr<DawnImageRepresentation> D3DImageBacking::ProduceDawn(
         dawn_context_provider->GetDevice().Get() == device.Get();
 
     Microsoft::WRL::ComPtr<ID3D11Device> dawn_d3d11_device =
-        GetD3D11Device(device, backend_type, is_graphite_device);
-    const bool use_keyed_mutex =
-        d3d11_texture_desc_.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+        GetDawnD3D11Device(device, backend_type, is_graphite_device);
     Microsoft::WRL::ComPtr<ID3D12Resource> unwrapped_d3d12_resource;
-    // Unwrapping is not allowed if the texture is used with a keyed mutex.
     // If there is no texture_d3d11_device_, it is safe to assume that the
     // resource was created with the Dawn D3D12 device.
     // TODO(crbug.com/543937339): This logic can be simplified by making
@@ -1014,8 +1011,6 @@ std::unique_ptr<DawnImageRepresentation> D3DImageBacking::ProduceDawn(
     // wrapping it when the D3D11 texture is required. That way only
     // UploadTo/FromMemory related operations will need D3D11On12.
     if (backend_type == wgpu::BackendType::D3D12 &&
-        !(dxgi_shared_handle_state_ &&
-          dxgi_shared_handle_state_->has_keyed_mutex()) &&
         texture_device_can_use_d3d12_ &&
         (!texture_d3d11_device_ ||
          (texture_d3d11_device_ == dawn_d3d11_device))) {
@@ -1041,6 +1036,8 @@ std::unique_ptr<DawnImageRepresentation> D3DImageBacking::ProduceDawn(
         const HANDLE shared_handle =
             dxgi_shared_handle_state_->GetSharedHandle();
         CHECK(base::win::HandleTraits::IsHandleValid(shared_handle));
+        const bool use_keyed_mutex = d3d11_texture_desc_.MiscFlags &
+                                     D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
         shared_texture_memory = CreateDawnSharedTextureMemory(
             device, use_keyed_mutex, shared_handle);
       }
@@ -1379,21 +1376,18 @@ wgpu::Texture D3DImageBacking::BeginAccessDawn(
   const bool is_graphite_device =
       backend_type == wgpu::BackendType::D3D12 && d3d12_resource_;
   Microsoft::WRL::ComPtr<ID3D11Device> dawn_d3d11_device =
-      GetD3D11Device(device, backend_type, is_graphite_device);
+      GetDawnD3D11Device(device, backend_type, is_graphite_device);
 
   // Dawn access is allowed without shared handle for single device scenarios.
   CHECK(dxgi_shared_handle_state_ ||
         dawn_d3d11_device == texture_d3d11_device_);
 
   if (backend_type == wgpu::BackendType::D3D12) {
-    // Unwrapping is not allowed if the texture is used with a keyed mutex.
     // If there is no texture_d3d11_device_, it is safe to assume that the
     // resource was created with the Dawn D3D12 device.
     // TODO(crbug.com/543937339): This logic can be simplified by making
     // texture_d3d11_device_ a variant as well.
-    if (!(dxgi_shared_handle_state_ &&
-          dxgi_shared_handle_state_->has_keyed_mutex()) &&
-        texture_device_can_use_d3d12_ &&
+    if (texture_device_can_use_d3d12_ &&
         (!texture_d3d11_device_ ||
          (texture_d3d11_device_ == dawn_d3d11_device))) {
       auto unwrapped_d3d12_resource = EnsureD3D12Resource();
@@ -1759,8 +1753,10 @@ bool D3DImageBacking::BeginAccessD3D(const D3DAccessObject& access_device,
   return true;
 }
 
-void D3DImageBacking::EndAccessD3D(const D3DAccessObject& access_device,
-                                   bool is_overlay_access) {
+void D3DImageBacking::EndAccessD3D(
+    const D3DAccessObject& access_device,
+    bool is_overlay_access,
+    scoped_refptr<gfx::D3DSharedFence> external_fence) {
   const bool is_texture_device = IsSameAccessObject(access_device);
   // If shared handle is not present, we can only access on the same device.
   AutoLock auto_lock(this);
@@ -1770,7 +1766,13 @@ void D3DImageBacking::EndAccessD3D(const D3DAccessObject& access_device,
   // the texture on one device or using a keyed mutex. The fence is lazily
   // created on the first access from another device in GetPendingWaitFences().
   D3DSharedFenceSet signaled_fence;
-  if (use_cross_device_fence_synchronization()) {
+  if (external_fence) {
+    // External fences are created and owned outside of D3DImageBacking. We
+    // avoid caching them in `signaled_fence_map_` as it would cause the backing
+    // to re-signal them; hence publish them directly as a write fence and avoid
+    // the `signaled_fence_map_` lookup.
+    signaled_fence.insert(std::move(external_fence));
+  } else if (use_cross_device_fence_synchronization()) {
     auto& signal_fence = signaled_fence_map_[access_device];
     // If the accessing device was not the texture's original device, create
     // the fence so that future access of the backing waits for all pending work

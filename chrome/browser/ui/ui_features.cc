@@ -20,7 +20,7 @@
 namespace features {
 
 // Enables the migration of browser commands to Action API.
-BASE_FEATURE(kUseActionsForBrowserCommands, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kUseActionsForBrowserCommands, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables the use of WGC for the Eye Dropper screen capture.
 BASE_FEATURE(kAllowEyeDropperWGCScreenCapture,
@@ -31,11 +31,20 @@ BASE_FEATURE(kAllowEyeDropperWGCScreenCapture,
 #endif  // BUILDFLAG(IS_WIN)
 );
 
-BASE_FEATURE(kCtrlTabMru, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kCtrlTabMru, base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Skip the UI update coalescing delay when the favicon arrives after a
+// navigation. Kill switch for crbug.com/554464784.
+BASE_FEATURE(kFastFaviconDisplay, base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Enables the request permission UI with a container for the disclosure text
+// in the FedCM active mode modal dialog on desktop.
+BASE_FEATURE(kFedCmPermissionUiWithContainer,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kImportExportFlags, base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kInfoBarInlineLinks, base::FEATURE_ENABLED_BY_DEFAULT);
+BASE_FEATURE(kInfoBarQueuedCountPill, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Kill switch for crbug.com/559656985. When enabled, the press-and-hold Esc
 // timer also exits tab fullscreen (unless browser fullscreen is underneath)
@@ -47,7 +56,29 @@ BASE_FEATURE(kInfoBarInlineLinks, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kKeyboardLockHeldEscExitsTabFullscreen,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+#if BUILDFLAG(IS_LINUX)
+// Gives browser windows of non-default profiles their own identity for the
+// desktop environment: the X11 WM_CLASS res_name and the Wayland app_id are set
+// to a per-profile desktop entry ID (e.g. "google-chrome-Profile_1"), so the
+// shell can match the windows to a per-profile .desktop file and icon. The
+// per-profile ID is only used when a desktop entry with that ID is installed,
+// so windows never end up without a matching .desktop file.
+BASE_FEATURE(kLinuxPerProfileAppId, base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
+
 BASE_FEATURE(kTabStripDeclutter, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE_PARAM(bool,
+                   kTabStripDeclutterActiveTabCloseHideEnabled,
+                   &kTabStripDeclutter,
+                   true);
+BASE_FEATURE_PARAM(bool,
+                   kTabStripDeclutterInactiveTabCloseHideEnabled,
+                   &kTabStripDeclutter,
+                   true);
+BASE_FEATURE_PARAM(int,
+                   kTabStripDeclutterMaxTabWidthForCloseHide,
+                   &kTabStripDeclutter,
+                   100);
 BASE_FEATURE(kToolbarGlowUp, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE_PARAM(bool,
                    kToolbarGlowUpReloadEnabled,
@@ -70,8 +101,17 @@ BASE_FEATURE(kWebuiRefresh2026, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kAppMenuGlowUp, base::FEATURE_DISABLED_BY_DEFAULT);
 // Enables the redesigned Settings 2026 refresh features and search UX.
 BASE_FEATURE(kSettingsRefresh2026, base::FEATURE_DISABLED_BY_DEFAULT);
+// Enables the new chrome://settings search: the native (C++) search backend
+// and the search WebUI that consumes it. Only takes effect when
+// kSettingsRefresh2026 is also enabled.
+BASE_FEATURE(kSettingsSearch2026, base::FEATURE_DISABLED_BY_DEFAULT);
 // Enables search in the app Chrome menu.
 BASE_FEATURE(kChroMenuSearch, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE_PARAM(std::string,
+                   kChroMenuSearchQuery,
+                   &kChroMenuSearch,
+                   "query",
+                   "");
 
 bool IsTabStripDeclutterEnabled() {
   return base::FeatureList::IsEnabled(kDesktopGlowUp) ||
@@ -116,6 +156,11 @@ bool IsSettingsRefresh2026Enabled() {
          base::FeatureList::IsEnabled(kSettingsRefresh2026);
 }
 
+bool IsSettingsSearch2026Enabled() {
+  return IsSettingsRefresh2026Enabled() &&
+         base::FeatureList::IsEnabled(kSettingsSearch2026);
+}
+
 bool ShouldUseActionsForBrowserCommands() {
   return base::FeatureList::IsEnabled(kUseActionsForBrowserCommands) ||
          base::FeatureList::IsEnabled(kAppMenuGlowUp);
@@ -127,10 +172,6 @@ BASE_FEATURE(kDseIntegrity, base::FEATURE_ENABLED_BY_DEFAULT);
 // Enables the dialog shown when user feedback is disabled.
 BASE_FEATURE(kFeedbackDisabledDialog, base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Enables the feature to remove the last confirmation dialog when relaunching
-// to update Chrome.
-BASE_FEATURE(kFewerUpdateConfirmations, base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kLegacySearchIntegrityCheck, base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
 
@@ -140,7 +181,7 @@ BASE_FEATURE(kExtensionsCollapseMainMenu, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // When enabled, newly installed extensions are pinned to the toolbar by
 // default.
-BASE_FEATURE(kExtensionsPinnedByDefault, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kExtensionsPinnedByDefault, base::FEATURE_ENABLED_BY_DEFAULT);
 
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
@@ -188,7 +229,6 @@ BASE_FEATURE_PARAM(int,
                    0);
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 
-
 // Preloads a WebContents with a Top Chrome WebUI on BrowserView initialization,
 // so that it can be shown instantly at a later time when necessary.
 BASE_FEATURE(kPreloadTopChromeWebUI, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -196,6 +236,12 @@ BASE_FEATURE(kPreloadTopChromeWebUI, base::FEATURE_ENABLED_BY_DEFAULT);
 // An experiment to reduce the number of navigations when preloading WebUIs.
 BASE_FEATURE(kPreloadTopChromeWebUILessNavigations,
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Hides the preloaded WebContents once its page is ready to show. A visible
+// preload keeps the shared top-chrome renderer at foreground priority, so that
+// renderer never backgrounds or purges memory while every WebUI is hidden.
+BASE_FEATURE(kPreloadTopChromeWebUIHideWhenReady,
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables exiting browser fullscreen (users putting the browser itself into the
 // fullscreen mode via the browser UI or shortcuts) with press-and-hold Esc.
@@ -207,7 +253,6 @@ BASE_FEATURE(kPressAndHoldEscToExitBrowserFullscreen,
 BASE_FEATURE(kProcessIsolationSettings, base::FEATURE_DISABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_WIN)
 
-BASE_FEATURE(kRealboxVirtualFocusNavigation, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kLensOverlayVirtualFocusNavigation,
              base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kWebuiBrowserVirtualFocusNavigation,
@@ -274,14 +319,6 @@ BASE_FEATURE(kPasswordSaveUpdateDropdownMenuExperiment,
              base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
 
-BASE_FEATURE(kUseDefaultDeadlineWhenAnimatingBounds,
-#if BUILDFLAG(IS_MAC) && defined(ARCH_CPU_ARM64)
-             base::FEATURE_ENABLED_BY_DEFAULT
-#else
-             base::FEATURE_DISABLED_BY_DEFAULT
-#endif
-);
-
 // Enables the management notice in the NTP footer if the custom policies are
 // set. This acts as a kill switch for "EnterpriseCustomLabelForBrowser" and
 // "EnterpriseLogoUrlForBrowser".
@@ -301,9 +338,13 @@ BASE_FEATURE(kManagedProfileRequiredInterstitial,
 BASE_FEATURE(kMigrateManagementPageToWebUIOnMobile,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-
 #if BUILDFLAG(IS_MAC)
 BASE_FEATURE(kViewsJSAppModalDialog, base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
+
+#if BUILDFLAG(IS_MAC)
+BASE_FEATURE(kMacDeferInputContextUntilFirstPaint,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
 
 BASE_FEATURE(kPageSpecificDataDialogRelatedInstalledAppsSection,
@@ -379,12 +420,29 @@ BASE_FEATURE_PARAM(bool,
                    &kAiOverlayDialog,
                    "use_mes",
                    false);
+BASE_FEATURE_PARAM(bool,
+                   kAiOverlayDialogPageTools,
+                   &kAiOverlayDialog,
+                   "enable_page_tools",
+                   true);
+BASE_FEATURE_PARAM(bool,
+                   kAiOverlayDialogNext,
+                   &kAiOverlayDialog,
+                   "enable_next",
+                   false);
 BASE_FEATURE(kAiOverlayDisableNavigationContext,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kTabGroupsFocusing, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE_PARAM(bool, kTabGroupsFocusFreezing, &kTabGroupsFocusing, true);
+
+BASE_FEATURE_PARAM(int, kTabGroupsFocusingIphMinTabs, &kTabGroupsFocusing, 10);
+
+BASE_FEATURE_PARAM(base::TimeDelta,
+                   kTabGroupsFocusingIphPromoDelay,
+                   &kTabGroupsFocusing,
+                   base::Seconds(3));
 
 bool IsTabGroupsFocusFreezingEnabled() {
   return base::FeatureList::IsEnabled(kTabGroupsFocusing) &&

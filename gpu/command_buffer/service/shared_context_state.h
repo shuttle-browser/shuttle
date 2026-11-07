@@ -17,6 +17,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/memory_coordinator/memory_limit.h"
 #include "base/observer_list.h"
+#include "base/threading/thread_checker.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "base/trace_event/memory_dump_provider.h"
@@ -327,6 +328,7 @@ class GPU_GLES2_EXPORT SharedContextState
   void ScheduleSkiaCleanup();
 
   int32_t GetMaxTextureSize();
+  int32_t GetMaxArrayTextureLayers();
 
 #if BUILDFLAG(IS_WIN)
   // Get the D3D device and command queue used for compositing.
@@ -462,7 +464,12 @@ class GPU_GLES2_EXPORT SharedContextState
       viz_compositor_graphite_cache_controller_;
 
   std::optional<int> max_texture_size_;
+  std::optional<int> max_array_texture_layers_;
   size_t max_resource_cache_bytes_ = 0;
+
+  // A SharedContextState is created on, and used from, a single gpu thread
+  // (the gpu main thread, or the CompositorGpuThread when DrDc is enabled).
+  THREAD_CHECKER(context_thread_checker_);
 
   base::WeakPtrFactory<SharedContextState> weak_ptr_factory_{this};
 };

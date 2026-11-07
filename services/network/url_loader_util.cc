@@ -32,7 +32,6 @@
 #include "services/network/pervasive_resources/shared_resource_checker.h"
 #include "services/network/public/cpp/connection_allowlist.h"
 #include "services/network/public/cpp/connection_allowlist_parser.h"
-#include "services/network/public/cpp/cors/cors.h"
 #include "services/network/public/cpp/cors/origin_access_list.h"
 #include "services/network/public/cpp/data_element.h"
 #include "services/network/public/cpp/features.h"
@@ -77,12 +76,18 @@ const char* GetCertStatePartString(const net::SSLInfo& ssl_info) {
 }
 
 // Returns true if the initiator is same-origin with `url`, if the request has
-// no initiator (e.g. browser navigation), or if granted access via
-// `origin_access_list`.
+// no initiator (e.g. browser navigation), if `disable_web_security` is enabled,
+// or if granted access via `origin_access_list`.
 bool IsSameOriginOrAccessAllowed(
     const GURL& url,
     const std::optional<url::Origin>& initiator,
-    const cors::OriginAccessList* origin_access_list) {
+    const cors::OriginAccessList* origin_access_list,
+    bool disable_web_security) {
+  if (disable_web_security &&
+      base::FeatureList::IsEnabled(
+          features::kAllowSameOriginCredentialsWithDisableWebSecurity)) {
+    return true;
+  }
   if (!initiator.has_value() || initiator->IsSameOriginWith(url)) {
     return true;
   }
@@ -96,13 +101,15 @@ bool IsSameOriginOrAccessAllowed(
 bool ShouldAllowCredentials(mojom::CredentialsMode credentials_mode,
                             const GURL& url,
                             const std::optional<url::Origin>& initiator,
-                            const cors::OriginAccessList* origin_access_list) {
+                            const cors::OriginAccessList* origin_access_list,
+                            bool disable_web_security) {
   switch (credentials_mode) {
     case mojom::CredentialsMode::kInclude:
       return true;
 
     case mojom::CredentialsMode::kSameOrigin:
-      return IsSameOriginOrAccessAllowed(url, initiator, origin_access_list);
+      return IsSameOriginOrAccessAllowed(url, initiator, origin_access_list,
+                                         disable_web_security);
 
     case mojom::CredentialsMode::kOmit:
     case mojom::CredentialsMode::kOmitBug_775438_Workaround:
@@ -116,13 +123,15 @@ bool ShouldSendClientCertificates(
     mojom::CredentialsMode credentials_mode,
     const GURL& url,
     const std::optional<url::Origin>& initiator,
-    const cors::OriginAccessList* origin_access_list) {
+    const cors::OriginAccessList* origin_access_list,
+    bool disable_web_security) {
   switch (credentials_mode) {
     case mojom::CredentialsMode::kInclude:
       return true;
 
     case mojom::CredentialsMode::kSameOrigin:
-      if (IsSameOriginOrAccessAllowed(url, initiator, origin_access_list)) {
+      if (IsSameOriginOrAccessAllowed(url, initiator, origin_access_list,
+                                      disable_web_security)) {
         return true;
       }
       return !base::FeatureList::IsEnabled(features::kOmitCorsClientCert);
@@ -400,11 +409,6 @@ net::CookieSettingOverrides CalculateCookieSettingOverrides(
     net::CookieSettingOverrides devtools_overrides,
     const ResourceRequest& request) {
   net::CookieSettingOverrides overrides(factory_overrides);
-  if (request.is_outermost_main_frame &&
-      network::cors::IsCorsEnabledRequestMode(request.mode)) {
-    overrides.Put(
-        net::CookieSettingOverride::kTopLevelStorageAccessGrantEligible);
-  }
 
   // Only apply the DevTools overrides if the request is from devtools enabled
   // context.
@@ -591,10 +595,10 @@ void ConfigureUrlRequest(const ResourceRequest& request,
       factory_params.cookie_setting_overrides,
       factory_params.devtools_cookie_setting_overrides, request);
   url_request.SetLoadFlags(request.load_flags);
-  SetRequestCredentials(request.url, factory_params.client_security_state,
-                        request.mode, request.credentials_mode,
-                        request.request_initiator, url_request,
-                        &origin_access_list);
+  SetRequestCredentials(
+      request.url, factory_params.client_security_state, request.mode,
+      request.credentials_mode, request.request_initiator, url_request,
+      &origin_access_list, factory_params.disable_web_security);
   if (request.credentials_mode == mojom::CredentialsMode::kInclude) {
     url_request.set_storage_access_status(
         url_request.CalculateStorageAccessStatus());
@@ -650,18 +654,19 @@ void SetRequestCredentials(
     mojom::CredentialsMode credentials_mode,
     const std::optional<url::Origin>& initiator,
     net::URLRequest& url_request,
-    const cors::OriginAccessList* origin_access_list) {
+    const cors::OriginAccessList* origin_access_list,
+    bool disable_web_security) {
   bool policies_allow_credentials = WebPoliciesAllowCredentials(
       url, client_security_state, request_mode, initiator);
 
   bool allow_credentials =
       ShouldAllowCredentials(credentials_mode, url, initiator,
-                             origin_access_list) &&
+                             origin_access_list, disable_web_security) &&
       policies_allow_credentials;
 
   bool allow_client_certificates =
       ShouldSendClientCertificates(credentials_mode, url, initiator,
-                                   origin_access_list) &&
+                                   origin_access_list, disable_web_security) &&
       policies_allow_credentials;
 
   // The decision not to include credentials is sticky. Under WHATWG Fetch 4.5

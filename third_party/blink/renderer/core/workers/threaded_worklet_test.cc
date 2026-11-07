@@ -28,7 +28,6 @@
 #include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 
 namespace blink {
@@ -213,9 +212,7 @@ class ThreadedWorkletMessagingProxyForTest
             mojo::Clone(GetExecutionContext()
                             ->GetContentSecurityPolicy()
                             ->GetParsedPolicies()),
-            Vector<network::mojom::blink::ContentSecurityPolicyPtr>(),
             GetExecutionContext()->GetReferrerPolicy(),
-            DocumentPolicy::DocumentPolicyBundle{},
             GetExecutionContext()->GetSecurityOrigin(),
             GetExecutionContext()->IsSecureContext(),
             GetExecutionContext()->GetHttpsState(), worker_clients,

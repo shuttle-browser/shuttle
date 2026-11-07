@@ -4,13 +4,15 @@
 
 #include "chrome/browser/lifetime/smart_restart_policy.h"
 
+#include <optional>
 #include <utility>
 
+#include "base/time/time.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/enterprise/browser_management/management_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
+#include "chrome/browser/upgrade_detector/upgrade_detector.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
 #include "components/prefs/pref_service.h"
@@ -23,6 +25,17 @@
 namespace smart_restart {
 
 namespace {
+
+bool IsLockScreenRestartAllowedByPolicy() {
+  std::optional<UpgradeDetector::RelaunchWindow> window =
+      UpgradeDetector::GetRelaunchWindowPolicyValue();
+  if (!window || !window->IsValid()) {
+    return true;
+  }
+
+  base::Time now = base::Time::Now();
+  return UpgradeDetector::AdjustDeadline(now, *window) == now;
+}
 
 #if BUILDFLAG(IS_MAC)
 bool IsZeroWindowRestartAllowedByPolicy() {
@@ -76,9 +89,8 @@ ExtendedExecutionOutcome SmartRestartPolicy::ShouldRestart(
 // static
 ExtendedExecutionOutcome SmartRestartPolicy::CanLockScreenRestartProceed(
     const ExtendedRestartabilityState& state) {
-  // Exclude managed enterprise environments to respect administrative update
-  // controls.
-  if (policy::ManagementServiceFactory::GetForPlatform()->IsManaged()) {
+  // Respect the RelaunchWindow enterprise policy when configured.
+  if (!IsLockScreenRestartAllowedByPolicy()) {
     return ExtendedExecutionOutcome::kBlockedByPolicy;
   }
 

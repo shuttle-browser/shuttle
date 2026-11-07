@@ -207,14 +207,12 @@ void TooltipAura::CreateTooltipWidget(const gfx::Rect& bounds,
   DCHECK(params.context);
   params.z_order = ui::ZOrderLevel::kFloatingUIElement;
   params.accept_events = false;
+  params.accept_drag_drop = false;
   params.bounds = bounds;
   if (CanUseTranslucentTooltipWidget()) {
     params.opacity = views::Widget::InitParams::WindowOpacity::kTranslucent;
   }
   params.shadow_type = views::Widget::InitParams::ShadowType::kNone;
-  // Use software compositing to avoid using unnecessary hardware resources
-  // which just amount to overkill for this UI.
-  params.force_software_compositing = true;
   params.name = kWidgetName;
 
   params.init_properties_container.SetProperty(aura::client::kOwnedWindowAnchor,

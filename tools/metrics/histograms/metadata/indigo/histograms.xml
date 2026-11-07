@@ -78,6 +78,18 @@ chromium-metrics-reviews@google.com.
   </token>
 </histogram>
 
+<histogram name="Indigo.ContextMenu.TargetType"
+    enum="IndigoContextMenuTargetType" expires_after="2027-08-31">
+  <owner>jbroman@chromium.org</owner>
+  <owner>adithyas@chromium.org</owner>
+  <owner>baranerf@google.com</owner>
+  <summary>
+    Recorded when the &quot;Try it on&quot; context menu item is executed,
+    indicating whether the context menu was triggered on an image or on the page
+    in general. Does not affect what image is transformed.
+  </summary>
+</histogram>
+
 <histogram name="Indigo.Discovery.EligibilityCheck.Latency" units="ms"
     expires_after="2027-05-13">
   <owner>baranerf@google.com</owner>
@@ -193,7 +205,8 @@ chromium-metrics-reviews@google.com.
   <owner>baranerf@google.com</owner>
   <summary>
     Records the entry point or presentation style of the Indigo page action when
-    it is shown to the user.
+    it is shown to the user. For the context menu entry point, this is recorded
+    at most once per page load when a context menu containing the item is shown.
   </summary>
 </histogram>
 

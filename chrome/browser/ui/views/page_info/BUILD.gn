@@ -31,6 +31,7 @@ source_set("page_info") {
     "//chrome/browser/lookalikes",
     "//chrome/browser/page_info",
     "//chrome/browser/ui/page_info",
+    "//chrome/browser/ui/page_info:about_this_site_icon",
     "//chrome/browser/ui/views/controls",
     "//components/content_settings/core/common",
     "//components/media_effects",
@@ -70,7 +71,6 @@ source_set("impl") {
   deps = [
     ":page_info",
     "//base",
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser:primitives",
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/file_system_access",
@@ -88,7 +88,6 @@ source_set("impl") {
     "//chrome/browser/ui/views/controls",
     "//chrome/browser/ui/views/file_system_access",
     "//chrome/browser/ui/views/frame:browser_view_header",
-    "//chrome/browser/vr",
     "//components/content_settings/browser/ui",
     "//components/dom_distiller/core",
     "//components/omnibox/browser:vector_icons",

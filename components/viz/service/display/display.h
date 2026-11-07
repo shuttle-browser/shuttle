@@ -12,6 +12,7 @@
 
 #include "base/containers/circular_deque.h"
 #include "base/containers/flat_set.h"
+#include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/observer_list.h"
@@ -37,6 +38,7 @@
 #include "components/viz/service/surfaces/surface.h"
 #include "components/viz/service/surfaces/surface_manager.h"
 #include "components/viz/service/viz_service_export.h"
+#include "services/viz/privileged/mojom/compositing/display_private.mojom-shared.h"
 #include "ui/gfx/display_color_spaces.h"
 #include "ui/gfx/overlay_transform.h"
 #include "ui/gfx/swap_result.h"
@@ -126,6 +128,7 @@ class VIZ_SERVICE_EXPORT Display : public DisplaySchedulerClient,
   // what scale this was rendered at.
   void SetLocalSurfaceId(const LocalSurfaceId& id, float device_scale_factor);
   void SetVisible(bool visible);
+  void SetVisible(mojom::DisplayVisibility visibility);
   void Resize(const gfx::Size& new_size);
 
   // Sets additional clip rect for the OutputSurface. DirectRenderer will not
@@ -177,7 +180,9 @@ class VIZ_SERVICE_EXPORT Display : public DisplaySchedulerClient,
       gfx::CALayerParams ca_layer_params) override;
 
   bool has_scheduler() const { return !!scheduler_; }
-  bool visible() const { return visible_; }
+  bool visible() const {
+    return visibility_ == mojom::DisplayVisibility::kVisible;
+  }
   const RendererSettings& settings() const { return settings_; }
   DirectRenderer* renderer_for_testing() const { return renderer_.get(); }
 
@@ -194,6 +199,15 @@ class VIZ_SERVICE_EXPORT Display : public DisplaySchedulerClient,
 #endif
 
   void PreserveChildSurfaceControls();
+
+  // Returns main thread ids of Renderers that should be included in the ADPF
+  // hint session even though they have not contributed a surface to the last
+  // drawn frame yet (e.g. the Renderer committing a page load). Runs on the
+  // viz compositor thread during DrawAndSwap.
+  using PendingRendererMainThreadsCallback =
+      base::RepeatingCallback<base::flat_set<base::PlatformThreadId>()>;
+  void SetPendingRendererMainThreadsCallback(
+      PendingRendererMainThreadsCallback callback);
 
 #if BUILDFLAG(IS_ANDROID)
   base::ScopedClosureRunner GetCacheBackBufferCb();
@@ -298,12 +312,13 @@ class VIZ_SERVICE_EXPORT Display : public DisplaySchedulerClient,
   raw_ptr<DisplayClient> client_ = nullptr;
   base::ObserverList<DisplayObserver> observers_;
   raw_ptr<SurfaceManager> surface_manager_ = nullptr;
+  PendingRendererMainThreadsCallback pending_renderer_main_threads_callback_;
   const FrameSinkId frame_sink_id_;
   SurfaceId current_surface_id_;
   gfx::Size current_surface_size_;
   float device_scale_factor_ = 1.f;
   gfx::DisplayColorSpaces display_color_spaces_;
-  bool visible_ = false;
+  mojom::DisplayVisibility visibility_ = mojom::DisplayVisibility::kInvisible;
   bool output_is_secure_ = false;
 
 #if DCHECK_IS_ON()

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cinttypes>
 #include <cstdint>
 #include <map>
@@ -21,6 +22,7 @@
 #include "base/compiler_specific.h"
 #include "base/containers/span.h"
 #include "base/cpu.h"
+#include "base/debug/crash_logging.h"
 #include "base/debug/dump_without_crashing.h"
 #include "base/debug/stack_trace.h"
 #include "base/debug/task_trace.h"
@@ -30,6 +32,7 @@
 #include "base/immediate_crash.h"
 #include "base/location.h"
 #include "base/logging.h"
+#include "base/memory/memory_pressure_listener_registry.h"
 #include "base/memory/post_delayed_memory_reduction_task.h"
 #include "base/memory/raw_ptr_asan_service.h"
 #include "base/metrics/histogram_functions.h"
@@ -44,12 +47,25 @@
 #include "base/system/sys_info.h"
 #include "base/task/common/task_annotator.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/task/thread_pool.h"
 #include "base/thread_annotations.h"
 #include "base/threading/platform_thread.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
+#include "partition_alloc/address_pool_manager.h"
+
+#if PA_BUILDFLAG(HAS_64_BIT_POINTERS) && BUILDFLAG(IS_POSIX)
+#include <unistd.h>
+
+#include <cerrno>
+
+#include "base/files/file_descriptor_watcher_posix.h"
+#include "base/files/file_util.h"
+#include "base/files/scoped_file.h"
+#include "base/posix/eintr_wrapper.h"
+#endif
 #include "partition_alloc/allocation_guard.h"
 #include "partition_alloc/allocator_config.h"
 #include "partition_alloc/buildflags.h"
@@ -1199,11 +1215,10 @@ void PartitionAllocSupport::ReconfigureAfterFeatureListInit(
       GetSchedulerLoopQuarantineConfiguration(
           process_type_identifier,
           SchedulerLoopQuarantineBranchType::kThreadLocalDefault);
-  const auto
-      scheduler_loop_quarantine_for_advanced_memory_safety_checks_config =
-          GetSchedulerLoopQuarantineConfiguration(
-              process_type_identifier,
-              SchedulerLoopQuarantineBranchType::kAdvancedMemorySafetyChecks);
+  const auto scheduler_loop_quarantine_for_sanitized_object_config =
+      GetSchedulerLoopQuarantineConfiguration(
+          process_type_identifier,
+          SchedulerLoopQuarantineBranchType::kSanitizedObject);
 
   if (HasSchedulerLoopQuarantineTaskControl(process_type_identifier)) {
     base::EnableSchedulerLoopQuarantineTaskControlledPurge();
@@ -1311,7 +1326,7 @@ void PartitionAllocSupport::ReconfigureAfterFeatureListInit(
       memory_tagging_reporting_mode, bucket_distribution,
       scheduler_loop_quarantine_global_config,
       scheduler_loop_quarantine_thread_local_config,
-      scheduler_loop_quarantine_for_advanced_memory_safety_checks_config,
+      scheduler_loop_quarantine_for_sanitized_object_config,
       allocator_shim::EventuallyZeroFreedMemory(eventually_zero_freed_memory),
       allocator_shim::EnableTighterAlignedAllocBound(
           enable_tighter_aligned_alloc_bound));
@@ -1324,13 +1339,18 @@ void PartitionAllocSupport::ReconfigureAfterFeatureListInit(
                         int(extras_size));
 
 #if PA_CONFIG(DYNAMICALLY_SELECT_POOL_SIZE)
-  // We don't care about the normal case... That is just daily sessions, we
-  // don't want to record this if it isn't interesting to reduce impact on data
-  // volume and sampling.
   if (partition_alloc::internal::PartitionAddressSpace::
           IsCorePoolSizeReduced()) {
-    base::UmaHistogramBoolean("Memory.PartitionAlloc.CorePoolSizeReduced",
-                              true);
+    // This in theory should almost never happen, but once in iOS beta we had
+    // some reports of this. See crbug.com/489679627.
+    // We set a crash key so if later we OOM we can tell this happened, and
+    // also add a DumpWithoutCrashing() to get some stats about how
+    // many times this has happened, if it becomes frequent enough to trip
+    // automatic alerting.
+    static auto* const crash_key = base::debug::AllocateCrashKeyString(
+        "pa_core_pool_reduced", base::debug::CrashKeySize::Size32);
+    base::debug::SetCrashKeyString(crash_key, process_type);
+    base::debug::DumpWithoutCrashing();
   }
 #endif
 
@@ -1472,6 +1492,13 @@ void PartitionAllocSupport::ReconfigureAfterTaskRunnerInit(
   }
   base::allocator::StartMemoryReclaimer(
       base::SingleThreadTaskRunner::GetCurrentDefault());
+#if PA_BUILDFLAG(HAS_64_BIT_POINTERS) && BUILDFLAG(IS_POSIX)
+  if (base::FeatureList::IsEnabled(
+          base::features::kPartitionAllocMemoryPressureMonitor)) {
+    PartitionAllocMemoryPressureMonitor::Instance().Start(
+        base::SingleThreadTaskRunner::GetCurrentDefault());
+  }
+#endif
 #endif
 
   partition_alloc::PartitionRoot::SetStraightenLargerSlotSpanFreeListsMode(
@@ -1571,6 +1598,171 @@ std::string PartitionAllocSupport::ExtractDanglingPtrSignatureForTests(
   return ExtractDanglingPtrSignature(stacktrace);
 }
 #endif
+
+#if PA_BUILDFLAG(HAS_64_BIT_POINTERS)
+// static
+void PartitionAllocSupport::SetAsyncSafeMemoryPressureNotification(
+    AsyncSafeMemoryPressureNotification notification) {
+  ::partition_alloc::internal::AddressPoolManager::GetInstance()
+      .SetAsyncSafeMemoryPressureNotification(notification);
+}
+
+// static
+PartitionAllocSupport::MemoryPressureLevel
+PartitionAllocSupport::GetMemoryPressureLevel() {
+  if (::partition_alloc::internal::AddressPoolManager::GetInstance()
+          .IsAlmostFull()) {
+    return MemoryPressureLevel::kCriticalPressure;
+  }
+  return MemoryPressureLevel::kNoPressure;
+}
+#endif  // PA_BUILDFLAG(HAS_64_BIT_POINTERS)
+
+#if PA_BUILDFLAG(HAS_64_BIT_POINTERS) && BUILDFLAG(IS_POSIX)
+namespace {
+std::atomic<int> g_pipe_write_fd{-1};
+}  // namespace
+
+struct PartitionAllocMemoryPressureMonitor::WatcherState {
+  WatcherState(base::ScopedFD read_fd, base::ScopedFD write_fd)
+      : read_fd(std::move(read_fd)), write_fd(std::move(write_fd)) {}
+  ~WatcherState() = default;
+
+  base::ScopedFD read_fd;
+  base::ScopedFD write_fd;
+  std::unique_ptr<base::FileDescriptorWatcher::Controller> controller;
+};
+
+// static
+PartitionAllocMemoryPressureMonitor&
+PartitionAllocMemoryPressureMonitor::Instance() {
+  static base::NoDestructor<PartitionAllocMemoryPressureMonitor> instance;
+  return *instance;
+}
+
+PartitionAllocMemoryPressureMonitor::PartitionAllocMemoryPressureMonitor() =
+    default;
+
+PartitionAllocMemoryPressureMonitor::~PartitionAllocMemoryPressureMonitor() =
+    default;
+
+// static
+void PartitionAllocMemoryPressureMonitor::OnPartitionAllocPressureFromMalloc() {
+  int fd = g_pipe_write_fd.load(std::memory_order_acquire);
+  if (fd < 0) {
+    return;
+  }
+  const int saved_errno = errno;
+  char byte = 1;
+  HANDLE_EINTR(write(fd, &byte, sizeof(byte)));
+  errno = saved_errno;
+}
+
+void PartitionAllocMemoryPressureMonitor::Start(
+    scoped_refptr<SingleThreadTaskRunner> main_thread_task_runner) {
+  CHECK(!watcher_state_);
+
+  int fds[2];
+  if (!base::CreateLocalNonBlockingPipe(fds)) {
+    return;
+  }
+  watcher_state_ = std::make_unique<WatcherState>(base::ScopedFD(fds[0]),
+                                                  base::ScopedFD(fds[1]));
+  g_pipe_write_fd.store(watcher_state_->write_fd.get(),
+                        std::memory_order_release);
+
+  watcher_task_runner_ = base::ThreadPool::CreateSequencedTaskRunner(
+      {base::TaskPriority::USER_VISIBLE,
+       base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN});
+  WatcherState* raw_state = watcher_state_.get();
+  watcher_task_runner_->PostTask(
+      FROM_HERE,
+      base::BindOnce(
+          &PartitionAllocMemoryPressureMonitor::StartWatchingOnThreadPool,
+          raw_state, std::move(main_thread_task_runner),
+          weak_factory_.GetWeakPtr()));
+
+  PartitionAllocSupport::SetAsyncSafeMemoryPressureNotification(
+      &OnPartitionAllocPressureFromMalloc);
+  if (PartitionAllocSupport::GetMemoryPressureLevel() ==
+      PartitionAllocSupport::MemoryPressureLevel::kCriticalPressure) {
+    OnPartitionAllocPressureFromMalloc();
+  }
+}
+
+void PartitionAllocMemoryPressureMonitor::ResetForTesting() {
+  PartitionAllocSupport::SetAsyncSafeMemoryPressureNotification(nullptr);
+  g_pipe_write_fd.store(-1, std::memory_order_release);
+  weak_factory_.InvalidateWeakPtrs();
+  last_notified_level_ =
+      PartitionAllocSupport::MemoryPressureLevel::kNoPressure;
+
+  if (watcher_task_runner_ && watcher_state_) {
+    watcher_task_runner_->DeleteSoon(FROM_HERE, std::move(watcher_state_));
+  } else {
+    watcher_state_.reset();
+  }
+  watcher_task_runner_.reset();
+}
+
+void PartitionAllocMemoryPressureMonitor::
+    MaybeNotifyMemoryPressureOnMainThread() {
+  const auto level = PartitionAllocSupport::GetMemoryPressureLevel();
+  if (level == last_notified_level_) {
+    return;
+  }
+  last_notified_level_ = level;
+  if (level == PartitionAllocSupport::MemoryPressureLevel::kCriticalPressure) {
+    base::MemoryPressureListenerRegistry::NotifyMemoryPressure(
+        base::MEMORY_PRESSURE_LEVEL_CRITICAL);
+  } else {
+    // This is not necessarily the right thing to do, since memory pressure may
+    // exist otherwise.
+    base::MemoryPressureListenerRegistry::NotifyMemoryPressure(
+        base::MEMORY_PRESSURE_LEVEL_NONE);
+  }
+}
+
+// static
+void PartitionAllocMemoryPressureMonitor::StartWatchingOnThreadPool(
+    WatcherState* state,
+    scoped_refptr<SingleThreadTaskRunner> main_thread_task_runner,
+    base::WeakPtr<PartitionAllocMemoryPressureMonitor> weak_this) {
+  int read_fd = state->read_fd.get();
+  state->controller = base::FileDescriptorWatcher::WatchReadable(
+      read_fd,
+      base::BindRepeating(&PartitionAllocMemoryPressureMonitor::OnPipeReadable,
+                          read_fd, std::move(main_thread_task_runner),
+                          std::move(weak_this)));
+}
+
+// static
+void PartitionAllocMemoryPressureMonitor::OnPipeReadable(
+    int read_fd,
+    scoped_refptr<SingleThreadTaskRunner> main_thread_task_runner,
+    base::WeakPtr<PartitionAllocMemoryPressureMonitor> weak_this) {
+  char buffer[16];
+  ssize_t total_read = 0;
+  while (true) {
+    ssize_t bytes_read = HANDLE_EINTR(read(read_fd, buffer, sizeof(buffer)));
+    if (bytes_read > 0) {
+      total_read += bytes_read;
+    } else {
+      break;
+    }
+  }
+  if (total_read <= 0) {
+    return;
+  }
+
+  if (main_thread_task_runner) {
+    main_thread_task_runner->PostTask(
+        FROM_HERE, base::BindOnce(&PartitionAllocMemoryPressureMonitor::
+                                      MaybeNotifyMemoryPressureOnMainThread,
+                                  weak_this));
+  }
+}
+#endif  // PA_BUILDFLAG(HAS_64_BIT_POINTERS) && BUILDFLAG(IS_POSIX)
 
 // The function here is called right before crashing with
 // `DoubleFreeOrCorruptionDetected()`. We provide an address for the slot start

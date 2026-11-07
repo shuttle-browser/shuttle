@@ -16,8 +16,6 @@ source_set("webstore_private") {
     "webstore_private_api_delegate.h",
   ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   public_deps = [
     "//base",
     "//extensions/browser:browser_sources",
@@ -29,7 +27,6 @@ source_set("webstore_private") {
   deps = [
     "//components/crx_file",
     "//components/enterprise",
-    "//components/enterprise/browser/promotion:prefs",
     "//components/keyed_service/content",
     "//components/policy/core/common",
     "//components/policy/proto",
@@ -37,7 +34,6 @@ source_set("webstore_private") {
     "//components/safe_browsing:buildflags",
     "//components/safe_browsing/content/browser",
     "//components/signin/public/identity_manager",
-    "//components/supervised_user/core/common",
     "//components/user_prefs",
     "//content/public/browser",
     "//extensions/browser:webstore_installer",

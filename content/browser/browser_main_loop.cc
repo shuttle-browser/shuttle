@@ -19,6 +19,7 @@
 #include "base/debug/leak_annotations.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
+#include "base/i18n/icu_util.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
@@ -45,6 +46,7 @@
 #include "base/task/execution_fence.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/task/thread_pool.h"
 #include "base/task/thread_pool/initialization_util.h"
 #include "base/task/thread_pool/thread_pool_instance.h"
 #include "base/thread_annotations.h"
@@ -76,8 +78,6 @@
 #include "content/browser/cpu_performance/cpu_performance.h"
 #include "content/browser/download/save_file_manager.h"
 #include "content/browser/field_trial_synchronizer.h"
-#include "content/browser/first_party_sets/first_party_set_parser.h"
-#include "content/browser/first_party_sets/first_party_sets_handler_impl.h"
 #include "content/browser/gpu/browser_gpu_channel_host_factory.h"
 #include "content/browser/gpu/browser_gpu_client_delegate.h"
 #include "content/browser/gpu/compositor_util.h"
@@ -164,6 +164,7 @@
 #include "skia/ext/event_tracer_impl.h"
 #include "skia/ext/legacy_display_globals.h"
 #include "skia/ext/skia_memory_dump_provider.h"
+#include "sql/database.h"
 #include "sql/sql_memory_dump_provider.h"
 #include "ui/base/clipboard/clipboard.h"
 #include "ui/display/display_features.h"
@@ -440,6 +441,10 @@ uint32_t GenerateBrowserSalt() {
 
   return salt;
 }
+
+// Controls whether the memory-mapped ICU data file is pre-read on the
+// ThreadPool during startup.
+BASE_FEATURE(kPreReadIcuData, base::FEATURE_ENABLED_BY_DEFAULT);
 
 }  // namespace
 
@@ -1062,11 +1067,23 @@ int BrowserMainLoop::PreMainMessageLoopRun() {
     result_code_ = parts_->PreMainMessageLoopRun();
 
   // ShellBrowserMainParts initializes a ShellBrowserContext with user data
-  // directory only in PreMainMessageLoopRun(). First-Party Sets handler needs
-  // to access this directory, hence triggering after this stage has run.
+  // directory only in PreMainMessageLoopRun(). Delete any residual
+  // First-Party Sets database after this stage has run.
   if (result_code_ == RESULT_CODE_NORMAL_EXIT) {
-    FirstPartySetsHandlerImpl::GetInstance()->Init(
-        GetContentClient()->browser()->GetFirstPartySetsDirectory());
+    if (base::FilePath dir =
+            GetContentClient()->browser()->GetFirstPartySetsDirectory();
+        !dir.empty()) {
+      base::ThreadPool::PostTask(
+          FROM_HERE,
+          {base::MayBlock(), base::TaskPriority::BEST_EFFORT,
+           base::TaskShutdownBehavior::BLOCK_SHUTDOWN},
+          base::BindOnce(
+              [](const base::FilePath& dir) {
+                sql::Database::Delete(
+                    dir.Append(FILE_PATH_LITERAL("first_party_sets.db")));
+              },
+              std::move(dir)));
+    }
   }
 
   variations::MaybeScheduleFakeCrash();
@@ -1216,6 +1233,10 @@ void BrowserMainLoop::ShutdownThreadsAndCleanUp() {
 
   if (RenderProcessHost::run_renderer_in_process())
     RenderProcessHostImpl::ShutDownInProcessRenderer();
+
+  if (audio_manager_) {
+    audio_manager_->CloseIdleStreams();
+  }
 
   if (parts_) {
     TRACE_EVENT0("shutdown",
@@ -1544,6 +1565,10 @@ void BrowserMainLoop::PostCreateThreadsImpl() {
     TRACE_EVENT0("startup",
                  "BrowserMainLoop::PostCreateThreads:InitCpuPerformance");
     content::cpu_performance::Initialize();
+  }
+
+  if (base::FeatureList::IsEnabled(kPreReadIcuData)) {
+    base::i18n::PreReadIcuData();
   }
 }
 

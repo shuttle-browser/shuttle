@@ -47,6 +47,7 @@
 #include "third_party/blink/renderer/core/html/forms/html_input_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_option_element.h"
 #include "third_party/blink/renderer/core/html/html_menu_item_element.h"
+#include "third_party/blink/renderer/core/html/html_menu_item_element_base.h"
 #include "third_party/blink/renderer/core/html/html_quote_element.h"
 #include "third_party/blink/renderer/core/input/event_handler.h"
 #include "third_party/blink/renderer/core/input_type_names.h"
@@ -94,10 +95,12 @@ PseudoElement* PseudoElement::Create(Element* parent,
                                      PseudoId pseudo_id,
                                      const AtomicString& pseudo_argument) {
   if (pseudo_id == kPseudoIdCheckMark) {
-    if (!IsA<HTMLOptionElement>(parent) && !IsA<HTMLMenuItemElement>(parent) &&
+    if (!IsA<HTMLOptionElement>(parent) &&
+        !IsA<HTMLMenuItemCheckableElementBase>(parent) &&
         !IsA<HTMLInputElement>(parent)) {
       // The `::checkmark` pseudo-element should only be created for option,
-      // menuitem, and input (checkbox and radio) elements.
+      // menuitemcheckbox, menuitemradio, and input (checkbox and radio)
+      // elements.
       return nullptr;
     }
   }
@@ -224,6 +227,11 @@ const QualifiedName& PseudoElementTagName(PseudoId pseudo_id) {
                           (AtomicString("::scroll-marker-group")));
       return scroll_marker_group;
     }
+    case kPseudoIdScrollButton: {
+      DEFINE_STATIC_LOCAL(QualifiedName, scroll_button,
+                          (AtomicString("::scroll-button")));
+      return scroll_button;
+    }
     case kPseudoIdScrollButtonBlockStart: {
       DEFINE_STATIC_LOCAL(QualifiedName, scroll_button_block_start,
                           (AtomicString("::scroll-button(block-start)")));
@@ -326,6 +334,11 @@ AtomicString PseudoElement::PseudoElementNameForEvents(Element* element) {
 
 PseudoId PseudoElement::GetPseudoIdForStyling() const {
   return ResolvePseudoIdAlias(pseudo_id_);
+}
+
+std::pair<PseudoId, AtomicString>
+PseudoElement::GetSelectorPseudoIdAndArgument() const {
+  return {GetPseudoIdForStyling(), GetPseudoArgument()};
 }
 
 bool PseudoElement::IsWebExposed(PseudoId pseudo_id, const Node* parent) {
@@ -517,7 +530,7 @@ PseudoElement::AttachLayoutTreeScope::AttachLayoutTreeScope(
     return;
   }
   if (const ComputedStyle* adjusted_style =
-          element->AdjustedLayoutStyle(*style, parent->StyleRef())) {
+          element->AdjustedLayoutStyle(*style, parent->Style())) {
     original_style_ = style;
     element->SetComputedStyle(adjusted_style);
   }
@@ -539,7 +552,8 @@ void PseudoElement::AttachLayoutTree(AttachContext& context) {
   //     - ::overscroll-backdrop
   //     - #item
   if (pseudo_id_ == kPseudoIdOverscrollBackdrop) {
-    CHECK(RuntimeEnabledFeatures::OverscrollGesturesEnabled());
+    CHECK(
+        RuntimeEnabledFeatures::OverscrollAreasEnabled(GetExecutionContext()));
     Element& originating = UltimateOriginatingElement();
     if (PseudoElement* overscroll_parent =
             originating.GetPseudoElement(kPseudoIdOverscrollAreaParent)) {
@@ -589,7 +603,7 @@ void PseudoElement::AttachLayoutTree(AttachContext& context) {
   DCHECK(layout_object->Parent());
   DCHECK(CanHaveGeneratedChildren(*layout_object->Parent()));
 
-  const ComputedStyle& style = layout_object->StyleRef();
+  const ComputedStyle& style = layout_object->Style();
   switch (GetPseudoId()) {
     case kPseudoIdMarker: {
       if (ListMarker* marker = ListMarker::Get(layout_object))
@@ -893,7 +907,7 @@ void PseudoElement::RetargetAnimations() {
 
 void PseudoElement::DefaultEventHandler(Event& event) {
   if (event.type() == event_type_names::kClick && !event.DefaultHandled() &&
-      RuntimeEnabledFeatures::OverscrollGesturesEnabled()) {
+      RuntimeEnabledFeatures::OverscrollAreasEnabled(GetExecutionContext())) {
     if (GetPseudoId() == kPseudoIdOverscrollBackdrop) {
       if (isConnected()) {
         if (Element* container =

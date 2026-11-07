@@ -4,6 +4,14 @@
 
 'use strict';
 
+/******** Constants ********/
+
+/** Geometric orientation axes. */
+const ORIENTATION = checkEnum({
+  HORIZ: 0,
+  VERT: 1,
+});
+
 /******** Math Utilities ********/
 
 /** Constrains a value between a lower and upper bound. */
@@ -32,6 +40,11 @@ class Point2D extends Array {
     super(v0, v1);
   }
 
+  /** @return {!this} A copy of this point, preserving the subclass type. */
+  clone() {
+    return new this.constructor(this[0], this[1]);
+  }
+
   /**
    * Updates both components in-place.
    * @return {!Point2D} This point for chaining.
@@ -39,6 +52,13 @@ class Point2D extends Array {
   assign(v0, v1) {
     this[0] = v0;
     this[1] = v1;
+    return this;
+  }
+
+  /** Multiplies this point by a scalar in-place, chainable. */
+  mulBy(s) {
+    this[0] *= s;
+    this[1] *= s;
     return this;
   }
 
@@ -53,7 +73,7 @@ class Point2D extends Array {
 
 /******** PointXY ********/
 /**
- * Spatial coordinates X / Y, typically for global World or Screen domains.
+ * Spatial coordinates X / Y, typically for global World or Scaled domains.
  */
 class PointXY extends Point2D {
   // clang-format off
@@ -84,5 +104,50 @@ class Dims2D extends Point2D {
 
   set w(t) { this[0] = t; }
   set h(t) { this[1] = t; }
+  // clang-format on
+}
+
+/******** Rectangle ********/
+/**
+ * An axis-aligned rectangle with inclusive left-top and exclusive right-bottom.
+ */
+class Rectangle {
+  /**
+   * @param {!PointXY} leftTop
+   * @param {!PointXY} rightBottom
+   */
+  constructor(leftTop, rightBottom) {
+    this.leftTop = leftTop;
+    this.rightBottom = rightBottom;
+  }
+
+  /** @return {!Rectangle} */
+  static fromComponents(x1, y1, x2, y2) {
+    return new Rectangle(new PointXY(x1, y1), new PointXY(x2, y2));
+  }
+
+  /**
+   * Parses Android XML bounds string "[x1,y1][x2,y2]".
+   * @param {?string} rectStr
+   * @return {!Rectangle} The parsed rectangle, or a 0x0 rectangle on error.
+   */
+  static fromAndroidBounds(rectStr) {
+    if (rectStr) {
+      const match = rectStr.match(/-?\d+/g);
+      if (match && match.length >= 4) {
+        return Rectangle.fromComponents(...match.map(Number));
+      }
+    }
+    console.warn(`Bad rectangle: ${rectStr}`);
+    return Rectangle.fromComponents(0, 0, 0, 0);
+  }
+
+  // clang-format off
+  get left()   { return this.leftTop.x; }
+  get top()    { return this.leftTop.y; }
+  get right()  { return this.rightBottom.x; }
+  get bottom() { return this.rightBottom.y; }
+  get width()  { return this.right - this.left; }
+  get height() { return this.bottom - this.top; }
   // clang-format on
 }

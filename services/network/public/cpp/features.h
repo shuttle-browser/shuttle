@@ -67,6 +67,13 @@ BASE_DECLARE_FEATURE(kCorsNonWildcardRequestHeadersSupport);
 COMPONENT_EXPORT(NETWORK_CPP_FLAGS_AND_SWITCHES)
 BASE_DECLARE_FEATURE(kCorsPreflightCacheKeyTaintedOrigin);
 
+// When enabled, disallows treating 'Intervention' as a CORS-safelisted header
+// in network/CORS checks (aligning with WHATWG Fetch) and stops attaching the
+// outgoing 'Intervention' HTTP request header to document.write intervention
+// fetches in Blink.
+COMPONENT_EXPORT(NETWORK_CPP_FLAGS_AND_SWITCHES)
+BASE_DECLARE_FEATURE(kDisallowInterventionInCorsSafelistedHeaders);
+
 COMPONENT_EXPORT(NETWORK_CPP_FLAGS_AND_SWITCHES)
 BASE_DECLARE_FEATURE(kOmitCorsClientCert);
 
@@ -177,6 +184,13 @@ BASE_DECLARE_FEATURE(kUpdateRequestForCorsRedirect);
 COMPONENT_EXPORT(NETWORK_CPP_FLAGS_AND_SWITCHES)
 BASE_DECLARE_FEATURE(kAvoidCorsURLLoaderRestartOnRedirect);
 
+// https://crbug.com/571161435
+// Kill switch. When enabled, requests with CredentialsMode::kSameOrigin allow
+// credentials and client certificates when `disable_web_security` is enabled on
+// the URLLoaderFactoryParams.
+COMPONENT_EXPORT(NETWORK_CPP_FLAGS_AND_SWITCHES)
+BASE_DECLARE_FEATURE(kAllowSameOriginCredentialsWithDisableWebSecurity);
+
 COMPONENT_EXPORT(NETWORK_CPP_FLAGS_AND_SWITCHES)
 BASE_DECLARE_FEATURE(kBrowsingTopics);
 
@@ -208,6 +222,16 @@ BASE_DECLARE_FEATURE(kCSPScriptSrcV2);
 // will be supported in script-src.
 COMPONENT_EXPORT(NETWORK_CPP_FLAGS_AND_SWITCHES)
 BASE_DECLARE_FEATURE(kCSPScriptSrcHashesInV1);
+
+// When enabled, CSP:EE subsumption (network::Subsumes()) includes the
+// 'require-trusted-types-for' and 'trusted-types' directives, in addition to
+// the existing source-list directives. See
+// https://github.com/w3c/webappsec-csp/issues/628 and
+// https://github.com/w3c/webappsec-cspee/pull/36. When disabled, Trusted
+// Types directives are ignored by CSP:EE subsumption, preserving the
+// source-list-only behavior.
+COMPONENT_EXPORT(NETWORK_CPP_FLAGS_AND_SWITCHES)
+BASE_DECLARE_FEATURE(kCSPEmbeddedEnforcementTrustedTypes);
 
 // When enabled, fetches for "pervasive" resources that match one of the
 // configured patterns will use a shared, single-keyed cache.
@@ -378,6 +402,22 @@ BASE_DECLARE_FEATURE(kBindURLLoaderFactoryToHighPriorityTaskRunner);
 // ignore_isolated_world_origin is false.
 COMPONENT_EXPORT(NETWORK_CPP_FLAGS_AND_SWITCHES)
 BASE_DECLARE_FEATURE(kEnforceIsolatedWorldOriginLock);
+
+// Kill switch. When enabled, proxy auth challenges for requests with
+// `do_not_prompt_for_login` are forwarded, flagged as such, to the
+// URLLoaderNetworkServiceObserver so that non-UI credential sources (e.g.
+// extensions) can answer them. Server auth challenges for such requests are
+// always cancelled.
+COMPONENT_EXPORT(NETWORK_CPP_FLAGS_AND_SWITCHES)
+BASE_DECLARE_FEATURE(kForwardProxyAuthWithoutPrompt);
+
+// Pre-warms `cryptbase.dll` on a background thread during NetworkService
+// startup on Windows so that subsequent `CryptProtectMemory` /
+// `CryptUnprotectMemory` calls by `os_crypt_async` and
+// `crypto::ProcessBoundString` do not block the Network IO thread on
+// synchronous delay-loading of `cryptbase.dll` (via `dpapi.dll`).
+COMPONENT_EXPORT(NETWORK_CPP_FLAGS_AND_SWITCHES)
+BASE_DECLARE_FEATURE(kPrewarmCryptbase);
 
 }  // namespace network::features
 

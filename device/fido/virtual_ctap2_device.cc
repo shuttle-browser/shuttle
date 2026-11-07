@@ -428,11 +428,11 @@ std::optional<cbor::Value> UserEntityAsCBOR(
   return cbor::Value(std::move(user_map));
 }
 
-std::vector<uint8_t> WriteCBOR(cbor::Value value,
+std::vector<uint8_t> WriteCBOR(cbor::ValueView value,
                                bool allow_invalid_utf8 = false) {
   cbor::Writer::Config config;
   config.allow_invalid_utf8_for_testing = allow_invalid_utf8;
-  return *cbor::Writer::Write(std::move(value), std::move(config));
+  return *cbor::Writer::Write(value, std::move(config));
 }
 
 std::vector<uint8_t> EncodeGetAssertionResponse(
@@ -511,7 +511,7 @@ std::vector<uint8_t> EncodeGetAssertionResponse(
     response_map.emplace(8, cbor::Value(std::move(unsigned_extension_outputs)));
   }
 
-  return WriteCBOR(cbor::Value(std::move(response_map)), allow_invalid_utf8);
+  return WriteCBOR(response_map, allow_invalid_utf8);
 }
 
 std::vector<uint8_t> GenerateAndEncryptToken(
@@ -1129,6 +1129,7 @@ std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnMakeCredential(
   }
   CtapMakeCredentialRequest request = std::move(*opt_request);
 
+  mutable_state()->last_make_credential_request = request;
   mutable_state()->exclude_list_history.push_back(request.exclude_list);
 
   bool user_verified = false;
@@ -2165,7 +2166,7 @@ std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnPINCommand(
       return CtapDeviceResponseCode::kCtap1ErrInvalidCommand;
   }
 
-  *response = cbor::Writer::Write(cbor::Value(std::move(response_map))).value();
+  *response = cbor::Writer::Write(response_map).value();
   return CtapDeviceResponseCode::kSuccess;
 }
 
@@ -2221,8 +2222,7 @@ CtapDeviceResponseCode VirtualCtap2Device::OnCredentialManagement(
                                kMaxPossibleRemainingResidentCredentialsCount),
           static_cast<int64_t>(num_remaining));
 
-      *response =
-          cbor::Writer::Write(cbor::Value(std::move(response_map))).value();
+      *response = cbor::Writer::Write(response_map).value();
       return CtapDeviceResponseCode::kSuccess;
     }
 
@@ -2250,7 +2250,7 @@ CtapDeviceResponseCode VirtualCtap2Device::OnCredentialManagement(
         GetNextRP(&response_map);
       }
 
-      *response = WriteCBOR(cbor::Value(std::move(response_map)),
+      *response = WriteCBOR(response_map,
                             config_.allow_invalid_utf8_in_credential_entities);
       return CtapDeviceResponseCode::kSuccess;
     }
@@ -2261,7 +2261,7 @@ CtapDeviceResponseCode VirtualCtap2Device::OnCredentialManagement(
       }
       GetNextRP(&response_map);
 
-      *response = WriteCBOR(cbor::Value(std::move(response_map)),
+      *response = WriteCBOR(response_map,
                             config_.allow_invalid_utf8_in_credential_entities);
       return CtapDeviceResponseCode::kSuccess;
     }
@@ -2276,8 +2276,7 @@ CtapDeviceResponseCode VirtualCtap2Device::OnCredentialManagement(
 
       // pinAuth = LEFT(HMAC-SHA-256(pinToken, enumerateCredentialsBegin (0x04)
       //                                       || subCommandParams), 16)
-      std::vector<uint8_t> pinauth_bytes =
-          cbor::Writer::Write(cbor::Value(params)).value();
+      std::vector<uint8_t> pinauth_bytes = cbor::Writer::Write(params).value();
       pinauth_bytes.insert(pinauth_bytes.begin(),
                            static_cast<uint8_t>(subcommand));
       CtapDeviceResponseCode pin_status = VerifyPINUVAuthToken(
@@ -2309,7 +2308,7 @@ CtapDeviceResponseCode VirtualCtap2Device::OnCredentialManagement(
           static_cast<int>(request_state_.pending_registrations.size()));
       request_state_.pending_registrations.pop_front();
 
-      *response = WriteCBOR(cbor::Value(std::move(response_map)),
+      *response = WriteCBOR(response_map,
                             config_.allow_invalid_utf8_in_credential_entities);
       return CtapDeviceResponseCode::kSuccess;
     }
@@ -2322,7 +2321,7 @@ CtapDeviceResponseCode VirtualCtap2Device::OnCredentialManagement(
       response_map.swap(request_state_.pending_registrations.front());
       request_state_.pending_registrations.pop_front();
 
-      *response = WriteCBOR(cbor::Value(std::move(response_map)),
+      *response = WriteCBOR(response_map,
                             config_.allow_invalid_utf8_in_credential_entities);
       return CtapDeviceResponseCode::kSuccess;
     }
@@ -2338,8 +2337,7 @@ CtapDeviceResponseCode VirtualCtap2Device::OnCredentialManagement(
       const cbor::Value::MapValue& params = params_it->second.GetMap();
       // pinAuth = LEFT(HMAC-SHA-256(pinToken, enumerateCredentialsBegin (0x04)
       //                                       || subCommandParams), 16)
-      std::vector<uint8_t> pinauth_bytes =
-          cbor::Writer::Write(cbor::Value(params)).value();
+      std::vector<uint8_t> pinauth_bytes = cbor::Writer::Write(params).value();
       pinauth_bytes.insert(pinauth_bytes.begin(),
                            static_cast<uint8_t>(subcommand));
       CtapDeviceResponseCode pin_status = VerifyPINUVAuthToken(
@@ -2380,8 +2378,7 @@ CtapDeviceResponseCode VirtualCtap2Device::OnCredentialManagement(
         return CtapDeviceResponseCode::kCtap2ErrCBORUnexpectedType;
       }
       const cbor::Value::MapValue& params = params_it->second.GetMap();
-      std::vector<uint8_t> pinauth_bytes =
-          cbor::Writer::Write(cbor::Value(params)).value();
+      std::vector<uint8_t> pinauth_bytes = cbor::Writer::Write(params).value();
       pinauth_bytes.insert(pinauth_bytes.begin(),
                            static_cast<uint8_t>(subcommand));
       CtapDeviceResponseCode pin_status = VerifyPINUVAuthToken(
@@ -2470,8 +2467,7 @@ std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnBioEnrollment(
     }
     response_map.emplace(static_cast<int>(BioEnrollmentResponseKey::kModality),
                          static_cast<int>(BioEnrollmentModality::kFingerprint));
-    *response =
-        cbor::Writer::Write(cbor::Value(std::move(response_map))).value();
+    *response = cbor::Writer::Write(response_map).value();
     return CtapDeviceResponseCode::kSuccess;
   }
 
@@ -2664,7 +2660,7 @@ std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnBioEnrollment(
       // when support is added).
       return CtapDeviceResponseCode::kCtap2ErrUnsupportedOption;
   }
-  *response = cbor::Writer::Write(cbor::Value(std::move(response_map))).value();
+  *response = cbor::Writer::Write(response_map).value();
   return CtapDeviceResponseCode::kSuccess;
 }
 
@@ -2730,8 +2726,7 @@ CtapDeviceResponseCode VirtualCtap2Device::OnLargeBlobs(
     response_map.emplace(static_cast<uint8_t>(LargeBlobsResponseKey::kConfig),
                          subspan.first(std::min(get, subspan.size())));
 
-    *response =
-        cbor::Writer::Write(cbor::Value(std::move(response_map))).value();
+    *response = cbor::Writer::Write(response_map).value();
   } else {
     CHECK(set_it != request_map.end());
     const std::vector<uint8_t>& set = set_it->second.GetBytestring();

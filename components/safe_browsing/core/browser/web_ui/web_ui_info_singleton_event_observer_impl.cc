@@ -131,14 +131,6 @@ void WebUIInfoSingletonEventObserverImpl::NotifyLogMessageJsListener(
       "log-messages-update", web_ui::SerializeLogMessage(timestamp, message));
 }
 
-void WebUIInfoSingletonEventObserverImpl::NotifyReportingEventJsListener(
-    const ::chrome::cros::reporting::proto::UploadEventsRequest& event,
-    const base::DictValue& result) {
-  delegate_->SendEventToHandler(
-      "reporting-events-update",
-      web_ui::SerializeUploadEventsRequest(event, result));
-}
-
 // TODO(crbug.com/443997643): Delete when
 // UploadRealtimeReportingEventsUsingProto is cleaned up.
 void WebUIInfoSingletonEventObserverImpl::NotifyReportingEventJsListener(

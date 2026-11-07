@@ -29,6 +29,7 @@
 #include "base/metrics/user_metrics.h"
 #include "base/no_destructor.h"
 #include "base/notreached.h"
+#include "base/strings/strcat.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
@@ -58,6 +59,8 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/url_identity.h"
 #include "chrome/browser/ui/webui/settings/recent_site_settings_helper.h"
+#include "chrome/browser/ui/webui/settings/settings_element_ids.h"
+#include "chrome/browser/ui/webui/settings/settings_utils.h"
 #include "chrome/browser/ui/webui/settings/site_settings_helper.h"
 #include "chrome/browser/usb/usb_chooser_context.h"
 #include "chrome/browser/usb/usb_chooser_context_factory.h"
@@ -108,6 +111,8 @@
 #include "extensions/common/permissions/permissions_data.h"
 #include "services/network/public/cpp/is_potentially_trustworthy.h"
 #include "storage/common/file_system/file_system_util.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 #include "third_party/abseil-cpp/absl/functional/overload.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
@@ -199,7 +204,7 @@ enum class AllSitesAction2 {
 };
 
 // Return an appropriate API Permission ID for the given string name.
-APIPermissionID APIPermissionFromGroupName(std::string type) {
+APIPermissionID APIPermissionFromGroupName(std::string_view type) {
   // Once there are more than two groups to consider, this should be changed to
   // something better than if's.
 
@@ -335,13 +340,13 @@ void UpdateDataForOriginAndPartition(
 }
 
 // Converts |etld_plus1| into an origin representation by adding HTTP(S) scheme.
-url::Origin ConvertEtldToOrigin(const std::string etld_plus1, bool secure) {
+url::Origin ConvertEtldToOrigin(std::string etld_plus1, bool secure) {
   if (secure) {
-    return url::Origin::CreateFromNormalizedTuple(url::kHttpsScheme, etld_plus1,
-                                                  kHttpsDefaultPort);
+    return url::Origin::CreateFromNormalizedTuple(
+        url::kHttpsScheme, std::move(etld_plus1), kHttpsDefaultPort);
   }
-  return url::Origin::CreateFromNormalizedTuple(url::kHttpScheme, etld_plus1,
-                                                80);
+  return url::Origin::CreateFromNormalizedTuple(url::kHttpScheme,
+                                                std::move(etld_plus1), 80);
 }
 
 bool IsPatternValidForType(const std::string& pattern_string,
@@ -408,10 +413,11 @@ void LogAllSitesAction(AllSitesAction2 action) {
 
 // Returns the registrable domain (eTLD+1) for the `host`. If it doesn't exist,
 // returns the host.
-std::string GetEtldPlusOneForHost(const std::string& host) {
-  auto eltd_plus_one = net::registry_controlled_domains::GetDomainAndRegistry(
-      host, net::registry_controlled_domains::INCLUDE_PRIVATE_REGISTRIES);
-  return eltd_plus_one.empty() ? host : eltd_plus_one;
+std::string GetEtldPlusOneForHost(std::string_view host) {
+  const std::string eltd_plus_one =
+      net::registry_controlled_domains::GetDomainAndRegistry(
+          host, net::registry_controlled_domains::INCLUDE_PRIVATE_REGISTRIES);
+  return eltd_plus_one.empty() ? std::string(host) : eltd_plus_one;
 }
 
 // Returns the registrable domain (eTLD+1) for the `origin`. If it doesn't
@@ -421,10 +427,9 @@ std::string GetEtldPlusOne(const url::Origin& origin) {
 }
 
 // Converts |etld_plus1| into an HTTPS SchemefulSite.
-net::SchemefulSite ConvertEtldToSchemefulSite(const std::string etld_plus1) {
-  return net::SchemefulSite(GURL(std::string(url::kHttpsScheme) +
-                                 url::kStandardSchemeSeparator + etld_plus1 +
-                                 "/"));
+net::SchemefulSite ConvertEtldToSchemefulSite(std::string_view etld_plus1) {
+  return net::SchemefulSite(GURL(base::StrCat(
+      {url::kHttpsScheme, url::kStandardSchemeSeparator, etld_plus1, "/"})));
 }
 
 // Iterates over data owners in `browsing_data_model` which contains all sites
@@ -435,7 +440,8 @@ std::map<std::string, std::pair<std::string, int>> GetRwsMap(
     PrivacySandboxService* privacy_sandbox_service,
     BrowsingDataModel* browsing_data_model) {
   // Used to count unique eTLD+1 owned by an RWS owner.
-  std::map<std::string, std::set<std::string>> rws_owner_to_members;
+  absl::flat_hash_map<std::string, absl::flat_hash_set<std::string>>
+      rws_owner_to_members;
 
   // Count members by unique eTLD+1 for each related website set.
   if (browsing_data_model) {
@@ -446,7 +452,8 @@ std::map<std::string, std::pair<std::string, int>> GetRwsMap(
       auto rws_owner = privacy_sandbox_service->GetRelatedWebsiteSetOwner(
           schemeful_site.GetURL());
       if (rws_owner.has_value()) {
-        rws_owner_to_members[rws_owner->GetURL().GetHost()].insert(etld_plus1);
+        rws_owner_to_members[rws_owner->GetURL().host()].insert(
+            std::move(etld_plus1));
       }
     }
   }
@@ -484,7 +491,7 @@ void ConvertSiteGroupMapToList(
     base::ListValue* list_value,
     Profile* profile,
     BrowsingDataModel* browsing_data_model) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M162);
   auto* privacy_sandbox_service =
       PrivacySandboxServiceFactory::GetForProfile(profile);
   auto rws_map = GetRwsMap(privacy_sandbox_service, browsing_data_model);
@@ -612,12 +619,12 @@ GroupingKey GroupingKey::Create(const url::Origin& origin) {
 }
 
 // static
-GroupingKey GroupingKey::CreateFromEtldPlus1(const std::string& etld_plus1) {
-  return GroupingKey(etld_plus1);
+GroupingKey GroupingKey::CreateFromEtldPlus1(std::string_view etld_plus1) {
+  return GroupingKey(std::string(etld_plus1));
 }
 
 // static
-GroupingKey GroupingKey::Deserialize(const std::string& serialized) {
+GroupingKey GroupingKey::Deserialize(std::string_view serialized) {
   if (base::StartsWith(serialized, kGroupingKeyEtldPrefix)) {
     return GroupingKey::CreateFromEtldPlus1(
         serialized.substr(sizeof(kGroupingKeyEtldPrefix) - 1));
@@ -635,14 +642,16 @@ GroupingKey& GroupingKey::operator=(const GroupingKey& other) = default;
 GroupingKey::~GroupingKey() = default;
 
 std::string GroupingKey::Serialize() const {
-  return std::visit(absl::Overload{[](const std::string& etld_plus1) {
-                                     return kGroupingKeyEtldPrefix + etld_plus1;
-                                   },
-                                   [](const url::Origin& origin) {
-                                     return kGroupingKeyOriginPrefix +
-                                            origin.GetURL().spec();
-                                   }},
-                    value_);
+  return std::visit(
+      absl::Overload{[](const std::string& etld_plus1) {
+                       return base::StrCat(
+                           {kGroupingKeyEtldPrefix, etld_plus1});
+                     },
+                     [](const url::Origin& origin) {
+                       return base::StrCat(
+                           {kGroupingKeyOriginPrefix, origin.GetURL().spec()});
+                     }},
+      value_);
 }
 
 std::optional<std::string> GroupingKey::GetEtldPlusOne() const {
@@ -865,7 +874,7 @@ void SiteSettingsHandler::OnJavascriptDisallowed() {
 }
 
 void SiteSettingsHandler::OnGetUsageInfo() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
   // Site Details Page does not display the number of cookies for the origin.
   int64_t size = 0;
   std::string usage_string;
@@ -1068,7 +1077,7 @@ void SiteSettingsHandler::HandleClearPartitionedUsage(
   // The group key should always be an eTLD+1 because there aren't any
   // partitioned entries for IWAs (which have a non-eTLD+1 grouping key).
   std::optional<std::string> group_etld_plus1 = grouping_key.GetEtldPlusOne();
-  DCHECK(group_etld_plus1);
+  CHECK(group_etld_plus1, base::NotFatalUntil::M162);
 
   net::SchemefulSite https_top_level_site(
       ConvertEtldToOrigin(*group_etld_plus1, true));
@@ -1151,7 +1160,7 @@ void SiteSettingsHandler::HandleGetAllSites(const base::ListValue& args) {
   origin_permission_set_.clear();
 
   Profile* profile = profile_;
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M162);
   HostContentSettingsMap* map =
       HostContentSettingsMapFactory::GetForProfile(profile);
 
@@ -1201,21 +1210,21 @@ void SiteSettingsHandler::HandleGetAllSites(const base::ListValue& args) {
   for (auto content_type : kChooserDataContentSettingsTypes) {
     std::string_view group_name =
         site_settings::ContentSettingsTypeToGroupName(content_type);
-    DCHECK(!group_name.empty());
+    CHECK(!group_name.empty(), base::NotFatalUntil::M162);
     const site_settings::ChooserTypeNameEntry* chooser_type =
         site_settings::ChooserTypeFromGroupName(group_name);
-    DCHECK(chooser_type);
+    CHECK(chooser_type, base::NotFatalUntil::M162);
     base::ListValue exceptions =
         site_settings::GetChooserExceptionListFromProfile(profile_,
                                                           *chooser_type);
     for (const base::Value& exception : exceptions) {
       const base::ListValue* sites =
           exception.GetDict().FindList(site_settings::kSites);
-      DCHECK(sites);
+      CHECK(sites, base::NotFatalUntil::M162);
       for (const base::Value& site : *sites) {
         const std::string* origin_string =
             site.GetDict().FindString(site_settings::kOrigin);
-        DCHECK(origin_string);
+        CHECK(origin_string, base::NotFatalUntil::M162);
         auto origin = url::Origin::Create(GURL(*origin_string));
         InsertOriginIntoGroup(&all_sites_map_, origin);
         origin_permission_set_.insert(origin);
@@ -1271,7 +1280,7 @@ void SiteSettingsHandler::HandleGetRecentSitePermissions(
   // Convert groups of TimestampedPermissions for consumption by JS
   base::ListValue result;
   for (const auto& site_permissions : recent_site_permissions) {
-    DCHECK(!site_permissions.settings.empty());
+    CHECK(!site_permissions.settings.empty(), base::NotFatalUntil::M162);
     base::DictValue recent_site;
     recent_site.Set(site_settings::kOrigin, site_permissions.origin.spec());
     recent_site.Set(site_settings::kDisplayName, site_permissions.display_name);
@@ -1443,7 +1452,7 @@ void SiteSettingsHandler::HandleGetOriginPermissions(
   base::ListValue exceptions;
   for (const auto& type_val : types) {
     std::string type;
-    DCHECK(type_val.is_string());
+    CHECK(type_val.is_string(), base::NotFatalUntil::M162);
     const std::string* maybe_type = type_val.GetIfString();
     if (maybe_type) {
       type = *maybe_type;
@@ -1504,13 +1513,14 @@ void SiteSettingsHandler::HandleGetFileSystemGrants(
 
 void SiteSettingsHandler::HandleRevokeFileSystemGrant(
     const base::ListValue& args) {
-  DCHECK(base::FeatureList::IsEnabled(
-      features::kFileSystemAccessPersistentPermissions));
+  CHECK(base::FeatureList::IsEnabled(
+            features::kFileSystemAccessPersistentPermissions),
+        base::NotFatalUntil::M162);
   CHECK_EQ(2U, args.size());
   AllowJavascript();
 
   auto url = GURL(args[0].GetString());
-  DCHECK(url.is_valid());
+  CHECK(url.is_valid(), base::NotFatalUntil::M162);
   const url::Origin& origin = url::Origin::Create(url);
 
   const base::FilePath& file_path =
@@ -1524,14 +1534,15 @@ void SiteSettingsHandler::HandleRevokeFileSystemGrant(
 
 void SiteSettingsHandler::HandleRevokeFileSystemGrants(
     const base::ListValue& args) {
-  DCHECK(base::FeatureList::IsEnabled(
-      features::kFileSystemAccessPersistentPermissions));
+  CHECK(base::FeatureList::IsEnabled(
+            features::kFileSystemAccessPersistentPermissions),
+        base::NotFatalUntil::M162);
 
   CHECK_EQ(1U, args.size());
   AllowJavascript();
 
   auto url = GURL(args[0].GetString());
-  DCHECK(url.is_valid());
+  CHECK(url.is_valid(), base::NotFatalUntil::M162);
   const url::Origin& origin = url::Origin::Create(url);
 
   ChromeFileSystemAccessPermissionContext* permission_context =
@@ -1568,10 +1579,10 @@ void SiteSettingsHandler::HandleSetOriginPermissions(
       for (auto content_type : kChooserDataContentSettingsTypes) {
         std::string_view group_name =
             site_settings::ContentSettingsTypeToGroupName(content_type);
-        DCHECK(!group_name.empty());
+        CHECK(!group_name.empty(), base::NotFatalUntil::M162);
         const site_settings::ChooserTypeNameEntry* chooser_type =
             site_settings::ChooserTypeFromGroupName(group_name);
-        DCHECK(chooser_type);
+        CHECK(chooser_type, base::NotFatalUntil::M162);
 
         // The BluetoothChooserContext is only available when the
         // WebBluetoothNewPermissionsBackend flag is enabled.
@@ -1922,6 +1933,8 @@ void SiteSettingsHandler::HandleSetCategoryPermissionForPattern(
     base::RecordAction(base::UserMetricsAction(
         "ThirdPartyCookies.SettingsSiteException.Added"));
   }
+  settings_utils::MaybeNotifySettingsCustomEvent(
+      web_ui(), settings::kSitePermissionChangedEventId);
 }
 
 void SiteSettingsHandler::HandleResetChooserExceptionForSite(
@@ -2017,7 +2030,7 @@ void SiteSettingsHandler::SendZoomLevels() {
         std::string origin_for_favicon = host_or_spec;
         std::string display_name = host_or_spec;
 
-        if (host_or_spec == unreachable_web_data_url.GetHost()) {
+        if (host_or_spec == unreachable_web_data_url.host()) {
           display_name =
               l10n_util::GetStringUTF8(IDS_ZOOMLEVELS_CHROME_ERROR_PAGES_LABEL);
         }
@@ -2107,7 +2120,7 @@ void SiteSettingsHandler::HandleSetBlockAutoplayEnabled(
 
 void SiteSettingsHandler::RebuildModel() {
   // The handler services two requests async once models have been built.
-  DCHECK(update_site_details_ || send_sites_list_);
+  CHECK(update_site_details_ || send_sites_list_, base::NotFatalUntil::M162);
 
   // Tests will directly fire the appropriate service method.
   if (model_set_for_testing_) {
@@ -2290,7 +2303,7 @@ void SiteSettingsHandler::GetHostCookies(
     std::optional<std::string> partition_etld_plus1;
     std::optional<GroupingKey> partition_grouping_key;
     if (cookie->IsPartitioned()) {
-      partition_etld_plus1 = cookie->PartitionKey()->site().GetURL().GetHost();
+      partition_etld_plus1 = cookie->PartitionKey()->site().GetURL().host();
       partition_grouping_key =
           GroupingKey::CreateFromEtldPlus1(*partition_etld_plus1);
     }
@@ -2378,8 +2391,10 @@ void SiteSettingsHandler::HandleRecordAction(const base::ListValue& args) {
   const auto& list = args;
   CHECK_EQ(1U, list.size());
   int action = list[0].GetInt();
-  DCHECK_LE(action, static_cast<int>(AllSitesAction2::kMaxValue));
-  DCHECK_GE(action, static_cast<int>(AllSitesAction2::kLoadPage));
+  CHECK_LE(action, static_cast<int>(AllSitesAction2::kMaxValue),
+           base::NotFatalUntil::M162);
+  CHECK_GE(action, static_cast<int>(AllSitesAction2::kLoadPage),
+           base::NotFatalUntil::M162);
 
   LogAllSitesAction(static_cast<AllSitesAction2>(action));
 }

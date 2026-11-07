@@ -39,7 +39,7 @@ class CORE_EXPORT ByteSpanWithInlineStorage {
 
   void Assign(base::span<const uint8_t> span) { span_ = span; }
 
-  void MaybeSetArrayBuffer(v8::Local<v8::ArrayBuffer> array_buffer) {
+  void MaybeSetArrayBuffer(v8::Local<v8::ArrayBufferBase> array_buffer) {
     if constexpr (kPerformDetachCheck) {
       orig_buffer_for_detach_check_ = array_buffer;
     }
@@ -67,12 +67,12 @@ class CORE_EXPORT ByteSpanWithInlineStorage {
   base::span<const uint8_t> span_;
   uint8_t inline_storage_[kInlineStorageSize];
   struct Void {};
-  std::conditional_t<kPerformDetachCheck, v8::Local<v8::ArrayBuffer>, Void>
+  std::conditional_t<kPerformDetachCheck, v8::Local<v8::ArrayBufferBase>, Void>
       orig_buffer_for_detach_check_;
 };
 
-template <typename T>
-base::span<const uint8_t> GetArrayData(v8::Local<T> array) {
+inline base::span<const uint8_t> GetArrayData(
+    v8::Local<v8::ArrayBufferBase> array) {
   // SAFETY: V8 should ensure that using `array->Data()` and
   // `array->ByteLength()` below is safe.
   return UNSAFE_BUFFERS(base::span<const uint8_t>(
@@ -98,7 +98,7 @@ class SpanWithInlineStorage {
                                      bytes.size() / sizeof(T)));
   }
 
-  void MaybeSetArrayBuffer(v8::Local<v8::ArrayBuffer> array_buffer) {
+  void MaybeSetArrayBuffer(v8::Local<v8::ArrayBufferBase> array_buffer) {
     bytes_.MaybeSetArrayBuffer(array_buffer);
   }
   void Assign(base::span<const uint8_t> span) { bytes_.Assign(span); }
@@ -120,7 +120,7 @@ class SpanOrVector {
   operator base::span<const T>() const&& = delete;
   const base::span<const T> as_span() const { return span_.as_span(); }
 
-  void MaybeSetArrayBuffer(v8::Local<v8::ArrayBuffer> array_buffer) {
+  void MaybeSetArrayBuffer(v8::Local<v8::ArrayBufferBase> array_buffer) {
     span_.MaybeSetArrayBuffer(array_buffer);
   }
   void Assign(base::span<const uint8_t> span) { span_.Assign(span); }
@@ -200,6 +200,7 @@ struct PassAsSpanMarkerBase {
     kAllowShared = 1 << 0,
     kAllowSequence = 1 << 1,
     kPerformDetachCheck = 1 << 2,
+    kAllowUnlimitedSize = 1 << 3,
   };
 };
 
@@ -209,10 +210,11 @@ constexpr PassAsSpanMarkerBase::Flags operator|(PassAsSpanMarkerBase::Flags a,
                                                   static_cast<int>(b));
 }
 
-template <PassAsSpanMarkerBase::Flags flags =
+template <PassAsSpanMarkerBase::Flags kFlags =
               PassAsSpanMarkerBase::Flags::kNone,
           typename T = void>
 struct PassAsSpan : public PassAsSpanMarkerBase {
+  static constexpr PassAsSpanMarkerBase::Flags flags = kFlags;
   static constexpr bool allow_shared = flags & Flags::kAllowShared;
   static constexpr bool allow_sequence = flags & Flags::kAllowSequence;
   static constexpr bool perform_detach_check =

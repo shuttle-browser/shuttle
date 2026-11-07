@@ -24,7 +24,6 @@
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_metrics.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/common/buildflags.h"
@@ -146,7 +145,8 @@ void BrowserCommandHandler::CanExecuteCommand(
       can_execute = true;
       break;
     case Command::kEnableVerticalTabs:
-      can_execute = true;
+      // Vertical tabs are not supported in Shuttle.
+      can_execute = false;
       break;
   }
   std::move(callback).Run(can_execute);
@@ -238,7 +238,7 @@ void BrowserCommandHandler::HandleCommandWithDisposition(
       OpenSplitView();
       break;
     case Command::kEnableVerticalTabs:
-      EnableVerticalTabs();
+      // Vertical tabs are not supported in Shuttle.
       break;
     default:
       NOTREACHED() << "Unspecified behavior for command " << id;
@@ -275,13 +275,6 @@ void BrowserCommandHandler::OpenSplitView() {
                         split_tabs::SplitTabLayout::kSideBySide,
                         split_tabs::SplitTabCreatedSource::kWhatsNew);
   }
-}
-
-void BrowserCommandHandler::EnableVerticalTabs() {
-  profile_->GetPrefs()->SetBoolean(prefs::kVerticalTabsEnabled, true);
-
-  tabs::RecordVerticalTabStripModeChanged(
-      true, tabs::VerticalTabStripEntryPoint::kWhatsNew);
 }
 
 void BrowserCommandHandler::EnableSupportedCommands() {

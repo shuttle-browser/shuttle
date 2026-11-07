@@ -61,7 +61,7 @@ CopyingTexture2DWrapper::CopyingTexture2DWrapper(
     const gfx::Size& size,
     const gfx::ColorSpace& input_color_space,
     const gfx::ColorSpace& output_color_space,
-    std::unique_ptr<Texture2DWrapper> output_wrapper,
+    std::unique_ptr<D3DTextureWrapper> output_wrapper,
     scoped_refptr<VideoProcessorProxy> processor,
     ComD3D11Texture2D output_texture,
     gpu::GpuDriverBugWorkarounds workarounds)
@@ -81,7 +81,17 @@ D3DStatus CopyingTexture2DWrapper::BeginSharedImageAccess() {
 }
 
 D3DStatus CopyingTexture2DWrapper::ProcessTexture(
-    scoped_refptr<gpu::ClientSharedImage>& shared_image_dest) {
+    scoped_refptr<gpu::ClientSharedImage>& shared_image_dest,
+    scoped_refptr<gfx::D3DSharedFence> decode_fence) {
+  if (decode_fence) {
+    ComD3D11Device device;
+    texture_->GetDevice(&device);
+    if (!decode_fence->WaitD3D11(std::move(device))) {
+      return {D3DStatus::Codes::kWaitForFenceFailed,
+              "Failed to wait for the decode fence before copying"};
+    }
+  }
+
   // Acquire keyed mutex for VideoProcessorBlt ops.
   D3DStatus status = output_texture_wrapper_->BeginSharedImageAccess();
   if (!status.is_ok()) {
@@ -121,7 +131,8 @@ D3DStatus CopyingTexture2DWrapper::ProcessTexture(
     return {D3DStatus::Codes::kVideoProcessorBltFailed, hr};
   }
 
-  return output_texture_wrapper_->ProcessTexture(shared_image_dest);
+  return output_texture_wrapper_->ProcessTexture(shared_image_dest,
+                                                 /*decode_fence=*/nullptr);
 }
 
 const gfx::Size& CopyingTexture2DWrapper::GetSize() const {

@@ -45,7 +45,6 @@
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "third_party/omnibox_proto/entity_info.pb.h"
 #include "third_party/omnibox_proto/navigational_intent.pb.h"
-#include "third_party/omnibox_proto/rich_suggest_template.pb.h"
 #include "third_party/omnibox_proto/suggest_template_info.pb.h"
 #include "ui/base/device_form_factor.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -195,12 +194,12 @@ constexpr auto kReservedReservedGroupSectionsMap =
 // section known to Chrome.
 omnibox::GroupSection ChromeGroupSectionForRemoteGroupIndex(
     const int group_index) {
-  if (kReservedReservedGroupSectionsMap.contains(group_index)) {
-    return kReservedReservedGroupSectionsMap.at(group_index);
-  } else {
-    // Return a default section if we don't have any reserved sections left.
-    return omnibox::SECTION_DEFAULT;
+  const auto it = kReservedReservedGroupSectionsMap.find(group_index);
+  if (it != kReservedReservedGroupSectionsMap.end()) {
+    return it->second;
   }
+  // Return a default section if we don't have any reserved sections left.
+  return omnibox::SECTION_DEFAULT;
 }
 
 // Decodes a proto object from its serialized Base64 string representation.
@@ -724,11 +723,6 @@ SearchSuggestionParser::SuggestResult::ClassifyAnnotation() const {
   return {ACMatchClassification(0, ACMatchClassification::DIM)};
 }
 
-void SearchSuggestionParser::SuggestResult::SetRichAnswerTemplate(
-    const omnibox::RichAnswerTemplate& answer_template) {
-  answer_template_ = answer_template;
-}
-
 void SearchSuggestionParser::SuggestResult::SetSuggestTemplateInfo(
     const omnibox::SuggestTemplateInfo& suggest_template_info) {
   suggest_template_info_ = suggest_template_info;
@@ -1130,13 +1124,10 @@ bool SearchSuggestionParser::ParseSuggestResults(
         }
       }
 
-      omnibox::RichSuggestTemplate suggest_template;
       omnibox::EntityInfo entity_info;
       omnibox::SuggestTemplateInfo suggest_template_info;
       std::u16string match_contents_prefix;
       std::optional<int> suggestion_group_id;
-      bool answer_parsed_successfully = false;
-      omnibox::RichAnswerTemplate answer_template;
       bool has_suggest_template = false;
 
       if (response_metadata.suggestion_details &&
@@ -1144,12 +1135,6 @@ bool SearchSuggestionParser::ParseSuggestResults(
           !(*response_metadata.suggestion_details)[index].GetDict().empty()) {
         const base::DictValue& suggestion_detail =
             (*response_metadata.suggestion_details)[index].GetDict();
-
-        // Rich Suggest Template.
-        const auto* rich_template_str =
-            suggestion_detail.FindString("google:templateinfo");
-        DecodeProtoFromBase64<omnibox::RichSuggestTemplate>(rich_template_str,
-                                                            suggest_template);
 
         // Entity.
         const auto* entity_info_string =
@@ -1175,12 +1160,6 @@ bool SearchSuggestionParser::ParseSuggestResults(
 
         // Suggestion group Id.
         suggestion_group_id = suggestion_detail.FindInt("zl");
-
-        // Answer.
-        if (suggest_template.has_rich_answer_template()) {
-          answer_template = suggest_template.rich_answer_template();
-          answer_parsed_successfully = true;
-        }
 
         // Entity to SUIT Fallback Translation Layer.
         // If the server sends legacy EntityInfo without SuggestTemplateInfo,
@@ -1210,10 +1189,6 @@ bool SearchSuggestionParser::ParseSuggestResults(
               ? std::make_optional(std::move(suggest_template_info))
               : std::nullopt);
 
-      if (answer_parsed_successfully) {
-        results->suggest_results.back().SetRichAnswerTemplate(answer_template);
-      }
-
       if (suggestion_group_id) {
         results->suggest_results.back().set_suggestion_group_id(
             omnibox::GroupIdForNumber(*suggestion_group_id));
@@ -1236,14 +1211,15 @@ bool SearchSuggestionParser::ParseSuggestResults(
       return false;
     }
 
-    // There is nothing to do if the group config has been added before.
-    if (results->suggestion_groups_map.contains(suggestion_group_id)) {
+    // Store the group config in the results, unless it has been added before.
+    auto [it, inserted] = results->suggestion_groups_map.try_emplace(
+        suggestion_group_id, group_config);
+    if (!inserted) {
       return true;
     }
 
-    // Store the group config with the appropriate section in the results.
-    results->suggestion_groups_map[suggestion_group_id].MergeFrom(group_config);
-    results->suggestion_groups_map[suggestion_group_id].set_section(
+    // Set the appropriate section for the newly added group config.
+    it->second.set_section(
         ChromeGroupSectionForRemoteGroupIndex(group_index++));
     return true;
   };
@@ -1260,12 +1236,10 @@ bool SearchSuggestionParser::ParseSuggestResults(
     // Add the group config associated with the suggestion, if the suggestion
     // has a valid group ID and a corresponding group config is found in the
     // response.
-    if (!response_metadata.groups_info.group_configs().contains(
-            suggestion_group_id) ||
-        !add_group_config(suggestion_group_id,
-                          response_metadata.groups_info.group_configs().at(
-                              suggestion_group_id))) {
-      continue;
+    const auto it =
+        response_metadata.groups_info.group_configs().find(suggestion_group_id);
+    if (it != response_metadata.groups_info.group_configs().end()) {
+      add_group_config(suggestion_group_id, it->second);
     }
   }
 

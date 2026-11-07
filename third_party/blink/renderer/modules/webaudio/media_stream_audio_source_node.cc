@@ -25,8 +25,6 @@
 
 #include "third_party/blink/renderer/modules/webaudio/media_stream_audio_source_node.h"
 
-#include <inttypes.h>
-
 #include "media/base/limits.h"
 #include "third_party/blink/public/platform/modules/webrtc/webrtc_logging.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_media_stream_audio_source_options.h"
@@ -34,6 +32,7 @@
 #include "third_party/blink/renderer/modules/webaudio/audio_graph_tracer.h"
 #include "third_party/blink/renderer/modules/webaudio/media_stream_audio_source_handler.h"
 #include "third_party/blink/renderer/platform/wtf/text/format.h"
+#include "third_party/blink/renderer/platform/wtf/text/strcat.h"
 
 namespace blink {
 
@@ -51,11 +50,9 @@ MediaStreamAudioSourceNode::MediaStreamAudioSourceNode(
   SendLogMessage(
       __func__,
       Format("({{audio_track=[kind: {}, id: {}, label: {}, enabled: {:d}, "
-             "muted: {:d}]}}, {{handler=0x{:X}}}, [this=0x{:X}])",
+             "muted: {:d}]}})",
              audio_track->kind(), audio_track->id(), audio_track->label(),
-             audio_track->enabled(), audio_track->muted(),
-             reinterpret_cast<uintptr_t>(&Handler()),
-             reinterpret_cast<uintptr_t>(this)));
+             audio_track->enabled(), audio_track->muted()));
 }
 
 MediaStreamAudioSourceNode* MediaStreamAudioSourceNode::Create(
@@ -118,9 +115,6 @@ MediaStreamAudioSourceNode* MediaStreamAudioSourceNode::Create(
   // Initializes the node with the stereo output channel.
   node->SetFormat(2, context.sampleRate());
 
-  // Lets the context know this source node started.
-  context.NotifySourceNodeStartedProcessing(node);
-
   return node;
 }
 
@@ -146,10 +140,12 @@ void MediaStreamAudioSourceNode::ReportWillBeDestroyed() {
 }
 
 bool MediaStreamAudioSourceNode::HasPendingActivity() const {
-  // The node stays alive as long as the context is running. It also will not
-  // be collected until the context is suspended or stopped.
-  // (See https://crbug.com/937231)
-  return context()->ContextState() == V8AudioContextState::Enum::kRunning;
+  // Keep the node alive while the context is running and outputs are connected
+  // (see https://crbug.com/937231).
+  if (context()->ContextState() != V8AudioContextState::Enum::kRunning) {
+    return false;
+  }
+  return HasOutputsConnected();
 }
 
 void MediaStreamAudioSourceNode::Trace(Visitor* visitor) const {

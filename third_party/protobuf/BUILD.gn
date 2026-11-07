@@ -261,7 +261,10 @@ if (current_toolchain == host_toolchain) {
 
     configs += [ ":protobuf_config_internal" ]
 
-    public_deps = [ ":protobuf_full" ]
+    public_deps = [
+      ":protobuf_full",
+      ":protoc_lib_sources",
+    ]
   }
 
   source_set("protoc_java") {
@@ -276,6 +279,7 @@ if (current_toolchain == host_toolchain) {
       ":protobuf_full",
       ":protoc_java_all_headers",
     ]
+    deps = [ ":protoc_lib_sources" ]
   }
 
   source_set("protoc_java_full") {
@@ -290,6 +294,7 @@ if (current_toolchain == host_toolchain) {
       ":protobuf_full",
       ":protoc_java_all_headers",
     ]
+    deps = [ ":protoc_lib_sources" ]
   }
 
   source_set("protoc_java_lite") {
@@ -304,6 +309,7 @@ if (current_toolchain == host_toolchain) {
       ":protobuf_full",
       ":protoc_java_all_headers",
     ]
+    deps = [ ":protoc_lib_sources" ]
   }
 
   source_set("protoc_cpp") {
@@ -314,7 +320,10 @@ if (current_toolchain == host_toolchain) {
 
     configs += [ ":protobuf_config_internal" ]
 
-    public_deps = [ ":protobuf_full" ]
+    public_deps = [
+      ":protobuf_full",
+      ":protoc_lib_sources",
+    ]
   }
 
   source_set("protoc_python") {
@@ -325,7 +334,10 @@ if (current_toolchain == host_toolchain) {
 
     configs += [ ":protobuf_config_internal" ]
 
-    public_deps = [ ":protobuf_full" ]
+    public_deps = [
+      ":protobuf_full",
+      ":protoc_lib_sources",
+    ]
   }
 
   # In component builds, protoc targets depending on `protobuf_lite` inherit
@@ -338,8 +350,7 @@ if (current_toolchain == host_toolchain) {
     defines = [ "LIBPROTOC_EXPORTS" ]
   }
 
-  # protoc generates language-specific bindings from protos.
-  static_library("protoc_lib") {
+  static_library("protoc_lib_sources") {
     sources = protoc_sources + protoc_headers
 
     configs -= [ "//build/config/compiler:chromium_code" ]
@@ -359,20 +370,25 @@ if (current_toolchain == host_toolchain) {
     public_configs += [ ":libprotoc_config" ]
 
     public_deps = [ ":protobuf_full" ]
+  }
+
+  # protoc generates language-specific bindings from protos.
+  group("protoc_lib") {
+    public_configs = [
+      ":protobuf_config",
+      ":libprotoc_config",
+    ]
+
+    public_deps = [
+      ":protobuf_full",
+      ":protoc_lib_sources",
+    ]
     deps = [
       ":protoc_cpp",
       ":protoc_java",
       ":protoc_java_all_headers",
       ":protoc_java_full",
       ":protoc_java_lite",
-      ":protoc_python",
-    ]
-    allow_circular_includes_from = [
-      ":protoc_java",
-      ":protoc_java_all_headers",
-      ":protoc_java_full",
-      ":protoc_java_lite",
-      ":protoc_cpp",
       ":protoc_python",
     ]
   }

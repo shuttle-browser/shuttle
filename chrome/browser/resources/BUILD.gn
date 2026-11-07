@@ -20,8 +20,6 @@ assert(!is_fuchsia, "Fuchsia shouldn't use anything in //chrome")
 
 group("resources") {
   public_deps = [
-    "segmentation_internals:resources",
-    "//components/enterprise/connectors/resources",
   ]
 
   if (enable_webui_ntp) {
@@ -51,7 +49,6 @@ group("resources") {
       "tab_group_home:resources",
       "webnn_internals:resources",
       "webui_gallery:resources",
-      "//components/browser_apis/tab_strip/resources",
     ]
     if (is_chrome_branded) {
       public_deps += [
@@ -143,11 +140,15 @@ group("resources") {
     public_deps += [ "history:resources" ]
   }
 
-  if (enable_compose) {
+  if (enable_webui_tabstrip_ntb) {
+    public_deps += [ "tabstrip_ntb:resources" ]
   }
 
-  if (enterprise_watermark) {
-    public_deps += [ "watermark:resources" ]
+  if (!is_android || enable_webui_tabstrip_ntb) {
+    public_deps += [ "//components/browser_apis/tab_strip/resources" ]
+  }
+
+  if (enable_compose) {
   }
 
   if (safe_browsing_mode == 1) {
@@ -292,22 +293,17 @@ group("dev_ui_resources") {
     "content_settings:resources",
     "device_log:resources",
     "engagement:resources",
-    "family_link_user_internals:resources",
     "location_internals:resources",
     "media:resources",
     "net_internals:resources",
-    "omnibox:resources",
+    "omnibox_internals:resources",
     "predictors:resources",
-    "segmentation_internals:resources",
     "subresource_filter:resources",
     "suggest_internals:resources",
     "usb_internals:resources",
     "//components/download/resources/download_internals:resources",
-    "//components/enterprise/connectors/resources",
-    "//components/history_clusters/history_clusters_internals/resources",
     "//components/metrics/debug:resources",
     "//components/net_log/resources",
-    "//components/optimization_guide/optimization_guide_internals/resources",
     "//components/policy/resources/webui:resources",
     "//components/resources:dev_ui_components_resources",
     "//components/ukm/debug:resources",
@@ -335,7 +331,6 @@ group("dev_ui_resources") {
     public_deps += [
       "color_pipeline_internals:resources",
       "infobar_internals:resources",
-      "multistep_filter_internals:resources",
       "page_action_internals:resources",
       "webnn_internals:resources",
       "webui_js_error:resources",
@@ -365,23 +360,18 @@ repack("dev_ui_paks") {
     "$root_gen_dir/chrome/content_settings_resources.pak",
     "$root_gen_dir/chrome/device_log_resources.pak",
     "$root_gen_dir/chrome/engagement_resources.pak",
-    "$root_gen_dir/chrome/family_link_user_internals_resources.pak",
     "$root_gen_dir/chrome/location_internals_resources.pak",
     "$root_gen_dir/chrome/media_resources.pak",
     "$root_gen_dir/chrome/net_internals_resources.pak",
-    "$root_gen_dir/chrome/omnibox_resources.pak",
+    "$root_gen_dir/chrome/omnibox_internals_resources.pak",
     "$root_gen_dir/chrome/predictors_resources.pak",
-    "$root_gen_dir/chrome/segmentation_internals_resources.pak",
     "$root_gen_dir/chrome/subresource_filter_internals_resources.pak",
     "$root_gen_dir/chrome/suggest_internals_resources.pak",
     "$root_gen_dir/chrome/usb_internals_resources.pak",
-    "$root_gen_dir/components/connectors_internals_resources.pak",
     "$root_gen_dir/components/dev_ui_components_resources.pak",
     "$root_gen_dir/components/download_internals_resources.pak",
-    "$root_gen_dir/components/history_clusters_internals_resources.pak",
     "$root_gen_dir/components/metrics_internals_resources.pak",
     "$root_gen_dir/components/net_export_resources.pak",
-    "$root_gen_dir/components/optimization_guide_internals_resources.pak",
     "$root_gen_dir/components/policy_resources.pak",
     "$root_gen_dir/components/regional_capabilities_internals_resources.pak",
     "$root_gen_dir/components/ukm_resources.pak",
@@ -410,7 +400,6 @@ repack("dev_ui_paks") {
     sources += [
       "$root_gen_dir/chrome/color_pipeline_internals_resources.pak",
       "$root_gen_dir/chrome/infobar_internals_resources.pak",
-      "$root_gen_dir/chrome/multistep_filter_internals_resources.pak",
       "$root_gen_dir/chrome/page_action_internals_resources.pak",
       "$root_gen_dir/chrome/webui_js_error_resources.pak",
     ]

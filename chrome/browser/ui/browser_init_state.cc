@@ -36,10 +36,6 @@ BrowserInitState::BrowserInitState(BrowserWindowCreateParams params,
           browser_window_create_params_
               .initial_visible_on_all_workspaces_state),
       creation_source_(browser_window_create_params_.creation_source),
-      initial_vertical_tab_strip_collapsed_(
-          browser_window_create_params_.vertical_tab_strip_collapsed),
-      initial_vertical_tab_strip_uncollapsed_width_(
-          browser_window_create_params_.vertical_tab_strip_uncollapsed_width),
       initial_focused_tab_group_id_(
           browser_window_create_params_.focused_tab_group_id),
       scoped_unowned_user_data_(host, *this) {}

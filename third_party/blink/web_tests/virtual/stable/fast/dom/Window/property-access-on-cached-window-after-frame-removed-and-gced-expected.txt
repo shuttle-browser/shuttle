@@ -43,6 +43,8 @@ PASS childWindow.navigator.doNotTrack is null
 PASS childWindow.navigator.hardwareConcurrency is window.navigator.hardwareConcurrency
 PASS childWindow.navigator.language is window.navigator.language
 PASS childWindow.navigator.maxTouchPoints is 0
+PASS childWindow.navigator.mediaSession.metadata is null
+PASS childWindow.navigator.mediaSession.playbackState is 'none'
 PASS childWindow.navigator.onLine is window.navigator.onLine
 PASS childWindow.navigator.pdfViewerEnabled is false
 PASS childWindow.navigator.platform is window.navigator.platform
@@ -106,6 +108,7 @@ PASS childWindow.ongamepaddisconnected is null
 PASS childWindow.ongotpointercapture is null
 PASS childWindow.onhashchange is null
 PASS childWindow.oninput is null
+PASS childWindow.oninstallresult is null
 PASS childWindow.oninvalid is null
 PASS childWindow.onkeydown is null
 PASS childWindow.onkeypress is null

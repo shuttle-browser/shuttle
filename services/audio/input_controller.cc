@@ -53,7 +53,7 @@ namespace {
 
 using OpenOutcome = media::AudioInputStream::OpenOutcome;
 
-const int kMaxInputChannels = 3;
+constexpr int kMaxInputChannels = 3;
 constexpr base::TimeDelta kCheckMutedStateInterval = base::Seconds(1);
 constexpr base::TimeDelta kPeriodicLogInterval = base::Seconds(15);
 
@@ -86,7 +86,7 @@ constexpr base::TimeDelta kPowerMonitorLogInterval = base::Seconds(15);
 
 // A warning will be logged when the microphone audio volume is below this
 // threshold.
-const int kLowLevelMicrophoneLevelPercent = 10;
+constexpr int kLowLevelMicrophoneLevelPercent = 10;
 
 // Logs if the user has enabled the microphone mute or not. This is normally
 // done by marking a checkbox in an audio-settings UI which is unique for each
@@ -139,7 +139,7 @@ float AveragePower(const media::AudioBus& buffer) {
 
   // Convert average power level to dBFS units, and pin it down to zero if it
   // is insignificantly small.
-  const float kInsignificantPower = 1.0e-10f;  // -100 dBFS
+  constexpr float kInsignificantPower = 1.0e-10f;  // -100 dBFS
   const float power_dbfs = average_power < kInsignificantPower
                                ? -std::numeric_limits<float>::infinity()
                                : 10.0f * log10f(average_power);
@@ -469,9 +469,15 @@ InputController::MaybeCreateVoiceIsolationHandler(
     return nullptr;
   }
 
+  // If asynchronous component initialization fails on the background thread,
+  // terminate the stream with STREAM_ERROR rather than delivering unisolated
+  // audio.
+  auto error_cb =
+      base::BindOnce(&InputController::DoReportError, weak_this_, STREAM_ERROR);
+
   return VoiceIsolationHandler::MaybeCreate(
       *ml_model_manager, processing_output_params,
-      std::move(deliver_processed_audio_callback),
+      std::move(deliver_processed_audio_callback), std::move(error_cb),
       base::BindRepeating(&EventHandler::OnLog,
                           base::Unretained(event_handler_)),
       debug_recording_manager);
@@ -590,6 +596,10 @@ void InputController::Record() {
 void InputController::Close() {
   DCHECK(task_runner_->BelongsToCurrentThread());
   SCOPED_UMA_HISTOGRAM_TIMER("Media.AudioInputController.CloseTime");
+
+  // Errors arriving during or after teardown are of no interest to the
+  // EventHandler.
+  can_report_error_ = false;
 
   if (!stream_) {
     return;
@@ -745,7 +755,7 @@ void InputController::DoCreate(
         ml_model_manager, audio_manager->GetAudioDebugRecordingManager(),
         params, std::move(deliver_processed_audio_callback));
     if (!voice_isolation_handler) {
-      event_handler_->OnError(STREAM_CREATE_ERROR);
+      DoReportError(STREAM_CREATE_ERROR);
       LogCaptureStartupResult(ParamsToStreamType(params),
                               CAPTURE_STARTUP_VOICE_ISOLATION_ERROR);
       return;
@@ -788,7 +798,7 @@ void InputController::DoCreate(
 
   if (!stream) {
     LogCaptureStartupResult(CAPTURE_STARTUP_CREATE_STREAM_FAILED);
-    event_handler_->OnError(STREAM_CREATE_ERROR);
+    DoReportError(STREAM_CREATE_ERROR);
     return;
   }
 
@@ -796,7 +806,7 @@ void InputController::DoCreate(
   if (open_outcome != OpenOutcome::kSuccess) {
     stream->Close();
     LogCaptureStartupResult(CAPTURE_STARTUP_OPEN_STREAM_FAILED);
-    event_handler_->OnError(MapOpenOutcomeToErrorCode(open_outcome));
+    DoReportError(MapOpenOutcomeToErrorCode(open_outcome));
     return;
   }
 
@@ -837,6 +847,15 @@ void InputController::DoCreate(
 
 void InputController::DoReportError(ErrorCode error_code) {
   DCHECK(task_runner_->BelongsToCurrentThread());
+  // At most one error is reported to the EventHandler. Asynchronous errors
+  // arriving after DoCreate() failed or after Close(), as well as repeated
+  // runtime errors before teardown, are ignored.
+  if (!can_report_error_) {
+    SendLogMessage(base::StringPrintf("%s({error_code=%d}) => (ignored)",
+                                      __func__, error_code));
+    return;
+  }
+  can_report_error_ = false;
   event_handler_->OnError(error_code);
 }
 

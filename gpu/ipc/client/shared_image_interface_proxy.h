@@ -74,11 +74,11 @@ class SharedImageInterfaceProxy {
       gfx::GpuMemoryBufferHandle handle,
       std::optional<SharedImagePoolId> pool_id = std::nullopt);
 
-  void CopyToGpuMemoryBuffer(const SyncToken& sync_token,
+  void CopyToGpuMemoryBuffer(std::vector<SyncToken> sync_tokens,
                              const Mailbox& mailbox);
 
 #if BUILDFLAG(IS_WIN)
-  void CopyToGpuMemoryBufferAsync(const SyncToken& sync_token,
+  void CopyToGpuMemoryBufferAsync(std::vector<SyncToken> sync_tokens,
                                   const Mailbox& mailbox,
                                   base::OnceCallback<void(bool)> callback);
   void UpdateSharedImage(const SyncToken& sync_token,

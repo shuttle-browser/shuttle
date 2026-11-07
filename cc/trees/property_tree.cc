@@ -81,8 +81,7 @@ TransformTree::TransformTree(PropertyTrees* property_trees)
     : PropertyTree<TransformNode>(property_trees),
       page_scale_factor_(1.f),
       device_scale_factor_(1.f),
-      device_transform_scale_factor_(1.f),
-      external_page_scale_factor_(1.f) {
+      device_transform_scale_factor_(1.f) {
   cached_data_.push_back(TransformCachedNodeData());
 }
 
@@ -176,7 +175,6 @@ void TransformTree::clear() {
   page_scale_factor_ = 1.f;
   device_scale_factor_ = 1.f;
   device_transform_scale_factor_ = 1.f;
-  external_page_scale_factor_ = 1.f;
   nodes_affected_by_outer_viewport_bounds_delta_.clear();
   nodes_affected_by_safe_area_inset_bottom_.clear();
   cached_data_.clear();
@@ -259,7 +257,6 @@ void TransformTree::CopyFromPreservingNodes(const TransformTree& other) {
   page_scale_factor_ = other.page_scale_factor_;
   device_scale_factor_ = other.device_scale_factor_;
   device_transform_scale_factor_ = other.device_transform_scale_factor_;
-  external_page_scale_factor_ = other.external_page_scale_factor_;
   nodes_affected_by_outer_viewport_bounds_delta_ =
       other.nodes_affected_by_outer_viewport_bounds_delta_;
   nodes_affected_by_safe_area_inset_bottom_ =
@@ -1093,7 +1090,6 @@ bool TransformTree::operator==(const TransformTree& other) const {
          device_scale_factor_ == other.device_scale_factor() &&
          device_transform_scale_factor_ ==
              other.device_transform_scale_factor() &&
-         external_page_scale_factor_ == other.external_page_scale_factor() &&
          nodes_affected_by_outer_viewport_bounds_delta_ ==
              other.nodes_affected_by_outer_viewport_bounds_delta() &&
          cached_data_ == other.cached_data() &&
@@ -1201,8 +1197,8 @@ void EffectTree::UpdateIsDrawn(EffectNode* node,
 
 void EffectTree::UpdateEffectChanged(EffectNode* node,
                                      const EffectNode* parent_node) {
-  if (parent_node && parent_node->effect_changed) {
-    node->effect_changed = true;
+  if (parent_node && parent_node->effect_changed()) {
+    node->CopyEffectChangedFrom(*parent_node);
   }
 }
 
@@ -1265,7 +1261,8 @@ void EffectTree::UpdateOnlyDrawsVisibleContent(EffectNode* node,
   }
 }
 
-void EffectTree::UpdateSurfaceContentsScale(EffectNode* effect_node) {
+void EffectTree::UpdateSurfaceContentsScale(EffectNode* effect_node,
+                                            float external_page_scale_factor) {
   if (!effect_node->HasRenderSurface()) {
     effect_node->surface_contents_scale = gfx::Vector2dF(1.0f, 1.0f);
     return;
@@ -1297,8 +1294,7 @@ void EffectTree::UpdateSurfaceContentsScale(EffectNode* effect_node) {
   if (effect_node->id != kContentsRootPropertyNodeId &&
       base::FeatureList::IsEnabled(
           features::kSizeOopifEffectSurfacesAtExternalScale)) {
-    effect_node->surface_contents_scale.Scale(
-        transform_tree.external_page_scale_factor());
+    effect_node->surface_contents_scale.Scale(external_page_scale_factor);
   }
 
   // To avoid seams we apply only scale as draw transform instead of raster
@@ -1332,7 +1328,7 @@ bool EffectTree::OnOpacityAnimated(ElementId id, float opacity) {
   if (node->opacity == opacity)
     return false;
   node->opacity = opacity;
-  node->effect_changed = true;
+  node->SetEffectChanged(DamageReason::kCompositorAnimation);
   property_trees()->set_changed(true);
   property_trees()->effect_tree_mutable().set_needs_update(true);
   return true;
@@ -1349,7 +1345,7 @@ bool EffectTree::OnFilterAnimated(ElementId id,
   if (node->filters == filters)
     return false;
   node->filters = filters;
-  node->effect_changed = true;
+  node->SetEffectChanged(DamageReason::kCompositorAnimation);
   property_trees()->set_changed(true);
   property_trees()->effect_tree_mutable().set_needs_update(true);
   return true;
@@ -1367,13 +1363,13 @@ bool EffectTree::OnBackdropFilterAnimated(
   if (node->backdrop_filters == backdrop_filters)
     return false;
   node->backdrop_filters = backdrop_filters;
-  node->effect_changed = true;
+  node->SetEffectChanged(DamageReason::kCompositorAnimation);
   property_trees()->set_changed(true);
   property_trees()->effect_tree_mutable().set_needs_update(true);
   return true;
 }
 
-void EffectTree::UpdateEffects(int id) {
+void EffectTree::UpdateEffects(int id, float external_page_scale_factor) {
   EffectNode& node = MutableNode(id);
   EffectNode* parent_node = HasParent(node) ? &MutableParent(node) : nullptr;
 
@@ -1387,7 +1383,7 @@ void EffectTree::UpdateEffects(int id) {
   UpdateHasMaskingChild(&node, parent_node);
   UpdateOnlyDrawsVisibleContent(&node, parent_node);
   UpdateClosestAncestorSharedElement(&node, parent_node);
-  UpdateSurfaceContentsScale(&node);
+  UpdateSurfaceContentsScale(&node, external_page_scale_factor);
 }
 
 void EffectTree::UpdateClosestAncestorSharedElement(
@@ -1568,7 +1564,7 @@ bool EffectTree::ContributesToDrawnSurface(int id) const {
 void EffectTree::ResetChangeTracking() {
   for (int id = kContentsRootPropertyNodeId; id < static_cast<int>(size());
        ++id) {
-    MutableNode(id).effect_changed = false;
+    MutableNode(id).ClearEffectChanged();
     // During a flush-only sync (TreesInViz), we skip expensive render surface
     // recomputations, so |render_surfaces_| might be smaller than |size()|.
     if (static_cast<size_t>(id) < render_surfaces_.size() &&
@@ -2785,7 +2781,7 @@ void PropertyTrees::GetChangedNodes(std::vector<int>& effect_nodes,
                                     std::vector<int>& transform_nodes) const {
   for (int id = kContentsRootPropertyNodeId;
        id < static_cast<int>(effect_tree().size()); ++id) {
-    if (effect_tree().Node(id).effect_changed) {
+    if (effect_tree().Node(id).effect_changed()) {
       effect_nodes.push_back(id);
     }
   }
@@ -2802,7 +2798,8 @@ void PropertyTrees::ApplyChangedNodes(
     const std::vector<int>& changed_transform_nodes) {
   if (changed_effect_nodes.size() || changed_transform_nodes.size()) {
     for (int i : changed_effect_nodes) {
-      effect_tree_mutable().MutableNode(i).effect_changed = true;
+      effect_tree_mutable().MutableNode(i).SetEffectChanged(
+          DamageReason::kUntracked);
     }
     for (int i : changed_transform_nodes) {
       transform_tree_mutable().MutableNode(i).SetTransformChanged(

@@ -16,8 +16,10 @@ include_rules = [
   "+components/sessions/content",
   "+components/sessions/core/session_id.h",
   "+components/site_engagement/content",
+  "+components/tabs/public",
   "+components/url_formatter",
   "+components/version_info",
+  "+components/viz/common/frame_sinks/copy_output_result.h",
   "+components/zoom",
   "+content/public/browser",
   "+content/public/common",
@@ -42,4 +44,5 @@ include_rules = [
   "+third_party/blink/public/mojom/site_engagement",
   "+ui/base",
   "+ui/display",
+  "+ui/gfx/codec/png_codec.h",
 ]

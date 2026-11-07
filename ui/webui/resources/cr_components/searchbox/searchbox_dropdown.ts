@@ -55,14 +55,6 @@ export class SearchboxDropdownElement extends CrLitElement {
        */
       canShowSecondarySide: {type: Boolean},
 
-      /**
-       * Whether the secondary side was at any point available to be shown.
-       */
-      hadSecondarySide: {
-        type: Boolean,
-        notify: true,
-      },
-
       /*
        * Whether the secondary side is currently available to be shown.
        */
@@ -111,7 +103,6 @@ export class SearchboxDropdownElement extends CrLitElement {
   }
 
   accessor canShowSecondarySide: boolean = false;
-  accessor hadSecondarySide: boolean = false;
   accessor hasSecondarySide: boolean = false;
   accessor hasEmptyInput: boolean = false;
   accessor result: AutocompleteResult|null = null;
@@ -124,6 +115,8 @@ export class SearchboxDropdownElement extends CrLitElement {
       loadTimeData.valueExists('realboxVirtualFocusNavigation') &&
       loadTimeData.getBoolean('realboxVirtualFocusNavigation');
   private accessor showSecondarySide_: boolean = false;
+  // Descriptions shown by both a contextual and a non-contextual match.
+  private duplicateDescriptions_: Set<string> = new Set();
 
   /** The list of selectable match elements. */
   private selectableMatchElements_: SearchboxMatchElement[] = [];
@@ -135,6 +128,7 @@ export class SearchboxDropdownElement extends CrLitElement {
     if (changedProperties.has('result')) {
       this.hasSecondarySide = this.computeHasSecondarySide_();
       this.hasEmptyInput = this.computeHasEmptyInput_();
+      this.duplicateDescriptions_ = this.computeDuplicateDescriptions_();
     }
 
     if (changedProperties.has('result') ||
@@ -302,22 +296,33 @@ export class SearchboxDropdownElement extends CrLitElement {
   }
 
   private computeHasSecondarySide_(): boolean {
-    const hasSecondarySide =
-        !!this.groupIdsForSideType_(SideType.kSecondary).length;
-    if (!this.hadSecondarySide) {
-      this.hadSecondarySide = hasSecondarySide;
-    }
-    return hasSecondarySide;
+    return !!this.groupIdsForSideType_(SideType.kSecondary).length;
   }
 
   private computeHasEmptyInput_(): boolean {
     return !!this.result && this.result.input === '';
   }
 
+  private computeDuplicateDescriptions_(): Set<string> {
+    // Shuttle: no contextual suggestions (contextual search is removed), so
+    // no description duplicates one of them.
+    return new Set<string>();
+  }
+
   protected isSelected_(match: AutocompleteMatch): boolean {
     const selectedIndex = this.virtualFocusEnabled ? this.selection.line :
                                                      this.selectedMatchIndex;
     return this.matchIndex_(match) === selectedIndex;
+  }
+
+  /**
+   * Whether a match of the other kind (showing its description only on
+   * selection or always) has the same description as the match. The CSS uses
+   * this to show only one copy at a time.
+   */
+  protected hasDuplicateDescription_(match: AutocompleteMatch): boolean {
+    return this.duplicateDescriptions_.has(
+        match.suggestTemplate.secondaryText?.text ?? '');
   }
 
   /**

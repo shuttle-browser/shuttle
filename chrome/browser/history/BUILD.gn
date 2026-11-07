@@ -36,16 +36,14 @@ source_set("impl") {
     "profile_based_browsing_history_driver.cc",
     "top_sites_factory.cc",
   ]
-  public_deps = [
-    ":history",
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = [ ":history" ]
   deps = [
     "//base",
     "//chrome/browser/engagement",
     "//chrome/browser/preloading/prefetch/no_state_prefetch",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/renderer_host",
+    "//chrome/browser/search",
     "//chrome/browser/search_engines",
     "//chrome/browser/signin",
     "//chrome/browser/ui/profiles",
@@ -81,6 +79,7 @@ source_set("impl") {
     deps += [
       ":jni_headers",
       "//chrome/browser/flags:flags_android",
+      "//chrome/browser/ui/android/tab_model",
       "//chrome/browser/ui/android/tab_model:impl",
     ]
   } else {
@@ -95,6 +94,16 @@ if (is_android) {
   import("//build/config/android/rules.gni")
   import("//chrome/browser/buildflags.gni")
   import("//third_party/jni_zero/jni_zero.gni")
+
+  android_library("features_java") {
+    sources =
+        [ "java/src/org/chromium/chrome/browser/history/HistoryFeatures.java" ]
+
+    deps = [
+      "//base:base_java",
+      "//chrome/browser/flags:java",
+    ]
+  }
 
   android_library("java") {
     srcjar_deps = [ ":jni_headers" ]

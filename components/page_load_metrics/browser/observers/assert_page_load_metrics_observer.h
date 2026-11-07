@@ -184,6 +184,9 @@ class AssertPageLoadMetricsObserver final
       content::RenderFrameHost* rfh,
       const std::vector<page_load_metrics::mojom::ResourceDataUpdatePtr>&
           resources) override {}
+  void OnSubresourceLoadMetricsObserved(
+      content::RenderFrameHost* rfh,
+      const blink::SubresourceLoadMetrics& subresource_load_metrics) override {}
   void MediaStartedPlaying(
       const content::WebContentsObserver::MediaPlayerInfo& video_type,
       content::RenderFrameHost* render_frame_host) override {}
@@ -222,8 +225,6 @@ class AssertPageLoadMetricsObserver final
                          const GURL& first_party_url,
                          bool blocked_by_policy,
                          page_load_metrics::StorageType access_type) override {}
-  void OnSharedStorageWorkletHostCreated() override {}
-  void OnSharedStorageSelectURLCalled() override {}
   void OnCustomUserTimingMarkObserved(
       const std::vector<page_load_metrics::mojom::CustomUserTimingMarkPtr>&
           timings) override {}

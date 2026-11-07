@@ -33,7 +33,6 @@
 #include "components/omnibox/browser/autocomplete_match_classification.h"
 #include "components/omnibox/browser/autocomplete_provider_client.h"
 #include "components/omnibox/browser/autocomplete_scoring_signals_annotator.h"
-#include "components/omnibox/browser/history_cluster_provider.h"
 #include "components/omnibox/browser/history_url_provider.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
 #include "components/omnibox/browser/omnibox_triggered_feature_service.h"
@@ -48,10 +47,6 @@
 #include "third_party/metrics_proto/omnibox_input_type.pb.h"
 #include "third_party/metrics_proto/omnibox_scoring_signals.pb.h"
 #include "third_party/omnibox_proto/groups.pb.h"
-
-#if !BUILDFLAG(IS_IOS)
-#include "components/history_clusters/core/config.h"  // nogncheck
-#endif                                                // !BUILDFLAG(IS_IOS)
 
 constexpr bool kIsDesktop = !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS);
 
@@ -274,10 +269,6 @@ void ShortcutsProvider::DoAutocomplete(const AutocompleteInput& input,
   // Get the shortcuts from the database with keys that partially or completely
   // match the input string.
   std::vector<ShortcutMatch> shortcut_matches;
-  // Track history cluster shortcuts separately, so they don't consume
-  // `provider_max_matches_`.
-  std::vector<ShortcutMatch> history_cluster_shortcut_matches;
-
   // Group the matching shortcuts by stripped `destination_url`, score them
   // together, and create a single `ShortcutMatch`.
   std::map<GURL, std::vector<const ShortcutsDatabase::Shortcut*>>
@@ -311,10 +302,9 @@ void ShortcutsProvider::DoAutocomplete(const AutocompleteInput& input,
       continue;
     }
 
-    if (shortcut_match.shortcut->match_core.type ==
+    // Shuttle: history clusters are removed; drop stale cluster shortcuts.
+    if (shortcut_match.shortcut->match_core.type !=
         omnibox::AutocompleteMatchType::kHistoryCluster) {
-      history_cluster_shortcut_matches.push_back(shortcut_match);
-    } else {
       shortcut_matches.push_back(shortcut_match);
     }
   }
@@ -367,8 +357,7 @@ void ShortcutsProvider::DoAutocomplete(const AutocompleteInput& input,
   }
 
   // Create and initialize autocomplete matches from shortcut matches.
-  matches_.reserve(shortcut_matches.size() +
-                   history_cluster_shortcut_matches.size());
+  matches_.reserve(shortcut_matches.size());
   std::ranges::transform(
       shortcut_matches, std::back_inserter(matches_),
       [&](const auto& shortcut_match) {
@@ -387,28 +376,6 @@ void ShortcutsProvider::DoAutocomplete(const AutocompleteInput& input,
       });
 
   ResizeMatches(provider_max_matches_, ignore_provider_limit);
-  std::ranges::transform(
-      history_cluster_shortcut_matches, std::back_inserter(matches_),
-      [&](const auto& shortcut_match) {
-        auto match =
-            ShortcutMatchToACMatch(shortcut_match, shortcut_match.relevance,
-                                   input, fixed_up_input, lower_input);
-    // Guard this as `HistoryClusterProvider` doesn't exist on iOS.
-    // Though this code will never run on iOS regardless.
-#if !BUILDFLAG(IS_IOS)
-        // `lower_input` is only what the user typed, e.g. "new y" instead of
-        // "new york". Use `match.description`, which is the whole string.
-        // This is a bit hacky, but accurately reflects how
-        // `HistoryClusterProvider` constructed the original match.
-        std::string matching_string = base::UTF16ToUTF8(match.description);
-        // Shortcut-generated HC matches have empty `ClusterKeywordData()`s,
-        // because it wasn't generated via an entity match in the first place.
-        HistoryClusterProvider::CompleteHistoryClustersMatch(
-            matching_string, history::ClusterKeywordData(), &match);
-#endif  // !BUILDFLAG(IS_IOS)
-
-        return match;
-      });
 }
 
 ShortcutMatch ShortcutsProvider::CreateScoredShortcutMatch(

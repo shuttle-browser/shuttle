@@ -7,6 +7,10 @@ import("//build/config/chrome_build.gni")
 import("//components/activity_reporter/buildflags.gni")
 import("//testing/test.gni")
 
+# Activity reporting must never be built into ChromeOS. Any dependency on this
+# component from a ChromeOS build is an error.
+assert(!is_chromeos, "//components/activity_reporter is not built on ChromeOS")
+
 use_activity_reporter_internal_constants =
     is_internal_chrome_branded && is_official_build
 
@@ -41,11 +45,16 @@ source_set("activity_reporter") {
       "//base/version_info",
       "//components/policy/core/common",
       "//components/prefs",
+      "//ui/base",
       "//url",
     ]
 
     if (use_activity_reporter_internal_constants) {
       sources += [ "internal/constants.h" ]
+    }
+
+    if (is_win) {
+      deps += [ ":vm_detection" ]
     }
   } else {
     sources += [ "activity_reporter_disabled.cc" ]

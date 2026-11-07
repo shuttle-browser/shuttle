@@ -100,6 +100,35 @@ class AIPageContentMetricsLogger
   base::WeakPtrFactory<AIPageContentMetricsLogger> weak_ptr_factory_{this};
 };
 
+inline constexpr char kAIPageContentExtractionStatusHistogram[] =
+    "OptimizationGuide.AIPageContent.ExtractionStatus2";
+
+// Tracks the outcome of a `GetAIPageContent()` extraction request.
+//
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+//
+// LINT.IfChange(AIPageContentExtractionStatus)
+enum class AIPageContentExtractionStatus {
+  kUnknown = 0,
+  kSuccess = 1,
+  kMainFrameNotLive = 2,
+  kMainFrameTimeout = 3,
+  kMainFrameEmptyOrDisconnectedRendererResponse = 4,
+  kMainFrameRedacted = 5,
+  kMainFrameTornDown = 6,
+  kAttributeTypeMismatch = 7,
+  kMissingIframeData = 8,
+  kSubframeTornDown = 9,
+  kIframeNotChildOfCurrentFrame = 10,
+  kRemoteFrameHasChildNodes = 11,
+  kRemoteFrameHasInlineContent = 12,
+  kLocalFrameMissingContent = 13,
+  kUnexpectedIframeInPopup = 14,
+  kMaxValue = kUnexpectedIframeInPopup,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/optimization/enums.xml:AIPageContentExtractionStatus)
+
 // The result of a call to GetAIPageContent.  It contains the
 // AnnotatedPageContent proto and metadata about the page content.
 struct AIPageContentResult {
@@ -121,10 +150,21 @@ struct AIPageContentResult {
   std::vector<gfx::Rect> visible_bounding_boxes_for_redaction;
 };
 
+// Describes an error that occurred during `GetAIPageContent()`.
+struct AIPageContentError {
+  AIPageContentExtractionStatus status =
+      AIPageContentExtractionStatus::kUnknown;
+  std::string message;
+
+  friend bool operator==(const AIPageContentError&,
+                         const AIPageContentError&) = default;
+};
+
 // Provides AIPageContentResult (AnnotatedPageContent proto and metadata) for
-// the primary page displayed in a WebContents or an error string on failure.
+// the primary page displayed in a WebContents or an AIPageContentError on
+// failure.
 using AIPageContentResultOrError =
-    base::expected<AIPageContentResult, std::string>;
+    base::expected<AIPageContentResult, AIPageContentError>;
 using OnAIPageContentDone =
     base::OnceCallback<void(AIPageContentResultOrError)>;
 

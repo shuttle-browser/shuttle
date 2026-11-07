@@ -6,6 +6,7 @@
 
 #include <string_view>
 
+#include "base/check.h"
 #include "base/command_line.h"
 #include "base/containers/flat_set.h"
 #include "base/feature_list.h"
@@ -20,6 +21,7 @@
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/system/sys_info.h"
 #include "base/task/thread_pool.h"
 #include "base/time/default_tick_clock.h"
 #include "base/trace_event/trace_event.h"
@@ -169,6 +171,8 @@ std::string_view GetRequestTypeName(
       return "UserReport";
     case safe_browsing::ClientSideDetectionType::UNFAMILIAR_LOGIN_PAGE:
       return "UnfamiliarLoginPage";
+    case safe_browsing::ClientSideDetectionType::POLICY_ENGINE:
+      return "PolicyEngine";
   }
 }
 
@@ -848,6 +852,11 @@ void ClientSideDetectionHostBase::
           ? "ClientSideDetectionScamDetectionRequestWithUrl.Enabled"
           : "ClientSideDetectionScamDetectionRequestWithUrl.Control");
 
+  verdict->mutable_population()->add_finch_active_groups(
+      base::FeatureList::IsEnabled(kClientSideDetectionServerModelMultimodal)
+          ? "ClientSideDetectionServerModelMultimodal.Enabled"
+          : "ClientSideDetectionServerModelMultimodal.Control");
+
   if (base::FeatureList::IsEnabled(kClientSideDetectionNewObservers)) {
     verdict->mutable_population()->add_finch_active_groups(
         "ClientSideDetectionNewObservers.Enabled." +
@@ -1183,11 +1192,46 @@ void ClientSideDetectionHostBase::OnInnerTextComplete(
       base::StrCat({"SBClientPhishing.IntelligentScanInnerTextSize.",
                     GetRequestTypeName(verdict->client_side_detection_type())}),
       inner_text.size());
-  if (inner_text.size() <= kInnerTextMinThresholdBytes) {
+  MaybeCaptureScreenshotAndStartIntelligentScan(
+      std::move(verdict), did_match_high_confidence_allowlist, is_invalid_ip,
+      std::move(inner_text));
+}
+
+bool ClientSideDetectionHostBase::ShouldCaptureScreenshotForIntelligentScan()
+    const {
+  if (!base::FeatureList::IsEnabled(
+          kClientSideDetectionServerModelMultimodal)) {
+    return false;
+  }
+  if (kClientSideDetectionServerModelMultimodalExcludeLowEndDevices.Get() &&
+      base::SysInfo::IsLowEndDevice()) {
+    return false;
+  }
+  return true;
+}
+
+void ClientSideDetectionHostBase::MaybeCaptureScreenshotAndStartIntelligentScan(
+    std::unique_ptr<ClientPhishingRequest> verdict,
+    std::optional<bool> did_match_high_confidence_allowlist,
+    bool is_invalid_ip,
+    std::string inner_text) {
+  StartIntelligentScan(std::move(verdict), did_match_high_confidence_allowlist,
+                       is_invalid_ip, std::move(inner_text),
+                       /*tab_screenshot=*/std::nullopt);
+}
+
+void ClientSideDetectionHostBase::StartIntelligentScan(
+    std::unique_ptr<ClientPhishingRequest> verdict,
+    std::optional<bool> did_match_high_confidence_allowlist,
+    bool is_invalid_ip,
+    std::string inner_text,
+    std::optional<std::string> tab_screenshot) {
+  last_intelligent_scan_tab_screenshot_for_testing_.reset();
+  if ((!tab_screenshot.has_value() || tab_screenshot->empty()) &&
+      inner_text.size() <= kInnerTextMinThresholdBytes) {
     IntelligentScanInfo intelligent_scan_info;
     if (inner_text.empty()) {
       intelligent_scan_info.set_no_info_reason(IntelligentScanInfo::EMPTY_TEXT);
-
     } else {
       intelligent_scan_info.set_no_info_reason(
           IntelligentScanInfo::TEXT_TOO_SHORT);
@@ -1199,9 +1243,12 @@ void ClientSideDetectionHostBase::OnInnerTextComplete(
     return;
   }
 
+  last_intelligent_scan_tab_screenshot_for_testing_ = std::move(tab_screenshot);
   LogClientSideDetectionEvent(ClientSideDetectionEvent::kIntelligentScanBegin,
                               verdict->client_side_detection_type());
   std::string url = verdict->url();
+  // TODO(b/538133674): Pass `tab_screenshot` to `StartIntelligentScan` once
+  // `ScamDetectionRequest` proto is updated with `tab_screenshot`.
   intelligent_scan_id_ = intelligent_scan_delegate_->StartIntelligentScan(
       inner_text, std::move(url),
       base::BindOnce(&ClientSideDetectionHostBase::OnIntelligentScanDone,
@@ -1357,7 +1404,7 @@ void ClientSideDetectionHostBase::MaybeShowPhishingWarning(
     }
 
     ShowBlockingPage(phishing_url, request_type, intelligent_scan_verdict,
-                     should_show_scam_warning);
+                     is_phishing, should_show_scam_warning);
     CancelPendingRequests();
   }
 }
@@ -1383,6 +1430,38 @@ safe_browsing::ThreatSubtype ClientSideDetectionHostBase::GetThreatSubtype(
       NOTREACHED();
   }
   NOTREACHED();
+}
+
+// static
+ClientSideAllowlistMatchResult
+ClientSideDetectionHostBase::GetClientSideAllowlistMatchResult(
+    bool match_csd_allowlist,
+    bool match_hc_allowlist) {
+  // If there is a CSD allowlist match, high-confidence allowlist checking is
+  // skipped, so we should never see both allowlists match.
+  CHECK(!(match_csd_allowlist && match_hc_allowlist));
+
+  if (match_csd_allowlist) {
+    return ClientSideAllowlistMatchResult::kCsdMatch;
+  } else if (match_hc_allowlist) {
+    return ClientSideAllowlistMatchResult::kHighConfidenceMatch;
+  } else {
+    return ClientSideAllowlistMatchResult::kNoMatch;
+  }
+}
+
+// static
+SBThreatType ClientSideDetectionHostBase::GetBlockingPageThreatType(
+    bool is_phishing,
+    safe_browsing::ThreatSubtype threat_subtype) {
+  // The phishing interstitial takes precedence over the billing interstitial
+  // since it is more severe.
+  if (!is_phishing &&
+      threat_subtype ==
+          safe_browsing::ThreatSubtype::SCAM_EXPERIMENT_VERDICT_BILLING) {
+    return SBThreatType::SB_THREAT_TYPE_BILLING;
+  }
+  return SBThreatType::SB_THREAT_TYPE_URL_CLIENT_SIDE_PHISHING;
 }
 
 void ClientSideDetectionHostBase::OnGotAccessToken(

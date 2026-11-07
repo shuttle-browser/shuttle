@@ -25,7 +25,7 @@ KeywordExtensionsDelegateImpl::KeywordExtensionsDelegateImpl(
     : KeywordExtensionsDelegate(provider),
       profile_(profile),
       provider_(provider) {
-  DCHECK(provider_);
+  CHECK(provider_, base::NotFatalUntil::M161);
 
   current_input_id_ = 0;
 
@@ -74,7 +74,7 @@ bool KeywordExtensionsDelegateImpl::Start(
     bool minimal_changes,
     const TemplateURL* template_url,
     const std::u16string& remaining_input) {
-  DCHECK(template_url);
+  CHECK(template_url, base::NotFatalUntil::M161);
 
   bool want_asynchronous_matches = !input.omit_asynchronous_matches();
   if (want_asynchronous_matches) {
@@ -112,7 +112,7 @@ bool KeywordExtensionsDelegateImpl::Start(
 
 void KeywordExtensionsDelegateImpl::EnterExtensionKeywordMode(
     const std::string& extension_id) {
-  DCHECK(current_keyword_extension_id_.empty());
+  CHECK(current_keyword_extension_id_.empty(), base::NotFatalUntil::M161);
   current_keyword_extension_id_ = extension_id;
 
   extensions::ExtensionOmniboxEventRouter::OnInputStarted(
@@ -150,7 +150,7 @@ void KeywordExtensionsDelegateImpl::OnOmniboxSuggestionsReady(
   }
 
   TemplateURLService* model = provider_->GetTemplateURLService();
-  DCHECK(model);
+  CHECK(model, base::NotFatalUntil::M161);
 
   const AutocompleteInput& input = extension_suggest_last_input_;
 
@@ -164,6 +164,8 @@ void KeywordExtensionsDelegateImpl::OnOmniboxSuggestionsReady(
   }
 
   const TemplateURL* template_url = model->GetTemplateURLForKeyword(keyword);
+  // TODO(crbug.com/576173326): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK_EQ(extension_id, template_url->GetExtensionId());
 
   // We want to order these suggestions in descending order, so start with
@@ -207,7 +209,7 @@ void KeywordExtensionsDelegateImpl::OnOmniboxDefaultSuggestionChanged() {
   }
 
   TemplateURLService* model = provider_->GetTemplateURLService();
-  DCHECK(model);
+  CHECK(model, base::NotFatalUntil::M161);
 
   const AutocompleteInput& input = extension_suggest_last_input_;
 

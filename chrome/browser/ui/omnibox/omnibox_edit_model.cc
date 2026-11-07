@@ -73,7 +73,6 @@
 #include "components/omnibox/browser/search_provider.h"
 #include "components/omnibox/browser/searchbox_utils.h"
 #include "components/omnibox/browser/vector_icons.h"  // nogncheck
-#include "components/omnibox/browser/verbatim_match.h"
 #include "components/omnibox/common/omnibox_feature_configs.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/omnibox/common/omnibox_focus_state.h"
@@ -330,6 +329,11 @@ AutocompleteMatch OmniboxEditModel::CurrentMatchAndAlternateNavUrl(
         input_, match, provider_client);
   }
   return match;
+}
+
+bool OmniboxEditModel::HasDraft() const {
+  return is_keyword_selected() ||
+         (user_input_in_progress_ && !user_text_.empty());
 }
 
 bool OmniboxEditModel::ResetDisplayTexts() {
@@ -725,7 +729,7 @@ void OmniboxEditModel::EnterKeywordModeForDefaultSearchProvider(
 void OmniboxEditModel::OpenSelection(OmniboxPopupSelection selection,
                                      bool via_keyboard) {
   OpenSelection(selection, base::TimeTicks(),
-                WindowOpenDisposition::CURRENT_TAB, via_keyboard);
+                WindowOpenDisposition::kCurrentTab, via_keyboard);
 }
 
 void OmniboxEditModel::OpenSelection(
@@ -757,8 +761,12 @@ void OmniboxEditModel::OpenSelection(
         text_for_desired_tld_navigation, &generated_input);
     if (url_match.destination_url.is_valid()) {
       input_ = generated_input;
-      OpenMatch(selection, url_match, disposition, GURL(), std::u16string(),
-                timestamp, snapshot);
+      // `url_match` isn't in the dropdown, so pass `kNoMatch` as `AcceptInput`
+      // does. That logs `url_match` as the only match, instead of logging the
+      // dropdown line that `selection` is on.
+      OpenMatch(OmniboxPopupSelection(OmniboxPopupSelection::kNoMatch),
+                url_match, disposition, GURL(), std::u16string(), timestamp,
+                snapshot);
       return;
     }
   }
@@ -1671,12 +1679,27 @@ void OmniboxEditModel::GetInfoForCurrentText(AutocompleteMatch* match,
   if (!found_match_for_text) {
     // For match generation, we use the unelided |url_for_editing_|, unless the
     // user input is in progress.
-    std::u16string text_for_match_generation =
-        user_input_in_progress() ? user_text_ : url_for_editing_;
+    std::u16string text_for_match_generation = MaybePrependKeyword(
+        user_input_in_progress() ? user_text_ : url_for_editing_);
+
+    // Classifying empty text never produces a match. Skip it to avoid creating
+    // the `AutocompleteClassifier`, which builds a full
+    // `AutocompleteController`, while the browser window is being created (e.g.
+    // `LocationBarView::Init()` queries the location icon before any tab is
+    // added).
+    if (text_for_match_generation.empty() &&
+        base::FeatureList::IsEnabled(
+            features::kLazyKeyedServiceInstantiation) &&
+        features::kLazyKeyedServiceInstantiationCommerceAndUI.Get()) {
+      if (alternate_nav_url) {
+        *alternate_nav_url = GURL();
+      }
+      return;
+    }
 
     controller_->client()->GetAutocompleteClassifier()->Classify(
-        MaybePrependKeyword(text_for_match_generation), is_keyword_selected(),
-        true, GetPageClassification(), match, alternate_nav_url);
+        text_for_match_generation, is_keyword_selected(), true,
+        GetPageClassification(), match, alternate_nav_url);
   }
 }
 
@@ -1988,7 +2011,9 @@ std::u16string OmniboxEditModel::GetPopupAccessibilityLabelForCurrentSelection(
       autocomplete_controller()->GetSuggestionGroupHeaderText(
           result.match_at(popup_selection_.line).suggestion_group_id),
       match_text, include_positional_info,
-      controller_->client()->GetTemplateURLService(), label_prefix_length);
+      controller_->client()->GetTemplateURLService(),
+      autocomplete_controller()->autocomplete_provider_client(),
+      label_prefix_length);
 }
 
 std::u16string
@@ -2376,7 +2401,7 @@ void OmniboxEditModel::OpenMatch(
   bool is_tab_switch_action =
       action && action->ActionId() == OmniboxActionId::TAB_SWITCH;
   if (is_open_tab_match || is_tab_switch_action) {
-    disposition = WindowOpenDisposition::SWITCH_TO_TAB;
+    disposition = WindowOpenDisposition::kSwitchToTab;
   }
 
   TRACE_EVENT("omnibox", "OmniboxEditModel::OpenMatch", "match", match,
@@ -2409,8 +2434,8 @@ void OmniboxEditModel::OpenMatch(
         snapshot ? input.text()
                  : (user_input_in_progress_ ? user_text_ : url_for_editing_);
   }
-  // Create a dummy AutocompleteInput for use in calling VerbatimMatchForInput()
-  // to create an alternate navigational match.
+  // Create a dummy AutocompleteInput for use in calling
+  // ComputeAlternativeNavMatch() to create an alternate navigational match.
   AutocompleteInput alternate_input(
       input_text, GetPageClassification(),
       controller_->client()->GetSchemeClassifier(),
@@ -2495,7 +2520,7 @@ void OmniboxEditModel::OpenMatch(
   log.ukm_source_id = controller_->client()->GetUKMSourceId();
   log.input_state = input.input_state();
 
-  if ((disposition == WindowOpenDisposition::CURRENT_TAB) &&
+  if ((disposition == WindowOpenDisposition::kCurrentTab) &&
       controller_->client()->CurrentPageExists()) {
     // If we know the destination is being opened in the current tab,
     // we can easily get the tab ID.  (If it's being opened in a new
@@ -2517,7 +2542,7 @@ void OmniboxEditModel::OpenMatch(
   // the Full WebUI popup and reverts the box to its unedited state. Background
   // tab navigations leave the session intact, since the omnibox keeps focus.
   auto end_edit_session = [&] {
-    if (disposition == WindowOpenDisposition::NEW_BACKGROUND_TAB) {
+    if (disposition == WindowOpenDisposition::kNewBackgroundTab) {
       return;
     }
     if (view_ && view_->IsFullWebUIOmnibox()) {
@@ -2617,10 +2642,8 @@ void OmniboxEditModel::OpenMatch(
           input.typed_url_had_http_scheme() &&
               match.type == omnibox::AutocompleteMatchType::kUrlWhatYouTyped,
           input_text, match,
-          VerbatimMatchForInput(
-              autocomplete_controller()->history_url_provider(),
-              autocomplete_controller()->autocomplete_provider_client(),
-              alternate_input, alternate_nav_url, false));
+          autocomplete_controller()->ComputeAlternativeNavMatch(
+              alternate_input, alternate_nav_url));
     }
   }
 }

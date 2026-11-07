@@ -32,6 +32,7 @@
 #if BUILDFLAG(IS_WIN)
 #include <windows.h>
 
+#include "base/features.h"
 #include "base/win/winbase_shim.h"
 #elif BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
 #include <sys/mman.h>
@@ -73,32 +74,13 @@ constexpr uint32_t kBlockCookieAllocated = 0xC8799269;
 constexpr uint32_t kFlagCorrupt = 1 << 0;
 constexpr uint32_t kFlagFull = 1 << 1;
 
-// Errors that are logged in "errors" histogram. These values are persisted to
-// logs. Entries should not be renumbered and numeric values should never be
-// reused.
-enum AllocatorError : int {
-  kMemoryIsCorrupt = 1,
-  kMaxValue = kMemoryIsCorrupt,
-};
-
 bool CheckFlag(const volatile std::atomic<uint32_t>* flags, uint32_t flag) {
   uint32_t loaded_flags = flags->load(std::memory_order_relaxed);
   return (loaded_flags & flag) != 0;
 }
 
 void SetFlag(volatile std::atomic<uint32_t>* flags, uint32_t flag) {
-  uint32_t loaded_flags = flags->load(std::memory_order_relaxed);
-  for (;;) {
-    uint32_t new_flags = (loaded_flags & ~flag) | flag;
-    // In the failue case, actual "flags" value stored in loaded_flags.
-    // These access are "relaxed" because they are completely independent
-    // of all other values.
-    if (flags->compare_exchange_weak(loaded_flags, new_flags,
-                                     std::memory_order_relaxed,
-                                     std::memory_order_relaxed)) {
-      break;
-    }
-  }
+  flags->fetch_or(flag, std::memory_order_relaxed);
 }
 
 }  // namespace
@@ -955,7 +937,9 @@ PersistentMemoryAllocator::GetBlock(Reference ref,
       return nullptr;
     }
     const uint32_t block_size = block->size;
-    if (block_size < size) {
+    if (block_size < size || block_size <= sizeof(BlockHeader) ||
+        block_size % kAllocAlignment != 0) {
+      // The serialized `block_size` either underflows or misaligns the block.
       return nullptr;
     }
     // Find a validate the end of the block.
@@ -1128,7 +1112,7 @@ void LocalPersistentMemoryAllocator::DeallocateLocalMemory(void* memory,
 
   DCHECK_EQ(MEM_VIRTUAL, type);
 #if BUILDFLAG(IS_WIN)
-  BOOL success = ::VirtualFree(memory, 0, MEM_DECOMMIT);
+  BOOL success = ::VirtualFree(memory, 0, MEM_RELEASE);
   DCHECK(success);
 #elif BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
   int result = ::munmap(memory, size);
@@ -1256,18 +1240,26 @@ void FilePersistentMemoryAllocator::FlushPartial(size_t length, bool sync) {
   scoped_blocking_call.emplace(FROM_HERE, base::BlockingType::MAY_BLOCK);
   BOOL success = ::FlushViewOfFile(data(), length);
   DPCHECK(success);
-#elif BUILDFLAG(IS_APPLE)
-  // On OSX, "invalidate" removes all cached pages, forcing a re-read from
-  // disk. That's not applicable to "flush" so omit it.
+  // FlushViewOfFile() writes modified pages only to the operating system's
+  // file cache, not to physical storage. For synchronous flushes, commit the
+  // cache buffers to disk via FlushFileBuffers() to guarantee durability
+  // against sudden power loss or system crashes if the feature is enabled.
+  if (sync && mapped_file_->file().IsValid() &&
+      base::FeatureList::IsEnabled(features::kFlushFileBuffersOnSyncFlush)) {
+    ::FlushFileBuffers(mapped_file_->file().GetPlatformFile());
+  }
+#elif BUILDFLAG(IS_FUCHSIA)
+  // Fuchsia's POSIX compatibility layer does not implement msync().
+#elif BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_POSIX)
+  // MS_INVALIDATE is omitted because it forces cached mapped pages to be
+  // dropped, triggering unnecessary page faults and re-reads on subsequent
+  // accesses. On POSIX and Apple platforms (Linux, ChromeOS, Android, macOS,
+  // iOS), MAP_SHARED mappings operate directly on the kernel's unified page
+  // cache, so other processes already observe writes without requiring cache
+  // invalidation.
   int result =
       ::msync(const_cast<void*>(data()), length, sync ? MS_SYNC : MS_ASYNC);
-  DCHECK_NE(EINVAL, result);
-#elif BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
-  // On POSIX, "invalidate" forces _other_ processes to recognize what has
-  // been written to disk and so is applicable to "flush".
-  int result = ::msync(const_cast<void*>(data()), length,
-                       MS_INVALIDATE | (sync ? MS_SYNC : MS_ASYNC));
-  DCHECK_NE(EINVAL, result);
+  DPCHECK(result == 0);
 #else
 #error Unsupported OS.
 #endif

@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {createAutocompleteMatch} from '//resources/cr_components/searchbox/searchbox_browser_proxy.js';
+import {createAutocompleteMatch, createFormattedString, createSuggestTemplateInfo as createSuggestTemplateInfoBase} from '//resources/cr_components/searchbox/searchbox_browser_proxy.js';
 import type {SearchboxIconElement} from '//resources/cr_components/searchbox/searchbox_icon.js';
 import type {AutocompleteMatch} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
+import {ColorType} from '//resources/mojo/components/omnibox/browser/suggest_template_info.mojom-webui.js';
+import type {FormattedString, FormattedStringFragment, SuggestTemplateInfo} from '//resources/mojo/components/omnibox/browser/suggest_template_info.mojom-webui.js';
 import type {InputState} from '//resources/mojo/components/omnibox/composebox/composebox_query.mojom-webui.js';
 import {ToolMode as ComposeboxToolMode} from '//resources/mojo/components/omnibox/composebox/composebox_query.mojom-webui.js';
 import {assertEquals} from '//webui-test/chai_assert.js';
-
-export type {InputState};
 
 /**
  * Asserts the computed style value for an element.
@@ -108,6 +108,7 @@ export class MockInputState implements InputState {
   maxInputsByType: {[key: number]: number} = {};
   maxTotalInputs: number = 0;
   isCanvasQuerySubmitted: boolean = false;
+  willFulfillInAim: boolean = true;
 
   hintText: string = '';
 
@@ -122,14 +123,56 @@ export function createClipboardEvent(name: string): ClipboardEvent {
       name, {cancelable: true, clipboardData: new DataTransfer()});
 }
 
+/**
+ * Like `Partial<SuggestTemplateInfo>`, but the primary and secondary text can
+ * also be plain strings.
+ */
+export interface SuggestTemplateInfoModifiers extends
+    Omit<Partial<SuggestTemplateInfo>, 'primaryText'|'secondaryText'> {
+  primaryText?: string|FormattedString;
+  secondaryText?: string|FormattedString|null;
+}
+
+/**
+ * Like createSuggestTemplateInfo() in searchbox_browser_proxy.ts, but plain
+ * string text becomes an unstyled FormattedString.
+ */
+export function createSuggestTemplateInfo(
+    modifiers: SuggestTemplateInfoModifiers = {}): SuggestTemplateInfo {
+  const {primaryText = '', secondaryText = null, ...otherModifiers} = modifiers;
+  return createSuggestTemplateInfoBase({
+    ...otherModifiers,
+    primaryText: toFormattedString(primaryText),
+    secondaryText: secondaryText === null ? null :
+                                            toFormattedString(secondaryText),
+  });
+}
+
+function toFormattedString(text: string|FormattedString): FormattedString {
+  return typeof text === 'string' ? createFormattedString(text) : text;
+}
+
+export function createFormattedStringFragment(
+    modifiers: Partial<FormattedStringFragment> = {}): FormattedStringFragment {
+  return {
+    startIndex: 0,
+    color: ColorType.kUnknown,
+    isBolded: false,
+    ...modifiers,
+  };
+}
+
 export function createUrlMatch(modifiers: Partial<AutocompleteMatch> = {}):
     AutocompleteMatch {
   return createAutocompleteMatch({
-    contents: 'helloworld.com',
-    contentsClass: [{offset: 0, style: 1}],
     destinationUrl: 'https://helloworld.com/',
     fillIntoEdit: 'https://helloworld.com',
     type: 'url-what-you-typed',
+    suggestTemplate: createSuggestTemplateInfo({
+      primaryText: createFormattedString(
+          'helloworld.com', [createFormattedStringFragment(
+                                {color: ColorType.kSuggestActionHigh})]),
+    }),
     ...modifiers,
   });
 }

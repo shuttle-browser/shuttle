@@ -119,28 +119,6 @@ class GtkUi : public ui::LinuxUiAndTheme {
 
   void OnThemeChanged(GtkSettings* settings, GtkParamSpec* param);
 
-  // Sanitizes the "gtk-icon-theme-name" setting in GtkSettings if it is unsafe.
-  // Returns true if the setting was modified.
-  bool SanitizeIconThemeName();
-
-  // Sanitizes the "gtk-theme-name" setting in GtkSettings if it is unsafe.
-  // Returns true if the setting was modified.
-  bool SanitizeThemeName();
-
-  // Sanitizes the "gtk-key-theme-name" setting in GtkSettings if it is unsafe.
-  // Returns true if the setting was modified.
-  bool SanitizeKeyThemeName();
-
-  // Sanitizes the "gtk-cursor-theme-name" setting in GtkSettings if it is
-  // unsafe. Returns true if the setting was modified.
-  bool SanitizeCursorThemeName();
-
-  // Sanitizes the "gtk-cursor-theme-size" setting in GtkSettings if it is
-  // unsafe. Returns true if the setting was modified.
-  bool SanitizeCursorThemeSize();
-
-  void OnKeyThemeNameChanged(GtkSettings* settings, GtkParamSpec* param);
-
   void OnCursorThemeNameChanged(GtkSettings* settings, GtkParamSpec* param);
 
   void OnCursorThemeSizeChanged(GtkSettings* settings, GtkParamSpec* param);
@@ -186,10 +164,6 @@ class GtkUi : public ui::LinuxUiAndTheme {
   std::unique_ptr<OsSettingsProviderGtk> os_settings_provider_;
 
   raw_ptr<NativeThemeGtk> native_theme_;
-
-  // Colors calculated by LoadGtkValues() that are given to the
-  // caller while |use_gtk_| is true.
-  ColorMap colors_;
 
   // Frame colors (and colors that depend on frame colors) when using
   // Chrome-rendered borders and titlebar.

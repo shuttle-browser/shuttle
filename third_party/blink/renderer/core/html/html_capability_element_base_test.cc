@@ -28,10 +28,12 @@
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/geometry/dom_rect.h"
+#include "third_party/blink/renderer/core/html/html_camera_element.h"
 #include "third_party/blink/renderer/core/html/html_dialog_element.h"
 #include "third_party/blink/renderer/core/html/html_geolocation_element.h"
 #include "third_party/blink/renderer/core/html/html_iframe_element.h"
 #include "third_party/blink/renderer/core/html/html_install_element.h"
+#include "third_party/blink/renderer/core/html/html_microphone_element.h"
 #include "third_party/blink/renderer/core/html/html_permission_element_test_helper.h"
 #include "third_party/blink/renderer/core/html/html_span_element.h"
 #include "third_party/blink/renderer/core/html/html_user_media_element.h"
@@ -201,7 +203,10 @@ class HTMLCapabilityElementBaseTestBase : public PageTestBase {
       base::test::TaskEnvironment::TimeSource time_source)
       : PageTestBase(time_source) {}
 
-  void SetUp() override { PageTestBase::SetUp(); }
+  void SetUp() override {
+    PageTestBase::SetUp();
+    GetDocument().GetSettings()->SetDefaultFontSize(12);
+  }
 
  private:
   ScopedUserMediaElementForTest scoped_feature_{true};
@@ -447,30 +452,44 @@ TEST_F(HTMLCapabilityElementBaseTest, SetTypeAfterInsertedInto) {
 
 TEST_F(HTMLCapabilityElementBaseTest, DisplayModeIconOnly) {
   ScopedCapabilityElementIconOnlyModeForTest scoped_feature(true);
-  for (const char* type : {"camera", "microphone", "geolocation"}) {
-    auto* permission_element = CreatePermissionElement(type);
+  HeapVector<Member<HTMLCapabilityElementBase>> elements = {
+      MakeGarbageCollected<HTMLCameraElement>(GetDocument()),
+      MakeGarbageCollected<HTMLMicrophoneElement>(GetDocument()),
+      MakeGarbageCollected<HTMLGeolocationElement>(GetDocument())};
+  const Vector<const char*> expected_labels = {
+      kCameraString, kMicrophoneString, kGeolocationString};
+  for (wtf_size_t i = 0; i < elements.size(); ++i) {
+    auto& permission_element = elements[i];
+    const char* expected_label = expected_labels[i];
+    GetDocument().body()->AppendChild(permission_element);
+    GetDocument().View()->UpdateAllLifecyclePhasesForTest();
     WaitForPermissionElementRegistration(permission_element);
     EXPECT_FALSE(permission_element->IsIconOnly());
-    EXPECT_FALSE(permission_element->permission_text_span_for_testing()
-                     ->innerText()
-                     .empty());
+    CheckInnerText(permission_element, expected_label);
+    EXPECT_EQ(expected_label, permission_element->AccessibleLabel());
+    EXPECT_EQ(expected_label, permission_element->computedName());
 
     permission_element->setAttribute(html_names::kDisplaymodeAttr,
                                      AtomicString("icon-only"));
     EXPECT_TRUE(permission_element->IsIconOnly());
     CheckInnerText(permission_element, g_empty_string);
+    EXPECT_EQ(expected_label, permission_element->AccessibleLabel());
+    EXPECT_EQ(expected_label, permission_element->computedName());
 
     permission_element->removeAttribute(html_names::kDisplaymodeAttr);
     EXPECT_FALSE(permission_element->IsIconOnly());
-    EXPECT_FALSE(permission_element->permission_text_span_for_testing()
-                     ->innerText()
-                     .empty());
+    CheckInnerText(permission_element, expected_label);
+    EXPECT_EQ(expected_label, permission_element->AccessibleLabel());
+    EXPECT_EQ(expected_label, permission_element->computedName());
   }
 }
 
 TEST_F(HTMLCapabilityElementBaseTest, DisplayModeIconOnlyCaseInsensitive) {
   ScopedCapabilityElementIconOnlyModeForTest scoped_feature(true);
-  auto* permission_element = CreatePermissionElement("camera");
+  auto* permission_element =
+      MakeGarbageCollected<HTMLCameraElement>(GetDocument());
+  GetDocument().body()->AppendChild(permission_element);
+  GetDocument().View()->UpdateAllLifecyclePhasesForTest();
   WaitForPermissionElementRegistration(permission_element);
   permission_element->setAttribute(html_names::kDisplaymodeAttr,
                                    AtomicString("iCoN-oNlY"));
@@ -480,7 +499,10 @@ TEST_F(HTMLCapabilityElementBaseTest, DisplayModeIconOnlyCaseInsensitive) {
 
 TEST_F(HTMLCapabilityElementBaseTest, DisplayModeIconOnlyDisabled) {
   ScopedCapabilityElementIconOnlyModeForTest scoped_feature(false);
-  auto* permission_element = CreatePermissionElement("camera");
+  auto* permission_element =
+      MakeGarbageCollected<HTMLCameraElement>(GetDocument());
+  GetDocument().body()->AppendChild(permission_element);
+  GetDocument().View()->UpdateAllLifecyclePhasesForTest();
   WaitForPermissionElementRegistration(permission_element);
   EXPECT_FALSE(permission_element->IsIconOnly());
   EXPECT_FALSE(permission_element->permission_text_span_for_testing()
@@ -489,10 +511,12 @@ TEST_F(HTMLCapabilityElementBaseTest, DisplayModeIconOnlyDisabled) {
 
   permission_element->setAttribute(html_names::kDisplaymodeAttr,
                                    AtomicString("icon-only"));
+  GetDocument().View()->UpdateAllLifecyclePhasesForTest();
   EXPECT_FALSE(permission_element->IsIconOnly());
-  EXPECT_FALSE(permission_element->permission_text_span_for_testing()
-                   ->innerText()
-                   .empty());
+  CheckInnerText(permission_element, kCameraString);
+  EXPECT_NE(nullptr, permission_element->permission_text_span_for_testing()
+                         ->GetComputedStyle());
+  EXPECT_EQ(kCameraString, permission_element->computedName());
 }
 
 TEST_F(HTMLCapabilityElementBaseTest,
@@ -808,6 +832,7 @@ class HTMLCapabilityElementBaseSimTest : public SimTest {
  protected:
   void SetUp() override {
     SimTest::SetUp();
+    GetDocument().GetSettings()->SetDefaultFontSize(12);
     MainFrame().GetFrame()->GetBrowserInterfaceBroker().SetBinderForTesting(
         PermissionService::Name_,
         blink::BindRepeating(
@@ -2097,6 +2122,51 @@ TEST_F(HTMLCapabilityElementBaseIntersectionTest,
 }
 
 TEST_F(HTMLCapabilityElementBaseIntersectionTest,
+       IntersectionVisibleAfterRecentAttachedIntervalExpired) {
+  GetDocument().GetSettings()->SetDefaultFontSize(12);
+  SimRequest main_resource("https://example.test/", "text/html");
+  LoadURL("https://example.test/");
+  main_resource.Complete(R"HTML(
+    <div id='cover' style='position: fixed; left: 0px; top: 0px; width: 100px; height: 100px;'></div>
+    <usermedia id='camera' type='camera'></usermedia>
+  )HTML");
+
+  Compositor().BeginFrame();
+  auto* permission_element = To<HTMLCapabilityElementBase>(
+      GetDocument().QuerySelector(AtomicString("usermedia")));
+  auto* div =
+      To<HTMLDivElement>(GetDocument().QuerySelector(AtomicString("div")));
+  WaitForPermissionElementRegistration(permission_element);
+  WaitForIntersectionVisibilityChanged(
+      permission_element,
+      HTMLCapabilityElementBase::IntersectionVisibility::kOccludedOrDistorted);
+
+  // Repurpose the expire timer for another temporary reason while occluded so
+  // `kRecentlyAttachedToLayoutTree` expires while the element remains occluded,
+  // without calling `IsClickingEnabled()`.
+  permission_element->DisableClickingTemporarily(
+      HTMLCapabilityElementBase::DisableReason::
+          kIntersectionWithViewportChanged,
+      kDefaultTimeout);
+  DeferredChecker checker(permission_element, &MainFrame());
+  checker.CheckNoNewMessagesAfterDelay(kLongerThanDefaultTimeout);
+  EXPECT_FALSE(permission_element->isValid());
+
+  // Un-occluding the element after `kRecentlyAttachedToLayoutTree` has expired
+  // must still enforce `kDefaultDisableTimeout` before clicking is enabled.
+  div->SetInlineStyleProperty(CSSPropertyID::kTop, "100px");
+  GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+  WaitForIntersectionVisibilityChanged(
+      permission_element,
+      HTMLCapabilityElementBase::IntersectionVisibility::kFullyVisible);
+  EXPECT_FALSE(permission_element->isValid());
+  EXPECT_FALSE(permission_element->IsClickingEnabled());
+  checker.CheckClickingEnabledAfterDelay(kDefaultTimeout,
+                                         /*expected_enabled=*/true);
+  EXPECT_TRUE(permission_element->isValid());
+}
+
+TEST_F(HTMLCapabilityElementBaseIntersectionTest,
        IntersectionChangedDisableEnableDisable) {
   GetDocument().GetSettings()->SetDefaultFontSize(12);
   SimRequest main_resource("https://example.test/", "text/html");
@@ -2250,6 +2320,61 @@ TEST_F(HTMLCapabilityElementBaseIntersectionTest, MAYBE_ContainerDivClipPath) {
       CSSPropertyID::kClipPath, "circle(40%)",
       HTMLCapabilityElementBase::IntersectionVisibility::
           kOutOfViewportOrClipped);
+}
+
+#if BUILDFLAG(IS_LINUX) && defined(THREAD_SANITIZER)
+#define MAYBE_ContainerDivSingularTransform \
+  DISABLED_ContainerDivSingularTransform
+#else
+#define MAYBE_ContainerDivSingularTransform ContainerDivSingularTransform
+#endif
+TEST_F(HTMLCapabilityElementBaseIntersectionTest,
+       MAYBE_ContainerDivSingularTransform) {
+  for (const char* transform :
+       {"scaleX(0)", "scaleY(0)", "scale(0)", "rotateY(90deg)"}) {
+    SCOPED_TRACE(transform);
+    TestContainerStyleAffectsVisibility(
+        CSSPropertyID::kTransform, transform,
+        HTMLCapabilityElementBase::IntersectionVisibility::
+            kOccludedOrDistorted);
+  }
+
+  // Also verify that an element initially attached inside a container with a
+  // singular transform does not become valid after the attach cooldown expires.
+  SimRequest main_resource("https://example.test/", "text/html");
+  LoadURL("https://example.test/");
+  main_resource.Complete(R"HTML(
+    <div id='container' style='transform: scaleX(0);'>
+      <geolocation id='geo'></geolocation>
+    </div>
+  )HTML");
+
+  Compositor().BeginFrame();
+  auto* permission_element = To<HTMLCapabilityElementBase>(
+      GetDocument().QuerySelector(AtomicString("geolocation")));
+  auto* div =
+      To<HTMLDivElement>(GetDocument().QuerySelector(AtomicString("div")));
+  WaitForPermissionElementRegistration(permission_element);
+  WaitForIntersectionVisibilityChanged(
+      permission_element,
+      HTMLCapabilityElementBase::IntersectionVisibility::kOccludedOrDistorted);
+
+  DeferredChecker checker(permission_element);
+  checker.CheckClickingEnabledAfterDelay(kDefaultTimeout,
+                                         /*expected_enabled=*/false);
+  EXPECT_FALSE(permission_element->isValid());
+  EXPECT_EQ(permission_element->invalidReason(),
+            "intersection_occluded_or_distorted");
+
+  // Removing the singular transform restores visibility after the cooldown.
+  div->RemoveInlineStyleProperty(CSSPropertyID::kTransform);
+  GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+  WaitForIntersectionVisibilityChanged(
+      permission_element,
+      HTMLCapabilityElementBase::IntersectionVisibility::kFullyVisible);
+  checker.CheckClickingEnabledAfterDelay(kDefaultTimeout,
+                                         /*expected_enabled=*/true);
+  EXPECT_TRUE(permission_element->isValid());
 }
 
 class HTMLCapabilityElementBaseLayoutChangeTest
@@ -2441,9 +2566,9 @@ TEST_F(HTMLCapabilityElementBaseLayoutChangeTest,
   ClassicScript::CreateUnspecifiedScript(
       "window.requestAnimationFrame(function() {\n"
       "  var camera = document.getElementById('camera');\n"
-      "  camera.style.width = '10px';\n"
+      "  camera.style.height = '1em';\n"
       "  camera.getBoundingClientRect();\n"
-      "  camera.style.width = '40px';\n"
+      "  camera.style.height = '3em';\n"
       "\n"
       "});\n")
       ->RunScript(&Window());

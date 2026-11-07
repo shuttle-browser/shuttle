@@ -246,6 +246,10 @@ bool IsANGLEPassthroughShadersAllowed() {
   return base::FeatureList::IsEnabled(kAllowANGLEPassthroughShaders);
 }
 
+#if BUILDFLAG(IS_APPLE)
+BASE_FEATURE(kANGLEPurgeableBufferPool, base::FEATURE_DISABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_APPLE)
+
 void GetANGLEFeaturesFromCommandLineAndFinch(
     const base::CommandLine* command_line,
     std::vector<std::string>& enabled_angle_features,
@@ -263,17 +267,23 @@ void GetANGLEFeaturesFromCommandLineAndFinch(
     SplitAndAppendANGLEFeatureList(kForcedANGLEDisabledFeaturesFP.Get(),
                                    disabled_angle_features);
   }
+
+#if BUILDFLAG(IS_APPLE)
+  if (base::FeatureList::IsEnabled(kANGLEPurgeableBufferPool)) {
+    enabled_angle_features.push_back("purgeableBufferPool");
+  }
+#endif
 }
 
 
 #if BUILDFLAG(ENABLE_SWIFTSHADER)
 #if BUILDFLAG(IS_FUCHSIA)
 // SwiftShader is always used on Fuchsia, sometimes at the system level.
-bool IsSwiftShaderAllowedByCommandLine(const base::CommandLine* command_line) {
+bool IsSwiftShaderAllowed(const base::CommandLine* command_line) {
   return true;
 }
 #else
-bool IsSwiftShaderAllowedByCommandLine(const base::CommandLine* command_line) {
+bool IsSwiftShaderAllowed(const base::CommandLine* command_line) {
   // If the switch to opt-into unsafe SwiftShader is present, always allow
   // SwiftShader.
   if (command_line->HasSwitch(switches::kEnableUnsafeSwiftShader)) {
@@ -302,20 +312,8 @@ bool IsSwiftShaderUsedForWebGLByCommandLine(
          gl::kANGLEImplementationSwiftShaderForWebGLName;
 }
 #endif
-
-// Allow fallback to SwfitShader without command line flags during the
-// deprecation period.
-BASE_FEATURE(kAllowSwiftShaderFallback, base::FEATURE_DISABLED_BY_DEFAULT);
-
-bool IsSwiftShaderAllowedByFeature() {
-  return base::FeatureList::IsEnabled(kAllowSwiftShaderFallback);
-}
 #else
-bool IsSwiftShaderAllowedByCommandLine(const base::CommandLine*) {
-  return false;
-}
-
-bool IsSwiftShaderAllowedByFeature() {
+bool IsSwiftShaderAllowed(const base::CommandLine*) {
   return false;
 }
 
@@ -323,11 +321,6 @@ bool IsSwiftShaderUsedForWebGLByCommandLine(const base::CommandLine*) {
   return false;
 }
 #endif
-
-bool IsSwiftShaderAllowed(const base::CommandLine* command_line) {
-  return IsSwiftShaderAllowedByCommandLine(command_line) ||
-         IsSwiftShaderAllowedByFeature();
-}
 
 #if BUILDFLAG(IS_WIN)
 BASE_FEATURE(kAllowD3D11WarpFallback, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -365,7 +358,7 @@ BASE_FEATURE(kAndroidLimitRgb565DisplayToApi32,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kAndroidSurfaceControlPartialDamage,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 bool PreferRGB565ResourcesForDisplay() {
   return base::SysInfo::AmountOfTotalPhysicalMemory().InMiB() <= 512 &&

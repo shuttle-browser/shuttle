@@ -20,42 +20,43 @@
 #include <utility>
 #include <vector>
 
+namespace blink {
+
 namespace {
 
 constexpr double kMaxAlphaDifference = 0.01;
 
-blink::String pathToColorPalettesTestFont() {
+String PathToColorPalettesTestFont() {
   base::FilePath wpt_palette_font_path(
-      blink::StringToFilePath(blink::test::BlinkWebTestsDir()));
+      StringToFilePath(test::BlinkWebTestsDir()));
   wpt_palette_font_path = wpt_palette_font_path.Append(FILE_PATH_LITERAL(
       "external/wpt/css/css-fonts/resources/COLR-palettes-test-font.ttf"));
-  return blink::FilePathToString(wpt_palette_font_path);
+  return FilePathToString(wpt_palette_font_path);
 }
-blink::String pathToNonColorTestFont() {
-  return blink::test::BlinkWebTestsFontsTestDataPath("Ahem.ttf");
+
+String PathToNonColorTestFont() {
+  return test::BlinkWebTestsFontsTestDataPath("Ahem.ttf");
 }
 
 }  // namespace
-
-namespace blink {
 
 class PaletteInterpolationTest : public FontTestBase {
  protected:
   void SetUp() override {
     FontDescription::VariantLigatures ligatures;
 
-    Font* color_palette_font = blink::test::CreateTestFont(
-        AtomicString("Ahem"), pathToColorPalettesTestFont(), 16, &ligatures);
+    Font* color_palette_font = test::CreateTestFont(
+        AtomicString("Ahem"), PathToColorPalettesTestFont(), 16, &ligatures);
     color_palette_typeface_ =
         sk_ref_sp(color_palette_font->PrimaryFont()->PlatformData().Typeface());
 
-    Font* non_color_font = blink::test::CreateTestFont(
-        AtomicString("Ahem"), pathToNonColorTestFont(), 16, &ligatures);
+    Font* non_color_font = test::CreateTestFont(
+        AtomicString("Ahem"), PathToNonColorTestFont(), 16, &ligatures);
     non_color_ahem_typeface_ =
         sk_ref_sp(non_color_font->PrimaryFont()->PlatformData().Typeface());
   }
 
-  void ExpectColorsEqualInSRGB(
+  void ExpectColorsEqualInSrgb(
       Vector<FontPalette::FontPaletteOverride> overrides1,
       Vector<FontPalette::FontPaletteOverride> overrides2) {
     EXPECT_EQ(overrides1.size(), overrides2.size());
@@ -140,7 +141,7 @@ TEST_F(PaletteInterpolationTest, MixCustomPalettesAtHalfTime) {
       {6, Color::FromRGBA(253, 45, 155, 255)},
       {7, Color::FromRGBA(0, 255, 169, 255)},
   };
-  ExpectColorsEqualInSRGB(actual_color_records, expected_color_records);
+  ExpectColorsEqualInSrgb(actual_color_records, expected_color_records);
 }
 
 TEST_F(PaletteInterpolationTest, MixCustomAndNonExistingPalettes) {
@@ -190,7 +191,7 @@ TEST_F(PaletteInterpolationTest, MixCustomAndNonExistingPalettes) {
       {6, Color::FromRGBA(210, 169, 147, 255)},
       {7, Color::FromRGBA(173, 255, 166, 255)},
   };
-  ExpectColorsEqualInSRGB(actual_color_records, expected_color_records);
+  ExpectColorsEqualInSrgb(actual_color_records, expected_color_records);
 }
 
 TEST_F(PaletteInterpolationTest, MixNonExistingPalettes) {
@@ -222,7 +223,7 @@ TEST_F(PaletteInterpolationTest, MixNonExistingPalettes) {
       {6, Color::FromRGBA(0, 255, 255, 255)},
       {7, Color::FromRGBA(255, 255, 255, 255)},
   };
-  ExpectColorsEqualInSRGB(actual_color_records, expected_color_records);
+  ExpectColorsEqualInSrgb(actual_color_records, expected_color_records);
 }
 
 TEST_F(PaletteInterpolationTest, MixCustomPalettesInOklab) {
@@ -270,7 +271,7 @@ TEST_F(PaletteInterpolationTest, MixCustomPalettesInOklab) {
       {6, Color::FromRGBA(254, 39, 112, 255)},
       {7, Color::FromRGBA(0, 255, 128, 255)},
   };
-  ExpectColorsEqualInSRGB(actual_color_records, expected_color_records);
+  ExpectColorsEqualInSrgb(actual_color_records, expected_color_records);
 }
 
 TEST_F(PaletteInterpolationTest, MixCustomPalettesInSRGB) {
@@ -319,7 +320,7 @@ TEST_F(PaletteInterpolationTest, MixCustomPalettesInSRGB) {
       {6, Color::FromRGBA(255, 0, 77, 255)},
       {7, Color::FromRGBA(0, 255, 77, 255)},
   };
-  ExpectColorsEqualInSRGB(actual_color_records, expected_color_records);
+  ExpectColorsEqualInSrgb(actual_color_records, expected_color_records);
 }
 
 }  // namespace blink

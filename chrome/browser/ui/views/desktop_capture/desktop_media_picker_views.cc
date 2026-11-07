@@ -17,7 +17,6 @@
 #include "base/strings/strcat.h"
 #include "base/types/expected.h"
 #include "build/build_config.h"
-#include "chrome/browser/enterprise/data_protection/data_protection_features.h"
 #include "chrome/browser/media/webrtc/desktop_media_list.h"
 #include "chrome/browser/media/webrtc/desktop_media_picker_controller.h"
 #include "chrome/browser/media/webrtc/desktop_media_picker_manager.h"
@@ -167,7 +166,7 @@ void RecordUmaSelection(content::GlobalRenderFrameHostId capturer_global_id,
                         const DesktopMediaID& selected_media,
                         DesktopMediaList::Type source_type,
                         base::TimeTicks dialog_open_time) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   switch (source_type) {
     case DesktopMediaList::Type::kNone:
@@ -670,7 +669,7 @@ DesktopMediaPickerDialogView::DesktopMediaPickerDialogView(
         l10n_util::GetStringUTF16(IDS_SEARCHBOX_PICKER_DESCRIPTION));
   }
 
-  DCHECK(!categories_.empty());
+  CHECK(!categories_.empty(), base::NotFatalUntil::M162);
 
   if (params.restricted_by_policy) {
     AddChildView(CreatePolicyRestrictedView());
@@ -1005,8 +1004,9 @@ DesktopMediaPickerDialogView::GetSelectedController() {
 DesktopMediaList::Type DesktopMediaPickerDialogView::GetSelectedSourceListType()
     const {
   const int index = GetSelectedTabIndex();
-  DCHECK_GE(index, 0);
-  DCHECK_LT(static_cast<size_t>(index), categories_.size());
+  CHECK_GE(index, 0, base::NotFatalUntil::M162);
+  CHECK_LT(static_cast<size_t>(index), categories_.size(),
+           base::NotFatalUntil::M162);
   return categories_[index].type;
 }
 
@@ -1081,7 +1081,7 @@ void DesktopMediaPickerDialogView::RecordSourceCountsUma() {
 
 void DesktopMediaPickerDialogView::RecordAudioToggleUma(
     const content::DesktopMediaID& source) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (request_source_ != RequestSource::kGetDisplayMedia) {
     return;
@@ -1142,7 +1142,7 @@ void DesktopMediaPickerDialogView::RecordAudioToggleUma(
 
 void DesktopMediaPickerDialogView::RecordTabDiscardedStatusUma(
     const DesktopMediaID& source) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (source.type != DesktopMediaID::Type::TYPE_WEB_CONTENTS) {
     return;
@@ -1169,7 +1169,7 @@ void DesktopMediaPickerDialogView::RecordTabDiscardedStatusUma(
 #if BUILDFLAG(IS_MAC)
 void DesktopMediaPickerDialogView::RecordUserActionOnDeniedAudioPermissionUma(
     std::optional<content::DesktopMediaID> source) const {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   if (request_source_ != RequestSource::kGetDisplayMedia) {
     return;
@@ -1289,13 +1289,6 @@ bool DesktopMediaPickerDialogView::IsDialogButtonEnabled(
   if (!selection.has_value()) {
     return false;
   }
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection) &&
-      controller->IsSourceSharingBlocked(*selection)) {
-    return false;
-  }
-#endif
   return true;
 }
 
@@ -1372,22 +1365,6 @@ void DesktopMediaPickerDialogView::AcceptSource() {
 
 void DesktopMediaPickerDialogView::AcceptSpecificSource(
     const DesktopMediaID& source) {
-#if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
-  if (base::FeatureList::IsEnabled(
-          enterprise_data_protection::kEnableTabSharingProtection)) {
-    // Only the category matching `source.type` can own `source`; the other
-    // controllers would scan their full source list only to report no match.
-    for (const auto& category : categories_) {
-      if (AsDesktopMediaIdType(category.type) != source.type) {
-        continue;
-      }
-      if (category.controller->IsSourceSharingBlocked(source)) {
-        return;
-      }
-      break;
-    }
-  }
-#endif
   VLOG(1) << "DMPDV::AcceptSpecificSource: source_id = " << source.id;
 
   if (tabbed_pane_) {
@@ -1545,7 +1522,7 @@ void DesktopMediaPickerImpl::Show(
 
 void DesktopMediaPickerImpl::NotifyDialogResult(
     base::expected<DesktopMediaID, MediaStreamRequestResult> result) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 
   // Once this method is called the |dialog_| will close and destroy itself.
   dialog_->DetachParent();

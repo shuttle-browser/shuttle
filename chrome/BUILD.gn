@@ -205,6 +205,7 @@ if (!is_android && !is_mac) {
         ":chrome_dll",
         ":chrome_exe_version",
         ":copy_first_run",
+        ":copy_minibranch",
         ":visual_elements_resources",
         "//base",
         "//build:branding_buildflags",
@@ -214,7 +215,6 @@ if (!is_android && !is_mac) {
         "//chrome/app/version_assembly:chrome_exe_manifest",
         "//chrome/browser:active_use_util",
         "//chrome/browser/policy:path_parser",
-        "//chrome/browser/win:chrome_process_finder",
         "//chrome/chrome_elf",
         "//chrome/common:constants",
         "//chrome/common/win:delay_load_failure_support",
@@ -245,7 +245,6 @@ if (!is_android && !is_mac) {
 
       if (is_chrome_branded) {
         data_deps += [
-          "//chrome/common/request_header_integrity/internal:chromecompaneros",
         ]
       }
 
@@ -415,7 +414,6 @@ if (!is_android && !is_mac) {
 
 if (is_win) {
   shared_library("chrome_dll") {
-    configs += [ "//build/config/compiler:wexit_time_destructors" ]
     configs -= [ "//build/config/compiler:thinlto_optimize_default" ]
     configs += [ "//build/config/compiler:thinlto_optimize_max" ]
 
@@ -476,6 +474,11 @@ if (is_win) {
   copy("copy_first_run") {
     sources = [ "app/FirstRun" ]
     outputs = [ "$root_out_dir/First Run" ]
+  }
+
+  copy("copy_minibranch") {
+    sources = [ "//build/util/MINIBRANCH" ]
+    outputs = [ "$root_out_dir/MINIBRANCH" ]
   }
 } else if (is_mac) {
   chrome_helper_name = chrome_product_full_name + " Helper"
@@ -538,22 +541,22 @@ if (is_win) {
       "CHROMIUM_CREATOR=$chrome_mac_creator_code",
     ]
 
-    sources = [
-      "app/chrome_exe_main_mac.cc",
-      "app/llvm_profile_util.cc",
-      "app/llvm_profile_util.h",
-    ]
-
-    configs += [ "//build/config/compiler:wexit_time_destructors" ]
+    sources = [ "app/chrome_exe_main_mac.c" ]
 
     deps = [
       "//base:compiler_specific",
-      "//base/allocator:early_zone_registration_apple",
       "//build:branding_buildflags",
       "//build/config/compiler:compiler_buildflags",
       "//chrome/common:buildflags",
-      "//chrome/common:version_header",
+      "//content/public/app:aperitif",
     ]
+
+    # Links the framework's shared library directly, after libaperitif, so
+    # that the framework's load command follows libaperitif's. `+link` can't
+    # be used: it adds the framework as `-framework`, which the Apple link
+    # rule places before all shared libraries. The framework itself is copied
+    # into the bundle by `:chrome_versioned_bundle_data` in `bundle_deps`.
+    deps += [ ":chrome_framework+link_nested" ]
 
     bundle_deps = [
       ":chrome_app_strings_bundle_data",
@@ -565,21 +568,25 @@ if (is_win) {
       bundle_deps += [ ":chromium_updater_privileged_helper" ]
     }
 
+    ldflags = []
+
     if (enable_stripping) {
       # At link time, preserve the global symbols specified in the .exports
       # file. All other global symbols will be marked as private. The default
       # //build/config/apple:strip_all config will then remove the remaining
       # local and debug symbols.
-      ldflags = [ "-Wl,-exported_symbols_list," +
-                  rebase_path("app/app.exports", root_build_dir) ]
+      ldflags += [ "-Wl,-exported_symbols_list," +
+                   rebase_path("app/app.exports", root_build_dir) ]
     }
 
     if (is_component_build) {
-      # In a component build, the framework is directly linked to the
-      # executable because dlopen() and loading all the dependent dylibs
-      # is time-consuming, see https://crbug.com/40176946.
-      deps += [ ":chrome_framework+link" ]
-      ldflags = [ "-Wl,-rpath,@executable_path/../Frameworks" ]
+      ldflags += [
+        "-Wl,-rpath,@executable_path/../Frameworks",
+
+        # Add an rpath to the Libraries directory in the versioned framework
+        # so that @rpath/libaperitif.dylib resolves.
+        "-Wl,-rpath,@executable_path/../Frameworks/$chrome_framework_name.framework/Versions/$chrome_framework_version/Libraries",
+      ]
 
       # The Framework is packaged inside the .app bundle. But when using the
       # component build, all the dependent shared libraries of :chrome_dll are
@@ -603,6 +610,14 @@ if (is_win) {
         objdump_path,
         "--image",
         rebase_path(inputs[0], root_out_dir),
+        "--exact-match",
+
+        # Do not --allow more libraries here without consulting with the
+        # security team (security-dev@chromium.org).
+        "--allow",
+        "@executable_path/../Frameworks/$chrome_framework_name.framework/Versions/$chrome_framework_version/Libraries/libaperitif.dylib",
+        "--allow",
+        "@executable_path/../Frameworks/$chrome_framework_name.framework/Versions/$chrome_framework_version/$chrome_framework_name",
         "--allow",
         "/usr/lib/libSystem.B.dylib",
       ]
@@ -798,8 +813,6 @@ if (is_win) {
           "app/llvm_profile_util.h",
         ]
       }
-
-      configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
       defines = [ "HELPER_EXECUTABLE" ]
       if (defined(invoker.defines)) {
@@ -1102,6 +1115,7 @@ if (is_win) {
       }
       if (!use_v8_context_snapshot || include_both_v8_snapshots) {
         sources += [ "$root_out_dir/snapshot_blob.bin" ]
+        public_deps += [ "//v8:run_mksnapshot_default" ]
       }
     }
   }
@@ -1236,7 +1250,6 @@ if (is_win) {
       sources = [ "$root_out_dir/libchromecompaneros.dylib" ]
       outputs = [ "{{bundle_contents_dir}}/Libraries/{{source_file_part}}" ]
       public_deps = [
-        "//chrome/common/request_header_integrity/internal:chromecompaneros",
       ]
     }
   }
@@ -1344,10 +1357,7 @@ if (is_win) {
 
     ldflags = [ "-ObjC" ]
 
-    configs += [
-      ":chrome_dll_symbol_order",
-      "//build/config/compiler:wexit_time_destructors",
-    ]
+    configs += [ ":chrome_dll_symbol_order" ]
     if (!is_component_build && !using_sanitizer) {
       configs += [ ":chrome_dll_symbol_exports" ]
     }
@@ -1363,7 +1373,6 @@ if (is_win) {
       "Resources",
     ]
 
-    configs += [ "//build/config/compiler:wexit_time_destructors" ]
     configs -= [ "//build/config/compiler:thinlto_optimize_default" ]
     configs += [ "//build/config/compiler:thinlto_optimize_max" ]
 
@@ -1793,7 +1802,6 @@ if (is_android) {
       "//chrome/browser:startup_data",
       "//chrome/browser/flags:flags_android",
       "//chrome/browser/lifetime",
-      "//chrome/browser/ui",
       "//chrome/child",
       "//chrome/common",
       "//chrome/common:version_header",
@@ -2040,7 +2048,11 @@ if (enable_separate_renderer_binary) {
 
   if (is_win) {
     process_version_rc_template("chrome_renderer_dll_version") {
-      sources = [ "app/chrome_renderer_dll.ver" ]
+      sources = [
+        "app/chrome_renderer_dll.ver",
+        minibranch_file,
+      ]
+      template_file = "app/chrome_renderer_dll_version.rc.version"
       output = "$target_gen_dir/chrome_renderer_dll_version.rc"
     }
   }
@@ -2059,7 +2071,6 @@ if (enable_separate_renderer_binary) {
       if (is_win) {
         # On Windows, chrome_renderer is built as a shared library DLL, so match
         # the compiler and linker configs from :chrome_dll.
-        configs += [ "//build/config/compiler:wexit_time_destructors" ]
         configs -= [ "//build/config/compiler:thinlto_optimize_default" ]
         configs += [ "//build/config/compiler:thinlto_optimize_max" ]
         configs += [ "//build/config/win:delayloads" ]

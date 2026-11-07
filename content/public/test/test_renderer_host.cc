@@ -6,6 +6,7 @@
 
 #include <utility>
 
+#include "base/check.h"
 #include "base/run_loop.h"
 #include "base/task/current_thread.h"
 #include "base/task/single_thread_task_runner.h"
@@ -276,7 +277,7 @@ void RenderViewHostTestHarness::TearDown() {
   base::RunLoop().RunUntilIdle();
 
 #if BUILDFLAG(IS_LINUX) && BUILDFLAG(USE_DBUS)
-  dbus_thread_linux::ShutdownOnDBusThreadAndBlock();
+  dbus_thread_linux::Shutdown();
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -293,11 +294,8 @@ void RenderViewHostTestHarness::TearDown() {
 
   rvh_test_enabler_.reset();
 
-  // Release the browser context by posting itself on the end of the task
-  // queue. This is preferable to immediate deletion because it will behave
-  // properly if the |rph_factory_| reset above enqueued any tasks which
-  // depend on |browser_context_|.
-  GetUIThreadTaskRunner({})->DeleteSoon(FROM_HERE, browser_context_.release());
+  DestroyBrowserContext();
+  CHECK(!browser_context_);
 
   // The in-process NetworkService is a leaked singleton that outlives the
   // test harness. Its HostResolverManager holds a raw_ptr to the
@@ -327,6 +325,14 @@ RenderViewHostTestHarness::CreateBrowserContext() {
 
 BrowserContext* RenderViewHostTestHarness::GetBrowserContext() {
   return browser_context_.get();
+}
+
+void RenderViewHostTestHarness::DestroyBrowserContext() {
+  // Release the browser context by posting itself on the end of the task
+  // queue. This is preferable to immediate deletion because it will behave
+  // properly if the |rph_factory_| reset in TearDown() enqueued any tasks
+  // which depend on |browser_context_|.
+  GetUIThreadTaskRunner({})->DeleteSoon(FROM_HERE, browser_context_.release());
 }
 
 void RenderViewHostTestHarness::SetRenderProcessHostFactory(

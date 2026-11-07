@@ -4,12 +4,10 @@
 
 #include "content/public/browser/url_data_source.h"
 
+#include <string_view>
 #include <utility>
 
 #include "base/memory/ptr_util.h"
-#include "base/no_destructor.h"
-#include "base/strings/strcat.h"
-#include "base/strings/string_util.h"
 #include "content/browser/webui/url_data_manager.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/common/url_constants.h"
@@ -18,13 +16,13 @@
 namespace {
 // A chrome-untrusted data source's name starts with chrome-untrusted://.
 bool IsChromeUntrustedDataSource(content::URLDataSource* source) {
-  static const base::NoDestructor<std::string> kChromeUntrustedSourceNamePrefix(
-      base::StrCat(
-          {content::kChromeUIUntrustedScheme, url::kStandardSchemeSeparator}));
-
-  return base::StartsWith(source->GetSource(),
-                          *kChromeUntrustedSourceNamePrefix,
-                          base::CompareCase::SENSITIVE);
+  constexpr std::string_view kUntrustedScheme(
+      content::kChromeUIUntrustedScheme);
+  const std::string source_name = source->GetSource();
+  std::string_view view(source_name);
+  return view.starts_with(kUntrustedScheme) &&
+         view.substr(kUntrustedScheme.size())
+             .starts_with(url::kStandardSchemeSeparator);
 }
 }  // namespace
 
@@ -106,7 +104,6 @@ std::string URLDataSource::GetContentSecurityPolicy(
     case network::mojom::CSPDirectiveName::StyleSrcAttr:
     case network::mojom::CSPDirectiveName::StyleSrcElem:
     case network::mojom::CSPDirectiveName::UpgradeInsecureRequests:
-    case network::mojom::CSPDirectiveName::TreatAsPublicAddress:
     case network::mojom::CSPDirectiveName::WorkerSrc:
     case network::mojom::CSPDirectiveName::ReportTo:
     case network::mojom::CSPDirectiveName::Unknown:
@@ -133,12 +130,11 @@ bool URLDataSource::ShouldDenyXFrameOptions() {
 bool URLDataSource::ShouldServiceRequest(const GURL& url,
                                          BrowserContext* browser_context,
                                          int render_process_id) {
-  // By default, allow chrome and chrome-untrusted sources.
-  // TODO(https://crbug.com/562108905): We could tighten this for
-  // chrome-untrusted so that we only service requests for chrome-untrusted if
-  // the datasource is chrome-untrusted.
-  return url.SchemeIs(kChromeUIScheme) ||
-         url.SchemeIs(kChromeUIUntrustedScheme);
+  if (IsChromeUntrustedDataSource(this)) {
+    return url.SchemeIs(kChromeUIUntrustedScheme);
+  }
+
+  return url.SchemeIs(kChromeUIScheme);
 }
 
 bool URLDataSource::ShouldServeMimeTypeAsContentTypeHeader() {

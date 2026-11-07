@@ -5,9 +5,12 @@
 #include "components/pdf/renderer/pdf_accessibility_tree_builder_heuristic.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
+#include <numeric>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -15,7 +18,7 @@
 
 #include "base/check.h"
 #include "base/check_op.h"
-#include "base/containers/adapters.h"
+#include "base/containers/fixed_flat_map.h"
 #include "base/containers/span.h"
 #include "base/feature_list.h"
 #include "base/memory/raw_ref.h"
@@ -35,6 +38,7 @@
 #include "ui/accessibility/accessibility_features.h"
 #include "ui/accessibility/ax_enums.mojom-shared.h"
 #include "ui/accessibility/ax_node_data.h"
+#include "ui/gfx/geometry/insets_f.h"
 #include "ui/gfx/geometry/point_f.h"
 #include "ui/gfx/geometry/rect_f.h"
 
@@ -118,22 +122,95 @@ constexpr float kHeaderMarginRatio = 0.10f;
 constexpr float kPageNumberFooterMarginRatio = 0.90f;
 constexpr float kNonPageNumberFooterMarginRatio = 0.95f;
 
+// Initial margin ratio for the left and right side margins, expressed as a
+// fraction of the page width, before clamping outward to any body text that
+// extends closer to the page edges.
+constexpr float kSideMarginRatio = 0.085f;
+
 // Largest width, as a fraction of the page width, allowed for text in the
 // margins to be considered a page number.
 constexpr float kMaxPageNumberWidthRatio = 0.30f;
+
+// Maximum page area and height ratios for a form graphic to be treated as an
+// embedded figure rather than a full-page background or sidebar template.
+constexpr float kMaxGraphicPageAreaRatio = 0.8f;
+constexpr float kMaxGraphicPageHeightRatio = 0.85f;
+
+// Minimum width and height for an unlabeled image to be included in the
+// accessibility tree. Smaller images are typically 1-pixel scanline slices or
+// decorative spacer artifacts.
+constexpr float kMinImageDimension = 5.0f;
 
 // Font size ratio below which a run counts as substantially smaller than the
 // text beside it on the same line, such as a superscript.
 constexpr float kSmallTextFontSizeRatio = 0.85f;
 
-// Tolerance used when comparing font sizes, so that sizes that differ only by
-// floating point imprecision compare as equal.
-constexpr float kFontSizeEpsilon = 0.01f;
+// Maximum number of characters in a text run for it to be considered a
+// superscript or subscript. Superscripts and subscripts are short markers or
+// expressions (e.g., footnote numbers, citations, or chemical indices), not
+// full phrases or sentences.
+constexpr size_t kMaxSuperOrSubScriptCharCount = 8;
+
+// Vertical tolerance (as a fraction of the host run's height) allowed when
+// checking whether a superscript or subscript run stays near the host run's
+// vertical span.
+constexpr float kSuperOrSubScriptVerticalToleranceRatio = 0.10f;
+
+// Tolerance used for comparisons, so that values that differ only by floating
+// point imprecision compare as equal.
+constexpr float kComparisonEpsilon = 0.01f;
 
 // As defined in ISO 32000-1:2008, section 9.6.4: "Font Subsets".
 // For a font subset, the PostScript name shall begin with 6 uppercase letters
 // followed by a '+' tag applied by the subsetting application.
 constexpr size_t kFontSubsetTagLength = 6;
+
+// Horizontal outdent tolerance (in page pixels) before a line is considered
+// outside the current list.
+constexpr float kListIndentThreshold = 5.0f;
+
+// Largest indent, in multiples of the item text's font size, that opens a
+// nested list. A marker further right than this (e.g. the top of the next
+// column in a multi-column layout) starts a new list instead.
+constexpr float kMaxListNestingIndentEm = 4.0f;
+
+// Markers that only count when they open or continue a nested level, because
+// at the top level they usually aren't bullets (e.g. "–" as punctuation).
+// LaTeX uses these for itemize levels 2-4.
+constexpr auto kNestedOnlyListMarkers = std::to_array<std::string_view>({
+    "\xE2\x80\x93",  // – U+2013 (en dash)
+    "\xE2\x88\x97",  // ∗ U+2217 (asterisk operator)
+    "\xC2\xB7",      // · U+00B7 (middle dot)
+});
+
+// Code points used only as bullets, covering the defaults of common authoring
+// tools. Characters with other common uses, such as '-', '*', 'o', or dashes,
+// are excluded to avoid false positives (e.g. "-" for an empty table cell or
+// a minus sign).
+constexpr auto kUnorderedListMarkers = std::to_array<std::string_view>({
+    "\xE2\x80\xA2",  // • U+2022
+    "\xE2\x80\xA3",  // ‣ U+2023
+    "\xE2\x81\x83",  // ⁃ U+2043
+    "\xE2\x97\xA6",  // ◦ U+25E6
+    "\xE2\x96\xAA",  // ▪ U+25AA
+    "\xE2\x97\x8B",  // ○ U+25CB
+    "\xE2\x97\x8F",  // ● U+25CF
+    "\xE2\x96\xA0",  // ■ U+25A0
+    "\xEF\x82\xB7",  // U+F0B7 (Symbol font bullet)
+    "\xEF\x82\xA7",  // U+F0A7 (Wingdings square bullet)
+});
+
+// Maps private-use bullets that PDFium produces for common authoring fonts in
+// `kUnorderedListMarkers` to their standard Unicode equivalents so screen
+// readers announce them properly. All other markers in `kUnorderedListMarkers`
+// are already valid standard Unicode characters and do not need remapping.
+constexpr auto kPrivateUseBulletMap =
+    base::MakeFixedFlatMap<uint32_t, uint32_t>({
+        // Wingdings square bullet -> ▪ U+25AA
+        {0xF0A7, 0x25AA},
+        // Symbol font bullet -> • U+2022
+        {0xF0B7, 0x2022},
+    });
 
 enum class HeaderFooterRole {
   kNone,
@@ -150,6 +227,34 @@ enum class PageNumberKind {
   kNarrowWithDigit,
   // Digits only, e.g. "42".
   kPureNumber,
+};
+
+// How a text run starts with a list marker.
+enum class ListMarkerKind {
+  // Does not start with a list marker.
+  kNone,
+  // A standalone unordered marker run (e.g. "•") followed by a separate item
+  // text run on the same visual line.
+  kStandaloneUnordered,
+  // A single run combining an unordered marker and item text (e.g. "• Item").
+  kCombinedUnordered,
+};
+
+// Where a list marker goes relative to the active list levels.
+enum class ListPlacementKind {
+  // Starts a new top-level list.
+  kNewList,
+  // Starts a nested list inside the innermost level's last item.
+  kNested,
+  // Joins an active level, popping any deeper levels.
+  kExistingLevel,
+};
+
+// Result of `GetListPlacement()`.
+struct ListPlacement {
+  ListPlacementKind kind;
+  // For `kNested` or `kExistingLevel`, the index of the level the item joins.
+  size_t level_index = 0;
 };
 
 // Returns whether `heading_level` is in bounds, i.e. whether it corresponds to
@@ -175,10 +280,29 @@ bool DoBoundsOverlapOnLine(float top1,
     return false;
   }
 
-  // See if it falls within the line (within the threshold).
-  float coverage = (clamped_bottom - clamped_top) / height2;
+  // See if it falls within the line (within the threshold). Measure against
+  // the shorter box when the enhancements flag is enabled so a smaller raised
+  // or lowered run still counts as sharing the line with its taller neighbor.
+  float reference_height =
+      features::IsPdfAccessibilityHeuristicEnhancementsEnabled()
+          ? std::min(height1, height2)
+          : height2;
+  float coverage = (clamped_bottom - clamped_top) / reference_height;
   constexpr float kLineCoverageThreshold = 0.25f;
+  if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled()) {
+    // Include an exact 25% overlap, with epsilon tolerance for floating-point
+    // rounding from PDF point-to-pixel scaling.
+    return (coverage + kComparisonEpsilon) >= kLineCoverageThreshold;
+  }
   return coverage > kLineCoverageThreshold;
+}
+
+bool IsLeftToRightRun(const chrome_pdf::AccessibilityTextRunInfo& run) {
+  // `kNone` is assigned to single-character runs, whose direction cannot be
+  // inferred. Treat them as LTR, the default, like `PDFiumPage` does.
+  return run.direction ==
+             chrome_pdf::AccessibilityTextDirection::kLeftToRight ||
+         run.direction == chrome_pdf::AccessibilityTextDirection::kNone;
 }
 
 // This class is used as part of our heuristic to determine which text runs live
@@ -228,9 +352,33 @@ class LineHelper {
                                  run_bounds.height());
   }
 
+  // Returns whether the run at `run_index` is on the current line and
+  // continues in reading order from the preceding run.
+  bool ContinuesLineInReadingOrder(size_t run_index) const {
+    if (!IsRunOnSameLine(run_index)) {
+      return false;
+    }
+
+    if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled()) {
+      CHECK_GT(run_index, 0u);
+      const auto& run = (*text_runs_)[run_index];
+      const auto& prev_run = (*text_runs_)[run_index - 1];
+
+      // Reject backward-X jumps between left-to-right runs on the same
+      // horizontal band (e.g. across columns or from later authoring layers)
+      // from continuing the line.
+      if (IsLeftToRightRun(prev_run) && IsLeftToRightRun(run) &&
+          run.bounds.right() <= prev_run.bounds.x() + kComparisonEpsilon) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
  private:
   void AddRun(const gfx::RectF& run_bounds) {
-    float run_width = fabsf(run_bounds.width());
+    float run_width = std::abs(run_bounds.width());
     accumulated_width_ += run_width;
     accumulated_weight_top_ += run_bounds.y() * run_width;
     accumulated_weight_bottom_ +=
@@ -238,7 +386,7 @@ class LineHelper {
   }
 
   void RemoveRun(const gfx::RectF& run_bounds) {
-    float run_width = fabsf(run_bounds.width());
+    float run_width = std::abs(run_bounds.width());
     accumulated_width_ -= run_width;
     accumulated_weight_top_ -= run_bounds.y() * run_width;
     accumulated_weight_bottom_ -=
@@ -268,7 +416,7 @@ class LineHelper {
 };
 
 template <typename T>
-bool IsObjectInTextRun(const std::vector<T>& objects,
+bool IsObjectInTextRun(base::span<const T> objects,
                        uint32_t object_index,
                        size_t text_run_index) {
   return (object_index < objects.size() &&
@@ -501,7 +649,7 @@ void ComputeFontSizes(std::vector<float> font_sizes,
   // Iterate from the largest font size down to the median font size. The
   // largest font size is compared to itself in the first iteration of the
   // loop so that it's set as the first level.
-  for (const auto& [size, _] : base::Reversed(font_size_char_counts)) {
+  for (const auto& [size, _] : std::views::reverse(font_size_char_counts)) {
     if (size < min_mapping_font_size) {
       break;
     }
@@ -549,21 +697,86 @@ std::optional<uint32_t> ComputeColors(
   return it->first;
 }
 
+std::vector<chrome_pdf::AccessibilityFormGraphicInfo> FilterGraphics(
+    const std::vector<chrome_pdf::AccessibilityFormGraphicInfo>& graphics,
+    const gfx::RectF& page_bounds) {
+  CHECK(features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
+  const float max_area =
+      page_bounds.size().GetArea() * kMaxGraphicPageAreaRatio;
+  const float max_height = page_bounds.height() * kMaxGraphicPageHeightRatio;
+  std::vector<chrome_pdf::AccessibilityFormGraphicInfo> filtered_graphics;
+  for (const auto& graphic : graphics) {
+    // Skip full-page background templates and tall header/footer forms.
+    if (graphic.bounds.height() < max_height &&
+        graphic.bounds.size().GetArea() < max_area) {
+      filtered_graphics.push_back(graphic);
+    }
+  }
+  return filtered_graphics;
+}
+
+std::vector<chrome_pdf::AccessibilityImageInfo> FilterImages(
+    const std::vector<chrome_pdf::AccessibilityImageInfo>& images) {
+  CHECK(features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
+  std::vector<chrome_pdf::AccessibilityImageInfo> filtered_images;
+  for (const auto& image : images) {
+    // Keep images that have explicit alt text or meet the minimum dimensions,
+    // skipping sub-5px scanline slices and decorative spacer artifacts.
+    if (!image.alt_text.empty() ||
+        (image.bounds.width() >= kMinImageDimension &&
+         image.bounds.height() >= kMinImageDimension)) {
+      filtered_images.push_back(image);
+    }
+  }
+  return filtered_images;
+}
+
 HeuristicPageProperties ComputeHeuristicPageProperties(
     const std::vector<chrome_pdf::AccessibilityTextRunInfo>& text_runs,
+    const std::vector<chrome_pdf::AccessibilityFormGraphicInfo>& graphics,
     const gfx::RectF& page_bounds) {
+  const float max_page_number_width =
+      page_bounds.width() * kMaxPageNumberWidthRatio;
+  const float top_margin = page_bounds.height() * kHeaderMarginRatio;
+  const float bottom_page_number_margin =
+      page_bounds.height() * kPageNumberFooterMarginRatio;
+  float left_margin = page_bounds.width() * kSideMarginRatio;
+  float right_margin = page_bounds.width() - left_margin;
+
   std::vector<float> font_sizes;
   std::map<float, uint32_t> font_size_char_counts;
   std::vector<float> line_spacings;
   std::map<uint32_t, uint32_t> all_color_char_counts;
 
+  uint32_t current_graphic_index = 0;
   for (size_t i = 0; i < text_runs.size(); ++i) {
+    // Skip text runs inside graphics so diagram labels do not skew page-level
+    // body text metrics.
+    if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled() &&
+        IsObjectWithRangeInTextRun(graphics, current_graphic_index, i)) {
+      const auto& range = graphics[current_graphic_index++].text_range;
+      i = NormalizeTextRunIndex(range.index + range.count - 1, i);
+      continue;
+    }
+
     const auto& run = text_runs[i];
     font_sizes.push_back(run.style.font_size);
     font_size_char_counts[run.style.font_size] += run.len;
     // TODO(crbug.com/525508832): Use a color distance threshold to group
     // visually indistinguishable but non-identical colors together.
     all_color_char_counts[run.style.fill_color] += run.len;
+
+    // Clamp side margins to the horizontal bounds of body runs that overlap the
+    // central body area so that short body lines or narrow table columns on
+    // pages with narrow margins are not mistaken for side-margin artifacts.
+    // Exclude runs in the top and bottom margins so wide headers or footers do
+    // not shift the side margins outward.
+    if (run.bounds.right() > left_margin && run.bounds.x() < right_margin &&
+        run.bounds.bottom() > top_margin &&
+        run.bounds.y() < bottom_page_number_margin) {
+      left_margin = std::min(left_margin, run.bounds.x());
+      right_margin = std::max(right_margin, run.bounds.right());
+    }
 
     if (i > 0) {
       const auto& cur = run.bounds;
@@ -577,13 +790,13 @@ HeuristicPageProperties ComputeHeuristicPageProperties(
   HeuristicPageProperties page_properties;
   page_properties.page_height = page_bounds.height();
   page_properties.page_offset_y = page_bounds.y();
-  page_properties.max_page_number_width =
-      page_bounds.width() * kMaxPageNumberWidthRatio;
-  page_properties.top_margin = page_bounds.height() * kHeaderMarginRatio;
-  page_properties.bottom_page_number_margin =
-      page_bounds.height() * kPageNumberFooterMarginRatio;
+  page_properties.max_page_number_width = max_page_number_width;
+  page_properties.top_margin = top_margin;
+  page_properties.bottom_page_number_margin = bottom_page_number_margin;
   page_properties.bottom_non_page_number_margin =
       page_bounds.height() * kNonPageNumberFooterMarginRatio;
+  page_properties.left_margin = left_margin;
+  page_properties.right_margin = right_margin;
   ComputeFontSizes(std::move(font_sizes), font_size_char_counts,
                    &page_properties.heading_font_size_threshold,
                    &page_properties.median_font_size,
@@ -709,6 +922,13 @@ bool AreRunsOnSameLine(const chrome_pdf::AccessibilityTextRunInfo& run1,
                                run2.bounds.y(), run2.bounds.height());
 }
 
+const chrome_pdf::AccessibilityTextRunInfo* GetRunBeforeIndex(
+    base::span<const chrome_pdf::AccessibilityTextRunInfo> text_runs,
+    size_t index) {
+  return (index > 0 && index < text_runs.size()) ? &text_runs[index - 1]
+                                                 : nullptr;
+}
+
 const chrome_pdf::AccessibilityTextRunInfo* GetRunAfterIndex(
     base::span<const chrome_pdf::AccessibilityTextRunInfo> text_runs,
     size_t index) {
@@ -721,7 +941,146 @@ TextRunContext GetTextRunContext(const PageLayoutData& layout,
       .run = raw_ref(layout.text_runs[text_run_index]),
       .next_run = GetRunAfterIndex(layout.text_runs, text_run_index),
       .chars = GetTextRunChars(layout, text_run_index),
+      .next_chars = text_run_index + 1 < layout.text_runs.size()
+                        ? GetTextRunChars(layout, text_run_index + 1)
+                        : base::span<const chrome_pdf::AccessibilityCharInfo>(),
   };
+}
+
+// Symbols conventionally used as footnote or reference markers. Unlike other
+// punctuation, they carry content when set as a super or subscript.
+bool IsFootnoteMarkerSymbol(base_icu::UChar32 code_point) {
+  switch (code_point) {
+    case '*':
+    case 0x00A7:  // Section sign.
+    case 0x00B6:  // Pilcrow sign.
+    case 0x2020:  // Dagger.
+    case 0x2021:  // Double dagger.
+    case 0x2217:  // Asterisk.
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Returns whether `chars` can read as a superscript or subscript. Superscripts
+// and subscripts are short and carry letters, digits, or footnote marker
+// symbols. A run of only separators, such as a comma between two words, is
+// geometrically indistinguishable from a super or subscript but is not one.
+bool CanBeSuperOrSubScriptText(
+    base::span<const chrome_pdf::AccessibilityCharInfo> chars) {
+  if (chars.size() > kMaxSuperOrSubScriptCharCount) {
+    return false;
+  }
+
+  return std::ranges::any_of(chars, [](const auto& char_info) {
+    auto code_point =
+        static_cast<base_icu::UChar32>(char_info.unicode_character);
+    return u_isalnum(code_point) || IsFootnoteMarkerSymbol(code_point);
+  });
+}
+
+// Checks whether `candidate` is positioned and sized like a superscript or
+// subscript relative to `host` on the same visual line.
+ax::mojom::TextPosition ClassifySuperOrSubScriptRelativeToHost(
+    const chrome_pdf::AccessibilityTextRunInfo& candidate,
+    const chrome_pdf::AccessibilityTextRunInfo& host) {
+  if (candidate.style.font_size <= 0.0f || host.style.font_size <= 0.0f ||
+      candidate.bounds.height() <= 0.0f || host.bounds.height() <= 0.0f) {
+    return ax::mojom::TextPosition::kNone;
+  }
+
+  // Must be substantially smaller in font size and on the same visual line as
+  // the host run.
+  if (candidate.style.font_size >=
+          host.style.font_size * kSmallTextFontSizeRatio ||
+      !AreRunsOnSameLine(candidate, host)) {
+    return ax::mojom::TextPosition::kNone;
+  }
+
+  // Must be horizontally adjacent to the host run, so that smaller text in a
+  // separate column, sidebar, or table cell on the same visual line is not
+  // misclassified.
+  const float horizontal_gap =
+      std::max(candidate.bounds.x() - host.bounds.right(),
+               host.bounds.x() - candidate.bounds.right());
+  if (horizontal_gap > host.bounds.height()) {
+    return ax::mojom::TextPosition::kNone;
+  }
+
+  const float candidate_top = candidate.bounds.y();
+  const float candidate_bottom = candidate.bounds.bottom();
+  const float candidate_mid = candidate.bounds.CenterPoint().y();
+
+  const float host_top = host.bounds.y();
+  const float host_bottom = host.bounds.bottom();
+  const float host_mid = host.bounds.CenterPoint().y();
+  const float tolerance =
+      host.bounds.height() * kSuperOrSubScriptVerticalToleranceRatio;
+
+  // Superscript: vertical center sits above the host's vertical center, and
+  // bottom does not extend significantly past the host's vertical center.
+  // Bounds come from glyph boxes, so a smaller run on the host's baseline that
+  // lacks descenders while the host has a descender (e.g. 'p' or 'g') ends at
+  // the shared baseline rather than in the upper half of the host's box, and is
+  // not a superscript.
+  if (candidate_mid < host_mid && candidate_bottom <= host_mid + tolerance) {
+    return ax::mojom::TextPosition::kSuperscript;
+  }
+
+  // Subscript: vertical center sits below the host's vertical center, the top
+  // does not rise significantly above the host's top, and the bottom drops past
+  // the host's bottom. Bounds come from glyph boxes, so a run that merely sets
+  // smaller type on the host's baseline, such as an acronym in small caps,
+  // shares the host's bottom edge and is not a subscript.
+  if (candidate_mid > host_mid && candidate_top >= host_top - tolerance &&
+      candidate_bottom > host_bottom) {
+    return ax::mojom::TextPosition::kSubscript;
+  }
+
+  return ax::mojom::TextPosition::kNone;
+}
+
+// Returns whether the run at `text_run_index` reads as a superscript or a
+// subscript relative to the run beside it on the same visual line, or `kNone`.
+// `chars` are the characters of that run.
+ax::mojom::TextPosition GetTextPosition(
+    base::span<const chrome_pdf::AccessibilityTextRunInfo> text_runs,
+    size_t text_run_index,
+    base::span<const chrome_pdf::AccessibilityCharInfo> chars) {
+  if (!features::IsPdfAccessibilityHeuristicEnhancementsEnabled()) {
+    return ax::mojom::TextPosition::kNone;
+  }
+
+  if (!CanBeSuperOrSubScriptText(chars)) {
+    return ax::mojom::TextPosition::kNone;
+  }
+
+  const chrome_pdf::AccessibilityTextRunInfo& run = text_runs[text_run_index];
+
+  // Check against the preceding run first (e.g., "x²", "H₂O", "word¹"), then
+  // against the following run (e.g., "¹Footnote text" at the start of a line).
+  const chrome_pdf::AccessibilityTextRunInfo* previous_run =
+      GetRunBeforeIndex(text_runs, text_run_index);
+  if (previous_run) {
+    ax::mojom::TextPosition position =
+        ClassifySuperOrSubScriptRelativeToHost(run, *previous_run);
+    if (position != ax::mojom::TextPosition::kNone) {
+      return position;
+    }
+  }
+
+  const chrome_pdf::AccessibilityTextRunInfo* next_run =
+      GetRunAfterIndex(text_runs, text_run_index);
+  if (next_run) {
+    ax::mojom::TextPosition position =
+        ClassifySuperOrSubScriptRelativeToHost(run, *next_run);
+    if (position != ax::mojom::TextPosition::kNone) {
+      return position;
+    }
+  }
+
+  return ax::mojom::TextPosition::kNone;
 }
 
 // Returns the header or footer role that `run_context.run` qualifies for, or
@@ -796,13 +1155,13 @@ HeaderFooterRole GetHeaderFooterRole(
     return HeaderFooterRole::kNone;
   }
 
-  // A bare digit in a margin is a page number, unless it is much smaller than
-  // the text beside it on the same line. That marks a superscript footnote
-  // marker, which belongs to the body content, so leave it unclassified.
+  // A bare digit in a margin is a page number, unless it is a superscript or
+  // subscript marker relative to the text beside it on the same line, which
+  // belongs to the body content, so leave it unclassified.
   if (page_number_kind == PageNumberKind::kPureNumber) {
-    if (current_run.style.font_size > 0.0f && has_same_line_neighbor &&
-        current_run.style.font_size <
-            next_run->style.font_size * kSmallTextFontSizeRatio) {
+    if (next_run &&
+        ClassifySuperOrSubScriptRelativeToHost(current_run, *next_run) !=
+            ax::mojom::TextPosition::kNone) {
       return HeaderFooterRole::kNone;
     }
     return is_in_top_margin ? HeaderFooterRole::kHeader
@@ -815,7 +1174,7 @@ HeaderFooterRole GetHeaderFooterRole(
     // content spilling into the margin. Page numbers are exempt.
     bool is_strictly_smaller =
         current_run.style.font_size <
-        (page_properties.median_font_size - kFontSizeEpsilon);
+        (page_properties.median_font_size - kComparisonEpsilon);
     if (!is_strictly_smaller && !is_page_number) {
       return HeaderFooterRole::kNone;
     }
@@ -842,6 +1201,17 @@ std::optional<ax::mojom::Role> GetAXRoleForHeaderFooterRole(
     case HeaderFooterRole::kNone:
       return std::nullopt;
   }
+}
+
+bool IsInSideMargin(const chrome_pdf::AccessibilityTextRunInfo& run,
+                    const HeuristicPageProperties& page_properties) {
+  CHECK(features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
+  const bool in_left_margin =
+      run.bounds.right() <= page_properties.left_margin &&
+      run.bounds.right() > 0.0f;
+  const bool in_right_margin = run.bounds.x() >= page_properties.right_margin;
+  return (in_left_margin || in_right_margin) &&
+         run.bounds.width() <= page_properties.max_page_number_width;
 }
 
 std::string_view GetFontWithoutSubset(std::string_view font_name) {
@@ -971,12 +1341,21 @@ void UpdateHeaderFooterRoleForSameLineRun(
   HeaderFooterRole role = GetHeaderFooterRole(run_context, page_properties,
                                               &unused_page_number_kind);
 
+  // Block bounds are in document coordinates, so subtract the page offset to
+  // compare against page-relative margins.
+  float block_page_y =
+      block_node->relative_bounds.bounds.y() - page_properties.page_offset_y;
+
   // Wide text that is not a page number reads as body content, so demote the
-  // footer back to a paragraph.
+  // footer back to a paragraph. Also demote when a block that started in the
+  // side margin (outside the bottom margin) continues onto a run outside the
+  // side margin on the same visual line (e.g. a bullet or footnote marker).
   if (block_node->role == ax::mojom::Role::kSectionFooter &&
       role == HeaderFooterRole::kNone) {
     if (run_context.run->bounds.width() >
-        page_properties.max_page_number_width) {
+            page_properties.max_page_number_width ||
+        (block_page_y < page_properties.bottom_page_number_margin &&
+         !IsInSideMargin(*run_context.run, page_properties))) {
       block_node->role = ax::mojom::Role::kParagraph;
     }
     return;
@@ -994,8 +1373,6 @@ void UpdateHeaderFooterRoleForSameLineRun(
                             page_properties.page_offset_y;
   bool is_header = role == HeaderFooterRole::kHeader &&
                    block_page_bottom <= page_properties.top_margin;
-  float block_page_y =
-      block_node->relative_bounds.bounds.y() - page_properties.page_offset_y;
   bool is_footer = role == HeaderFooterRole::kFooter &&
                    block_page_y >= page_properties.bottom_page_number_margin &&
                    block_node->relative_bounds.bounds.width() <=
@@ -1007,11 +1384,13 @@ void UpdateHeaderFooterRoleForSameLineRun(
   }
 }
 
-// Returns whether to break the current block at the header or footer boundary
-// `next_run_context` crosses, or `std::nullopt` when the transition says
-// nothing about breaking. Demotes `block_node` back to a paragraph when a block
-// already classified as a header or footer turns out to be body content.
+// Returns whether to break the current block at the header, footer, or
+// side-margin boundary between `current_run_context` and `next_run_context`, or
+// `std::nullopt` when the transition says nothing about breaking. Demotes
+// `block_node` back to a paragraph when a block already classified as a header
+// or bottom footer turns out to be body content.
 std::optional<bool> BreakAtHeaderFooterBoundary(
+    const TextRunContext& current_run_context,
     const TextRunContext& next_run_context,
     const HeuristicPageProperties& page_properties,
     bool is_large_line_spacing_break,
@@ -1024,6 +1403,23 @@ std::optional<bool> BreakAtHeaderFooterBoundary(
   } else if (block_node->role == ax::mojom::Role::kSectionFooter) {
     current_role = HeaderFooterRole::kFooter;
   }
+
+  // Always break when transitioning into or out of the side margin so that
+  // side-margin artifacts are isolated from body blocks.
+  bool current_in_side_margin =
+      current_role == HeaderFooterRole::kFooter &&
+      IsInSideMargin(*current_run_context.run, page_properties);
+  bool next_in_side_margin =
+      IsInSideMargin(*current_run_context.next_run, page_properties);
+  if (current_in_side_margin != next_in_side_margin) {
+    return true;
+  }
+
+  // Consecutive runs in the side margin break only on a paragraph-sized gap.
+  if (current_in_side_margin) {
+    return is_large_line_spacing_break;
+  }
+
   PageNumberKind next_page_number_kind = PageNumberKind::kNone;
   HeaderFooterRole next_role = GetHeaderFooterRole(
       next_run_context, page_properties, &next_page_number_kind);
@@ -1065,8 +1461,28 @@ bool BreakParagraphByLineSpacing(
     const chrome_pdf::AccessibilityTextRunInfo& current_run,
     const chrome_pdf::AccessibilityTextRunInfo& next_run,
     float paragraph_spacing_threshold) {
+  if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled() &&
+      IsLeftToRightRun(current_run) && IsLeftToRightRun(next_run)) {
+    // `y` increases down the page, so this checks whether the next run sits
+    // entirely above the current one, i.e. the stream moved back up the page
+    // (e.g. a title emitted after body text). Break even when the jump is
+    // smaller than the paragraph spacing threshold, so the out-of-order text
+    // gets its own block that SortBlockNodesByVerticalBands() can reorder.
+    if (next_run.bounds.bottom() <=
+        current_run.bounds.y() + kComparisonEpsilon) {
+      return true;
+    }
 
-  float line_spacing = fabsf(next_run.bounds.y() - current_run.bounds.y());
+    // A backward X jump on the same vertical line indicates text emitted out
+    // of reading order across side-by-side frames, which breaks the paragraph.
+    if (next_run.bounds.right() <=
+            current_run.bounds.x() + kComparisonEpsilon &&
+        AreRunsOnSameLine(current_run, next_run)) {
+      return true;
+    }
+  }
+
+  float line_spacing = std::abs(next_run.bounds.y() - current_run.bounds.y());
   if (paragraph_spacing_threshold > 0) {
     return line_spacing > paragraph_spacing_threshold;
   }
@@ -1077,13 +1493,264 @@ bool BreakParagraphByLineSpacing(
          kParagraphLineSpacingRatio * current_run.bounds.height();
 }
 
+// Returns whether a standalone marker run is followed by item text on the same
+// visual line.
+bool IsStandaloneMarkerFollowedByText(const TextRunContext& run_context) {
+  // Standalone markers are single-character `kNone` runs, so the item
+  // run's direction must be checked separately before comparing x-order.
+  const bool are_runs_in_ltr_order =
+      run_context.next_run && IsLeftToRightRun(*run_context.next_run) &&
+      run_context.next_run->bounds.x() >= run_context.run->bounds.x();
+  // `AreRunsOnSameLine(a, b)` measures vertical overlap relative to `b`.
+  // Passing `run` second ensures the marker's smaller glyph box does not
+  // prevent overlap.
+  return are_runs_in_ltr_order &&
+         AreRunsOnSameLine(*run_context.next_run, *run_context.run) &&
+         ContainsAlphanumeric(GetTrimmedText(run_context.next_chars));
+}
+
+// Classifies `text` against a set of marker strings.
+ListMarkerKind ClassifyUnorderedMarker(
+    std::string_view text,
+    base::span<const std::string_view> markers,
+    const TextRunContext& run_context) {
+  for (std::string_view marker : markers) {
+    if (!text.starts_with(marker)) {
+      continue;
+    }
+    // A run containing only a marker is a standalone marker if the item text
+    // follows in the next run on the same line. Otherwise, it is not a list
+    // marker (e.g. a marker used decoratively or followed by more markers).
+    if (text.size() == marker.size()) {
+      if (IsStandaloneMarkerFollowedByText(run_context)) {
+        return ListMarkerKind::kStandaloneUnordered;
+      }
+      return ListMarkerKind::kNone;
+    }
+    // If the run text is a list marker, followed by a space and then text,
+    // it is a combined list marker and text run.
+    if (base::IsAsciiWhitespace(text[marker.size()]) &&
+        ContainsAlphanumeric(text.substr(marker.size() + 1))) {
+      return ListMarkerKind::kCombinedUnordered;
+    }
+  }
+  return ListMarkerKind::kNone;
+}
+
+// Returns the parent list level for a marker at `run_x`, or nullptr if there is
+// no shallower list level.
+//
+// Nested-only markers (such as en dashes) must be indented deeper than their
+// parent list to be recognized. For the first item in a sublist, the parent is
+// the innermost list level. For subsequent sibling items at the same sublist
+// level, the innermost list shares the marker's x-coordinate, so scanning
+// backwards locates the enclosing parent level.
+const ListLevel* GetParentListLevel(base::span<const ListLevel> list_levels,
+                                    float run_x) {
+  for (const ListLevel& list_level : std::views::reverse(list_levels)) {
+    if (run_x > list_level.marker_x + kListIndentThreshold) {
+      return &list_level;
+    }
+  }
+  return nullptr;
+}
+
+// Returns the font size of the item text for a list marker of `kind`. A
+// standalone marker's font size can differ from its item text's because some
+// authoring tools size bullets separately. For example, PowerPoint sizes
+// bullets as a percentage of the text size, so a 20pt item with a 70% bullet
+// has a 14pt marker run. Standalone markers therefore use the following run.
+float GetListItemFontSize(const TextRunContext& run_context,
+                          ListMarkerKind kind) {
+  if (kind == ListMarkerKind::kStandaloneUnordered) {
+    CHECK(run_context.next_run);
+    return run_context.next_run->style.font_size;
+  }
+  return run_context.run->style.font_size;
+}
+
+// Returns how a list marker at `x` should be placed relative to `levels`.
+ListPlacement GetListPlacement(base::span<const ListLevel> levels,
+                               float x,
+                               float max_nest) {
+  if (levels.empty() || x > levels.back().marker_x + max_nest) {
+    return {.kind = ListPlacementKind::kNewList};
+  }
+
+  const ListLevel& last = levels.back();
+  if (x > last.marker_x + kListIndentThreshold && last.last_item) {
+    return {.kind = ListPlacementKind::kNested,
+            .level_index = levels.size() - 1};
+  }
+
+  size_t target_level = levels.size() - 1;
+  while (target_level > 0 &&
+         x < levels[target_level].marker_x - kListIndentThreshold) {
+    --target_level;
+  }
+
+  return {.kind = ListPlacementKind::kExistingLevel,
+          .level_index = target_level};
+}
+
+// Classifies whether `run_context` is a standalone list marker run or combines
+// a list marker with item text.
+ListMarkerKind ClassifyListMarker(const TextRunContext& run_context,
+                                  base::span<const ListLevel> list_levels) {
+  CHECK(features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
+  if (!IsLeftToRightRun(*run_context.run)) {
+    return ListMarkerKind::kNone;
+  }
+
+  const std::string text = GetTrimmedText(run_context.chars);
+  const ListMarkerKind unordered_kind =
+      ClassifyUnorderedMarker(text, kUnorderedListMarkers, run_context);
+  if (unordered_kind != ListMarkerKind::kNone) {
+    return unordered_kind;
+  }
+
+  // Nested-only markers require an enclosing list level and must start right of
+  // the parent item's text, so a wrapped line that begins with punctuation such
+  // as "–" stays in the item.
+  const float run_x = run_context.run->bounds.x();
+  const ListLevel* parent = GetParentListLevel(list_levels, run_x);
+  if (parent && run_x > parent->item_text_x + kListIndentThreshold) {
+    const ListMarkerKind nested_kind =
+        ClassifyUnorderedMarker(text, kNestedOnlyListMarkers, run_context);
+    if (nested_kind != ListMarkerKind::kNone) {
+      const float max_nest = kMaxListNestingIndentEm *
+                             GetListItemFontSize(run_context, nested_kind);
+      if (run_x <= parent->marker_x + max_nest) {
+        return nested_kind;
+      }
+    }
+  }
+
+  return ListMarkerKind::kNone;
+}
+
+struct ListMarkerPrefix {
+  // Number of leading characters belonging to the marker prefix (leading
+  // whitespace, marker code point, and trailing whitespace).
+  size_t char_count = 0;
+  // Visual width of the marker character itself.
+  float marker_width = 0.0f;
+};
+
+// Returns the prefix info for a combined marker+text run: the number of leading
+// chars belonging to the marker (leading whitespace, marker code point,
+// trailing whitespace) and the visual width of the marker character itself.
+ListMarkerPrefix GetListMarkerPrefix(
+    base::span<const chrome_pdf::AccessibilityCharInfo> chars) {
+  ListMarkerPrefix prefix;
+  size_t prefix_char_count = 0;
+  // Skip leading whitespace before the marker.
+  while (
+      prefix_char_count < chars.size() &&
+      base::IsUnicodeWhitespace(chars[prefix_char_count].unicode_character)) {
+    ++prefix_char_count;
+  }
+  // Record the marker code point width and skip it. All supported unordered
+  // markers are single code points.
+  if (prefix_char_count < chars.size()) {
+    prefix.marker_width =
+        static_cast<float>(chars[prefix_char_count].char_width);
+    ++prefix_char_count;
+  }
+  // Skip trailing whitespace between the marker and the item text.
+  while (
+      prefix_char_count < chars.size() &&
+      base::IsUnicodeWhitespace(chars[prefix_char_count].unicode_character)) {
+    ++prefix_char_count;
+  }
+  prefix.char_count = prefix_char_count;
+  return prefix;
+}
+
+// Returns the accessible name for the unordered list marker that starts
+// `chars`: the marker character followed by a space, matching Blink's list
+// markers (e.g. "• "). Symbol and Wingdings private-use bullets are mapped to
+// their Unicode equivalents so they are spoken and rendered correctly.
+std::string GetUnorderedListMarkerName(
+    base::span<const chrome_pdf::AccessibilityCharInfo> chars) {
+  CHECK(features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
+  for (const auto& char_info : chars) {
+    if (base::IsUnicodeWhitespace(char_info.unicode_character)) {
+      continue;
+    }
+    uint32_t code_point = char_info.unicode_character;
+    if (const auto it = kPrivateUseBulletMap.find(code_point);
+        it != kPrivateUseBulletMap.end()) {
+      code_point = it->second;
+    }
+    std::string name;
+    base::WriteUnicodeCharacter(static_cast<base_icu::UChar32>(code_point),
+                                &name);
+    // Without the space, the marker and item text concatenate into a single
+    // token (e.g. "•Item"), preventing word-by-word navigation from separating
+    // them and causing speech synthesis to run them together without a pause.
+    name += ' ';
+    return name;
+  }
+  // Only called for runs that `ClassifyListMarker()` matched, whose trimmed
+  // text starts with a non-whitespace marker, so `chars` always contains a
+  // non-whitespace character.
+  NOTREACHED();
+}
+
+// Returns the total visual width of `chars`.
+float GetCharsWidth(base::span<const chrome_pdf::AccessibilityCharInfo> chars) {
+  float width = 0.0f;
+  for (const auto& char_info : chars) {
+    width += static_cast<float>(char_info.char_width);
+  }
+  return width;
+}
+
+// Adjusts `text_run` to skip `prefix_char_count` leading characters, shifting
+// its visual bounds rightward by `prefix_width`.
+void TrimTextRunPrefix(size_t prefix_char_count,
+                       float prefix_width,
+                       chrome_pdf::AccessibilityTextRunInfo& text_run) {
+  CHECK_LE(prefix_char_count, text_run.len);
+  text_run.start_index += prefix_char_count;
+  text_run.len -= prefix_char_count;
+  text_run.bounds.Inset(gfx::InsetsF().set_left(prefix_width));
+}
+
+// Returns whether to break before `next_run_context` due to a list boundary,
+// such as a new standalone or combined marker run, or an outdent past the
+// innermost list level's indent.
+//
+// Known limitation: a non-marker block inside a list (e.g. a paragraph under a
+// nested item, or text continuing the parent item after a nested list) either
+// merges into the previous item's text or ends the list.
+// TODO(crbug.com/525509231): Investigate whether it's worth handling this.
+bool BreakAtListBoundary(const TextRunContext& next_run_context,
+                         const ui::AXNodeData* block_node,
+                         base::span<const ListLevel> list_levels) {
+  CHECK(features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
+  CHECK(block_node);
+  if (ClassifyListMarker(next_run_context, list_levels) !=
+      ListMarkerKind::kNone) {
+    return true;
+  }
+  return block_node->role == ax::mojom::Role::kListItem &&
+         !list_levels.empty() &&
+         next_run_context.run->bounds.x() <
+             list_levels.back().marker_x - kListIndentThreshold;
+}
+
 bool BreakParagraph(uint32_t text_run_index,
                     ui::AXNodeData* block_node,
                     HeadingClassifier heading_classifier,
                     const PageLayoutData& layout,
-                    const HeuristicPageProperties& page_properties) {
+                    const HeuristicPageProperties& page_properties,
+                    base::span<const ListLevel> list_levels) {
+  const TextRunContext current_run_context =
+      GetTextRunContext(layout, text_run_index);
   const chrome_pdf::AccessibilityTextRunInfo& current_run =
-      layout.text_runs[text_run_index];
+      *current_run_context.run;
   const TextRunContext next_run_context =
       GetTextRunContext(layout, text_run_index + 1);
   const chrome_pdf::AccessibilityTextRunInfo& next_run = *next_run_context.run;
@@ -1091,13 +1758,21 @@ bool BreakParagraph(uint32_t text_run_index,
   bool is_large_line_spacing_break = BreakParagraphByLineSpacing(
       current_run, next_run, page_properties.paragraph_spacing_threshold);
 
-  // Header and footer boundaries take precedence over the rules below.
   if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled()) {
-    std::optional<bool> header_footer_break =
-        BreakAtHeaderFooterBoundary(next_run_context, page_properties,
-                                    is_large_line_spacing_break, block_node);
+    if (block_node->role == ax::mojom::Role::kFigure) {
+      return false;
+    }
+
+    // Header and footer boundaries take precedence over the rules below.
+    std::optional<bool> header_footer_break = BreakAtHeaderFooterBoundary(
+        current_run_context, next_run_context, page_properties,
+        is_large_line_spacing_break, block_node);
     if (header_footer_break.has_value()) {
       return header_footer_break.value();
+    }
+
+    if (BreakAtListBoundary(next_run_context, block_node, list_levels)) {
+      return true;
     }
   }
 
@@ -1129,18 +1804,35 @@ bool BreakParagraph(uint32_t text_run_index,
   return heading_classifier != next_classifier;
 }
 
-// Returns whether `style` differs from the style of the in-progress static
-// text node, which requires starting a new one so that text runs of different
-// styles (e.g. bold vs regular) are not merged into a single static text node.
+// Returns whether `text_run` differs in style, language, or position from the
+// in-progress static text node, which requires starting a new one so that text
+// runs of different styles (e.g. bold vs regular, or superscript vs normal) or
+// languages are not merged into a single static text node.
 bool BreaksStaticTextNode(const StaticTextState& static_text_state,
-                          const chrome_pdf::AccessibilityTextStyleInfo& style) {
-  if (!static_text_state.node || !static_text_state.style) {
+                          const chrome_pdf::AccessibilityTextRunInfo& text_run,
+                          ax::mojom::TextPosition text_position) {
+  // Check for an active node first; when none is open, `language` is empty and
+  // comparing it against a non-empty `text_run.language` would falsely report a
+  // break on the opening run of a block.
+  if (!static_text_state.node) {
+    return false;
+  }
+  // Check `language` before `style` because `language` is tracked on all static
+  // text nodes, including inside headings where `style` is left unset.
+  if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled() &&
+      static_text_state.language != text_run.language) {
+    return true;
+  }
+  // Guard the style and `text_position` checks below, which are only populated
+  // for non-heading nodes when the flag is enabled.
+  if (!static_text_state.style) {
     return false;
   }
   // `style` is only ever set when the flag is enabled.
   CHECK(features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
   return !PdfAccessibilityTreeBuilder::AreStylesEquivalent(
-      *static_text_state.style, style);
+             *static_text_state.style, text_run.style) ||
+         static_text_state.text_position != text_position;
 }
 
 void BuildStaticNode(StaticTextState* static_text_state) {
@@ -1153,6 +1845,8 @@ void BuildStaticNode(StaticTextState* static_text_state) {
   }
   static_text_state->node = nullptr;
   static_text_state->style.reset();
+  static_text_state->text_position.reset();
+  static_text_state->language.clear();
 }
 
 void ConnectPreviousAndNextOnLine(ui::AXNodeData* previous_on_line_node,
@@ -1163,7 +1857,122 @@ void ConnectPreviousAndNextOnLine(ui::AXNodeData* previous_on_line_node,
                                      previous_on_line_node->id);
 }
 
+// Returns whether the candidate block at `candidate_index` was emitted before a
+// band block above it in the same column (overlapping it horizontally). Only
+// then must the band end above the candidate so sorting can move it. Otherwise
+// the candidate joins the band despite a vertical gap, so columns keep stream
+// order however the stream orders them (e.g. a table emitted after the column
+// beside it).
+bool IsEmittedBeforeBlockAboveInColumn(
+    base::span<const ui::AXNodeData* const> block_nodes,
+    base::span<const size_t> band_indices_above,
+    size_t candidate_index) {
+  const gfx::RectF& candidate_bounds =
+      block_nodes[candidate_index]->relative_bounds.bounds;
+  return std::ranges::any_of(band_indices_above, [&](size_t band_index) {
+    const gfx::RectF& band_bounds =
+        block_nodes[band_index]->relative_bounds.bounds;
+    return band_index > candidate_index &&
+           band_bounds.x() + kComparisonEpsilon < candidate_bounds.right() &&
+           candidate_bounds.x() + kComparisonEpsilon < band_bounds.right();
+  });
+}
+
+// Reorders `block_nodes` and the matching block entries in `page_child_ids`
+// into top-to-bottom reading order. Every block must appear in
+// `page_child_ids`, in the same relative order as in `block_nodes`. PDF content
+// streams sometimes emit blocks in authoring/layer order (e.g. a footer emitted
+// before body text, or a title emitted last). Sorting all blocks purely by `y`
+// would scramble multi-column layouts where side-by-side column blocks have
+// slightly different top `y` coordinates.
+//
+// To avoid disrupting columns, blocks are grouped into horizontal bands:
+//   1. Blocks whose vertical intervals [y, bottom] overlap share a band.
+//   2. A block below a vertical gap also joins the band unless it was emitted
+//      before a band block above it in the same column. Gaps between
+//      side-by-side columns can line up, and splitting there would interleave
+//      the columns by `y`.
+//   3. Bands are ordered top-to-bottom across the page.
+//   4. Blocks within the same band (such as side-by-side columns) keep their
+//      original stream order.
+void SortBlockNodesByVerticalBands(std::vector<ui::AXNodeData*>& block_nodes,
+                                   std::vector<ui::AXNodeID>& page_child_ids) {
+  CHECK(features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
+  const size_t num_blocks = block_nodes.size();
+  if (num_blocks <= 1) {
+    return;
+  }
+
+  // Sort a separate `order` vector of `block_nodes` indices (0 .. num_blocks -
+  // 1) first: the indices record each block's original stream position (needed
+  // to restore stream order within each band after sorting by `y`), while
+  // keeping `block_nodes` in its original order to match block slots in
+  // `page_child_ids` below.
+  //
+  // First, sort `order` by each block's top `y` coordinate so vertically
+  // overlapping blocks become contiguous (stable, so blocks with equal `y` keep
+  // stream order).
+  std::vector<size_t> order(num_blocks);
+  std::iota(order.begin(), order.end(), 0u);
+  std::ranges::stable_sort(order, [&](size_t a, size_t b) {
+    return block_nodes[a]->relative_bounds.bounds.y() <
+           block_nodes[b]->relative_bounds.bounds.y();
+  });
+
+  // Sweep the `y`-sorted blocks top-to-bottom to partition `order` into
+  // vertical bands [band_start, i). `band_bottom` tracks the maximum `bottom()`
+  // of all blocks in the current band.
+  size_t band_start = 0;
+  float band_bottom = block_nodes[order[0]]->relative_bounds.bounds.bottom();
+  for (size_t i = 1; i < num_blocks; ++i) {
+    const gfx::RectF& bounds = block_nodes[order[i]]->relative_bounds.bounds;
+    // Whether this block's top edge is above the band's bottom edge, so its
+    // vertical interval overlaps the current band.
+    const bool overlaps_band = bounds.y() + kComparisonEpsilon < band_bottom;
+    if (overlaps_band ||
+        !IsEmittedBeforeBlockAboveInColumn(
+            block_nodes, base::span(order).subspan(band_start, i - band_start),
+            order[i])) {
+      // Merge this block into the band.
+      band_bottom = std::ranges::max(band_bottom, bounds.bottom());
+    } else {
+      // End the band [band_start, i) and restore its stream order.
+      std::sort(order.begin() + band_start, order.begin() + i);
+      band_start = i;
+      band_bottom = bounds.bottom();
+    }
+  }
+  // Restore original stream order for the final band.
+  std::sort(order.begin() + band_start, order.end());
+
+  // `page_child_ids` defines the child order of the page node in the AXTree and
+  // may contain non-block nodes (e.g. OCR wrappers) interleaved with blocks.
+  // Replace each block slot in `page_child_ids` with the corresponding block ID
+  // from the new band-sorted `order`, leaving non-block IDs in place.
+  size_t block_index = 0;
+  for (ui::AXNodeID& child_id : page_child_ids) {
+    if (block_index < num_blocks && child_id == block_nodes[block_index]->id) {
+      child_id = block_nodes[order[block_index]]->id;
+      ++block_index;
+    }
+  }
+  CHECK_EQ(block_index, num_blocks);
+
+  std::vector<ui::AXNodeData*> sorted_blocks(num_blocks);
+  for (size_t i = 0; i < num_blocks; ++i) {
+    sorted_blocks[i] = block_nodes[order[i]];
+  }
+  block_nodes = std::move(sorted_blocks);
+}
+
 }  // namespace
+
+struct PdfAccessibilityTreeBuilderHeuristic::BlockLevelNodeResult {
+  raw_ptr<ui::AXNodeData> node = nullptr;
+  HeadingClassifier heading_classifier = HeadingClassifier::kNone;
+  // Not `kNone` only when `node` is a new `kListItem`.
+  ListMarkerKind list_marker_kind = ListMarkerKind::kNone;
+};
 
 StaticTextState::StaticTextState() = default;
 StaticTextState::~StaticTextState() = default;
@@ -1193,9 +2002,20 @@ void PdfAccessibilityTreeBuilderHeuristic::BuildPageTree() {
     }
   };
 
+  const gfx::RectF& page_bounds = builder_->page_node()->relative_bounds.bounds;
+  std::vector<chrome_pdf::AccessibilityFormGraphicInfo> graphics;
+  std::vector<chrome_pdf::AccessibilityImageInfo> filtered_images;
+  base::span<const chrome_pdf::AccessibilityImageInfo> images =
+      builder_->images();
+  if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled()) {
+    graphics = FilterGraphics(builder_->graphics(), page_bounds);
+    filtered_images = FilterImages(builder_->images());
+    images = filtered_images;
+  }
+
   const HeuristicPageProperties page_properties =
-      ComputeHeuristicPageProperties(
-          builder_->text_runs(), builder_->page_node()->relative_bounds.bounds);
+      ComputeHeuristicPageProperties(builder_->text_runs(), graphics,
+                                     page_bounds);
   const PageLayoutData page_layout = {
       .text_runs = builder_->text_runs(),
       .chars = builder_->chars(),
@@ -1203,10 +2023,16 @@ void PdfAccessibilityTreeBuilderHeuristic::BuildPageTree() {
   };
 
   ui::AXNodeData* block_node = nullptr;
-  std::vector<const ui::AXNodeData*> block_nodes;
+  // Blocks that are direct children of the page node, with each `kList` in
+  // place of its `kListItem` blocks.
+  std::vector<ui::AXNodeData*> block_nodes;
   ui::AXNodeData* previous_on_line_node = nullptr;
   StaticTextState static_text_state;
   HeadingClassifier current_heading_classifier = HeadingClassifier::kNone;
+  // Whether the current block opened with a superscript footnote marker. Set
+  // when the block is created, so it is never stale.
+  bool block_starts_with_superscript_marker = false;
+  uint32_t current_graphic_index = 0;
   LineHelper line_helper(builder_->text_runs());
 
   for (size_t text_run_index = 0; text_run_index < builder_->text_runs().size();
@@ -1215,12 +2041,48 @@ void PdfAccessibilityTreeBuilderHeuristic::BuildPageTree() {
         GetTextRunContext(page_layout, text_run_index);
     const chrome_pdf::AccessibilityTextRunInfo& text_run = *run_context.run;
 
+    // Close any open non-figure block when entering a graphic so the graphic
+    // starts its own `kFigure` block even if `BreakParagraph()` didn't split
+    // before this run.
+    chrome_pdf::AccessibilityFormGraphicInfo* current_graphic = nullptr;
+    if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled() &&
+        IsObjectWithRangeInTextRun(graphics, current_graphic_index,
+                                   text_run_index)) {
+      current_graphic = &graphics[current_graphic_index];
+      if (block_node && block_node->role != ax::mojom::Role::kFigure) {
+        BuildStaticNode(&static_text_state);
+        block_node = nullptr;
+        current_heading_classifier = HeadingClassifier::kNone;
+        previous_on_line_node = nullptr;
+      }
+    }
+
+    ListMarkerKind list_marker_kind = ListMarkerKind::kNone;
     // If we don't have a block level node, create one.
     if (!block_node) {
-      block_node = CreateBlockLevelNode(run_context, page_properties,
-                                        &current_heading_classifier);
-      builder_->page_node()->child_ids.push_back(block_node->id);
-      block_nodes.push_back(block_node);
+      BlockLevelNodeResult result =
+          CreateBlockLevelNode(run_context, page_properties, current_graphic);
+      block_node = result.node;
+      current_heading_classifier = result.heading_classifier;
+      list_marker_kind = result.list_marker_kind;
+      block_starts_with_superscript_marker =
+          GetTextPosition(builder_->text_runs(), text_run_index,
+                          run_context.chars) ==
+          ax::mojom::TextPosition::kSuperscript;
+      // `CreateBlockLevelNode()` already attaches `kListItem` blocks to the
+      // enclosing `kList` (which is itself attached to `page_node()`).
+      if (list_marker_kind == ListMarkerKind::kNone) {
+        builder_->page_node()->child_ids.push_back(block_node->id);
+        block_nodes.push_back(block_node);
+      } else {
+        // `CreateBlockLevelNode()` populates `list_levels_` for list items.
+        CHECK(!list_levels_.empty());
+        if (block_nodes.empty() ||
+            block_nodes.back() != list_levels_.front().list) {
+          // First item of a new list.
+          block_nodes.push_back(list_levels_.front().list);
+        }
+      }
 
       if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled() &&
           current_heading_classifier != HeadingClassifier::kNone) {
@@ -1238,6 +2100,35 @@ void PdfAccessibilityTreeBuilderHeuristic::BuildPageTree() {
       }
     }
 
+    size_t marker_prefix_char_count = 0;
+    if (list_marker_kind != ListMarkerKind::kNone) {
+      CHECK(features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
+      gfx::RectF marker_bounds = text_run.bounds;
+      float item_text_x;
+      if (list_marker_kind == ListMarkerKind::kCombinedUnordered) {
+        const ListMarkerPrefix prefix = GetListMarkerPrefix(run_context.chars);
+        marker_prefix_char_count = prefix.char_count;
+        marker_bounds.set_width(prefix.marker_width);
+        item_text_x = text_run.bounds.x() +
+                      GetCharsWidth(run_context.chars.first(prefix.char_count));
+      } else {
+        CHECK_EQ(list_marker_kind, ListMarkerKind::kStandaloneUnordered);
+        // Standalone markers are only classified when item text follows in
+        // `next_run`.
+        CHECK(run_context.next_run);
+        item_text_x = run_context.next_run->bounds.x();
+      }
+      list_levels_.back().item_text_x = item_text_x;
+
+      AddListMarkerToNode(GetUnorderedListMarkerName(run_context.chars),
+                          marker_bounds, block_node);
+      // Standalone runs consist solely of the marker, so proceed to the next
+      // run. Combined runs fall through to process the remaining item text.
+      if (list_marker_kind == ListMarkerKind::kStandaloneUnordered) {
+        continue;
+      }
+    }
+
     // If the `text_run_index` is less than or equal to the link's
     // `text_run_index`, then push the link node in the block.
     if (IsObjectWithRangeInTextRun(builder_->links(), current_link_index_,
@@ -1252,11 +2143,11 @@ void PdfAccessibilityTreeBuilderHeuristic::BuildPageTree() {
         continue;
       }
 
-    } else if (IsObjectInTextRun(builder_->images(), current_image_index_,
+    } else if (IsObjectInTextRun(images, current_image_index_,
                                  text_run_index)) {
       BuildStaticNode(&static_text_state);
-      AddImageToParaNode((builder_->images())[current_image_index_++],
-                         block_node, &text_run_index);
+      AddImageToParaNode(images[current_image_index_++], block_node,
+                         &text_run_index);
       continue;
     } else if (IsObjectWithRangeInTextRun(builder_->highlights(),
                                           current_highlight_index_,
@@ -1266,19 +2157,28 @@ void PdfAccessibilityTreeBuilderHeuristic::BuildPageTree() {
           (builder_->highlights())[current_highlight_index_++], block_node,
           &previous_on_line_node, &text_run_index);
     } else {
-      // A style change starts a new static text node, which ends any heading
-      // the current block was classified as.
-      if (BreaksStaticTextNode(static_text_state, text_run.style)) {
+      // A style, language, or text position change starts a new static text
+      // node, which ends any heading the current block was classified as.
+      if (BreaksStaticTextNode(
+              static_text_state, text_run,
+              GetTextPosition(builder_->text_runs(), text_run_index,
+                              run_context.chars))) {
         current_heading_classifier = HeadingClassifier::kNone;
       }
       ui::AXNodeData* inline_text_box_node =
-          AddTextRunToNode(text_run_index, block_node, &static_text_state);
+          AddTextRunToNode(text_run_index, block_node, &static_text_state,
+                           marker_prefix_char_count);
 
       if (previous_on_line_node) {
         ConnectPreviousAndNextOnLine(previous_on_line_node,
                                      inline_text_box_node);
-        UpdateHeaderFooterRoleForSameLineRun(run_context, page_properties,
-                                             block_node);
+        // The re-check resolves lines whose opening run was ambiguous. A line
+        // opening with a footnote marker is already known to be footnote
+        // content, so later runs must not promote it to a header or footer.
+        if (!block_starts_with_superscript_marker) {
+          UpdateHeaderFooterRoleForSameLineRun(run_context, page_properties,
+                                               block_node);
+        }
       } else {
         line_helper.StartNewLine(text_run_index);
       }
@@ -1294,13 +2194,37 @@ void PdfAccessibilityTreeBuilderHeuristic::BuildPageTree() {
           inline_text_box_node->relative_bounds.bounds);
 
       if (text_run_index < builder_->text_runs().size() - 1) {
-        if (line_helper.IsRunOnSameLine(text_run_index + 1)) {
-          // The next run is on the same line.
+        if (line_helper.ContinuesLineInReadingOrder(text_run_index + 1)) {
+          // The next run continues on the same line in reading order.
           previous_on_line_node = inline_text_box_node;
         } else {
-          // The next run is on a new line.
+          // The next run is on a new line or out of reading order.
           previous_on_line_node = nullptr;
         }
+      }
+    }
+
+    if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled()) {
+      for (const ListLevel& list_level : list_levels_) {
+        list_level.list->relative_bounds.bounds.Union(
+            block_node->relative_bounds.bounds);
+        if (list_level.last_item && list_level.last_item != block_node) {
+          list_level.last_item->relative_bounds.bounds.Union(
+              block_node->relative_bounds.bounds);
+        }
+      }
+    }
+
+    // A figure block stays open across its entire graphic text range and closes
+    // once the last run in the graphic is reached.
+    if (block_node->role == ax::mojom::Role::kFigure) {
+      const auto& range = graphics[current_graphic_index].text_range;
+      if (text_run_index + 1 >= range.index + range.count) {
+        BuildStaticNode(&static_text_state);
+        block_node = nullptr;
+        previous_on_line_node = nullptr;
+        ++current_graphic_index;
+        continue;
       }
     }
 
@@ -1311,7 +2235,7 @@ void PdfAccessibilityTreeBuilderHeuristic::BuildPageTree() {
 
     if (!previous_on_line_node) {
       if (BreakParagraph(text_run_index, block_node, current_heading_classifier,
-                         page_layout, page_properties)) {
+                         page_layout, page_properties, list_levels_)) {
         BuildStaticNode(&static_text_state);
         block_node = nullptr;
         current_heading_classifier = HeadingClassifier::kNone;
@@ -1319,25 +2243,81 @@ void PdfAccessibilityTreeBuilderHeuristic::BuildPageTree() {
     }
   }
 
-  AddRemainingAnnotations(block_node);
 
   if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled()) {
+    // Reorder blocks by vertical bands to restore top-to-bottom reading order
+    // for pages emitted in authoring/layer order. Band sorting assumes
+    // left-to-right columns, so skip pages with any right-to-left text.
+    if (std::ranges::none_of(
+            builder_->text_runs(),
+            [](const chrome_pdf::AccessibilityTextRunInfo& run) {
+              return run.direction ==
+                     chrome_pdf::AccessibilityTextDirection::kRightToLeft;
+            })) {
+      SortBlockNodesByVerticalBands(block_nodes,
+                                    builder_->page_node()->child_ids);
+      // Remaining annotations go in a new paragraph rather than a trailing
+      // figure or list.
+      block_node =
+          !block_nodes.empty() &&
+                  block_nodes.back()->role != ax::mojom::Role::kFigure &&
+                  block_nodes.back()->role != ax::mojom::Role::kList
+              ? block_nodes.back()
+              : nullptr;
+    }
     RecordHeaderFooterLocationHistograms(block_nodes, page_properties);
   }
+
+  AddRemainingAnnotations(images, block_node);
 }
 
-ui::AXNodeData* PdfAccessibilityTreeBuilderHeuristic::CreateBlockLevelNode(
+ui::AXNodeData* PdfAccessibilityTreeBuilderHeuristic::CreateLineBreakingNode(
+    ax::mojom::Role role,
+    const std::string& language) {
+  ui::AXNodeData* node =
+      builder_->CreateAndAppendNode(role, ax::mojom::Restriction::kReadOnly);
+  node->AddBoolAttribute(ax::mojom::BoolAttribute::kIsLineBreakingObject, true);
+  current_block_node_ = node;
+  current_block_static_text_nodes_.clear();
+  if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled() &&
+      !language.empty()) {
+    node->AddStringAttribute(ax::mojom::StringAttribute::kLanguage, language);
+  }
+  return node;
+}
+
+PdfAccessibilityTreeBuilderHeuristic::BlockLevelNodeResult
+PdfAccessibilityTreeBuilderHeuristic::CreateBlockLevelNode(
     const TextRunContext& run_context,
     const HeuristicPageProperties& page_properties,
-    HeadingClassifier* out_heading_classifier) {
-  ui::AXNodeData* block_node = builder_->CreateAndAppendNode(
-      ax::mojom::Role::kParagraph, ax::mojom::Restriction::kReadOnly);
-  block_node->AddBoolAttribute(ax::mojom::BoolAttribute::kIsLineBreakingObject,
-                               true);
-  *out_heading_classifier = HeadingClassifier::kNone;
+    const chrome_pdf::AccessibilityFormGraphicInfo* graphic) {
+  BlockLevelNodeResult result;
+
+  // Reset `list_levels_` so every early return (e.g. figure, side margin,
+  // tagged PDF) ends the list unless the list branch below restores it.
+  std::vector<ListLevel> levels;
+  if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled()) {
+    std::swap(levels, list_levels_);
+  }
+
+  if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled() && graphic) {
+    result.node = CreateLineBreakingNode(ax::mojom::Role::kFigure,
+                                         run_context.run->language);
+    result.node->relative_bounds.bounds = graphic->bounds;
+    return result;
+  }
 
   if (!builder_->mark_headings_using_heuristic()) {
-    return block_node;
+    result.node = CreateLineBreakingNode(ax::mojom::Role::kParagraph,
+                                         run_context.run->language);
+    return result;
+  }
+
+  if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled() &&
+      IsInSideMargin(*run_context.run, page_properties)) {
+    result.node = CreateLineBreakingNode(ax::mojom::Role::kSectionFooter,
+                                         run_context.run->language);
+    return result;
   }
 
   // Resolving the header and footer role up front also reports whether the run
@@ -1347,7 +2327,25 @@ ui::AXNodeData* PdfAccessibilityTreeBuilderHeuristic::CreateBlockLevelNode(
   if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled()) {
     header_footer_ax_role = GetAXRoleForHeaderFooterRole(
         GetHeaderFooterRole(run_context, page_properties, &page_number_kind));
+
+    // A standalone or combined marker starts a new `kListItem`. Append it to
+    // the list that the previous block belonged to, open a nested list, or
+    // start a new list if there is none. The marker run itself becomes the
+    // item's `kListMarker` in `BuildPageTree()`.
+    if (!header_footer_ax_role.has_value()) {
+      result.list_marker_kind = ClassifyListMarker(run_context, levels);
+    }
+    if (result.list_marker_kind != ListMarkerKind::kNone) {
+      result.node = CreateListItemNode(
+          run_context,
+          GetListItemFontSize(run_context, result.list_marker_kind),
+          std::move(levels));
+      return result;
+    }
   }
+
+  ui::AXNodeData* block_node = CreateLineBreakingNode(
+      ax::mojom::Role::kParagraph, run_context.run->language);
 
   // A bare digit in a margin is normally a page number, so skip heading
   // classification to keep a bold or prominent page number from being promoted
@@ -1369,8 +2367,9 @@ ui::AXNodeData* PdfAccessibilityTreeBuilderHeuristic::CreateBlockLevelNode(
         }
       }
       PromoteNodeToHeading(block_node, heading_level);
-      *out_heading_classifier = HeadingClassifier::kFontSize;
-      return block_node;
+      result.node = block_node;
+      result.heading_classifier = HeadingClassifier::kFontSize;
+      return result;
     }
 
     // Use other styling information to classify headings for text that is
@@ -1387,8 +2386,9 @@ ui::AXNodeData* PdfAccessibilityTreeBuilderHeuristic::CreateBlockLevelNode(
           heading_level = heuristic_heading_level;
         }
         PromoteNodeToHeading(block_node, heading_level);
-        *out_heading_classifier = classifier;
-        return block_node;
+        result.node = block_node;
+        result.heading_classifier = classifier;
+        return result;
       }
     }
   }
@@ -1402,20 +2402,127 @@ ui::AXNodeData* PdfAccessibilityTreeBuilderHeuristic::CreateBlockLevelNode(
     CHECK(features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
     block_node->role = header_footer_ax_role.value();
   }
+  result.node = block_node;
+  return result;
+}
+
+ui::AXNodeData* PdfAccessibilityTreeBuilderHeuristic::CreateListItemNode(
+    const TextRunContext& run_context,
+    float item_font_size,
+    std::vector<ListLevel> levels) {
+  const float marker_x = run_context.run->bounds.x();
+  const float max_nest = kMaxListNestingIndentEm * item_font_size;
+  const ListPlacement placement = GetListPlacement(levels, marker_x, max_nest);
+
+  switch (placement.kind) {
+    case ListPlacementKind::kNewList: {
+      // Start a new top-level list if no list is currently open, or if the
+      // marker is indented far to the right (e.g. crossing into a new column).
+      ui::AXNodeData* list =
+          CreateLineBreakingNode(ax::mojom::Role::kList, /*language=*/"");
+      list->AddStringAttribute(ax::mojom::StringAttribute::kHtmlTag, "ul");
+      builder_->page_node()->child_ids.push_back(list->id);
+      levels = {{.list = list, .marker_x = marker_x}};
+      break;
+    }
+    case ListPlacementKind::kNested: {
+      // Deeper indent: start a nested list inside the previous list item,
+      // matching Blink's <ul><li>...<ul>...</ul></li></ul> structure.
+      levels.resize(placement.level_index + 1);
+      CHECK(levels.back().last_item);
+      ui::AXNodeData* nested_list =
+          CreateLineBreakingNode(ax::mojom::Role::kList, /*language=*/"");
+      nested_list->AddStringAttribute(ax::mojom::StringAttribute::kHtmlTag,
+                                      "ul");
+      levels.back().last_item->child_ids.push_back(nested_list->id);
+      levels.push_back({.list = nested_list, .marker_x = marker_x});
+      break;
+    }
+    case ListPlacementKind::kExistingLevel:
+      // Same indent, or an outdent: pop closed nested levels back to the
+      // matching ancestor list. If the marker is still to the left of the
+      // outermost level, keep the outermost list to tolerate slight indentation
+      // variations, and update its marker position so wrapped lines and
+      // sublists are measured against it.
+      levels.resize(placement.level_index + 1);
+      levels.back().marker_x = std::min(levels.back().marker_x, marker_x);
+      break;
+  }
+
+  // Append the new item to the active list level and record it for nesting.
+  ui::AXNodeData* block_node = CreateLineBreakingNode(
+      ax::mojom::Role::kListItem, run_context.run->language);
+  block_node->AddStringAttribute(ax::mojom::StringAttribute::kHtmlTag, "li");
+  levels.back().list->child_ids.push_back(block_node->id);
+  levels.back().last_item = block_node;
+  list_levels_ = std::move(levels);
   return block_node;
+}
+
+void PdfAccessibilityTreeBuilderHeuristic::AddListMarkerToNode(
+    const std::string& name,
+    const gfx::RectF& bounds,
+    ui::AXNodeData* item_node) {
+  CHECK(!list_levels_.empty());
+  ui::AXNodeData* marker = builder_->CreateAndAppendNode(
+      ax::mojom::Role::kListMarker, ax::mojom::Restriction::kReadOnly);
+  marker->AddStringAttribute(ax::mojom::StringAttribute::kName, name);
+  marker->AddStringAttribute(ax::mojom::StringAttribute::kHtmlTag, "::marker");
+  // Text run bounds are relative to the page, so offset them by the page node
+  // bounds, matching inline text boxes.
+  marker->relative_bounds.bounds =
+      bounds + builder_->page_node()->relative_bounds.bounds.OffsetFromOrigin();
+  item_node->child_ids.push_back(marker->id);
+  item_node->relative_bounds.bounds.Union(marker->relative_bounds.bounds);
+  list_levels_.back().list->relative_bounds.bounds.Union(
+      marker->relative_bounds.bounds);
 }
 
 ui::AXNodeData* PdfAccessibilityTreeBuilderHeuristic::AddTextRunToNode(
     size_t text_run_index,
     ui::AXNodeData* parent_node,
-    StaticTextState* static_text_state) {
-  const chrome_pdf::AccessibilityTextRunInfo& text_run =
+    StaticTextState* static_text_state,
+    size_t marker_prefix_char_count) {
+  chrome_pdf::AccessibilityTextRunInfo text_run =
       builder_->text_runs()[text_run_index];
   chrome_pdf::PageCharacterIndex page_char_index = {
       builder_->page_index(),
       builder_->text_run_start_indices()[text_run_index]};
 
-  if (BreaksStaticTextNode(*static_text_state, text_run.style)) {
+  if (marker_prefix_char_count > 0) {
+    CHECK(features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
+    const float prefix_width = GetCharsWidth(
+        base::span(builder_->chars())
+            .subspan(page_char_index.char_index, marker_prefix_char_count));
+    TrimTextRunPrefix(marker_prefix_char_count, prefix_width, text_run);
+    page_char_index.char_index += marker_prefix_char_count;
+  }
+
+  base::span<const chrome_pdf::AccessibilityCharInfo> char_span =
+      base::span(builder_->chars())
+          .subspan(page_char_index.char_index, text_run.len);
+  ax::mojom::TextPosition text_position =
+      GetTextPosition(builder_->text_runs(), text_run_index, char_span);
+
+  // If the current block was given the opening run's language and a later run
+  // in the block has a different language, move the language attribute from the
+  // block node onto its individual static text children.
+  ax::mojom::StringAttribute lang_attr = ax::mojom::StringAttribute::kLanguage;
+  if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled() &&
+      current_block_node_ &&
+      current_block_node_->HasStringAttribute(lang_attr)) {
+    std::string block_language =
+        current_block_node_->GetStringAttribute(lang_attr);
+    if (text_run.language != block_language) {
+      for (ui::AXNodeData* node : current_block_static_text_nodes_) {
+        node->AddStringAttribute(lang_attr, block_language);
+      }
+      current_block_static_text_nodes_.clear();
+      current_block_node_->RemoveStringAttribute(lang_attr);
+    }
+  }
+
+  if (BreaksStaticTextNode(*static_text_state, text_run, text_position)) {
     BuildStaticNode(static_text_state);
   }
 
@@ -1429,8 +2536,24 @@ ui::AXNodeData* PdfAccessibilityTreeBuilderHeuristic::AddTextRunToNode(
       static_text_state->node = builder_->CreateStaticTextNodeWithStyle(
           page_char_index, text_run.style);
       static_text_state->style = text_run.style;
+      static_text_state->text_position = text_position;
+      if (text_position != ax::mojom::TextPosition::kNone) {
+        static_text_state->node->AddIntAttribute(
+            ax::mojom::IntAttribute::kTextPosition,
+            static_cast<int32_t>(text_position));
+      }
     } else {
       static_text_state->node = builder_->CreateStaticTextNode(page_char_index);
+    }
+    static_text_state->language = text_run.language;
+    if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled()) {
+      if (current_block_node_ && current_block_node_->HasStringAttribute(
+                                     ax::mojom::StringAttribute::kLanguage)) {
+        current_block_static_text_nodes_.push_back(static_text_state->node);
+      } else if (!text_run.language.empty()) {
+        static_text_state->node->AddStringAttribute(
+            ax::mojom::StringAttribute::kLanguage, text_run.language);
+      }
     }
     parent_node->child_ids.push_back(static_text_state->node->id);
   }
@@ -1474,11 +2597,11 @@ void PdfAccessibilityTreeBuilderHeuristic::AddTextToAXNode(
     line_helper.ProcessNextRun(text_run_index);
 
     if (text_run_index < builder_->text_runs().size() - 1) {
-      if (line_helper.IsRunOnSameLine(text_run_index + 1)) {
-        // The next run is on the same line.
+      if (line_helper.ContinuesLineInReadingOrder(text_run_index + 1)) {
+        // The next run continues on the same line in reading order.
         *previous_on_line_node = inline_text_box_node;
       } else {
-        // The next run is on a new line.
+        // The next run is on a new line or out of reading order.
         *previous_on_line_node = nullptr;
       }
     }
@@ -1586,12 +2709,13 @@ void PdfAccessibilityTreeBuilderHeuristic::AddHighlightToParaNode(
 }
 
 void PdfAccessibilityTreeBuilderHeuristic::AddRemainingAnnotations(
+    base::span<const chrome_pdf::AccessibilityImageInfo> images,
     ui::AXNodeData* para_node
 ) {
   // If we don't have additional links or images to insert in the tree, then
   // return.
   if (current_link_index_ >= builder_->links().size() &&
-      current_image_index_ >= builder_->images().size()) {
+      current_image_index_ >= images.size()) {
     return;
   }
 
@@ -1613,10 +2737,8 @@ void PdfAccessibilityTreeBuilderHeuristic::AddRemainingAnnotations(
   // of them.
   bool push_remaining_images = true;
   if (push_remaining_images) {
-    for (size_t i = current_image_index_; i < builder_->images().size(); i++) {
-      const chrome_pdf::AccessibilityImageInfo& image_info =
-          (builder_->images())[i];
-      ui::AXNodeData* image_node = builder_->CreateImageNode(image_info);
+    for (const auto& image : images.subspan(current_image_index_)) {
+      ui::AXNodeData* image_node = builder_->CreateImageNode(image);
       para_node->child_ids.push_back(image_node->id);
     }
   }

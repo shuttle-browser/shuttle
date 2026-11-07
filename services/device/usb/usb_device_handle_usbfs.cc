@@ -27,6 +27,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/threading/scoped_blocking_call.h"
 #include "components/device_event_log/device_event_log.h"
+#include "services/device/public/cpp/device_features.h"
 #include "services/device/public/cpp/usb/usb_utils.h"
 #include "services/device/usb/usb_device_linux.h"
 
@@ -36,7 +37,6 @@
 
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX)
 #include "base/metrics/histogram_macros.h"
-#include "services/device/public/cpp/device_features.h"
 #include "services/device/usb/usb_interface_detach_allowlist.h"
 #endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX)
 
@@ -249,11 +249,27 @@ UsbDeviceHandleUsbfs::BlockingTaskRunnerHelper::~BlockingTaskRunnerHelper() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 }
 
+#if BUILDFLAG(IS_ANDROID)
 void UsbDeviceHandleUsbfs::BlockingTaskRunnerHelper::ReleaseFileDescriptor() {
-  // This method intentionally leaks the file descriptor.
+  // This method intentionally releases ownership of the file descriptor without
+  // closing it. It is used only on Android, where the underlying file
+  // descriptor is owned by the Java UsbDeviceConnection object and will be
+  // closed via JNI.
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   watch_controller_.reset();
   std::ignore = fd_.release();
+}
+#endif  // BUILDFLAG(IS_ANDROID)
+
+void UsbDeviceHandleUsbfs::BlockingTaskRunnerHelper::CloseFileDescriptor() {
+  // Stops watching and closes the file descriptors. Used on Linux and ChromeOS,
+  // where Chromium owns |fd_| and |lifeline_fd_|.
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
+                                                base::BlockingType::MAY_BLOCK);
+  watch_controller_.reset();
+  fd_.reset();
+  lifeline_fd_.reset();
 }
 
 bool UsbDeviceHandleUsbfs::BlockingTaskRunnerHelper::SetConfiguration(
@@ -406,16 +422,27 @@ bool UsbDeviceHandleUsbfs::BlockingTaskRunnerHelper::ResetDevice() {
 
   base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
                                                 base::BlockingType::MAY_BLOCK);
-  // TODO(reillyg): libusb releases interfaces before and then reclaims
-  // interfaces after a reset. We should probably do this too or document that
-  // callers have to call ClaimInterface as well.
+  // A bus reset returns the device to an unconfigured state (config 0) and
+  // releases all claimed interfaces. Interfaces are intentionally not
+  // reclaimed; callers must select a configuration and claim interfaces again.
   int rc = HANDLE_EINTR(ioctl(fd_.get(), USBDEVFS_RESET, nullptr));
   if (rc) {
     USB_PLOG(DEBUG) << "Failed to reset the device";
-    return false;
   }
 
-  return true;
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX)
+  if (base::FeatureList::IsEnabled(
+          features::kWebUsbResetInvalidatesConfiguration)) {
+    // USBDEVFS_RESET causes the kernel to rebind drivers to all interfaces.
+    // Clear detached_interfaces_ to match the kernel's reattached state.
+    // Always clear detached_interfaces_ regardless of whether reset succeeded,
+    // because a failed reset may still have left the hardware in an
+    // unconfigured state.
+    detached_interfaces_.clear();
+  }
+#endif
+
+  return rc == 0;
 }
 
 bool UsbDeviceHandleUsbfs::BlockingTaskRunnerHelper::ClearHalt(
@@ -581,21 +608,21 @@ void UsbDeviceHandleUsbfs::Close() {
 
   // Cancelling transfers may run or destroy callbacks holding the last
   // reference to this object so hold a reference for the rest of this method.
+  // Clear |device_|, |fd_|, and |endpoints_| before running transfer callbacks
+  // so that any re-entrant calls see the handle as closed.
   scoped_refptr<UsbDeviceHandleUsbfs> self(this);
+  scoped_refptr<UsbDevice> device = std::move(device_);
+  fd_ = -1;
+  endpoints_.clear();
+  device->HandleClosed(this);
+
   for (const auto& transfer : transfers_) {
     CancelTransfer(transfer.get(), UsbTransferStatus::CANCELLED);
   }
 
-  // On the |task_runner_| thread check |device_| to see if the handle is
-  // closed. In |helper_| thread check |fd_.is_valid()| to see if the handle is
-  // closed.
-  device_->HandleClosed(this);
-  device_ = nullptr;
-  // The device is no longer attached so we don't have any endpoints either.
-  endpoints_.clear();
-
-  // The destruction of the |helper_| below will close the lifeline pipe if it
-  // exists and re-attach kernel driver.
+  // Stops watching and closes the device fd on the blocking sequence,
+  // aborting any remaining in-flight URBs before clearing transfers
+  // and destroying the helper.
   FinishClose();
 }
 
@@ -733,8 +760,15 @@ void UsbDeviceHandleUsbfs::ResetDevice(ResultCallback callback) {
   // USBDEVFS_RESET is synchronous because it waits for the port to be reset
   // and the device re-enumerated so it must be performed on a thread where it
   // is okay to block.
-  helper_.AsyncCall(&BlockingTaskRunnerHelper::ResetDevice)
-      .Then(std::move(callback));
+  if (base::FeatureList::IsEnabled(
+          features::kWebUsbResetInvalidatesConfiguration)) {
+    helper_.AsyncCall(&BlockingTaskRunnerHelper::ResetDevice)
+        .Then(base::BindOnce(&UsbDeviceHandleUsbfs::ResetDeviceComplete, this,
+                             std::move(callback)));
+  } else {
+    helper_.AsyncCall(&BlockingTaskRunnerHelper::ResetDevice)
+        .Then(std::move(callback));
+  }
 }
 
 void UsbDeviceHandleUsbfs::ClearHalt(mojom::UsbTransferDirection direction,
@@ -796,7 +830,7 @@ void UsbDeviceHandleUsbfs::ControlTransfer(
 
   // USBDEVFS_SUBMITURB appears to be non-blocking as completion is reported
   // by USBDEVFS_REAPURBNDELAY.
-  int rc = HANDLE_EINTR(ioctl(fd_, USBDEVFS_SUBMITURB, &transfer->urb));
+  int rc = SubmitUrb(&transfer->urb);
   if (rc) {
     rc = logging::GetLastSystemErrorCode();
     USB_PLOG(DEBUG) << "Failed to submit control transfer";
@@ -874,7 +908,7 @@ void UsbDeviceHandleUsbfs::GenericTransfer(
   // by USBDEVFS_REAPURBNDELAY. This code assumes a recent kernel that can
   // accept arbitrarily large transfer requests, hopefully also using a scatter-
   // gather list.
-  int rc = HANDLE_EINTR(ioctl(fd_, USBDEVFS_SUBMITURB, &transfer->urb));
+  int rc = SubmitUrb(&transfer->urb);
   if (rc) {
     rc = logging::GetLastSystemErrorCode();
     USB_PLOG(DEBUG) << "Failed to submit transfer";
@@ -902,14 +936,45 @@ UsbDeviceHandleUsbfs::~UsbDeviceHandleUsbfs() {
   DCHECK(!device_) << "Handle must be closed before it is destroyed.";
 }
 
+#if BUILDFLAG(IS_ANDROID)
 void UsbDeviceHandleUsbfs::ReleaseFileDescriptor(base::OnceClosure callback) {
+  CHECK(callback);
+  // Retain |this| until |helper_| stops watching and releases |fd_| on the
+  // blocking task runner and |callback| finishes closing the device, so
+  // in-flight |transfers_| stay valid until the kernel is done with them.
   helper_.AsyncCall(&BlockingTaskRunnerHelper::ReleaseFileDescriptor)
-      .Then(std::move(callback));
+      .Then(std::move(callback).Then(
+          base::BindOnce(&UsbDeviceHandleUsbfs::FinishCloseComplete, this)));
+  // Schedules destruction of |helper_| on the blocking task runner immediately
+  // after ReleaseFileDescriptor() runs.
+  helper_.Reset();
+}
+#endif  // BUILDFLAG(IS_ANDROID)
+
+void UsbDeviceHandleUsbfs::FinishClose() {
+  // Retain |this| until |helper_| stops watching and closes |fd_| on the
+  // blocking task runner so in-flight |transfers_| stay valid until the kernel
+  // is done with them. Once |fd_| is closed, the kernel aborts and frees any
+  // remaining un-reaped URBs without writing to user-space memory, so they no
+  // longer need to be reaped.
+  helper_.AsyncCall(&BlockingTaskRunnerHelper::CloseFileDescriptor)
+      .Then(base::BindOnce(&UsbDeviceHandleUsbfs::FinishCloseComplete, this));
+  // Schedules destruction of |helper_| on the blocking task runner immediately
+  // after CloseFileDescriptor() runs.
   helper_.Reset();
 }
 
-void UsbDeviceHandleUsbfs::FinishClose() {
-  helper_.Reset();
+int UsbDeviceHandleUsbfs::SubmitUrb(usbdevfs_urb* urb) {
+  return HANDLE_EINTR(ioctl(fd_, USBDEVFS_SUBMITURB, urb));
+}
+
+// Clears remaining |transfers_| after |helper_| has stopped watching and
+// finished releasing or closing |fd_| on the blocking task runner, ensuring
+// that the kernel cannot access the memory of any remaining cancelled or
+// unreaped URBs.
+void UsbDeviceHandleUsbfs::FinishCloseComplete() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  transfers_.clear();
 }
 
 void UsbDeviceHandleUsbfs::SetConfigurationComplete(int configuration_value,
@@ -1009,6 +1074,23 @@ void UsbDeviceHandleUsbfs::ReleaseInterfaceComplete(int interface_number,
   std::move(callback).Run(true);
 }
 
+void UsbDeviceHandleUsbfs::ResetDeviceComplete(ResultCallback callback,
+                                               bool success) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (!device_) {
+    std::move(callback).Run(false);
+    return;
+  }
+
+  // Always clear interfaces, endpoints, and active configuration regardless
+  // of whether reset succeeded, because a failed reset may still have left
+  // the hardware in an unconfigured state.
+  interfaces_.clear();
+  endpoints_.clear();
+  device_->ActiveConfigurationChanged(0);
+  std::move(callback).Run(success);
+}
+
 void UsbDeviceHandleUsbfs::IsochronousTransferInternal(
     uint8_t endpoint_address,
     scoped_refptr<base::RefCountedBytes> buffer,
@@ -1048,7 +1130,7 @@ void UsbDeviceHandleUsbfs::IsochronousTransferInternal(
   // by USBDEVFS_REAPURBNDELAY. This code assumes a recent kernel that can
   // accept arbitrarily large transfer requests, hopefully also using a scatter-
   // gather list.
-  int rc = HANDLE_EINTR(ioctl(fd_, USBDEVFS_SUBMITURB, &transfer->urb));
+  int rc = SubmitUrb(&transfer->urb);
   if (rc) {
     rc = logging::GetLastSystemErrorCode();
     USB_PLOG(DEBUG) << "Failed to submit transfer";
@@ -1062,6 +1144,10 @@ void UsbDeviceHandleUsbfs::IsochronousTransferInternal(
 
 void UsbDeviceHandleUsbfs::ReapedUrbs(const std::vector<usbdevfs_urb*>& urbs) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  // Hold a reference to |this| across completion callbacks, as a callback may
+  // drop the last external reference to the handle while more URBs remain in
+  // |urbs|.
+  scoped_refptr<UsbDeviceHandleUsbfs> self(this);
   for (auto* urb : urbs) {
     Transfer* transfer = static_cast<Transfer*>(urb->usercontext);
     DCHECK_EQ(urb, &transfer->urb);
@@ -1190,7 +1276,6 @@ UsbDeviceHandleUsbfs::RemoveFromTransferList(Transfer* transfer_ptr) {
 void UsbDeviceHandleUsbfs::CancelTransfer(Transfer* transfer,
                                           UsbTransferStatus status) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(device_);
 
   if (transfer->cancelled) {
     return;

@@ -8,6 +8,7 @@
 
 #include "base/logging.h"
 #include "base/sequence_checker.h"
+#include "base/task/bind_post_task.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_manager.h"
@@ -39,6 +40,7 @@ ContextImplCoreml::Create(
     gpu::SharedImageManager* shared_image_manager,
     scoped_refptr<base::SingleThreadTaskRunner> main_task_runner,
     mojo::PendingReceiver<mojom::WebNNModelLoader> model_loader_receiver) {
+  DCHECK(owning_task_runner->RunsTasksInCurrentSequence());
   auto task_runner = owning_task_runner;
   std::unique_ptr<WebNNContextImpl, OnTaskRunnerDeleter> context_impl(
       new ContextImplCoreml(
@@ -48,6 +50,11 @@ ContextImplCoreml::Create(
           std::move(main_task_runner), std::move(model_loader_receiver)),
       OnTaskRunnerDeleter(std::move(task_runner)));
   return context_impl;
+}
+
+// static
+ContextProperties ContextImplCoreml::GetContextProperties() {
+  return GraphBuilderCoreml::GetContextProperties();
 }
 
 ContextImplCoreml::ContextImplCoreml(
@@ -63,7 +70,7 @@ ContextImplCoreml::ContextImplCoreml(
     : WebNNContextImpl(std::move(receiver),
                        std::move(context_provider),
                        ContextBackendUma::kCoreML,
-                       GraphBuilderCoreml::GetContextProperties(),
+                       GetContextProperties(),
                        std::move(options),
                        mojo::ScopedDataPipeConsumerHandle(),
                        mojo::ScopedDataPipeProducerHandle(),
@@ -135,19 +142,28 @@ void ContextImplCoreml::LoadCompiledGraph(
     LoadCompiledGraphCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  if (!context_provider_) {
-    std::move(callback).Run(base::unexpected(mojom::Error::New(
-        mojom::Error::Code::kUnknownError, "Context provider is destroyed.")));
-    return;
-  }
+  base::FilePath compiled_model_path = compiled_graph->compiled_model_path;
+  auto reply = base::BindPostTaskToCurrentDefault(base::BindOnce(
+      &ContextImplCoreml::OnCompiledModelCopied, weak_factory_.GetWeakPtr(),
+      std::move(compiled_graph), std::move(callback)));
 
-  // Ask the Browser process to safely copy the compiled model from the Compiler
-  // process's temp folder to the GPU process's secure temp folder.
-  context_provider_->webnn_browser_host()->CopyCompiledModel(
-      compiled_graph->compiled_model_path,
-      base::BindOnce(&ContextImplCoreml::OnCompiledModelCopied,
-                     weak_factory_.GetWeakPtr(), std::move(compiled_graph),
-                     std::move(callback)));
+  // Ask the Browser process on the main thread (where `context_provider_` is
+  // bound) to safely copy the compiled model from the Compiler process's temp
+  // folder to the GPU process's secure temp folder.
+  main_task_runner()->PostTask(
+      FROM_HERE,
+      base::BindOnce(
+          [](base::WeakPtr<WebNNContextProviderImpl> context_provider,
+             base::FilePath compiled_model_path,
+             mojom::WebNNBrowserHost::CopyCompiledModelCallback reply) {
+            if (!context_provider) {
+              std::move(reply).Run(std::nullopt);
+              return;
+            }
+            context_provider->webnn_browser_host()->CopyCompiledModel(
+                compiled_model_path, std::move(reply));
+          },
+          context_provider_, std::move(compiled_model_path), std::move(reply)));
 }
 
 void ContextImplCoreml::OnCompiledModelCopied(
@@ -164,18 +180,6 @@ void ContextImplCoreml::OnCompiledModelCopied(
     return;
   }
 
-  // Reconstruct coreml_name_to_operand_name mapping.
-  std::vector<std::pair<std::string, std::string>> coreml_name_to_operand_name;
-  coreml_name_to_operand_name.reserve(
-      compiled_graph->input_binding_names.size() +
-      compiled_graph->output_binding_names.size());
-  for (const auto& [name, coreml_name] : compiled_graph->input_binding_names) {
-    coreml_name_to_operand_name.emplace_back(coreml_name, name);
-  }
-  for (const auto& [name, coreml_name] : compiled_graph->output_binding_names) {
-    coreml_name_to_operand_name.emplace_back(coreml_name, name);
-  }
-
   // Wrap the copied model path's parent directory in ScopedTempDir to manage
   // its lifetime. It will be deleted once the graph is destroyed.
   base::ScopedTempDir compiled_model_dir;
@@ -184,7 +188,8 @@ void ContextImplCoreml::OnCompiledModelCopied(
   // Load the copied model.
   GraphImplCoreml::CreateAndLoadCompiledModel(
       *this, std::move(compiled_model_dir),
-      std::move(coreml_name_to_operand_name),
+      std::move(compiled_graph->input_binding_names),
+      std::move(compiled_graph->output_binding_names),
       base::BindOnce(
           [](base::WeakPtr<ContextImplCoreml> context,
              LoadCompiledGraphCallback callback,

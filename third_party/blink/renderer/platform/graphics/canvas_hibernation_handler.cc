@@ -19,7 +19,6 @@
 #include "skia/ext/codec_utils.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/renderer/platform/bindings/buildflags.h"
-#include "third_party/blink/renderer/platform/graphics/canvas_2d_resource_provider.h"
 #include "third_party/blink/renderer/platform/graphics/memory_managed_paint_recorder.h"
 #include "third_party/blink/renderer/platform/graphics/static_bitmap_image.h"
 #include "third_party/blink/renderer/platform/graphics/web_graphics_context_3d_provider_util.h"
@@ -28,7 +27,6 @@
 #include "third_party/blink/renderer/platform/scheduler/public/main_thread.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
 #include "third_party/blink/renderer/platform/scheduler/public/worker_pool.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_std.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/blink/renderer/platform/wtf/hash_set.h"
@@ -123,7 +121,7 @@ HibernatedCanvasMemoryDumpProvider::HibernatedCanvasMemoryDumpProvider() {
 }
 
 CanvasHibernationHandler::CanvasHibernationHandler(Delegate& delegate)
-    : delegate_(delegate) {}
+    : delegate_(&delegate) {}
 
 CanvasHibernationHandler::~CanvasHibernationHandler() {
   DCheckInvariant();
@@ -407,17 +405,11 @@ void CanvasHibernationHandler::Hibernate(
     base::TimeDelta delay) {
   TRACE_EVENT0("blink", __PRETTY_FUNCTION__);
   DCHECK(!IsHibernating());
+  CHECK(delegate_);
 
-  Canvas2DResourceProvider* provider = delegate_->GetSharedImageProvider();
-  if (!provider) {
-    if (delegate_->HasResourceProvider()) {
-      ReportHibernationEvent(
-          HibernationEvent::
-              kHibernationAbortedDueToSwitchToUnacceleratedRendering);
-    } else {
-      ReportHibernationEvent(
-          HibernationEvent::kHibernationAbortedBecauseNoSurface);
-    }
+  if (!delegate_->HasBacking()) {
+    ReportHibernationEvent(
+        HibernationEvent::kHibernationAbortedBecauseNoSurface);
     return;
   }
 
@@ -427,13 +419,13 @@ void CanvasHibernationHandler::Hibernate(
     return;
   }
 
-  if (!provider->IsValid() || delegate_->IsContextLost()) {
+  if (!delegate_->IsBackingValid() || delegate_->IsContextLost()) {
     ReportHibernationEvent(
         HibernationEvent::kHibernationAbortedDueGpuContextLoss);
     return;
   }
 
-  if (!provider->IsAccelerated()) {
+  if (!delegate_->IsBackingAccelerated()) {
     ReportHibernationEvent(
         HibernationEvent::
             kHibernationAbortedDueToSwitchToUnacceleratedRendering);
@@ -445,7 +437,7 @@ void CanvasHibernationHandler::Hibernate(
   // non-complementary stats. Each HibernationScheduled event is paired with
   // exactly one failure or exit event.
   delegate_->FlushCanvas(FlushReason::kOther);
-  scoped_refptr<StaticBitmapImage> snapshot = provider->Snapshot();
+  scoped_refptr<StaticBitmapImage> snapshot = delegate_->Snapshot();
   if (!snapshot) {
     ReportHibernationEvent(
         HibernationEvent::kHibernationAbortedDueSnapshotFailure);
@@ -460,7 +452,7 @@ void CanvasHibernationHandler::Hibernate(
   }
   SaveForHibernation(std::move(sw_image), context, delay);
 
-  delegate_->ResetResourceProvider();
+  delegate_->ResetBacking();
   delegate_->ClearCanvas2DLayerTexture();
 
   // shouldBeDirectComposited() may have changed.
@@ -481,6 +473,7 @@ void CanvasHibernationHandler::Hibernate(
 }
 
 void CanvasHibernationHandler::InitiateHibernationIfNecessary() {
+  CHECK(delegate_);
   delegate_->ClearCanvas2DLayerTexture();
   ReportHibernationEvent(HibernationEvent::kHibernationScheduled);
   ++epoch_;

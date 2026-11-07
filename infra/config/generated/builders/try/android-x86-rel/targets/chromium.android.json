@@ -56,7 +56,7 @@
       {
         "args": [
           "--avd-config=../../tools/android/avd/proto/android_29_google_apis_x86.textpb",
-          "--test-launcher-filter-file=../../testing/buildbot/filters/android.emulator_10.android_browsertests.filter",
+          "--test-launcher-filter-file=../../testing/buildbot/filters/android.emulator_10.android_browsertests.filter;../../testing/buildbot/filters/android.phone.android_browsertests.filter",
           "--gs-results-bucket=chromium-result-details",
           "--recover-devices"
         ],
@@ -510,6 +510,7 @@
           "--recover-devices"
         ],
         "description": "Run with android_29_google_apis_x86",
+        "enable_rts_filtering": true,
         "isolate_profile_data": true,
         "merge": {
           "args": [
@@ -966,6 +967,7 @@
           "--recover-devices"
         ],
         "description": "Run with android_29_google_apis_x86",
+        "enable_rts_filtering": true,
         "isolate_profile_data": true,
         "merge": {
           "args": [
@@ -1071,6 +1073,7 @@
           "--recover-devices"
         ],
         "description": "Run with android_29_google_apis_x86",
+        "enable_rts_filtering": true,
         "isolate_profile_data": true,
         "merge": {
           "args": [
@@ -1156,15 +1159,8 @@
             }
           ],
           "optional_dimensions": {
-            "120": {
-              "caches": "android_29_google_apis_x86"
-            },
-            "30": {
-              "caches": "android_29_google_apis_x86",
-              "cpu": "x86-64-n4"
-            },
             "60": {
-              "cpu": "x86-64-n4"
+              "caches": "android_29_google_apis_x86"
             }
           },
           "service_account": "chromium-tester@chops-service-accounts.iam.gserviceaccount.com",
@@ -1182,6 +1178,7 @@
           "--recover-devices"
         ],
         "description": "Run with android_29_google_apis_x86",
+        "enable_rts_filtering": true,
         "isolate_profile_data": true,
         "merge": {
           "args": [
@@ -4262,6 +4259,7 @@
           "dimensions": {
             "cores": "8",
             "cpu": "x86-64",
+            "machine_type": "e2-standard-8",
             "os": "Ubuntu-22.04",
             "pool": "chromium.tests"
           },

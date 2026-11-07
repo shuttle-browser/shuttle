@@ -58,8 +58,8 @@ void NonPersistentNotificationHandler::OnClick(
     base::OnceClosure completed_closure) {
   // Non persistent notifications don't allow buttons or replies.
   // https://notifications.spec.whatwg.org/#create-a-notification
-  DCHECK(!action_index.has_value());
-  DCHECK(!reply.has_value());
+  CHECK(!action_index.has_value(), base::NotFatalUntil::M161);
+  CHECK(!reply.has_value(), base::NotFatalUntil::M161);
 
   content::NotificationEventDispatcher::GetInstance()
       ->DispatchNonPersistentClickEvent(
@@ -91,7 +91,7 @@ void NonPersistentNotificationHandler::DidDispatchClickEvent(
   if (!success) {
     NavigateParams params(profile, origin, ui::PAGE_TRANSITION_LINK);
 
-    params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
+    params.disposition = WindowOpenDisposition::kNewForegroundTab;
     params.window_action = NavigateParams::WindowAction::kShowWindow;
     Navigate(&params);
 

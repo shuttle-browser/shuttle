@@ -50,23 +50,13 @@ GL_EXPORT void GetANGLEFeaturesFromCommandLineAndFinch(
     std::vector<std::string>& enabled_angle_features,
     std::vector<std::string>& disabled_angle_features);
 
-
-#if BUILDFLAG(ENABLE_SWIFTSHADER)
-GL_EXPORT BASE_DECLARE_FEATURE(kAllowSwiftShaderFallback);
-#endif
+#if BUILDFLAG(IS_APPLE)
+GL_EXPORT BASE_DECLARE_FEATURE(kANGLEPurgeableBufferPool);
+#endif  // BUILDFLAG(IS_APPLE)
 
 // If SwiftShader should be allowed as a GL implementation or WebGL fallback via
 // command line flags. Disallowed by default unless explicitly requested with
 // --use-angle=swiftshader[-for-webgl], --enable-unsafe-swiftshader
-GL_EXPORT bool IsSwiftShaderAllowedByCommandLine(
-    const base::CommandLine* command_line);
-
-// If SwiftShader should be allowed due to the AllowSwiftShaderFallback
-// killswitch feature.
-GL_EXPORT bool IsSwiftShaderAllowedByFeature();
-
-// SwiftShader is allowed by either IsSwiftShaderAllowedByCommandLine or
-// IsSwiftShaderAllowedByFeature.
 GL_EXPORT bool IsSwiftShaderAllowed(const base::CommandLine* command_line);
 
 // If SwiftShader is explicitly requested for WebGL via

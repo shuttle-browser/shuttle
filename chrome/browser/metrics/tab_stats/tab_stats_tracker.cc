@@ -68,7 +68,6 @@
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #endif
 
 namespace metrics {
@@ -88,7 +87,7 @@ TabStatsTracker* g_tab_stats_tracker_instance = nullptr;
 void UmaHistogramCounts10000WithBatteryStateVariant(const char* histogram_name,
                                                     size_t value) {
   auto* power_monitor = base::PowerMonitor::GetInstance();
-  DCHECK(power_monitor->IsInitialized());
+  CHECK(power_monitor->IsInitialized(), base::NotFatalUntil::M161);
 
   base::UmaHistogramCounts10000(histogram_name, value);
 
@@ -108,13 +107,8 @@ void UmaHistogramCounts10000WithTabStripModeVariant(
     return;
   }
 
-  auto* controller = tabs::VerticalTabStripStateController::From(
-      tab_strip.browser_window_interface());
-  const char* suffix = controller && controller->ShouldDisplayVerticalTabs()
-                           ? ".VerticalTabStrip"
-                           : ".HorizontalTabStrip";
-
-  base::UmaHistogramCounts10000(base::StrCat({histogram_name, suffix}), value);
+  base::UmaHistogramCounts10000(
+      base::StrCat({histogram_name, ".HorizontalTabStrip"}), value);
 }
 #endif
 
@@ -411,7 +405,7 @@ TabStatsTracker::TabStatsTracker(PrefService* pref_service)
           // Empty to skip recording the daily event type histogram.
           /* histogram_name=*/std::string())),
       tab_watcher_(std::make_unique<TabWatcher>(*this)) {
-  DCHECK(pref_service);
+  CHECK(pref_service, base::NotFatalUntil::M161);
 
   AddObserverAndSetInitialState(tab_stats_data_store_.get());
 
@@ -754,7 +748,8 @@ void TabStatsTracker::OnTabReplaced(content::WebContents* old_contents,
 void TabStatsTracker::OnWebContentsDestroyed(
     content::WebContents* web_contents) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(web_contents_usage_observers_.contains(web_contents));
+  CHECK(web_contents_usage_observers_.contains(web_contents),
+        base::NotFatalUntil::M161);
   web_contents_usage_observers_.erase(
       web_contents_usage_observers_.find(web_contents));
   for (TabStatsObserver& tab_stats_observer : tab_stats_observers_) {
@@ -888,15 +883,6 @@ void TabStatsTracker::UmaStatsReportingDelegate::ReportHeartbeatMetrics(
         tab_strip_model && tab_strip_model->GetFocusedGroup().has_value();
     base::UmaHistogramBoolean(kFocusModeIsActiveHistogramName,
                               is_in_focus_mode);
-
-    auto* controller = tabs::VerticalTabStripStateController::From(
-        tab_strip.browser_window_interface());
-    if (controller && controller->ShouldDisplayVerticalTabs()) {
-      base::UmaHistogramEnumeration(
-          kVerticalTabStripCollapseStateHistogramName,
-          controller->IsCollapsed() ? VerticalTabStripCollapseState::kCollapsed
-                                    : VerticalTabStripCollapseState::kExpanded);
-    }
 
     // Record the width of all open browser windows with tabs.
     const ui::BaseWindow* window =

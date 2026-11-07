@@ -4,10 +4,14 @@
 
 #include "media/base/channel_layout.h"
 
+#include <type_traits>
+
 #include "media/base/limits.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace media {
+
+static_assert(std::is_trivially_copyable_v<ChannelLayoutConfig>);
 
 TEST(ChannelLayoutTest, ChannelMaskToLayout_StandardLayouts) {
   // Test standard layouts.
@@ -56,7 +60,7 @@ TEST(ChannelLayoutTest, ChannelMaskToLayout_UnknownChannelsReturnDiscrete) {
                                 (1 << SIDE_RIGHT) | 1 << kUnknownSpeaker));
 }
 
-// Ensure the special case monst common constexpr value are valid
+// Ensure the special case most common constexpr value are valid
 TEST(ChannelLayoutTest, ChannelLayoutConfig_constexpr_constructors) {
   constexpr ChannelLayoutConfig empty = ChannelLayoutConfig();
   EXPECT_EQ(CHANNEL_LAYOUT_NONE, empty.channel_layout());
@@ -146,7 +150,8 @@ TEST(ChannelLayoutTest, ChannelLayoutConfig_FromLayout) {
   EXPECT_EQ(CHANNEL_LAYOUT_QUAD, quad_layout.channel_layout());
   EXPECT_EQ(4, quad_layout.channels());
 
-  auto none_layout = ChannelLayoutConfig::FromLayout<CHANNEL_LAYOUT_NONE>();
+  constexpr auto none_layout =
+      ChannelLayoutConfig::FromLayout<CHANNEL_LAYOUT_NONE>();
   EXPECT_EQ(ChannelLayoutConfig(), none_layout);
 
   auto unsupported_layout =

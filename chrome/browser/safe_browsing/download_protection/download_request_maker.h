@@ -44,13 +44,11 @@ class DownloadRequestMaker {
   static std::unique_ptr<DownloadRequestMaker> CreateFromDownloadItem(
       scoped_refptr<BinaryFeatureExtractor> binary_feature_extractor,
       download::DownloadItem* item,
-      base::optional_ref<const std::string> password = std::nullopt,
-      bool is_obfuscated = false);
+      base::optional_ref<const std::string> password = std::nullopt);
 
   static std::unique_ptr<DownloadRequestMaker> CreateFromFileSystemAccess(
       scoped_refptr<BinaryFeatureExtractor> binary_feature_extractor,
-      const content::FileSystemAccessWriteItem& item,
-      bool is_obfuscated = false);
+      const content::FileSystemAccessWriteItem& item);
 
   DownloadRequestMaker(
       scoped_refptr<BinaryFeatureExtractor> binary_feature_extractor,
@@ -67,8 +65,7 @@ class DownloadRequestMaker {
       base::optional_ref<const std::string> password,
       const std::string& previous_token,
       base::OnceCallback<void(const FileAnalyzer::Results&)>
-          on_results_callback,
-      bool is_obfuscated = false);
+          on_results_callback);
 
   DownloadRequestMaker(const DownloadRequestMaker&) = delete;
   DownloadRequestMaker& operator=(const DownloadRequestMaker&) = delete;

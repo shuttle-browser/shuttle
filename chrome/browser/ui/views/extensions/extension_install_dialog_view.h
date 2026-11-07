@@ -19,13 +19,12 @@
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/base/mojom/dialog_button.mojom.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
-#include "ui/views/controls/button/checkbox.h"
+#include "ui/views/controls/button/radio_button.h"
 #include "ui/views/controls/textfield/textfield_controller.h"
 #include "ui/views/layout/table_layout_view.h"
 #include "ui/views/metadata/view_factory.h"
 #include "ui/views/view.h"
 
-class PictureInPictureInputProtector;
 class Profile;
 class ExtensionJustificationView;
 
@@ -79,6 +78,12 @@ class ExtensionInstallDialogView : public views::BubbleDialogDelegateView,
       View* button,
       const ui::Event& event) const;
   bool ShouldAllowKeyEventsDuringInputProtectionForTesting() const;
+  views::RadioButton* on_click_radio_button_for_testing() {
+    return on_click_radio_button_;
+  }
+  views::RadioButton* always_all_sites_radio_button_for_testing() {
+    return always_all_sites_radio_button_;
+  }
 
  private:
   void CloseDialog();
@@ -106,11 +111,12 @@ class ExtensionInstallDialogView : public views::BubbleDialogDelegateView,
   [[nodiscard]] views::Builder<views::BoxLayoutView>
   CreateWebstoreDataBuilder();
 
-  // Returns the extension info container, which contains extension permissions
-  // and/or justification views.
+  // Returns the extension info container, which contains extension permissions,
+  // justification views, and/or site access options.
   [[nodiscard]] std::unique_ptr<views::ScrollView> CreateExtensionInfoContainer(
       bool has_permissions,
-      bool requires_justification);
+      bool requires_justification,
+      bool has_site_access_options);
 
   // views::TextfieldController:
   void ContentsChanged(views::Textfield* sender,
@@ -147,20 +153,13 @@ class ExtensionInstallDialogView : public views::BubbleDialogDelegateView,
   // entered text length is larger than the defined limit.
   bool request_button_enabled_ = true;
 
-  // Checkbox used to indicate if host permissions should be granted on install.
-  // Should only be present when permissions are withheld on installation by
-  // default.
-  raw_ptr<views::Checkbox> grant_permissions_checkbox_;
+  // Radio buttons used to select site access permissions on install.
+  raw_ptr<views::RadioButton> on_click_radio_button_ = nullptr;
+  raw_ptr<views::RadioButton> always_all_sites_radio_button_ = nullptr;
 
   // The justification text field view where users enter their justification for
   // requesting an extension.
   raw_ptr<ExtensionJustificationView> justification_view_ = nullptr;
-
-  // The PictureInPictureInputProtector tracks dialog occlusions by
-  // Picture-in-Picture windows, to ensure input protection and ignore spurious
-  // interactions.
-  std::unique_ptr<PictureInPictureInputProtector>
-      picture_in_picture_input_protector_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_EXTENSIONS_EXTENSION_INSTALL_DIALOG_VIEW_H_

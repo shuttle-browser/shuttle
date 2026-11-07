@@ -9,7 +9,7 @@ import {webUIListenerCallback} from 'chrome://resources/js/cr.js';
 import {flush} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 import type {AddSiteDialogElement, SettingsEditExceptionDialogElement, SiteException, SiteListElement} from 'chrome://settings/lazy_load.js';
 import {CookiesExceptionType, ContentSetting, ContentSettingsTypes, SITE_EXCEPTION_WILDCARD, SiteSettingSource, SiteSettingsBrowserProxyImpl} from 'chrome://settings/lazy_load.js';
-import {CrSettingsPrefs, loadTimeData, Router} from 'chrome://settings/settings.js';
+import {loadTimeData, Router} from 'chrome://settings/settings.js';
 import {assertEquals, assertFalse, assertNotEquals, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {eventToPromise, isChildVisible, isVisible, microtasksFinished} from 'chrome://webui-test/test_util.js';
 import {flushTasks} from 'chrome://webui-test/polymer_test_util.js';
@@ -458,14 +458,6 @@ suite('SiteListEmbargoedOrigin', function() {
    */
   let browserProxy: TestSiteSettingsBrowserProxy;
 
-  suiteSetup(function() {
-    CrSettingsPrefs.setInitialized();
-  });
-
-  suiteTeardown(function() {
-    CrSettingsPrefs.resetForTesting();
-  });
-
   // Initialize a site-list before each test.
   setup(function() {
     populateTestExceptions();
@@ -530,14 +522,6 @@ suite('SiteListCookiesExceptionTypes', function() {
    * The mock proxy object to use during test.
    */
   let browserProxy: TestSiteSettingsBrowserProxy;
-
-  suiteSetup(function() {
-    CrSettingsPrefs.setInitialized();
-  });
-
-  suiteTeardown(function() {
-    CrSettingsPrefs.resetForTesting();
-  });
 
   // Initialize a site-list before each test.
   setup(function() {
@@ -626,14 +610,6 @@ suite('SiteListPopulatedWhileHidden', function() {
    * The mock proxy object to use during test.
    */
   let browserProxy: TestSiteSettingsBrowserProxy;
-
-  suiteSetup(function() {
-    CrSettingsPrefs.setInitialized();
-  });
-
-  suiteTeardown(function() {
-    CrSettingsPrefs.resetForTesting();
-  });
 
   // Initialize a site-list inside a hidden container before each test. This
   // mimics Settings stamping a view into a <cr-view-manager> view that has not
@@ -728,16 +704,6 @@ suite('DISABLED_SiteList', function() {
    */
   let browserProxy: TestSiteSettingsBrowserProxy;
 
-  suiteSetup(function() {
-    // clang-format off
-    CrSettingsPrefs.setInitialized();
-    // clang-format on
-  });
-
-  suiteTeardown(function() {
-    CrSettingsPrefs.resetForTesting();
-  });
-
   // Initialize a site-list before each test.
   setup(function() {
     populateTestExceptions();
@@ -812,16 +778,6 @@ suite('SiteList', function() {
    * The mock proxy object to use during test.
    */
   let browserProxy: TestSiteSettingsBrowserProxy;
-
-  suiteSetup(function() {
-    // clang-format off
-    CrSettingsPrefs.setInitialized();
-    // clang-format on
-  });
-
-  suiteTeardown(function() {
-    CrSettingsPrefs.resetForTesting();
-  });
 
   // Initialize a site-list before each test.
   setup(function() {
@@ -1660,14 +1616,6 @@ suite('SiteListSearchTests', function() {
   /** The mock proxy object to use during test. */
   let browserProxy: TestSiteSettingsBrowserProxy;
 
-  suiteSetup(function() {
-    CrSettingsPrefs.setInitialized();
-  });
-
-  suiteTeardown(function() {
-    CrSettingsPrefs.resetForTesting();
-  });
-
   // Initialize a site-list before each test.
   setup(function() {
     populateTestExceptions();
@@ -1833,7 +1781,7 @@ suite('AddExceptionDialog', function() {
     assertTrue(!!actionButton);
     assertTrue(actionButton.disabled);
 
-    const input = dialog.shadowRoot!.querySelector('cr-input');
+    const input = dialog.shadowRoot.querySelector('cr-input');
     assertTrue(!!input);
     input.value = expectedPattern;
     await input.updateComplete;
@@ -1862,21 +1810,21 @@ suite('AddExceptionDialog', function() {
     dialog.remove();
   });
 
-  test('incognito', function() {
-    dialog.set('hasIncognito', true);
-    flush();
+  test('incognito', async function() {
+    dialog.hasIncognito = true;
+    await microtasksFinished();
     assertFalse(dialog.$.incognito.checked);
     dialog.$.incognito.checked = true;
     // Changing the incognito status will reset the checkbox.
-    dialog.set('hasIncognito', false);
-    flush();
+    dialog.hasIncognito = false;
+    await microtasksFinished();
     assertFalse(dialog.$.incognito.checked);
   });
 
   test('invalid input', async function() {
     // Initially the action button should be disabled, but the error warning
     // should not be shown for an empty input.
-    const input = dialog.shadowRoot!.querySelector('cr-input');
+    const input = dialog.shadowRoot.querySelector('cr-input');
     assertTrue(!!input);
     assertFalse(input.invalid);
 
@@ -1901,9 +1849,8 @@ suite('AddExceptionDialog', function() {
   test(
       'add cookie exception for combined cookie exception type',
       async function() {
-        dialog.set('category', ContentSettingsTypes.COOKIES);
-        dialog.set('cookiesExceptionType', CookiesExceptionType.COMBINED);
-        flush();
+        dialog.category = ContentSettingsTypes.COOKIES;
+        dialog.cookiesExceptionType = CookiesExceptionType.COMBINED;
 
         // Enter a pattern and click the button.
         const expectedPattern = 'foo-bar.com';
@@ -1919,9 +1866,8 @@ suite('AddExceptionDialog', function() {
       });
 
   test('add third party cookie exception', async function() {
-    dialog.set('category', ContentSettingsTypes.COOKIES);
-    dialog.set('cookiesExceptionType', CookiesExceptionType.THIRD_PARTY);
-    flush();
+    dialog.category = ContentSettingsTypes.COOKIES;
+    dialog.cookiesExceptionType = CookiesExceptionType.THIRD_PARTY;
 
     // Enter a pattern and click the button.
     const expectedPattern = 'foo-bar.com';
@@ -1937,9 +1883,8 @@ suite('AddExceptionDialog', function() {
   });
 
   test('add site data cookie exception', async function() {
-    dialog.set('category', ContentSettingsTypes.COOKIES);
-    dialog.set('cookiesExceptionType', CookiesExceptionType.SITE_DATA);
-    flush();
+    dialog.category = ContentSettingsTypes.COOKIES;
+    dialog.cookiesExceptionType = CookiesExceptionType.SITE_DATA;
 
     // Enter a pattern and click the button.
     const expectedPattern = 'foo-bar.com';

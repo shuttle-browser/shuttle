@@ -439,9 +439,8 @@ void AXBlockFlowIterator::GetCharacterLayoutPixelOffsets(Vector<int>& offsets) {
     return;
   }
 
-  const ShapeResult* shape_result = shape_result_view->CreateShapeResult();
   const Vector<CharacterRange> ranges =
-      shape_result->IndividualCharacterRanges();
+      shape_result_view->IndividualCharacterRanges();
   float width_so_far = 0.0;
   for (wtf_size_t i = 0; i < offsets.size(); ++i) {
     if (i < ranges.size()) {
@@ -543,7 +542,7 @@ TextOffsetRange AXBlockFlowIterator::TextOffset() const {
 
 PhysicalDirection AXBlockFlowIterator::GetDirection() const {
   auto* layout_text = To<LayoutText>(layout_object_);
-  return WritingDirectionMode(layout_text->StyleRef().GetWritingMode(),
+  return WritingDirectionMode(layout_text->Style().GetWritingMode(),
                               block_flow_data_->ItemAt(current_index_.value())
                                   ->ResolvedDirection())
       .InlineEnd();

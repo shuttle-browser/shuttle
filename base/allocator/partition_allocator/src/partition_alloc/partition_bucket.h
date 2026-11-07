@@ -15,6 +15,7 @@
 #include "partition_alloc/partition_alloc_check.h"
 #include "partition_alloc/partition_alloc_constants.h"
 #include "partition_alloc/partition_alloc_forward.h"
+#include "partition_alloc/partition_alloc_public_constants.h"
 #include "partition_alloc/partition_page_constants.h"
 
 namespace partition_alloc::internal {
@@ -151,7 +152,8 @@ struct PartitionBucket {
 
     const size_t offset_in_slot =
         ((offset_in_slot_span * slot_size_reciprocal) >> kReciprocalShift);
-    PA_DCHECK(offset_in_slot_span / slot_size == offset_in_slot);
+    PA_DCHECK(offset_in_slot * slot_size <= offset_in_slot_span);
+    PA_DCHECK(offset_in_slot_span - offset_in_slot * slot_size < slot_size);
 
     return offset_in_slot;
   }

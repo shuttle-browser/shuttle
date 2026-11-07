@@ -46,9 +46,6 @@ class WebUI;
 namespace policy {
 class SchemaRegistryService;
 class ProfilePolicyConnector;
-class ProfileCloudPolicyManager;
-class UserCloudPolicyManager;
-class CloudPolicyManager;
 
 #if BUILDFLAG(IS_CHROMEOS)
 class UserCloudPolicyManagerAsh;
@@ -209,20 +206,7 @@ class Profile : public content::BrowserContext {
 #if BUILDFLAG(IS_CHROMEOS)
   // Returns the UserCloudPolicyManagerAsh.
   virtual policy::UserCloudPolicyManagerAsh* GetUserCloudPolicyManagerAsh() = 0;
-#else
-  // Returns the UserCloudPolicyManager.
-  virtual policy::UserCloudPolicyManager* GetUserCloudPolicyManager() = 0;
-  virtual policy::ProfileCloudPolicyManager* GetProfileCloudPolicyManager() = 0;
 #endif
-
-  // Returns CloudPolicyManager.
-  // This function combine three Get*CloudPolicyManager functions above and
-  // always returns the one that is currently activated.
-  //
-  // Returns UserCloudPolicyManagerAsh on ChromeOS.
-  // For others, returns UserCloudPolicyManager if it exists, otherwise use
-  // ProfileCloudPolicyManager.
-  virtual policy::CloudPolicyManager* GetCloudPolicyManager() = 0;
 
   virtual policy::ProfilePolicyConnector* GetProfilePolicyConnector() = 0;
   virtual const policy::ProfilePolicyConnector* GetProfilePolicyConnector()
@@ -279,6 +263,9 @@ class Profile : public content::BrowserContext {
   // parent profile. Shuttle has no OTR profiles: always false.
   bool IsPrimaryOTRProfileWithRegularParent() const;
 
+  // Returns whether it is a Top Chrome WebUI profile.
+  bool IsTopChromeWebUIProfile() const;
+
   bool CanUseDiskWhenOffTheRecord() override;
 
   // Did the user restore the last session? This is set by SessionRestore.
@@ -302,7 +289,7 @@ class Profile : public content::BrowserContext {
   }
 
   void ResumeAccessibilityEvents() {
-    DCHECK_GT(accessibility_pause_level_, 0);
+    CHECK_GT(accessibility_pause_level_, 0, base::NotFatalUntil::M162);
     accessibility_pause_level_--;
   }
 

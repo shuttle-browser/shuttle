@@ -5,8 +5,8 @@
 #include "third_party/blink/renderer/modules/accessibility/inspector_accessibility_agent.h"
 
 #include <memory>
+#include <ranges>
 
-#include "base/containers/adapters.h"
 #include "third_party/blink/renderer/core/accessibility/ax_object_cache.h"
 #include "third_party/blink/renderer/core/dom/dom_node_ids.h"
 #include "third_party/blink/renderer/core/dom/element.h"
@@ -44,7 +44,7 @@ void AddChildren(AXObject& ax_object,
                  std::unique_ptr<protocol::Array<AXNode>>& nodes,
                  AXObjectCacheImpl& cache) {
   HeapVector<Member<AXObject>> reachable(
-      base::Reversed(ax_object.ChildrenIncludingIgnored()));
+      std::views::reverse(ax_object.ChildrenIncludingIgnored()));
 
   while (!reachable.empty()) {
     AXObject* descendant = reachable.back();
@@ -58,7 +58,7 @@ void AddChildren(AXObject& ax_object,
     if (follow_ignored &&
         (descendant->IsIgnoredButIncludedInTree() || !descendant->GetNode())) {
       reachable.append_range(
-          base::Reversed(descendant->ChildrenIncludingIgnored()));
+          std::views::reverse(descendant->ChildrenIncludingIgnored()));
     }
     auto child_node = BuildProtocolAXNodeForAXObject(*descendant);
     nodes->emplace_back(std::move(child_node));
@@ -166,6 +166,10 @@ protocol::Response InspectorAccessibilityAgent::getPartialAXTree(
   LocalFrame* local_frame = document.GetFrame();
   if (!local_frame)
     return protocol::Response::ServerError("Frame is detached.");
+  // Reject nodes belonging to an unloaded document.
+  if (!document.IsActive()) {
+    return protocol::Response::ServerError("Document is not active.");
+  }
 
   auto& cache = AttachToAXObjectCache(&document);
   cache.UpdateAXForAllDocuments();
@@ -234,7 +238,8 @@ protocol::Response InspectorAccessibilityAgent::getFullAXTree(
   }
 
   Document* document = frame->GetDocument();
-  if (!document)
+  // Require an active document before attaching to the AX cache.
+  if (!document || !document->IsActive())
     return protocol::Response::InternalError();
   if (document->View()->NeedsLayout() || document->NeedsLayoutTreeUpdate())
     document->UpdateStyleAndLayout(DocumentUpdateReason::kInspector);
@@ -262,7 +267,8 @@ protocol::Response InspectorAccessibilityAgent::getRootAXNode(
   }
 
   Document* document = frame->GetDocument();
-  if (!document)
+  // Require an active document before attaching to the AX cache.
+  if (!document || !document->IsActive())
     return protocol::Response::InternalError();
 
   auto& cache = AttachToAXObjectCache(document);
@@ -298,6 +304,10 @@ protocol::Response InspectorAccessibilityAgent::getAXNodeAndAncestors(
   LocalFrame* local_frame = document.GetFrame();
   if (!local_frame)
     return protocol::Response::ServerError("Frame is detached.");
+  // Reject nodes belonging to an unloaded document.
+  if (!document.IsActive()) {
+    return protocol::Response::ServerError("Document is not active.");
+  }
 
   auto& cache = AttachToAXObjectCache(&document);
   cache.UpdateAXForAllDocuments();
@@ -346,7 +356,8 @@ protocol::Response InspectorAccessibilityAgent::getChildAXNodes(
   }
 
   Document* document = frame->GetDocument();
-  if (!document)
+  // Require an active document before attaching to the AX cache.
+  if (!document || !document->IsActive())
     return protocol::Response::InternalError();
 
   auto& cache = AttachToAXObjectCache(document);
@@ -400,6 +411,12 @@ void InspectorAccessibilityAgent::queryAXTree(
   }
 
   Document& document = root_dom_node->GetDocument();
+  // Reject queries against documents that have been unloaded or detached.
+  if (!document.IsActive()) {
+    callback->sendFailure(
+        protocol::Response::ServerError("Document is not active."));
+    return;
+  }
   auto& cache = AttachToAXObjectCache(&document);
   cache.UpdateAXForAllDocuments();
 
@@ -431,6 +448,12 @@ void InspectorAccessibilityAgent::CompleteQuery(
     return;
   }
   Document& document = root_dom_node->GetDocument();
+  // Guard against the document becoming inactive while the query was pending.
+  if (!document.IsActive()) {
+    callback->sendFailure(
+        protocol::Response::ServerError("Document is not active."));
+    return;
+  }
 
   document.UpdateStyleAndLayout(DocumentUpdateReason::kInspector);
   DocumentLifecycle::DisallowTransitionScope disallow_transition(
@@ -458,7 +481,7 @@ void InspectorAccessibilityAgent::CompleteQuery(
     reachable.pop_back();
     const AXObject::AXObjectVector& children =
         ax_object->ChildrenIncludingIgnored();
-    reachable.append_range(base::Reversed(children));
+    reachable.append_range(std::views::reverse(children));
 
     const bool ignored = ax_object->IsIgnored();
     // if querying by name: skip if name of current object does not match.
@@ -612,7 +635,7 @@ void InspectorAccessibilityAgent::AXObjectModified(AXObject* ax_object,
         continue;
       const AXObject::AXObjectVector& children =
           descendant->ChildrenIncludingIgnored();
-      reachable.append_range(base::Reversed(children));
+      reachable.append_range(std::views::reverse(children));
     }
   } else {
     MarkAXObjectDirty(ax_object);
@@ -630,6 +653,10 @@ void InspectorAccessibilityAgent::EnableAndReset() {
   }
   EnabledAgents().find(frame)->value->insert(this);
   for (auto& context : document_to_context_map_.Values()) {
+    // Skip contexts whose documents are no longer active.
+    if (!context->HasActiveDocument()) {
+      continue;
+    }
     auto& cache = To<AXObjectCacheImpl>(context->GetAXObjectCache());
     cache.AddInspectorAgent(this);
   }
@@ -642,9 +669,13 @@ protocol::Response InspectorAccessibilityAgent::enable() {
 }
 
 protocol::Response InspectorAccessibilityAgent::disable() {
-  if (!enabled_.Get())
-    return protocol::Response::Success();
-  enabled_.Set(false);
+  const bool was_enabled = enabled_.Get();
+  if (was_enabled) {
+    enabled_.Set(false);
+  }
+
+  // Protocol methods can create AX contexts before the agent is enabled.
+  // Always release them when the session is disposed.
   for (auto& document : document_to_context_map_.Keys()) {
     DCHECK(document);
     // We do not rely on AXContext::GetAXObjectCache here, since it might
@@ -661,6 +692,11 @@ protocol::Response InspectorAccessibilityAgent::disable() {
   document_to_context_map_.clear();
   nodes_requested_.clear();
   dirty_nodes_.clear();
+
+  if (!was_enabled) {
+    return protocol::Response::Success();
+  }
+
   LocalFrame* frame = inspected_frames_->Root();
   DCHECK(EnabledAgents().Contains(frame));
   auto it = EnabledAgents().find(frame);
@@ -678,9 +714,14 @@ void InspectorAccessibilityAgent::Restore() {
 void InspectorAccessibilityAgent::ProvideTo(LocalFrame* frame) {
   if (!EnabledAgents().Contains(frame))
     return;
+  Document* document = frame->GetDocument();
+  // Only attach to active documents.
+  if (!document || !document->IsActive()) {
+    return;
+  }
   for (InspectorAccessibilityAgent* agent :
        *EnabledAgents().find(frame)->value) {
-    agent->AttachToAXObjectCache(frame->GetDocument());
+    agent->AttachToAXObjectCache(document);
   }
 }
 

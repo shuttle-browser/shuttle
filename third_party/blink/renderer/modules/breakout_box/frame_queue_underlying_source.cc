@@ -53,18 +53,12 @@ FrameQueueUnderlyingSource<NativeFrameType>::FrameQueueUnderlyingSource(
     std::string device_id,
     wtf_size_t frame_pool_size,
     std::optional<base::ThreadType> thread_type)
-    : UnderlyingSourceBase(script_state),
-      realm_task_runner_(ExecutionContext::From(script_state)
-                             ->GetTaskRunner(TaskType::kInternalMediaRealTime)),
-      frame_queue_handle_(
-          base::MakeRefCounted<FrameQueue<NativeFrameType>>(max_queue_size)),
-      device_id_(std::move(device_id)),
-      frame_pool_size_(frame_pool_size),
-      thread_type_(thread_type),
-      realm_is_boostable_context_(ExecutionContext::From(script_state)
-                                      ->IsDedicatedWorkerGlobalScope()) {
-  DCHECK(device_id_.empty() || frame_pool_size_ > 0);
-}
+    : FrameQueueUnderlyingSource(
+          script_state,
+          base::MakeRefCounted<FrameQueue<NativeFrameType>>(max_queue_size),
+          std::move(device_id),
+          frame_pool_size,
+          thread_type) {}
 
 template <typename NativeFrameType>
 FrameQueueUnderlyingSource<NativeFrameType>::FrameQueueUnderlyingSource(
@@ -80,31 +74,48 @@ FrameQueueUnderlyingSource<NativeFrameType>::FrameQueueUnderlyingSource(
 template <typename NativeFrameType>
 FrameQueueUnderlyingSource<NativeFrameType>::FrameQueueUnderlyingSource(
     ScriptState* script_state,
-    FrameQueueUnderlyingSource<NativeFrameType>* other_source)
+    scoped_refptr<FrameQueue<NativeFrameType>> queue,
+    std::string device_id,
+    wtf_size_t frame_pool_size,
+    std::optional<base::ThreadType> thread_type)
     : UnderlyingSourceBase(script_state),
       realm_task_runner_(ExecutionContext::From(script_state)
                              ->GetTaskRunner(TaskType::kInternalMediaRealTime)),
-      frame_queue_handle_(other_source->frame_queue_handle_.Queue()),
-      device_id_(other_source->device_id_),
-      frame_pool_size_(other_source->frame_pool_size_),
-      thread_type_(other_source->thread_type_),
+      frame_queue_(std::move(queue)),
+      device_id_(std::move(device_id)),
+      frame_pool_size_(frame_pool_size),
+      thread_type_(thread_type),
       realm_is_boostable_context_(ExecutionContext::From(script_state)
                                       ->IsDedicatedWorkerGlobalScope()) {
   DCHECK(device_id_.empty() || frame_pool_size_ > 0);
+  auto q = Queue();
+  if (q) {
+    base::AutoLock locker(q->GetLock());
+    initial_total_frames_ = q->TotalFramesLocked();
+    initial_discarded_frames_ = q->DiscardedFramesLocked();
+  }
 }
+
+template <typename NativeFrameType>
+FrameQueueUnderlyingSource<NativeFrameType>::FrameQueueUnderlyingSource(
+    ScriptState* script_state,
+    FrameQueueUnderlyingSource<NativeFrameType>* other_source)
+    : FrameQueueUnderlyingSource(script_state,
+                                 other_source->Queue(),
+                                 other_source->device_id_,
+                                 other_source->frame_pool_size_,
+                                 other_source->thread_type_) {}
 
 template <typename NativeFrameType>
 ScriptPromise<IDLUndefined> FrameQueueUnderlyingSource<NativeFrameType>::Pull(
     ScriptState* script_state,
     ExceptionState&) {
   DCHECK(realm_task_runner_->RunsTasksInCurrentSequence());
-  {
-    base::AutoLock locker(lock_);
-    num_pending_pulls_++;
-  }
-  auto frame_queue = frame_queue_handle_.Queue();
+  auto frame_queue = Queue();
   if (!frame_queue)
     return ToResolvedUndefinedPromise(script_state);
+
+  frame_queue->IncrementPendingPulls();
 
   if (!frame_queue->IsEmpty()) {
     // Enqueuing the frame in the stream controller synchronously can lead to a
@@ -160,7 +171,7 @@ void FrameQueueUnderlyingSource<NativeFrameType>::ContextDestroyed() {
 
 template <typename NativeFrameType>
 wtf_size_t FrameQueueUnderlyingSource<NativeFrameType>::MaxQueueSize() const {
-  auto queue = frame_queue_handle_.Queue();
+  auto queue = Queue();
   return queue ? queue->MaxSize() : 0;
 }
 
@@ -176,141 +187,166 @@ void FrameQueueUnderlyingSource<NativeFrameType>::Close() {
     StopFrameDelivery();
     CloseController();
   }
-  bool should_clear_queue = true;
+  scoped_refptr<base::SequencedTaskRunner> transferred_runner;
+  CrossThreadPersistent<FrameQueueUnderlyingSource<NativeFrameType>>
+      transferred_source;
   {
     base::AutoLock locker(lock_);
-    num_pending_pulls_ = 0;
-    if (transferred_source_) {
-      // Absorb unread frames in the shared queue before clearing reference, as
-      // they will be dropped when the transferred source shuts down.
-      discarded_frames_ += transferred_source_->DiscardedAndQueuedFrames();
-      total_frames_ += transferred_source_->TotalFrames();
-      PostCrossThreadTask(
-          *transferred_source_->GetRealmRunner(), FROM_HERE,
-          CrossThreadBindOnce(
-              &FrameQueueUnderlyingSource<NativeFrameType>::Close,
-              WrapCrossThreadWeakPersistent(transferred_source_.Get())));
-      // The queue will be cleared by |transferred_source_|.
-      should_clear_queue = false;
-      transferred_source_.Clear();
-    }
+    transferred_runner = std::move(transferred_runner_);
+    transferred_source = std::move(transferred_source_);
+  }
+  if (transferred_source && transferred_runner) {
+    PostCrossThreadTask(
+        *transferred_runner, FROM_HERE,
+        CrossThreadBindOnce(&FrameQueueUnderlyingSource<NativeFrameType>::Close,
+                            transferred_source));
   }
   scoped_refptr<FrameQueue<NativeFrameType>> frame_queue;
   Deque<NativeFrameType> frames_to_destroy;
   {
     base::AutoLock locker(lock_);
-    frame_queue = frame_queue_handle_.Queue();
-    if (frame_queue && should_clear_queue) {
+    // Taking |frame_queue_| releases our reference to the queue once
+    // |frame_queue| goes out of scope. If this was the last reference (i.e.,
+    // not transferred), it will destroy the queue and any remaining frames in
+    // it.
+    frame_queue = std::move(frame_queue_);
+    if (frame_queue) {
       base::AutoLock queue_locker(frame_queue->GetLock());
-      discarded_frames_ += frame_queue->SizeLocked();
-      if (MustUseMonitor()) {
-        base::AutoLock monitor_locker(GetMonitorLock());
-        while (!frame_queue->IsEmptyLocked()) {
-          std::optional<NativeFrameType> popped_frame =
-              frame_queue->PopLocked();
-          MonitorPopFrameLocked(popped_frame.value());
-
-          // Move the frame into our local container so it isn't
-          // destroyed until the lock_ goes out of scope.
-          frames_to_destroy.push_back(std::move(popped_frame.value()));
+      if (!transferred_source) {
+        // This source is the active consumer of the queue, so its pending
+        // pulls are no longer relevant. If the source was transferred, the
+        // pending pulls belong to the transferred source, which will reset
+        // them when it processes the Close() task posted above.
+        frame_queue->ResetPendingPullsLocked();
+        frame_queue->IncrementDiscardedFramesLocked(frame_queue->SizeLocked());
+        if (MustUseMonitor()) {
+          base::AutoLock monitor_locker(GetMonitorLock());
+          while (!frame_queue->IsEmptyLocked()) {
+            std::optional<NativeFrameType> popped_frame =
+                frame_queue->PopLocked();
+            MonitorPopFrameLocked(popped_frame.value());
+            frames_to_destroy.push_back(std::move(popped_frame.value()));
+          }
+        } else {
+          while (!frame_queue->IsEmptyLocked()) {
+            std::optional<NativeFrameType> popped_frame =
+                frame_queue->PopLocked();
+            frames_to_destroy.push_back(std::move(popped_frame.value()));
+          }
         }
       }
+      closed_total_frames_ =
+          frame_queue->TotalFramesLocked() - initial_total_frames_;
+      closed_discarded_frames_ =
+          frame_queue->DiscardedFramesLocked() - initial_discarded_frames_;
+      if (transferred_source) {
+        // These frames will be discarded by the transferred source when it
+        // processes the Close() task, so we must account for them now before
+        // we release our reference to the shared queue.
+        closed_discarded_frames_ += frame_queue->SizeLocked();
+      }
     }
-
-    // Invalidating the handle will release our reference to the queue.
-    // If this was the last reference (i.e., not transferred), it will
-    // eventually destroy the queue and any remaining audio frames in it.
-    frame_queue_handle_.Invalidate();
   }
 
-  // frames_to_destroy goes out of scope here: Popped video frames are destroyed
-  // (if any were popped).
-  // frame_queue goes out of scope here: The queue and remaining audio frames
-  // are destroyed if this was the last reference.
+  // frames_to_destroy goes out of scope here: Popped frames are destroyed (if
+  // any were popped).
+  // frame_queue goes out of scope here: The queue and remaining frames are
+  // destroyed if this was the last reference.
 }
 
 template <typename NativeFrameType>
 void FrameQueueUnderlyingSource<NativeFrameType>::QueueFrame(
     NativeFrameType media_frame) {
-  bool should_send_frame_to_stream;
   scoped_refptr<FrameQueue<NativeFrameType>> frame_queue;
+  scoped_refptr<base::SequencedTaskRunner> transferred_runner;
+  CrossThreadPersistent<FrameQueueUnderlyingSource<NativeFrameType>>
+      transferred_source;
   {
     base::AutoLock locker(lock_);
-    if (transferred_source_) {
-      transferred_source_->QueueFrame(std::move(media_frame));
-      return;
-    }
-    should_send_frame_to_stream = num_pending_pulls_ > 0;
-    // Increment total frames after forwarding check, so it only counts frames
-    // that are NOT forwarded to the transferred source.
-    total_frames_++;
-
-    frame_queue = frame_queue_handle_.Queue();
+    frame_queue = frame_queue_;
     if (!frame_queue) {
-      discarded_frames_++;
+      closed_total_frames_++;
+      closed_discarded_frames_++;
       return;
     }
-  }
 
-  bool did_discard = false;
-  if (MustUseMonitor()) {
-    base::AutoLock queue_locker(frame_queue->GetLock());
-    base::AutoLock monitor_locker(GetMonitorLock());
-    std::optional<NativeFrameType> oldest_frame = frame_queue->PeekLocked();
-    NewFrameAction action = AnalyzeNewFrameLocked(media_frame, oldest_frame);
-    switch (action) {
-      case NewFrameAction::kPush: {
-        MonitorPushFrameLocked(media_frame);
-        std::optional<NativeFrameType> replaced_frame =
-            frame_queue->PushLocked(std::move(media_frame));
-        if (replaced_frame.has_value()) {
-          MonitorPopFrameLocked(replaced_frame.value());
-          did_discard = true;
+    // Push `media_frame` under `lock_`, before checking for pending pulls.
+    // Holding `lock_` keeps `Close()` from draining the queue between
+    // getting `frame_queue` and the push.
+    if (MustUseMonitor()) {
+      base::AutoLock queue_locker(frame_queue->GetLock());
+      base::AutoLock monitor_locker(GetMonitorLock());
+      std::optional<NativeFrameType> oldest_frame = frame_queue->PeekLocked();
+      NewFrameAction action = AnalyzeNewFrameLocked(media_frame, oldest_frame);
+      switch (action) {
+        case NewFrameAction::kPush: {
+          MonitorPushFrameLocked(media_frame);
+          std::optional<NativeFrameType> replaced_frame =
+              frame_queue->PushLocked(std::move(media_frame));
+          if (replaced_frame.has_value()) {
+            MonitorPopFrameLocked(replaced_frame.value());
+          }
+          break;
         }
-        break;
+        case NewFrameAction::kReplace: {
+          MonitorPushFrameLocked(media_frame);
+          if (oldest_frame.has_value()) {
+            MonitorPopFrameLocked(oldest_frame.value());
+          }
+
+          // Explicitly pop the old frame and push the new one since the
+          // `frame_pool_size_` limit has been reached and it may be smaller
+          // than the maximum size of `frame_queue`.
+          if (frame_queue->PopLocked().has_value()) {
+            frame_queue->IncrementDiscardedFramesLocked();
+          }
+          // Pushing should be safe without drop since we just popped a frame.
+          frame_queue->PushLocked(std::move(media_frame));
+          break;
+        }
+        case NewFrameAction::kDrop:
+          // Drop `media_frame` by returning without doing anything with it.
+          frame_queue->IncrementTotalFramesLocked();
+          frame_queue->IncrementDiscardedFramesLocked();
+          return;
       }
-      case NewFrameAction::kReplace: {
-        MonitorPushFrameLocked(media_frame);
-        if (oldest_frame.has_value()) {
-          MonitorPopFrameLocked(oldest_frame.value());
-        }
-
-        // Explicitly pop the old frame and push the new one since the
-        // |frame_pool_size_| limit has been reached and it may be smaller
-        // than the maximum size of |frame_queue|.
-        if (frame_queue->PopLocked().has_value()) {
-          did_discard = true;
-        }
-        // Pushing should be safe without drop since we just popped a frame.
-        frame_queue->PushLocked(std::move(media_frame));
-        break;
-      }
-      case NewFrameAction::kDrop:
-        // Drop |media_frame| by returning without doing anything with it.
-        did_discard = true;
-        should_send_frame_to_stream = false;
-        break;
+    } else {
+      frame_queue->Push(std::move(media_frame));
     }
-  } else {
-    // Push returns the dropped frame if the queue is full.
-    if (frame_queue->Push(std::move(media_frame)).has_value()) {
-      did_discard = true;
+
+    if (transferred_source_ && transferred_runner_) {
+      transferred_runner = transferred_runner_;
+      transferred_source = transferred_source_;
     }
   }
 
-  if (did_discard) {
-    base::AutoLock locker(lock_);
-    discarded_frames_++;
-  }
-  if (!should_send_frame_to_stream) {
+  // The pending pulls live in the shared queue, so this is correct whether the
+  // consumer is this source or a transferred source on another thread.
+  // No wake-up is lost: this function pushes before checking for pending
+  // pulls, and `Pull()` increments the pending pulls before checking whether
+  // the queue is empty. Since the queue's lock serializes these steps, at
+  // least one of `Pull()` and `QueueFrame()` posts
+  // `MaybeSendFrameFromQueueToStream()`.
+  if (!frame_queue->HasPendingPulls()) {
     return;
   }
 
-  PostCrossThreadTask(
-      *realm_task_runner_, FROM_HERE,
-      CrossThreadBindOnce(&FrameQueueUnderlyingSource<
-                              NativeFrameType>::MaybeSendFrameFromQueueToStream,
-                          WrapCrossThreadPersistent(this)));
+  // Wake up whichever source is currently consuming the queue.
+  if (transferred_source) {
+    PostCrossThreadTask(
+        *transferred_runner, FROM_HERE,
+        CrossThreadBindOnce(
+            &FrameQueueUnderlyingSource<
+                NativeFrameType>::MaybeSendFrameFromQueueToStream,
+            std::move(transferred_source)));
+  } else {
+    PostCrossThreadTask(
+        *realm_task_runner_, FROM_HERE,
+        CrossThreadBindOnce(
+            &FrameQueueUnderlyingSource<
+                NativeFrameType>::MaybeSendFrameFromQueueToStream,
+            WrapCrossThreadPersistent(this)));
+  }
 }
 
 template <typename NativeFrameType>
@@ -322,8 +358,8 @@ void FrameQueueUnderlyingSource<NativeFrameType>::Trace(
 template <typename NativeFrameType>
 int FrameQueueUnderlyingSource<NativeFrameType>::NumPendingPullsForTesting()
     const {
-  base::AutoLock locker(lock_);
-  return num_pending_pulls_;
+  auto frame_queue = Queue();
+  return frame_queue ? frame_queue->NumPendingPulls() : 0;
 }
 
 template <typename NativeFrameType>
@@ -335,6 +371,7 @@ double FrameQueueUnderlyingSource<NativeFrameType>::DesiredSizeForTesting()
 
 template <typename NativeFrameType>
 void FrameQueueUnderlyingSource<NativeFrameType>::TransferSource(
+    scoped_refptr<base::SequencedTaskRunner> transferred_runner,
     CrossThreadPersistent<FrameQueueUnderlyingSource<NativeFrameType>>
         transferred_source,
     base::TimeTicks time_origin,
@@ -344,21 +381,42 @@ void FrameQueueUnderlyingSource<NativeFrameType>::TransferSource(
   base::AutoLock locker(lock_);
   if (!transferred_source_cleared_) {
     DCHECK(!transferred_source_);
+    transferred_runner_ = std::move(transferred_runner);
     transferred_source_ = std::move(transferred_source);
+    // |frame_queue_|, including its pending-pull count, is shared with
+    // |transferred_source_|. Any pulls pending at this point were issued by
+    // this source's stream, which CloseController() closes below, so they
+    // will never be fulfilled. Reset the count so they are not attributed to
+    // |transferred_source_|; otherwise it would be sent frames for reads it
+    // never issued, possibly before its stream has started.
+    //
+    // This cannot discard a pull issued by |transferred_source_|: the
+    // destination stream first reads the cross-realm stream piped from this
+    // source's stream, and only starts pulling |transferred_source_| after
+    // that stream closes, which requires the CloseController() call below.
+    if (frame_queue_) {
+      frame_queue_->ResetPendingPulls();
+    }
   }
   CloseController();
-  frame_queue_handle_.Invalidate();
 }
 
 template <typename NativeFrameType>
 void FrameQueueUnderlyingSource<NativeFrameType>::ClearTransferredSource() {
+  DCHECK(realm_task_runner_->RunsTasksInCurrentSequence());
   base::AutoLock locker(lock_);
   transferred_source_cleared_ = true;
-  if (transferred_source_) {
-    discarded_frames_ += transferred_source_->DiscardedAndQueuedFrames();
-    total_frames_ += transferred_source_->TotalFrames();
-  }
   transferred_source_.Clear();
+  transferred_runner_ = nullptr;
+  auto frame_queue = std::move(frame_queue_);
+  if (frame_queue) {
+    base::AutoLock queue_locker(frame_queue->GetLock());
+    closed_total_frames_ =
+        frame_queue->TotalFramesLocked() - initial_total_frames_;
+    closed_discarded_frames_ = frame_queue->DiscardedFramesLocked() -
+                               initial_discarded_frames_ +
+                               frame_queue->SizeLocked();
+  }
 }
 
 template <typename NativeFrameType>
@@ -374,15 +432,26 @@ template <typename NativeFrameType>
 void FrameQueueUnderlyingSource<
     NativeFrameType>::MaybeSendFrameFromQueueToStream() {
   DCHECK(realm_task_runner_->RunsTasksInCurrentSequence());
-  auto frame_queue = frame_queue_handle_.Queue();
-  if (!frame_queue)
-    return;
-
+  scoped_refptr<FrameQueue<NativeFrameType>> frame_queue;
   {
     base::AutoLock locker(lock_);
-    if (num_pending_pulls_ == 0)
+    // Once this source has been transferred, the pending pulls in the shared
+    // queue belong to the transferred source. A wake-up task posted before the
+    // transfer must not consume them, nor pop frames into our closed
+    // controller.
+    if (transferred_source_ || transferred_source_cleared_) {
       return;
+    }
+    frame_queue = frame_queue_;
   }
+  if (!frame_queue) {
+    return;
+  }
+
+  if (!frame_queue->HasPendingPulls()) {
+    return;
+  }
+
   while (true) {
     std::optional<NativeFrameType> media_frame = frame_queue->Pop();
     if (!media_frame.has_value())
@@ -410,10 +479,8 @@ void FrameQueueUnderlyingSource<
     // Update the monitor after creating the Blink VideoFrame to avoid
     // temporarily removing the frame from the monitor.
     MaybeMonitorPopFrameId(frame_id);
-    {
-      base::AutoLock locker(lock_);
-      if (--num_pending_pulls_ == 0)
-        return;
+    if (!frame_queue->DecrementPendingPulls()) {
+      return;
     }
   }
 }
@@ -422,7 +489,11 @@ template <typename NativeFrameType>
 void FrameQueueUnderlyingSource<NativeFrameType>::EnqueueBlinkFrame(
     ScriptWrappable* blink_frame) const {
   DCHECK(realm_task_runner_->RunsTasksInCurrentSequence());
-  if (GetExecutionContext() && !GetExecutionContext()->IsContextDestroyed()) {
+  // Controller() is null until the stream starts this source. For example, a
+  // transferred source is only started after the stream it is concatenated
+  // with has been fully read.
+  if (Controller() && GetExecutionContext() &&
+      !GetExecutionContext()->IsContextDestroyed()) {
     Controller()->Enqueue(blink_frame);
   }
 }
@@ -566,39 +637,31 @@ bool FrameQueueUnderlyingSource<
 template <typename NativeFrameType>
 uint64_t FrameQueueUnderlyingSource<NativeFrameType>::TotalFrames() const {
   base::AutoLock locker(lock_);
-  if (transferred_source_) {
-    return total_frames_ + transferred_source_->TotalFrames();
+  if (frame_queue_) {
+    return frame_queue_->TotalFrames() - initial_total_frames_;
   }
-  return total_frames_;
+  return closed_total_frames_;
 }
 
 template <typename NativeFrameType>
 uint64_t FrameQueueUnderlyingSource<NativeFrameType>::DiscardedFrames() const {
   base::AutoLock locker(lock_);
-  if (transferred_source_) {
-    return discarded_frames_ + transferred_source_->DiscardedFrames();
+  if (frame_queue_) {
+    return frame_queue_->DiscardedFrames() - initial_discarded_frames_;
   }
-  return discarded_frames_;
+  return closed_discarded_frames_;
 }
 
 template <typename NativeFrameType>
 uint64_t FrameQueueUnderlyingSource<NativeFrameType>::DiscardedAndQueuedFrames()
     const {
   base::AutoLock locker(lock_);
-
-  if (transferred_source_) {
-    return discarded_frames_ + transferred_source_->DiscardedAndQueuedFrames();
+  if (frame_queue_) {
+    base::AutoLock queue_locker(frame_queue_->GetLock());
+    return frame_queue_->DiscardedFramesLocked() - initial_discarded_frames_ +
+           frame_queue_->SizeLocked();
   }
-
-  // Absorb unread frames in the shared queue before clearing reference, as
-  // they will be dropped when the source shuts down.
-  wtf_size_t queue_size = 0;
-  auto queue = frame_queue_handle_.Queue();
-  if (queue) {
-    base::AutoLock queue_locker(queue->GetLock());
-    queue_size = queue->SizeLocked();
-  }
-  return discarded_frames_ + queue_size;
+  return closed_discarded_frames_;
 }
 
 template class MODULES_TEMPLATE_EXPORT

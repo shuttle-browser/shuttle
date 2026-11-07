@@ -16,8 +16,6 @@
 #include "chrome/browser/ntp_tiles/chrome_popular_sites_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/supervised_user/supervised_user_service_factory.h"
-#include "chrome/browser/supervised_user/supervised_user_url_filtering_service_factory.h"
 #include "components/history/core/browser/top_sites.h"
 #include "components/image_fetcher/core/image_fetcher_impl.h"
 #include "components/ntp_tiles/features.h"
@@ -30,22 +28,23 @@
 #if BUILDFLAG(IS_ANDROID)
 #include "base/feature_list.h"
 #include "chrome/browser/flags/android/chrome_feature_list.h"
-#endif
-
-#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/search/search.h"
 #endif
 
 namespace {
 
-bool ShouldCreateCustomLinksManager() {
+bool ShouldCreatePopularSites(Profile* profile) {
 #if BUILDFLAG(IS_ANDROID)
-  return base::FeatureList::IsEnabled(
-      chrome::android::kMostVisitedTilesCustomization);
-#else
+  if (search::IsWebUiNtpEnabledForDesktopAndroid() &&
+      base::FeatureList::IsEnabled(chrome::android::kUseWebUiNtp3PDSE)) {
+    // TODO(crbug.com/572038495): Remove Popular Sites for 1P NTPs.
+    return search::DefaultSearchProviderIsGoogle(profile);
+  }
   return true;
+#else
+  return false;
 #endif
 }
-
 bool ShouldCreateEnterpriseShortcutsManager() {
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
     BUILDFLAG(IS_CHROMEOS)
@@ -81,18 +80,11 @@ ChromeMostVisitedSitesFactory::NewForProfile(Profile* profile) {
 
   auto most_visited_sites = std::make_unique<ntp_tiles::MostVisitedSites>(
       profile->GetPrefs(), IdentityManagerFactory::GetForProfile(profile),
-      supervised_user::SupervisedUserServiceFactory::GetForProfile(profile),
-      supervised_user::SupervisedUserUrlFilteringServiceFactory::GetForProfile(
-          profile),
       TopSitesFactory::GetForProfile(profile),
-#if BUILDFLAG(IS_ANDROID)
-      ChromePopularSitesFactory::NewForProfile(profile),
-#else
-      nullptr,
-#endif
-      ShouldCreateCustomLinksManager()
-          ? ChromeCustomLinksManagerFactory::NewForProfile(profile)
+      ShouldCreatePopularSites(profile)
+          ? ChromePopularSitesFactory::NewForProfile(profile)
           : nullptr,
+      ChromeCustomLinksManagerFactory::NewForProfile(profile),
       ShouldCreateEnterpriseShortcutsManager()
           ? ChromeEnterpriseShortcutsManagerFactory::NewForProfile(profile)
           : nullptr,

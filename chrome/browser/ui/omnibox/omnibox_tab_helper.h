@@ -12,7 +12,6 @@
 #include "base/scoped_observation.h"
 #include "base/timer/elapsed_timer.h"
 #include "components/omnibox/common/omnibox_focus_state.h"
-#include "components/page_content_annotations/content/page_content_extraction_service.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
 #include "mojo/public/cpp/bindings/receiver.h"
@@ -31,7 +30,6 @@ class Profile;
 // rendering based on the web contents.
 class OmniboxTabHelper
     : public content::WebContentsUserData<OmniboxTabHelper>,
-      public page_content_annotations::PageContentExtractionService::Observer,
       public content::WebContentsObserver,
       public blink::mojom::PaidContentMetadataObserver {
  public:
@@ -88,11 +86,6 @@ class OmniboxTabHelper
   friend class content::WebContentsUserData<OmniboxTabHelper>;
   WEB_CONTENTS_USER_DATA_KEY_DECL();
 
-  // page_content_annotations::PageContentExtractionService::Observer
-  void OnPageContentExtracted(
-      content::Page& page,
-      page_content_annotations::PageContent page_content) override;
-
   // content::WebContentsObserver
   void PrimaryPageChanged(content::Page& page) override;
   void PrimaryMainDocumentElementAvailable() override;
@@ -129,14 +122,6 @@ class OmniboxTabHelper
   // Whether the timings from a navigation to the omnibox being focused have
   // been logged for this navigation.
   bool logged_current_navigation_timings_ = false;
-
-  // Observer to observer Annotated Page Content updates. Updates are fire on
-  // every page, not only the current tab. The page content is generated a few
-  // seconds after page load, once the page has stabilized.
-  base::ScopedObservation<
-      page_content_annotations::PageContentExtractionService,
-      page_content_annotations::PageContentExtractionService::Observer>
-      page_content_service_observation_{this};
 
   base::ObserverList<Observer> observers_;
 

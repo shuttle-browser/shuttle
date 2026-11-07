@@ -9,6 +9,7 @@ import bisect
 import code
 import collections
 import contextlib
+import gc
 import itertools
 import logging
 import os
@@ -40,7 +41,6 @@ _THRESHOLD_FOR_PAGER = 50
 def _LessPipe():
   """Output to `less`. Yields a file object to write to."""
   try:
-    # pylint: disable=unexpected-keyword-arg
     proc = subprocess.Popen(
       ['less'], stdin=subprocess.PIPE, stdout=sys.stdout, encoding='utf-8'
     )
@@ -167,7 +167,11 @@ class _Session:
     after = after if after is not None else self._size_infos[1]
     return diff.Diff(before, after, sort=sort)
 
-  def _PrintUploadCommand(self, file_to_upload, is_internal=False):
+  def _PrintUploadCommand(self, file_to_upload, size_info):
+    is_internal = any(
+      s.source_path.startswith('clank') or s.object_path.startswith('clank')
+      for s in size_info.raw_symbols
+    )
     oneoffs_dir = 'oneoffs'
     visibility = '-a public-read '
     if is_internal:
@@ -204,9 +208,7 @@ class _Session:
     assert to_file.endswith('.size'), 'to_file should end with .size'
 
     file_format.SaveSizeInfo(size_info, to_file)
-
-    is_internal = len(size_info.symbols.WherePathMatches('^clank')) > 0
-    self._PrintUploadCommand(to_file, is_internal)
+    self._PrintUploadCommand(to_file, size_info)
 
   def _SaveDeltaSizeInfo(self, size_info, to_file=None):
     """Writes a .sizediff file.
@@ -219,8 +221,7 @@ class _Session:
     assert to_file.endswith('.sizediff'), 'to_file should end with .sizediff'
 
     file_format.SaveDeltaSizeInfo(size_info, to_file)
-    is_internal = len(size_info.symbols.WherePathMatches('^clank')) > 0
-    self._PrintUploadCommand(to_file, is_internal)
+    self._PrintUploadCommand(to_file, size_info)
 
   def _SizeStats(self, size_info=None):
     """Prints some statistics for the given size info.
@@ -578,9 +579,7 @@ class _Session:
       if isinstance(value, types.ModuleType):
         continue
       if key.startswith('size_info'):
-        # pylint: disable=no-member
         lines.append(f'  {key}: Loaded from {value.size_path}')
-        # pylint: enable=no-member
     lines.append('*' * 80)
     return '\n'.join(lines)
 
@@ -615,6 +614,10 @@ def Run(args, on_config_error):
     if not path.endswith('.size') and not path.endswith('.sizediff'):
       on_config_error('All inputs must end with ".size" or ".sizediff"')
 
+  # Loading creates millions of long-lived objects, which makes cyclic GC
+  # passes slow.
+  gc.disable()
+
   size_infos = []
   for path in args.inputs:
     logging.warning('Loading %s', path)
@@ -631,11 +634,15 @@ def Run(args, on_config_error):
     logging.info('Running query from command-line.')
     session.Eval(args.query)
   else:
+    # Re-enable GC for interactive sessions, but exclude already-loaded objects
+    # from future collections.
+    gc.freeze()
+    gc.enable()
     logging.info('Entering interactive console.')
     session.GoInteractive()
 
   # Exit without running GC, which can save multiple seconds due the large
-  # number of objects created. It meants atexit and __del__ calls are not
+  # number of objects created. It means atexit and __del__ calls are not
   # made, but this shouldn't matter for console.
   sys.stdout.flush()
   sys.stderr.flush()

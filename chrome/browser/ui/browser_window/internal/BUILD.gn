@@ -36,7 +36,7 @@ source_set("internal") {
     # //c/b/ui/browser_window.
     visibility = [
       ":*",
-      "//chrome/browser/ui",
+      "//chrome/browser",
     ]
     sources += [
       "android/android_base_window.cc",
@@ -67,15 +67,13 @@ source_set("internal") {
       "embedder_browser_window_features.cc",
       "global_browser_collection_platform_delegate_non_android.cc",
     ]
-    public_deps = [
-      "//chrome/browser:browser_public_dependencies",
-      "//chrome/browser/ui:browser_live_tab_context",
-    ]
+    public_deps = [ "//chrome/browser/ui:browser_live_tab_context" ]
 
     deps += [
       "//chrome/browser:global_features",
       "//chrome/browser/devtools",
       "//chrome/browser/prefs",
+      "//chrome/browser/signin",
       "//chrome/browser/ui:browser_actions",
       "//chrome/browser/ui:browser_command_controller",
       "//chrome/browser/ui:browser_content_setting_bubble_model_delegate",
@@ -107,12 +105,14 @@ source_set("internal") {
       "//chrome/browser/ui/tabs/tab_strip_api/controllers",
       "//chrome/browser/ui/tabs/tab_strip_api/tab_strip_model_impl",
       "//chrome/browser/ui/toasts",
+      "//chrome/browser/ui/toolbar",
       "//chrome/browser/ui/toolbar/chrome_labs",
       "//chrome/browser/ui/views:color_provider_browser_helper",
       "//chrome/browser/ui/views/animations",
       "//chrome/browser/ui/views/download",
       "//chrome/browser/ui/views/frame:contents_border_controller",
       "//chrome/browser/ui/views/frame:find_bar_owner_views",
+      "//chrome/browser/ui/views/frame:horizontal_tab_strip_region_view",
       "//chrome/browser/ui/views/frame:multi_contents_view",
       "//chrome/browser/ui/views/fullscreen_control",
       "//chrome/browser/ui/views/interaction:impl",
@@ -175,10 +175,10 @@ source_set("internal") {
     if (is_win) {
       deps += [ "//chrome/browser/ui/views/frame:windows_taskbar_icon_updater" ]
     }
-  }
 
-  if (enable_extensions_core) {
-    deps += [ "//chrome/browser/extensions" ]
+    if (enable_extensions_core) {
+      deps += [ "//chrome/browser/extensions" ]
+    }
   }
 
   if (!is_android) {
@@ -255,6 +255,7 @@ if (is_android) {
       "android/java/src/org/chromium/chrome/browser/ui/browser_window/BrowserWindowInterfaceIteratorAndroid.java",
       "android/java/src/org/chromium/chrome/browser/ui/browser_window/GlobalBrowserCollectionPlatformDelegate.java",
     ]
+    deps = [ "//chrome/browser/ui/browser_window/public/android:jni" ]
   }
 
   robolectric_library("junit") {
@@ -286,6 +287,7 @@ if (is_android) {
       "//components/browser_ui/desktop_windowing/android:java",
       "//third_party/androidx:androidx_core_core_java",
       "//third_party/androidx:androidx_test_core_java",
+      "//third_party/jni_zero:jni_zero_java",
       "//third_party/junit",
       "//third_party/mockito:mockito_java",
       "//ui/base:ui_base_types_java",

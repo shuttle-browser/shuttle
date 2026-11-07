@@ -24,13 +24,10 @@
 #include "chrome/browser/ui/tabs/tab_muted_utils.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/event_utils.h"
-#include "chrome/browser/ui/views/frame/base_tab_strip_region_view.h"
 #include "chrome/browser/ui/views/frame/browser_frame_view.h"
 #include "chrome/browser/ui/views/frame/themed_background.h"
-#include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
 #include "chrome/browser/ui/views/tabs/common/split_tab_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_node.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_z_order_manager.h"
@@ -40,8 +37,7 @@
 #include "chrome/browser/ui/views/tabs/common/tab_strip_utils.h"
 #include "chrome/browser/ui/views/tabs/common/tab_strip_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_view_horizontal_layout.h"
-#include "chrome/browser/ui/views/tabs/common/tab_view_vertical_layout.h"
-#include "chrome/browser/ui/views/tabs/common/vertical_tab_style_views.h"
+#include "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_controller.h"
 #include "chrome/browser/ui/views/tabs/shared/tab_strip_types.h"
 #include "chrome/browser/ui/views/tabs/tab/alert_indicator_button.h"
 #include "chrome/browser/ui/views/tabs/tab/glow_hover_controller.h"
@@ -49,6 +45,7 @@
 #include "chrome/browser/ui/views/tabs/tab/tab_close_button.h"
 #include "chrome/browser/ui/views/tabs/tab/tab_icon.h"
 #include "chrome/browser/ui/views/tabs/tab/tab_title.h"
+#include "chrome/browser/ui/views/tabs/tab_slot_controller.h"
 #include "chrome/browser/ui/views/tabs/tab_style_views.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
 #include "chrome/common/buildflags.h"
@@ -69,6 +66,7 @@
 #include "ui/base/theme_provider.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/compositor/clip_recorder.h"
+#include "ui/compositor/compositor.h"
 #include "ui/compositor/layer.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/events/types/event_type.h"
@@ -120,9 +118,9 @@ TabStripUserGestureDetails GetGestureDetail(const ui::Event& event) {
       TabStripUserGestureDetails::GestureType::kOther, event.time_stamp());
   TabStripUserGestureDetails::GestureType type =
       TabStripUserGestureDetails::GestureType::kOther;
-  if (event.type() == ui::EventType::kMousePressed) {
+  if (event.IsMouseEvent()) {
     type = TabStripUserGestureDetails::GestureType::kMouse;
-  } else if (event.type() == ui::EventType::kGestureTapDown) {
+  } else if (event.IsGestureEvent()) {
     type = TabStripUserGestureDetails::GestureType::kTouch;
   }
   gesture_detail.type = type;
@@ -131,9 +129,6 @@ TabStripUserGestureDetails GetGestureDetail(const ui::Event& event) {
 
 std::unique_ptr<TabView::LayoutManager> CreateTabViewLayout(
     TabStripOrientation orientation) {
-  if (orientation == TabStripOrientation::kVertical) {
-    return std::make_unique<TabViewVerticalLayout>();
-  }
   return std::make_unique<TabViewHorizontalLayout>();
 }
 }  // namespace
@@ -155,7 +150,7 @@ class TabStyleViewDelegateImpl : public TabStyleViewDelegate {
            TabStyle::TabSelectionState::kSelected;
   }
 
-  bool IsHovering() const override { return tab_view_->IsMouseHovered(); }
+  bool IsHovering() const override { return tab_view_->IsHovering(); }
 
   bool IsClosing() const override { return tab_view_->IsClosing(); }
   bool IsDragging() const override { return tab_view_->IsDragging(); }
@@ -372,15 +367,6 @@ TabView::TabView(TabCollectionNode* collection_node)
           &TabView::OnTabDataChanged, base::Unretained(this)));
 
   CHECK(collection_node_->GetController());
-  if (orientation_ == TabStripOrientation::kVertical) {
-    auto* state_controller =
-        collection_node_->GetController()->GetStateController();
-    CHECK(state_controller);
-    OnCollapseStateChanged(state_controller->GetCollapseState());
-    collapsed_state_changed_subscription_ =
-        state_controller->RegisterOnCollapseChanged(base::BindRepeating(
-            &TabView::OnCollapseStateChanged, base::Unretained(this)));
-  }
   close_button_observation_.Observe(close_button_);
 }
 
@@ -504,7 +490,7 @@ void TabView::Layout(PassKey) {
   LayoutSuperclass<views::View>(this);
   if (orientation_ == TabStripOrientation::kHorizontal) {
     icon_->ResizeDiscardIndicatorRadiusForWidth(
-        width() - 2 * tab_styling()->tab_style()->GetBottomCornerRadius());
+        width() - 2 * tab_styling()->tab_style()->GetBottomExtensionWidth());
   }
 }
 
@@ -518,28 +504,15 @@ bool TabView::OnKeyPressed(const ui::KeyEvent& event) {
   if (std::optional<event_utils::ExtendSelectionDirection> direction =
           event_utils::GetExtendSelectionCommandForKeyboardEvent(
               event, layout_orientation)) {
-    const bool leading =
-        *direction == event_utils::ExtendSelectionDirection::kPrevious;
-    const TabCollectionNode* adjacent_node =
-        collection_node_->GetController()->GetAdjacentTab(GetTabInterface(),
-                                                          leading);
-    if (adjacent_node) {
-      if (TabView* adjacent_tab_view =
-              views::AsViewClass<TabView>(adjacent_node->view())) {
-        if (!selected_) {
-          collection_node_->GetController()->SelectTab(GetTabInterface(),
-                                                       GetGestureDetail(event));
-        }
-        collection_node_->GetController()->ExtendSelectionTo(
-            adjacent_tab_view->GetTabInterface());
-        base::RecordAction(
-            base::UserMetricsAction("TabMultiSelect_ExtendSelectionTo"));
-        if (views::FocusManager* focus_manager = GetFocusManager()) {
-          focus_manager->SetFocusedViewWithReason(
-              adjacent_tab_view,
-              views::FocusManager::FocusChangeReason::kFocusTraversal);
-        }
-      }
+    switch (*direction) {
+      case event_utils::ExtendSelectionDirection::kPrevious:
+        collection_node_->GetController()->ExtendSelectionPrevious(
+            GetTabInterface(), GetGestureDetail(event));
+        break;
+      case event_utils::ExtendSelectionDirection::kNext:
+        collection_node_->GetController()->ExtendSelectionNext(
+            GetTabInterface(), GetGestureDetail(event));
+        break;
     }
     return true;
   }
@@ -604,6 +577,13 @@ bool TabView::OnMousePressed(const ui::MouseEvent& event) {
 
   if (event.IsOnlyLeftMouseButton() ||
       (event.IsOnlyRightMouseButton() && event.flags() & ui::EF_FROM_TOUCH)) {
+    // Changing the selection may cause our bounds to change. If that happens
+    // the location of the event may no longer be valid. Create a copy of the
+    // event in the root view's coordinate system, which won't change, and
+    // recreate an event after changing so the coordinates are correct.
+    views::View* root_view = GetWidget()->GetRootView();
+    ui::MouseEvent event_in_root(event, views::AsViewClass<View>(this),
+                                 root_view);
     if (event.IsShiftDown() && IsSelectionModifierDown(event)) {
       controller->AddSelectionFromAnchorTo(GetTabInterface());
       base::RecordAction(
@@ -623,11 +603,13 @@ bool TabView::OnMousePressed(const ui::MouseEvent& event) {
       controller->SelectTab(GetTabInterface(), GetGestureDetail(event));
       base::RecordAction(base::UserMetricsAction("SwitchTab_Click"));
     }
+    ui::MouseEvent cloned_event(event_in_root, root_view,
+                                views::AsViewClass<View>(this));
     // Potentially start the drag for the mouse press.
     // Follow-up mouse-movement events will update the drag controller and
     // eventually kick off the drag-loop.
     controller->GetDragHandler().InitializeDrag(
-        *collection_node_, original_selection_model, event);
+        *collection_node_, original_selection_model, cloned_event);
   }
   return true;
 }
@@ -723,18 +705,38 @@ void TabView::OnGestureEvent(ui::GestureEvent* event) {
 
   switch (event->type()) {
     case ui::EventType::kGestureTapDown: {
-      // Handle TapDown to receive subsequent events like LongPress or Tap.
-      // We don't call InitializeDrag here to allow scrolling.
+      // Handle TapDown to receive subsequent events like LongPress or Tap, and
+      // select the tab immediately on touch down (matching OnMousePressed and
+      // ensuring touch/pen taps on ChromeOS that exceed touch slop still select
+      // the tab). We don't call InitializeDrag here to allow scrolling.
+      if (!selected_) {
+        controller->SelectTab(GetTabInterface(), GetGestureDetail(*event));
+        base::RecordAction(base::UserMetricsAction("SwitchTab_Click"));
+      }
       event->SetHandled();
       break;
     }
 
     case ui::EventType::kGestureTap: {
-      // Short press release. Select the tab.
-      if (!selected_) {
-        controller->SelectTab(GetTabInterface(), GetGestureDetail(*event));
-      }
+      // Short press release. Activate/select the tab (matching OnMouseReleased
+      // for multi-selected or split tabs).
+      controller->SelectTab(GetTabInterface(), GetGestureDetail(*event));
       event->SetHandled();
+      break;
+    }
+
+    case ui::EventType::kGestureScrollBegin: {
+      // If the containing ScrollView cannot scroll along the gesture axis,
+      // start dragging the tab rather than letting ScrollView consume the
+      // gesture.
+      if (!CanScrollAlongAxis(this, orientation_, *event)) {
+        if (!selected_) {
+          controller->SelectTab(GetTabInterface(), GetGestureDetail(*event));
+        }
+        controller->GetDragHandler().InitializeDrag(
+            *collection_node_, original_selection_model, *event);
+        event->SetHandled();
+      }
       break;
     }
 
@@ -796,6 +798,7 @@ void TabView::AddedToWidget() {
           &TabView::OnFrameActiveStateChanged, base::Unretained(this)));
 
   OnTabStateChanged();
+  UpdateClipPathAndRoundedCorners();
 
   // Recompute accessible name when the structure changes.
   UpdateAccessibleName();
@@ -870,7 +873,7 @@ void TabView::OnBoundsChanged(const gfx::Rect& previous_bounds) {
 
 void TabView::UpdateParentLayer() {
   views::View::UpdateParentLayer();
-  if (layer()) {
+  if (orientation_ == TabStripOrientation::kVertical && layer()) {
     UpdateLayerRoundedCorners();
   }
 }
@@ -887,6 +890,15 @@ void TabView::OnViewBlurred(views::View* observed_view) {
   }
 }
 
+void TabView::UpdateClipPathAndRoundedCorners() {
+  if (orientation_ == TabStripOrientation::kVertical) {
+    SetClipPath(GetPath());
+    if (layer()) {
+      UpdateLayerRoundedCorners();
+    }
+  }
+}
+
 void TabView::UpdateLayerRoundedCorners() {
   const SkScalar corner_radius = GetCornerRadius();
   layer()->SetRoundedCornerRadius(gfx::RoundedCornersF(corner_radius));
@@ -899,7 +911,12 @@ void TabView::OnThemeChanged() {
 }
 
 bool TabView::GetHitTestMask(SkPath* mask) const {
-  *mask = GetPath();
+  const float scale = GetWidget() && GetWidget()->GetCompositor()
+                          ? GetWidget()->GetCompositor()->device_scale_factor()
+                          : 1.0f;
+  *mask =
+      tab_styling()->GetPath(TabStyle::PathType::kHitTest, scale,
+                             {.render_units = TabStyle::RenderUnits::kDips});
   return true;
 }
 
@@ -967,14 +984,14 @@ views::BubbleBorder::Arrow TabView::GetAnchorPosition() const {
   if (orientation_ == TabStripOrientation::kHorizontal) {
     return views::BubbleBorder::Arrow::TOP_LEFT;
   }
-  if (pinned_ && !collapsed_) {
+  if (pinned_) {
     return views::BubbleBorder::Arrow::TOP_LEFT;
   }
   return views::BubbleBorder::Arrow::LEFT_TOP;
 }
 
 views::BubbleAnchor TabView::GetAnchor() {
-  if (split_ && !collapsed_) {
+  if (split_) {
     return views::BubbleAnchor(parent());
   }
   return views::BubbleAnchor(this);
@@ -993,7 +1010,6 @@ void TabView::ResetCollectionNode() {
   // execution during the rest of this cleanup.
   tab_data_changed_subscription_ = base::CallbackListSubscription();
   tab_state_changed_subscription_ = base::CallbackListSubscription();
-  collapsed_state_changed_subscription_ = base::CallbackListSubscription();
   node_destroyed_subscription_ = base::CallbackListSubscription();
 
   collection_node_ = nullptr;
@@ -1019,8 +1035,8 @@ void TabView::ResetCollectionNode() {
 void TabView::UpdateAccessibleName() {
   CHECK(collection_node_);
 
-  std::u16string name =
-      tabs::GetAccessibleTabLabel(GetTabInterface(), /*is_for_tab=*/true);
+  std::u16string name = tabs::GetAccessibleTabLabel(
+      GetTabInterface(), /*is_for_tab=*/true, &data());
   if (!name.empty()) {
     GetViewAccessibility().SetName(name);
   } else {
@@ -1038,11 +1054,6 @@ void TabView::OnAXNameChanged(ax::mojom::StringAttribute attribute,
   if (GetWidget() && active_) {
     GetWidget()->UpdateAccessibleNameForRootView();
   }
-}
-
-void TabView::OnCollapseStateChanged(
-    tabs::VerticalTabStripCollapseState state) {
-  collapsed_ = state == tabs::VerticalTabStripCollapseState::kCollapsed;
 }
 
 void TabView::OnTabStateChanged() {
@@ -1299,28 +1310,6 @@ bool TabView::IsDragging() const {
     }
   }
   return false;
-}
-
-// static
-int TabView::UncollapsedMinWidth() {
-  // This is the width of a tab in a split that is in a tab group, while the
-  // tab strip is in the narrowest uncollapsed state.
-  return (VerticalTabStripRegionView::kUncollapsedMinWidth -
-          2 * GetLayoutConstant(
-                  LayoutConstant::kVerticalTabStripHorizontalPadding) -
-          SplitTabView::kSplitViewGap - TabGroupView::kTabLeadingPadding) /
-         2;
-}
-
-// static
-int TabView::CollapsedWidth() {
-  return VerticalTabStripRegionView::kCollapsedWidth -
-         2 * GetLayoutConstant(
-                 LayoutConstant::kVerticalTabStripHorizontalPadding);
-}
-
-bool TabView::IsInExpandOnHover(int width) const {
-  return collapsed_ && width > CollapsedWidth();
 }
 
 const tabs::TabInterface* TabView::GetTabInterface() const {

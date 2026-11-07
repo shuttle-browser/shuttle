@@ -16,7 +16,6 @@
 #include "chrome/browser/ui/tabs/tab_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/views/frame/browser_frame_view.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/browser_widget.h"
@@ -57,31 +56,8 @@ BrowserViewLayoutDelegateImpl::GetTabStripType() const {
     return TabStripType::kNone;
   }
 
-  // Determine if there is a vertical tab strip.
-  if (browser_view_->browser()->GetType() ==
-      BrowserWindowInterface::Type::TYPE_NORMAL) {
-    const auto* const controller =
-        tabs::VerticalTabStripStateController::From(browser_view_->browser());
-    if (controller && controller->ShouldDisplayVerticalTabs()) {
-#if BUILDFLAG(IS_MAC)
-      // Do not lay out the vertical tabstrip in content-fullscreen on Mac. This
-      // check cannot be done in BrowserView because the immersive mode
-      // controller itself relies on BrowserView reporting which tab strip it
-      // *would* draw, creating a circular dependency/race condition.
-      if (fullscreen_utils::IsInContentFullscreen(browser_view_->browser())) {
-        return TabStripType::kNone;
-      }
-#endif
-      return TabStripType::kVertical;
-    }
-  }
-
   // Default is horizontal tab strip.
   return TabStripType::kHorizontal;
-}
-
-bool BrowserViewLayoutDelegateImpl::IsVerticalTabStripCollapsed() const {
-  return browser_view_->IsVerticalTabStripCollapsed();
 }
 
 BrowserLayoutParams BrowserViewLayoutDelegateImpl::GetBrowserLayoutParams(
@@ -276,4 +252,8 @@ BrowserViewLayoutDelegateImpl::AddOnGlassModeChangedCallback(
     *current_state_out = false;
   }
   return base::CallbackListSubscription();
+}
+
+int BrowserViewLayoutDelegateImpl::GetRestoredWindowCornerRadius() const {
+  return browser_view_->GetFrameView()->GetRestoredWindowCornerRadius();
 }

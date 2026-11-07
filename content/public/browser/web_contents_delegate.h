@@ -100,6 +100,7 @@ class Origin;
 
 namespace blink {
 class WebGestureEvent;
+class WebMouseEvent;
 enum class ProtocolHandlerSecurityLevel;
 }  // namespace blink
 
@@ -338,18 +339,26 @@ class CONTENT_EXPORT WebContentsDelegate {
   virtual void PreHandleDragExit() {}
   virtual void HandleDragEnded() {}
 
+  // NOTE: For all the `PreHandle...Event()` functions below,
+  //  * Renderers expect consistent event streams, so if you mark e.g. a keydown
+  //    or mousedown event as handled, you should also handle the corresponding
+  //    keyup/mouseup.
+  //  * Doing anything complex to handle, especially if it results in deleting
+  //    objects, risks re-entrancy and UAF bugs. Keep your handlers simple.
+
   // Allows delegates to handle keyboard events before sending to the renderer.
   // See enum for description of return values.
   virtual KeyboardEventProcessingResult PreHandleKeyboardEvent(
       WebContents* source,
       const input::NativeWebKeyboardEvent& event);
 
-  // Allows delegates to handle unhandled keyboard messages coming back from
-  // the renderer. Returns true if the event was handled, false otherwise. A
-  // true value means no more processing should happen on the event. The default
-  // return value is false
-  virtual bool HandleKeyboardEvent(WebContents* source,
-                                   const input::NativeWebKeyboardEvent& event);
+  // Allows delegates to handle mouse events before sending to the renderer.
+  // Returns true if the |event| was handled and thus shouldn't be processed
+  // by the renderer's event handler.
+  // NOTE: Does not currently handle wheel events. These could be added if
+  // desired.
+  virtual bool PreHandleMouseEvent(WebContents* source,
+                                   const blink::WebMouseEvent& event);
 
   // Allows delegates to handle gesture events before sending to the renderer.
   // Returns true if the |event| was handled and thus shouldn't be processed
@@ -358,6 +367,13 @@ class CONTENT_EXPORT WebContentsDelegate {
   // and dispatched after the touches return without being "preventDefault()"ed.
   virtual bool PreHandleGestureEvent(WebContents* source,
                                      const blink::WebGestureEvent& event);
+
+  // Allows delegates to handle unhandled keyboard messages coming back from
+  // the renderer. Returns true if the event was handled, false otherwise. A
+  // true value means no more processing should happen on the event. The default
+  // return value is false
+  virtual bool HandleKeyboardEvent(WebContents* source,
+                                   const input::NativeWebKeyboardEvent& event);
 
   // Called when an external drag event enters the web contents window. Return
   // true to allow dragging and dropping on the web contents window or false to
@@ -513,8 +529,8 @@ class CONTENT_EXPORT WebContentsDelegate {
   // both the value set by the AWC API and browser's "native" resizability.
   virtual bool GetCanResize();
 
-  // Returns whether the window is pinned always-on-top.
-  virtual bool GetIsAlwaysOnTop();
+  // Returns whether the window is an always-on-top popup.
+  virtual bool GetIsAlwaysOnTopPopup();
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
   // Returns whether the RFH can use Additional Windowing Controls (AWC) APIs.
@@ -590,16 +606,6 @@ class CONTENT_EXPORT WebContentsDelegate {
                                          const std::string& protocol,
                                          const GURL& url,
                                          bool user_gesture) {}
-
-  // Result of string search in the page. This includes the number of matches
-  // found and the selection rect (in screen coordinates) for the string found.
-  // If |final_update| is false, it indicates that more results follow.
-  virtual void FindReply(WebContents* web_contents,
-                         int request_id,
-                         int number_of_matches,
-                         const gfx::Rect& selection_rect,
-                         int active_match_ordinal,
-                         bool final_update) {}
 
 #if BUILDFLAG(IS_ANDROID)
   // Provides the rects of the current find-in-page matches.
@@ -905,15 +911,6 @@ class CONTENT_EXPORT WebContentsDelegate {
   virtual bool MaybeCopyContentAreaAsBitmap(
       base::OnceCallback<void(const SkBitmap&)> callback);
 
-  // Gets the page content annotations for the given WebContents.
-  // The callback gets a serialized AnnotatedPageContent proto or an error
-  // message string if extraction failed or is unsupported by the embedder.
-  virtual void GetAIPageContent(
-      WebContents* web_contents,
-      bool include_actionable_elements,
-      base::OnceCallback<void(base::expected<std::string, std::string>)>
-          callback);
-
 #if BUILDFLAG(IS_ANDROID)
   // Allow delegate to override how to take a snapshot of this WebContents into
   // a HardwareBuffer. Return true if the delegate will execute callback with a
@@ -977,6 +974,9 @@ class CONTENT_EXPORT WebContentsDelegate {
 
  protected:
   virtual ~WebContentsDelegate();
+
+  virtual void OnAttached(WebContents* source);
+  virtual void OnDetaching(WebContents* source);
 
  private:
   friend class WebContentsImpl;

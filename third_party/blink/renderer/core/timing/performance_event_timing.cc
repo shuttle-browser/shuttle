@@ -126,7 +126,7 @@ DOMHighResTimeStamp PerformanceEventTiming::processingEnd() const {
 }
 
 Node* PerformanceEventTiming::target() const {
-  return Performance::CanExposeNode(target_) ? target_ : nullptr;
+  return Performance::CanExposeNode(target_, source()) ? target_ : nullptr;
 }
 
 void PerformanceEventTiming::SetTarget(EventTarget* target) {
@@ -172,7 +172,6 @@ bool PerformanceEventTiming::IsReadyForReporting() const {
          HasInteractionId();
 }
 
-
 base::TimeTicks PerformanceEventTiming::GetStartTime() const {
   return reporting_info_.creation_time;
 }
@@ -196,7 +195,7 @@ void PerformanceEventTiming::UpdateFallbackTime(base::TimeTicks fallback_time,
 }
 
 void PerformanceEventTiming::SetDuration(double duration) {
-  // TODO(npm): enable this DCHECK once https://crbug.com/852846 is fixed.
+  // TODO: enable this DCHECK once https://crbug.com/852846 is fixed.
   // DCHECK_LE(0, duration);
   duration_ = duration;
 }

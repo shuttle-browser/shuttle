@@ -6,8 +6,8 @@
 
 #include <array>
 #include <memory>
+#include <ranges>
 
-#include "base/containers/adapters.h"
 #include "base/memory/ptr_util.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/scoped_feature_list.h"
@@ -893,7 +893,7 @@ TEST_P(PaintArtifactCompositorTest, DeeplyNestedClips) {
   // Check the clip nodes.
   const cc::ClipNode* clip_node =
       &GetPropertyTrees().clip_tree().Node(drawing_layer->clip_tree_index());
-  for (const auto& paint_clip_node : base::Reversed(clips)) {
+  for (const auto& paint_clip_node : std::views::reverse(clips)) {
     EXPECT_TRUE(clip_node->AppliesLocalClip());
     EXPECT_EQ(paint_clip_node->PaintClipRect().Rect(), clip_node->clip);
     clip_node = &GetPropertyTrees().clip_tree().Node(clip_node->parent_id);
@@ -5117,12 +5117,12 @@ TEST_P(PaintArtifactCompositorTest, EffectChange) {
   // TODO(wangxianzhu): Probably avoid setting this flag on Effect change.
   EXPECT_TRUE(layer->subtree_property_changed());
   // This is set by cc when propagating ancestor change flag to descendants.
-  EXPECT_TRUE(GetEffectNode(layer).effect_changed);
+  EXPECT_TRUE(GetEffectNode(layer).effect_changed());
   // This is set by PropertyTreeManager.
   EXPECT_TRUE(GetPropertyTrees()
                   .effect_tree()
                   .Node(GetEffectNode(layer).parent_id)
-                  .effect_changed);
+                  .effect_changed());
 
   // Change e2 but not e1.
   layer->ClearSubtreePropertyChangedForTesting();
@@ -5144,11 +5144,11 @@ TEST_P(PaintArtifactCompositorTest, EffectChange) {
   ASSERT_EQ(layer, LayerAt(0));
   // TODO(wangxianzhu): Probably avoid setting this flag on Effect change.
   EXPECT_TRUE(layer->subtree_property_changed());
-  EXPECT_TRUE(GetEffectNode(layer).effect_changed);
+  EXPECT_TRUE(GetEffectNode(layer).effect_changed());
   EXPECT_FALSE(GetPropertyTrees()
                    .effect_tree()
                    .Node(GetEffectNode(layer).parent_id)
-                   .effect_changed);
+                   .effect_changed());
 }
 
 TEST_P(PaintArtifactCompositorTest, DirectlySetScrollOffset) {
@@ -5213,6 +5213,62 @@ TEST_P(PaintArtifactCompositorTest, NoCommitRequestForUnchangedScroll) {
   Update(TestPaintArtifact().ScrollHitTestChunk(*client, scroll_state).Build());
   // This update should not SetNeedsCommit().
   EXPECT_FALSE(host.CommitRequested());
+}
+
+TEST_P(PaintArtifactCompositorTest,
+       CommitRequestForChangedNonCompositedScroll) {
+  auto& host = GetLayerTreeHost();
+  auto scroll_state = ScrollState1(PropertyTreeState::Root(), {}, {});
+  auto& scroll_node = const_cast<ScrollPaintPropertyNode&>(
+      *scroll_state.Transform().ScrollNode());
+  StackTransformPaintPropertyNodeVector scroll_translation_nodes = {
+      &scroll_state.Transform()};
+  EXPECT_EQ(PaintPropertyChangeType::kNodeAddedOrRemoved,
+            scroll_node.NodeChanged());
+
+  auto* hit_test_client =
+      MakeGarbageCollected<FakeDisplayItemClient>("hit_test");
+  auto* contents_client =
+      MakeGarbageCollected<FakeDisplayItemClient>("contents");
+  auto build_artifact = [&]() -> const PaintArtifact& {
+    return TestPaintArtifact()
+        .ScrollHitTestChunk(*hit_test_client, scroll_state)
+        .ScrollingContentsChunk(*contents_client, scroll_state)
+        .Build();
+  };
+
+  Update(build_artifact(), ViewportProperties(), scroll_translation_nodes);
+  EXPECT_EQ(PaintPropertyChangeType::kUnchanged, scroll_node.NodeChanged());
+  EXPECT_TRUE(host.CommitRequested());
+
+  host.CompositeForTest(base::TimeTicks::Now(), true, base::OnceClosure());
+  EXPECT_FALSE(host.CommitRequested());
+
+  // Updating with an unchanged non-composited scroll node should not request a
+  // commit.
+  Update(build_artifact(), ViewportProperties(), scroll_translation_nodes);
+  EXPECT_FALSE(host.CommitRequested());
+
+  // Updating snap_container_data on a non-composited scroll node should clear
+  // its changed flag and request a commit.
+  ScrollPaintPropertyNode::State new_state;
+  new_state.container_rect = scroll_node.ContainerRect();
+  new_state.contents_rect = scroll_node.ContentsRect();
+  new_state.overflow_clip_node = scroll_node.OverflowClipNode();
+  new_state.compositor_element_id = scroll_node.GetCompositorElementId();
+  new_state.user_scrollable_horizontal = scroll_node.UserScrollableHorizontal();
+  new_state.user_scrollable_vertical = scroll_node.UserScrollableVertical();
+  cc::SnapContainerData snap_data;
+  snap_data.SetTargetSnapAreaElementIds(cc::TargetSnapAreaElementIds(
+      CompositorElementId(10), CompositorElementId(20)));
+  new_state.snap_container_data = snap_data;
+  scroll_node.Update(*scroll_node.Parent(), std::move(new_state));
+  EXPECT_EQ(PaintPropertyChangeType::kChangedOnlyValues,
+            scroll_node.NodeChanged());
+
+  Update(build_artifact(), ViewportProperties(), scroll_translation_nodes);
+  EXPECT_EQ(PaintPropertyChangeType::kUnchanged, scroll_node.NodeChanged());
+  EXPECT_TRUE(host.CommitRequested());
 }
 
 TEST_P(PaintArtifactCompositorTest, AddIndirectlyCompositedScrollNodes) {

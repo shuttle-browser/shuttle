@@ -44,7 +44,7 @@ SyncValueStoreCache::SyncValueStoreCache(
 }
 
 SyncValueStoreCache::~SyncValueStoreCache() {
-  DCHECK(IsOnBackendSequence());
+  CHECK(IsOnBackendSequence(), base::NotFatalUntil::M161);
 }
 
 void SyncValueStoreCache::RunWithValueStoreForExtension(

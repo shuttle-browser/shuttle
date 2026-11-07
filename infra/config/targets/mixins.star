@@ -458,10 +458,22 @@ targets.mixin(
     ),
 )
 
+# Used to pin tests that exhibit timing sensitivities on faster machine types
+# (e.g. e4-standard-8) to e2-standard-8.
+targets.mixin(
+    name = "e2-standard-8",
+    swarming = targets.swarming(
+        dimensions = {
+            "machine_type": "e2-standard-8",
+        },
+    ),
+)
+
 targets.mixin(
     name = "emulator-4-cores",
     swarming = targets.swarming(
         dimensions = {
+            "cpu": "x86-64",
             "device_os": None,
             "device_type": None,
             "pool": "chromium.tests.avd",
@@ -474,6 +486,7 @@ targets.mixin(
     name = "emulator-8-cores",
     swarming = targets.swarming(
         dimensions = {
+            "cpu": "x86-64-n4|x86-64",
             "device_os": None,
             "device_type": None,
             "pool": "chromium.tests.avd",
@@ -529,6 +542,13 @@ targets.mixin(
 # TODO(b/300509814): Large device spec should be the default choice.
 # Choose virtual_device_large spec for more ram. This mixin works on emulators
 # only.
+targets.mixin(
+    name = "fuchsia-arm64-large-device-spec",
+    args = [
+        "--device-spec=arm64-emu-large",
+    ],
+)
+
 targets.mixin(
     name = "fuchsia-large-device-spec",
     args = [
@@ -1146,6 +1166,13 @@ targets.mixin(
 )
 
 targets.mixin(
+    name = "ios_smoke_tests",
+    args = [
+        "--run-eg-smoke-tests-only",
+    ],
+)
+
+targets.mixin(
     name = "tvos_runtime_cache_26_0",
     swarming = targets.swarming(
         named_caches = [
@@ -1261,14 +1288,32 @@ targets.mixin(
     ),
 )
 
-# Restricts Windows GPU Gemma 4 AI WPT tasks to NVIDIA discrete GPUs
-# to prevent D3D12 vision compilation crashes on AMD integrated graphics
-# (see https://crbug.com/547946848).
+# Expands Windows GPU AI WPT tasks across both Windows 10 and Windows 11 x86-64
+# discrete GPUs (NVIDIA, Intel Arc/UHD, and discrete AMD Radeon RX 5500 XT /
+# 7600 / 7900 XTX / 9070 XT) while excluding integrated AMD APUs (1002:1638 and
+# 1002:164e) that have < 4 GB dedicated VRAM and fail on-device GPU model
+# preconditions.
+targets.mixin(
+    name = "win_gpu_ai_wpt_dimensions",
+    swarming = targets.swarming(
+        dimensions = {
+            "cpu": "x86-64",
+            "gpu": "10de|8086|1002:7340|1002:744c|1002:7480|1002:7550",
+            "os": "Windows",
+        },
+    ),
+)
+
+# Restricts Windows GPU Gemma 4 AI WPT tasks to Windows 10 and Windows 11 x86-64
+# NVIDIA discrete GPUs to prevent D3D12 vision compilation crashes on AMD
+# integrated graphics (see https://crbug.com/547946848).
 targets.mixin(
     name = "win_gpu_gemma4_ai_wpt_dimensions",
     swarming = targets.swarming(
         dimensions = {
+            "cpu": "x86-64",
             "gpu": "10de",
+            "os": "Windows",
         },
     ),
 )
@@ -1381,7 +1426,7 @@ targets.mixin(
     swarming = targets.swarming(
         dimensions = {
             "display_server": "x11",
-            "gpu": "10de:2184-595.91.07",
+            "gpu": "10de:2184-595.104.02",
             "os": "Ubuntu-24.04",
             "pool": "chromium.tests.gpu",
         },
@@ -1401,12 +1446,12 @@ targets.mixin(
 )
 
 targets.mixin(
-    name = "linux_nvidia_rtx_4070_super_stable",
+    name = "linux_nvidia_rtx_4070_super_wayland_stable",
     swarming = targets.swarming(
         dimensions = {
-            "display_server": "x11",
-            "gpu": "10de:2783-580.95.05",
-            "os": "Ubuntu-24.04",
+            "display_server": "wayland",
+            "gpu": "10de:2783-595.91.07",
+            "os": "Ubuntu-26.04",
             "pool": "chromium.tests.gpu",
         },
     ),
@@ -1445,7 +1490,7 @@ targets.mixin(
             "os": "Mac-26",
         },
         optional_dimensions = {
-            30: {
+            180: {
                 "cpu": "Apple_(Virtual)",
             },
         },
@@ -1774,7 +1819,7 @@ targets.mixin(
             targets.cipd_package(
                 package = "infra/tools/mac_toolchain/${platform}",
                 location = ".",
-                revision = "git_revision:ed58ac9443fe1754e84d596bdaf9961cbaa6e85b",
+                revision = "git_revision:bc2eb815d4eb1d66007cc1f19dcbe57f59a76b2d",
             ),
         ],
     ),
@@ -1794,6 +1839,17 @@ targets.mixin(
     swarming = targets.swarming(
         dimensions = {
             "gpu": "none",
+        },
+    ),
+)
+
+# Used to pin tests with large CAS inputs to non-SSD GCE bots (which have
+# 300 GB disks) rather than SSD-backed e4 bots (which have 50 GB disks).
+targets.mixin(
+    name = "no_ssd",
+    swarming = targets.swarming(
+        dimensions = {
+            "ssd": "0",
         },
     ),
 )
@@ -2248,8 +2304,8 @@ targets.mixin(
     swarming = targets.swarming(
         dimensions = {
             "display_attached": "1",
-            "gpu": "10de:2184-31.0.15.4601",
-            "os": "Windows-10-19045",
+            "gpu": "10de:2184-31.0.15.4601|10de:2184-32.0.16.1074",
+            "os": "Windows-10-19045|Windows-11-26200",
             "pool": "chromium.tests.gpu",
         },
     ),
@@ -2354,12 +2410,12 @@ targets.mixin(
     name = "xcode_27_1",
     args = [
         "--xcode-build-version",
-        "27a9269",
+        "27a9275",
     ],
     swarming = targets.swarming(
         named_caches = [
             swarming.cache(
-                name = "xcode_ios_27a9269",
+                name = "xcode_ios_27a9275",
                 path = "Xcode.app",
             ),
         ],
@@ -2370,12 +2426,12 @@ targets.mixin(
     name = "xcode_27_beta",
     args = [
         "--xcode-build-version",
-        "27b5019j",
+        "27b48",
     ],
     swarming = targets.swarming(
         named_caches = [
             swarming.cache(
-                name = "xcode_ios_27b5019j",
+                name = "xcode_ios_27b48",
                 path = "Xcode.app",
             ),
         ],

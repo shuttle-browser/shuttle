@@ -12,6 +12,7 @@
 #include "base/debug/dump_without_crashing.h"
 #include "cc/base/features.h"
 #include "components/viz/common/view_transition_element_resource_id.h"
+#include "third_party/blink/public/common/dom/dom_node_id.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/resources/grit/blink_resources.h"
 #include "third_party/blink/renderer/bindings/core/v8/frozen_array.h"
@@ -347,7 +348,7 @@ float DevicePixelRatioFromDocument(Document& document) {
       document.documentElement()->GetLayoutObject()) {
     return document.documentElement()
         ->GetLayoutObject()
-        ->StyleRef()
+        ->Style()
         .EffectiveZoom();
   }
 
@@ -427,9 +428,11 @@ class ViewTransitionStyleTracker::ImageWrapperPseudoElement
 
 ViewTransitionStyleTracker::ViewTransitionStyleTracker(
     Document& document,
-    const blink::ViewTransitionToken& transition_token)
+    const blink::ViewTransitionToken& transition_token,
+    bool generates_pseudo_element_tree)
     : document_(document),
       transition_token_(transition_token),
+      generates_pseudo_element_tree_(generates_pseudo_element_tree),
       device_pixel_ratio_(DevicePixelRatioFromDocument(document)) {}
 
 ViewTransitionStyleTracker::ViewTransitionStyleTracker(
@@ -551,7 +554,7 @@ ViewTransitionStyleTracker::ViewTransitionStyleTracker(
 
 void ViewTransitionStyleTracker::AddConsoleError(
     String message,
-    Vector<DOMNodeId> related_nodes) {
+    Vector<DOMNodeIdType> related_nodes) {
   auto* console_message = MakeGarbageCollected<ConsoleMessage>(
       mojom::blink::ConsoleMessageSource::kRendering,
       mojom::blink::ConsoleMessageLevel::kError, std::move(message));
@@ -728,7 +731,7 @@ void ViewTransitionStyleTracker::AddTransitionElementsFromCSSRecursive(
   // which by default will also represent the paint order of the pseudo-elements
   // (unless changed by something like z-index on the pseudo-elements).
   auto& root_object = root->GetLayoutObject();
-  auto& root_style = root_object.StyleRef();
+  auto& root_style = root_object.Style();
 
   const auto& view_transition_name = root_style.ViewTransitionName();
   AtomicString current_name;
@@ -854,7 +857,7 @@ bool ViewTransitionStyleTracker::FlattenAndVerifyElements(
       message.Append(kDuplicateTagBaseError);
       message.Append(name);
 
-      Vector<DOMNodeId> nodes;
+      Vector<DOMNodeIdType> nodes;
       // Find all the elements with this name.
       for (auto& name_finder : flat_list) {
         if (name_finder->name == name) {
@@ -875,7 +878,7 @@ bool ViewTransitionStyleTracker::FlattenAndVerifyElements(
       message.Append(kTagCollisionBaseError);
       message.Append(name);
       AddConsoleError(message.ReleaseString(),
-                      Vector<DOMNodeId>(element->GetDomNodeId()));
+                      Vector<DOMNodeIdType>(element->GetDomNodeId()));
       return false;
     }
 
@@ -1045,6 +1048,7 @@ bool ViewTransitionStyleTracker::Capture(bool snap_browser_controls) {
 
     auto* element_data = MakeGarbageCollected<ElementData>();
     element_data->target_element = element;
+    element_data->is_document_element = element->IsDocumentElement();
     element_data->element_index = next_index++;
     element_data->old_snapshot_id = snapshot_id;
     element_data->class_list = GetDocumentScopedClassList(element);
@@ -1075,7 +1079,8 @@ bool ViewTransitionStyleTracker::Capture(bool snap_browser_controls) {
 
   view_transition_names_ = std::move(transition_names);
 
-  // We need a style invalidation to generate the pseudo-element tree.
+  // We need a style invalidation to generate the pseudo-element tree (if any)
+  // and to update the participants' style and paint properties.
   InvalidateStyleAndCompositing();
 
   set_element_sequence_id_ = 0;
@@ -1264,6 +1269,7 @@ bool ViewTransitionStyleTracker::Start() {
     auto& element_data = element_data_map_.find(name)->value;
     DCHECK(!element_data->target_element);
     element_data->target_element = element;
+    element_data->is_document_element = element->IsDocumentElement();
     element_data->new_snapshot_id = snapshot_id;
     element_data->class_list = GetDocumentScopedClassList(element);
 
@@ -1632,7 +1638,7 @@ bool ViewTransitionStyleTracker::RunPostPrePaintStepsForElement(
     ElementData* element_data,
     const int max_capture_size_in_layout,
     bool& needs_style_invalidation) {
-  if (!element_data->target_element) {
+  if (!element_data->target_element || state_ == State::kOldSnapshotFrozen) {
     // For an exiting element, there is no "new" geometry. But if it's parented
     // to a group that has a "new" geometry, the UA stylesheet needs a
     // transform to correctly position this element relative to the parent's
@@ -1685,7 +1691,7 @@ bool ViewTransitionStyleTracker::RunPostPrePaintStepsForElement(
                               FlatMapBuilder<CSSPropertyID, String>& builder) {
     if (const CSSValue* css_value =
             CSSProperty::Get(id).CSSValueFromComputedStyle(
-                layout_object->StyleRef(),
+                layout_object->Style(),
                 /*layout_object=*/nullptr,
                 /*allow_visited_style=*/false, CSSValuePhase::kResolvedValue)) {
       builder.Insert(id, css_value->CssText());
@@ -1708,7 +1714,7 @@ bool ViewTransitionStyleTracker::RunPostPrePaintStepsForElement(
   auto group_children_css_properties =
       std::move(group_children_css_property_builder).Finish();
 
-  const auto& style = layout_object->StyleRef();
+  const auto& style = layout_object->Style();
   gfx::Vector2dF border_offset(
       AdjustForAbsoluteZoom::AdjustFloat(style.BorderLeftWidth(), style),
       AdjustForAbsoluteZoom::AdjustFloat(style.BorderTopWidth(), style));
@@ -1724,6 +1730,10 @@ bool ViewTransitionStyleTracker::RunPostPrePaintStepsForElement(
       border_offset == element_data->border_offset) {
     return true;
   }
+
+  const bool captured_rect_changed =
+      captured_rect_in_layout_space !=
+      element_data->captured_rect_in_layout_space;
 
   element_data->container_properties = container_properties;
 
@@ -1759,7 +1769,10 @@ bool ViewTransitionStyleTracker::RunPostPrePaintStepsForElement(
     element_data->CacheStateForOldSnapshot();
   }
 
-  needs_style_invalidation = true;
+  // Without the pseudo-element tree, the invalidation is only needed to update
+  // the capture clip, which is a paint property of the participant.
+  needs_style_invalidation |=
+      generates_pseudo_element_tree_ || captured_rect_changed;
   return true;
 }
 
@@ -1827,7 +1840,7 @@ void ViewTransitionStyleTracker::ComputeLiveElementGeometry(
     border_box_size_in_css_space.Scale(1.f / device_pixel_ratio_);
   }
 
-  float effective_zoom = layout_object.StyleRef().EffectiveZoom();
+  float effective_zoom = layout_object.Style().EffectiveZoom();
 
   // If the object's effective zoom differs from device_pixel_ratio, adjust
   // the border box size by that difference to get the css space size.
@@ -2257,6 +2270,9 @@ void ViewTransitionStyleTracker::InvalidateStyleAndCompositing() {
     return;
   }
 
+  // This is needed even if the pseudo-element tree isn't generated, since it
+  // ensures that the lifecycle reruns to apply the paint property updates
+  // below (e.g. if the root is the only participant).
   originating_element->SetNeedsStyleRecalc(
       kLocalStyleChange, StyleChangeReasonForTracing::Create(
                              style_change_reason::kViewTransition));
@@ -2500,7 +2516,7 @@ gfx::RectF ViewTransitionStyleTracker::ElementData::GetReferenceRect(
 
 bool ViewTransitionStyleTracker::ElementData::
     ShouldPropagateVisualOverflowRectAsMaxExtentsRect() const {
-  return !target_element || !target_element->IsDocumentElement();
+  return !is_document_element;
 }
 
 void ViewTransitionStyleTracker::ElementData::CacheStateForOldSnapshot() {

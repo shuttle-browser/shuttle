@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 // Scheduler-loop Quarantine is a quarantine pool behind PartitionAlloc with
-// Advanced Checks and `ADVANCED_MEMORY_SAFETY_CHECKS()`.
+// Advanced Checks and `SANITIZED_OBJECT()`.
 // Both requests to prevent `free()`d allocation getting released to free-list,
 // by passing `FreeFlags::kSchedulerLoopQuarantine` at time of `free()`.
 // This will keep these allocations in Scheduler-Loop Quarantine for while.
@@ -100,11 +100,18 @@ struct SchedulerLoopQuarantineConfig {
   // Accepts allocations up to this bucket size. If the given number does not
   // match bucket size, it is rounded up to next bucket size.
   size_t max_quarantine_size = BucketIndexLookup::kMaxBucketSize;
+  // When the branch is full, dequarantine enough entries to free up this
+  // percentage of the capacity (in addition to the space needed by the
+  // incoming entry), instead of just enough to fit the incoming entry. This
+  // amortizes the cost of purging over multiple quarantined entries, at the
+  // cost of a lower average quarantine occupancy. Clamped to
+  // `kMaxPurgeHeadroomPercent`.
+  size_t purge_headroom_percent = 0;
   // For informational purposes only.
   char branch_name[32] = "";
 };
 
-struct BucketSizeDetails;
+inline constexpr size_t kMaxPurgeHeadroomPercent = 50;
 
 enum class QuarantineTarget {
   kMiracleObjects = 0,
@@ -118,6 +125,9 @@ class PA_COMPONENT_EXPORT(PARTITION_ALLOC) SchedulerLoopQuarantineRoot {
 
   PartitionRoot& GetAllocatorRoot() { return allocator_root_; }
 
+  // Note: branches publish their stats lazily, so the returned stats may not
+  // account for the most recent operations of each branch (up to 64 quarantined
+  // entries per branch). Branches publish all their stats when fully purged.
   void AccumulateStats(SchedulerLoopQuarantineStats& stats) const {
     stats.count += count_.load(std::memory_order_relaxed);
     stats.size_in_bytes += size_in_bytes_.load(std::memory_order_relaxed);
@@ -176,8 +186,11 @@ class SchedulerLoopQuarantineBranch {
   // Determines this list contains an object.
   bool IsQuarantinedForTesting(void* object) PA_LOCKS_EXCLUDED(lock_);
 
-  bool IsQuarantineTarget(
-      const internal::BucketSizeDetails& size_details) const;
+  // The stats of the root are updated lazily, see `UnpublishedStats`. This
+  // forces an update.
+  void PublishStatsForTesting() PA_LOCKS_EXCLUDED(lock_);
+
+  bool IsQuarantineTarget(internal::BucketSizeDetails size_details) const;
 
   size_t GetCapacityInBytes() {
     return branch_capacity_in_bytes_.load(std::memory_order_relaxed);
@@ -188,7 +201,7 @@ class SchedulerLoopQuarantineBranch {
 
   void Quarantine(SlotStart slot_start,
                   SlotSpanMetadata* slot_span,
-                  const internal::BucketSizeDetails& size_details)
+                  internal::BucketSizeDetails size_details)
       PA_LOCKS_EXCLUDED(lock_);
 
   // TODO(crbug.com/329027914): Make these private once migration to
@@ -282,7 +295,7 @@ class SchedulerLoopQuarantineBranch {
   // is being terminated, this can help reduce hangs.
   static void DangerouslyDisablePurge();
 
-  const SchedulerLoopQuarantineConfig& GetConfigurationForTesting();
+  bool IsQuarantineEnabledForTesting() const { return enable_quarantine_; }
 
   class ScopedQuarantineExclusion {
     SchedulerLoopQuarantineBranch& branch_;
@@ -320,6 +333,9 @@ class SchedulerLoopQuarantineBranch {
                      [[maybe_unused]] bool for_destruction = false)
       PA_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
+  // Publishes `unpublished_stats_` to `root_`.
+  void PublishStats() PA_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
   PartitionRoot* const allocator_root_;
   ThreadCache* const tcache_;
   const base::PlatformThreadId thread_id_;
@@ -338,6 +354,8 @@ class SchedulerLoopQuarantineBranch {
   bool exclude_non_ipc_tasks_ = false;
   int task_nesting_depth_ = 0;
   bool is_outermost_task_mojo_ipc_ = false;
+  // See `SchedulerLoopQuarantineConfig::purge_headroom_percent`.
+  uint8_t purge_headroom_percent_ = 0;
 
   uint16_t largest_bucket_index_ = BucketIndexLookup::kNumBuckets - 1;
 
@@ -366,13 +384,25 @@ class SchedulerLoopQuarantineBranch {
   // optimization.
   uint32_t disallow_scanless_purge_ PA_GUARDED_BY(lock_) = 0;
 
+  // Stats that are not published to `root_` yet. Updating the stats of `root_`
+  // requires atomic read-modify-write operations on cache lines shared by all
+  // the branches, which is costly when done for every quarantined entry.
+  // Instead, stats are accumulated locally and published every
+  // `kMaxUnpublishedCount` quarantined entries, and when the branch is fully
+  // purged (e.g. at the end of a task). See `PublishStats()`.
+  static constexpr size_t kMaxUnpublishedCount = 64;
+  struct UnpublishedStats {
+    size_t quarantined_count = 0;
+    size_t quarantined_size_in_bytes = 0;
+    size_t dequarantined_count = 0;
+    size_t dequarantined_size_in_bytes = 0;
+  };
+  UnpublishedStats unpublished_stats_ PA_GUARDED_BY(lock_);
+
   // Debug and testing data.
 #if PA_BUILDFLAG(DCHECKS_ARE_ON)
   std::atomic_bool being_destructed_ = false;
 #endif  // PA_BUILDFLAG(DCHECKS_ARE_ON)
-
-  // Kept for testing purposes only.
-  SchedulerLoopQuarantineConfig config_for_testing_;
 };
 
 using SanitizedObjectSchedulerLoopQuarantineBranch =

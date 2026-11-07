@@ -82,7 +82,7 @@ PreferenceEventRouter::PreferenceEventRouter(Profile* profile)
         base::BindRepeating(&PreferenceEventRouter::OnPrefChanged,
                             base::Unretained(this), registrar_.prefs()));
   }
-  DCHECK(!profile_->IsOffTheRecord());
+  CHECK(!profile_->IsOffTheRecord(), base::NotFatalUntil::M161);
 }
 
 PreferenceEventRouter::~PreferenceEventRouter() = default;
@@ -96,7 +96,7 @@ void PreferenceEventRouter::OnPrefChanged(PrefService* pref_service,
   APIPermissionID permission = APIPermissionID::kInvalid;
   bool rv = PrefMapping::GetInstance()->FindEventForBrowserPref(
       browser_pref, &event_name, &permission);
-  DCHECK(rv);
+  CHECK(rv, base::NotFatalUntil::M161);
 
   base::ListValue args;
   const PrefService::Preference* pref =
@@ -148,7 +148,7 @@ PreferenceAPI::PreferenceAPI(content::BrowserContext* context)
     APIPermissionID permission = APIPermissionID::kInvalid;
     bool rv = pref_mapping->FindEventForBrowserPref(pref.browser_pref,
                                                     &event_name, &permission);
-    DCHECK(rv);
+    CHECK(rv, base::NotFatalUntil::M161);
     EventRouter::Get(profile_)->RegisterObserver(this, event_name);
   }
   content_settings_store()->AddObserver(this);

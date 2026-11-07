@@ -91,6 +91,7 @@ source_set("startup") {
     ]
 
     public_deps += [
+      "//chrome/browser/infobars",
       "//chrome/browser/startup",
       "//chrome/browser/ui:browser_tab_strip",
       "//chrome/browser/ui/tabs:tab_strip_model_observer",
@@ -133,6 +134,7 @@ source_set("impl") {
     "//chrome/browser/first_run",
     "//chrome/browser/headless",
     "//chrome/browser/infobars",
+    "//chrome/browser/policy",
     "//chrome/browser/profiles",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/profiles:profile_manager",
@@ -146,7 +148,6 @@ source_set("impl") {
     "//chrome/common:chrome_features",
     "//chrome/common:constants",
     "//chrome/common:non_code_constants",
-    "//components/history_clusters/core",
     "//components/infobars/content",
     "//components/infobars/core",
     "//components/network_session_configurator/common",
@@ -154,6 +155,7 @@ source_set("impl") {
     "//components/signin/public/base",
     "//components/signin/public/identity_manager",
     "//components/startup_metric_utils",
+    "//components/tabs:public",
     "//components/vector_icons",
     "//content/public/browser",
     "//content/public/common",
@@ -172,10 +174,7 @@ source_set("impl") {
     "//ui/gfx:native_ui_types",
     "//url",
   ]
-  public_deps = [
-    "//chrome/browser:browser_public_dependencies",
-    "//ui/base/unowned_user_data",
-  ]
+  public_deps = [ "//ui/base/unowned_user_data" ]
 
   if (!is_android) {
     sources += [
@@ -216,6 +215,7 @@ source_set("impl") {
       "//chrome/browser/search_engines",
       "//chrome/browser/shuttle:switches",
       "//chrome/browser/ui:browser_commands",
+      "//chrome/browser/ui:browser_tabstrip",
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui:chrome_pages",
       "//chrome/browser/ui:session_crashed_bubble",

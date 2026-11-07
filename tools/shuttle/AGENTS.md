@@ -30,7 +30,7 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
 
 ## Fork basics
 
-- Fork checkout (`src/` of a gclient checkout): base branch `chromium` = stable Chromium **156.0.8078.48** snapshot (merged 2026-10-21; 155.0.8059.87 before); fork work
+- Fork checkout (`src/` of a gclient checkout): base branch `chromium` = stable Chromium **158.0.8127.18** snapshot (157.0.8103.39 merged 2026-11-04..06, 158 on top 11-06, branch `sh/merge-157`; 156.0.8078.48 on `main`); fork work
   lives on `main`, work in progress on topic branches. Upstream releases are *merged* in, not rebased; afterwards
   rerun the prune and rebrand scripts (see "After an upstream merge").
 - Mac and Linux must both build before a removal batch is committed. Windows is removed (WSL2 runs the Linux build).
@@ -63,8 +63,14 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
   Not caught: a checkout that only touched mtimes (see "After an upstream merge", step 7).
 - `scripts/siso-report.py [--cores N] out/<Dir>/siso_metrics*.json`: build-time report (per run, module, step kind,
   toolchain) in Markdown.
-- `scripts/build-watch.py <Dir>`: quiet build monitor (progress, first errors, stall detection).
-  `scripts/build-errors.sh` lists failed steps while a build runs.
+- **Build dashboard for the maintainer: `buildmon`** in the private `monitor/` directory next to `src/` (gclient root,
+  e.g. `~/projects/shuttle-browser/monitor`). Start it in a visible workerdeck shell (`shell_run`) whenever a build
+  runs: `cd <gclient root>/monitor && ./buildmon --dir Sccache` (or `--dir Dev`, `--remote magwin --dir Dev`,
+  `--remote shuttle-xbuild`; README there). Read-only TUI: progress/ETA, failures, sccache-dist, hosts, bottleneck.
+  Don't use a raw `tail -F` of the log for this.
+- `scripts/build-watch.py <Dir>`: quiet build monitor for the agent's own Monitor (progress, first errors, stall
+  detection; the sccache-aware copy lives in cloud-build). `scripts/build-errors.sh` lists failed steps while a
+  build runs.
 - `SHUTTLE_VERSION=<X.Y.Z> scripts/release-mac.sh`: sign, notarize and package a DMG from `out/Release` (needs its
   clean-tree build receipt; writes `release/v<X.Y.Z>/mac/` + `MANIFEST.txt`). Identity and notary profile come from
   `SHUTTLE_SIGN_ID` and `SHUTTLE_NOTARY_PROFILE`; never commit identities or credentials. `SHUTTLE_RELEASE_PREBUILT=<dir>`

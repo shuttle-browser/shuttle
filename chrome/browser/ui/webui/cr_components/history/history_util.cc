@@ -6,7 +6,6 @@
 
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/ui/webui/cr_components/history_clusters/history_clusters_util.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/branded_strings.h"
@@ -18,7 +17,6 @@
 #include "components/favicon_base/favicon_url_parser.h"
 #include "components/history/core/browser/features.h"
 #include "components/history/core/common/pref_names.h"
-#include "components/history_clusters/core/history_clusters_prefs.h"
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/strings/grit/components_strings.h"
@@ -34,6 +32,7 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
   static constexpr webui::LocalizedString kStrings[] = {
       // Localized strings (alphabetical order).
       {"actionMenuDescription", IDS_HISTORY_ACTION_MENU_DESCRIPTION},
+      {"actorTaskTooltip", IDS_HISTORY_ACTOR_TASK_TOOLTIP},
       {"ariaRoleDescription", IDS_HISTORY_ARIA_ROLE_DESCRIPTION},
       {"bookmarked", IDS_HISTORY_ENTRY_BOOKMARKED},
       {"cancel", IDS_CANCEL},
@@ -44,12 +43,11 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       {"deleteSuccess", IDS_HISTORY_REMOVE_PAGE_SUCCESS},
       {"deleteConfirm", IDS_HISTORY_DELETE_PRIOR_VISITS_CONFIRM_BUTTON},
       {"deleteWarning", IDS_HISTORY_DELETE_PRIOR_VISITS_WARNING},
+      {"deviceFilterAllDevices", IDS_HISTORY_DEVICE_FILTER_ALL_DEVICES},
       {"entrySummary", IDS_HISTORY_ENTRY_SUMMARY},
       {"foundSearchResults", IDS_HISTORY_FOUND_SEARCH_RESULTS},
       {"goToGeminiChat", IDS_HISTORY_GO_TO_GEMINI_CHAT},
       {"goToGeminiChatError", IDS_HISTORY_GO_TO_GEMINI_CHAT_ERROR},
-      {"historyClustersTabLabel", IDS_HISTORY_CLUSTERS_BY_GROUP_TAB_LABEL},
-      {"historyListTabLabel", IDS_HISTORY_CLUSTERS_BY_DATE_TAB_LABEL},
       {"historyMenuButton", IDS_HISTORY_HISTORY_MENU_DESCRIPTION},
       {"historyMenuItem", IDS_HISTORY_HISTORY_MENU_ITEM},
       {"itemsSelected", IDS_HISTORY_ITEMS_SELECTED},
@@ -58,11 +56,13 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       {"menu", IDS_MENU},
       {"moreFromSite", IDS_HISTORY_MORE_FROM_SITE},
       {"openSelected", IDS_HISTORY_OPEN},
+      {"noMatchingResults", IDS_HISTORY_NO_MATCHING_RESULTS},
       {"noResults", IDS_HISTORY_NO_RESULTS},
       {"noSearchResults", IDS_HISTORY_NO_SEARCH_RESULTS},
       {"removeBookmark", IDS_HISTORY_REMOVE_BOOKMARK},
       {"removeFromHistory", IDS_HISTORY_REMOVE_PAGE},
       {"removeSelected", IDS_HISTORY_REMOVE_SELECTED_ITEMS},
+      {"resetFilters", IDS_HISTORY_RESET_FILTERS},
       {"reviewGeminiActivity", IDS_HISTORY_REVIEW_GEMINI_ACTIVITY},
       {"geminiKeyBrowsingActionsTitle",
        IDS_HISTORY_GEMINI_KEY_BROWSING_ACTIONS_TITLE},
@@ -71,6 +71,7 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       {"searchPrompt", IDS_HISTORY_SEARCH_PROMPT},
       {"searchResult", IDS_HISTORY_SEARCH_RESULT},
       {"searchResults", IDS_HISTORY_SEARCH_RESULTS},
+      {"sourceFilterAllActors", IDS_HISTORY_ACTOR_FILTER_ALL_ACTORS},
       {"sourceFilterChipsAriaLabel",
        IDS_HISTORY_SOURCE_FILTER_CHIPS_ARIA_LABEL},
       {"sourceFilterChipUser", IDS_HISTORY_SOURCE_FILTER_CHIP_USER},
@@ -82,10 +83,6 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       "sourceFilterChipActor",
       IDS_HISTORY_SOURCE_FILTER_CHIP_ACTOR);
 
-  source->AddLocalizedString(
-      "actorTaskTooltip",
-      IDS_HISTORY_ACTOR_TASK_TOOLTIP);
-
   source->AddString("myActivityGeminiAppsUrl",
                     chrome::kMyActivityGeminiAppsUrl);
 
@@ -93,10 +90,6 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
   bool allow_deleting_history =
       prefs->GetBoolean(prefs::kAllowDeletingBrowserHistory);
   source->AddBoolean("allowDeletingHistory", allow_deleting_history);
-
-  source->AddInteger(
-      "lastSelectedTab",
-      prefs->GetInteger(history_clusters::prefs::kLastSelectedTab));
 
   // History embeddings were removed; provide neutral values for the keys the
   // history frontend still reads.

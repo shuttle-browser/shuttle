@@ -128,6 +128,7 @@ class CC_EXPORT ProxyMain : public Proxy {
   void SetNeedsRedraw(const gfx::Rect& damage_rect) override;
   void SetTargetLocalSurfaceId(
       const viz::LocalSurfaceId& target_local_surface_id) override;
+  void SetMemoryPolicy(const ManagedMemoryPolicy& policy) override;
   void DetachInputDelegateAndRenderFrameObserver() override;
   bool RequestedAnimatePending() override;
   void SetDeferMainFrameUpdate(bool defer_main_frame_update) override;
@@ -170,7 +171,7 @@ class CC_EXPORT ProxyMain : public Proxy {
 
   // Returns |true| if the request was actually sent, |false| if one was
   // already outstanding.
-  bool SendCommitRequestToImplThreadIfNeeded(BeginMainFrameReason reason,
+  bool SendCommitRequestToImplThreadIfNeeded(BeginMainFrameReasons reason,
                                              CommitPipelineStage required_stage,
                                              bool urgent);
   // Indicates whether the main thread needs a BeginMainFrame callback in order
@@ -193,10 +194,6 @@ class CC_EXPORT ProxyMain : public Proxy {
   // notifications. This is different from BeginFrameNeeded() for cases where we
   // temporarily stop drawing.
   bool ShouldSubscribeToBeginFrames() const;
-
-  void set_begin_main_frame_reason(const BeginMainFrameReason reason) {
-    begin_main_frame_reason_.set(static_cast<int>(reason));
-  }
 
   bool IsEmbeddedFrame() const;
 

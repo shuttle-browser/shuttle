@@ -7,6 +7,10 @@
  *
  * 'settings-search-engine-list-dialog' is the dialog shown for displaying the
  * list of search engines from which the user can choose a default.
+ *
+ * When the "More options" entry point is enabled, clicking it fires a
+ * 'more-engines-click' event, letting the parent replace this dialog with
+ * 'settings-search-engine-more-engines-dialog'.
  */
 
 import 'chrome://resources/cr_elements/cr_button/cr_button.js';
@@ -23,6 +27,8 @@ import {assert} from 'chrome://resources/js/assert.js';
 import {isRTL} from 'chrome://resources/js/util.js';
 import type {PropertyValues} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
+
+import {loadTimeData} from '../i18n_setup.js';
 
 import {getCss} from './search_engine_list_dialog.css.js';
 import {getHtml} from './search_engine_list_dialog.html.js';
@@ -68,35 +74,30 @@ export class SettingsSearchEngineListDialogElement extends
       selectedEngineId_: {type: String},
 
       /**
-       * Whether the checkbox to save the search engine choice in guest mode
-       * should be shown.
+       * State of the checkbox to save the search engine choice in guest mode,
+       * or null if the checkbox is not displayed. Initialized by the parent,
+       * then updated by the checkbox, firing 'save-guest-choice-changed'.
        */
-      showSaveGuestChoice_: {type: Boolean},
+      saveGuestChoice: {
+        type: Boolean,
+        notify: true,
+      },
 
       /**
-       * State of the checkbox to save the search engine in guest mode. Null if
-       * checkbox is not displayed.
+       * Whether the "More options" entry point is enabled via feature flag.
        */
-      saveGuestChoice_: {type: Boolean},
+      pickerWithMoreEnginesEnabled_: {type: Boolean},
     };
   }
 
   accessor searchEngines: SearchEngine[] = [];
   protected accessor selectedEngineId_: string = '';
-  protected accessor saveGuestChoice_: boolean|null = null;
-  protected accessor showSaveGuestChoice_: boolean = false;
+  accessor saveGuestChoice: boolean|null = null;
+  protected accessor pickerWithMoreEnginesEnabled_: boolean =
+      loadTimeData.getBoolean('pickerWithMoreEngines');
 
   private browserProxy_: SearchEnginesBrowserProxy =
       SearchEnginesBrowserProxyImpl.getInstance();
-
-  override connectedCallback() {
-    super.connectedCallback();
-
-    this.browserProxy_.getSaveGuestChoice().then(
-        (saveGuestChoice: boolean|null) => {
-          this.saveGuestChoice_ = saveGuestChoice;
-        });
-  }
 
   override willUpdate(changedProperties: PropertyValues<this>) {
     super.willUpdate(changedProperties);
@@ -104,22 +105,39 @@ export class SettingsSearchEngineListDialogElement extends
     if (changedProperties.has('searchEngines')) {
       this.searchEnginesChanged_();
     }
+  }
 
-    const changedPrivateProperties =
-        changedProperties as Map<PropertyKey, unknown>;
-    if (changedPrivateProperties.has('saveGuestChoice_')) {
-      this.showSaveGuestChoice_ = this.saveGuestChoice_ !== null;
-    }
+  override firstUpdated() {
+    // The title is in the header slot rather than the title slot, so that the
+    // "More options" button can be next to it without being in the <h2>.
+    this.$.dialog.setTitleAriaLabel(this.getTitle_());
+  }
+
+  protected getTitle_(): string {
+    return loadTimeData.getString(
+        this.pickerWithMoreEnginesEnabled_ ? 'searchEnginesPickerTitle' :
+                                             'searchPageTitle');
+  }
+
+  protected getSubtitle_(): string {
+    return loadTimeData.getString(
+        this.pickerWithMoreEnginesEnabled_ ?
+            'searchEnginesPickerSubtitle' :
+            'searchEnginesSettingsDialogSubtitle');
+  }
+
+  protected onMoreEnginesClick_() {
+    this.fire('more-engines-click');
   }
 
   protected onSetAsDefaultClick_() {
-    const searchEngine = this.searchEngines.find(
-        engine => engine.id === parseInt(this.selectedEngineId_));
+    const searchEngine =
+        this.searchEngines.find(engine => engine.id === this.selectedEngineId_);
     assert(searchEngine);
 
     this.browserProxy_.setDefaultSearchEngine(
         searchEngine.id, ChoiceMadeLocation.SEARCH_SETTINGS,
-        this.saveGuestChoice_);
+        this.saveGuestChoice);
 
     this.fire('search-engine-changed', {searchEngine});
     this.$.dialog.close();
@@ -142,7 +160,7 @@ export class SettingsSearchEngineListDialogElement extends
     const defaultSearchEngine =
         this.searchEngines.find(searchEngine => searchEngine.default);
     assert(defaultSearchEngine);
-    this.selectedEngineId_ = defaultSearchEngine.id.toString();
+    this.selectedEngineId_ = defaultSearchEngine.id;
   }
 
   protected onRadioGroupSelectedChanged_(e: CustomEvent<{value: string}>) {
@@ -150,7 +168,7 @@ export class SettingsSearchEngineListDialogElement extends
   }
 
   protected onSaveGuestChoiceCheckedChanged_(e: CustomEvent<{value: boolean}>) {
-    this.saveGuestChoice_ = e.detail.value;
+    this.saveGuestChoice = e.detail.value;
   }
 
   protected getPolicyIndicatorTooltipPosition_(): string {

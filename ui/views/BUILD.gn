@@ -260,6 +260,7 @@ component("views") {
     "controls/views_text_services_context_menu.h",
     "controls/views_text_services_context_menu_base.h",
     "debug_utils.h",
+    "deprecated_layout_immediately_pass_key.h",
     "dialog_model_context_menu_controller.h",
     "drag_controller.h",
     "drag_utils.h",
@@ -276,6 +277,7 @@ component("views") {
     "input_protection/input_protection_policy.h",
     "input_protection/input_protection_specification.h",
     "input_protection/occluded_widget_input_protector.h",
+    "input_protection/view_bounds_and_visibility_input_protection_policy.h",
     "input_protection/widget_stationarity_monitor.h",
     "input_protection/window_activation_input_protection_policy.h",
     "interaction/element_highlighter_views.h",
@@ -324,10 +326,12 @@ component("views") {
     "view.h",
     "view_class_properties.h",
     "view_constants.h",
+    "view_decoration.h",
+    "view_guard.h",
+    "view_hierarchy_changed_details.h",
     "view_model.h",
     "view_model_utils.h",
     "view_observer.h",
-    "view_shadow.h",
     "view_targeter.h",
     "view_targeter_delegate.h",
     "view_tracker.h",
@@ -524,6 +528,7 @@ component("views") {
     "input_protection/input_protection_event_handler.cc",
     "input_protection/input_protection_specification.cc",
     "input_protection/occluded_widget_input_protector.cc",
+    "input_protection/view_bounds_and_visibility_input_protection_policy.cc",
     "input_protection/widget_stationarity_monitor.cc",
     "input_protection/window_activation_input_protection_policy.cc",
     "interaction/element_highlighter_views.cc",
@@ -563,9 +568,10 @@ component("views") {
     "style/typography_provider.cc",
     "view.cc",
     "view_class_properties.cc",
+    "view_decoration.cc",
+    "view_guard.cc",
     "view_model.cc",
     "view_model_utils.cc",
-    "view_shadow.cc",
     "view_targeter.cc",
     "view_targeter_delegate.cc",
     "view_tracker.cc",
@@ -943,10 +949,12 @@ component("views") {
         "widget/desktop_aura/desktop_window_tree_host.cc",
       ]
       if (is_win) {
-        public += [ "widget/desktop_aura/desktop_window_tree_host_win.h" ]
+        public += [
+          "widget/desktop_aura/desktop_drag_drop_client_win.h",
+          "widget/desktop_aura/desktop_window_tree_host_win.h",
+        ]
         sources += [
           "widget/desktop_aura/desktop_drag_drop_client_win.cc",
-          "widget/desktop_aura/desktop_drag_drop_client_win.h",
           "widget/desktop_aura/desktop_drop_target_win.cc",
           "widget/desktop_aura/desktop_native_cursor_manager_win.cc",
           "widget/desktop_aura/desktop_native_cursor_manager_win.h",
@@ -1042,7 +1050,6 @@ component("views") {
   if (use_ozone) {
     deps += [ "//ui/ozone" ]
   }
-  check_includes_strict = CHECK_INCLUDES_STRICT_PUBLIC_INCLUDES_PRIVATE
 }
 
 if (is_win || is_mac || is_linux || is_chromeos) {

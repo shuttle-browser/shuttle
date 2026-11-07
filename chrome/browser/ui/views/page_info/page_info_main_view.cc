@@ -7,7 +7,6 @@
 #include <memory>
 #include <optional>
 
-#include "base/feature_list.h"
 #include "base/i18n/message_formatter.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
@@ -28,7 +27,6 @@
 #include "chrome/browser/ui/views/page_info/page_info_view_factory.h"
 #include "chrome/browser/ui/views/page_info/permission_toggle_row_view.h"
 #include "chrome/browser/ui/views/page_info/star_rating_view.h"
-#include "chrome/browser/vr/vr_tab_helper.h"
 #include "chrome/common/url_constants.h"
 #include "components/page_info/core/features.h"
 #include "components/page_info/page_info_ui_delegate.h"
@@ -159,9 +157,9 @@ PageInfoMainView::PageInfoMainView(
       views::BoxLayout::Orientation::kVertical,
       gfx::Insets::TLBR(0, 0, hover_list_spacing, 0)));
 
-  AddChildView(CreateBubbleHeaderView())
-      ->SetProperty(views::kMarginsKey,
-                    gfx::Insets::TLBR(0, 0, hover_list_spacing, 0));
+  header_view_ = AddChildView(CreateBubbleHeaderView());
+  header_view_->SetProperty(views::kMarginsKey,
+                            gfx::Insets::TLBR(0, 0, hover_list_spacing, 0));
 
 #if BUILDFLAG(IS_WIN) && BUILDFLAG(ENABLE_VR)
   page_feature_info_view_ = AddChildView(std::make_unique<views::View>());
@@ -267,6 +265,7 @@ void PageInfoMainView::SetCookieInfo(const CookiesInfo& cookie_info) {
 }
 
 void PageInfoMainView::OnSeeExtensionsClicked() {
+  presenter_->RecordPageInfoAction(page_info::PAGE_INFO_EXTENSIONS_MENU_OPENED);
   base::RepeatingClosure callback = open_extensions_menu_callback_;
   if (callback) {
     callback.Run();
@@ -286,15 +285,12 @@ void PageInfoMainView::SetPermissionInfo(
     return;
   }
 
-  // When LHS indicators are enabled, permissions usage in PageInfo should be
-  // updated to reflect activity indicators.
-  if (base::FeatureList::IsEnabled(
-          content_settings::features::kLeftHandSideActivityIndicators)) {
-    for (const auto& permission : permission_info_list) {
-      auto it = syncable_permission_rows_.find(permission.type);
-      if (it != syncable_permission_rows_.end()) {
-        it->second->UpdatePermission(permission);
-      }
+  // Permissions usage in PageInfo should be updated to reflect activity
+  // indicators.
+  for (const auto& permission : permission_info_list) {
+    auto it = syncable_permission_rows_.find(permission.type);
+    if (it != syncable_permission_rows_.end()) {
+      it->second->UpdatePermission(permission);
     }
   }
 
@@ -519,9 +515,6 @@ void PageInfoMainView::SetPageFeatureInfo(const PageFeatureInfo& info) {
       base::BindRepeating(
           [](PageInfoMainView* view) {
             view->GetWidget()->Close();
-#if BUILDFLAG(ENABLE_VR)
-            vr::VrTabHelper::ExitVrPresentation();
-#endif
           },
           this),
       l10n_util::GetStringUTF16(IDS_PAGE_INFO_VR_TURN_OFF_BUTTON_TEXT));
@@ -593,24 +586,23 @@ void PageInfoMainView::HandleMoreInfoRequestAsync(int view_id) {
 
 gfx::Size PageInfoMainView::CalculatePreferredSize(
     const views::SizeBounds& available_size) const {
-  if (site_settings_view_ == nullptr && permissions_view_ == nullptr &&
-      security_container_view_ == nullptr) {
+  if (children().empty()) {
     return views::View::CalculatePreferredSize(available_size);
   }
 
   int width = 0;
-  if (site_settings_view_) {
-    width = std::max(width, site_settings_view_->GetPreferredSize().width());
+  if (available_size.width().is_bounded()) {
+    width = available_size.width().value();
+  } else {
+    // Exclude `header_view_` because it contains the site URL/origin, which
+    // can be very long and should not expand the bubble's width.
+    for (views::View* child : children()) {
+      if (child != header_view_ && child->GetVisible()) {
+        width = std::max(width, child->GetPreferredSize({}).width());
+      }
+    }
   }
 
-  if (permissions_view_) {
-    width = std::max(width, permissions_view_->GetPreferredSize().width());
-  }
-
-  if (security_container_view_) {
-    width =
-        std::max(width, security_container_view_->GetPreferredSize().width());
-  }
   return gfx::Size(width,
                    GetLayoutManager()->GetPreferredHeightForWidth(this, width));
 }

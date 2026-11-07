@@ -19,8 +19,10 @@ build_webui("build") {
     "full_app.html.ts",
     "full_app.ts",
     "omnibox_popup.ts",
+    "omnibox_popup_classic.ts",
     "omnibox_popup_searchbox.html.ts",
     "omnibox_popup_searchbox.ts",
+    "profile_load_time_data.ts",
     "textfield_model.ts",
   ]
   css_files = [
@@ -39,7 +41,10 @@ build_webui("build") {
     "//ui/webui/resources/mojo:build_ts",
   ]
 
-  ts_definitions = [ "//tools/typescript/definitions/pending.d.ts" ]
+  ts_definitions = [
+    "//tools/typescript/definitions/chrome_send.d.ts",
+    "//tools/typescript/definitions/pending.d.ts",
+  ]
 
   mojo_files_deps =
       [ "//chrome/browser/ui/webui/omnibox_popup/mojom:mojom_ts__generator" ]
@@ -52,7 +57,10 @@ build_webui("build") {
   optimize = optimize_webui
   if (optimize) {
     optimize_webui_host = "omnibox-popup.top-chrome"
-    optimize_webui_in_files = [ "omnibox_popup.js" ]
+    optimize_webui_in_files = [
+      "omnibox_popup.js",
+      "omnibox_popup_classic.js",
+    ]
     optimize_webui_excludes = [
       "chrome://resources/cr_components/color_change_listener/color_change_listener.mojom-webui.js",
       "chrome://resources/js/metrics_reporter/metrics_reporter.mojom-webui.js",
