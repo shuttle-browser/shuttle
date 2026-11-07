@@ -12,7 +12,6 @@
 #include <array>
 #include <utility>
 
-#include "base/files/file_enumerator.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_file.h"
@@ -28,6 +27,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/values.h"
 #include "chrome/browser/shuttle/agent_partition.h"
@@ -112,45 +112,87 @@ base::ScopedFD OpenOwnDir(int parent_fd, const char* name) {
   return fd;
 }
 
+// Opens <profile>/<first>/<second> (each owned by this user, no link
+// followed below the profile directory).
+base::ScopedFD OpenProfileSubdir(const base::FilePath& profile_path,
+                                 const char* first,
+                                 const char* second) {
+  base::ScopedFD profile_fd(HANDLE_EINTR(
+      open(profile_path.value().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC)));
+  if (!profile_fd.is_valid()) {
+    return base::ScopedFD();
+  }
+  base::ScopedFD first_fd = OpenOwnDir(profile_fd.get(), first);
+  if (!first_fd.is_valid()) {
+    return base::ScopedFD();
+  }
+  return OpenOwnDir(first_fd.get(), second);
+}
+
+// The entry names in directory `dir_fd` (without "." and "..").
+std::vector<std::string> ListDir(int dir_fd) {
+  std::vector<std::string> names;
+  // fdopendir takes over the fd it is given.
+  int list_fd = HANDLE_EINTR(dup(dir_fd));
+  DIR* dir = list_fd >= 0 ? fdopendir(list_fd) : nullptr;
+  if (!dir) {
+    if (list_fd >= 0) {
+      close(list_fd);
+    }
+    return names;
+  }
+  while (dirent* entry = readdir(dir)) {
+    std::string_view name(entry->d_name);
+    if (name != "." && name != "..") {
+      names.emplace_back(name);
+    }
+  }
+  closedir(dir);
+  return names;
+}
+
+// Removes `name` in `parent_fd` and everything below it, relative to opened
+// directories only: a link is removed as a link, never followed; directories
+// not owned by this user, or deeper than `depth` levels, are kept (and so are
+// their parents then).
+void DeleteTreeAt(int parent_fd, const std::string& name, int depth) {
+  struct stat st;
+  if (fstatat(parent_fd, name.c_str(), &st, AT_SYMLINK_NOFOLLOW) != 0) {
+    return;
+  }
+  if (!S_ISDIR(st.st_mode)) {
+    // Fails (and keeps it) if it was swapped for a directory meanwhile.
+    unlinkat(parent_fd, name.c_str(), 0);
+    return;
+  }
+  if (depth <= 0) {
+    return;
+  }
+  base::ScopedFD dir_fd = OpenOwnDir(parent_fd, name.c_str());
+  if (!dir_fd.is_valid()) {
+    return;
+  }
+  for (const std::string& child : ListDir(dir_fd.get())) {
+    DeleteTreeAt(dir_fd.get(), child, depth - 1);
+  }
+  unlinkat(parent_fd, name.c_str(), AT_REMOVEDIR);
+}
+
 // Removes <profile>/shuttle/secrets/<id> for each id `matches` accepts:
 // the files in it, then the directory. Nothing is followed through a link
 // (an entry that is a link is removed as a link); subdirectories (never
 // created by save-text) are left alone, and so is their parent then.
 void DeleteSecretDirs(base::FilePath profile_path,
                       base::RepeatingCallback<bool(std::string_view)> matches) {
-  base::ScopedFD profile_fd(HANDLE_EINTR(
-      open(profile_path.value().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC)));
-  if (!profile_fd.is_valid()) {
-    return;
-  }
-  base::ScopedFD shuttle_fd = OpenOwnDir(profile_fd.get(), "shuttle");
-  if (!shuttle_fd.is_valid()) {
-    return;
-  }
-  base::ScopedFD secrets_fd = OpenOwnDir(shuttle_fd.get(), "secrets");
+  base::ScopedFD secrets_fd =
+      OpenProfileSubdir(profile_path, "shuttle", "secrets");
   if (!secrets_fd.is_valid()) {
     return;
   }
-  std::vector<std::string> ids;
-  {
-    // fdopendir takes over the fd it is given.
-    int list_fd = HANDLE_EINTR(dup(secrets_fd.get()));
-    DIR* dir = list_fd >= 0 ? fdopendir(list_fd) : nullptr;
-    if (!dir) {
-      if (list_fd >= 0) {
-        close(list_fd);
-      }
-      return;
+  for (const std::string& id : ListDir(secrets_fd.get())) {
+    if (!matches.Run(id)) {
+      continue;
     }
-    while (dirent* entry = readdir(dir)) {
-      std::string_view name(entry->d_name);
-      if (name != "." && name != ".." && matches.Run(name)) {
-        ids.emplace_back(name);
-      }
-    }
-    closedir(dir);
-  }
-  for (const std::string& id : ids) {
     base::ScopedFD agent_fd = OpenOwnDir(secrets_fd.get(), id.c_str());
     if (!agent_fd.is_valid()) {
       // A link (or not ours): remove the link itself, never its target.
@@ -162,23 +204,7 @@ void DeleteSecretDirs(base::FilePath profile_path,
       }
       continue;
     }
-    std::vector<std::string> files;
-    int list_fd = HANDLE_EINTR(dup(agent_fd.get()));
-    DIR* dir = list_fd >= 0 ? fdopendir(list_fd) : nullptr;
-    if (!dir) {
-      if (list_fd >= 0) {
-        close(list_fd);
-      }
-      continue;
-    }
-    while (dirent* entry = readdir(dir)) {
-      std::string_view name(entry->d_name);
-      if (name != "." && name != "..") {
-        files.emplace_back(name);
-      }
-    }
-    closedir(dir);
-    for (const std::string& file : files) {
+    for (const std::string& file : ListDir(agent_fd.get())) {
       // Fails (and keeps) a subdirectory: unlinkat without AT_REMOVEDIR.
       unlinkat(agent_fd.get(), file.c_str(), 0);
     }
@@ -189,24 +215,34 @@ void DeleteSecretDirs(base::FilePath profile_path,
 // Removes the on-disk directories of throwaway agents' (in-memory) storage
 // partitions that `matches` accepts: <profile>/Storage/ext/shuttle-tmp-<id>.
 // Chromium still keeps the GPU shader caches of in-memory partitions there;
-// nothing else is written.
+// nothing else is written. Anchored like DeleteSecretDirs: a linked Storage,
+// ext or partition directory is never followed.
 void DeleteThrowawayPartitionDirs(
     base::FilePath profile_path,
     base::RepeatingCallback<bool(std::string_view)> matches) {
+  // The deepest GPU cache file is <id>/def/<cache>/<subdir>/<file>.
+  constexpr int kMaxDepth = 8;
   const std::string prefix =
       std::string(kAgentPartitionDomainPrefix) + kThrowawayAgentIdPrefix;
-  base::FileEnumerator dirs(profile_path.Append(FILE_PATH_LITERAL("Storage"))
-                                .Append(FILE_PATH_LITERAL("ext")),
-                            /*recursive=*/false,
-                            base::FileEnumerator::DIRECTORIES);
-  for (base::FilePath dir = dirs.Next(); !dir.empty(); dir = dirs.Next()) {
-    const std::string name = dir.BaseName().AsUTF8Unsafe();
+  base::ScopedFD ext_fd = OpenProfileSubdir(profile_path, "Storage", "ext");
+  if (!ext_fd.is_valid()) {
+    return;
+  }
+  for (const std::string& name : ListDir(ext_fd.get())) {
     if (base::StartsWith(name, prefix) &&
         matches.Run(std::string_view(name).substr(
             sizeof(kAgentPartitionDomainPrefix) - 1))) {
-      base::DeletePathRecursively(dir);
+      DeleteTreeAt(ext_fd.get(), name, kMaxDepth);
     }
   }
+}
+
+// Both of the above, for one predicate.
+void DeleteThrowawayFiles(
+    base::FilePath profile_path,
+    base::RepeatingCallback<bool(std::string_view)> matches) {
+  DeleteSecretDirs(profile_path, matches);
+  DeleteThrowawayPartitionDirs(profile_path, matches);
 }
 
 void FlushPartition(content::StoragePartition* partition) {
@@ -223,7 +259,11 @@ ProfileRegistry::Identity::Identity() = default;
 ProfileRegistry::Identity::Identity(const Identity&) = default;
 ProfileRegistry::Identity::~Identity() = default;
 
-ProfileRegistry::ProfileRegistry(Profile* profile) : profile_(profile) {
+ProfileRegistry::ProfileRegistry(Profile* profile)
+    : profile_(profile),
+      file_task_runner_(base::ThreadPool::CreateSequencedTaskRunner(
+          {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
+           base::TaskShutdownBehavior::BLOCK_SHUTDOWN})) {
   // Profiles deleted while their partition was loaded: their directories can
   // be removed now, before any agent tab loads them again.
   const base::ListValue& pending =
@@ -238,15 +278,31 @@ ProfileRegistry::ProfileRegistry(Profile* profile) : profile_(profile) {
     Obliterate(id, base::DoNothing());
   }
   // Throwaway agents never outlive the browser; their save-text files and
-  // GPU caches left by a crash go now.
-  auto any_throwaway = base::BindRepeating([](std::string_view name) {
-    return ProfileRegistry::IsThrowawayId(name);
-  });
-  base::ThreadPool::PostTask(
-      FROM_HERE, {base::MayBlock(), base::TaskPriority::BEST_EFFORT},
-      base::BindOnce(&DeleteSecretDirs, profile_->GetPath(), any_throwaway)
-          .Then(base::BindOnce(&DeleteThrowawayPartitionDirs,
-                               profile_->GetPath(), any_throwaway)));
+  // GPU caches left by a crash go now. Persistent agents with a "tmp-" id
+  // (created before the prefix was reserved) keep theirs. No throwaway agent
+  // exists until this is done (ThrowawayCleanupDone), so it can't hit a live
+  // one's files.
+  std::set<std::string> persistent;
+  for (auto [id, value] : profile_->GetPrefs()->GetDict(prefs::kProfiles)) {
+    persistent.insert(id);
+  }
+  auto stale_throwaway = base::BindRepeating(
+      [](const std::set<std::string>& persistent, std::string_view name) {
+        return ProfileRegistry::IsThrowawayId(name) &&
+               !persistent.contains(std::string(name));
+      },
+      std::move(persistent));
+  file_task_runner_->PostTaskAndReply(
+      FROM_HERE,
+      base::BindOnce(&DeleteThrowawayFiles, profile_->GetPath(),
+                     std::move(stale_throwaway)),
+      base::BindOnce(
+          [](base::WeakPtr<ProfileRegistry> self) {
+            if (self) {
+              self->startup_cleanup_done_ = true;
+            }
+          },
+          weak_factory_.GetWeakPtr()));
 }
 
 ProfileRegistry::~ProfileRegistry() = default;
@@ -289,8 +345,9 @@ std::string ProfileRegistry::IdForConfig(
     return std::string();
   }
   std::string id = domain.substr(sizeof(kAgentPartitionDomainPrefix) - 1);
-  // Throwaway agents (only they) have in-memory storage.
-  if (!IsValidId(id) || config.in_memory() != IsThrowawayId(id)) {
+  // Only throwaway agents have in-memory storage. On-disk "tmp-" partitions
+  // are persistent agents created before the prefix was reserved.
+  if (!IsValidId(id) || (config.in_memory() && !IsThrowawayId(id))) {
     return std::string();
   }
   return id;
@@ -414,6 +471,7 @@ bool ProfileRegistry::Create(const std::string& id, const Identity& identity) {
 
 std::string ProfileRegistry::CreateThrowaway(const Identity& identity) {
   DCHECK(!identity.avatar && !identity.persist_session_cookies);
+  CHECK(startup_cleanup_done_);
   std::string id;
   do {
     id = kThrowawayPrefix + base::HexEncodeLower(base::RandBytesAsVector(6));
@@ -482,10 +540,9 @@ bool ProfileRegistry::Update(const std::string& id, const Identity& identity) {
 
 content::StoragePartitionConfig ProfileRegistry::PartitionConfig(
     const std::string& id) const {
-  return content::StoragePartitionConfig::Create(
-      profile_, DomainFor(id),
-      /*partition_name=*/"",
-      /*in_memory=*/IsThrowawayId(id));
+  return content::StoragePartitionConfig::Create(profile_, DomainFor(id),
+                                                 /*partition_name=*/"",
+                                                 /*in_memory=*/IsThrowaway(id));
 }
 
 void ProfileRegistry::Delete(const std::string& id, base::OnceClosure done) {
@@ -528,24 +585,22 @@ void ProfileRegistry::DeleteThrowaway(const std::string& id,
                                       base::OnceClosure done) {
   const content::StoragePartitionConfig config = PartitionConfig(id);
   throwaway_.erase(id);
-  // Its save-text files go with it.
+  // Its save-text files go with it, on the file sequence: after every write
+  // posted while it existed (none are posted from now on, Exists() is false).
   base::OnceClosure delete_secrets = base::BindOnce(
-      [](base::FilePath profile_path, std::string id, base::OnceClosure done) {
+      [](scoped_refptr<base::SequencedTaskRunner> runner,
+         base::FilePath profile_path, std::string id, base::OnceClosure done) {
         auto this_one = base::BindRepeating(
             [](const std::string& id, std::string_view name) {
               return name == id;
             },
             id);
-        base::ThreadPool::PostTaskAndReply(
+        runner->PostTaskAndReply(
             FROM_HERE,
-            {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
-             base::TaskShutdownBehavior::BLOCK_SHUTDOWN},
-            base::BindOnce(&DeleteSecretDirs, profile_path, this_one)
-                .Then(base::BindOnce(&DeleteThrowawayPartitionDirs,
-                                     profile_path, this_one)),
+            base::BindOnce(&DeleteThrowawayFiles, profile_path, this_one),
             std::move(done));
       },
-      profile_->GetPath(), id, std::move(done));
+      file_task_runner_, profile_->GetPath(), id, std::move(done));
   // The in-memory partition can't be unloaded; empty it (the id is never
   // reused, this frees the memory).
   content::StoragePartition* partition =

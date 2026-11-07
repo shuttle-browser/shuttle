@@ -41,8 +41,8 @@ bool ShouldPersistSessionCookies(Profile* profile,
                                  const base::FilePath& relative_partition_path);
 
 // Whether `contents` shows an agent tab: its storage partition is an agent
-// partition ("shuttle-<id>", in memory for throwaway agents). Doesn't check
-// that the agent exists.
+// partition ("shuttle-<id>"; in memory only for throwaway "tmp-" ids). Doesn't
+// check that the agent exists.
 bool IsAgentWebContents(content::WebContents* contents);
 
 }  // namespace shuttle
