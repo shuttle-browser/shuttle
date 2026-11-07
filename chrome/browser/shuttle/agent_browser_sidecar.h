@@ -8,7 +8,6 @@
 #include <deque>
 #include <map>
 #include <string>
-#include <vector>
 
 #include "base/files/file_path.h"
 #include "base/functional/callback.h"
@@ -39,8 +38,6 @@ class Sidecar {
     // Where the daemon sockets / screenshots go (created on start).
     base::FilePath socket_dir;
     base::FilePath screenshot_dir;
-    // Also created on start (saved states live there).
-    std::vector<base::FilePath> extra_dirs;
     // ws://host/devtools/session/<id>
     std::string cdp_endpoint;
     std::string session_id;

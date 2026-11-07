@@ -1148,5 +1148,9 @@ fails the call, errors never carry sidecar text, the clipboard write commits bef
 "confidential" is honoured on macOS only (Linux Ozone ignores it; the tool description says so). Re-review: the
 error-text and permission/inode P2s closed; the ancestor P2 (a pre-placed `<profile>/shuttle` symlink) fixed in
 `34d4ae3d33` (the profile dir is the anchor, `shuttle/` is opened like `secrets/<agent>`), verified by hand on 158
-(symlinked `shuttle/` → error, nothing written through it); SH-Review: all three P2s closed. Follow-up: `open-session` still creates
-`shuttle/states/<agent>` with `base::CreateDirectory` through such a link.
+(symlinked `shuttle/` → error, nothing written through it); SH-Review: all three P2s closed. Follow-up (2026-11-07,
+branch `sh/states-dir`): `state-save` / `state-load` check `shuttle/states/<agent>` the same way on every call (profile
+dir anchor, `OpenPrivateDir` per component, error on failure); the sidecar no longer creates it with
+`base::CreateDirectory`. Verified by hand (dirs 0700, save/load work, a symlinked `states/` → error, nothing written
+through it); SH-Review: clean (directory traversal only; agent-browser still opens the final `.json` by path). Open:
+the sidecar socket dir `<tmp>/acab/<session>` sits in the shared `/tmp` on Linux.

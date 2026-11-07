@@ -79,9 +79,6 @@ class Sidecar::Io {
     if (!base::PathExists(config.binary)) {
       return StartResult::kNotInstalled;
     }
-    for (const base::FilePath& dir : config.extra_dirs) {
-      base::CreateDirectory(dir);
-    }
     base::CreateDirectory(config.socket_dir);
     base::CreateDirectory(config.screenshot_dir);
 
