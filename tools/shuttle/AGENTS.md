@@ -61,6 +61,8 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
   (`shuttle-last-green.txt`, written with the receipt) on another Chromium version, or more than
   `SHUTTLE_STALE_FILES` (3000) files changed since. `SHUTTLE_ALLOW_FULL=1` goes ahead (ask the maintainer: hours).
   Not caught: a checkout that only touched mtimes (see "After an upstream merge", step 7).
+- `scripts/prune-stats.py [--out FILE]`: the fork's tree against its upstream snapshot (`chromium`): files/bytes
+  removed, added, changed; per directory (treemap data) and per kind; prune-manifest groups. JSON, about 6 s.
 - `scripts/siso-report.py [--cores N] out/<Dir>/siso_metrics*.json`: build-time report (per run, module, step kind,
   toolchain) in Markdown.
 - **Build dashboard for the maintainer: `buildmon`** in the private `monitor/` directory next to `src/` (gclient root,
