@@ -65,10 +65,14 @@ class PageToolManager {
                 ToolCallback callback,
                 base::expected<base::DictValue, std::string> result);
   void SaveText(PendingCall call, ToolCallback callback, std::string text);
+  // Sends a state-save / state-load call once its states directory checked out.
+  void SendIfStatesDir(const base::FilePath& states_dir,
+                       PendingCall call,
+                       ToolCallback callback,
+                       bool ok);
 
   Sidecar* GetOrCreateSidecar(const std::string& session_id,
-                              const std::string& host,
-                              const base::FilePath& states_dir);
+                              const std::string& host);
   void OnSidecarClosed(Sidecar* sidecar);
 
   raw_ptr<SessionManager> sessions_;

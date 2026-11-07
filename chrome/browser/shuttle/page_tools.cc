@@ -364,6 +364,32 @@ base::ScopedFD OpenPrivateDir(int parent_fd, const std::string& name) {
   return fd;
 }
 
+// Makes sure `states_dir` (<profile>/shuttle/states/<agent>) exists: the three
+// components below the profile directory are opened (created if missing)
+// without following links and must be private directories of this user, as
+// for secret files. State files hold cookies and are written there by
+// agent-browser. Returns false on any failure.
+bool EnsureStatesDir(base::FilePath states_dir) {
+  const base::FilePath shuttle_dir = states_dir.DirName().DirName();
+  base::ScopedFD profile_fd(HANDLE_EINTR(
+      open(shuttle_dir.DirName().value().c_str(),
+           O_RDONLY | O_DIRECTORY | O_CLOEXEC)));
+  if (!profile_fd.is_valid()) {
+    return false;
+  }
+  base::ScopedFD base_fd =
+      OpenPrivateDir(profile_fd.get(), shuttle_dir.BaseName().value());
+  if (!base_fd.is_valid()) {
+    return false;
+  }
+  base::ScopedFD parent_fd = OpenPrivateDir(base_fd.get(), "states");
+  if (!parent_fd.is_valid()) {
+    return false;
+  }
+  return OpenPrivateDir(parent_fd.get(), states_dir.BaseName().value())
+      .is_valid();
+}
+
 // Writes `value` to `secrets_dir`/`name`.txt, readable only by the user.
 // `secrets_dir` is <profile>/shuttle/secrets/<agent>: the three components
 // below the profile directory are opened without following links (and must be
@@ -615,7 +641,33 @@ void PageToolManager::Call(std::string_view name,
     }
     call.secrets_dir = agent_dir.Append("secrets").Append(session->agent);
   }
-  GetOrCreateSidecar(session_id, context.host, states_dir);
+  GetOrCreateSidecar(session_id, context.host);
+  if (special && *special == "state_path") {
+    // state-save / state-load: the states directory is checked (and created)
+    // on every call, never through a link.
+    base::ThreadPool::PostTaskAndReplyWithResult(
+        FROM_HERE,
+        {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
+         base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
+        base::BindOnce(&EnsureStatesDir, states_dir),
+        base::BindOnce(&PageToolManager::SendIfStatesDir,
+                       weak_factory_.GetWeakPtr(), states_dir, std::move(call),
+                       std::move(callback)));
+    return;
+  }
+  Send(std::move(call), std::move(callback));
+}
+
+void PageToolManager::SendIfStatesDir(const base::FilePath& states_dir,
+                                      PendingCall call,
+                                      ToolCallback callback,
+                                      bool ok) {
+  if (!ok) {
+    std::move(callback).Run(ToolResult::Error(
+        "Could not use the states directory " + states_dir.AsUTF8Unsafe() +
+        " (it must be a private directory of this user)"));
+    return;
+  }
   Send(std::move(call), std::move(callback));
 }
 
@@ -769,8 +821,7 @@ void PageToolManager::SaveText(PendingCall call,
 }
 
 Sidecar* PageToolManager::GetOrCreateSidecar(const std::string& session_id,
-                                             const std::string& host,
-                                             const base::FilePath& states_dir) {
+                                             const std::string& host) {
   auto it = sidecars_.find(session_id);
   if (it != sidecars_.end()) {
     return it->second.get();
@@ -785,7 +836,6 @@ Sidecar* PageToolManager::GetOrCreateSidecar(const std::string& session_id,
   config.binary = FindBinary();
   config.socket_dir = dir;
   config.screenshot_dir = dir.Append("shots");
-  config.extra_dirs = {states_dir};
   config.cdp_endpoint = WithAccessToken(
       base::StrCat({"ws://", host, "/devtools/session/", session_id}));
   config.session_id = session_id;
