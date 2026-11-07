@@ -100,7 +100,12 @@ export function getHtml(this: AgentsAppElement) {
                              html`<span>${this.initial_(agent)}</span>`}
           </div>
           <div class="text">
-            <div class="name">${agent.name}</div>
+            <div class="name">${agent.name}
+              ${agent.throwaway ? html`
+                <span class="temporary" title="${this.expiryText_(agent)}">
+                  <cr-icon icon="cr:schedule"></cr-icon>Temporary
+                </span>` : nothing}
+            </div>
             <div class="secondary">
               ${agent.id} · ${this.plural_(agent.sessions, 'session')} ·
               ${this.plural_(agent.tabs, 'tab')}
@@ -180,6 +185,7 @@ export function getHtml(this: AgentsAppElement) {
             aria-checked="${color === this.edit_?.color}"
             @click="${this.onColorClick_}"></button>`)}
     </div>
+    ${!this.edit_?.throwaway ? html`
     <div class="field-label">Avatar</div>
     <div class="avatar-row">
       <div class="avatar" data-color="${this.edit_?.color || 'grey'}">
@@ -218,7 +224,7 @@ export function getHtml(this: AgentsAppElement) {
           ?checked="${this.edit_?.persistSessionCookies ?? true}"
           @change="${this.onPersistSessionCookiesChange_}">
       </cr-toggle>
-    </div>
+    </div>` : nothing}
   </div>
   <div slot="button-container">
     <cr-button class="cancel-button" @click="${this.onEditCancelClick_}">

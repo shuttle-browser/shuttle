@@ -42,6 +42,8 @@ namespace shuttle {
 
 namespace {
 
+constexpr int kMaxThrowawayIdleMinutes = 24 * 60;
+
 constexpr base::TimeDelta kNavigationTimeout = base::Seconds(30);
 constexpr base::TimeDelta kCaptureTimeout = base::Seconds(10);
 constexpr int kJpegQuality = 80;
@@ -151,7 +153,8 @@ std::optional<gfx::Size> GetViewport(const base::DictValue& args,
 // Agents --------------------------------------------------------------------
 
 // `avatar_data`: inline uploaded avatars (chrome://agents shows them).
-base::DictValue DescribeAgent(const ProfileRegistry::Entry& entry,
+base::DictValue DescribeAgent(const ToolContext& context,
+                              const ProfileRegistry::Entry& entry,
                               bool avatar_data) {
   base::DictValue dict =
       base::DictValue()
@@ -160,6 +163,14 @@ base::DictValue DescribeAgent(const ProfileRegistry::Entry& entry,
           .Set("color", ProfileRegistry::ColorName(entry.color))
           .Set("persistSessionCookies", entry.persist_session_cookies)
           .Set("createdAt", base::TimeFormatAsIso8601(entry.created));
+  if (entry.throwaway) {
+    dict.Set("throwaway", true);
+    dict.Set("idleMinutes", static_cast<int>(entry.idle_timeout.InMinutes()));
+    if (std::optional<base::Time> expiry =
+            context.service->ThrowawayExpiry(entry.id)) {
+      dict.Set("expiresAt", base::TimeFormatAsIso8601(*expiry));
+    }
+  }
   if (!avatar_data && base::StartsWith(entry.avatar, "data:")) {
     // Uploaded images run to 256 KB: name the kind and size, not the bytes
     // (an agent listing three agents shouldn't read a megabyte).
@@ -209,7 +220,32 @@ bool GetIdentity(const base::DictValue& args,
     }
     identity->persist_session_cookies = persist->GetBool();
   }
+  if (const base::Value* idle = args.Find("idleMinutes")) {
+    if (!idle->is_int() || idle->GetInt() < 1 ||
+        idle->GetInt() > kMaxThrowawayIdleMinutes) {
+      *error = "idleMinutes must be an integer from 1 to 1440";
+      return false;
+    }
+    identity->idle_timeout = base::Minutes(idle->GetInt());
+  }
   return true;
+}
+
+// Identity fields a throwaway agent can't have (or only it can). Returns an
+// error message or "".
+std::string CheckThrowawayIdentity(const ProfileRegistry::Identity& identity,
+                                   bool throwaway) {
+  if (throwaway && identity.avatar) {
+    return "Throwaway agents have no avatar";
+  }
+  if (throwaway && identity.persist_session_cookies) {
+    return "Throwaway agents keep nothing on disk: persistSessionCookies "
+           "doesn't apply";
+  }
+  if (!throwaway && identity.idle_timeout) {
+    return "idleMinutes is for throwaway agents only";
+  }
+  return std::string();
 }
 
 void ListAgents(const ToolContext& context,
@@ -225,7 +261,8 @@ void ListAgents(const ToolContext& context,
   base::ListValue list;
   for (const ProfileRegistry::Entry& entry :
        context.service->profiles().List()) {
-    list.Append(DescribeAgent(entry, args.FindBool("avatarData").value_or(false))
+    list.Append(DescribeAgent(context, entry,
+                              args.FindBool("avatarData").value_or(false))
                     .Set("sessions", sessions[entry.id])
                     .Set("tabs", tabs[entry.id]));
   }
@@ -236,6 +273,35 @@ void ListAgents(const ToolContext& context,
 void CreateAgent(const ToolContext& context,
                  const base::DictValue& args,
                  ToolCallback callback) {
+  const base::Value* throwaway_arg = args.Find("throwaway");
+  if (throwaway_arg && !throwaway_arg->is_bool()) {
+    std::move(callback).Run(ToolResult::Error("throwaway must be a boolean"));
+    return;
+  }
+  const bool throwaway = throwaway_arg && throwaway_arg->GetBool();
+  if (throwaway) {
+    if (args.Find("id")) {
+      std::move(callback).Run(ToolResult::Error(
+          "Throwaway agents get a generated id: leave out id"));
+      return;
+    }
+    ProfileRegistry::Identity identity;
+    std::string error;
+    if (!GetIdentity(args, &identity, &error) ||
+        !(error = CheckThrowawayIdentity(identity, true)).empty()) {
+      std::move(callback).Run(ToolResult::Error(error));
+      return;
+    }
+    base::expected<std::string, std::string> created =
+        context.service->CreateThrowawayAgent(identity);
+    if (!created.has_value()) {
+      std::move(callback).Run(ToolResult::Error(created.error()));
+      return;
+    }
+    std::move(callback).Run(ToolResult::Json(base::Value(DescribeAgent(
+        context, *context.service->profiles().Get(*created), false))));
+    return;
+  }
   const std::string* id = GetString(args, "id");
   if (!id) {
     std::move(callback).Run(ToolResult::Error(MissingArgument("id")));
@@ -246,9 +312,15 @@ void CreateAgent(const ToolContext& context,
         "Invalid agent id (kebab-case, a-z 0-9 and '-', max 64): " + *id));
     return;
   }
+  if (ProfileRegistry::IsThrowawayId(*id)) {
+    std::move(callback).Run(ToolResult::Error(
+        "Agent ids starting with \"tmp-\" are reserved for throwaway agents"));
+    return;
+  }
   ProfileRegistry::Identity identity;
   std::string error;
-  if (!GetIdentity(args, &identity, &error)) {
+  if (!GetIdentity(args, &identity, &error) ||
+      !(error = CheckThrowawayIdentity(identity, false)).empty()) {
     std::move(callback).Run(ToolResult::Error(error));
     return;
   }
@@ -257,7 +329,7 @@ void CreateAgent(const ToolContext& context,
     return;
   }
   std::move(callback).Run(ToolResult::Json(
-      base::Value(DescribeAgent(*context.service->profiles().Get(*id),
+      base::Value(DescribeAgent(context, *context.service->profiles().Get(*id),
                                 args.FindBool("avatarData").value_or(false)))));
 }
 
@@ -275,13 +347,23 @@ void UpdateAgent(const ToolContext& context,
     std::move(callback).Run(ToolResult::Error(error));
     return;
   }
+  if (!context.service->profiles().Exists(*id)) {
+    std::move(callback).Run(ToolResult::Error("Unknown agent: " + *id));
+    return;
+  }
+  error = CheckThrowawayIdentity(identity,
+                                 context.service->profiles().IsThrowaway(*id));
+  if (!error.empty()) {
+    std::move(callback).Run(ToolResult::Error(error));
+    return;
+  }
   if (!context.service->profiles().Update(*id, identity)) {
     std::move(callback).Run(ToolResult::Error("Unknown agent: " + *id));
     return;
   }
   context.service->sessions().RefreshGroups(*id);
   std::move(callback).Run(ToolResult::Json(
-      base::Value(DescribeAgent(*context.service->profiles().Get(*id),
+      base::Value(DescribeAgent(context, *context.service->profiles().Get(*id),
                                 args.FindBool("avatarData").value_or(false)))));
 }
 
@@ -297,8 +379,7 @@ void DeleteAgent(const ToolContext& context,
     std::move(callback).Run(ToolResult::Error("Unknown agent: " + *id));
     return;
   }
-  context.service->sessions().CloseProfileSessions(*id);
-  context.service->profiles().Delete(
+  context.service->DeleteAgent(
       *id, base::BindOnce(
                [](std::string id, ToolCallback callback) {
                  std::move(callback).Run(ToolResult::Json(base::Value(
@@ -619,19 +700,21 @@ constexpr char kAgentIdArgs[] = R"({"type":"object","properties":{
   "required":["id"]})";
 
 constexpr char kCreateAgentArgs[] = R"({"type":"object","properties":{
-  "id":{"type":"string","description":"Agent id: kebab-case slug, max 64 chars."},
+  "id":{"type":"string","description":"Agent id: kebab-case slug, max 64 chars (not with throwaway; \"tmp-\" is reserved)."},
+  "throwaway":{"type":"boolean","description":"A temporary agent for a one-off job: generated id (tmp-...), storage only in memory (nothing on disk, gone with the browser), deleted with its tabs and save-text files after idleMinutes without activity. No avatar or persistSessionCookies; state-save/state-load refused. At most 50 at once."},
+  "idleMinutes":{"type":"integer","description":"Throwaway agents: delete after this many minutes without activity (1-1440, default 15)."},
   "name":{"type":"string","description":"Friendly name, shown on the agent's tabs (max 64 chars; default: the id)."},
   "color":{"type":"string","enum":["grey","blue","red","yellow","green","pink","purple","cyan","orange"],"description":"Color of the agent's tabs (default: picked from the id)."},
   "avatar":{"type":"string","description":"Optional image: https: or data:image/ URL (max 256 KB); empty removes it."},
-  "persistSessionCookies":{"type":"boolean","description":"Keep session cookies (no expiry) across browser restarts, like Chrome's \"Continue where you left off\" (default true). A change applies at the next browser start."}},
-  "required":["id"]})";
+  "persistSessionCookies":{"type":"boolean","description":"Keep session cookies (no expiry) across browser restarts, like Chrome's \"Continue where you left off\" (default true). A change applies at the next browser start."}}})";
 
 constexpr char kUpdateAgentArgs[] = R"({"type":"object","properties":{
   "id":{"type":"string"},
   "name":{"type":"string","description":"Friendly name, shown on the agent's tabs (max 64 chars; default: the id)."},
   "color":{"type":"string","enum":["grey","blue","red","yellow","green","pink","purple","cyan","orange"],"description":"Color of the agent's tabs (default: picked from the id)."},
   "avatar":{"type":"string","description":"Optional image: https: or data:image/ URL (max 256 KB); empty removes it."},
-  "persistSessionCookies":{"type":"boolean","description":"Keep session cookies (no expiry) across browser restarts, like Chrome's \"Continue where you left off\" (default true). A change applies at the next browser start."}},
+  "persistSessionCookies":{"type":"boolean","description":"Keep session cookies (no expiry) across browser restarts, like Chrome's \"Continue where you left off\" (default true). A change applies at the next browser start."},
+  "idleMinutes":{"type":"integer","description":"Throwaway agents only: delete after this many minutes without activity (1-1440)."}},
   "required":["id"]})";
 
 constexpr char kOpenSessionArgs[] = R"({"type":"object","properties":{
@@ -679,12 +762,15 @@ constexpr char kListAgentsArgs[] = R"({"type":"object","properties":{
 constexpr Tool kTools[] = {
     {"list-agents",
      "List agents: identity (name, color, avatar), persistSessionCookies, "
-     "open sessions and tabs.",
+     "open sessions and tabs; throwaway agents with idleMinutes and "
+     "expiresAt.",
      kListAgentsArgs, &ListAgents},
     {"create-agent",
      "Create an agent: an identity shown on its tabs, and its own "
      "cookies, logins and storage, kept across restarts (session cookies "
-     "too, unless persistSessionCookies is false).",
+     "too, unless persistSessionCookies is false). throwaway: true creates "
+     "a temporary agent instead (generated id, in-memory storage, deleted "
+     "after idleMinutes without activity).",
      kCreateAgentArgs, &CreateAgent},
     {"update-agent",
      "Change an agent's name, color or avatar; its open tabs follow. "

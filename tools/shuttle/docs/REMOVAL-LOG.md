@@ -1154,3 +1154,20 @@ dir anchor, `OpenPrivateDir` per component, error on failure); the sidecar no lo
 `base::CreateDirectory`. Verified by hand (dirs 0700, save/load work, a symlinked `states/` → error, nothing written
 through it); SH-Review: clean (directory traversal only; agent-browser still opens the final `.json` by path). Open:
 the sidecar socket dir `<tmp>/acab/<session>` sits in the shared `/tmp` on Linux.
+
+## Fork commit 59 (2026-11-07): throwaway agents
+
+Nothing removed. New: `create-agent { throwaway: true, idleMinutes? }` (plan `plans/THROWAWAY-AGENTS.md`, maintainer's
+decisions 2026-11-07).
+- `ProfileRegistry`: throwaway entries in memory only (never in prefs), generated `tmp-<12 hex>` ids never reused in a
+  run, in-memory `StoragePartition`; delete = `ClearData` + remove `shuttle/secrets/<id>` (opened without following
+  links) + the partition's GPU shader caches under `Storage/ext/shuttle-tmp-<id>` (Chromium writes those even for
+  in-memory partitions); leftovers of all throwaways are removed at startup.
+- `ShuttleService`: expiry timer while throwaways exist (10 s; timeout/4 with `--shuttle-throwaway-idle-timeout=<n>s`
+  for probes), cap `--shuttle-max-throwaway-agents` (default 50, 0 = off), `DeleteAgent` shared with `delete-agent`.
+- `SessionManager`: `LastActivityOf` / `IsAgentBusy`; a closing session touches its throwaway agent.
+- `agent_partition.cc` / `IdForConfig`: an in-memory partition counts as an agent's only for `shuttle-tmp-` domains
+  (external-protocol block and home-tab navigation rule apply to throwaway tabs too).
+- MCP: `create-agent` / `update-agent` / `list-agents` fields; `state-save` / `state-load` refused for throwaways.
+- `chrome://agents`: "Temporary" chip with the expiry in its tooltip; the edit dialog hides avatar and cookie settings.
+- Probe `smoke-throwaway.mjs` (own launch in `smoke-all`).

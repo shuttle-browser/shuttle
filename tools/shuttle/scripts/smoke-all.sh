@@ -102,6 +102,11 @@ else note launch FAIL; stop; fi
 if launch "$tmp/guards" --remote-debugging-port=0 --shuttle-session-idle-timeout=8s; then
   probe tab-guards 180 smoke-tab-guards.mjs "--$mode"; closed guards
 else note launch-guards FAIL; stop; fi
+# Throwaway agents: own launch with a short throwaway idle timeout and a small cap.
+if launch "$tmp/throwaway" --remote-debugging-port=0 --shuttle-throwaway-idle-timeout=6s \
+    --shuttle-max-throwaway-agents=4; then
+  probe throwaway 120 smoke-throwaway.mjs "$tmp/throwaway"; closed throwaway
+else note launch-throwaway FAIL; stop; fi
 if [[ $with == *,network,* ]]; then
   if launch "$tmp/net" --remote-debugging-port=0 --shuttle-listen=0.0.0.0; then
     probe network 60 smoke-network.mjs "$tmp/net"; closed network

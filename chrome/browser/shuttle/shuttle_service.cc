@@ -9,12 +9,15 @@
 #include <string_view>
 #include <utility>
 
+#include "base/command_line.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
+#include "base/logging.h"
 #include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/values.h"
 #include "base/version_info/version_info.h"
@@ -25,6 +28,7 @@
 #include "chrome/browser/shuttle/profile_registry.h"
 #include "chrome/browser/shuttle/session_cdp_filter.h"
 #include "chrome/browser/shuttle/session_manager.h"
+#include "chrome/browser/shuttle/switches.h"
 #include "chrome/browser/profiles/profile.h"
 #include "content/public/browser/web_contents.h"
 
@@ -118,6 +122,53 @@ base::DictValue ToolsListResult() {
     tools.Append(std::move(tool));
   }
   return base::DictValue().Set("tools", std::move(tools));
+}
+
+constexpr size_t kDefaultMaxThrowawayAgents = 50;
+constexpr base::TimeDelta kThrowawayCheckInterval = base::Seconds(10);
+
+size_t MaxThrowawayAgents() {
+  static const size_t max = [] {
+    const base::CommandLine* command_line =
+        base::CommandLine::ForCurrentProcess();
+    if (!command_line->HasSwitch(kMaxThrowawayAgentsSwitch)) {
+      return kDefaultMaxThrowawayAgents;
+    }
+    size_t value = 0;
+    if (!base::StringToSizeT(
+            command_line->GetSwitchValueASCII(kMaxThrowawayAgentsSwitch),
+            &value)) {
+      LOG(WARNING) << "Ignoring --" << kMaxThrowawayAgentsSwitch;
+      return kDefaultMaxThrowawayAgents;
+    }
+    return value;
+  }();
+  return max;
+}
+
+// --shuttle-throwaway-idle-timeout, or nullopt.
+std::optional<base::TimeDelta> ThrowawayIdleTimeoutOverride() {
+  static const std::optional<base::TimeDelta> timeout =
+      []() -> std::optional<base::TimeDelta> {
+    const base::CommandLine* command_line =
+        base::CommandLine::ForCurrentProcess();
+    if (!command_line->HasSwitch(kThrowawayIdleTimeoutSwitch)) {
+      return std::nullopt;
+    }
+    std::string value =
+        command_line->GetSwitchValueASCII(kThrowawayIdleTimeoutSwitch);
+    const bool seconds = !value.empty() && value.back() == 's';
+    if (seconds) {
+      value.pop_back();
+    }
+    int amount = 0;
+    if (!base::StringToInt(value, &amount) || amount <= 0) {
+      LOG(WARNING) << "Ignoring --" << kThrowawayIdleTimeoutSwitch;
+      return std::nullopt;
+    }
+    return seconds ? base::Seconds(amount) : base::Minutes(amount);
+  }();
+  return timeout;
 }
 
 }  // namespace
@@ -260,6 +311,86 @@ void ShuttleService::HandleMcpRequest(const std::string& host,
                 id->Clone(), std::move(callback)));
 }
 
+base::expected<std::string, std::string> ShuttleService::CreateThrowawayAgent(
+    const ProfileRegistry::Identity& identity) {
+  const size_t max = MaxThrowawayAgents();
+  if (profiles_->ThrowawayIds().size() >= max) {
+    return base::unexpected(
+        max == 0 ? std::string("Throwaway agents are turned off in this "
+                               "browser (--shuttle-max-throwaway-agents=0)")
+                 : base::StrCat({"Too many throwaway agents (max ",
+                                 base::NumberToString(max),
+                                 "): delete one or wait for one to expire"}));
+  }
+  std::string id = profiles_->CreateThrowaway(identity);
+  UpdateThrowawayTimer();
+  return base::ok(std::move(id));
+}
+
+void ShuttleService::DeleteAgent(const std::string& agent_id,
+                                 base::OnceClosure done) {
+  sessions_->CloseProfileSessions(agent_id);
+  profiles_->Delete(agent_id, std::move(done));
+  UpdateThrowawayTimer();
+}
+
+base::TimeDelta ShuttleService::IdleTimeoutOf(
+    const ProfileRegistry::Entry& entry) const {
+  return ThrowawayIdleTimeoutOverride().value_or(entry.idle_timeout);
+}
+
+base::TimeTicks ShuttleService::LastActivityOf(
+    const std::string& agent_id) const {
+  return std::max(profiles_->ThrowawayLastActive(agent_id),
+                  sessions_->LastActivityOf(agent_id));
+}
+
+std::optional<base::Time> ShuttleService::ThrowawayExpiry(
+    const std::string& agent_id) const {
+  std::optional<ProfileRegistry::Entry> entry = profiles_->Get(agent_id);
+  if (!entry || !entry->throwaway) {
+    return std::nullopt;
+  }
+  const base::TimeDelta idle =
+      base::TimeTicks::Now() - LastActivityOf(agent_id);
+  return base::Time::Now() +
+         std::max(base::TimeDelta(), IdleTimeoutOf(*entry) - idle);
+}
+
+void ShuttleService::UpdateThrowawayTimer() {
+  if (profiles_->ThrowawayIds().empty()) {
+    throwaway_timer_.Stop();
+  } else if (!throwaway_timer_.IsRunning()) {
+    // Probes with a timeout of seconds check more often.
+    base::TimeDelta interval = kThrowawayCheckInterval;
+    if (std::optional<base::TimeDelta> override =
+            ThrowawayIdleTimeoutOverride()) {
+      interval = std::min(interval, *override / 4);
+    }
+    throwaway_timer_.Start(FROM_HERE, interval,
+                           base::BindRepeating(&ShuttleService::CheckThrowaways,
+                                               base::Unretained(this)));
+  }
+}
+
+void ShuttleService::CheckThrowaways() {
+  const base::TimeTicks now = base::TimeTicks::Now();
+  for (const std::string& id : profiles_->ThrowawayIds()) {
+    // A running tool call or a person looking at one of its tabs is activity.
+    if (sessions_->IsAgentBusy(id)) {
+      profiles_->TouchThrowaway(id);
+      continue;
+    }
+    std::optional<ProfileRegistry::Entry> entry = profiles_->Get(id);
+    if (!entry || now - LastActivityOf(id) < IdleTimeoutOf(*entry)) {
+      continue;
+    }
+    LOG(WARNING) << "Shuttle: deleting throwaway agent " << id << " after "
+                 << IdleTimeoutOf(*entry).InSeconds() << " s without activity";
+    DeleteAgent(id, base::DoNothing());
+  }
+}
+
 std::vector<ShuttleService::AgentSummary> ShuttleService::ListAgents()
     const {
   std::vector<AgentSummary> agents;
@@ -318,6 +449,7 @@ void ShuttleService::TakeBackTab(content::WebContents* contents) {
 void ShuttleService::Shutdown() {
   // Cookies set shortly before exit are otherwise lost (seen in the
   // partition spike with Browser.close).
+  throwaway_timer_.Stop();
   profiles_->FlushAllCookies();
   page_tools_->Shutdown();
 }

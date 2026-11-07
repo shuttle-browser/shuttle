@@ -4,18 +4,31 @@
 
 #include "chrome/browser/shuttle/profile_registry.h"
 
+#include <dirent.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <array>
 #include <utility>
 
+#include "base/files/file_enumerator.h"
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
+#include "base/files/scoped_file.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
 #include "base/hash/hash.h"
 #include "base/json/values_util.h"
 #include "base/logging.h"
+#include "base/posix/eintr_wrapper.h"
+#include "base/rand_util.h"
 #include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/thread_pool.h"
 #include "base/values.h"
 #include "chrome/browser/shuttle/agent_partition.h"
 #include "chrome/browser/shuttle/pref_names.h"
@@ -87,6 +100,115 @@ std::string DomainFor(std::string_view id) {
   return base::StrCat({kAgentPartitionDomainPrefix, id});
 }
 
+// Opens directory `name` in `parent_fd` without following a link; it must be
+// owned by this user. Never creates it.
+base::ScopedFD OpenOwnDir(int parent_fd, const char* name) {
+  base::ScopedFD fd(HANDLE_EINTR(openat(
+      parent_fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)));
+  struct stat st;
+  if (!fd.is_valid() || fstat(fd.get(), &st) != 0 || st.st_uid != geteuid()) {
+    return base::ScopedFD();
+  }
+  return fd;
+}
+
+// Removes <profile>/shuttle/secrets/<id> for each id `matches` accepts:
+// the files in it, then the directory. Nothing is followed through a link
+// (an entry that is a link is removed as a link); subdirectories (never
+// created by save-text) are left alone, and so is their parent then.
+void DeleteSecretDirs(base::FilePath profile_path,
+                      base::RepeatingCallback<bool(std::string_view)> matches) {
+  base::ScopedFD profile_fd(HANDLE_EINTR(
+      open(profile_path.value().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC)));
+  if (!profile_fd.is_valid()) {
+    return;
+  }
+  base::ScopedFD shuttle_fd = OpenOwnDir(profile_fd.get(), "shuttle");
+  if (!shuttle_fd.is_valid()) {
+    return;
+  }
+  base::ScopedFD secrets_fd = OpenOwnDir(shuttle_fd.get(), "secrets");
+  if (!secrets_fd.is_valid()) {
+    return;
+  }
+  std::vector<std::string> ids;
+  {
+    // fdopendir takes over the fd it is given.
+    int list_fd = HANDLE_EINTR(dup(secrets_fd.get()));
+    DIR* dir = list_fd >= 0 ? fdopendir(list_fd) : nullptr;
+    if (!dir) {
+      if (list_fd >= 0) {
+        close(list_fd);
+      }
+      return;
+    }
+    while (dirent* entry = readdir(dir)) {
+      std::string_view name(entry->d_name);
+      if (name != "." && name != ".." && matches.Run(name)) {
+        ids.emplace_back(name);
+      }
+    }
+    closedir(dir);
+  }
+  for (const std::string& id : ids) {
+    base::ScopedFD agent_fd = OpenOwnDir(secrets_fd.get(), id.c_str());
+    if (!agent_fd.is_valid()) {
+      // A link (or not ours): remove the link itself, never its target.
+      struct stat st;
+      if (fstatat(secrets_fd.get(), id.c_str(), &st, AT_SYMLINK_NOFOLLOW) ==
+              0 &&
+          S_ISLNK(st.st_mode)) {
+        unlinkat(secrets_fd.get(), id.c_str(), 0);
+      }
+      continue;
+    }
+    std::vector<std::string> files;
+    int list_fd = HANDLE_EINTR(dup(agent_fd.get()));
+    DIR* dir = list_fd >= 0 ? fdopendir(list_fd) : nullptr;
+    if (!dir) {
+      if (list_fd >= 0) {
+        close(list_fd);
+      }
+      continue;
+    }
+    while (dirent* entry = readdir(dir)) {
+      std::string_view name(entry->d_name);
+      if (name != "." && name != "..") {
+        files.emplace_back(name);
+      }
+    }
+    closedir(dir);
+    for (const std::string& file : files) {
+      // Fails (and keeps) a subdirectory: unlinkat without AT_REMOVEDIR.
+      unlinkat(agent_fd.get(), file.c_str(), 0);
+    }
+    unlinkat(secrets_fd.get(), id.c_str(), AT_REMOVEDIR);
+  }
+}
+
+// Removes the on-disk directories of throwaway agents' (in-memory) storage
+// partitions that `matches` accepts: <profile>/Storage/ext/shuttle-tmp-<id>.
+// Chromium still keeps the GPU shader caches of in-memory partitions there;
+// nothing else is written.
+void DeleteThrowawayPartitionDirs(
+    base::FilePath profile_path,
+    base::RepeatingCallback<bool(std::string_view)> matches) {
+  const std::string prefix =
+      std::string(kAgentPartitionDomainPrefix) + kThrowawayAgentIdPrefix;
+  base::FileEnumerator dirs(profile_path.Append(FILE_PATH_LITERAL("Storage"))
+                                .Append(FILE_PATH_LITERAL("ext")),
+                            /*recursive=*/false,
+                            base::FileEnumerator::DIRECTORIES);
+  for (base::FilePath dir = dirs.Next(); !dir.empty(); dir = dirs.Next()) {
+    const std::string name = dir.BaseName().AsUTF8Unsafe();
+    if (base::StartsWith(name, prefix) &&
+        matches.Run(std::string_view(name).substr(
+            sizeof(kAgentPartitionDomainPrefix) - 1))) {
+      base::DeletePathRecursively(dir);
+    }
+  }
+}
+
 void FlushPartition(content::StoragePartition* partition) {
   partition->GetCookieManagerForBrowserProcess()->FlushCookieStore(
       base::DoNothing());
@@ -115,6 +237,16 @@ ProfileRegistry::ProfileRegistry(Profile* profile) : profile_(profile) {
   for (const std::string& id : ids) {
     Obliterate(id, base::DoNothing());
   }
+  // Throwaway agents never outlive the browser; their save-text files and
+  // GPU caches left by a crash go now.
+  auto any_throwaway = base::BindRepeating([](std::string_view name) {
+    return ProfileRegistry::IsThrowawayId(name);
+  });
+  base::ThreadPool::PostTask(
+      FROM_HERE, {base::MayBlock(), base::TaskPriority::BEST_EFFORT},
+      base::BindOnce(&DeleteSecretDirs, profile_->GetPath(), any_throwaway)
+          .Then(base::BindOnce(&DeleteThrowawayPartitionDirs,
+                               profile_->GetPath(), any_throwaway)));
 }
 
 ProfileRegistry::~ProfileRegistry() = default;
@@ -144,16 +276,24 @@ bool ProfileRegistry::IsValidId(std::string_view id) {
 }
 
 // static
+bool ProfileRegistry::IsThrowawayId(std::string_view id) {
+  return base::StartsWith(id, kThrowawayPrefix);
+}
+
+// static
 std::string ProfileRegistry::IdForConfig(
     const content::StoragePartitionConfig& config) {
   const std::string& domain = config.partition_domain();
-  if (config.is_default() || config.in_memory() ||
-      !config.partition_name().empty() ||
+  if (config.is_default() || !config.partition_name().empty() ||
       !base::StartsWith(domain, kAgentPartitionDomainPrefix)) {
     return std::string();
   }
   std::string id = domain.substr(sizeof(kAgentPartitionDomainPrefix) - 1);
-  return IsValidId(id) ? id : std::string();
+  // Throwaway agents (only they) have in-memory storage.
+  if (!IsValidId(id) || config.in_memory() != IsThrowawayId(id)) {
+    return std::string();
+  }
+  return id;
 }
 
 // static
@@ -202,11 +342,15 @@ std::optional<tab_groups::TabGroupColorId> ProfileRegistry::ColorFromName(
 }
 
 bool ProfileRegistry::Exists(const std::string& id) const {
-  return profile_->GetPrefs()->GetDict(prefs::kProfiles).contains(id);
+  return throwaway_.contains(id) ||
+         profile_->GetPrefs()->GetDict(prefs::kProfiles).contains(id);
 }
 
 std::optional<ProfileRegistry::Entry> ProfileRegistry::Get(
     const std::string& id) const {
+  if (auto it = throwaway_.find(id); it != throwaway_.end()) {
+    return it->second.entry;
+  }
   const base::Value* value =
       profile_->GetPrefs()->GetDict(prefs::kProfiles).Find(id);
   if (!value) {
@@ -245,11 +389,15 @@ std::vector<ProfileRegistry::Entry> ProfileRegistry::List() const {
       entries.push_back(std::move(*entry));
     }
   }
+  for (const auto& [id, throwaway] : throwaway_) {
+    entries.push_back(throwaway.entry);
+  }
   return entries;
 }
 
 bool ProfileRegistry::Create(const std::string& id, const Identity& identity) {
   DCHECK(IsValidId(id));
+  DCHECK(!IsThrowawayId(id));
   if (Exists(id)) {
     return false;
   }
@@ -264,7 +412,65 @@ bool ProfileRegistry::Create(const std::string& id, const Identity& identity) {
   return true;
 }
 
+std::string ProfileRegistry::CreateThrowaway(const Identity& identity) {
+  DCHECK(!identity.avatar && !identity.persist_session_cookies);
+  std::string id;
+  do {
+    id = kThrowawayPrefix + base::HexEncodeLower(base::RandBytesAsVector(6));
+  } while (Exists(id) || used_throwaway_ids_.contains(id));
+  used_throwaway_ids_.insert(id);
+  Throwaway& throwaway = throwaway_[id];
+  throwaway.entry.id = id;
+  throwaway.entry.name = identity.name.value_or(id);
+  throwaway.entry.color = identity.color.value_or(DefaultColor(id));
+  throwaway.entry.created = base::Time::Now();
+  throwaway.entry.persist_session_cookies = false;
+  throwaway.entry.throwaway = true;
+  throwaway.entry.idle_timeout =
+      identity.idle_timeout.value_or(kDefaultThrowawayIdleTimeout);
+  throwaway.last_active = base::TimeTicks::Now();
+  return id;
+}
+
+bool ProfileRegistry::IsThrowaway(const std::string& id) const {
+  return throwaway_.contains(id);
+}
+
+std::vector<std::string> ProfileRegistry::ThrowawayIds() const {
+  std::vector<std::string> ids;
+  for (const auto& [id, throwaway] : throwaway_) {
+    ids.push_back(id);
+  }
+  return ids;
+}
+
+void ProfileRegistry::TouchThrowaway(const std::string& id) {
+  if (auto it = throwaway_.find(id); it != throwaway_.end()) {
+    it->second.last_active = base::TimeTicks::Now();
+  }
+}
+
+base::TimeTicks ProfileRegistry::ThrowawayLastActive(
+    const std::string& id) const {
+  auto it = throwaway_.find(id);
+  return it == throwaway_.end() ? base::TimeTicks() : it->second.last_active;
+}
+
 bool ProfileRegistry::Update(const std::string& id, const Identity& identity) {
+  if (auto it = throwaway_.find(id); it != throwaway_.end()) {
+    DCHECK(!identity.avatar && !identity.persist_session_cookies);
+    Entry& entry = it->second.entry;
+    if (identity.name) {
+      entry.name = identity.name->empty() ? id : *identity.name;
+    }
+    if (identity.color) {
+      entry.color = *identity.color;
+    }
+    if (identity.idle_timeout) {
+      entry.idle_timeout = *identity.idle_timeout;
+    }
+    return true;
+  }
   if (!Exists(id)) {
     return false;
   }
@@ -276,12 +482,17 @@ bool ProfileRegistry::Update(const std::string& id, const Identity& identity) {
 
 content::StoragePartitionConfig ProfileRegistry::PartitionConfig(
     const std::string& id) const {
-  return content::StoragePartitionConfig::Create(profile_, DomainFor(id),
-                                                 /*partition_name=*/"",
-                                                 /*in_memory=*/false);
+  return content::StoragePartitionConfig::Create(
+      profile_, DomainFor(id),
+      /*partition_name=*/"",
+      /*in_memory=*/IsThrowawayId(id));
 }
 
 void ProfileRegistry::Delete(const std::string& id, base::OnceClosure done) {
+  if (throwaway_.contains(id)) {
+    DeleteThrowaway(id, std::move(done));
+    return;
+  }
   {
     ScopedDictPrefUpdate update(profile_->GetPrefs(), prefs::kProfiles);
     update->Remove(id);
@@ -311,6 +522,45 @@ void ProfileRegistry::OnObliterated(const std::string& id,
     SetPendingDelete(id, false);
   }
   std::move(done).Run();
+}
+
+void ProfileRegistry::DeleteThrowaway(const std::string& id,
+                                      base::OnceClosure done) {
+  const content::StoragePartitionConfig config = PartitionConfig(id);
+  throwaway_.erase(id);
+  // Its save-text files go with it.
+  base::OnceClosure delete_secrets = base::BindOnce(
+      [](base::FilePath profile_path, std::string id, base::OnceClosure done) {
+        auto this_one = base::BindRepeating(
+            [](const std::string& id, std::string_view name) {
+              return name == id;
+            },
+            id);
+        base::ThreadPool::PostTaskAndReply(
+            FROM_HERE,
+            {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
+             base::TaskShutdownBehavior::BLOCK_SHUTDOWN},
+            base::BindOnce(&DeleteSecretDirs, profile_path, this_one)
+                .Then(base::BindOnce(&DeleteThrowawayPartitionDirs,
+                                     profile_path, this_one)),
+            std::move(done));
+      },
+      profile_->GetPath(), id, std::move(done));
+  // The in-memory partition can't be unloaded; empty it (the id is never
+  // reused, this frees the memory).
+  content::StoragePartition* partition =
+      profile_->GetStoragePartition(config, /*can_create=*/false);
+  if (!partition) {
+    std::move(delete_secrets).Run();
+    return;
+  }
+  partition->ClearData(
+      content::StoragePartition::REMOVE_DATA_MASK_ALL,
+      /*filter_builder=*/nullptr,
+      content::StoragePartition::StorageKeyPolicyMatcherFunction(),
+      network::mojom::CookieDeletionFilter::New(),
+      /*perform_storage_cleanup=*/false, base::Time(), base::Time::Max(),
+      std::move(delete_secrets));
 }
 
 void ProfileRegistry::SetPendingDelete(const std::string& id, bool pending) {

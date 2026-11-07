@@ -15,6 +15,10 @@ export interface Agent {
   avatar?: string;
   persistSessionCookies: boolean;
   createdAt: string;
+  // Throwaway agents: deleted after idleMinutes without activity.
+  throwaway?: boolean;
+  idleMinutes?: number;
+  expiresAt?: string;
   sessions: number;
   tabs: number;
 }

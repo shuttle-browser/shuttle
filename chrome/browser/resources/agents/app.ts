@@ -50,6 +50,8 @@ export interface EditState {
   color: string;
   avatar: string;
   persistSessionCookies: boolean;
+  // Throwaway agents have no avatar and keep nothing on disk.
+  throwaway: boolean;
 }
 
 export interface AgentsAppElement {
@@ -293,6 +295,7 @@ export class AgentsAppElement extends CrLitElement {
       color,
       avatar: '',
       persistSessionCookies: true,
+      throwaway: false,
     });
   }
 
@@ -312,8 +315,21 @@ export class AgentsAppElement extends CrLitElement {
         color: agent.color,
         avatar: agent.avatar || '',
         persistSessionCookies: agent.persistSessionCookies !== false,
+        throwaway: !!agent.throwaway,
       });
     }
+  }
+
+  protected expiryText_(agent: Agent): string {
+    const minutes = agent.idleMinutes ?? 15;
+    let text = `Temporary agent: deleted with its tabs after ${minutes} min ` +
+        'without activity';
+    if (agent.expiresAt) {
+      const time = new Date(agent.expiresAt).toLocaleTimeString(
+          undefined, {hour: '2-digit', minute: '2-digit'});
+      text += ` (about ${time})`;
+    }
+    return text + '. Its storage is kept only in memory.';
   }
 
   private async showEditDialog_(edit: EditState) {
@@ -444,6 +460,10 @@ export class AgentsAppElement extends CrLitElement {
       avatar: edit.avatar.trim(),
       persistSessionCookies: edit.persistSessionCookies,
     };
+    if (edit.throwaway) {
+      delete identity.avatar;
+      delete identity.persistSessionCookies;
+    }
     try {
       if (edit.id) {
         identity.name = identity.name || edit.id;
