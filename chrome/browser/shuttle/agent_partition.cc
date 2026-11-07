@@ -69,12 +69,14 @@ bool IsAgentWebContents(content::WebContents* contents) {
                         kAgentPartitionDomainPrefix)) {
     return false;
   }
-  // Throwaway agents ("shuttle-tmp-<id>", ProfileRegistry::kThrowawayPrefix),
-  // and only they, have in-memory storage.
-  const bool throwaway = base::StartsWith(
-      config.partition_domain(),
-      std::string(kAgentPartitionDomainPrefix) + kThrowawayAgentIdPrefix);
-  return config.in_memory() == throwaway;
+  // Only throwaway agents ("shuttle-tmp-<id>",
+  // ProfileRegistry::kThrowawayPrefix) have in-memory storage. On-disk
+  // "shuttle-tmp-" partitions are persistent agents created before the prefix
+  // was reserved.
+  return !config.in_memory() ||
+         base::StartsWith(config.partition_domain(),
+                          std::string(kAgentPartitionDomainPrefix) +
+                              kThrowawayAgentIdPrefix);
 }
 
 }  // namespace shuttle
