@@ -820,8 +820,8 @@ constexpr Tool kTools[] = {
      "across navigations. Returns the size applied.",
      kViewportArgs, &SetTabViewport},
     {"capture-tab",
-     "Screenshot of a leased tab's viewport in CSS px (also in the "
-     "background).",
+     "Screenshot of a leased tab's viewport in CSS px, JPEG unless format "
+     "png (also in the background). Cheaper than the screenshot page tool.",
      kCaptureArgs, &CaptureTab},
 };
 

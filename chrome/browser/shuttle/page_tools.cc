@@ -9,11 +9,13 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <set>
 #include <string_view>
 #include <utility>
 
+#include "base/base64.h"
 #include "base/command_line.h"
 #include "base/containers/span.h"
 #include "base/environment.h"
@@ -41,11 +43,16 @@
 #include "chrome/browser/shuttle/network_access.h"
 #include "chrome/browser/shuttle/profile_registry.h"
 #include "chrome/browser/shuttle/session_manager.h"
+#include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
 #include "crypto/sha2.h"
+#include "skia/ext/image_operations.h"
 #include "third_party/re2/src/re2/re2.h"
+#include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/clipboard/clipboard_buffer.h"
 #include "ui/base/clipboard/scoped_clipboard_writer.h"
+#include "ui/gfx/codec/jpeg_codec.h"
+#include "ui/gfx/codec/png_codec.h"
 
 namespace shuttle {
 
@@ -61,6 +68,11 @@ constexpr char kPageToolsJson[] =
 constexpr char kBinaryEnv[] = "SHUTTLE_AGENT_BROWSER";
 constexpr base::TimeDelta kDefaultTimeout = base::Seconds(60);
 constexpr base::TimeDelta kTimeoutSlack = base::Seconds(15);
+// Same as capture-tab.
+constexpr int kJpegQuality = 80;
+constexpr int kMinMaxSize = 16;
+// Decoded RGBA in the browser process: 64 MP = 256 MB.
+constexpr uint64_t kMaxScreenshotPixels = 64u * 1024 * 1024;
 
 const base::ListValue& Tools() {
   static const base::NoDestructor<base::ListValue> tools([] {
@@ -184,6 +196,20 @@ std::string Translate(const base::DictValue& tool,
     out->args.Remove("name");
     out->args.Set("path",
                   states_dir.AppendASCII(*name + ".json").AsUTF8Unsafe());
+  }
+  if (special && *special == "screenshot") {
+    const std::string* scale = args.FindString("scale");
+    if (scale && *scale != "css" && *scale != "device") {
+      return "scale must be css or device";
+    }
+    const std::string* format = args.FindString("format");
+    if (format && *format != "jpeg" && *format != "png") {
+      return "format must be jpeg or png";
+    }
+    if (args.contains("maxSize") &&
+        args.FindInt("maxSize").value_or(0) < kMinMaxSize) {
+      return "maxSize must be an integer of at least 16";
+    }
   }
   if (special && *special == "save_text") {
     const std::string* to = args.FindString("to");
@@ -498,6 +524,69 @@ ToolResult ToToolResult(base::expected<base::DictValue, std::string> response) {
   return out;
 }
 
+// Downscales a screenshot from agent-browser (PNG, device px) by `divisor`
+// (the device scale factor for CSS px) and to fit `max_size` on the longer
+// edge, then encodes it as JPEG or PNG. The PNG comes from the browser's own
+// capture via our sidecar, and PNGCodec decodes with a memory-safe decoder.
+ToolResult ProcessScreenshot(ToolResult in,
+                             float divisor,
+                             int max_size,
+                             bool png) {
+  for (base::Value& value : in.content) {
+    base::DictValue& part = value.GetDict();
+    const std::string* type = part.FindString("type");
+    const std::string* data = part.FindString("data");
+    if (!type || *type != "image" || !data) {
+      continue;
+    }
+    std::optional<std::vector<uint8_t>> bytes = base::Base64Decode(*data);
+    // IHDR width and height (big-endian) follow the 8-byte signature and the
+    // chunk's length and type.
+    if (bytes && bytes->size() >= 24) {
+      auto be32 = [&](size_t at) {
+        return (uint64_t{(*bytes)[at]} << 24) | ((*bytes)[at + 1] << 16) |
+               ((*bytes)[at + 2] << 8) | (*bytes)[at + 3];
+      };
+      if (be32(16) * be32(20) > kMaxScreenshotPixels) {
+        return ToolResult::Error(
+            "The screenshot is too large to rescale; use a selector or "
+            "scale: \"device\"");
+      }
+    }
+    SkBitmap bitmap = bytes ? gfx::PNGCodec::Decode(*bytes) : SkBitmap();
+    if (bitmap.drawsNothing()) {
+      return ToolResult::Error("Could not decode the screenshot");
+    }
+    double width = bitmap.width() / divisor;
+    double height = bitmap.height() / divisor;
+    if (max_size > 0 && std::max(width, height) > max_size) {
+      const double fit = max_size / std::max(width, height);
+      width *= fit;
+      height *= fit;
+    }
+    const int dest_width = std::max(1, static_cast<int>(std::lround(width)));
+    const int dest_height = std::max(1, static_cast<int>(std::lround(height)));
+    if (dest_width != bitmap.width() || dest_height != bitmap.height()) {
+      bitmap = skia::ImageOperations::Resize(
+          bitmap, skia::ImageOperations::RESIZE_BETTER, dest_width,
+          dest_height);
+      if (bitmap.drawsNothing()) {
+        return ToolResult::Error("Could not scale the screenshot");
+      }
+    }
+    std::optional<std::vector<uint8_t>> encoded =
+        png ? gfx::PNGCodec::EncodeBGRASkBitmap(bitmap,
+                                                /*discard_transparency=*/true)
+            : gfx::JPEGCodec::Encode(bitmap, kJpegQuality);
+    if (!encoded) {
+      return ToolResult::Error("Could not encode the screenshot");
+    }
+    part.Set("data", base::Base64Encode(*encoded));
+    part.Set("mimeType", png ? "image/png" : "image/jpeg");
+  }
+  return in;
+}
+
 bool IsSafeAgentId(const std::string& id) {
   return !id.empty() && id.find_first_of("/\\") == std::string::npos &&
          id != "." && id != "..";
@@ -515,6 +604,11 @@ struct PageToolManager::PendingCall {
   bool retried = false;
   // snapshot: regex the lines must match.
   std::string filter;
+  // screenshot: rescale/re-encode the PNG from agent-browser.
+  bool process_screenshot = false;
+  float screenshot_divisor = 1.0f;
+  int screenshot_max_size = 0;
+  bool screenshot_png = false;
   // save-text.
   bool save_text = false;
   std::string save_to;
@@ -637,6 +731,33 @@ void PageToolManager::Call(std::string_view name,
     }
   }
   const std::string* special = tool->FindDict("ab")->FindString("special");
+  if (special && *special == "screenshot") {
+    // agent-browser captures in device px; CSS px (the default) are a quarter
+    // of the pixels on 2x screens. The viewport emulation keeps the native
+    // device scale factor (session_manager.cc).
+    const std::string* scale = args.FindString("scale");
+    const std::string* format = args.FindString("format");
+    const bool png = format && *format == "png";
+    content::RenderWidgetHostView* view = contents->GetRenderWidgetHostView();
+    const float device_scale = view ? view->GetDeviceScaleFactor() : 1.0f;
+    const float divisor = (!scale || *scale == "css") && device_scale > 1.0f
+                              ? device_scale
+                              : 1.0f;
+    const int max_size = args.FindInt("maxSize").value_or(0);
+    if (divisor > 1.0f || max_size > 0) {
+      // Lossless from the sidecar; we encode once, after scaling.
+      call.process_screenshot = true;
+      call.screenshot_divisor = divisor;
+      call.screenshot_max_size = max_size;
+      call.screenshot_png = png;
+      call.ab_args.Set("format", "png");
+    } else {
+      call.ab_args.Set("format", png ? "png" : "jpeg");
+      if (!png) {
+        call.ab_args.Set("quality", kJpegQuality);
+      }
+    }
+  }
   if (special && *special == "save_text") {
     call.save_text = true;
     const std::string* to = args.FindString("to");
@@ -755,6 +876,17 @@ void PageToolManager::OnResult(
   }
 
   ToolResult out = ToToolResult(std::move(result));
+  if (!out.is_error && call.process_screenshot) {
+    base::ThreadPool::PostTaskAndReplyWithResult(
+        FROM_HERE,
+        {base::TaskPriority::USER_VISIBLE,
+         base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
+        base::BindOnce(&ProcessScreenshot, std::move(out),
+                       call.screenshot_divisor, call.screenshot_max_size,
+                       call.screenshot_png),
+        std::move(callback));
+    return;
+  }
   if (!out.is_error && (!call.filter.empty() || call.retried)) {
     for (base::Value& part : out.content) {
       std::string* text = part.GetDict().FindString("text");
