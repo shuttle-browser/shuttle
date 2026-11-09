@@ -480,6 +480,21 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 
 ## Gotchas
 
+- **Release smoke needs the sidecar** (158.0.0, 2026-11-09): the app `xbuild-run.sh mac-lto` fetches has no
+  agent-browser (release-mac.sh adds it at signing, in place in the prebuilt dir, signature stripped for the signing
+  pipeline: an app smoked after that has a sidecar that dies at launch). `release-mac-xbuild.sh` now smokes a temp
+  copy with the pinned sidecar added. Without a sidecar, tab-guards' busy-call check and throwaway's save-text check
+  SKIP (save-text hides sidecar errors, the probe asks `get-text`).
+- **`out/LinuxReleaseLTO` lags `out/LinuxRelease` on the VM**: Linux PR checks build the non-LTO dir, so the first
+  `linux-lto` release after a Chromium merge refuses ("last green on <old major>: near-full rebuild"). Rerun with
+  `SHUTTLE_ALLOW_FULL=1` after the maintainer's OK: 158 took 22 min on 192 cores (~$1.11).
+- **publish-packages.sh takes the files from `release/v<X.Y.Z>/linux/`**: it wants the `.sha256` next to each package
+  (the copies in `release/v<X.Y.Z>/` for the GitHub release have none).
+- **Chrome release posts without a browser**: the Blogger feed `https://chromereleases.googleblog.com/feeds/posts/default?alt=json`
+  has the full post HTML (security-fix count via `(\d+) security fix`).
+- **VM restarted outside xbuild-run**: its ephemeral IP changes and the `shuttle-xbuild` ssh alias keeps the old one;
+  use `gcloud compute ssh shuttle-xbuild-1 --project … --zone …` (or let the next xbuild-run update the alias).
+
 - **Headless smoke on the cloud VM after a rebuild** (2026-11-07): three setup steps or most probes fail.
   (1) The rebuild replaces `out/LinuxRelease/chrome_sandbox` without its SUID bit ("No usable sandbox!", every launch
   aborts): install a root-owned copy once, `sudo install -o root -g root -m 4755 out/LinuxRelease/chrome_sandbox

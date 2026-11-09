@@ -10,7 +10,7 @@
 //   8. beforeunload can't keep a tab: neither the connection cleanup nor close-session leaves one behind.
 //   9. Headless (--headless arg): an activated session tab doesn't count as a person looking; it still idles out.
 // Tab existence is checked on the browser's own target list, not list-sessions (a tab can outlive its session).
-import { args, base, browserWs, cdp, check, cleanup, evaluate, finish, gone, json, mcp, sleep } from './lib/smoke.mjs';
+import { args, base, browserWs, cdp, check, cleanup, evaluate, finish, gone, json, mcp, skipCheck, sleep } from './lib/smoke.mjs';
 
 const AGENT = 'smoke-tg';
 const IDLE_MS = 8000;      // the launch's --shuttle-session-idle-timeout
@@ -127,9 +127,15 @@ const r = await fetch(`${base}/mcp`, { method: 'POST', signal: AbortSignal.timeo
   body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call',
     params: { name: 'wait-for', arguments: { targetId: busyTab.targetId, ms: WAIT_MS } } }) });
 const waited = await r.json().catch(() => null);
-check('a wait-for longer than the timeout completes', r.status === 200 && waited?.result && !waited.result.isError,
-  JSON.stringify(waited?.result?.content?.[0]?.text ?? waited).slice(0, 160));
-check('the session stays open while the call runs', !!(await sessionOf(s5.sessionId)) && await tabExists(busyTab.targetId));
+const waitedText = String(waited?.result?.content?.[0]?.text ?? '');
+if (/agent-browser is not installed/.test(waitedText)) {
+  // An app without the sidecar (release-mac.sh adds it at signing): the call can't run, so there is nothing to test.
+  skipCheck('a running tool call keeps its session open', 'no agent-browser sidecar');
+} else {
+  check('a wait-for longer than the timeout completes', r.status === 200 && waited?.result && !waited.result.isError,
+    JSON.stringify(waitedText || waited).slice(0, 160));
+  check('the session stays open while the call runs', !!(await sessionOf(s5.sessionId)) && await tabExists(busyTab.targetId));
+}
 await mcp('close-session', { sessionId: s5.sessionId });
 
 // 8. beforeunload keeps no tab.
