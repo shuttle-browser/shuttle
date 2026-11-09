@@ -102,7 +102,9 @@ else note launch FAIL; stop; fi
 if launch "$tmp/guards" --remote-debugging-port=0 --shuttle-session-idle-timeout=8s; then
   probe tab-guards 180 smoke-tab-guards.mjs "--$mode"; closed guards
 else note launch-guards FAIL; stop; fi
-# Throwaway agents: own launch with a short throwaway idle timeout and a small cap.
+# Throwaway agents: own launch with a short throwaway idle timeout and a small cap, on a seeded profile (legacy
+# persistent tmp- agent, a crashed run's files, links).
+node "$here/smoke-throwaway-seed.mjs" "$tmp/throwaway"
 if launch "$tmp/throwaway" --remote-debugging-port=0 --shuttle-throwaway-idle-timeout=6s \
     --shuttle-max-throwaway-agents=4; then
   probe throwaway 120 smoke-throwaway.mjs "$tmp/throwaway"; closed throwaway

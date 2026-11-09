@@ -22,6 +22,7 @@ namespace shuttle {
 
 class Sidecar;
 class SessionManager;
+class ProfileRegistry;
 
 // The curated page tools (snapshot, click, fill, ...) of /mcp. Each forwards
 // to the agent-browser sidecar of the tab's session. Definitions come from
@@ -29,7 +30,9 @@ class SessionManager;
 // page_tools_data.inc by scripts/gen-page-tools.mjs.
 class PageToolManager {
  public:
-  PageToolManager(SessionManager* sessions, base::FilePath profile_path);
+  PageToolManager(SessionManager* sessions,
+                  ProfileRegistry* registry,
+                  base::FilePath profile_path);
   PageToolManager(const PageToolManager&) = delete;
   PageToolManager& operator=(const PageToolManager&) = delete;
   ~PageToolManager();
@@ -76,6 +79,7 @@ class PageToolManager {
   void OnSidecarClosed(Sidecar* sidecar);
 
   raw_ptr<SessionManager> sessions_;
+  raw_ptr<ProfileRegistry> registry_;
   const base::FilePath profile_path_;
   std::map<std::string, std::unique_ptr<Sidecar>> sidecars_;
   // Closing sidecars, kept alive until their process is gone.

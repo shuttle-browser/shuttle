@@ -520,12 +520,16 @@ struct PageToolManager::PendingCall {
   std::string save_to;
   std::string save_name;
   std::string save_regex;
+  std::string agent;
   base::FilePath secrets_dir;
 };
 
 PageToolManager::PageToolManager(SessionManager* sessions,
+                                 ProfileRegistry* registry,
                                  base::FilePath profile_path)
-    : sessions_(sessions), profile_path_(std::move(profile_path)) {}
+    : sessions_(sessions),
+      registry_(registry),
+      profile_path_(std::move(profile_path)) {}
 
 PageToolManager::~PageToolManager() = default;
 
@@ -594,7 +598,7 @@ void PageToolManager::Call(std::string_view name,
   if (const std::string* ab_special =
           tool->FindDict("ab")->FindString("special");
       ab_special && *ab_special == "state_path" &&
-      ProfileRegistry::IsThrowawayId(session->agent)) {
+      registry_->IsThrowaway(session->agent)) {
     // A saved state is cookies on disk; throwaway agents keep nothing there.
     std::move(callback).Run(ToolResult::Error(
         "state-save / state-load aren't available to throwaway agents"));
@@ -650,6 +654,7 @@ void PageToolManager::Call(std::string_view name,
       }
       call.save_regex = *regex;
     }
+    call.agent = session->agent;
     call.secrets_dir = agent_dir.Append("secrets").Append(session->agent);
   }
   GetOrCreateSidecar(session_id, context.host);
@@ -811,10 +816,16 @@ void PageToolManager::SaveText(PendingCall call,
     std::move(callback).Run(ToolResult::Json(base::Value(std::move(info))));
     return;
   }
-  base::ThreadPool::PostTaskAndReplyWithResult(
+  if (!registry_->Exists(call.agent)) {
+    // Deleted (e.g. an expired throwaway agent) while the text was read: its
+    // secrets directory is gone or going, don't recreate it.
+    std::move(callback).Run(ToolResult::Error("The agent was deleted."));
+    return;
+  }
+  // On the registry's file sequence: a throwaway agent's deletion cleans up
+  // after this write.
+  registry_->file_task_runner()->PostTaskAndReplyWithResult(
       FROM_HERE,
-      {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
-       base::TaskShutdownBehavior::BLOCK_SHUTDOWN},
       base::BindOnce(&WriteSecretFile, call.secrets_dir, call.save_name,
                      std::move(value)),
       base::BindOnce(

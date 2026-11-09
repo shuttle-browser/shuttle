@@ -182,6 +182,7 @@ ShuttleService::ShuttleService(Profile* profile)
           base::BindRepeating(&SessionManager::RefreshGroups,
                               base::Unretained(sessions_.get())))),
       page_tools_(std::make_unique<PageToolManager>(sessions_.get(),
+                                                    profiles_.get(),
                                                     profile->GetPath())) {
   sessions_->SetSessionClosedCallback(base::BindRepeating(
       &PageToolManager::OnSessionClosed, base::Unretained(page_tools_.get())));
@@ -321,6 +322,12 @@ base::expected<std::string, std::string> ShuttleService::CreateThrowawayAgent(
                  : base::StrCat({"Too many throwaway agents (max ",
                                  base::NumberToString(max),
                                  "): delete one or wait for one to expire"}));
+  }
+  if (!profiles_->ThrowawayCleanupDone()) {
+    // The previous run's throwaway files are still being removed (a moment
+    // after startup).
+    return base::unexpected(
+        std::string("Shuttle is still starting up: retry in a second"));
   }
   std::string id = profiles_->CreateThrowaway(identity);
   UpdateThrowawayTimer();

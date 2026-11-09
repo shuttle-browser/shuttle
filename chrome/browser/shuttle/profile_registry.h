@@ -14,6 +14,7 @@
 
 #include "base/functional/callback_forward.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
 #include "chrome/browser/shuttle/agent_partition.h"
@@ -21,6 +22,10 @@
 #include "content/public/browser/storage_partition_config.h"
 
 class Profile;
+
+namespace base {
+class SequencedTaskRunner;
+}
 
 namespace user_prefs {
 class PrefRegistrySyncable;
@@ -38,7 +43,9 @@ namespace shuttle {
 // registry keeps them out of prefs, their storage partition is in-memory, and
 // their ids ("tmp-<random>") are generated here and never reused. They are
 // deleted after `idle_timeout` without activity (ShuttleService) or with the
-// browser.
+// browser. Throwaway-ness is the in-memory registry entry, not the id prefix:
+// agents created as "tmp-..." before the prefix was reserved stay persistent
+// agents (on-disk storage, kept at startup).
 class ProfileRegistry {
  public:
   struct Entry {
@@ -92,11 +99,12 @@ class ProfileRegistry {
 
   // Kebab-case slug, 1-64 chars: ^[a-z0-9]+(-[a-z0-9]+)*$.
   static bool IsValidId(std::string_view id);
-  // Starts with kThrowawayPrefix (persistent agents can't use it).
+  // Starts with kThrowawayPrefix (new persistent agents can't use it; older
+  // ones may, see IsThrowaway()).
   static bool IsThrowawayId(std::string_view id);
 
   // Returns the profile id for an agent partition config, or "" if `config`
-  // is not one.
+  // is not one. In-memory configs are accepted for throwaway ids only.
   static std::string IdForConfig(const content::StoragePartitionConfig& config);
 
   // Validation of identity fields; return an error message or "".
@@ -116,8 +124,12 @@ class ProfileRegistry {
   bool Create(const std::string& id, const Identity& identity);
 
   // Creates a throwaway agent and returns its generated id. Fields must be
-  // valid (no avatar, no persist_session_cookies).
+  // valid (no avatar, no persist_session_cookies). Only once
+  // ThrowawayCleanupDone(): the startup cleanup of a previous run's files
+  // must not see a new agent's.
   std::string CreateThrowaway(const Identity& identity);
+  bool ThrowawayCleanupDone() const { return startup_cleanup_done_; }
+  // A live throwaway agent (registry entry), whatever its id looks like.
   bool IsThrowaway(const std::string& id) const;
   std::vector<std::string> ThrowawayIds() const;
   // Activity of a throwaway agent outside its sessions (creation, a session
@@ -136,6 +148,13 @@ class ProfileRegistry {
   // (<profile>/shuttle/secrets/<id>) go too.
   void Delete(const std::string& id, base::OnceClosure done);
 
+  // The sequence that writes and deletes agents' save-text files
+  // (<profile>/shuttle/secrets/<id>): a write posted before a throwaway
+  // agent's deletion runs before its cleanup. Writers check Exists() first.
+  const scoped_refptr<base::SequencedTaskRunner>& file_task_runner() const {
+    return file_task_runner_;
+  }
+
   // Writes pending cookie changes of `id` (or of every loaded partition) to
   // disk. No-op for partitions that aren't loaded.
   void FlushCookies(const std::string& id);
@@ -153,6 +172,8 @@ class ProfileRegistry {
   };
 
   raw_ptr<Profile> profile_;
+  scoped_refptr<base::SequencedTaskRunner> file_task_runner_;
+  bool startup_cleanup_done_ = false;
   // Ids whose partition was loaded at deletion; their directories go at the
   // next launch.
   std::set<std::string> gc_required_;
