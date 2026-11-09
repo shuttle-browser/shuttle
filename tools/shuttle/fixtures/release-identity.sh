@@ -47,8 +47,8 @@ mv llvm.bak third_party/llvm-build/Release+Asserts/cr_build_revision
 shuttle_receipt_begin out/R; shuttle_receipt_end out/R 0 out/R/bin >/dev/null
 ( find() { return 1; }; expect 2 shuttle_receipt_check out/R out/R/bin; exit $failures ) || failures=$((failures + 1))
 # sidecar: a package whose binary doesn't match the pin is refused before copy/exec
-p="$FIXTURE_TMP/pkg"; mkdir -p "$p/bin"; echo '{ "version": "0.38.2" }' > "$p/package.json"; echo lic > "$p/LICENSE"
-printf '#!/bin/sh\necho agent-browser 0.38.2\n' > "$p/bin/agent-browser-linux-x64"; chmod +x "$p/bin/agent-browser-linux-x64"
+p="$FIXTURE_TMP/pkg"; mkdir -p "$p/bin"; echo '{ "version": "0.41.2" }' > "$p/package.json"; echo lic > "$p/LICENSE"
+printf '#!/bin/sh\necho agent-browser 0.41.2\n' > "$p/bin/agent-browser-linux-x64"; chmod +x "$p/bin/agent-browser-linux-x64"
 AGENT_BROWSER_SRC=$p expect 1 bash "$SCRIPTS/fetch-agent-browser.sh" "$FIXTURE_TMP/h" linux-x64; expect_out "refusing"
 [[ ! -e "$FIXTURE_TMP/h/agent-browser" ]] || { echo "unpinned binary installed"; failures=$((failures + 1)); }
 SHUTTLE_RELEASE_MODE=1 SHUTTLE_SIDECAR_UNPINNED=1 AGENT_BROWSER_SRC=$p expect 2 bash "$SCRIPTS/fetch-agent-browser.sh" "$FIXTURE_TMP/h" linux-x64

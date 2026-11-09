@@ -710,6 +710,9 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   smoke-mcp checks a
   list of required tool names (not a count). Gotchas: `AGENT_BROWSER_PIN_TAB=1` makes a fresh daemon open a stray tab; the daemon
   outlives the MCP process (send `close`, idle timeout as fallback).
+  Version bump check (0.41.2, 2026-11-10): diff the `tools/list` of old and new binary for every `ab` tool in the
+  config plus `tab_switch`, `scroll_into_view` and `close`. `agent-browser mcp --tools all` **paginates** `tools/list`
+  (64 per page, `nextCursor` "64", "128"; 156 tools): follow the cursor, or tools look missing.
 - **zsh in the Bash tool:** `$VAR` holding several words does **not** split (`scripts/x.sh $FILES` passes one
   argument). Pass arguments literally or use `${=VAR}`.
 - **Probes share a profile:** each uses its own agent id prefix (`smoke-`, `smoke-sc-`, `smoke-agents-`,
