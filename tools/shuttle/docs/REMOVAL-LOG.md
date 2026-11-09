@@ -1174,4 +1174,11 @@ decisions 2026-11-07).
 - SH-Review (post-merge, 2026-11-07): one P1 (ids `tmp-*` were valid for persistent agents before: startup cleanup and
   the in-memory switch hit existing ones) and three P2s (startup cleanup races a new throwaway; partition-dir cleanup
   follows a symlinked `Storage`/`ext`; a save-text write already posted can recreate `secrets/<id>` after deletion).
-  Open: fixed in a follow-up commit before the 158 release.
+  Fixed in `50f2c9ad5c` (PR #25, SH-Review re-review clean): throwaway-ness is the registry entry, not the prefix
+  (PartitionConfig by `IsThrowaway`; IdForConfig / IsAgentWebContents accept on-disk `tmp-` configs, in-memory only for
+  `tmp-`; the state-path refusal asks the registry); the startup cleanup skips ids in prefs, runs on the registry's file
+  sequence, and `create-agent { throwaway }` is refused until it ran; partition dirs are deleted fd-anchored
+  (`OpenOwnDir` per component, `DeleteTreeAt` relative to opened dirs, links unlinked); save-text writes go to the
+  same sequence after an `Exists` check, so a throwaway's cleanup runs after its last write. Probe: startup checks on a
+  profile seeded by `smoke-throwaway-seed.mjs` (legacy `tmp-legacy` agent kept, stale files removed, links removed as
+  links). Shipped in 158.0.0.

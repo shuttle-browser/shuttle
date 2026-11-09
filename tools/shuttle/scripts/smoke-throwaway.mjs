@@ -113,7 +113,9 @@ check('state-save refused', /throwaway/.test(await errorOf('state-save', { targe
 await mcp('navigate-tab', { targetId: tab.targetId, url: 'data:text/html,<p id=k>tmp-secret-42</p>' });
 const secretsDir = path.join(profileDir, 'shuttle', 'secrets', a.id);
 const saveError = await errorOf('save-text', { targetId: tab.targetId, selector: '#k', name: 'k1' });
-if (/agent-browser/.test(saveError)) {
+// save-text never forwards the sidecar's error text (it can carry page content); get-text does: tells a missing
+// sidecar (release-mac.sh adds it at signing) from a real failure.
+if (saveError && /agent-browser is not installed/.test(await errorOf('get-text', { targetId: tab.targetId, selector: '#k' }))) {
   skipCheck('save-text file deleted with the agent', 'no agent-browser sidecar');
 } else {
   check('save-text writes the file', !saveError && fs.existsSync(path.join(secretsDir, 'k1.txt')), saveError);
