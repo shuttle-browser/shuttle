@@ -1,5 +1,8 @@
 # RAM benchmark: chrome-devtools-mcp vs Shuttle (2026-10-12)
 
+Measured on **Shuttle 0.1.1** (Chromium 155) and not rerun since: the numbers describe that release. Rerun with the
+script before quoting them for a newer one.
+
 Script: `scripts/bench-ram.mjs` (`node scripts/bench-ram.mjs cdm <n> <url>` /
 `node scripts/bench-ram.mjs shuttle <n> <url> <Shuttle binary> <port>`).
 
