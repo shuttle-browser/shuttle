@@ -16,6 +16,15 @@ Same script and setup as below, rerun on the signed **Shuttle 158.0.1** release 
 **Shuttle uses ~3.5× less RAM with 3 agents and ~4.1× less with 10** (1.22 GB and 3.90 GB saved). Both sides got
 lighter since 0.1.1 / Chrome 155 (Shuttle -13 % at 3 agents, -12 % at 10; CDM -6 % / -13 %); the ratio held.
 
+Browser vs MCP-server split (same runs, page state; 1 agent run separately the same day; used on the site's /why
+chart; "MCP" as defined in the 0.1.1 split section below):
+
+| Agents | chrome-devtools-mcp: browser / MCP / total | Shuttle: browser / MCP / total | Ratio |
+| --- | --- | --- | --- |
+| 1 | 281 MB (9) / 274 MB (2) / **555 MB** | 267 MB (8) / 7 MB (1) / **274 MB** | 2.0× |
+| 3 | 841 MB (27) / 863 MB (6) / **1.70 GB** | 464 MB (10) / 17 MB (3) / **481 MB** | 3.5× |
+| 10 | 2,786 MB (90) / 2,381 MB (20) / **5.17 GB** | 1,200 MB (17) / 67 MB (10) / **1.27 GB** | 4.1× |
+
 ## First run: Shuttle 0.1.1 (2026-10-12)
 
 The sections below up to "Suggested page wording" are the original 0.1.1 measurements.
