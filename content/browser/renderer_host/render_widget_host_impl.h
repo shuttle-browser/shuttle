@@ -735,6 +735,11 @@ class CONTENT_EXPORT RenderWidgetHostImpl
   // arrived. The reply includes the snapshot-id from the request.
   void GotResponseToForceRedraw(int snapshot_id);
 
+  // Shuttle: in headless mode on Linux, a surface snapshot whose ForceRedraw is
+  // not acknowledged in time (a background tab there may never present the
+  // forced frame) copies the newest surface instead of waiting forever.
+  void ForceRedrawTimedOut(int snapshot_id);
+
   // When the WebContents (which acts as the Delegate) is destroyed, this object
   // may still outlive it while the renderer is shutting down. In that case the
   // delegate pointer is removed (since it would be a UAF).
