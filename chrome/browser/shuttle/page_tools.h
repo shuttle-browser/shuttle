@@ -13,7 +13,9 @@
 
 #include "base/files/file_path.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/types/expected.h"
 #include "base/values.h"
 #include "chrome/browser/shuttle/mcp_tools.h"
@@ -84,6 +86,8 @@ class PageToolManager {
   std::map<std::string, std::unique_ptr<Sidecar>> sidecars_;
   // Closing sidecars, kept alive until their process is gone.
   std::vector<std::unique_ptr<Sidecar>> retiring_;
+  // Reads and rescales screenshot captures, one at a time.
+  scoped_refptr<base::SequencedTaskRunner> screenshot_runner_;
   base::WeakPtrFactory<PageToolManager> weak_factory_{this};
 };
 

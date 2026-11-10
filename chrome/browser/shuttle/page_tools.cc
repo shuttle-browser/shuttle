@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <optional>
 #include <set>
@@ -73,6 +74,13 @@ constexpr int kJpegQuality = 80;
 constexpr int kMinMaxSize = 16;
 // Decoded RGBA in the browser process: 64 MP = 256 MB.
 constexpr uint64_t kMaxScreenshotPixels = 64u * 1024 * 1024;
+// Capture file read for rescaling (encoded PNG).
+constexpr int64_t kMaxScreenshotFileBytes = 48 * 1024 * 1024;
+// Returned as is (no rescale): agent-browser's own inline image limit.
+constexpr int64_t kMaxScreenshotReturnBytes = 10 * 1024 * 1024;
+// Screenshots captured or processed at once, across all sessions; each can
+// hold a capture file and a decoded bitmap.
+constexpr int kMaxScreenshotsInFlight = 4;
 
 const base::ListValue& Tools() {
   static const base::NoDestructor<base::ListValue> tools([] {
@@ -524,67 +532,200 @@ ToolResult ToToolResult(base::expected<base::DictValue, std::string> response) {
   return out;
 }
 
-// Downscales a screenshot from agent-browser (PNG, device px) by `divisor`
-// (the device scale factor for CSS px) and to fit `max_size` on the longer
-// edge, then encodes it as JPEG or PNG. The PNG comes from the browser's own
-// capture via our sidecar, and PNGCodec decodes with a memory-safe decoder.
-ToolResult ProcessScreenshot(ToolResult in,
+// One of kMaxScreenshotsInFlight admissions, released on destruction (on any
+// thread: the count is atomic).
+class ScreenshotSlot {
+ public:
+  static std::optional<ScreenshotSlot> TryAcquire() {
+    int current = InFlight().load();
+    do {
+      if (current >= kMaxScreenshotsInFlight) {
+        return std::nullopt;
+      }
+    } while (!InFlight().compare_exchange_weak(current, current + 1));
+    return ScreenshotSlot();
+  }
+  ScreenshotSlot(ScreenshotSlot&& other) noexcept
+      : held_(std::exchange(other.held_, false)) {}
+  ScreenshotSlot& operator=(ScreenshotSlot&& other) noexcept {
+    Release();
+    held_ = std::exchange(other.held_, false);
+    return *this;
+  }
+  ~ScreenshotSlot() { Release(); }
+
+ private:
+  ScreenshotSlot() = default;
+  static std::atomic<int>& InFlight() {
+    static std::atomic<int> in_flight{0};
+    return in_flight;
+  }
+  void Release() {
+    if (std::exchange(held_, false)) {
+      InFlight().fetch_sub(1);
+    }
+  }
+  bool held_ = true;
+};
+
+// What a screenshot call needs after the capture: the file the sidecar writes
+// (a fresh random name in the session's shots directory, which we create) and
+// how to rescale it.
+struct ScreenshotJob {
+  base::FilePath session_dir;
+  std::string file_name;
+  bool process = false;
+  float divisor = 1.0f;
+  int max_size = 0;
+  bool png = false;
+};
+
+// The session's sidecar directory (sockets; the shots directory below it).
+// Short: unix socket paths max ~100 chars.
+base::FilePath SessionDir(const std::string& session_id) {
+  base::FilePath temp;
+  if (!base::GetTempDir(&temp)) {
+    temp = base::FilePath("/tmp");
+  }
+  return temp.Append("acab").AppendASCII(session_id);
+}
+
+// Reads and deletes `job.file_name` in <session_dir>/shots. The session and
+// shots directories are opened without following links and must be private
+// directories of this user; the file must be a regular file (not a link) of
+// at most `max_bytes`. Only the name we chose is ever opened, never a path
+// returned by the sidecar. Returns nullopt (with `too_large` set if that was
+// the reason) when the file can't be used; it is deleted if it exists.
+std::optional<std::vector<uint8_t>> TakeScreenshotFile(const ScreenshotJob& job,
+                                                       int64_t max_bytes,
+                                                       bool* too_large) {
+  *too_large = false;
+  base::ScopedFD temp_fd(
+      HANDLE_EINTR(open(job.session_dir.DirName().value().c_str(),
+                        O_RDONLY | O_DIRECTORY | O_CLOEXEC)));
+  if (!temp_fd.is_valid()) {
+    return std::nullopt;
+  }
+  base::ScopedFD session_fd =
+      OpenPrivateDir(temp_fd.get(), job.session_dir.BaseName().value());
+  if (!session_fd.is_valid()) {
+    return std::nullopt;
+  }
+  base::ScopedFD shots_fd = OpenPrivateDir(session_fd.get(), "shots");
+  if (!shots_fd.is_valid()) {
+    return std::nullopt;
+  }
+  base::ScopedFD file(
+      HANDLE_EINTR(openat(shots_fd.get(), job.file_name.c_str(),
+                          O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)));
+  unlinkat(shots_fd.get(), job.file_name.c_str(), 0);
+  struct stat st;
+  if (!file.is_valid() || fstat(file.get(), &st) != 0 || !S_ISREG(st.st_mode) ||
+      st.st_uid != geteuid() || st.st_size <= 0) {
+    return std::nullopt;
+  }
+  if (st.st_size > max_bytes) {
+    *too_large = true;
+    return std::nullopt;
+  }
+  std::vector<uint8_t> bytes(static_cast<size_t>(st.st_size));
+  if (!base::ReadFromFD(file.get(),
+                        base::as_writable_chars(base::span(bytes)))) {
+    return std::nullopt;
+  }
+  return bytes;
+}
+
+// Downscales a screenshot (PNG, device px) by `divisor` (the device scale
+// factor for CSS px) and to fit `max_size` on the longer edge, then encodes
+// it as JPEG or PNG. The PNG comes from the browser's own capture via our
+// sidecar, and PNGCodec decodes with a memory-safe decoder.
+ToolResult ProcessScreenshot(const std::vector<uint8_t>& bytes,
                              float divisor,
                              int max_size,
                              bool png) {
-  for (base::Value& value : in.content) {
-    base::DictValue& part = value.GetDict();
-    const std::string* type = part.FindString("type");
-    const std::string* data = part.FindString("data");
-    if (!type || *type != "image" || !data) {
-      continue;
+  // IHDR width and height (big-endian) follow the 8-byte signature and the
+  // chunk's length and type.
+  if (bytes.size() >= 24) {
+    auto be32 = [&](size_t at) {
+      return (uint64_t{bytes[at]} << 24) | (bytes[at + 1] << 16) |
+             (bytes[at + 2] << 8) | bytes[at + 3];
+    };
+    if (be32(16) * be32(20) > kMaxScreenshotPixels) {
+      return ToolResult::Error(
+          "The screenshot is too large to rescale; use a selector or "
+          "scale: \"device\"");
     }
-    std::optional<std::vector<uint8_t>> bytes = base::Base64Decode(*data);
-    // IHDR width and height (big-endian) follow the 8-byte signature and the
-    // chunk's length and type.
-    if (bytes && bytes->size() >= 24) {
-      auto be32 = [&](size_t at) {
-        return (uint64_t{(*bytes)[at]} << 24) | ((*bytes)[at + 1] << 16) |
-               ((*bytes)[at + 2] << 8) | (*bytes)[at + 3];
-      };
-      if (be32(16) * be32(20) > kMaxScreenshotPixels) {
-        return ToolResult::Error(
-            "The screenshot is too large to rescale; use a selector or "
-            "scale: \"device\"");
-      }
-    }
-    SkBitmap bitmap = bytes ? gfx::PNGCodec::Decode(*bytes) : SkBitmap();
-    if (bitmap.drawsNothing()) {
-      return ToolResult::Error("Could not decode the screenshot");
-    }
-    double width = bitmap.width() / divisor;
-    double height = bitmap.height() / divisor;
-    if (max_size > 0 && std::max(width, height) > max_size) {
-      const double fit = max_size / std::max(width, height);
-      width *= fit;
-      height *= fit;
-    }
-    const int dest_width = std::max(1, static_cast<int>(std::lround(width)));
-    const int dest_height = std::max(1, static_cast<int>(std::lround(height)));
-    if (dest_width != bitmap.width() || dest_height != bitmap.height()) {
-      bitmap = skia::ImageOperations::Resize(
-          bitmap, skia::ImageOperations::RESIZE_BETTER, dest_width,
-          dest_height);
-      if (bitmap.drawsNothing()) {
-        return ToolResult::Error("Could not scale the screenshot");
-      }
-    }
-    std::optional<std::vector<uint8_t>> encoded =
-        png ? gfx::PNGCodec::EncodeBGRASkBitmap(bitmap,
-                                                /*discard_transparency=*/true)
-            : gfx::JPEGCodec::Encode(bitmap, kJpegQuality);
-    if (!encoded) {
-      return ToolResult::Error("Could not encode the screenshot");
-    }
-    part.Set("data", base::Base64Encode(*encoded));
-    part.Set("mimeType", png ? "image/png" : "image/jpeg");
   }
-  return in;
+  SkBitmap bitmap = gfx::PNGCodec::Decode(bytes);
+  if (bitmap.drawsNothing()) {
+    return ToolResult::Error("Could not decode the screenshot");
+  }
+  double width = bitmap.width() / divisor;
+  double height = bitmap.height() / divisor;
+  if (max_size > 0 && std::max(width, height) > max_size) {
+    const double fit = max_size / std::max(width, height);
+    width *= fit;
+    height *= fit;
+  }
+  const int dest_width = std::max(1, static_cast<int>(std::lround(width)));
+  const int dest_height = std::max(1, static_cast<int>(std::lround(height)));
+  if (dest_width != bitmap.width() || dest_height != bitmap.height()) {
+    bitmap = skia::ImageOperations::Resize(
+        bitmap, skia::ImageOperations::RESIZE_BETTER, dest_width, dest_height);
+    if (bitmap.drawsNothing()) {
+      return ToolResult::Error("Could not scale the screenshot");
+    }
+  }
+  std::optional<std::vector<uint8_t>> encoded =
+      png ? gfx::PNGCodec::EncodeBGRASkBitmap(bitmap,
+                                              /*discard_transparency=*/true)
+          : gfx::JPEGCodec::Encode(bitmap, kJpegQuality);
+  if (!encoded) {
+    return ToolResult::Error("Could not encode the screenshot");
+  }
+  ToolResult out;
+  out.content.Append(base::DictValue()
+                         .Set("type", "image")
+                         .Set("data", base::Base64Encode(*encoded))
+                         .Set("mimeType", png ? "image/png" : "image/jpeg"));
+  return out;
+}
+
+// After the sidecar's reply (`in`): the image comes from the capture file,
+// never from the reply (agent-browser leaves out images over 10 MiB but still
+// reports success), so a successful screenshot always carries an image or is
+// an error. The file is deleted when this runs; a capture written after a
+// timeout or skipped at shutdown stays in the session's shots directory.
+ToolResult FinishScreenshot(ToolResult in, ScreenshotJob job) {
+  bool too_large = false;
+  std::optional<std::vector<uint8_t>> bytes = TakeScreenshotFile(
+      job, job.process ? kMaxScreenshotFileBytes : kMaxScreenshotReturnBytes,
+      &too_large);
+  if (in.is_error) {
+    return in;
+  }
+  if (too_large) {
+    return ToolResult::Error(
+        job.process
+            ? "The screenshot is too large to rescale; use a selector or a "
+              "smaller viewport"
+            : "The screenshot is over 10 MB; use maxSize, a selector, or "
+              "scale: \"css\"");
+  }
+  if (!bytes) {
+    return ToolResult::Error("The screenshot could not be read");
+  }
+  if (job.process) {
+    return ProcessScreenshot(*bytes, job.divisor, job.max_size, job.png);
+  }
+  ToolResult out;
+  out.content.Append(
+      base::DictValue()
+          .Set("type", "image")
+          .Set("data", base::Base64Encode(*bytes))
+          .Set("mimeType", job.png ? "image/png" : "image/jpeg"));
+  return out;
 }
 
 bool IsSafeAgentId(const std::string& id) {
@@ -604,11 +745,9 @@ struct PageToolManager::PendingCall {
   bool retried = false;
   // snapshot: regex the lines must match.
   std::string filter;
-  // screenshot: rescale/re-encode the PNG from agent-browser.
-  bool process_screenshot = false;
-  float screenshot_divisor = 1.0f;
-  int screenshot_max_size = 0;
-  bool screenshot_png = false;
+  // screenshot: the capture file, its rescaling and its admission slot.
+  std::optional<ScreenshotJob> screenshot;
+  std::optional<ScreenshotSlot> screenshot_slot;
   // save-text.
   bool save_text = false;
   std::string save_to;
@@ -623,7 +762,11 @@ PageToolManager::PageToolManager(SessionManager* sessions,
                                  base::FilePath profile_path)
     : sessions_(sessions),
       registry_(registry),
-      profile_path_(std::move(profile_path)) {}
+      profile_path_(std::move(profile_path)),
+      // One capture file read and decoded at a time.
+      screenshot_runner_(base::ThreadPool::CreateSequencedTaskRunner(
+          {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
+           base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN})) {}
 
 PageToolManager::~PageToolManager() = default;
 
@@ -732,6 +875,14 @@ void PageToolManager::Call(std::string_view name,
   }
   const std::string* special = tool->FindDict("ab")->FindString("special");
   if (special && *special == "screenshot") {
+    // Bounded across sessions before the capture: each holds a capture file
+    // and possibly a decoded bitmap until its result is sent.
+    call.screenshot_slot = ScreenshotSlot::TryAcquire();
+    if (!call.screenshot_slot) {
+      std::move(callback).Run(ToolResult::Error(
+          "Busy: other screenshots are being taken; retry in a moment"));
+      return;
+    }
     // agent-browser captures in device px; CSS px (the default) are a quarter
     // of the pixels on 2x screens. The viewport emulation keeps the native
     // device scale factor (session_manager.cc).
@@ -744,12 +895,22 @@ void PageToolManager::Call(std::string_view name,
                               ? device_scale
                               : 1.0f;
     const int max_size = args.FindInt("maxSize").value_or(0);
-    if (divisor > 1.0f || max_size > 0) {
+    ScreenshotJob job;
+    job.session_dir = SessionDir(session_id);
+    job.process = divisor > 1.0f || max_size > 0;
+    job.divisor = divisor;
+    job.max_size = max_size;
+    job.png = png;
+    // We read the capture from this file ourselves: agent-browser returns
+    // larger images only as a path.
+    job.file_name = base::StrCat(
+        {"shot-", base::HexEncodeLower(base::RandBytesAsVector(12)),
+         job.process || png ? ".png" : ".jpg"});
+    call.ab_args.Set(
+        "path",
+        job.session_dir.Append("shots").Append(job.file_name).AsUTF8Unsafe());
+    if (job.process) {
       // Lossless from the sidecar; we encode once, after scaling.
-      call.process_screenshot = true;
-      call.screenshot_divisor = divisor;
-      call.screenshot_max_size = max_size;
-      call.screenshot_png = png;
       call.ab_args.Set("format", "png");
     } else {
       call.ab_args.Set("format", png ? "png" : "jpeg");
@@ -757,6 +918,7 @@ void PageToolManager::Call(std::string_view name,
         call.ab_args.Set("quality", kJpegQuality);
       }
     }
+    call.screenshot = std::move(job);
   }
   if (special && *special == "save_text") {
     call.save_text = true;
@@ -876,15 +1038,18 @@ void PageToolManager::OnResult(
   }
 
   ToolResult out = ToToolResult(std::move(result));
-  if (!out.is_error && call.process_screenshot) {
-    base::ThreadPool::PostTaskAndReplyWithResult(
+  if (call.screenshot) {
+    // Also on errors: a capture file already written is deleted. The slot is
+    // released once the result is sent.
+    screenshot_runner_->PostTaskAndReplyWithResult(
         FROM_HERE,
-        {base::TaskPriority::USER_VISIBLE,
-         base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
-        base::BindOnce(&ProcessScreenshot, std::move(out),
-                       call.screenshot_divisor, call.screenshot_max_size,
-                       call.screenshot_png),
-        std::move(callback));
+        base::BindOnce(&FinishScreenshot, std::move(out),
+                       std::move(*call.screenshot)),
+        base::BindOnce(
+            [](ScreenshotSlot, ToolCallback callback, ToolResult result) {
+              std::move(callback).Run(std::move(result));
+            },
+            std::move(*call.screenshot_slot), std::move(callback)));
     return;
   }
   if (!out.is_error && (!call.filter.empty() || call.retried)) {
@@ -980,12 +1145,7 @@ Sidecar* PageToolManager::GetOrCreateSidecar(const std::string& session_id,
   if (it != sidecars_.end()) {
     return it->second.get();
   }
-  base::FilePath temp;
-  if (!base::GetTempDir(&temp)) {
-    temp = base::FilePath("/tmp");
-  }
-  // Short: daemon sockets live here (unix socket paths max ~100 chars).
-  base::FilePath dir = temp.Append("acab").AppendASCII(session_id);
+  base::FilePath dir = SessionDir(session_id);
   Sidecar::Config config;
   config.binary = FindBinary();
   config.socket_dir = dir;
