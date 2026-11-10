@@ -4,7 +4,7 @@
 # the PID it started), checks the exit status and the log for fatals, removes its temp dir, prints PASS/FAIL/SKIP.
 # Usage: scripts/smoke-all.sh <binary|Shuttle.app> [--with network,push,automation] [--mode headless|x11|wayland]
 #   Default: cdp, session-cdp, agents-page, isolation (agent storage across blank tabs), focus, sandbox (Linux only: the page is not built on macOS), mcp phase 1,
-#   restart on the same profile, mcp phase 2. Opt-in: network (own launch with --shuttle-listen=0.0.0.0, LAN),
+#   restart on the same profile, mcp phase 2, tab-guards, page-tools (2x), throwaway. Opt-in: network (own launch with --shuttle-listen=0.0.0.0, LAN),
 #   push (needs SHUTTLE_SMOKE_NET=1, else SKIP), automation (own launch: --enable-automation, no debug port; binds
 #   9222 when free, else a free port). x11/wayland use the WSLg defaults (DISPLAY=:0, /mnt/wslg/runtime-dir) unless
 #   set. Run it under nice -n 19 on a shared machine. Env: SHUTTLE_SMOKE_READY_S (startup deadline, default 30).
@@ -102,6 +102,10 @@ else note launch FAIL; stop; fi
 if launch "$tmp/guards" --remote-debugging-port=0 --shuttle-session-idle-timeout=8s; then
   probe tab-guards 180 smoke-tab-guards.mjs "--$mode"; closed guards
 else note launch-guards FAIL; stop; fi
+# Page tool screenshots: own launch emulating a 2x display (CSS vs device px, large captures, admission limit).
+if launch "$tmp/pagetools" --remote-debugging-port=0 --force-device-scale-factor=2; then
+  probe page-tools 180 smoke-page-tools.mjs; closed page-tools
+else note launch-page-tools FAIL; stop; fi
 # Throwaway agents: own launch with a short throwaway idle timeout and a small cap, on a seeded profile (legacy
 # persistent tmp- agent, a crashed run's files, links).
 node "$here/smoke-throwaway-seed.mjs" "$tmp/throwaway"
