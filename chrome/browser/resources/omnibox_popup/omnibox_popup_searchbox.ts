@@ -1170,6 +1170,18 @@ export class OmniboxPopupSearchboxElement extends
       performance.mark(
           'OmniboxPopupSearchboxElement::onSetInputState_:TabSwitch');
     }
+
+    // Like `OmniboxViewViews::SaveStateToTab()`, end any IME composition
+    // before showing another tab's text, so that the IME doesn't keep composing
+    // into it. This compares tab IDs since `isTabSwitch` is false for a new tab
+    // that focuses the omnibox. There's no web API to end a composition, but
+    // blurring the input does it: Blink commits the composition, whose text is
+    // already in the old tab's draft, and the browser cancels the IME's
+    // composition. The input is refocused below if the new tab's omnibox is
+    // focused.
+    if (this.isComposing_ && state.tabId !== this.tabId_) {
+      this.$.input.blur();
+    }
     this.hasReceivedInitialInputState_ = true;
 
     let text = state.text;

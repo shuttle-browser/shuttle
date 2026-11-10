@@ -151,6 +151,17 @@ The fork originally pruned Linux along with the other platforms; Linux was resto
 6. Never touch a kept file except in Linux-only blocks; check `gn gen out/Dev` on macOS after pulling
    Linux fixes.
 
+## Known issues
+
+- **Screenshots hang on Linux headless** (found 2026-11-10 on the cloud VM; also in 158.0.0, so not a 158.0.8127.31
+  regression): once agent-browser has driven a tab (any sidecar version, 0.38.2 or 0.41.2), every second
+  `Page.captureScreenshot` on it hangs, and the sidecar's `screenshot` errors after 30 s ("CDP command timed out:
+  Page.captureScreenshot"); the call after works again. A raw CDP capture through the session endpoint hangs the same
+  way, so it is browser-side; without the sidecar attached, 48 raw captures never hung (.18 and .31). `capture-tab`
+  (CopyFromSurface) is unaffected. Not yet checked on X11/Wayland. The Mac is not affected (smoke-page-tools passes).
+  `smoke-page-tools.mjs` SKIPs on Linux headless until it is fixed. Repro scripts: start a session, `open` a page
+  through the sidecar, then repeat `Page.captureScreenshot` on the tab.
+
 ## Later
 
 AppImage/Flatpak (not planned; the .deb/.rpm cover the main distros), the signed apt repo (phase 2), a windowed

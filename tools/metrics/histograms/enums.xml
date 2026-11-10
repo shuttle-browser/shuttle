@@ -7142,6 +7142,8 @@ shown properly on the user-facing crash UI.
   <int value="16" label="Chrome install service (WebAPK)"/>
 </enum>
 
+<!-- LINT.IfChange(LaunchMode) -->
+
 <enum name="LaunchMode">
   <int value="0" label="kNone">Unknown</int>
   <int value="1" label="kOther">Catch-all launch for Windows</int>
@@ -7235,7 +7237,13 @@ shown properly on the user-facing crash UI.
   <int value="30" label="kStartupForegroundLaunch">
     Launched automatically upon system startup
   </int>
+  <int value="31" label="kOmniboxEverywhere">
+    Omnibox Everywhere launched via the command line (e.g. from its taskbar pin
+    or Start Menu shortcut)
+  </int>
 </enum>
+
+<!-- LINT.ThenChange(//chrome/browser/ui/startup/launch_mode_recorder.h:LaunchMode) -->
 
 <enum name="LaunchSource">
   <int value="0" label="Unknown"/>
@@ -11025,6 +11033,7 @@ from previous Chrome versions.
   <int value="-1194747282" label="kNearbySharingSelfShare:enabled"/>
   <int value="-1194129602" label="ClientSideDetectionModelOnAndroid:disabled"/>
   <int value="-1192790333" label="ArcUseHighMemoryDalvikProfile:disabled"/>
+  <int value="-1192535506" label="SeccompFilterGpuSandbox:enabled"/>
   <int value="-1192334995" label="CrOSLateBootAudioHFPOffload:enabled"/>
   <int value="-1191892115" label="HttpCacheNoVarySearch:disabled"/>
   <int value="-1191671217" label="TabGroupsNewBadgePromo:disabled"/>
@@ -12477,6 +12486,7 @@ from previous Chrome versions.
   <int value="-761538347" label="AutofillEnableVerveCardSupport:enabled"/>
   <int value="-761267019" label="SkillsEnabled:enabled"/>
   <int value="-761009829" label="FedCmAlternativeIdentifiers:disabled"/>
+  <int value="-760874067" label="ContextualTasksPinningStringVariants:enabled"/>
   <int value="-760729135"
       label="AutofillEnableCardArtServerSideStretching:disabled"/>
   <int value="-760520941" label="signature-based-sri:disabled"/>
@@ -13536,6 +13546,8 @@ from previous Chrome versions.
   <int value="-447148659" label="ContextMenuTranslateWithGoogleLens:enabled"/>
   <int value="-447104608" label="BiometricAuthenticationInSettings:enabled"/>
   <int value="-446879089" label="BluetoothSessionizedMetrics:enabled"/>
+  <int value="-446573815"
+      label="ContextualTasksPinningStringVariants:disabled"/>
   <int value="-446560063" label="finch-seed-min-update-period"/>
   <int value="-446556027" label="SyncAccountSettings:disabled"/>
   <int value="-446254066" label="LaunchQueueStopSendingOnReload:enabled"/>
@@ -16477,6 +16489,7 @@ from previous Chrome versions.
   <int value="438039763" label="GlicActorIncrementalTyping:enabled"/>
   <int value="438220199"
       label="ReduceUserAgentDataLinuxPlatformVersion:enabled"/>
+  <int value="438285399" label="SeccompFilterGpuSandbox:disabled"/>
   <int value="438307192" label="FirstPartySets:disabled"/>
   <int value="438398886"
       label="AutofillEnableStickyManualFallbackForCards:enabled"/>

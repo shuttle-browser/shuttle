@@ -1806,6 +1806,27 @@
             ]
         }
     ],
+    "AutofillAiWalletReminderAndDisclosureNotice": [
+        {
+            "platforms": [
+                "android",
+                "chromeos",
+                "ios",
+                "linux",
+                "mac",
+                "windows"
+            ],
+            "experiments": [
+                {
+                    "name": "Enabled",
+                    "enable_features": [
+                        "AutofillEnableWalletDisclosureNoticePublicPass",
+                        "AutofillEnableWalletReminderNoticePublicPass"
+                    ]
+                }
+            ]
+        }
+    ],
     "AutofillAiWalletServerProvidedDeepLink": [
         {
             "platforms": [
@@ -4687,6 +4708,28 @@
             ]
         }
     ],
+    "ClientSideDetectionSecondForceRequestWithDelay": [
+        {
+            "platforms": [
+                "android",
+                "chromeos",
+                "linux",
+                "mac",
+                "windows"
+            ],
+            "experiments": [
+                {
+                    "name": "Enabled",
+                    "params": {
+                        "RequestDelayMs": "2000"
+                    },
+                    "enable_features": [
+                        "ClientSideDetectionSecondForceRequestWithDelay"
+                    ]
+                }
+            ]
+        }
+    ],
     "ClientSideDetectionServerModelForScamDetectionDesktop": [
         {
             "platforms": [
@@ -5220,8 +5263,10 @@
                     "params": {
                         "ContextualTasksEntryPoint": "toolbar-ephemeral-branded",
                         "ContextualTasksEphemeralButtonAutoDismissTimeMinutes": "120",
-                        "ContextualTasksEphemeralButtonContextMenuCloseSidePanel": "true",
+                        "ContextualTasksEphemeralButtonContextMenuOption": "close-side-panel",
                         "ContextualTasksPinnedButtonActiveIndicatorCircleHighlight": "true",
+                        "ContextualTasksPinnedButtonContextMenuCloseSidePanel": "true",
+                        "ContextualTasksPinningStringVariant": "in-chrome",
                         "ContextualTasksUnifyPinButtonLogo": "super-g",
                         "EnableCircularEphemeralButtonNextToBatterySaver": "true",
                         "overflow-items": "all-without-new-thread"
@@ -5232,14 +5277,15 @@
                         "ContextualTasksEphemeralButtonAutoDismiss",
                         "ContextualTasksEphemeralButtonContextMenu",
                         "ContextualTasksPinnedButtonActiveIndicator",
+                        "ContextualTasksPinningStringVariants",
                         "ContextualTasksPinningV2",
                         "ContextualTasksSidePanelDefaultRight",
                         "ContextualTasksUnifyPinButtonLogos",
-                        "ContextualTasksUpdatedEntryPoints",
                         "EnableContextualTasksPinButtonInToolbar",
                         "EnableContextualTasksPinButtonOnSrp"
                     ],
                     "disable_features": [
+                        "ContextualTasksEphemeralPinButtonRefactor",
                         "ContextualTasksHideMenuOnAiPage",
                         "EphemeralPinningVisibleWhenPermanentlyPinned"
                     ]

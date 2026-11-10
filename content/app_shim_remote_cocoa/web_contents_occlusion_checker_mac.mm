@@ -23,6 +23,27 @@
 
 namespace {
 
+// Returns YES if `ancestor` is `window`'s parent window, its parent's parent,
+// and so on.
+BOOL IsAncestorWindow(NSWindow* ancestor, NSWindow* window) {
+  NSWindow* parent = [window parentWindow];
+  while (parent) {
+    if (parent == ancestor) {
+      return YES;
+    }
+    parent = [parent parentWindow];
+  }
+  return NO;
+}
+// Returns the top-level ancestor of `window`, or `window` itself if it has no
+// parent window.
+NSWindow* GetRootWindow(NSWindow* window) {
+  while (NSWindow* parent = [window parentWindow]) {
+    window = parent;
+  }
+  return window;
+}
+
 NSString* const kWindowDidChangePositionInWindowList =
     @"ChromeWindowDidChangePositionInWindowList";
 constexpr char kWindowIsOccludedKey[] = "ChromeWindowIsOccludedKey";
@@ -246,20 +267,28 @@ bool WindowHasOpaqueFrameBackgroundView(NSView* view) {
     // orderWindow:relativeTo: was the override point that caught all window
     // list ordering changes up until Sonoma. With Sonoma, it appears that
     // window cycling (Cmd+`) goes directly to -[NSWindow makeKeyWindow]. Add
-    // these window main notifications to catch the changes. Unfortunately,
+    // these window main/key notifications to catch the changes. Unfortunately,
     // there doesn't appear to be a way to trigger any of the the window
     // cycling machinery, so automated testing is impossible.
-    [notificationCenter
-        addObserver:self
-           selector:@selector(windowDidChangePositionInWindowList:)
-               name:NSWindowDidBecomeMainNotification
-             object:nil];
+    [notificationCenter addObserver:self
+                           selector:@selector(windowDidChangeActiveState:)
+                               name:NSWindowDidBecomeMainNotification
+                             object:nil];
 
-    [notificationCenter
-        addObserver:self
-           selector:@selector(windowDidChangePositionInWindowList:)
-               name:NSWindowDidResignMainNotification
-             object:nil];
+    [notificationCenter addObserver:self
+                           selector:@selector(windowDidChangeActiveState:)
+                               name:NSWindowDidResignMainNotification
+                             object:nil];
+
+    [notificationCenter addObserver:self
+                           selector:@selector(windowDidChangeActiveState:)
+                               name:NSWindowDidBecomeKeyNotification
+                             object:nil];
+
+    [notificationCenter addObserver:self
+                           selector:@selector(windowDidChangeActiveState:)
+                               name:NSWindowDidResignKeyNotification
+                             object:nil];
 
     [[[NSWorkspace sharedWorkspace] notificationCenter]
         addObserver:self
@@ -311,9 +340,10 @@ bool WindowHasOpaqueFrameBackgroundView(NSView* view) {
   }
 
   // The checker cycles through the window list when performing its manual
-  // occlusion checks. Child windows don't appear in this list, so don't
-  // trigger an occlusion check unless `window` is a parent window
-  // (i.e. is not the child of another window).
+  // occlusion checks, and only a parent window (i.e. one that is not the child
+  // of another window) triggers one. The list can include child windows, and
+  // -isWindowOccluded:windowList: never treats a child's ancestors as covering
+  // it.
   if ([window parentWindow] == nil)
     return YES;
 
@@ -366,6 +396,13 @@ bool WindowHasOpaqueFrameBackgroundView(NSView* view) {
 - (void)windowDidChangePositionInWindowList:(NSNotification*)notification {
   if ([self windowCanTriggerOcclusionUpdates:[notification object]])
     [self scheduleOcclusionStateUpdates];
+}
+
+- (void)windowDidChangeActiveState:(NSNotification*)notification {
+  if ([self windowCanTriggerOcclusionUpdates:GetRootWindow(
+                                                 [notification object])]) {
+    [self scheduleOcclusionStateUpdates];
+  }
 }
 
 - (void)windowWillStartLiveResize:(NSNotification*)notification {
@@ -466,6 +503,14 @@ bool WindowHasOpaqueFrameBackgroundView(NSView* view) {
   NSArray<NSWindow*>* windowsFromFrontToBack =
       [[[NSApplication sharedApplication] orderedWindows] copy];
 
+  NSWindow* activeRootWindow = nil;
+  for (NSWindow* window in windowsFromFrontToBack) {
+    if ([window isKeyWindow]) {
+      activeRootWindow = GetRootWindow(window);
+      break;
+    }
+  }
+
   for (NSWindow* window in windowsFromFrontToBack) {
     // The fullscreen transition causes spurious occlusion notifications.
     // See https://crbug.com/1081229 .
@@ -493,7 +538,8 @@ bool WindowHasOpaqueFrameBackgroundView(NSView* view) {
     }
 
     [window setOccluded:[self isWindowOccluded:window
-                                    windowList:windowsFromFrontToBack]];
+                                    windowList:windowsFromFrontToBack
+                              activeRootWindow:activeRootWindow]];
   }
 
   _updatingOcclusionStates = NO;
@@ -530,7 +576,8 @@ bool WindowHasOpaqueFrameBackgroundView(NSView* view) {
 // Returns YES if `window` is occluded, either according to macOS or via
 // our manual occlusion calculation.
 - (BOOL)isWindowOccluded:(NSWindow*)window
-              windowList:(nonnull NSArray<NSWindow*>*)windowList {
+              windowList:(nonnull NSArray<NSWindow*>*)windowList
+        activeRootWindow:(nullable NSWindow*)activeRootWindow {
   if (_displaysAreAsleep) {
     return YES;
   }
@@ -547,10 +594,15 @@ bool WindowHasOpaqueFrameBackgroundView(NSView* view) {
     return NO;
   }
 
+  // Treat a parent window and its child windows as a single unit that is active
+  // when any window in the tree is the key window. Do not check -isMainWindow:
+  // child dialogs return NO from -canBecomeMainWindow, so clicking a child
+  // dialog in one browser window leaves the previously active browser window as
+  // the main window (see https://crbug.com/40116493).
   NSRect windowFrame = [window frame];
-  BOOL windowIsActive = [window isKeyWindow] || [window isMainWindow];
-  BOOL windowCanBecomeActive =
-      [window canBecomeKeyWindow] || [window canBecomeMainWindow];
+  NSWindow* rootWindow = GetRootWindow(window);
+  BOOL windowIsActive = (rootWindow == activeRootWindow);
+  BOOL windowCanBecomeActive = [rootWindow canBecomeKeyWindow];
   BOOL seenWindow = NO;
 
   // Determine if there's a window occluding `window`.
@@ -572,6 +624,14 @@ bool WindowHasOpaqueFrameBackgroundView(NSView* view) {
       continue;
     }
 
+    // Chrome orders child windows above their parents, so `window`'s ancestors
+    // can't cover it, even an active one that the checks below would treat as
+    // in front of an inactive `window` (e.g. a browser window and its
+    // omnibox popup).
+    if (IsAncestorWindow(nextWindow, window)) {
+      continue;
+    }
+
     // If the next window is moving or resizing, treat it as if it doesn't
     // exist so that if it currently occludes `window` it will transition to
     // visible. That way, `window`'s content, if it becomes visible, will be
@@ -581,8 +641,7 @@ bool WindowHasOpaqueFrameBackgroundView(NSView* view) {
       continue;
     }
 
-    BOOL nextWindowIsActive =
-        [nextWindow isKeyWindow] || [nextWindow isMainWindow];
+    BOOL nextWindowIsActive = (GetRootWindow(nextWindow) == activeRootWindow);
 
     // If `nextWindow` appears after `window` in `windowList`, it is behind
     // `window` unless `window` is inactive and `nextWindow` is the active

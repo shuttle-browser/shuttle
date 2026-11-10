@@ -104,7 +104,7 @@ if launch "$tmp/guards" --remote-debugging-port=0 --shuttle-session-idle-timeout
 else note launch-guards FAIL; stop; fi
 # Page tool screenshots: own launch emulating a 2x display (CSS vs device px, large captures, admission limit).
 if launch "$tmp/pagetools" --remote-debugging-port=0 --force-device-scale-factor=2; then
-  probe page-tools 180 smoke-page-tools.mjs; closed page-tools
+  probe page-tools 180 smoke-page-tools.mjs "--$mode"; closed page-tools
 else note launch-page-tools FAIL; stop; fi
 # Throwaway agents: own launch with a short throwaway idle timeout and a small cap, on a seeded profile (legacy
 # persistent tmp- agent, a crashed run's files, links).

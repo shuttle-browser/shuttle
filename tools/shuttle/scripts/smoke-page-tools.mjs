@@ -1,4 +1,4 @@
-// Page tool screenshot checks (docs/MCP.md "screenshot"): node scripts/smoke-page-tools.mjs <port>
+// Page tool screenshot checks (docs/MCP.md "screenshot"): node scripts/smoke-page-tools.mjs <port> [--headless|--x11|--wayland]
 // Run by scripts/smoke-all.sh on its own launch with --force-device-scale-factor=2 (Retina sizes in headless).
 //   1. Viewport screenshot in CSS px (default JPEG), and maxSize on the longer edge.
 //   2. A full page of noise whose 2x PNG is over agent-browser's 10 MiB inline limit still returns an image (the
@@ -6,10 +6,16 @@
 //   3. scale device + format png of that page (no rescale, over 10 MB): a clear error, never success without image.
 //   4. Six concurrent screenshots: at most 4 admitted, the rest "Busy"; admitted ones carry images; a later call works.
 //   5. No capture files are left in the session's shots directory.
+// Linux headless: SKIP (known issue, docs/LINUX.md "Known issues": every second capture hangs once agent-browser has
+// driven the tab).
 import { readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { check, cleanup, finish, gone, mcp, rpc, skip } from './lib/smoke.mjs';
+import { args, check, cleanup, finish, gone, mcp, rpc, skip } from './lib/smoke.mjs';
+
+if (process.platform === 'linux' && args.includes('--headless')) {
+  skip('Linux headless: known capture hang once agent-browser drove the tab (docs/LINUX.md "Known issues")');
+}
 
 const AGENT = 'smoke-pt';
 let sessionId;
