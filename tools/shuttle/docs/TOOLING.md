@@ -493,6 +493,21 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 
 ## Gotchas
 
+- **Spot preemption right after a VM build** (2026-11-10): a preemption 30 s after the link lost the unwritten pages:
+  `out/<Dir>/shuttle` all zeros ("Exec format error"), 1,878 zero-filled `thinlto-cache` entries (later links reuse
+  them: hundreds of "undefined hidden symbol" errors), lost siso state (the rerun became a near-full rebuild the
+  ALLOW_FULL guard didn't catch) and a stale `out/.<Dir>.build-lock`. Recovery: delete the zero-filled outputs and
+  cache entries (`head -c 16 <f> | tr -d '\0' | wc -c` = 0), remove the lock when no siso runs, rebuild.
+  xbuild-run now runs `sync` on the VM as soon as the build is green (cloud-build 52eb5d3).
+- **Installed-.deb smoke on a freshly booted VM**: `unattended-upgrades` holds the dpkg lock for minutes ("Could not
+  get lock /var/lib/dpkg/lock-frontend", smoke rc 2). xbuild-run's apt-get now waits up to 10 min
+  (`DPkg::Lock::Timeout`, cloud-build 934afbb).
+- **Don't edit a shell script while it runs**: bash reads scripts as it goes; editing `xbuild-run.sh` mid-run ended
+  it with "unexpected EOF" (after the fetch, so nothing was lost that time).
+- **Linux headless screenshot latency** (fork 61): captures on background agent tabs can take ~3 s (fallback after an
+  unacknowledged ForceRedraw); `scripts/repro-screenshot-hang.mjs` measures it per capture. Not a regression if a
+  probe's screenshot takes ~3 s on Linux headless.
+
 - **Starting the build VM by hand** (2026-11-10): `gcloud compute instances <verb> <name> --project=… --zone=…`
   (flags after the verb), and in zsh a command stored in a string is not word-split (use an array). A failed lookup
   blanked `HostName` in `~/.ssh/config` through the same `sed` xbuild-run uses: check the IP is non-empty before
