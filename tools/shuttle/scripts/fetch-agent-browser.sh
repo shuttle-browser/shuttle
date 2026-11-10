@@ -20,14 +20,14 @@
 # modified a signed bundle. Do not edit signed bundles while the app runs.
 set -euo pipefail
 
-VERSION=0.38.2
-TARBALL_SHA512=sha512-b/7hvo2RrqocvybjB9kwpX12kGkxkFvtdJ4XPDoott5TLK2n3aPX+lYg7ALd+2YvPi2LrTKGzQYu/rxZC2Y7ZA==
-pin() {  # sha256 of bin/agent-browser-<platform> in agent-browser@0.38.2
+VERSION=0.41.2
+TARBALL_SHA512=sha512-/agCKB5rw1EEK8SKWo4zid7a5kOwlclqALC0P3c69buJvKdhrl/dJkKdfLqGGaiNIbWzRdqqT0PxZVkwVEf2fg==
+pin() {  # sha256 of bin/agent-browser-<platform> in agent-browser@0.41.2
   case $1 in
-    darwin-arm64) echo 8168b86ab5d94be8f670992dfe4fe1445016518a864b48bda105e64142e7cbf9 ;;
-    darwin-x64)   echo 787cb40e086a188d0bb13ff29a99a0b2380aff3aa5e8600b8f8131a0b98ca69c ;;
-    linux-x64)    echo a54b765192db774666f0513fa8b545a298753b6f29e73bcdf4a1e78f18e7c0e1 ;;
-    linux-arm64)  echo 690c02d952de8497bba4f8cc58b59acbf27dc27b346755869b518f4b411c7f40 ;;
+    darwin-arm64) echo 19680f06cf87d0095c318a2e80bea6b71523d95d3b651cd18d81885cd182477a ;;
+    darwin-x64)   echo fc55608c2222650e6e0d0154f9edebd203b63bf853b85d22240bfbddbb006ea1 ;;
+    linux-x64)    echo c4351f3802ffa5254d8c69f20a52e2fcf56925c6016fcf4203db25a07d811379 ;;
+    linux-arm64)  echo 00d291f45e1c4d527b3aa08c70c54c7c3030fde0794f8d4575aaa3ca1680f728 ;;
   esac
 }
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }

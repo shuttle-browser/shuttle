@@ -1,5 +1,5 @@
 {
-  "_comment": "Curated page tools served by the browser's /mcp via the agent-browser sidecar (v0.38.2). scripts/gen-page-tools.mjs expands this into chrome/browser/shuttle/page_tools_data.inc. Every tool gets a required targetId (a leased tab); the session is derived from it. 'ab' = agent-browser tool (without agent_browser_), 'variants' = pick by the first present arg, 'map' = our arg -> its arg, 'fixed' = args always sent, 'special' = handled in C++.",
+  "_comment": "Curated page tools served by the browser's /mcp via the agent-browser sidecar (v0.41.2). scripts/gen-page-tools.mjs expands this into chrome/browser/shuttle/page_tools_data.inc. Every tool gets a required targetId (a leased tab); the session is derived from it. 'ab' = agent-browser tool (without agent_browser_), 'variants' = pick by the first present arg, 'map' = our arg -> its arg, 'fixed' = args always sent, 'special' = handled in C++.",
   "common": {
     "targetId": {
       "type": "string",
@@ -297,7 +297,8 @@
     {
       "name": "screenshot",
       "ab": "screenshot",
-      "description": "Screenshot of the tab, an element or the full page; returns an image.",
+      "special": "screenshot",
+      "description": "Screenshot of the tab, an element or the full page; returns an image in CSS px (JPEG unless format png). For a plain viewport view capture-tab is cheaper.",
       "props": {
         "selector": {
           "type": "string"
@@ -312,10 +313,27 @@
         "format": {
           "type": "string",
           "enum": [
-            "png",
-            "jpeg"
-          ]
+            "jpeg",
+            "png"
+          ],
+          "description": "Default jpeg."
+        },
+        "scale": {
+          "type": "string",
+          "enum": [
+            "css",
+            "device"
+          ],
+          "description": "css (default): CSS px, a quarter of the pixels on 2x screens. device: device px."
+        },
+        "maxSize": {
+          "type": "integer",
+          "description": "Downscale so the longer edge is at most this many px (e.g. 1568)."
         }
+      },
+      "map": {
+        "scale": "",
+        "maxSize": ""
       }
     },
     {

@@ -121,6 +121,11 @@ NOTICE) supplies the page tools, proxied through `/mcp`.
 - Definitions: `config/agent-browser-tools.json` → `scripts/gen-page-tools.mjs` → `page_tools_data.inc` (C++ raw
   string; regenerate and commit together). Args are whitelisted against each tool's schema; unknown args are an error.
   Results drop agent-browser's `structuredContent`/`lifecycle` envelope (`click` → `{"clicked":"@e3"}`, no data → `ok`).
+- `screenshot` (fork 60, issue #27): agent-browser captures in device px with no scale option, so the browser
+  rescales. Default `scale: "css"` (divide by the tab's device scale factor; the viewport emulation keeps the native
+  factor), optional `maxSize` (longer edge), default JPEG (quality 80, like `capture-tab`). When a rescale is needed it
+  asks the sidecar for PNG, decodes it (Rust PNG decoder) on the thread pool, resizes (`RESIZE_BETTER`) and encodes
+  once; otherwise it passes `format`/`quality` through untouched.
 - `PageToolManager` keeps one `Sidecar` per session (`agent-browser mcp --tools all`, env `AGENT_BROWSER_CDP=<session
   endpoint>`, `AGENT_BROWSER_SESSION`, short `AGENT_BROWSER_SOCKET_DIR`: Mac socket paths max ~100 chars). Calls are
   serialized per sidecar; a `tab_switch {tab:<targetId>}` precedes calls for a different tab. Never set

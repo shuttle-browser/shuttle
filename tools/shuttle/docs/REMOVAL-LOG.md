@@ -1182,3 +1182,16 @@ decisions 2026-11-07).
   same sequence after an `Exists` check, so a throwaway's cleanup runs after its last write. Probe: startup checks on a
   profile seeded by `smoke-throwaway-seed.mjs` (legacy `tmp-legacy` agent kept, stale files removed, links removed as
   links). Shipped in 158.0.0.
+
+## Fork commit 60 (2026-11-10): screenshot scale, agent-browser 0.41.2
+
+Nothing removed. Issue #27: the `screenshot` page tool returned device-px PNGs (2x on Retina, 4x the pixels), while
+`capture-tab` already captured CSS px JPEG.
+- `screenshot` takes `scale` (`css` default, `device`) and `maxSize` (longer edge); JPEG by default (quality 80). If a
+  rescale is needed, `PageToolManager` asks the sidecar for PNG, then decodes, resizes and re-encodes on the thread pool
+  (`ProcessScreenshot`); otherwise format and quality go straight to agent-browser. Details in `MCP.md`.
+- Tool descriptions point to `capture-tab` as the cheaper viewport capture.
+- Sidecar pin 0.38.2 → 0.41.2 (`fetch-agent-browser.sh`: tarball sha512 + four binary sha256s). Every tool we call keeps
+  its arguments (0.41 adds only shared props such as `useSystemCa`). Upstream fixes we get: selector-scoped snapshots
+  no longer duplicate elements (#2043, our `DedupeSnapshot` stays as a guard), full-page screenshots on high-DPI
+  screens (#2125), selector screenshots outside the first viewport (#2126), undeclared MCP args are an error (#2175).
