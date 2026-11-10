@@ -1205,3 +1205,26 @@ Nothing removed. Issue #27: the `screenshot` page tool returned device-px PNGs (
   checked before the capture, released when the result is sent); reads and rescales run on one sequence. Probe
   `smoke-page-tools.mjs` (own 2x launch in `smoke-all`): a noise page whose 2x PNG is over 10 MiB returns images (CSS,
   device + maxSize 1568), device PNG is a clear error, a burst of six gets "Busy" for the extras, no files left.
+
+## Fork commit 61 (2026-11-10): surface snapshots don't wait forever for ForceRedraw
+
+Nothing removed. Linux headless screenshot hang (docs/LINUX.md "Known issues", found 2026-11-10, also in 158.0.0):
+every second `Page.captureScreenshot` on a background tab never answered. `RenderWidgetHostImpl::GetSnapshotFromBrowser`
+(from surface) asks the renderer to `ForceRedraw` and copies the surface only when that is acknowledged; for a tab
+that isn't its window's active tab in headless mode on Linux, the forced frame is sometimes never presented, so the
+acknowledgement never comes. Stock Chrome for Testing 158.0.8127.31 shows it too (background tab: one 10 s hang, one
+6 s stall, then normal); Shuttle hit it on every second capture because agent tabs are background tabs. Foreground
+tabs and new windows never hung; the Mac was never affected. `capture-tab` (CopyFromSurface only) was unaffected.
+- `content/browser/renderer_host/render_widget_host_impl.{h,cc}`: `ForceRedrawTimedOut` copies the newest surface if
+  the snapshot is still pending 3 s after the ForceRedraw (`kSurfaceSnapshotRedrawTimeout`; normal acks take tens of
+  ms, the first frame of a fresh background tab ~2.5 s). A late acknowledgement copies again and finds nothing left to
+  complete. The `CDPScreenshotNewSurface` path (disabled by default) is unchanged.
+- Only in headless mode on Linux (`BUILDFLAG(IS_LINUX)` + `--headless`), after SH-Review (P2, 2026-11-10): the
+  fallback can return the previous frame when a renderer is merely slow to paint (>3 s after a DOM change), where the
+  upstream path waited for the fresh one. Headed and Mac keep the upstream wait. Accepted for Linux headless: in the
+  hang case nothing new is presented, so the newest surface is current, and the alternative was a 30 s client
+  timeout. The copy itself has no timeout (`CopyFromSurface` with zero), as upstream; in the tests it answered at once.
+- Result on the VM (linux-lto, headless): the former hangs answer in ~3.0 s (`3006 42 3005 45 ...`), smoke-all 19/19
+  with `smoke-page-tools` active on Linux headless again. Repro: `scripts/repro-screenshot-hang.mjs` (raw / sidecar
+  with a logging CDP proxy / replay / plain tab modes).
+- Upstream: worth a crbug (background tab + headless + ForceRedraw); not filed yet.

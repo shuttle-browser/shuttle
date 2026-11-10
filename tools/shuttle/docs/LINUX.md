@@ -153,14 +153,13 @@ The fork originally pruned Linux along with the other platforms; Linux was resto
 
 ## Known issues
 
-- **Screenshots hang on Linux headless** (found 2026-11-10 on the cloud VM; also in 158.0.0, so not a 158.0.8127.31
-  regression): once agent-browser has driven a tab (any sidecar version, 0.38.2 or 0.41.2), every second
-  `Page.captureScreenshot` on it hangs, and the sidecar's `screenshot` errors after 30 s ("CDP command timed out:
-  Page.captureScreenshot"); the call after works again. A raw CDP capture through the session endpoint hangs the same
-  way, so it is browser-side; without the sidecar attached, 48 raw captures never hung (.18 and .31). `capture-tab`
-  (CopyFromSurface) is unaffected. Not yet checked on X11/Wayland. The Mac is not affected (smoke-page-tools passes).
-  `smoke-page-tools.mjs` SKIPs on Linux headless until it is fixed. Repro scripts: start a session, `open` a page
-  through the sidecar, then repeat `Page.captureScreenshot` on the tab.
+- **Screenshots on background tabs in headless mode: ~3 s instead of a hang** (fixed in fork commit 61, 2026-11-10;
+  158.0.0 and 158.0.1 hang): `Page.captureScreenshot` waits for the renderer to present a forced frame, and for a tab
+  that isn't its window's active tab (agent tabs usually aren't) headless Linux sometimes never presents it. Upstream
+  Chrome shows it too, less often. Since fork 61 such a capture copies the newest surface after 3 s, so captures on an
+  agent tab can take ~3 s (every second one, in some states each one), and a renderer that takes over 3 s to paint can
+  get the previous frame. Root cause upstream not fixed; `scripts/repro-screenshot-hang.mjs` reproduces it (`plain`
+  mode: an ordinary background tab, no agent). Not checked on X11/Wayland. The Mac is not affected.
 
 ## Later
 

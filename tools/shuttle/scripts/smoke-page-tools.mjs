@@ -11,11 +11,7 @@
 import { readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { args, check, cleanup, finish, gone, mcp, rpc, skip } from './lib/smoke.mjs';
-
-if (process.platform === 'linux' && args.includes('--headless')) {
-  skip('Linux headless: known capture hang once agent-browser drove the tab (docs/LINUX.md "Known issues")');
-}
+import { check, cleanup, finish, gone, mcp, rpc, skip } from './lib/smoke.mjs';
 
 const AGENT = 'smoke-pt';
 let sessionId;
