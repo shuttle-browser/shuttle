@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/shuttle-browser/shuttle/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/shuttle-browser/shuttle?include_prereleases&label=release&color=FA9D0E"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20WSL2-4514D6">
-  <img alt="Chromium" src="https://img.shields.io/badge/Chromium-154-0192A6">
+  <img alt="Chromium" src="https://img.shields.io/badge/Chromium-158-0192A6">
   <a href="LICENSE-SHUTTLE"><img alt="License" src="https://img.shields.io/badge/license-BSD--3--Clause-12E7DD"></a>
 </p>
 
@@ -52,7 +52,7 @@ Shuttle fixes this in the browser itself:
 | 🪪 **Agents with identities** | Each agent has a name, color and avatar, and its own persistent storage (cookies, logins, local storage), isolated from yours and from other agents. Log in once and the agent stays logged in. |
 | 🗂️ **Sessions as tab groups** | An agent's tabs show up as a named, colored tab group in your normal window. Watch it work, hand it a tab, or take one back. |
 | 🔌 **Per-session CDP** | Every session gets its own CDP endpoint for Playwright or agent-browser. It sees only that session's tabs and that agent's storage. |
-| 🛠️ **Page tools included** | `snapshot`, `click`, `fill`, `type`, `press`, `wait-for`, `screenshot`, `get-text`, … (24 tools through a bundled [agent-browser](https://github.com/vercel-labs/agent-browser) sidecar). |
+| 🛠️ **Page tools included** | `snapshot`, `click`, `fill`, `type`, `press`, `wait-for`, `screenshot`, `get-text`, … (25 tools through a bundled [agent-browser](https://github.com/vercel-labs/agent-browser) sidecar, next to the 13 agent, session and tab tools). |
 | 🤫 **Zero prompts** | No remote-debugging approval, no "controlled by automated software" infobar, `navigator.webdriver` is `false`, and no window at startup. |
 | 🪶 **Lean Chromium** | Google services, sign-in, sync, telemetry, Google AI features, translate, the password manager and side panel are gone. Extensions, DevTools, PDF, printing and downloads still work. |
 
@@ -134,7 +134,7 @@ and it stays signed in.
 | MCP tool | What it does |
 | --- | --- |
 | `list-agents`, `create-agent`, `update-agent`, `delete-agent` | Manage agents (name, color, avatar). Deleting wipes the agent's storage. |
-| `open-session`, `close-session`, `list-sessions` | A session is one task run by an agent; returns a scoped `cdpEndpoint`. |
+| `open-session`, `close-session`, `list-sessions`, `update-session` | A session is one task run by an agent; returns a scoped `cdpEndpoint`. |
 | `allocate-tab`, `release-tab`, `navigate-tab` | Lease tabs to a session (they run at full speed in the background). |
 | `capture-tab`, `set-tab-viewport` | Screenshots and device viewports (e.g. 390×844). |
 | `snapshot`, `click`, `fill`, `type`, `press`, `select`, `check`, `scroll`, `wait-for`, `get-text`, `eval`, `screenshot`, … | Page tools (refs `@eN` come from `snapshot`). |
@@ -172,7 +172,8 @@ claude mcp add --transport http shuttle http://shuttle-box:9222/mcp --header "Au
 
 ## Status and limits
 
-Shuttle 0.1.0 is the first public release (Chromium 154.0.8037.129).
+The latest release is Shuttle 158.0.1, on Chromium 158.0.8127.31. The major version is the Chromium major a release is
+built on; each release's notes give the full Chromium version.
 
 - No auto-update yet: watch Releases. Security fixes follow Chromium stable releases with a delay.
 - By default the MCP and CDP port listens on localhost only, without authentication: any local process can drive the

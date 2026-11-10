@@ -113,9 +113,9 @@ connection filtered to the session (content hook `DevToolsManagerDelegate::Creat
 [agent-browser](https://github.com/vercel-labs/agent-browser) (Rust, Apache-2.0, bundled unmodified with LICENSE +
 NOTICE) supplies the page tools, proxied through `/mcp`.
 
-- `tools/list` = the agent/session/tab tools + ~24 curated page tools (`snapshot click fill type press select check
-  uncheck scroll wait-for eval get-text screenshot back forward reload console errors state-save state-load hover
-  dblclick find open`), ~7.6 KB of schema instead of agent-browser's 63 KB `core` set. Kebab-case names; every page
+- `tools/list` = the 13 agent/session/tab tools (`kTools` in `mcp_tools.cc`) + 25 curated page tools (`snapshot click
+  fill type press select check uncheck scroll wait-for eval get-text save-text screenshot back forward reload console
+  errors state-save state-load hover dblclick find open`; `config/agent-browser-tools.json`), ~7.6 KB of schema instead of agent-browser's 63 KB `core` set. Kebab-case names; every page
   tool takes a required `targetId` (the session is derived from the tab). `wait-for` merges the five `wait_*` tools.
   Hidden: tabs, close, profile/auth/launch, `path`/`extraArgs`, downloads/uploads.
 - Definitions: `config/agent-browser-tools.json` → `scripts/gen-page-tools.mjs` → `page_tools_data.inc` (C++ raw
