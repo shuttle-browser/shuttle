@@ -407,6 +407,19 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     platform condition changed; it is not a feature decision.
   - **`enable_webui_ntp` is still true** although the WebUI NTP is gone, so merged code keeps
     `#if BUILDFLAG(ENABLE_WEBUI_NTP)` include blocks of removed files (3 in 157).
+  - **A point-release respin can still be a near-full rebuild** (158.0.8127.18 → .31, 2026-11-10): upstream changed
+    partition_alloc headers (`thread_cache_internal.h`) on the branch, so the Mac dev build was 31,170 steps (hours
+    on sccache-dist). Check `git diff --stat chromium <new> -- base build` before choosing where to build; the VM
+    release builds took 1-11 min (mac-lto) and 18 min (linux-lto). V8, Skia, ANGLE, Dawn, ICU and WebRTC moved too.
+  - **Point releases can restructure WebUI**: .31 split `resources/omnibox_popup` into `full/ aim/ shared/` bundles
+    (renames, new BUILD.gn files, resource ids). For a security respin we kept main's layout wholesale (resources,
+    `omnibox_popup_ui.cc`, test BUILD.gn, lit deps, eslint list); SH-Review then found one real fix inside the
+    renamed files (IME composition across tab switches), ported by hand. Diff the renamed files for fixes before
+    discarding them.
+  - **Merged-in uses of pruned features only show at compile time**, one error at a time: `xbuild-run.sh` stops at the
+    first failure unless you pass `-- -k 0`. .31 brought five (AI mode chip, contextual-tasks pin icon,
+    `OmniboxPopupState::kAim`, vertical tab strip retrieval id, Omnibox Everywhere launch mode). Sweep the merge diff
+    first: new `#include`s of missing files and new enum values / action ids / switches that don't exist in the fork.
   - **Clean merges can drop live code next to fork deletions**: hunks the fork removed (OCR in the PDF builder,
     HaTS forward decls) took adjacent new upstream code with them (`current_graphic`, `namespace tabs`). Compare
     the failing file with `chromium` outside the fork's own removals.
@@ -480,6 +493,11 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 
 ## Gotchas
 
+- **Starting the build VM by hand** (2026-11-10): `gcloud compute instances <verb> <name> --project=… --zone=…`
+  (flags after the verb), and in zsh a command stored in a string is not word-split (use an array). A failed lookup
+  blanked `HostName` in `~/.ssh/config` through the same `sed` xbuild-run uses: check the IP is non-empty before
+  rewriting. Prefer `xbuild-run.sh` (`--keep`) or `gcloud compute ssh`. The VM may power itself off (idle watchdog,
+  Spot preemption) while you test by hand.
 - **Release smoke needs the sidecar** (158.0.0, 2026-11-09): the app `xbuild-run.sh mac-lto` fetches has no
   agent-browser (release-mac.sh adds it at signing, in place in the prebuilt dir, signature stripped for the signing
   pipeline: an app smoked after that has a sidecar that dies at launch). `release-mac-xbuild.sh` now smokes a temp
