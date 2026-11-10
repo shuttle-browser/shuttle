@@ -125,7 +125,13 @@ NOTICE) supplies the page tools, proxied through `/mcp`.
   rescales. Default `scale: "css"` (divide by the tab's device scale factor; the viewport emulation keeps the native
   factor), optional `maxSize` (longer edge), default JPEG (quality 80, like `capture-tab`). When a rescale is needed it
   asks the sidecar for PNG, decodes it (Rust PNG decoder) on the thread pool, resizes (`RESIZE_BETTER`) and encodes
-  once; otherwise it passes `format`/`quality` through untouched.
+  once; otherwise it passes `format`/`quality` through untouched. The browser names the capture file itself (random
+  `shot-*` in the session's `shots` dir, passed as `path`) and reads it fd-anchored (private dirs, no links, regular
+  file; 48 MiB cap for a rescale, 10 MiB returned as is), then deletes it (best effort: a capture written after a timeout, or one skipped at
+  shutdown, stays in the shots dir until a retired-session sweep exists): agent-browser leaves images over 10 MiB out
+  of its reply but still reports success, so the reply's image is never used, and a success always carries an image.
+  At most 4 screenshots run at once across sessions (else "Busy ... retry"); captures are read and rescaled on one
+  sequence (one decode at a time). Probe: `smoke-page-tools.mjs` (own 2x launch in smoke-all).
 - `PageToolManager` keeps one `Sidecar` per session (`agent-browser mcp --tools all`, env `AGENT_BROWSER_CDP=<session
   endpoint>`, `AGENT_BROWSER_SESSION`, short `AGENT_BROWSER_SOCKET_DIR`: Mac socket paths max ~100 chars). Calls are
   serialized per sidecar; a `tab_switch {tab:<targetId>}` precedes calls for a different tab. Never set

@@ -1195,3 +1195,13 @@ Nothing removed. Issue #27: the `screenshot` page tool returned device-px PNGs (
   its arguments (0.41 adds only shared props such as `useSystemCa`). Upstream fixes we get: selector-scoped snapshots
   no longer duplicate elements (#2043, our `DedupeSnapshot` stays as a guard), full-page screenshots on high-DPI
   screens (#2125), selector screenshots outside the first viewport (#2126), undeclared MCP args are an error (#2175).
+- SH-Review (post-merge, 2026-11-10, PR #28): two P2s. (1) The forced intermediate PNG can exceed
+  agent-browser's 10 MiB inline image limit; upstream then leaves the image out but reports success with a path, and
+  Shuttle passed that on as a successful screenshot without an image. (2) Rescale tasks were unbounded across sessions
+  (up to 256 MB decoded each). Fixed in "60 page tools: review fixes" (branch `sh/screenshot-fixes`): the browser names
+  the capture file (`path` = random `shot-*` in the session's `shots` dir) and reads it fd-anchored (private dirs, no
+  links, regular file, 48 MiB cap for a rescale, 10 MiB returned as is), then deletes it (best effort after timeouts/shutdown); the reply's image is never
+  used, and a success always carries an image. At most 4 screenshots run at once across sessions (else a "Busy" error,
+  checked before the capture, released when the result is sent); reads and rescales run on one sequence. Probe
+  `smoke-page-tools.mjs` (own 2x launch in `smoke-all`): a noise page whose 2x PNG is over 10 MiB returns images (CSS,
+  device + maxSize 1568), device PNG is a clear error, a burst of six gets "Busy" for the extras, no files left.
