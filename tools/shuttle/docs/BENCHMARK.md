@@ -1,7 +1,24 @@
-# RAM benchmark: chrome-devtools-mcp vs Shuttle (2026-10-12)
+# RAM benchmark: chrome-devtools-mcp vs Shuttle (2026-10-12, rerun 2026-11-11)
 
-Measured on **Shuttle 0.1.1** (Chromium 155) and not rerun since: the numbers describe that release. Rerun with the
-script before quoting them for a newer one.
+## Current: Shuttle 158.0.1 (2026-11-11)
+
+Same script and setup as below, rerun on the signed **Shuttle 158.0.1** release app (Chromium 158.0.8127.31) against
+**chrome-devtools-mcp 1.10.1** with the installed **Google Chrome 157.0.8103.50**. One run each, Mac (Apple silicon,
+18 GB), macOS 26, headless. GB = MB / 1000, as in the tables below.
+
+| Agents | Setup | Idle | 1 Wikipedia page each + snapshot |
+| --- | --- | --- | --- |
+| 3 | chrome-devtools-mcp ×3 + Chrome ×3 | 1.24 GB (24 processes) | **1.70 GB** (33 processes) |
+| 3 | Shuttle (one browser, one MCP) | 0.06 GB (4 processes) | **0.48 GB** (13 processes) |
+| 10 | chrome-devtools-mcp ×10 + Chrome ×10 | 3.61 GB (80 processes) | **5.17 GB** (110 processes) |
+| 10 | Shuttle | 0.06 GB (4 processes) | **1.27 GB** (27 processes) |
+
+**Shuttle uses ~3.5× less RAM with 3 agents and ~4.1× less with 10** (1.22 GB and 3.90 GB saved). Both sides got
+lighter since 0.1.1 / Chrome 155 (Shuttle -13 % at 3 agents, -12 % at 10; CDM -6 % / -13 %); the ratio held.
+
+## First run: Shuttle 0.1.1 (2026-10-12)
+
+The sections below up to "Suggested page wording" are the original 0.1.1 measurements.
 
 Script: `scripts/bench-ram.mjs` (`node scripts/bench-ram.mjs cdm <n> <url>` /
 `node scripts/bench-ram.mjs shuttle <n> <url> <Shuttle binary> <port>`).
@@ -23,7 +40,7 @@ Script: `scripts/bench-ram.mjs` (`node scripts/bench-ram.mjs cdm <n> <url>` /
     `new_page` + `take_snapshot` (its initial blank tab stays open). Shuttle: `allocate-tab` + `snapshot` (page tools run
     on the agent-browser sidecar, which is included).
 
-## Results
+## Results (0.1.1)
 
 | Agents | Setup | Idle | 1 Wikipedia page each + snapshot |
 | --- | --- | --- | --- |
@@ -68,9 +85,11 @@ for Shuttle (its MCP server itself runs inside the browser process). One run eac
 
 ## Suggested page wording
 
-> Three agents, one Wikipedia page each: **1.8 GB** with three chrome-devtools-mcp servers and their Chrome instances,
-> **0.55 GB** with Shuttle. With ten agents: **6.0 GB vs 1.4 GB**. (Measured on macOS, headless, chrome-devtools-mcp
-> 1.10.1 + Chrome 155 vs Shuttle 0.1.1. Script in the repo.)
+> Three agents, one Wikipedia page each: **1.7 GB** with three chrome-devtools-mcp servers and their Chrome instances,
+> **0.48 GB** with Shuttle. With ten agents: **5.2 GB vs 1.3 GB**. (Measured on macOS, headless, chrome-devtools-mcp
+> 1.10.1 + Chrome 157 vs Shuttle 158.0.1. Script in the repo.)
+
+(0.1.1 wording, superseded: 1.8 GB vs 0.55 GB; 6.0 GB vs 1.4 GB.)
 
 ## ThinLTO + PGO (155.1.1, 2026-10-19)
 
