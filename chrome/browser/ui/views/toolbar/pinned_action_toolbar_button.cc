@@ -32,7 +32,6 @@
 #include "chrome/browser/ui/views/toolbar/toolbar_ink_drop_util.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/contextual_tasks/public/features.h"
 #include "components/vector_icons/vector_icons.h"
 #include "ui/actions/action_id.h"
 #include "ui/actions/actions.h"
@@ -249,11 +248,6 @@ int PinnedActionToolbarButton::GetIconSize() const {
       return ToolbarButton::GetIconSize() - 2;
     }
 #endif
-  }
-  if (action_id_ == kActionSidePanelShowContextualTasks &&
-      (contextual_tasks::ShouldUseSuperGIconForPinButtons() ||
-       contextual_tasks::ShouldUseGraySuperGIconForPinButtons())) {
-    return ToolbarButton::GetIconSize() - 2;
   }
   return ToolbarButton::GetIconSize();
 }

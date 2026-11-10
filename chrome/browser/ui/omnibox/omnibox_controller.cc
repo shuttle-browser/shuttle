@@ -226,7 +226,6 @@ void OmniboxController::UpdatePopupVisibility() {
   // `LocationBarView` has updated those widgets.
   const OmniboxPopupState state = popup_state_manager_->popup_state();
   const bool visible = state == OmniboxPopupState::kClassic ||
-                       state == OmniboxPopupState::kAim ||
                        (state == OmniboxPopupState::kFull &&
                         !autocomplete_controller_->result().empty());
   if (visible == last_reported_popup_visibility_) {
