@@ -165,6 +165,7 @@
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/image/image_skia.h"
 #include "ui/gfx/skbitmap_operations.h"
+#include "ui/gfx/switches.h"
 #include "ui/snapshot/snapshot.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -198,6 +199,13 @@ constexpr gfx::Rect kInvalidScreenRect(std::numeric_limits<int>::max(),
                                        std::numeric_limits<int>::max(),
                                        0,
                                        0);
+
+#if BUILDFLAG(IS_LINUX)
+// Shuttle: how long a surface snapshot waits for its ForceRedraw before it
+// copies the newest surface anyway (headless only). Normal acks take tens of
+// ms; the first frame of a fresh background tab can take ~2.5 s.
+constexpr base::TimeDelta kSurfaceSnapshotRedrawTimeout = base::Seconds(3);
+#endif
 
 bool g_check_for_pending_visual_properties_ack = true;
 
@@ -2352,6 +2360,19 @@ void RenderWidgetHostImpl::GetSnapshotFromBrowser(
                          weak_factory_.GetWeakPtr(), snapshot_id, 0));
     } else {
       RequestForceRedraw(snapshot_id);
+#if BUILDFLAG(IS_LINUX)
+      // Shuttle: in headless mode on Linux, don't wait forever for the forced
+      // frame (ForceRedrawTimedOut). Elsewhere a slow renderer still gets the
+      // full wait, so a capture never returns an older frame there.
+      if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+              switches::kHeadless)) {
+        base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+            FROM_HERE,
+            base::BindOnce(&RenderWidgetHostImpl::ForceRedrawTimedOut,
+                           weak_factory_.GetWeakPtr(), snapshot_id),
+            kSurfaceSnapshotRedrawTimeout);
+      }
+#endif
     }
     return;
   }
@@ -3984,6 +4005,20 @@ void RenderWidgetHostImpl::GotResponseToForceRedraw(int snapshot_id) {
 #else
   WindowSnapshotReachedScreen(snapshot_id);
 #endif
+}
+
+void RenderWidgetHostImpl::ForceRedrawTimedOut(int snapshot_id) {
+  // Answered (OnSnapshotFromSurfaceReceived completes every id up to the one
+  // it copied for), or the view is gone (FailPendingSnapshots).
+  if (!pending_surface_browser_snapshots_.contains(snapshot_id) || !GetView()) {
+    return;
+  }
+  // A late acknowledgement copies again; OnSnapshotFromSurfaceReceived then
+  // finds nothing left to complete.
+  GetView()->CopyFromSurface(
+      gfx::Rect(), gfx::Size(), base::TimeDelta(),
+      base::BindOnce(&RenderWidgetHostImpl::OnSnapshotFromSurfaceReceived,
+                     weak_factory_.GetWeakPtr(), snapshot_id, 0));
 }
 
 void RenderWidgetHostImpl::DetachDelegate() {
