@@ -130,6 +130,12 @@ class ContextualTasksSidePanelCoordinator
     omnibox::ChromeAimEntryPoint entry_point =
         omnibox::ChromeAimEntryPoint::UNKNOWN_AIM_ENTRY_POINT;
 
+    // Whether the current open session reopened a previously collapsed panel
+    // for an existing thread via the pinned or ephemeral toolbar button
+    // (rather than starting from a fresh entry point or switching threads via
+    // thread history). Reset on `Show()` and when switching tasks.
+    bool is_reopened_via_toolbar_button = false;
+
     // The time when this task's panel was opened.
     base::TimeTicks open_time_ticks;
 
@@ -206,7 +212,10 @@ class ContextualTasksSidePanelCoordinator
   bool HasResults() const override;
   ContextualTasksPanelController::EntrySource GetActiveEntrySource()
       const override;
+  bool IsActiveSessionReopenedViaToolbarButton() const override;
   bool IsOnboardingTooltipVisible() const override;
+  void SetErrorPageVisible(bool visible) override;
+  bool IsErrorPageVisible() const override;
   std::optional<tabs::TabHandle> GetAutoSuggestedTabHandle() override;
   void OnTaskChanged(content::WebContents* web_contents,
                      base::Uuid task_id) override;
@@ -317,6 +326,10 @@ class ContextualTasksSidePanelCoordinator
   // Returns the task associated with the active side panel without
   // mutating pending task state.
   std::optional<ContextualTask> GetCurrentTask() const;
+
+  // Returns whether `task` is a new UI service task waiting to display the
+  // protected page error scrim.
+  bool IsPendingErrorPageTask(const ContextualTask* task) const;
 
   // Clean up unused WebContents.
   void CleanUpUnusedWebContents() override;

@@ -47,6 +47,7 @@ struct TabInfo;
 
 namespace lens {
 class ClientToAimMessage;
+class ClientToSearchMessage;
 }  // namespace lens
 
 namespace contextual_tasks {
@@ -98,12 +99,13 @@ void RecordContextualTasksNavigationMetrics(
     bool is_zero_state);
 
 // Returns true if tab sharing and tab input capabilities are supported
-// for the given profile (checking AIM and Fusebox eligibility).
+// for the given profile (checking context sharing policy, AIM, and Fusebox
+// eligibility).
 bool IsTabSharingEligible(Profile* profile);
 
 // Returns true if contextual tasks updated entry points are enabled for the
 // given profile. Checks the feature flag, whether the contextual tasks side
-// panel is available, and AIM eligibility.
+// panel is available, and whether tab context can be shared.
 bool AreContextualTasksUpdatedEntryPointsEnabled(Profile* profile);
 
 // Returns true if the "Ask Google..." context menu item should be shown.
@@ -226,6 +228,14 @@ bool GetEffectivePinState(Profile* profile);
 #if !BUILDFLAG(IS_ANDROID)
 // Updates the visibility of the contextual tasks pinned toolbar ActionItem.
 void UpdatePinButtonVisibilityState(BrowserWindowInterface* browser_window);
+
+// Returns the localized string resource ID corresponding to
+// `default_resource_id` for the active Contextual Tasks pinning string variant.
+int GetContextualTasksPinningStringId(int default_resource_id);
+
+// Returns the localized string resource ID for the ephemeral button context
+// menu close/dismiss option.
+int GetContextualTasksEphemeralButtonContextMenuCloseTextId();
 #endif
 
 // Returns whether dark mode should be used for the given profile and URL.
@@ -242,6 +252,11 @@ bool ShouldUseDarkMode(Profile* profile);
 // Returns the ClientToAimMessage containing the HandshakePing
 // with supported capabilities.
 lens::ClientToAimMessage GetHandshakeMessageProto();
+
+// Returns the `ClientToSearchMessage` containing the `HandshakePing`
+// with supported capabilities for `profile` (may be `nullptr`, in which case
+// tab-sharing capabilities are omitted).
+lens::ClientToSearchMessage GetSearchHandshakeMessageProto(Profile* profile);
 
 // Returns the serialized ClientToAimMessage containing the HandshakePing
 // with supported capabilities.

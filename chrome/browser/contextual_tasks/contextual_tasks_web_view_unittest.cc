@@ -5,6 +5,7 @@
 #include "chrome/browser/contextual_tasks/contextual_tasks_web_view.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -688,6 +689,72 @@ TEST_F(ContextualTasksWebViewTest,
   tab_contents->SetDelegate(nullptr);
 }
 
+TEST_F(
+    ContextualTasksWebViewTest,
+    OpenURLFromTab_PreservesGestureWhenBlinkConsumesTransientActivationFirst) {
+  tabs::MockTabInterface mock_tab;
+  std::unique_ptr<content::WebContents> tab_contents =
+      content::WebContentsTester::CreateTestWebContents(profile_, nullptr);
+  NiceMock<MockTabWebContentsDelegate> tab_delegate;
+  tab_contents->SetDelegate(&tab_delegate);
+  ON_CALL(mock_tab, GetContents()).WillByDefault(Return(tab_contents.get()));
+  ON_CALL(*browser_window_, GetActiveTabInterface())
+      .WillByDefault(Return(&mock_tab));
+
+  web_view_ = std::make_unique<ContextualTasksWebView>(browser_window_.get());
+  std::unique_ptr<content::WebContents> panel_contents =
+      content::WebContentsTester::CreateTestWebContents(profile_, nullptr);
+  web_view_->SetWebContents(panel_contents.get());
+
+  content::RenderFrameHost* panel_rfh = panel_contents->GetPrimaryMainFrame();
+  content::WebContentsTester::For(panel_contents.get())
+      ->TestDidReceiveMouseDownEvent();
+  content::RenderFrameHostTester::For(panel_rfh)->SimulateUserActivation();
+  // Simulate Blink's `FrameLoader::StartNavigation()` consuming transient user
+  // activation on the frame before sending the `FrameHost::OpenURL` IPC for a
+  // Cmd+Click / Ctrl+Click navigation.
+  EXPECT_TRUE(panel_rfh->ConsumeTransientUserActivation());
+  ASSERT_FALSE(panel_rfh->HasTransientUserActivation());
+
+  content::OpenURLParams params(
+      GURL("https://example.com/target"), content::Referrer(),
+      ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
+      ui::PAGE_TRANSITION_LINK,
+      /*is_renderer_initiated=*/true);
+  params.user_gesture = true;
+  params.source_render_process_id = panel_rfh->GetProcess()->GetDeprecatedID();
+  params.source_render_frame_id = panel_rfh->GetRoutingID();
+
+  EXPECT_CALL(tab_delegate, OpenURLFromTab(tab_contents.get(), _, _))
+      .WillOnce([&](content::WebContents* source,
+                    const content::OpenURLParams& forwarded_params,
+                    base::OnceCallback<void(content::NavigationHandle&)>) {
+        EXPECT_TRUE(forwarded_params.user_gesture);
+        EXPECT_EQ(ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
+                  forwarded_params.disposition);
+        return tab_contents.get();
+      });
+
+  EXPECT_EQ(tab_contents.get(),
+            web_view_->OpenURLFromTab(panel_contents.get(), params,
+                                      base::NullCallback()));
+
+  // A subsequent `OpenURLFromTab()` without a new user interaction must have
+  // its gesture stripped so a single click cannot be replayed.
+  EXPECT_CALL(tab_delegate, OpenURLFromTab(tab_contents.get(), _, _))
+      .WillOnce([&](content::WebContents* source,
+                    const content::OpenURLParams& forwarded_params,
+                    base::OnceCallback<void(content::NavigationHandle&)>) {
+        EXPECT_FALSE(forwarded_params.user_gesture);
+        return nullptr;
+      });
+
+  EXPECT_EQ(nullptr, web_view_->OpenURLFromTab(panel_contents.get(), params,
+                                               base::NullCallback()));
+
+  tab_contents->SetDelegate(nullptr);
+}
+
 TEST_F(ContextualTasksWebViewTest,
        OpenURLFromTab_RejectsCrossWebContentsInitiatorActivation) {
   tabs::MockTabInterface mock_tab;
@@ -794,12 +861,13 @@ TEST_F(ContextualTasksWebViewTest, PropagatesAiPageAndThreadTitleOnNavigation) {
   EXPECT_TRUE(toolbar_ui->IsAiPage());
   EXPECT_EQ(toolbar_ui->GetThreadTitle(), "hello world");
 
-  // Follow-up AI navigation without  preserves the existing thread title.
+  // Navigating to an AI URL without q clears the thread title so stale titles
+  // from other threads do not persist.
   content::NavigationSimulator::NavigateAndCommitFromDocument(
       GURL("https://ai.google.com/search?mtid=1&mstk=2"),
       web_contents->GetPrimaryMainFrame());
   EXPECT_TRUE(toolbar_ui->IsAiPage());
-  EXPECT_EQ(toolbar_ui->GetThreadTitle(), "hello world");
+  EXPECT_EQ(toolbar_ui->GetThreadTitle(), std::nullopt);
 
   // Starting a navigation to a non-AI URL immediately sets IsAiPage to false,
   // and committing it clears the thread title.
@@ -882,12 +950,27 @@ TEST_F(ContextualTasksWebViewTest, SetWebContentsUpdatesAiPageAndThreadTitle) {
   content::NavigationSimulator::NavigateAndCommitFromDocument(
       GURL("https://ai.google.com/search"), wc3->GetPrimaryMainFrame());
 
+  // WebContents 4: AI thread without a query parameter (e.g. visual search).
+  std::unique_ptr<content::WebContents> wc4 =
+      content::WebContentsTester::CreateTestWebContents(profile_, nullptr);
+  content::NavigationSimulator::NavigateAndCommitFromDocument(
+      GURL("https://ai.google.com/search?mtid=2&mstk=1"),
+      wc4->GetPrimaryMainFrame());
+
   web_view_->SetWebContents(wc1.get());
   EXPECT_TRUE(toolbar_ui->IsAiPage());
   EXPECT_EQ(toolbar_ui->GetThreadTitle(), "first thread");
 
   web_view_->SetWebContents(wc2.get());
   EXPECT_FALSE(toolbar_ui->IsAiPage());
+  EXPECT_EQ(toolbar_ui->GetThreadTitle(), std::nullopt);
+
+  web_view_->SetWebContents(wc1.get());
+  EXPECT_TRUE(toolbar_ui->IsAiPage());
+  EXPECT_EQ(toolbar_ui->GetThreadTitle(), "first thread");
+
+  web_view_->SetWebContents(wc4.get());
+  EXPECT_TRUE(toolbar_ui->IsAiPage());
   EXPECT_EQ(toolbar_ui->GetThreadTitle(), std::nullopt);
 
   web_view_->SetWebContents(wc1.get());
@@ -1067,6 +1150,53 @@ TEST_F(ContextualTasksWebViewTest,
             blink::mojom::PreferredColorScheme::kLight);
   EXPECT_EQ(content_wc->GetOrCreateWebPreferences().preferred_color_scheme,
             blink::mojom::PreferredColorScheme::kLight);
+}
+
+TEST_F(ContextualTasksWebViewTest,
+       ErrorPageScrimTakesPrecedenceOverGhostLoaderAndPersistsAcrossLoads) {
+  web_view_ = std::make_unique<ContextualTasksWebView>(browser_window_.get());
+  std::unique_ptr<content::WebContents> web_contents =
+      content::WebContentsTester::CreateTestWebContents(profile_, nullptr);
+  web_view_->SetWebContents(web_contents.get());
+
+  EXPECT_FALSE(web_view_->IsGhostLoaderVisible());
+  EXPECT_FALSE(web_view_->IsErrorPageVisible());
+
+  // Showing the error page displays the scrim in error-page mode (`#error`).
+  web_view_->SetErrorPageVisible(true);
+  EXPECT_TRUE(web_view_->IsErrorPageVisible());
+  EXPECT_FALSE(web_view_->IsGhostLoaderVisible());
+  EXPECT_TRUE(web_view_->ghost_loader_view()->GetVisible());
+  EXPECT_TRUE(web_view_->ghost_loader_view()->is_showing_error_page());
+  EXPECT_EQ(
+      web_view_->ghost_loader_view()->GetWebContents()->GetVisibleURL().ref(),
+      "error");
+
+  // Background content navigations and paint/load completion events must not
+  // dismiss the error page scrim.
+  auto sim = content::NavigationSimulator::CreateRendererInitiated(
+      GURL("https://www.google.com/search?q=test"),
+      web_contents->GetPrimaryMainFrame());
+  sim->Start();
+  EXPECT_TRUE(web_view_->IsErrorPageVisible());
+  EXPECT_FALSE(web_view_->IsGhostLoaderVisible());
+
+  sim->Commit();
+  web_view_->DidFirstVisuallyNonEmptyPaint();
+  web_view_->DidStopLoading();
+  EXPECT_TRUE(web_view_->IsErrorPageVisible());
+  EXPECT_FALSE(web_view_->IsGhostLoaderVisible());
+
+  // Explicitly hiding the error page returns the scrim to hidden ghost-loader
+  // mode.
+  web_view_->SetErrorPageVisible(false);
+  EXPECT_FALSE(web_view_->IsErrorPageVisible());
+  EXPECT_FALSE(web_view_->IsGhostLoaderVisible());
+  EXPECT_FALSE(web_view_->ghost_loader_view()->GetVisible());
+  EXPECT_FALSE(web_view_->ghost_loader_view()->is_showing_error_page());
+  EXPECT_EQ(
+      web_view_->ghost_loader_view()->GetWebContents()->GetVisibleURL().ref(),
+      "ghost-loader");
 }
 
 }  // namespace

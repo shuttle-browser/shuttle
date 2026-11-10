@@ -1100,8 +1100,14 @@ void MenuItemView::SetAlerted() {
 }
 
 bool MenuItemView::IsTraversableByKeyboard() const {
-  bool ignore_enabled =
-      ui::AXPlatform::GetInstance().GetMode().has_mode(ui::AXMode::kNativeAPIs);
+  const ui::AXMode mode = ui::AXPlatform::GetInstance().GetMode();
+  // Disabled items are traversable with assistive technology so they can be
+  // discovered. Titles (section headers) aren't actionable, so they require
+  // screen-reader-class AT (kScreenReader, which also covers magnifiers).
+  // kNativeAPIs alone is often set on Windows by tools that aren't AT.
+  const bool ignore_enabled = type_ == Type::kTitle
+                                  ? mode.has_mode(ui::AXMode::kScreenReader)
+                                  : mode.has_mode(ui::AXMode::kNativeAPIs);
   return GetVisible() && (ignore_enabled || GetEnabledInViewsSubtree());
 }
 
@@ -1440,13 +1446,8 @@ void MenuItemView::PaintBackground(gfx::Canvas* canvas,
     SkVector radii[4]{{0, 0}, {0, 0}, {0, 0}, {0, 0}};
     bool clip_to_background = false;
     if (menu_item_background_.has_value()) {
-      const int horizontal_margin =
-          menu_item_background_->horizontal_margin.value_or(
-              GetItemHorizontalBorder());
       // The highlight covers only the row, not the background's padding.
-      highlight_bounds.Inset(gfx::InsetsF::TLBR(
-          menu_item_background_->top_padding, horizontal_margin,
-          menu_item_background_->bottom_padding, horizontal_margin));
+      highlight_bounds.Inset(gfx::InsetsF(GetHighlightInsets()));
       const SkScalar top_r = SkIntToScalar(menu_item_background_->top_radius);
       const SkScalar bot_r =
           SkIntToScalar(menu_item_background_->bottom_radius);
@@ -1480,14 +1481,7 @@ void MenuItemView::PaintBackground(gfx::Canvas* canvas,
     }
   } else if (paint_as_selected) {
     gfx::Rect item_bounds = GetLocalBounds();
-    if (menu_item_background_.has_value()) {
-      const int horizontal_margin =
-          menu_item_background_->horizontal_margin.value_or(
-              GetItemHorizontalBorder());
-      item_bounds.Inset(gfx::Insets::TLBR(
-          menu_item_background_->top_padding, horizontal_margin,
-          menu_item_background_->bottom_padding, horizontal_margin));
-    }
+    item_bounds.Inset(GetHighlightInsets());
     if (type_ == Type::kActionableSubMenu) {
       if (submenu_area_of_actionable_submenu_selected_) {
         item_bounds = GetSubmenuAreaOfActionableSubmenu();
@@ -2037,6 +2031,17 @@ gfx::Insets MenuItemView::GetBackgroundPadding() const {
   }
   return gfx::Insets::TLBR(menu_item_background_->top_padding, 0,
                            menu_item_background_->bottom_padding, 0);
+}
+
+gfx::Insets MenuItemView::GetHighlightInsets() const {
+  if (!menu_item_background_.has_value()) {
+    return gfx::Insets();
+  }
+  // Used by PaintBackground() and for positioning child menus.
+  const int horizontal_margin =
+      menu_item_background_->horizontal_margin.value_or(
+          GetItemHorizontalBorder());
+  return GetBackgroundPadding() + gfx::Insets::VH(0, horizontal_margin);
 }
 
 ViewAccessibility* MenuItemView::GetSubmenuViewAccessibility() {

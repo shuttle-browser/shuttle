@@ -37,6 +37,7 @@
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
 #include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/contextual_tasks/contextual_tasks_button.h"
 #include "chrome/browser/ui/views/contextual_tasks/contextual_tasks_close_tab_button.h"
 #include "chrome/browser/ui/views/contextual_tasks/contextual_tasks_ephemeral_button_controller.h"
@@ -85,6 +86,11 @@
 #include "ui/compositor/layer.h"
 #include "ui/compositor/layer_animator.h"
 #include "ui/compositor/layer_solid_color.h"
+#include "ui/gfx/animation/animation_test_api.h"
+#include "ui/gfx/scoped_animation_duration_scale_mode.h"
+#include "ui/views/animation/ink_drop.h"
+#include "ui/views/animation/ink_drop_state.h"
+#include "ui/views/controls/menu/menu_controller.h"
 #include "ui/views/controls/menu/menu_item_view.h"
 #include "ui/views/controls/menu/menu_separator.h"
 #include "ui/views/layout/animating_layout_manager.h"
@@ -329,10 +335,19 @@ class ContextualTasksButtonInteractiveTestMixin : public T {
 
   auto SignIntoEligibleAccount() {
     return this->Do([&]() {
+      gfx::ScopedAnimationDurationScaleMode zero_duration(
+          gfx::ScopedAnimationDurationScaleMode::ZERO_DURATION);
       if (!identity_test_env()->identity_manager()->HasPrimaryAccount(
               signin::ConsentLevel::kSignin)) {
         identity_test_env()->MakePrimaryAccountAvailable(
             "primary@example.com", signin::ConsentLevel::kSignin);
+      }
+      if (auto* toolbar_button_provider =
+              ToolbarButtonProvider::From(this->browser())) {
+        if (auto* avatar_button =
+                toolbar_button_provider->GetAvatarToolbarButtonInterface()) {
+          avatar_button->ClearActiveStateForTesting();
+        }
       }
       GetTestingService()->GetFakeEligibilityManager()->SetIsEligible(true);
     });
@@ -1229,11 +1244,21 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksEphemeralButtonPromoInteractiveTest,
 }
 
 class ContextualTasksEphemeralButtonPinningV2PromoInteractiveTest
-    : public ContextualTasksEphemeralButtonPromoInteractiveTest {
+    : public ContextualTasksEphemeralButtonPromoInteractiveTestBase {
  public:
+  ContextualTasksEphemeralButtonPinningV2PromoInteractiveTest()
+      : ContextualTasksEphemeralButtonPromoInteractiveTestBase(
+            UseDefaultTrackerAllowingPromos(
+                {feature_engagement::
+                     kIPHContextualTasksEphemeralToolbarButtonFeature,
+                 feature_engagement::
+                     kIPHSidePanelContextualTasksPinnableFeature})) {}
+  ~ContextualTasksEphemeralButtonPinningV2PromoInteractiveTest() override =
+      default;
+
   std::vector<base::test::FeatureRefAndParams> GetEnabledFeatures() override {
     std::vector<base::test::FeatureRefAndParams> enabled_features =
-        ContextualTasksEphemeralButtonPromoInteractiveTest::
+        ContextualTasksEphemeralButtonPromoInteractiveTestBase::
             GetEnabledFeatures();
     enabled_features.push_back(
         {contextual_tasks::kContextualTasksPinningV2, {}});
@@ -1241,19 +1266,102 @@ class ContextualTasksEphemeralButtonPinningV2PromoInteractiveTest
   }
 };
 
-IN_PROC_BROWSER_TEST_F(
-    ContextualTasksEphemeralButtonPinningV2PromoInteractiveTest,
-    ShowsPromoOnSidePanelCloseNotOpen) {
+// Runs Pinning V2 scenarios against both toolbar button implementations: the
+// legacy ContextualTasksButton (param = false, "Legacy") and the pinned action
+// popped out via kContextualTasksEphemeralPinButtonRefactor (param = true,
+// "Refactor"). Tests using this mixin must only depend on behavior shared by
+// both implementations; implementation-specific checks belong in the TEST_F
+// fixtures.
+template <typename T>
+class ContextualTasksPinningV2ParamMixin
+    : public T,
+      public testing::WithParamInterface<bool> {
+ public:
+  using T::T;
+  ~ContextualTasksPinningV2ParamMixin() override = default;
+
+  bool IsRefactorEnabled() const { return this->GetParam(); }
+
+  std::vector<base::test::FeatureRefAndParams> GetEnabledFeatures() override {
+    std::vector<base::test::FeatureRefAndParams> enabled_features =
+        T::GetEnabledFeatures();
+    if (IsRefactorEnabled()) {
+      enabled_features.push_back(
+          {contextual_tasks::kContextualTasksEphemeralPinButtonRefactor, {}});
+      enabled_features.push_back(
+          {contextual_tasks::kContextualTasksPinnedButtonActiveIndicator, {}});
+    }
+    return enabled_features;
+  }
+
+  void SetUpOnMainThread() override {
+    T::SetUpOnMainThread();
+    if (!IsRefactorEnabled()) {
+      return;
+    }
+    // Keep the pinned actions container wide enough to never overflow and skip
+    // its layout animation so popped-out buttons show synchronously.
+    this->browser()->GetWindow()->SetBounds(gfx::Rect(0, 0, 1280, 800));
+    if (auto* pinned_actions = ToolbarButtonProvider::From(this->browser())
+                                   ->GetPinnedToolbarActions()) {
+      if (auto* container = views::AsViewClass<PinnedToolbarActionsContainer>(
+              pinned_actions->GetContainerView())) {
+        container->GetAnimatingLayoutManager()->SetAnimationDuration(
+            base::TimeDelta());
+      }
+    }
+  }
+
+  // The element acting as the ephemeral toolbar button for this param.
+  ui::ElementIdentifier EphemeralButtonId() const {
+    return IsRefactorEnabled()
+               ? kPinnedToolbarActionShowSidePanelContextualTasksElementId
+               : kContextualTasksEphemeralToolbarButtonElementId;
+  }
+
+  // Checks whether the ephemeral button shows its "side panel open" highlight.
+  auto CheckEphemeralButtonHighlighted(bool expected) {
+    return this->CheckView(
+        EphemeralButtonId(),
+        [](views::View* view) {
+          if (auto* const legacy_button =
+                  views::AsViewClass<ContextualTasksButton>(view)) {
+            return legacy_button->IsHighlighted();
+          }
+          if (auto* const pinned_button =
+                  views::AsViewClass<PinnedActionToolbarButton>(view)) {
+            return pinned_button->IsActive();
+          }
+          return false;
+        },
+        expected);
+  }
+};
+
+std::string PinningV2ParamName(const testing::TestParamInfo<bool>& info) {
+  return info.param ? "Refactor" : "Legacy";
+}
+
+using ContextualTasksPinningV2PromoParamInteractiveTest =
+    ContextualTasksPinningV2ParamMixin<
+        ContextualTasksEphemeralButtonPinningV2PromoInteractiveTest>;
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         ContextualTasksPinningV2PromoParamInteractiveTest,
+                         testing::Bool(),
+                         &PinningV2ParamName);
+
+IN_PROC_BROWSER_TEST_P(ContextualTasksPinningV2PromoParamInteractiveTest,
+                       ShowsPromoOnSidePanelCloseNotOpen) {
   RunTestSequence(
       SignIntoEligibleAccount(), InstrumentTab(kFirstTab),
       AddInstrumentedTab(kSecondTab, GetTestURL()),
-      SelectTab(kTabStripElementId, 0),
-      EnsureNotPresent(kContextualTasksEphemeralToolbarButtonElementId),
+      SelectTab(kTabStripElementId, 0), EnsureNotPresent(EphemeralButtonId()),
       CreateTaskForTab(0), SimulateOpeningContextualTaskSidePanel(),
-      WaitForShow(kContextualTasksEphemeralToolbarButtonElementId),
+      WaitForShow(EphemeralButtonId()),
       // Finish the button's show animation while the side panel is still open
       // and verify the ephemeral promo is not requested on open.
-      WithView(kContextualTasksEphemeralToolbarButtonElementId,
+      WithView(EphemeralButtonId(),
                [](views::View* view) {
                  if (view->layer() && view->layer()->GetAnimator()) {
                    view->layer()->GetAnimator()->StopAnimating();
@@ -1269,9 +1377,106 @@ IN_PROC_BROWSER_TEST_F(
       SimulateClosingContextualTaskSidePanel(),
       WaitForPromo(
           feature_engagement::kIPHContextualTasksEphemeralToolbarButtonFeature),
-      PressButton(kContextualTasksEphemeralToolbarButtonElementId),
+      PressButton(EphemeralButtonId()),
       WaitForHide(
           user_education::HelpBubbleView::kHelpBubbleElementIdForTesting));
+}
+
+IN_PROC_BROWSER_TEST_P(ContextualTasksPinningV2PromoParamInteractiveTest,
+                       AbortsPinningPromoWhenSidePanelCloses) {
+  RunTestSequence(
+      SignIntoEligibleAccount(), InstrumentTab(kFirstTab),
+      AddInstrumentedTab(kSecondTab, GetTestURL()),
+      SelectTab(kTabStripElementId, 0), EnsureNotPresent(EphemeralButtonId()),
+      SimulateOpeningContextualTaskSidePanel(),
+      WaitForShow(EphemeralButtonId()), Do([this]() {
+        BrowserUserEducationInterface::From(browser())->MaybeShowFeaturePromo(
+            feature_engagement::kIPHSidePanelContextualTasksPinnableFeature);
+      }),
+      WaitForPromo(
+          feature_engagement::kIPHSidePanelContextualTasksPinnableFeature),
+      SimulateClosingContextualTaskSidePanel(),
+      WaitForHide(EphemeralButtonId()),
+      WaitForHide(
+          user_education::HelpBubbleView::kHelpBubbleElementIdForTesting),
+      CheckPromoActive(
+          feature_engagement::kIPHSidePanelContextualTasksPinnableFeature,
+          false));
+}
+
+// When a task is active, the ephemeral button stays in the toolbar after the
+// side panel closes, so the promo anchor remains. The promo must still be
+// dismissed because it is only meaningful while the panel is showing.
+IN_PROC_BROWSER_TEST_P(ContextualTasksPinningV2PromoParamInteractiveTest,
+                       AbortsPinningPromoWhenSidePanelClosesAndButtonRemains) {
+  RunTestSequence(
+      SignIntoEligibleAccount(), InstrumentTab(kFirstTab),
+      AddInstrumentedTab(kSecondTab, GetTestURL()),
+      SelectTab(kTabStripElementId, 0), EnsureNotPresent(EphemeralButtonId()),
+      CreateTaskForTab(0), SimulateOpeningContextualTaskSidePanel(),
+      WaitForShow(EphemeralButtonId()), Do([this]() {
+        BrowserUserEducationInterface::From(browser())->MaybeShowFeaturePromo(
+            feature_engagement::kIPHSidePanelContextualTasksPinnableFeature);
+      }),
+      WaitForPromo(
+          feature_engagement::kIPHSidePanelContextualTasksPinnableFeature),
+      SimulateClosingContextualTaskSidePanel(),
+      WaitForHide(
+          user_education::HelpBubbleView::kHelpBubbleElementIdForTesting),
+      CheckPromoActive(
+          feature_engagement::kIPHSidePanelContextualTasksPinnableFeature,
+          false),
+      // The button itself should remain since the task is still active.
+      EnsurePresent(EphemeralButtonId()));
+}
+
+// Switching to another tab backgrounds the side panel entry; the pinning promo
+// should be dismissed in that case too.
+IN_PROC_BROWSER_TEST_P(ContextualTasksPinningV2PromoParamInteractiveTest,
+                       AbortsPinningPromoWhenSidePanelIsBackgrounded) {
+  RunTestSequence(
+      SignIntoEligibleAccount(), InstrumentTab(kFirstTab),
+      AddInstrumentedTab(kSecondTab, GetTestURL()),
+      SelectTab(kTabStripElementId, 0), EnsureNotPresent(EphemeralButtonId()),
+      CreateTaskForTab(0), SimulateOpeningContextualTaskSidePanel(),
+      WaitForShow(EphemeralButtonId()), Do([this]() {
+        BrowserUserEducationInterface::From(browser())->MaybeShowFeaturePromo(
+            feature_engagement::kIPHSidePanelContextualTasksPinnableFeature);
+      }),
+      WaitForPromo(
+          feature_engagement::kIPHSidePanelContextualTasksPinnableFeature),
+      SelectTab(kTabStripElementId, 1),
+      WaitForHide(
+          user_education::HelpBubbleView::kHelpBubbleElementIdForTesting),
+      CheckPromoActive(
+          feature_engagement::kIPHSidePanelContextualTasksPinnableFeature,
+          false));
+}
+
+// Reopening the side panel from any entry point while the collapsed ephemeral
+// button's toast is showing dismisses the toast: the button is no longer in the
+// state the toast describes. A click on the button itself is covered by
+// ShowsPromoOnSidePanelCloseNotOpen.
+IN_PROC_BROWSER_TEST_P(ContextualTasksPinningV2PromoParamInteractiveTest,
+                       AbortsEphemeralPromoWhenSidePanelReopens) {
+  RunTestSequence(
+      SignIntoEligibleAccount(), InstrumentTab(kFirstTab),
+      AddInstrumentedTab(kSecondTab, GetTestURL()),
+      SelectTab(kTabStripElementId, 0), CreateTaskForTab(0),
+      SimulateOpeningContextualTaskSidePanel(),
+      SimulateClosingContextualTaskSidePanel(),
+      WaitForShow(EphemeralButtonId()),
+      WaitForPromo(
+          feature_engagement::kIPHContextualTasksEphemeralToolbarButtonFeature),
+      // Reopen through the panel controller rather than the button.
+      SimulateOpeningContextualTaskSidePanel(),
+      WaitForHide(
+          user_education::HelpBubbleView::kHelpBubbleElementIdForTesting),
+      CheckPromoActive(
+          feature_engagement::kIPHContextualTasksEphemeralToolbarButtonFeature,
+          false),
+      EnsurePresent(EphemeralButtonId()),
+      CheckEphemeralButtonHighlighted(true));
 }
 
 class ContextualTasksEphemeralBrandedButtonInteractiveTest
@@ -1497,7 +1702,16 @@ class ContextualTasksEphemeralButtonPinningV2InteractiveTest
   }
 };
 
-IN_PROC_BROWSER_TEST_F(ContextualTasksEphemeralButtonPinningV2InteractiveTest,
+using ContextualTasksPinningV2ParamInteractiveTest =
+    ContextualTasksPinningV2ParamMixin<
+        ContextualTasksEphemeralButtonPinningV2InteractiveTest>;
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         ContextualTasksPinningV2ParamInteractiveTest,
+                         testing::Bool(),
+                         &PinningV2ParamName);
+
+IN_PROC_BROWSER_TEST_P(ContextualTasksPinningV2ParamInteractiveTest,
                        EphemeralButtonDoesNotShowInIncognito) {
   BrowserWindowInterface* const incognito_browser =
       CreateIncognitoBrowser(browser()->GetProfile());
@@ -1531,10 +1745,10 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksEphemeralButtonPinningV2InteractiveTest,
   incognito_panel_controller->Close();
   EXPECT_FALSE(incognito_ephemeral_controller->ShouldShowEphemeralButton());
 
-  RunTestSequence(InContext(
-      BrowserView::GetBrowserViewForBrowser(incognito_browser)
-          ->GetElementContext(),
-      EnsureNotPresent(kContextualTasksEphemeralToolbarButtonElementId)));
+  RunTestSequence(
+      InContext(BrowserView::GetBrowserViewForBrowser(incognito_browser)
+                    ->GetElementContext(),
+                EnsureNotPresent(EphemeralButtonId())));
 }
 
 IN_PROC_BROWSER_TEST_F(
@@ -1554,24 +1768,51 @@ IN_PROC_BROWSER_TEST_F(
       CheckButtonIsInRightDock());
 }
 
+// Under Pinning V2, losing entry point eligibility (e.g. the default search
+// engine changes) must hide the thread-state ephemeral button instead of
+// leaving it behind until navigation, auto-dismiss, or tab close.
 IN_PROC_BROWSER_TEST_F(ContextualTasksEphemeralButtonPinningV2InteractiveTest,
-                       ButtonShowsAndHighlightsWhileSidePanelIsOpen) {
-  base::UserActionTester user_action_tester;
-  base::HistogramTester histogram_tester;
-  const std::u16string expected_open_tooltip = l10n_util::GetStringUTF16(
-      IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CLOSE_TOOL_TIP);
-  const std::u16string expected_closed_tooltip = l10n_util::GetStringUTF16(
-      IDS_CONTEXTUAL_TASKS_SIDE_PANEL_REOPEN_TOOL_TIP);
-
+                       ButtonHidesWhenUserBecomesIneligible) {
   RunTestSequence(
       SignIntoEligibleAccount(), InstrumentTab(kFirstTab),
       AddInstrumentedTab(kSecondTab, GetTestURL()),
       SelectTab(kTabStripElementId, 0),
       EnsureNotPresent(kContextualTasksEphemeralToolbarButtonElementId),
-      CreateTaskForTab(0),
+      CreateTaskForTab(0), SimulateOpeningContextualTaskSidePanel(),
+      SimulateClosingContextualTaskSidePanel(),
+      WaitForShow(kContextualTasksEphemeralToolbarButtonElementId),
+      SetIsAimEligible(false),
+      WaitForHide(kContextualTasksEphemeralToolbarButtonElementId),
+      ExpectTotalCount("ContextualTasks.EphemeralToolbarButton.ShownDuration."
+                       "TaskDisassociated",
+                       1),
+      // Regaining eligibility does not resurrect the dismissed button; a new
+      // side panel session is required.
+      SetIsAimEligible(true),
       EnsureNotPresent(kContextualTasksEphemeralToolbarButtonElementId),
       SimulateOpeningContextualTaskSidePanel(),
-      WaitForShow(kContextualTasksEphemeralToolbarButtonElementId), Do([&]() {
+      SimulateClosingContextualTaskSidePanel(),
+      WaitForShow(kContextualTasksEphemeralToolbarButtonElementId));
+}
+
+IN_PROC_BROWSER_TEST_P(ContextualTasksPinningV2ParamInteractiveTest,
+                       ButtonShowsAndHighlightsWhileSidePanelIsOpen) {
+  base::UserActionTester user_action_tester;
+  base::HistogramTester histogram_tester;
+  const std::u16string expected_open_tooltip = l10n_util::GetStringUTF16(
+      contextual_tasks::GetContextualTasksPinningStringId(
+          IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CLOSE_TOOL_TIP));
+  const std::u16string expected_closed_tooltip = l10n_util::GetStringUTF16(
+      contextual_tasks::GetContextualTasksPinningStringId(
+          IDS_CONTEXTUAL_TASKS_SIDE_PANEL_REOPEN_TOOL_TIP));
+
+  RunTestSequence(
+      SignIntoEligibleAccount(), InstrumentTab(kFirstTab),
+      AddInstrumentedTab(kSecondTab, GetTestURL()),
+      SelectTab(kTabStripElementId, 0), EnsureNotPresent(EphemeralButtonId()),
+      CreateTaskForTab(0), EnsureNotPresent(EphemeralButtonId()),
+      SimulateOpeningContextualTaskSidePanel(),
+      WaitForShow(EphemeralButtonId()), Do([&]() {
         EXPECT_EQ(1, user_action_tester.GetActionCount(
                          "ContextualTasks.EphemeralToolbarButton.Shown."
                          "ActivePanelOpen"));
@@ -1585,15 +1826,16 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksEphemeralButtonPinningV2InteractiveTest,
             "ContextualTasks.EphemeralToolbarButton.Shown.ActivePanelCollapsed",
             0);
       }),
-      CheckViewProperty(kContextualTasksEphemeralToolbarButtonElementId,
-                        &ContextualTasksButton::IsHighlighted, true),
-      CheckViewProperty(kContextualTasksEphemeralToolbarButtonElementId,
-                        &ContextualTasksButton::GetDropShadowLayerForTesting,
-                        testing::IsNull()),
-      CheckViewProperty(kContextualTasksEphemeralToolbarButtonElementId,
-                        &views::View::GetTooltipText, expected_open_tooltip),
+      CheckEphemeralButtonHighlighted(true),
+      If([this]() { return !IsRefactorEnabled(); },
+         Then(CheckViewProperty(
+             EphemeralButtonId(),
+             &ContextualTasksButton::GetDropShadowLayerForTesting,
+             testing::IsNull()))),
+      CheckViewProperty(EphemeralButtonId(), &views::View::GetTooltipText,
+                        expected_open_tooltip),
       SimulateClosingContextualTaskSidePanel(),
-      WaitForShow(kContextualTasksEphemeralToolbarButtonElementId), Do([&]() {
+      WaitForShow(EphemeralButtonId()), Do([&]() {
         EXPECT_EQ(1, user_action_tester.GetActionCount(
                          "ContextualTasks.EphemeralToolbarButton.Shown."
                          "ActivePanelCollapsed"));
@@ -1601,14 +1843,15 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksEphemeralButtonPinningV2InteractiveTest,
             "ContextualTasks.EphemeralToolbarButton.Shown.ActivePanelCollapsed",
             true, 1);
       }),
-      CheckViewProperty(kContextualTasksEphemeralToolbarButtonElementId,
-                        &ContextualTasksButton::IsHighlighted, false),
-      CheckViewProperty(kContextualTasksEphemeralToolbarButtonElementId,
-                        &ContextualTasksButton::GetDropShadowLayerForTesting,
-                        testing::IsNull()),
-      CheckViewProperty(kContextualTasksEphemeralToolbarButtonElementId,
-                        &views::View::GetTooltipText, expected_closed_tooltip),
-      PressButton(kContextualTasksEphemeralToolbarButtonElementId), Do([&]() {
+      CheckEphemeralButtonHighlighted(false),
+      If([this]() { return !IsRefactorEnabled(); },
+         Then(CheckViewProperty(
+             EphemeralButtonId(),
+             &ContextualTasksButton::GetDropShadowLayerForTesting,
+             testing::IsNull()))),
+      CheckViewProperty(EphemeralButtonId(), &views::View::GetTooltipText,
+                        expected_closed_tooltip),
+      PressButton(EphemeralButtonId()), Do([&]() {
         EXPECT_EQ(1, user_action_tester.GetActionCount(
                          "ContextualTasks.EphemeralToolbarButton.UserAction."
                          "OpenSidePanel"));
@@ -1629,12 +1872,10 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksEphemeralButtonPinningV2InteractiveTest,
                          "ContextualTasks.PermanentToolbarButton.UserAction."
                          "OpenSidePanel"));
       }),
-      EnsurePresent(kContextualTasksEphemeralToolbarButtonElementId),
-      CheckViewProperty(kContextualTasksEphemeralToolbarButtonElementId,
-                        &ContextualTasksButton::IsHighlighted, true),
-      CheckViewProperty(kContextualTasksEphemeralToolbarButtonElementId,
-                        &views::View::GetTooltipText, expected_open_tooltip),
-      PressButton(kContextualTasksEphemeralToolbarButtonElementId), Do([&]() {
+      EnsurePresent(EphemeralButtonId()), CheckEphemeralButtonHighlighted(true),
+      CheckViewProperty(EphemeralButtonId(), &views::View::GetTooltipText,
+                        expected_open_tooltip),
+      PressButton(EphemeralButtonId()), Do([&]() {
         EXPECT_EQ(1, user_action_tester.GetActionCount(
                          "ContextualTasks.EphemeralToolbarButton.UserAction."
                          "CloseSidePanel"));
@@ -1651,25 +1892,20 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksEphemeralButtonPinningV2InteractiveTest,
                          "ContextualTasks.PermanentToolbarButton.UserAction."
                          "CloseSidePanel"));
       }),
-      EnsurePresent(kContextualTasksEphemeralToolbarButtonElementId),
-      CheckViewProperty(kContextualTasksEphemeralToolbarButtonElementId,
-                        &ContextualTasksButton::IsHighlighted, false),
-      CheckViewProperty(kContextualTasksEphemeralToolbarButtonElementId,
-                        &views::View::GetTooltipText, expected_closed_tooltip));
+      EnsurePresent(EphemeralButtonId()),
+      CheckEphemeralButtonHighlighted(false),
+      CheckViewProperty(EphemeralButtonId(), &views::View::GetTooltipText,
+                        expected_closed_tooltip));
 }
 
-IN_PROC_BROWSER_TEST_F(
-    ContextualTasksEphemeralButtonPinningV2InteractiveTest,
-    ButtonShowsWhileSidePanelIsOpenWithoutPreexistingTask) {
+IN_PROC_BROWSER_TEST_P(ContextualTasksPinningV2ParamInteractiveTest,
+                       ButtonShowsWhileSidePanelIsOpenWithoutPreexistingTask) {
   RunTestSequence(
       SignIntoEligibleAccount(), InstrumentTab(kFirstTab),
       AddInstrumentedTab(kSecondTab, GetTestURL()),
-      SelectTab(kTabStripElementId, 0),
-      EnsureNotPresent(kContextualTasksEphemeralToolbarButtonElementId),
+      SelectTab(kTabStripElementId, 0), EnsureNotPresent(EphemeralButtonId()),
       SimulateOpeningContextualTaskSidePanel(),
-      WaitForShow(kContextualTasksEphemeralToolbarButtonElementId),
-      CheckViewProperty(kContextualTasksEphemeralToolbarButtonElementId,
-                        &ContextualTasksButton::IsHighlighted, true));
+      WaitForShow(EphemeralButtonId()), CheckEphemeralButtonHighlighted(true));
 }
 
 IN_PROC_BROWSER_TEST_F(
@@ -1983,7 +2219,7 @@ IN_PROC_BROWSER_TEST_F(
       }));
 }
 
-IN_PROC_BROWSER_TEST_F(ContextualTasksEphemeralButtonPinningV2InteractiveTest,
+IN_PROC_BROWSER_TEST_P(ContextualTasksPinningV2ParamInteractiveTest,
                        LogsPermanentEphemeralMetricsForContinueVsNewThread) {
   base::UserActionTester user_action_tester;
 
@@ -2769,6 +3005,82 @@ IN_PROC_BROWSER_TEST_F(
       WaitForHide(kContextualTasksEphemeralToolbarButtonElementId));
 }
 
+// When the side panel is open and the user is not pinning eligible, the
+// context menu has no items. Right-clicking the button must be a no-op: no
+// menu should open and the button must keep its "panel open" highlight.
+IN_PROC_BROWSER_TEST_F(ContextualTasksEphemeralButtonPinningV2InteractiveTest,
+                       RightClickWithNoContextMenuItemsKeepsHighlight) {
+  auto CheckButtonHighlightedAndIdle = [this]() {
+    return CheckView(
+        kContextualTasksEphemeralToolbarButtonElementId,
+        [](ContextualTasksButton* button) {
+          return button->IsHighlighted() && !button->IsMenuShowing() &&
+                 button->GetState() != views::Button::STATE_PRESSED &&
+                 views::InkDrop::Get(button)
+                         ->GetInkDrop()
+                         ->GetTargetInkDropState() ==
+                     views::InkDropState::ACTIVATED;
+        });
+  };
+
+  RunTestSequence(
+      SignIntoEligibleAccount(), SetIsFuseboxEligible(false),
+      InstrumentTab(kFirstTab), AddInstrumentedTab(kSecondTab, GetTestURL()),
+      SelectTab(kTabStripElementId, 0),
+      EnsureNotPresent(kContextualTasksEphemeralToolbarButtonElementId),
+      CreateTaskForTab(0), SimulateOpeningContextualTaskSidePanel(),
+      WaitForShow(kContextualTasksEphemeralToolbarButtonElementId),
+      CheckButtonHighlightedAndIdle(),
+      // A right mouse press routes through View::ShowContextMenu() (see
+      // View::ProcessMousePressed()), which is what this helper invokes.
+      ShowToolbarButtonContextMenu(
+          kContextualTasksEphemeralToolbarButtonElementId),
+      EnsureNotPresent(
+          ContextualTasksEphemeralButtonMenuModel::kRemoveForTaskMenuItem),
+      EnsureNotPresent(kPinnedActionToolbarPinElementId),
+      EnsureNotPresent(kPinnedActionToolbarUnpinElementId),
+      EnsureNotPresent(kPinnedActionToolbarCustomizeElementId),
+      CheckButtonHighlightedAndIdle(),
+      // The side panel must stay open and the button must stay visible.
+      EnsurePresent(kContextualTasksEphemeralToolbarButtonElementId));
+}
+
+// When the side panel is open and the context menu does have items, opening
+// and dismissing it must not clear the button's "panel open" highlight.
+IN_PROC_BROWSER_TEST_F(ContextualTasksEphemeralButtonPinningV2InteractiveTest,
+                       ContextMenuKeepsHighlightWhileSidePanelOpen) {
+  auto CheckInkDropActivated = [this]() {
+    return CheckView(kContextualTasksEphemeralToolbarButtonElementId,
+                     [](ContextualTasksButton* button) {
+                       return button->IsHighlighted() &&
+                              views::InkDrop::Get(button)
+                                      ->GetInkDrop()
+                                      ->GetTargetInkDropState() ==
+                                  views::InkDropState::ACTIVATED;
+                     });
+  };
+
+  RunTestSequence(
+      SignIntoEligibleAccount(), InstrumentTab(kFirstTab),
+      AddInstrumentedTab(kSecondTab, GetTestURL()),
+      SelectTab(kTabStripElementId, 0),
+      EnsureNotPresent(kContextualTasksEphemeralToolbarButtonElementId),
+      CreateTaskForTab(0), SimulateOpeningContextualTaskSidePanel(),
+      WaitForShow(kContextualTasksEphemeralToolbarButtonElementId),
+      CheckInkDropActivated(),
+      ShowToolbarButtonContextMenu(
+          kContextualTasksEphemeralToolbarButtonElementId),
+      WaitForShow(kPinnedActionToolbarPinElementId), CheckInkDropActivated(),
+      Do([]() {
+        views::MenuController::GetActiveInstance()->Cancel(
+            views::MenuController::ExitType::kAll);
+      }),
+      WaitForHide(kPinnedActionToolbarPinElementId),
+      CheckViewProperty(kContextualTasksEphemeralToolbarButtonElementId,
+                        &ContextualTasksButton::IsMenuShowing, false),
+      CheckInkDropActivated());
+}
+
 class ContextualTasksPinnedButtonActiveIndicatorInteractiveTest
     : public ContextualTasksEphemeralButtonPinningV2InteractiveTest {
  public:
@@ -2863,24 +3175,25 @@ IN_PROC_BROWSER_TEST_F(
           ContextualTasksEphemeralButtonMenuModel::kRemoveForTaskMenuItem));
 }
 
-class ContextualTasksPinnedButtonActiveIndicatorWithContextMenuInteractiveTest
-    : public ContextualTasksPinnedButtonActiveIndicatorInteractiveTest {
- public:
-  std::vector<base::test::FeatureRefAndParams> GetEnabledFeatures() override {
-    std::vector<base::test::FeatureRefAndParams> enabled_features =
-        ContextualTasksEphemeralButtonPinningV2InteractiveTest::
-            GetEnabledFeatures();
-    enabled_features.push_back(
-        {contextual_tasks::kContextualTasksPinnedButtonActiveIndicator,
-         {{"ContextualTasksPinnedButtonContextMenuCloseSidePanel", "true"}}});
-    return enabled_features;
-  }
-};
-
 IN_PROC_BROWSER_TEST_F(
-    ContextualTasksPinnedButtonActiveIndicatorWithContextMenuInteractiveTest,
-    RightClickPinnedButtonDoesNotShowCloseSidePanelWhenPinned) {
+    ContextualTasksPinnedButtonActiveIndicatorInteractiveTest,
+    NavigatingTabWhenPanelClosedDismissesActiveThreadOnPinnedButton) {
   raw_ptr<PinnedActionToolbarButton> pinned_button = nullptr;
+  base::Uuid initial_task_id;
+
+  auto VerifyActiveIndicator = [&](bool expected_active) {
+    ASSERT_NE(pinned_button, nullptr);
+    actions::ActionItem* const action_item =
+        actions::ActionManager::Get().FindAction(
+            kActionSidePanelShowContextualTasks,
+            BrowserActions::From(browser())->root_action_item());
+    ASSERT_NE(action_item, nullptr);
+    EXPECT_EQ(action_item->GetProperty(kActionItemUnderlineIndicatorKey),
+              expected_active);
+    ASSERT_NE(pinned_button->GetStatusIndicatorForTesting(), nullptr);
+    EXPECT_EQ(pinned_button->GetStatusIndicatorForTesting()->GetVisible(),
+              expected_active);
+  };
 
   RunTestSequence(
       SignIntoEligibleAccount(), InstrumentTab(kFirstTab),
@@ -2904,16 +3217,129 @@ IN_PROC_BROWSER_TEST_F(
                   pinned_button = b;
                   return true;
                 }),
+      CreateTaskForTab(0), Do([&]() {
+        content::WebContents* const web_contents =
+            browser()->GetTabStripModel()->GetWebContentsAt(0);
+        initial_task_id =
+            GetContextualTasksService()
+                ->GetContextualTaskForTab(
+                    sessions::SessionTabHelper::IdForTab(web_contents))
+                ->GetTaskId();
+      }),
+      SimulateOpeningContextualTaskSidePanel(),
+      Do([&]() { VerifyActiveIndicator(true); }),
+      // Navigating while the side panel is open keeps the active thread.
+      NavigateWebContents(
+          kFirstTab,
+          embedded_test_server()->GetURL("example.com", "/title2.html")),
+      Do([&]() {
+        VerifyActiveIndicator(true);
+        content::WebContents* const web_contents =
+            browser()->GetTabStripModel()->GetWebContentsAt(0);
+        EXPECT_TRUE(GetContextualTasksService()
+                        ->GetContextualTaskForTab(
+                            sessions::SessionTabHelper::IdForTab(web_contents))
+                        .has_value());
+      }),
+      // Close the side panel: the active thread and indicator remain.
+      SimulateClosingContextualTaskSidePanel(),
+      Do([&]() { VerifyActiveIndicator(true); }),
+      // Navigating while the side panel is closed dismisses the active thread,
+      // clears the active indicator, and cleans up the cached WebContents.
+      NavigateWebContents(
+          kFirstTab,
+          embedded_test_server()->GetURL("example.com", "/title3.html")),
+      Do([&]() {
+        VerifyActiveIndicator(false);
+        content::WebContents* const web_contents =
+            browser()->GetTabStripModel()->GetWebContentsAt(0);
+        EXPECT_FALSE(GetContextualTasksService()
+                         ->GetContextualTaskForTab(
+                             sessions::SessionTabHelper::IdForTab(web_contents))
+                         .has_value());
+        auto* panel_controller =
+            contextual_tasks::ContextualTasksPanelController::From(browser());
+        ASSERT_NE(panel_controller, nullptr);
+        EXPECT_TRUE(panel_controller->GetPanelWebContentsList().empty());
+      }),
+      // Clicking the permanent pin button now opens a fresh zero-state thread.
+      PressButton(kPinnedToolbarActionShowSidePanelContextualTasksElementId),
+      Do([&]() {
+        content::WebContents* const web_contents =
+            browser()->GetTabStripModel()->GetWebContentsAt(0);
+        std::optional<contextual_tasks::ContextualTask> new_task =
+            GetContextualTasksService()->GetContextualTaskForTab(
+                sessions::SessionTabHelper::IdForTab(web_contents));
+        ASSERT_TRUE(new_task.has_value());
+        EXPECT_NE(initial_task_id, new_task->GetTaskId());
+      }));
+}
+
+class ContextualTasksPinnedButtonActiveIndicatorWithContextMenuInteractiveTest
+    : public ContextualTasksPinnedButtonActiveIndicatorInteractiveTest {
+ public:
+  std::vector<base::test::FeatureRefAndParams> GetEnabledFeatures() override {
+    std::vector<base::test::FeatureRefAndParams> enabled_features =
+        ContextualTasksEphemeralButtonPinningV2InteractiveTest::
+            GetEnabledFeatures();
+    enabled_features.push_back(
+        {contextual_tasks::kContextualTasksPinnedButtonActiveIndicator,
+         {{"ContextualTasksPinnedButtonContextMenuCloseSidePanel", "true"}}});
+    return enabled_features;
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksPinnedButtonActiveIndicatorWithContextMenuInteractiveTest,
+    RightClickPinnedButtonShowsCloseSidePanelOnlyWhenClosedWithActiveTask) {
+  raw_ptr<PinnedActionToolbarButton> pinned_button = nullptr;
+  base::UserActionTester user_action_tester;
+  base::HistogramTester histogram_tester;
+
+  auto IsActiveIndicatorVisible = [&]() {
+    return pinned_button && pinned_button->GetStatusIndicatorForTesting() &&
+           pinned_button->GetStatusIndicatorForTesting()->GetVisible();
+  };
+
+  RunTestSequence(
+      SignIntoEligibleAccount(), InstrumentTab(kFirstTab),
+      AddInstrumentedTab(kSecondTab, GetTestURL()),
+      SelectTab(kTabStripElementId, 0), Do([&]() {
+        PinnedToolbarActionsModel::Get(browser()->GetProfile())
+            ->UpdatePinnedState(kActionSidePanelShowContextualTasks, true);
+      }),
+      WaitForShow(kPinnedToolbarActionShowSidePanelContextualTasksElementId),
+      WithView(kPinnedToolbarActionShowSidePanelContextualTasksElementId,
+               [](views::View* view) {
+                 if (auto* container =
+                         views::AsViewClass<PinnedToolbarActionsContainer>(
+                             view->parent())) {
+                   container->GetAnimatingLayoutManager()->ResetLayout();
+                 }
+                 view->GetWidget()->LayoutRootViewIfNecessary();
+               }),
+      CheckView(kPinnedToolbarActionShowSidePanelContextualTasksElementId,
+                [&pinned_button](PinnedActionToolbarButton* b) {
+                  pinned_button = b;
+                  return true;
+                }),
+      // Without an ongoing task, right-clicking the permanent pin button
+      // should not show "Close/Hide side panel".
+      ShowToolbarButtonContextMenu(
+          kPinnedToolbarActionShowSidePanelContextualTasksElementId),
+      WaitForShow(kPinnedActionToolbarUnpinElementId),
+      WaitForShow(kPinnedActionToolbarCustomizeElementId),
+      EnsureNotPresent(
+          ContextualTasksEphemeralButtonMenuModel::kRemoveForTaskMenuItem),
+      SelectMenuItem(kPinnedActionToolbarCustomizeElementId),
+      WaitForHide(kPinnedActionToolbarUnpinElementId),
       // Create an ongoing task on Tab 0 and open the side panel: the active
-      // indicator should show, and right-clicking the permanent pin button
-      // should not show "Close/Hide side panel" when pinned.
+      // indicator should show, but "Close/Hide side panel" should not be
+      // offered while the side panel is open.
       CreateTaskForTab(0), SimulateOpeningContextualTaskSidePanel(),
       WaitForShow(
           ContextualTasksCloseTabButton::kContextualTasksCloseTabButton),
-      Check([&]() {
-        return pinned_button->GetStatusIndicatorForTesting() &&
-               pinned_button->GetStatusIndicatorForTesting()->GetVisible();
-      }),
+      Check([&]() { return IsActiveIndicatorVisible(); }),
       ShowToolbarButtonContextMenu(
           kPinnedToolbarActionShowSidePanelContextualTasksElementId),
       WaitForShow(kPinnedActionToolbarUnpinElementId),
@@ -2923,25 +3349,22 @@ IN_PROC_BROWSER_TEST_F(
       SelectMenuItem(kPinnedActionToolbarCustomizeElementId),
       WaitForHide(kPinnedActionToolbarUnpinElementId),
       SimulateClosingContextualTaskSidePanel(),
-      // Even when the side panel is closed with an active task, right-clicking
-      // the pinned button should not show "Close/Hide side panel".
+      // Once the side panel is closed with an active task, right-clicking the
+      // pinned button SHOULD show "Close/Hide side panel".
+      Check([&]() { return IsActiveIndicatorVisible(); }),
       ShowToolbarButtonContextMenu(
           kPinnedToolbarActionShowSidePanelContextualTasksElementId),
       WaitForShow(kPinnedActionToolbarUnpinElementId),
       WaitForShow(kPinnedActionToolbarCustomizeElementId),
-      EnsureNotPresent(
+      WaitForShow(
           ContextualTasksEphemeralButtonMenuModel::kRemoveForTaskMenuItem),
-      SelectMenuItem(kPinnedActionToolbarCustomizeElementId),
-      WaitForHide(kPinnedActionToolbarUnpinElementId), Do([&]() {
-        base::UserActionTester user_action_tester;
-        base::HistogramTester histogram_tester;
-        actions::ActionItem* const close_action =
-            actions::ActionManager::Get().FindAction(
-                kActionContextualTasksCloseSidePanel,
-                BrowserActions::From(browser())->root_action_item());
-        ASSERT_NE(close_action, nullptr);
-        close_action->SetEnabled(true);
-        close_action->InvokeAction();
+      // Selecting it should dismiss the task for this tab and clear the
+      // active indicator.
+      SelectMenuItem(
+          ContextualTasksEphemeralButtonMenuModel::kRemoveForTaskMenuItem),
+      WaitForHide(kPinnedActionToolbarUnpinElementId),
+      Check([&]() { return !IsActiveIndicatorVisible(); }),
+      Do([&]() {
         EXPECT_EQ(1, user_action_tester.GetActionCount(
                          "ContextualTasks.EphemeralToolbarButton.UserAction."
                          "RemoveByContextMenu"));
@@ -2949,7 +3372,16 @@ IN_PROC_BROWSER_TEST_F(
             "ContextualTasks.EphemeralToolbarButton.UserAction."
             "RemoveByContextMenu",
             true, 1);
-      }));
+      }),
+      // The option should be gone again now that the task was dismissed.
+      ShowToolbarButtonContextMenu(
+          kPinnedToolbarActionShowSidePanelContextualTasksElementId),
+      WaitForShow(kPinnedActionToolbarUnpinElementId),
+      WaitForShow(kPinnedActionToolbarCustomizeElementId),
+      EnsureNotPresent(
+          ContextualTasksEphemeralButtonMenuModel::kRemoveForTaskMenuItem),
+      SelectMenuItem(kPinnedActionToolbarCustomizeElementId),
+      WaitForHide(kPinnedActionToolbarUnpinElementId));
 }
 
 IN_PROC_BROWSER_TEST_F(
@@ -3488,9 +3920,11 @@ IN_PROC_BROWSER_TEST_F(
   base::UserActionTester user_action_tester;
   base::HistogramTester histogram_tester;
   const std::u16string expected_open_tooltip = l10n_util::GetStringUTF16(
-      IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CLOSE_TOOL_TIP);
+      contextual_tasks::GetContextualTasksPinningStringId(
+          IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CLOSE_TOOL_TIP));
   const std::u16string expected_closed_tooltip = l10n_util::GetStringUTF16(
-      IDS_CONTEXTUAL_TASKS_SIDE_PANEL_REOPEN_TOOL_TIP);
+      contextual_tasks::GetContextualTasksPinningStringId(
+          IDS_CONTEXTUAL_TASKS_SIDE_PANEL_REOPEN_TOOL_TIP));
 
   RunTestSequence(
       SignIntoEligibleAccount(), InstrumentTab(kFirstTab),
@@ -3649,4 +4083,41 @@ IN_PROC_BROWSER_TEST_F(
             "RemovedByContextMenu",
             1);
       }));
+}
+
+// Under the ephemeral pin button refactor, losing entry point eligibility must
+// hide the popped-out pinned action in its thread state, matching the legacy
+// ephemeral button.
+IN_PROC_BROWSER_TEST_F(ContextualTasksEphemeralPinButtonRefactorInteractiveTest,
+                       PinnedActionHidesWhenUserBecomesIneligible) {
+  const auto rich_animation_lock =
+      gfx::AnimationTestApi::SetRichAnimationRenderMode(
+          gfx::Animation::RichAnimationRenderMode::FORCE_ENABLED);
+  base::HistogramTester histogram_tester;
+
+  RunTestSequence(
+      SignIntoEligibleAccount(), InstrumentTab(kFirstTab),
+      AddInstrumentedTab(kSecondTab, GetTestURL()),
+      SelectTab(kTabStripElementId, 0),
+      EnsureNotPresent(
+          kPinnedToolbarActionShowSidePanelContextualTasksElementId),
+      CreateTaskForTab(0), SimulateOpeningContextualTaskSidePanel(),
+      SimulateClosingContextualTaskSidePanel(),
+      WaitForShow(kPinnedToolbarActionShowSidePanelContextualTasksElementId),
+      SetIsAimEligible(false),
+      WaitForHide(kPinnedToolbarActionShowSidePanelContextualTasksElementId),
+      Do([&]() {
+        histogram_tester.ExpectTotalCount(
+            "ContextualTasks.EphemeralToolbarButton.ShownDuration."
+            "TaskDisassociated",
+            1);
+      }),
+      // Regaining eligibility does not resurrect the dismissed button; a new
+      // side panel session is required.
+      SetIsAimEligible(true),
+      EnsureNotPresent(
+          kPinnedToolbarActionShowSidePanelContextualTasksElementId),
+      SimulateOpeningContextualTaskSidePanel(),
+      SimulateClosingContextualTaskSidePanel(),
+      WaitForShow(kPinnedToolbarActionShowSidePanelContextualTasksElementId));
 }

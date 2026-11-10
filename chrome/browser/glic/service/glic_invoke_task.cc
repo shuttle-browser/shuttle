@@ -5,6 +5,7 @@
 #include "chrome/browser/glic/service/glic_invoke_task.h"
 
 #include "base/barrier_closure.h"
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/strings/escape.h"
@@ -14,6 +15,8 @@
 #include "chrome/browser/actor/actor_keyed_service.h"
 #include "chrome/browser/actor/ui/actor_ui_state_manager.h"
 #include "chrome/browser/enterprise/data_protection/data_protection_clipboard_utils.h"
+#include "chrome/browser/glic/glic_enums.h"
+#include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/public/glic_context_menu_invocation_helper.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
@@ -288,13 +291,23 @@ void WaitForClientConnectedTask::WebClientConnected() {
 
 WaitForClientReadyTask::WaitForClientReadyTask(
     Host& host,
+    SignInBehavior sign_in_behavior,
     base::OnceCallback<void(GlicInvokeError)> error_callback)
-    : host_(host), error_callback_(std::move(error_callback)) {}
+    : host_(host),
+      sign_in_behavior_(sign_in_behavior),
+      error_callback_(std::move(error_callback)) {}
 
 WaitForClientReadyTask::~WaitForClientReadyTask() = default;
 
 void WaitForClientReadyTask::Start(base::OnceClosure done_callback) {
   done_callback_ = std::move(done_callback);
+  if (base::FeatureList::IsEnabled(features::kGlicInvokeErrorRecoveryFixes)) {
+    if (host_->client_load_state() == ClientLoadState::kReady) {
+      CheckState(ClientLoadState::kReady);
+      return;
+    }
+    observation_.Observe(&*host_);
+  }
   // TODO(b/573171097): Have Invoke send an explicit load request to the
   // instance/host that is guaranteed to resolve, rather than triggering load
   // and waiting for load separately.
@@ -304,15 +317,25 @@ void WaitForClientReadyTask::Start(base::OnceClosure done_callback) {
 }
 
 void WaitForClientReadyTask::OnWaitForLoadComplete(bool failed) {
+  wait_for_load_complete_ = true;
   if (failed) {
     CheckState(ClientLoadState::kError);
     return;
   }
-  observation_.Observe(&*host_);
+  if (!base::FeatureList::IsEnabled(features::kGlicInvokeErrorRecoveryFixes)) {
+    observation_.Observe(&*host_);
+  }
   CheckState(host_->client_load_state());
 }
 
 void WaitForClientReadyTask::ClientLoadStateChanged(ClientLoadState state) {
+  // Before `WaitForLoad()` resolves, `ClientLoadState::kError` may reflect a
+  // stale error from before `IntentToShow()` triggered a reload. Readiness is
+  // authoritative in the browser process and can resolve immediately.
+  if (base::FeatureList::IsEnabled(features::kGlicInvokeErrorRecoveryFixes) &&
+      state == ClientLoadState::kError && !wait_for_load_complete_) {
+    return;
+  }
   CheckState(state);
 }
 
@@ -328,6 +351,15 @@ void WaitForClientReadyTask::CheckState(ClientLoadState state) {
       break;
 
     case ClientLoadState::kError:
+      if (host_->client_load_error_reason() == ClientLoadErrorReason::kSignIn) {
+        // The client is waiting for the user, not broken. See SignInBehavior.
+        if (sign_in_behavior_ == SignInBehavior::kWaits) {
+          break;
+        }
+        observation_.Reset();
+        std::move(done_callback_).Run();
+        break;
+      }
       observation_.Reset();
       if (error_callback_) {
         std::move(error_callback_).Run(GlicInvokeError::kClientLoadError);

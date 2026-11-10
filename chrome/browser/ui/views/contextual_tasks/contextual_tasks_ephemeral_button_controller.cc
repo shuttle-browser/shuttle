@@ -23,6 +23,7 @@
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_utils.h"
+#include "chrome/browser/contextual_tasks/entry_point_eligibility_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_actions.h"
@@ -120,6 +121,17 @@ ContextualTasksEphemeralButtonController::
   if (auto* pinned_model = PinnedToolbarActionsModel::Get(profile)) {
     pinned_toolbar_observation_.Observe(pinned_model);
   }
+  if (contextual_tasks::IsContextualTasksPinningV2Enabled()) {
+    if (auto* const eligibility_manager =
+            contextual_tasks::EntryPointEligibilityManager::From(
+                browser_window_interface_)) {
+      entry_point_eligibility_subscription_ =
+          eligibility_manager->RegisterOnEntryPointEligibilityChanged(
+              base::BindRepeating(&ContextualTasksEphemeralButtonController::
+                                      OnEntryPointEligibilityChanged,
+                                  base::Unretained(this)));
+    }
+  }
   pref_change_registrar_.Init(profile->GetPrefs());
   pref_change_registrar_.Add(
       prefs::kSidePanelHorizontalAlignment,
@@ -153,11 +165,8 @@ ContextualTasksEphemeralButtonController::
                IsContextualTasksEphemeralPinButtonRefactorEnabled() &&
            base::FeatureList::IsEnabled(
                contextual_tasks::kContextualTasksEphemeralButtonContextMenu))) {
-        const int close_label_id =
-            contextual_tasks::
-                    ShouldUseCloseSidePanelForEphemeralButtonContextMenu()
-                ? IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CONTEXT_MENU_CLOSE
-                : IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CONTEXT_MENU_REMOVE;
+        const int close_label_id = contextual_tasks::
+            GetContextualTasksEphemeralButtonContextMenuCloseTextId();
         close_side_panel_action_item_ = action_item->AddChild(
             actions::ActionItem::Builder(
                 base::BindRepeating(
@@ -253,10 +262,6 @@ void ContextualTasksEphemeralButtonController::OnWillBeDestroyed() {
 void ContextualTasksEphemeralButtonController::OnTaskAssociatedToTab(
     const base::Uuid& task_id,
     SessionID tab_id) {
-  if (contextual_tasks::IsContextualTasksPinningV2Enabled() && IsPanelOpen() &&
-      GetCurrentTabSessionId() == tab_id) {
-    MarkActiveTaskTabsEligible();
-  }
   MaybeNotifyVisibilityShouldChange();
 }
 
@@ -276,15 +281,33 @@ void ContextualTasksEphemeralButtonController::
   MaybeNotifyVisibilityShouldChange();
 }
 
+void ContextualTasksEphemeralButtonController::OnEntryPointEligibilityChanged(
+    bool is_eligible) {
+  if (is_eligible) {
+    MaybeNotifyVisibilityShouldChange();
+    return;
+  }
+
+  // The side panel coordinator closes the panel when eligibility is lost, which
+  // would otherwise mark the active task's tabs eligible for the ephemeral
+  // button. Clear every tab so no thread-state button is left behind. Tasks are
+  // intentionally not disassociated: a pinned icon comes back if the user
+  // becomes eligible again, and the thread can still be resumed from it.
+  ephemeral_button_eligible_tabs_.clear();
+  ephemeral_button_auto_dismiss_timers_.clear();
+  std::optional<base::AutoReset<std::optional<RemovalReason>>> reset_reason;
+  if (!removal_reason_.has_value()) {
+    reset_reason.emplace(&removal_reason_, RemovalReason::kTaskDisassociated);
+  }
+  MaybeNotifyVisibilityShouldChange();
+}
+
 void ContextualTasksEphemeralButtonController::OnEntryShown(
     SidePanelEntry* entry) {
   is_contextual_tasks_panel_open_ = true;
   is_hiding_contextual_tasks_panel_ = false;
   if (IsEphemeralEntryPointEnabled() ||
       contextual_tasks::IsContextualTasksPinningV2Enabled()) {
-    if (contextual_tasks::IsContextualTasksPinningV2Enabled()) {
-      MarkActiveTaskTabsEligible();
-    }
     CancelAutoDismissTimersForActiveTask();
     MaybeNotifyVisibilityShouldChange();
   } else {
@@ -297,6 +320,15 @@ void ContextualTasksEphemeralButtonController::OnEntryWillHide(
     SidePanelEntry* entry,
     SidePanelEntryHideReason reason) {
   is_hiding_contextual_tasks_panel_ = true;
+
+  // The pinning promo is only meaningful while the Contextual Tasks panel is
+  // showing. Dismiss it explicitly when the panel is hidden.
+  if (auto* user_education =
+          BrowserUserEducationInterface::From(browser_window_interface_)) {
+    user_education->AbortFeaturePromo(
+        feature_engagement::kIPHSidePanelContextualTasksPinnableFeature);
+  }
+
   std::optional<base::Uuid> task_id = GetActiveTaskId();
   if (!task_id.has_value() ||
       reason == SidePanelEntryHideReason::kBackgrounded) {
@@ -613,6 +645,10 @@ bool ContextualTasksEphemeralButtonController::IsTaskEligibleForEphemeralButton(
   if (!service) {
     return false;
   }
+  if (contextual_tasks::IsContextualTasksPinningV2Enabled() && IsPanelOpen() &&
+      GetActiveTaskId() == task_id) {
+    return true;
+  }
   return std::ranges::any_of(
       service->GetTabsAssociatedWithTask(task_id), [this](SessionID tab_id) {
         return std::ranges::contains(ephemeral_button_eligible_tabs_, tab_id);
@@ -695,26 +731,6 @@ void ContextualTasksEphemeralButtonController::
   }
 }
 
-void ContextualTasksEphemeralButtonController::MarkActiveTaskTabsEligible() {
-  std::optional<base::Uuid> task_id = GetActiveTaskId();
-  if (!task_id.has_value()) {
-    return;
-  }
-
-  contextual_tasks::ContextualTasksService* service =
-      GetContextualTasksService();
-  if (!service) {
-    return;
-  }
-
-  for (SessionID tab_id :
-       service->GetTabsAssociatedWithTask(*task_id)) {
-    if (!std::ranges::contains(ephemeral_button_eligible_tabs_, tab_id)) {
-      ephemeral_button_eligible_tabs_.emplace_back(tab_id);
-    }
-  }
-}
-
 contextual_tasks::ContextualTasksService*
 ContextualTasksEphemeralButtonController::GetContextualTasksService() {
   return contextual_tasks::ContextualTasksServiceFactory::GetForProfile(
@@ -781,6 +797,19 @@ void ContextualTasksEphemeralButtonController::
     if (!was_active_panel_open && will_be_active_panel_open) {
       ephemeral_button_shown_time_ticks_.reset();
       contextual_tasks::RecordEphemeralButtonShown(/*is_panel_open=*/true);
+      if (was_active_panel_collapsed) {
+        // The panel was reopened while the collapsed button's toast could be
+        // showing (e.g. from the Omnibox or a context menu). Match the legacy
+        // ContextualTasksButton, which aborts the toast whenever the panel
+        // opens; a click on the button itself already marks the promo as
+        // used before reaching here.
+        if (auto* user_education = BrowserUserEducationInterface::From(
+                browser_window_interface_)) {
+          user_education->AbortFeaturePromo(
+              feature_engagement::
+                  kIPHContextualTasksEphemeralToolbarButtonFeature);
+        }
+      }
     } else if (!was_active_panel_collapsed && will_be_active_panel_collapsed) {
       ephemeral_button_shown_time_ticks_ = NowTicks();
       contextual_tasks::RecordEphemeralButtonShown(/*is_panel_open=*/false);
@@ -895,12 +924,21 @@ void ContextualTasksEphemeralButtonController::
       browser_window_interface_->GetProfile());
   const bool should_show = ShouldShowPinnedButtonActiveIndicator();
   if (close_side_panel_action_item_) {
-    const bool should_show_close_side_panel =
+    // The ephemeral (unpinned) button offers "Close/Hide side panel" whenever
+    // it is shown for an ongoing task. The permanently pinned button offers it
+    // only when the active indicator is showing and the corresponding
+    // `ContextualTasksPinnedButtonContextMenuCloseSidePanel` param is on.
+    const bool ephemeral_button_eligible =
+        !is_pinned &&
         (should_show ||
          (contextual_tasks::
               IsContextualTasksEphemeralPinButtonRefactorEnabled() &&
-          ShouldShowEphemeralButton())) &&
-        !is_pinned && !IsPanelOpen();
+          ShouldShowEphemeralButton()));
+    const bool pinned_button_eligible =
+        is_pinned && should_show &&
+        contextual_tasks::ShouldShowCloseSidePanelInPinnedButtonContextMenu();
+    const bool should_show_close_side_panel =
+        (ephemeral_button_eligible || pinned_button_eligible) && !IsPanelOpen();
     close_side_panel_action_item_->SetVisible(should_show_close_side_panel);
     close_side_panel_action_item_->SetEnabled(should_show_close_side_panel);
   }
@@ -945,7 +983,8 @@ void ContextualTasksEphemeralButtonController::UpdatePinButtonTooltip() {
                      ? IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CLOSE_TOOL_TIP
                      : IDS_CONTEXTUAL_TASKS_SIDE_PANEL_REOPEN_TOOL_TIP;
   }
-  const std::u16string tooltip_text = l10n_util::GetStringUTF16(tooltip_id);
+  const std::u16string tooltip_text = l10n_util::GetStringUTF16(
+      contextual_tasks::GetContextualTasksPinningStringId(tooltip_id));
   action_item->SetTooltipText(tooltip_text);
   action_item->SetAccessibleName(tooltip_text);
 }
@@ -983,17 +1022,6 @@ void ContextualTasksEphemeralButtonController::RecordEphemeralButtonClicked() {
 }
 
 void ContextualTasksEphemeralButtonController::DisassociateNavigatedTab() {
-  // Only disassociate the navigated tab when the ephemeral button is eligible
-  // to show (e.g., not permanently pinned without
-  // `kEphemeralPinningVisibleWhenPermanentlyPinned`), so navigation only
-  // dismisses an active ephemeral entry point.
-  if (!base::FeatureList::IsEnabled(
-          contextual_tasks::kEphemeralPinningVisibleWhenPermanentlyPinned) &&
-      contextual_tasks::GetEffectivePinState(
-          browser_window_interface_->GetProfile())) {
-    return;
-  }
-
   std::optional<SessionID> current_tab_session_id = GetCurrentTabSessionId();
   contextual_tasks::ContextualTasksService* service =
       GetContextualTasksService();
@@ -1026,24 +1054,26 @@ void ContextualTasksEphemeralButtonController::DisassociateNavigatedTab() {
 
 void ContextualTasksEphemeralButtonController::PrimaryPageChanged(
     content::Page& page) {
-  if (IsEphemeralEntryPointEnabled()) {
-    std::optional<base::AutoReset<std::optional<RemovalReason>>> reset_reason;
-    if (!IsPanelOpen()) {
-      DisassociateNavigatedTab();
-      if (!removal_reason_.has_value()) {
-        reset_reason.emplace(&removal_reason_,
-                             RemovalReason::kTaskDisassociated);
-      }
-    }
-    MaybeNotifyVisibilityShouldChange();
-  } else if (contextual_tasks::
-                 IsContextualTasksPinnedButtonActiveIndicatorEnabled()) {
-    MaybeNotifyVisibilityShouldChange();
+  if (!IsEphemeralEntryPointEnabled() &&
+      !contextual_tasks::IsContextualTasksPinningV2Enabled() &&
+      !contextual_tasks::
+          IsContextualTasksPinnedButtonActiveIndicatorEnabled()) {
+    return;
   }
+  std::optional<base::AutoReset<std::optional<RemovalReason>>> reset_reason;
+  if (!IsPanelOpen()) {
+    DisassociateNavigatedTab();
+    if (!removal_reason_.has_value()) {
+      reset_reason.emplace(&removal_reason_,
+                           RemovalReason::kTaskDisassociated);
+    }
+  }
+  MaybeNotifyVisibilityShouldChange();
 }
 
 void ContextualTasksEphemeralButtonController::UpdateActiveTabObservation() {
   if (!IsEphemeralEntryPointEnabled() &&
+      !contextual_tasks::IsContextualTasksPinningV2Enabled() &&
       !contextual_tasks::
           IsContextualTasksPinnedButtonActiveIndicatorEnabled()) {
     return;

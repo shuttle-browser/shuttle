@@ -25,7 +25,7 @@
 <translation id="1086486568852410168">使用 Google 智能镜头搜索</translation>
 <translation id="1087799850623149508">您可以轻触并按住地址栏将其移到底部</translation>
 <translation id="1089606299949659462">查看完毕！</translation>
-<translation id="1094555143448724771">如需查看您在其他设备中打开的标签页，请同步您的标签页和历史记录</translation>
+<translation id="1094555143448724771">如要查看在其他设备上访问的标签页，请同步标签页和历史记录</translation>
 <translation id="1100066534610197918">在分组内的新标签页中打开</translation>
 <translation id="1103142993930332957">帮助改进 Chrome？</translation>
 <translation id="1105960400813249514">屏幕截图</translation>
@@ -612,7 +612,7 @@
 <translation id="3443221991560634068">重新加载当前网页</translation>
 <translation id="3444179773590444986">针对为网站开启深色主题分享反馈？</translation>
 <translation id="3452832259067974318">为保护您的隐私，Chrome 不会在此字段中自动填充您的密码。</translation>
-<translation id="3474624961160222204">以“<ph name="NAME" />”的身份继续</translation>
+<translation id="3474624961160222204">继续用“<ph name="NAME" />”的账号登录</translation>
 <translation id="3478363558367712427">您可自行选择要使用的搜索引擎</translation>
 <translation id="3479552764303398839">以后再说</translation>
 <translation id="3482805106082349287">使用键盘、语音、无痕模式或相机进行搜索</translation>
@@ -1182,7 +1182,7 @@
 <translation id="5698878456427040674">检查所选账号是否受支持。</translation>
 <translation id="5709213329446699338"><ph name="SITE" /> 想连接到串行端口</translation>
 <translation id="5715150588940290235">要删除已保存的安全码吗？</translation>
-<translation id="572328651809341494">最近打开的标签页</translation>
+<translation id="572328651809341494">最近访问的标签页</translation>
 <translation id="5728072125198221967">关联的 Google 服务</translation>
 <translation id="5733447028358645932">浏览者</translation>
 <translation id="5734658507307260911"><ph name="TAB_TITLE" />，已固定的无痕式标签页，正在播放音频</translation>
@@ -1768,7 +1768,7 @@
 <translation id="7846296061357476882">Google 服务</translation>
 <translation id="784652447248278262">当前窗口</translation>
 <translation id="784934925303690534">时间范围</translation>
-<translation id="7851858861565204677">来自其他设备的同步</translation>
+<translation id="7851858861565204677">其他设备的同步内容</translation>
 <translation id="7853202427316060426">活动</translation>
 <translation id="7859988229622350291">一律不翻译</translation>
 <translation id="7862185352068345852">离开此网站？</translation>
@@ -1834,7 +1834,7 @@
 <translation id="8084864785646838999">您的部分历史记录可能不会在此处显示。如需查看您的所有 Chrome 历史记录，请打开完整的 Chrome 历史记录。此外，您的 Google 账号在 <ph name="BEGIN_LINK" />myactivity.google.com<ph name="END_LINK" /> 上可能有其他形式的浏览记录。</translation>
 <translation id="8088176524274673045">若要与附近的人分享，请让他们扫描此二维码</translation>
 <translation id="8090732854597034573">如需帮助，请找家长帮忙</translation>
-<translation id="8095180473590852507">Chrome 推出全新工具栏，旨在为您提供便利。您随时可在<ph name="BEGIN_LINK" />设置<ph name="END_LINK" />中切换回来。</translation>
+<translation id="8095180473590852507">Chrome 推出全新工具栏，让操作更顺手。您随时可在<ph name="BEGIN_LINK" />设置<ph name="END_LINK" />中切换回来。</translation>
 <translation id="8101414242770404289"><ph name="TIME_PERIOD" />内没有要关闭的标签页</translation>
 <translation id="810433609302852">提示通知功能宣传内容和使用步骤底部动作条</translation>
 <translation id="8105893657415066307"><ph name="DESCRIPTION" /> <ph name="SEPARATOR" /> <ph name="FILE_SIZE" /></translation>
@@ -1986,7 +1986,7 @@
 <translation id="8635399646025169806">要保留标签页分组吗？</translation>
 <translation id="8636825310635137004">要访问您从其他设备打开的标签页，请开启同步功能。</translation>
 <translation id="8639963783467694461">自动填充设置</translation>
-<translation id="8644482734962137770">Gemini 需要获得使用 Chrome 的权限</translation>
+<translation id="8644482734962137770">Gemini 需要 Chrome 的使用权限</translation>
 <translation id="8662474268934425487">登录 <ph name="SITE_ETLD_PLUS_ONE" /></translation>
 <translation id="8664979001105139458">文件名已存在</translation>
 <translation id="8676276370198826499">通过 <ph name="IDENTITY_PROVIDER_ETLD_PLUS_ONE" /> 注册 <ph name="SITE_ETLD_PLUS_ONE" /></translation>

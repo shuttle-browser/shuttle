@@ -11,8 +11,10 @@
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/strcat.h"
+#include "build/branding_buildflags.h"
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_panel_controller.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_utils.h"
 #include "chrome/browser/contextual_tasks/entry_point_eligibility_manager.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
@@ -50,8 +52,10 @@
 #include "ui/compositor/layer_animator.h"
 #include "ui/compositor/layer_owner.h"
 #include "ui/gfx/canvas.h"
+#include "ui/gfx/geometry/point.h"
 #include "ui/gfx/geometry/skia_conversions.h"
 #include "ui/gfx/image/image_skia.h"
+#include "ui/gfx/image/image_skia_operations.h"
 #include "ui/gfx/scoped_canvas.h"
 #include "ui/gfx/skia_paint_util.h"
 #include "ui/gfx/vector_icon_types.h"
@@ -72,7 +76,6 @@ const int kCircleShadowInset = 0;
 // is 34.
 const int kPillShapeShadowInset = 1;
 
-const int kGLogoCircularShapeIconSize = 16;
 const int kGLogoPillShapeIconSize = 15;
 
 // The flat edge's top corner radius is needed to avoid the toolbar upper
@@ -233,6 +236,10 @@ ContextualTasksButton::ContextualTasksButton(
   SetVisible(false);
   SetProperty(views::kElementIdentifierKey,
               kContextualTasksEphemeralToolbarButtonElementId);
+  // The "side panel open" highlight is the ink drop's ACTIVATED state. Keep it
+  // when the context menu opens; otherwise Button::ShowContextMenu() hides the
+  // ink drop and the highlight is lost for as long as the panel stays open.
+  SetHideInkDropWhenShowingContextMenu(false);
   status_indicator_ =
       PinnedToolbarButtonStatusIndicator::Install(image_container_view());
   status_indicator_->SetColorId(kColorToolbarActionItemEngaged,
@@ -396,6 +403,18 @@ bool ContextualTasksButton::ShouldShowMenu() {
          ToolbarButton::ShouldShowMenu();
 }
 
+void ContextualTasksButton::ShowContextMenu(
+    const gfx::Point& p,
+    ui::mojom::MenuSourceType source_type) {
+  // With nothing to show (e.g. the side panel is open and the user is not
+  // pinning eligible), a right-click must be a no-op. Bail out before
+  // Button::ShowContextMenu() resets the button state and ink drop.
+  if (!ShouldShowMenu()) {
+    return;
+  }
+  ToolbarButton::ShowContextMenu(p, source_type);
+}
+
 void ContextualTasksButton::UpdateColorsAndInsets() {
   if (contextual_tasks::IsContextualTasksPinningV2Enabled()) {
     SetDefaultBackgroundColorId(ShouldShowCircleHighlight()
@@ -486,6 +505,32 @@ void ContextualTasksButton::UpdateIcon() {
   } else {
     ToolbarButton::UpdateIcon();
   }
+}
+
+int ContextualTasksButton::GetIconSize() const {
+  if (contextual_tasks::ShouldUseSparkIconForPinButtons()) {
+    return ToolbarButton::GetIconSize();
+  }
+  const std::optional<VectorIcons>& icons = GetVectorIcons();
+  if (icons.has_value()) {
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+    if (&icons->icon == &vector_icons::kGoogleGLogoIcon ||
+        &icons->icon == &vector_icons::kGoogleGLogoMonochromeIcon) {
+      return ToolbarButton::GetIconSize() - 2;
+    }
+#else
+    if (&icons->icon == &vector_icons::kGoogleColorIcon) {
+      return ToolbarButton::GetIconSize() - 2;
+    }
+#endif
+  }
+  if (contextual_tasks::ShouldUseSuperGIconForPinButtons() ||
+      contextual_tasks::ShouldUseGraySuperGIconForPinButtons() ||
+      contextual_tasks::kShowEntryPoint.Get() ==
+          contextual_tasks::EntryPointOption::kToolbarEphemeralBranded) {
+    return ToolbarButton::GetIconSize() - 2;
+  }
+  return ToolbarButton::GetIconSize();
 }
 
 void ContextualTasksButton::OnViewLayerBoundsSet(views::View* observed_view) {
@@ -653,12 +698,16 @@ void ContextualTasksButton::UpdateTooltipText() {
 
   int tooltip_id = IDS_CONTEXTUAL_TASKS_ENTRY_POINT_TOOLTIP;
   if (contextual_tasks::kShowEntryPoint.Get() ==
-      contextual_tasks::EntryPointOption::kToolbarEphemeralBranded) {
+          contextual_tasks::EntryPointOption::kToolbarEphemeralBranded ||
+      contextual_tasks::IsContextualTasksPinningV2Enabled() ||
+      base::FeatureList::IsEnabled(
+          contextual_tasks::kContextualTasksPinningStringVariants)) {
     tooltip_id = is_panel_open
                      ? IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CLOSE_TOOL_TIP
                      : IDS_CONTEXTUAL_TASKS_SIDE_PANEL_REOPEN_TOOL_TIP;
   }
-  const std::u16string button_tooltip = l10n_util::GetStringUTF16(tooltip_id);
+  const std::u16string button_tooltip = l10n_util::GetStringUTF16(
+      contextual_tasks::GetContextualTasksPinningStringId(tooltip_id));
   GetViewAccessibility().SetName(button_tooltip);
   SetTooltipText(button_tooltip);
 }
@@ -877,9 +926,15 @@ ui::ImageModel ContextualTasksButton::GetButtonImage() {
   if (contextual_tasks::ShouldUseSuperGIconForPinButtons() ||
       contextual_tasks::kShowEntryPoint.Get() ==
           contextual_tasks::EntryPointOption::kToolbarEphemeralBranded) {
+    const int icon_size = GetShape() == EphemeralButtonShape::kCircle
+                              ? GetIconSize()
+                              : kGLogoPillShapeIconSize;
     return ui::ImageModel::FromImageSkia(
-        *ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(
-            IDR_GOOGLE_G_GRADIENT_16_ALT));
+        gfx::ImageSkiaOperations::CreateResizedImage(
+            *ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(
+                IDR_GOOGLE_G_GRADIENT_20),
+            skia::ImageOperations::RESIZE_BEST,
+            gfx::Size(icon_size, icon_size)));
   }
 #endif
   const gfx::VectorIcon& contextual_tasks_icon =
@@ -891,7 +946,7 @@ ui::ImageModel ContextualTasksButton::GetButtonImage() {
 #endif
   return ui::ImageModel::FromVectorIcon(
       contextual_tasks_icon, icon_color_id,
-      GetShape() == EphemeralButtonShape::kCircle ? kGLogoCircularShapeIconSize
+      GetShape() == EphemeralButtonShape::kCircle ? GetIconSize()
                                                   : kGLogoPillShapeIconSize);
 }
 

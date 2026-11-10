@@ -1150,6 +1150,40 @@ suite('NewTabPageRealboxNextTest', () => {
       assertTrue(composeButton.hasAttribute('dynamic'));
     });
 
+    test('inherit-visibility attribute follows loadTimeData', async () => {
+      loadTimeData.overrideValues({
+        ntpRealboxDynamicAiModeButton: true,
+        ntpRealboxDynamicAiModeButtonPreventEarlyPaint: true,
+      });
+      realbox = createAndAppendRealbox({
+        composeButtonEnabled: true,
+        composeboxEnabled: true,
+        ntpRealboxNextEnabled: true,
+      });
+      await microtasksFinished();
+      const composeButton =
+          realbox.shadowRoot.querySelector('cr-searchbox-compose-button');
+      assertTrue(!!composeButton);
+      assertTrue(composeButton.hasAttribute('inherit-visibility'));
+    });
+
+    test('inherit-visibility attribute is not set when disabled', async () => {
+      loadTimeData.overrideValues({
+        ntpRealboxDynamicAiModeButton: true,
+        ntpRealboxDynamicAiModeButtonPreventEarlyPaint: false,
+      });
+      realbox = createAndAppendRealbox({
+        composeButtonEnabled: true,
+        composeboxEnabled: true,
+        ntpRealboxNextEnabled: true,
+      });
+      await microtasksFinished();
+      const composeButton =
+          realbox.shadowRoot.querySelector('cr-searchbox-compose-button');
+      assertTrue(!!composeButton);
+      assertFalse(composeButton.hasAttribute('inherit-visibility'));
+    });
+
     test('dynamic attribute is not set when disabled', async () => {
       loadTimeData.overrideValues({ntpRealboxDynamicAiModeButton: false});
       realbox = createAndAppendRealbox({
@@ -1270,6 +1304,54 @@ suite('NewTabPageRealboxSmartTabSharingTest', () => {
     assertTrue(!!contextElement);
     contextElement.fire('smart-tab-sharing-active-changed', {active: true});
     await openComposeboxPromise;
+  });
+
+  test('resetSmartTabSharing clears local state without calling backend by default', () => {
+    realbox.smartTabSharingActive = true;
+    realbox.resetSmartTabSharing();
+    assertFalse(realbox.smartTabSharingActive);
+    assertEquals(0, testProxy.handler.getCallCount('resetSmartTabSharing'));
+  });
+
+  test('resetSmartTabSharing resets via proxy when resetBackend is true', async () => {
+    realbox.smartTabSharingActive = true;
+    testProxy.handler.setResultFor(
+        'resetSmartTabSharing', Promise.resolve({active: false}));
+
+    realbox.resetSmartTabSharing(/*resetBackend=*/ true);
+    // Synchronously cleared to prevent UI flash when composebox closes.
+    assertFalse(realbox.smartTabSharingActive);
+
+    await testProxy.handler.whenCalled('resetSmartTabSharing');
+    await microtasksFinished();
+
+    assertFalse(realbox.smartTabSharingActive);
+  });
+
+  test('resetSmartTabSharing ignores stale responses with generation counter', async () => {
+    realbox.smartTabSharingActive = true;
+    let resolveReset: (value: {active: boolean}) => void;
+    testProxy.handler.setResultFor(
+        'resetSmartTabSharing', new Promise(resolve => {
+          resolveReset = resolve;
+        }));
+
+    realbox.resetSmartTabSharing(/*resetBackend=*/ true);
+    assertFalse(realbox.smartTabSharingActive);
+
+    // User re-enables STS while backend call is in flight.
+    const contextElement = realbox.shadowRoot.querySelector(
+        'cr-composebox-contextual-entrypoint-and-menu');
+    assertTrue(!!contextElement);
+    contextElement.fire('smart-tab-sharing-active-changed', {active: true});
+    assertTrue(realbox.smartTabSharingActive);
+
+    // Stale reset response arrives.
+    resolveReset!({active: false});
+    await microtasksFinished();
+
+    // Must remain true because newer user action incremented the generation.
+    assertTrue(realbox.smartTabSharingActive);
   });
 });
 // </if>

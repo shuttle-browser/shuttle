@@ -15,7 +15,6 @@
 #include "base/time/time.h"
 #include "base/uuid.h"
 #include "build/build_config.h"
-#include "chrome/browser/contextual_tasks/aim_message_poster.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks.mojom.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_types.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service.h"
@@ -50,14 +49,6 @@ class InputStateModel;
 struct TabContextState;
 }  // namespace contextual_search
 
-namespace content {
-class WebContents;
-}  // namespace content
-
-namespace lens {
-class ClientToSearchMessage;
-}  // namespace lens
-
 namespace contextual_tasks {
 class ContextualTasksWebContentsUserData;
 }  // namespace contextual_tasks
@@ -75,24 +66,15 @@ class ContextualTasksExtensionHandler
       public composebox::mojom::PageHandlerFactory,
       public composebox::mojom::PageHandler,
       public searchbox::mojom::PageHandler,
-      public contextual_tasks::AimMessagePoster,
       public PermissionPromptObserver::Observer {
  public:
   ~ContextualTasksExtensionHandler() override;
-
-  // Returns the bound ContextualTasksExtensionHandler associated with the
-  // extension document in `web_contents`, or nullptr if not found or unbound.
-  static ContextualTasksExtensionHandler* FromWebContents(
-      content::WebContents* web_contents);
 
   void OnLensOverlayStateChanged(bool is_showing);
 
   // PermissionPromptObserver::Observer:
   void OnPermissionPromptChanged(bool is_showing,
                                  const gfx::Size& prompt_size) override;
-
-  // contextual_tasks::AimMessagePoster:
-  void PostAimMessage(const lens::ClientToAimMessage& message) override;
 
   void BindContextualTasksFactory(
       mojo::PendingReceiver<
@@ -139,16 +121,18 @@ class ContextualTasksExtensionHandler
       override;
 
   // composebox::mojom::PageHandler:
+  void HandleLensButtonClick() override;
+  void SetSmartTabSharingActive(bool active) override;
+  void GetSmartTabSharingActive(
+      GetSmartTabSharingActiveCallback callback) override;
+
+  // composebox::mojom::PageHandler stubs:
   void FocusChanged(bool focused) override;
   void StartPlatformVoiceRecognition() override;
-  void HandleLensButtonClick() override;
   void HandleFileUpload(bool is_image) override;
   void NavigateUrl(const GURL& url) override;
   void CloseLensOverlayFromWebUI(
       composebox::mojom::LensOverlayDismissalSource dismissal_source) override;
-  void SetSmartTabSharingActive(bool active) override;
-  void GetSmartTabSharingActive(
-      GetSmartTabSharingActiveCallback callback) override;
   void NotifyComposeboxQuerySubmittedWithContext() override;
   void CanShowNextboxAnimation(
       CanShowNextboxAnimationCallback callback) override;
@@ -280,6 +264,7 @@ class ContextualTasksExtensionHandler
   void OnInputStateChanged(const omnibox::InputState& state);
   base::WeakPtr<contextual_search::InputStateModel>
   GetOrCreateInputStateModel();
+  void UpdateInputStateModelContext();
   void OnSessionChanged(
       contextual_search::ContextualSearchSessionHandle* session_handle);
   // Updates the tab context subscription callback if there is a new session.
@@ -290,10 +275,13 @@ class ContextualTasksExtensionHandler
   // to the extension page. Duplicates are skipped.
   void SendTabContextToExtensionPage(
       const contextual_search::TabContextState& state);
+  // Notifies the extension page of the current tab context when user data
+  // changes.
+  void OnTabContextUpdatedFromUserData();
+  bool IsSmartTabSharingActive();
+  // Triggers tab embedding pre-flighting for Smart Tab Sharing.
+  void PreflightSmartTabSharingEmbeddings();
   void OnLensThumbnailCreated(const std::string& thumbnail_uri);
-  void RecordTimeToHandshakeComplete();
-  void SendSearchMessageToBoundPage(const lens::ClientToSearchMessage& message);
-  void OnHandshakeComplete();
   void OnLensCropUpdated(const GURL& data_uri);
 
   mojo::Receiver<contextual_tasks::mojom::ExtensionPageHandlerFactory>

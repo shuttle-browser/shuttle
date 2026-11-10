@@ -342,7 +342,10 @@ export class AppElement extends AppElementBase {
       /**
        * Whether to show the AIM threads rail when composebox is open.
        */
-      enableThreadsRail_: {type: Boolean},
+      enableThreadsRail_: {
+        type: Boolean,
+        reflect: true,
+      },
 
       rhsWidth_: {type: Number},
 
@@ -1143,12 +1146,19 @@ export class AppElement extends AppElementBase {
     this.$.searchbox.closeContextMenu();
   }
 
-  protected onCloseComposebox_(e: CustomEvent<{composeboxText?: string}>) {
+  protected onCloseComposebox_(
+      e: CustomEvent<{composeboxText?: string, afterSubmit?: boolean}>) {
     if (!this.showComposebox_) {
       return;
     }
     this.$.searchbox.closeContextMenu();
     const composeboxText = e.detail.composeboxText;
+
+    if (!e.detail.afterSubmit) {
+      // Composebox initiates the backend reset on close via ComposeboxProxy;
+      // this only updates the searchbox's local UI state.
+      this.$.searchbox.resetSmartTabSharing();
+    }
 
     if (composeboxText && composeboxText.trim()) {
       this.$.searchbox.setInputText(composeboxText);

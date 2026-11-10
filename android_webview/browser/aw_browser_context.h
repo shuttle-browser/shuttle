@@ -26,7 +26,6 @@
 #include "base/android/jni_weak_ref.h"
 #include "base/android/scoped_java_ref.h"
 #include "base/compiler_specific.h"
-#include "base/containers/flat_set.h"
 #include "base/files/file_path.h"
 #include "base/lazy_instance.h"
 #include "base/memory/scoped_refptr.h"
@@ -37,7 +36,6 @@
 #include "components/visitedlink/browser/visitedlink_delegate.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/zoom_level_delegate.h"
-#include "net/base/schemeful_site.h"
 #include "net/http/http_request_headers.h"
 #include "services/cert_verifier/public/mojom/cert_verifier_service_factory.mojom-forward.h"
 #include "services/network/public/mojom/url_loader.mojom.h"
@@ -270,16 +268,6 @@ class AwBrowserContext : public content::BrowserContext,
   jni_zero::JniRawPtr<AwHeaderInterceptorStore>
   GetHeaderInterceptorStoreFromJava(JNIEnv* env);
 
-  // Configure sites that require a separate renderer process in this profile.
-  // These sites will be placed into the embedder SiteInstance shard so they run
-  // in a renderer process isolated from other web content, without requiring
-  // isolation from each other, or full Site Isolation. See
-  // content::BrowserContext::SetSitesForEmbedderShard() for details. This may
-  // only be called once, before this profile is used for any navigation, and
-  // is not supported in single-process mode.
-  void SetSitesForEmbedderShard(
-      const base::flat_set<net::SchemefulSite>& sites);
-
   // Adds QUIC hints for the given origins, wildcard suffixes, or enables QUIC
   // by default.
   void AddQuicHints(JNIEnv* env,
@@ -303,6 +291,29 @@ class AwBrowserContext : public content::BrowserContext,
       JNIEnv* env,
       const std::vector<std::string>& origin_patterns);
   std::vector<std::string> GetCrossOriginIsolatedAllowList(JNIEnv* env);
+
+  // Converts string sites into SchemefulSites and calls
+  // SetSitesForEmbedderShard with the results if all are valid.
+  //
+  // Note that inputs must strictly be sites (scheme + registrable domain or
+  // host, with no subdomain or port), not arbitrary origins. What is considered
+  // a site can vary over time based on eTLDs in the Public Suffix List.
+  //
+  // `sites` must be non-empty. The sites must be in a strict canonical form.
+  //
+  // CanConfigureIsolatedSites should be queried before using this method, as
+  // this method will CHECK-fail if the conditions described there are not met.
+  //
+  // Returns empty vector iff all inputs are valid (and therefore the list was
+  // applied). Otherwise, returns a vector of invalid input sites.
+  std::vector<std::string> ConfigureIsolatedSites(
+      JNIEnv* env,
+      const std::vector<std::string>& sites);
+
+  // Returns whether ConfigureIsolatedSites can still be called on this
+  // profile; i.e., a site list has not already been set and a RenderProcessHost
+  // has not already been used.
+  bool CanConfigureIsolatedSites(JNIEnv* env) const;
 
   // Returns if an origin is allowed to use APIs that require
   // CrossOriginIsolated. Checks if the origin matches any rule set by

@@ -4,9 +4,8 @@
 
 /* #css_wrapper_metadata_start
  * #type=style-lit
- * #import=//resources/cr_elements/cr_icons_lit.css.js
- * #import=./omnibox_popup_shared_style.css.js
- * #scheme=relative
+ * #import=chrome://resources/cr_elements/cr_icons_lit.css.js
+ * #import=chrome://omnibox-popup.top-chrome/shared/omnibox_popup_shared_style.css.js
  * #include=cr-icons-lit omnibox-popup-shared-style
  * #css_wrapper_metadata_end */
 
@@ -175,6 +174,36 @@ cr-searchbox-input::part(mirror) {
     cr-searchbox-input::part(searchbox-input),
 :host(:not([aim-button-visible_]):dir(rtl)) cr-searchbox-input::part(mirror) {
   padding-left: 18px;
+}
+
+/* An <input> clips its text, and so its selection, to its content box, but an
+ * overflow: hidden <div> like #mirror clips to its padding box. So clip #mirror
+ * to its content box too, or it paints overflowing text into the gap, e.g.
+ * past the end of the selection highlight when all of a long URL is selected.
+ * #mirror ignores pointer events, so this doesn't change hit-testing. */
+:host(:not([aim-button-visible_]):dir(ltr)) cr-searchbox-input::part(mirror) {
+  clip-path: inset(0 18px 0 0);
+}
+
+:host(:not([aim-button-visible_]):dir(rtl)) cr-searchbox-input::part(mirror) {
+  clip-path: inset(0 0 0 18px);
+}
+
+/* Align text to the UI's leading edge, like the Views omnibox does
+ * (gfx::RenderText defaults to ALIGN_RIGHT in RTL UIs, whatever the text's
+ * own direction). 'text-align: start' would instead follow the input's and
+ * #mirror's own direction, which updateMirror_() sets to dir="ltr" for URLs
+ * and dir="auto" for queries, e.g. putting a URL on the far side of an RTL UI.
+ * Both layers must align alike, or the #mirror's text won't line up with the
+ * input's caret and selection. */
+:host(:dir(ltr)) cr-searchbox-input::part(searchbox-input),
+:host(:dir(ltr)) cr-searchbox-input::part(mirror) {
+  text-align: left;
+}
+
+:host(:dir(rtl)) cr-searchbox-input::part(searchbox-input),
+:host(:dir(rtl)) cr-searchbox-input::part(mirror) {
+  text-align: right;
 }
 
 /* When the window is inactive (top container has focus), the selection should
@@ -352,6 +381,12 @@ omnibox-popup-contextual-entrypoint {
   padding-inline-start: 8px;
 }
 
+:host([persistent-aim-button-enabled_]) #composeButton::part(compose-button) {
+  font-family: var(--omnibox-chip-font-family);
+  font-size: var(--omnibox-chip-font-size);
+  font-weight: var(--omnibox-chip-font-weight);
+}
+
 #composeButton[dynamic]::part(compose-button) {
   padding-inline-end: 11px;
 }
@@ -438,12 +473,12 @@ omnibox-popup-contextual-entrypoint {
 #composeButton::part(hoverBackground) {
   background-color: var(--color-sys-state-hover-dim-blend-protection);
   display: block;
-  opacity: 0;
+  opacity: var(--compose-button-hover-background-opacity, 0);
   transition: opacity 250ms linear;
 }
 
-#composeButton:hover::part(hoverBackground) {
-  opacity: 1;
+#composeButton::part(compose-button):hover {
+  --compose-button-hover-background-opacity: 1;
 }
 
 :host-context([webui-rounded-icons]):host(:not([use-webkit-search-icons_])) #voiceSearchButton {

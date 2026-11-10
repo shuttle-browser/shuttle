@@ -19,6 +19,7 @@
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_window/test/mock_browser_window_interface.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
+#include "chrome/grit/branded_strings.h"
 #include "chrome/test/base/testing_profile.h"
 #include "components/contextual_search/contextual_search_service.h"
 #include "components/contextual_search/contextual_search_session_handle.h"
@@ -30,6 +31,7 @@
 #include "components/contextual_tasks/public/features.h"
 #include "components/omnibox/browser/mock_aim_eligibility_service.h"
 #include "components/omnibox/common/composebox_features.h"
+#include "components/strings/grit/components_strings.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/test/browser_task_environment.h"
 #include "content/public/test/mock_navigation_handle.h"
@@ -38,6 +40,7 @@
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/lens_server_proto/search_communication.pb.h"
 #include "ui/actions/actions.h"
 
 namespace contextual_tasks {
@@ -205,6 +208,42 @@ TEST_F(ContextualTasksUtilsTest, UpdatePinButtonVisibilityState_Ineligible_Unpin
   EXPECT_FALSE(model->Contains(kActionSidePanelShowContextualTasks));
 }
 
+TEST_F(
+    ContextualTasksUtilsTest,
+    UpdatePinButtonVisibilityState_Ineligible_Unpinned_EphemeralPinButtonRefactor) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      /*enabled_features=*/{contextual_tasks::
+                                kEnableContextualTasksPinButtonInToolbar,
+                            contextual_tasks::
+                                kContextualTasksEphemeralPinButtonRefactor},
+      /*disabled_features=*/{});
+
+  root_action_ = actions::ActionItem::Builder().Build();
+  actions::ActionItem* action_item = root_action_->AddChild(
+      actions::ActionItem::Builder()
+          .SetActionId(kActionSidePanelShowContextualTasks)
+          .SetVisible(true)
+          .SetEnabled(true)
+          .Build());
+
+  browser_actions_->set_root_action_item_for_testing(root_action_.get());
+
+  auto* model = PinnedToolbarActionsModel::Get(profile_.get());
+  ASSERT_FALSE(model->Contains(kActionSidePanelShowContextualTasks));
+
+  // Should mark the action item not pinnable, but NOT hide it when unpinned so
+  // `ShowActionEphemerallyInToolbar` can fade out popped-out buttons cleanly.
+  UpdatePinButtonVisibilityState(browser_window_.get());
+
+  EXPECT_EQ(
+      static_cast<actions::ActionPinnableState>(
+          action_item->GetProperty(actions::kActionItemPinnableKey)),
+      actions::ActionPinnableState::kNotPinnable);
+  EXPECT_TRUE(action_item->GetVisible());
+  EXPECT_FALSE(model->Contains(kActionSidePanelShowContextualTasks));
+}
+
 TEST_F(ContextualTasksUtilsTest, UpdatePinButtonVisibilityState_Ineligible_Pinned_IncognitoProfile) {
   root_action_ = actions::ActionItem::Builder().Build();
   actions::ActionItem* action_item = root_action_->AddChild(
@@ -239,6 +278,39 @@ TEST_F(ContextualTasksUtilsTest, IsTabSharingEligible_NullProfile) {
 TEST_F(ContextualTasksUtilsTest, IsTabSharingEligible_OffTheRecord) {
   Profile* otr_profile = profile_->GetPrimaryOTRProfile(true);
   EXPECT_FALSE(IsTabSharingEligible(otr_profile));
+
+  testing::NiceMock<MockAimEligibilityService>* mock_aim_service = nullptr;
+  AimEligibilityServiceFactory::GetInstance()->SetTestingFactory(
+      otr_profile,
+      base::BindRepeating(
+          [](testing::NiceMock<MockAimEligibilityService>** mock_out,
+             content::BrowserContext* context)
+              -> std::unique_ptr<KeyedService> {
+            auto mock =
+                std::make_unique<testing::NiceMock<MockAimEligibilityService>>(
+                    *Profile::FromBrowserContext(context)->GetPrefs(), nullptr,
+                    nullptr, nullptr);
+            *mock_out = mock.get();
+            return mock;
+          },
+          &mock_aim_service));
+  AimEligibilityServiceFactory::GetForProfile(otr_profile);
+  ASSERT_TRUE(mock_aim_service);
+  ON_CALL(*mock_aim_service, IsAimEligible())
+      .WillByDefault(testing::Return(true));
+  ON_CALL(*mock_aim_service, IsFuseboxEligible())
+      .WillByDefault(testing::Return(true));
+
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitAndDisableFeature(kContextualTasksRearchitecture);
+    EXPECT_FALSE(IsTabSharingEligible(otr_profile));
+  }
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitAndEnableFeature(kContextualTasksRearchitecture);
+    EXPECT_TRUE(IsTabSharingEligible(otr_profile));
+  }
 }
 
 TEST_F(ContextualTasksUtilsTest, IsTabSharingEligible_NoAimService) {
@@ -332,6 +404,40 @@ TEST_F(ContextualTasksUtilsTest,
   EXPECT_TRUE(IsTabSharingEligible(profile_.get()));
 }
 
+TEST_F(ContextualTasksUtilsTest, IsTabSharingEligible_ContextSharingDisabled) {
+  testing::NiceMock<MockAimEligibilityService>* mock_aim_service = nullptr;
+  AimEligibilityServiceFactory::GetInstance()->SetTestingFactory(
+      profile_.get(),
+      base::BindRepeating(
+          [](testing::NiceMock<MockAimEligibilityService>** mock_out,
+             content::BrowserContext* context)
+              -> std::unique_ptr<KeyedService> {
+            auto mock =
+                std::make_unique<testing::NiceMock<MockAimEligibilityService>>(
+                    *Profile::FromBrowserContext(context)->GetPrefs(), nullptr,
+                    nullptr, nullptr);
+            *mock_out = mock.get();
+            return mock;
+          },
+          &mock_aim_service));
+
+  AimEligibilityServiceFactory::GetForProfile(profile_.get());
+  ASSERT_TRUE(mock_aim_service);
+
+  ON_CALL(*mock_aim_service, IsAimEligible())
+      .WillByDefault(testing::Return(true));
+  ON_CALL(*mock_aim_service, IsFuseboxEligible())
+      .WillByDefault(testing::Return(true));
+
+  EXPECT_TRUE(IsTabSharingEligible(profile_.get()));
+
+  profile_->GetPrefs()->SetInteger(
+      contextual_search::kSearchContentSharingSettings,
+      static_cast<int>(
+          contextual_search::SearchContentSharingSettingsValue::kDisabled));
+  EXPECT_FALSE(IsTabSharingEligible(profile_.get()));
+}
+
 TEST_F(ContextualTasksUtilsTest,
        IsTabSharingEligible_ForceEntryPointEligibility) {
   base::test::ScopedFeatureList feature_list;
@@ -347,15 +453,82 @@ TEST_F(ContextualTasksUtilsTest, CanShareTabContext_NullProfile) {
 TEST_F(ContextualTasksUtilsTest,
        CanShareTabContext_ForceEntryPointEligibility) {
   base::test::ScopedFeatureList feature_list;
-  feature_list.InitAndEnableFeature(kContextualTasksForceEntryPointEligibility);
+  feature_list.InitWithFeatures(
+      /*enabled_features=*/{kContextualTasksForceEntryPointEligibility},
+      /*disabled_features=*/{kContextualTasksRearchitecture});
   EXPECT_TRUE(CanShareTabContext(profile_.get()));
   EXPECT_FALSE(CanShareTabContext(profile_->GetPrimaryOTRProfile(true)));
+
+  {
+    base::test::ScopedFeatureList rearch_feature_list;
+    rearch_feature_list.InitAndEnableFeature(kContextualTasksRearchitecture);
+    EXPECT_TRUE(CanShareTabContext(profile_->GetPrimaryOTRProfile(true)));
+  }
 
   profile_->GetPrefs()->SetInteger(
       contextual_search::kSearchContentSharingSettings,
       static_cast<int>(
           contextual_search::SearchContentSharingSettingsValue::kDisabled));
   EXPECT_FALSE(CanShareTabContext(profile_.get()));
+}
+
+TEST_F(ContextualTasksUtilsTest, GetSearchHandshakeMessageProto_Capabilities) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      /*enabled_features=*/{kContextualTasksForceEntryPointEligibility},
+      /*disabled_features=*/{kContextualTasksRearchitecture});
+
+  // Regular profile with tab sharing enabled includes both `TABS` and `LENS`.
+  lens::ClientToSearchMessage regular_msg =
+      GetSearchHandshakeMessageProto(profile_.get());
+  ASSERT_TRUE(regular_msg.has_handshake_ping());
+  EXPECT_THAT(
+      regular_msg.handshake_ping().capabilities(),
+      testing::ElementsAre(lens::ClientToSearchMessage::HandshakePing::TABS,
+                           lens::ClientToSearchMessage::HandshakePing::LENS));
+
+  // Incognito (OTR) profile omits `TABS` when rearchitecture is disabled.
+  Profile* otr_profile = profile_->GetPrimaryOTRProfile(true);
+  lens::ClientToSearchMessage otr_msg =
+      GetSearchHandshakeMessageProto(otr_profile);
+  ASSERT_TRUE(otr_msg.has_handshake_ping());
+  EXPECT_THAT(
+      otr_msg.handshake_ping().capabilities(),
+      testing::ElementsAre(lens::ClientToSearchMessage::HandshakePing::LENS));
+
+  // Incognito (OTR) profile includes `TABS` and `LENS` when rearchitecture is
+  // enabled.
+  {
+    base::test::ScopedFeatureList rearch_feature_list;
+    rearch_feature_list.InitAndEnableFeature(kContextualTasksRearchitecture);
+    lens::ClientToSearchMessage otr_rearch_msg =
+        GetSearchHandshakeMessageProto(otr_profile);
+    ASSERT_TRUE(otr_rearch_msg.has_handshake_ping());
+    EXPECT_THAT(
+        otr_rearch_msg.handshake_ping().capabilities(),
+        testing::ElementsAre(lens::ClientToSearchMessage::HandshakePing::TABS,
+                             lens::ClientToSearchMessage::HandshakePing::LENS));
+  }
+
+  // Null profile omits `TABS` and includes only `LENS`.
+  lens::ClientToSearchMessage null_msg =
+      GetSearchHandshakeMessageProto(nullptr);
+  ASSERT_TRUE(null_msg.has_handshake_ping());
+  EXPECT_THAT(
+      null_msg.handshake_ping().capabilities(),
+      testing::ElementsAre(lens::ClientToSearchMessage::HandshakePing::LENS));
+
+  // Disabling context sharing via pref omits `TABS` and includes only `LENS`.
+  profile_->GetPrefs()->SetInteger(
+      contextual_search::kSearchContentSharingSettings,
+      static_cast<int>(
+          contextual_search::SearchContentSharingSettingsValue::kDisabled));
+  lens::ClientToSearchMessage disabled_pref_msg =
+      GetSearchHandshakeMessageProto(profile_.get());
+  ASSERT_TRUE(disabled_pref_msg.has_handshake_ping());
+  EXPECT_THAT(
+      disabled_pref_msg.handshake_ping().capabilities(),
+      testing::ElementsAre(lens::ClientToSearchMessage::HandshakePing::LENS));
 }
 
 TEST_F(ContextualTasksUtilsTest, IsUrlValidForContextSharing) {
@@ -528,8 +701,9 @@ TEST_F(ContextualTasksUtilsTest,
   EXPECT_FALSE(AreContextualTasksUpdatedEntryPointsEnabled(profile_.get()));
 }
 
-TEST_F(ContextualTasksUtilsTest,
-       AreContextualTasksUpdatedEntryPointsEnabled_SidePanelAndAimEligibility) {
+TEST_F(
+    ContextualTasksUtilsTest,
+    AreContextualTasksUpdatedEntryPointsEnabled_SidePanelAndTabSharingEligibility) {
   base::test::ScopedFeatureList feature_list;
   feature_list.InitAndEnableFeature(kContextualTasksUpdatedEntryPoints);
 
@@ -560,11 +734,36 @@ TEST_F(ContextualTasksUtilsTest,
       .WillByDefault(testing::Return(true));
   EXPECT_FALSE(AreContextualTasksUpdatedEntryPointsEnabled(profile_.get()));
 
-  // Both eligible -> true.
+  // Side panel available and Aim eligible, but Fusebox ineligible -> false.
   ON_CALL(mock_eligibility_manager, IsSidePanelAvailable())
       .WillByDefault(testing::Return(true));
   ON_CALL(*mock_aim_service, IsAimEligible())
       .WillByDefault(testing::Return(true));
+  ON_CALL(*mock_aim_service, IsFuseboxEligible())
+      .WillByDefault(testing::Return(false));
+  EXPECT_FALSE(AreContextualTasksUpdatedEntryPointsEnabled(profile_.get()));
+
+  // Both eligible (side panel available and tab sharing eligible) -> true.
+  ON_CALL(mock_eligibility_manager, IsSidePanelAvailable())
+      .WillByDefault(testing::Return(true));
+  ON_CALL(*mock_aim_service, IsAimEligible())
+      .WillByDefault(testing::Return(true));
+  ON_CALL(*mock_aim_service, IsFuseboxEligible())
+      .WillByDefault(testing::Return(true));
+  EXPECT_TRUE(AreContextualTasksUpdatedEntryPointsEnabled(profile_.get()));
+
+  // Context sharing disabled in prefs -> false.
+  profile_->GetPrefs()->SetInteger(
+      contextual_search::kSearchContentSharingSettings,
+      static_cast<int>(
+          contextual_search::SearchContentSharingSettingsValue::kDisabled));
+  EXPECT_FALSE(AreContextualTasksUpdatedEntryPointsEnabled(profile_.get()));
+
+  // Reset pref to enabled -> true.
+  profile_->GetPrefs()->SetInteger(
+      contextual_search::kSearchContentSharingSettings,
+      static_cast<int>(
+          contextual_search::SearchContentSharingSettingsValue::kEnabled));
   EXPECT_TRUE(AreContextualTasksUpdatedEntryPointsEnabled(profile_.get()));
 }
 
@@ -582,24 +781,46 @@ TEST_F(ContextualTasksUtilsTest,
   SetUpServices(otr_profile, &mock_eligibility_manager, &mock_aim_service);
   ASSERT_TRUE(mock_aim_service);
 
-  // When both side panel and AIM are eligible in incognito, returns true.
+  // Incognito profiles are not eligible for tab sharing, so updated entry
+  // points are disabled even when side panel and AIM are eligible.
   ON_CALL(mock_eligibility_manager, IsSidePanelAvailable())
       .WillByDefault(testing::Return(true));
   ON_CALL(*mock_aim_service, IsAimEligible())
       .WillByDefault(testing::Return(true));
-  EXPECT_TRUE(AreContextualTasksUpdatedEntryPointsEnabled(otr_profile));
-
-  // When AIM is ineligible in incognito, returns false.
-  ON_CALL(*mock_aim_service, IsAimEligible())
-      .WillByDefault(testing::Return(false));
-  EXPECT_FALSE(AreContextualTasksUpdatedEntryPointsEnabled(otr_profile));
-
-  // When side panel is unavailable in incognito, returns false.
-  ON_CALL(mock_eligibility_manager, IsSidePanelAvailable())
-      .WillByDefault(testing::Return(false));
-  ON_CALL(*mock_aim_service, IsAimEligible())
+  ON_CALL(*mock_aim_service, IsFuseboxEligible())
       .WillByDefault(testing::Return(true));
   EXPECT_FALSE(AreContextualTasksUpdatedEntryPointsEnabled(otr_profile));
+}
+
+TEST_F(ContextualTasksUtilsTest,
+       AreContextualTasksUpdatedEntryPointsEnabled_ForceEntryPointEligibility) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      /*enabled_features=*/{kContextualTasksUpdatedEntryPoints,
+                            kContextualTasksForceEntryPointEligibility},
+      /*disabled_features=*/{});
+
+  testing::NiceMock<MockContextualTasksEligibilityManager>
+      mock_eligibility_manager;
+  testing::NiceMock<MockAimEligibilityService>* mock_aim_service = nullptr;
+  SetUpServices(profile_.get(), &mock_eligibility_manager, &mock_aim_service);
+  ASSERT_TRUE(mock_aim_service);
+
+  // When forced, tab sharing eligibility checks are bypassed.
+  ON_CALL(mock_eligibility_manager, IsSidePanelAvailable())
+      .WillByDefault(testing::Return(true));
+  ON_CALL(*mock_aim_service, IsAimEligible())
+      .WillByDefault(testing::Return(false));
+  ON_CALL(*mock_aim_service, IsFuseboxEligible())
+      .WillByDefault(testing::Return(false));
+  EXPECT_TRUE(AreContextualTasksUpdatedEntryPointsEnabled(profile_.get()));
+
+  // But context sharing preference is still respected.
+  profile_->GetPrefs()->SetInteger(
+      contextual_search::kSearchContentSharingSettings,
+      static_cast<int>(
+          contextual_search::SearchContentSharingSettingsValue::kDisabled));
+  EXPECT_FALSE(AreContextualTasksUpdatedEntryPointsEnabled(profile_.get()));
 }
 
 TEST_F(ContextualTasksUtilsTest,
@@ -637,10 +858,22 @@ TEST_F(ContextualTasksUtilsTest,
   EXPECT_FALSE(ShouldUseContextualTasksContextMenuSubmenu(profile_.get()));
   EXPECT_FALSE(ShouldRouteAskGoogleToOmnibox(profile_.get()));
 
+  ON_CALL(mock_eligibility_manager, IsSidePanelAvailable())
+      .WillByDefault(testing::Return(true));
+  ON_CALL(*mock_aim_service, IsAimEligible())
+      .WillByDefault(testing::Return(true));
+  ON_CALL(*mock_aim_service, IsFuseboxEligible())
+      .WillByDefault(testing::Return(false));
+  EXPECT_FALSE(ShouldShowAskGoogleContextMenu(profile_.get()));
+  EXPECT_FALSE(ShouldUseContextualTasksContextMenuSubmenu(profile_.get()));
+  EXPECT_FALSE(ShouldRouteAskGoogleToOmnibox(profile_.get()));
+
   // When both are available, param helpers return true.
   ON_CALL(mock_eligibility_manager, IsSidePanelAvailable())
       .WillByDefault(testing::Return(true));
   ON_CALL(*mock_aim_service, IsAimEligible())
+      .WillByDefault(testing::Return(true));
+  ON_CALL(*mock_aim_service, IsFuseboxEligible())
       .WillByDefault(testing::Return(true));
   EXPECT_TRUE(ShouldShowAskGoogleContextMenu(profile_.get()));
   EXPECT_TRUE(ShouldUseContextualTasksContextMenuSubmenu(profile_.get()));
@@ -814,6 +1047,150 @@ TEST_F(ContextualTasksUtilsTest, ToRestoredTabInfos_FromContextualTaskContext) {
   EXPECT_EQ(restored[0].url, GURL("https://example.com/1"));
   EXPECT_EQ(restored[0].title, "Valid Tab");
   EXPECT_TRUE(restored[0].submitted);
+}
+
+TEST_F(ContextualTasksUtilsTest,
+       GetContextualTasksPinningStringId_FeatureDisabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(kContextualTasksPinningStringVariants);
+
+  EXPECT_EQ(IDS_CONTEXTUAL_TASKS_CUSTOMIZE_CHROME_LABEL,
+            GetContextualTasksPinningStringId(
+                IDS_CONTEXTUAL_TASKS_CUSTOMIZE_CHROME_LABEL));
+  EXPECT_EQ(IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CLOSE_TOOL_TIP,
+            GetContextualTasksPinningStringId(
+                IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CLOSE_TOOL_TIP));
+}
+
+TEST_F(ContextualTasksUtilsTest,
+       GetContextualTasksPinningStringId_DefaultParam) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(kContextualTasksPinningStringVariants);
+
+  EXPECT_EQ(IDS_CONTEXTUAL_TASKS_CUSTOMIZE_CHROME_LABEL,
+            GetContextualTasksPinningStringId(
+                IDS_CONTEXTUAL_TASKS_CUSTOMIZE_CHROME_LABEL));
+  EXPECT_EQ(IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CLOSE_TOOL_TIP,
+            GetContextualTasksPinningStringId(
+                IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CLOSE_TOOL_TIP));
+}
+
+TEST_F(ContextualTasksUtilsTest, GetContextualTasksPinningStringId_Variants) {
+  struct ExpectedVariantIds {
+    int base_id;
+    int ai_mode;
+    int side_panel;
+    int in_side_panel;
+    int in_chrome;
+    int panel;
+  };
+#define CONTEXTUAL_TASKS_TEST_VARIANTS(base_id)                    \
+  {                                                                \
+    base_id, base_id, base_id##_SIDE_PANEL, base_id##_IN_SIDE_PANEL, \
+        base_id##_IN_CHROME, base_id##_PANEL                       \
+  }
+  constexpr ExpectedVariantIds kExpectedVariants[] = {
+      CONTEXTUAL_TASKS_TEST_VARIANTS(
+          IDS_CONTEXTUAL_TASKS_CUSTOMIZE_CHROME_LABEL),
+      CONTEXTUAL_TASKS_TEST_VARIANTS(
+          IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CLOSE_TOOL_TIP),
+      CONTEXTUAL_TASKS_TEST_VARIANTS(
+          IDS_CONTEXTUAL_TASKS_SIDE_PANEL_REOPEN_TOOL_TIP),
+      CONTEXTUAL_TASKS_TEST_VARIANTS(
+          IDS_SIDE_PANEL_CONTEXTUAL_TASKS_PINNABLE_IPH),
+      CONTEXTUAL_TASKS_TEST_VARIANTS(
+          IDS_CONTEXTUAL_TASKS_EPHEMERAL_TOOLBAR_BUTTON_IPH),
+      CONTEXTUAL_TASKS_TEST_VARIANTS(
+          IDS_CONTEXTUAL_TASKS_EPHEMERAL_TOOLBAR_BUTTON_IPH_SCREENREADER),
+      CONTEXTUAL_TASKS_TEST_VARIANTS(
+          IDS_CONTEXTUAL_TASKS_PINNED_ICON_CHANGED_IPH),
+      CONTEXTUAL_TASKS_TEST_VARIANTS(
+          IDS_CONTEXTUAL_TASKS_PINNED_ICON_CHANGED_IPH_SCREENREADER),
+      CONTEXTUAL_TASKS_TEST_VARIANTS(IDS_TUTORIAL_CONTEXTUAL_TASKS_STEP3),
+  };
+#undef CONTEXTUAL_TASKS_TEST_VARIANTS
+
+  for (const auto& entry : kExpectedVariants) {
+    {
+      base::test::ScopedFeatureList feature_list;
+      feature_list.InitAndEnableFeatureWithParameters(
+          kContextualTasksPinningStringVariants,
+          {{"ContextualTasksPinningStringVariant", "ai-mode"}});
+      EXPECT_EQ(entry.ai_mode, GetContextualTasksPinningStringId(entry.base_id));
+    }
+    {
+      base::test::ScopedFeatureList feature_list;
+      feature_list.InitAndEnableFeatureWithParameters(
+          kContextualTasksPinningStringVariants,
+          {{"ContextualTasksPinningStringVariant", "side-panel"}});
+      EXPECT_EQ(entry.side_panel,
+                GetContextualTasksPinningStringId(entry.base_id));
+    }
+    {
+      base::test::ScopedFeatureList feature_list;
+      feature_list.InitAndEnableFeatureWithParameters(
+          kContextualTasksPinningStringVariants,
+          {{"ContextualTasksPinningStringVariant", "in-side-panel"}});
+      EXPECT_EQ(entry.in_side_panel,
+                GetContextualTasksPinningStringId(entry.base_id));
+    }
+    {
+      base::test::ScopedFeatureList feature_list;
+      feature_list.InitAndEnableFeatureWithParameters(
+          kContextualTasksPinningStringVariants,
+          {{"ContextualTasksPinningStringVariant", "in-chrome"}});
+      EXPECT_EQ(entry.in_chrome,
+                GetContextualTasksPinningStringId(entry.base_id));
+    }
+    {
+      base::test::ScopedFeatureList feature_list;
+      feature_list.InitAndEnableFeatureWithParameters(
+          kContextualTasksPinningStringVariants,
+          {{"ContextualTasksPinningStringVariant", "panel"}});
+      EXPECT_EQ(entry.panel, GetContextualTasksPinningStringId(entry.base_id));
+    }
+  }
+}
+
+TEST_F(ContextualTasksUtilsTest, GetContextualTasksPinningStringId_UnmappedId) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      kContextualTasksPinningStringVariants,
+      {{"ContextualTasksPinningStringVariant", "side-panel"}});
+
+  constexpr int kUnmappedResourceId = -1;
+  EXPECT_EQ(kUnmappedResourceId,
+            GetContextualTasksPinningStringId(kUnmappedResourceId));
+}
+
+TEST_F(ContextualTasksUtilsTest,
+       GetContextualTasksEphemeralButtonContextMenuCloseTextId) {
+  struct TestCase {
+    const char* param_value;
+    int expected_id;
+  };
+  constexpr TestCase kTestCases[] = {
+      {"hide-side-panel",
+       IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CONTEXT_MENU_REMOVE},
+      {"close-side-panel",
+       IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CONTEXT_MENU_CLOSE},
+      {"dismiss-active-search",
+       IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CONTEXT_MENU_DISMISS_ACTIVE_SEARCH},
+      {"dismiss-active-search-in-tab",
+       IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CONTEXT_MENU_DISMISS_ACTIVE_SEARCH_IN_TAB},
+  };
+
+  for (const auto& test_case : kTestCases) {
+    SCOPED_TRACE(test_case.param_value);
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitAndEnableFeatureWithParameters(
+        kContextualTasksEphemeralButtonContextMenu,
+        {{"ContextualTasksEphemeralButtonContextMenuOption",
+          test_case.param_value}});
+
+    EXPECT_EQ(test_case.expected_id,
+              GetContextualTasksEphemeralButtonContextMenuCloseTextId());
+  }
 }
 
 }  // namespace

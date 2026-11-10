@@ -208,6 +208,7 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
       energyEffectAnimationEnabled: {type: Boolean},
       hasUserInput_: {type: Boolean},
       ntpRealboxDynamicAiModeButtonEnabled_: {type: Boolean},
+      ntpRealboxDynamicAiModeButtonPreventEarlyPaint_: {type: Boolean},
       contextManagementInComposeboxEnabled: {type: Boolean},
       composeboxContextMenuTooltipsEnabled: {type: Boolean},
       keepMenuOpenOnTabSelectForRealbox: {type: Boolean},
@@ -271,6 +272,8 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
       loadTimeData.getBoolean('searchboxLensSearch');
   protected accessor ntpRealboxDynamicAiModeButtonEnabled_: boolean =
       loadTimeData.getBoolean('ntpRealboxDynamicAiModeButton');
+  protected accessor ntpRealboxDynamicAiModeButtonPreventEarlyPaint_: boolean =
+      loadTimeData.getBoolean('ntpRealboxDynamicAiModeButtonPreventEarlyPaint');
   protected accessor useWebkitSearchIcons_: boolean = false;
   protected accessor hasUserInput_: boolean = false;
   protected dragAndDropHandler: DragAndDropHandler|null = null;
@@ -284,6 +287,9 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
   private pageHandler_: PageHandlerInterface;
   private autocompleteResultChangedListenerId_: number|null = null;
   private inputStateListenerId_: number|null = null;
+  // <if expr="not is_android">
+  private smartTabSharingUpdateGeneration_: number = 0;
+  // </if>
 
   constructor() {
     performance.mark('searchbox-creation-start');
@@ -324,8 +330,11 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
     }
 
     // <if expr="not is_android">
-    this.smartTabSharingActive =
-        (await this.pageHandler().getSmartTabSharingActive()).active;
+    const stsGeneration = ++this.smartTabSharingUpdateGeneration_;
+    const {active} = await this.pageHandler().getSmartTabSharingActive();
+    if (stsGeneration === this.smartTabSharingUpdateGeneration_) {
+      this.smartTabSharingActive = active;
+    }
     // </if>
   }
 
@@ -552,10 +561,30 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
   protected onSmartTabSharingActiveChanged_(
       _e: CustomEvent<{active: boolean}>) {
     // <if expr="not is_android">
+    this.smartTabSharingUpdateGeneration_++;
     this.smartTabSharingActive = _e.detail.active;
     this.pageHandler().setSmartTabSharingActive(_e.detail.active);
     if (_e.detail.active) {
       this.openComposebox_();
+    }
+    // </if>
+  }
+
+  /**
+   * Resets local Smart Tab Sharing state, and optionally requests the browser
+   * backend to reset its state as well. By default, only local UI state is
+   * cleared because the composebox component initiates the backend reset.
+   */
+  resetSmartTabSharing(_resetBackend: boolean = false) {
+    // <if expr="not is_android">
+    this.smartTabSharingActive = false;
+    if (_resetBackend) {
+      const generation = ++this.smartTabSharingUpdateGeneration_;
+      this.pageHandler().resetSmartTabSharing()?.then(({active}) => {
+        if (generation === this.smartTabSharingUpdateGeneration_) {
+          this.smartTabSharingActive = active;
+        }
+      });
     }
     // </if>
   }

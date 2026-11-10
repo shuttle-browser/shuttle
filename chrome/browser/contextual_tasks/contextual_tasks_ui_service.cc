@@ -253,18 +253,30 @@ EntrypointSource ConvertContextualSearchSourceToEntrypointSource(
 }
 
 #if !BUILDFLAG(IS_ANDROID)
-bool ShouldResetZeroStateForOmniboxAction(
+bool ShouldResetZeroStateForAskGoogleEntryPoint(
     const GURL& url,
     ContextualTasksUiService* service,
     omnibox::ChromeAimEntryPoint entry_point) {
-  return base::FeatureList::IsEnabled(
-             omnibox::kWebUIOmniboxAskGAboutThisPage) &&
-         entry_point == omnibox::ChromeAimEntryPoint::
-                            DESKTOP_CHROME_COBROWSE_OMNIBOX_ACTION &&
+  const bool is_omnibox_action =
+      base::FeatureList::IsEnabled(omnibox::kWebUIOmniboxAskGAboutThisPage) &&
+      entry_point ==
+          omnibox::ChromeAimEntryPoint::DESKTOP_CHROME_COBROWSE_OMNIBOX_ACTION;
+
+  const bool is_updated_entry_point =
+      contextual_tasks::AreContextualTasksUpdatedEntryPointsEnabled(
+          service->profile()) &&
+      (entry_point == omnibox::ChromeAimEntryPoint::
+                          DESKTOP_CHROME_PAGE_CONTEXT_MENU_ASK_GOOGLE ||
+       entry_point ==
+           omnibox::ChromeAimEntryPoint::DESKTOP_CHROME_APP_MENU_ASK_GOOGLE ||
+       entry_point == omnibox::ChromeAimEntryPoint::
+                          DESKTOP_CHROME_CHROMNIENT_HOMEWORK_ACTION_CHIP);
+
+  return (is_omnibox_action || is_updated_entry_point) &&
          ContextualTasksUI::IsZeroState(url, service);
 }
 #else
-bool ShouldResetZeroStateForOmniboxAction(
+bool ShouldResetZeroStateForAskGoogleEntryPoint(
     const GURL& url,
     ContextualTasksUiService* service,
     omnibox::ChromeAimEntryPoint entry_point) {
@@ -1536,6 +1548,17 @@ bool ContextualTasksUiService::ShouldAddRequiredSidePanelUrlChanges(
     return false;
   }
 
+  // Only apply side-panel-specific URL changes to in-place navigations inside
+  // the side panel without text-fragment citations. Navigations explicitly
+  // opening a new tab/window (e.g. via
+  // `ContextualTasksWebView::OpenURLFromTab`) or citation links must not be
+  // reloaded inside the side panel.
+  if (url_params.disposition != ui::mojom::WindowOpenDisposition::kCurrentTab ||
+      !shared_highlighting::ExtractTextFragments(url_params.url.GetRef())
+           .empty()) {
+    return false;
+  }
+
   const GURL& url = url_params.url;
 
   // Only apply to HTTP and HTTPS URLs.
@@ -2239,12 +2262,25 @@ void ContextualTasksUiService::OpenUrl(
     nav_params.opener = message_proxy_web_contents->GetPrimaryMainFrame();
   }
 
-  // Capture the active tab before navigating, since a foreground navigation
-  // activates the new tab.
+  // Capture the active tab and its current task before navigating, since a
+  // foreground navigation activates the new tab and changes the active tab's
+  // task lookup in `ContextualTasksPanelController::GetCurrentTask()`.
   TabListInterface* opener_tab_list =
       browser ? TabListInterface::From(browser) : nullptr;
   tabs::TabInterface* opener_tab =
       opener_tab_list ? opener_tab_list->GetActiveTab() : nullptr;
+  std::optional<ContextualTask> current_task;
+  if (browser) {
+    if (auto* controller = ContextualTasksPanelController::From(browser)) {
+      current_task = controller->GetCurrentTask();
+    }
+  }
+  if (opener_tab && opener_tab->GetContents() &&
+      nav_params.disposition != ui::mojom::WindowOpenDisposition::kCurrentTab) {
+    nav_params.source_contents = opener_tab->GetContents();
+    nav_params.tabstrip_add_types |= AddTabTypes::ADD_INHERIT_OPENER;
+    nav_params.transition = ui::PAGE_TRANSITION_LINK;
+  }
 
   // Perform the navigation
   Navigate(&nav_params);
@@ -2260,11 +2296,8 @@ void ContextualTasksUiService::OpenUrl(
 
   if (new_contents_ptr) {
     if (browser) {
-      if (auto* controller = ContextualTasksPanelController::From(browser)) {
-        if (auto current_task = controller->GetCurrentTask()) {
-          AssociateWebContentsToTask(new_contents_ptr,
-                                     current_task->GetTaskId());
-        }
+      if (current_task) {
+        AssociateWebContentsToTask(new_contents_ptr, current_task->GetTaskId());
       }
       if (opener_tab_list && opener_tab) {
         tabs::TabInterface* new_tab =
@@ -3690,11 +3723,12 @@ void ContextualTasksUiService::StartTaskUiInSidePanelImpl(
     return;
   }
 
-  // If the side panel is already open and an Omnibox page action triggers an
+  // If the side panel is already open and an Ask Google entry point triggers an
   // in-place zero-state reset, reset the panel with the new task and forward
   // the session handle directly to it.
   if (!IsContextualTasksSidePanelRearchitectureEnabled() &&
-      ShouldResetZeroStateForOmniboxAction(url, this, options.entry_point)) {
+      ShouldResetZeroStateForAskGoogleEntryPoint(url, this,
+                                                 options.entry_point)) {
     ResetZeroStateInOpenSidePanel(panel_contents, tab_interface, url,
                                   std::move(session_handle),
                                   options.entry_point);
@@ -3725,7 +3759,8 @@ void ContextualTasksUiService::StartTaskUiInSidePanelImpl(
   }
 
   if (IsContextualTasksSidePanelRearchitectureEnabled()) {
-    if (ShouldResetZeroStateForOmniboxAction(url, this, options.entry_point)) {
+    if (ShouldResetZeroStateForAskGoogleEntryPoint(url, this,
+                                                   options.entry_point)) {
       // TODO(crbug.com/537842795): Understand if this flow is possible in the
       // rearchitecture and handle accordingly. For now, just load the URL.
     }
@@ -3869,6 +3904,10 @@ void ContextualTasksUiService::StartTaskUiInSidePanelWithErrorPage(
   if (!panel_was_closed) {
     if (auto* web_ui_interface = GetWebUiInterface(web_contents)) {
       ShowAndRecordErrorPage(web_ui_interface->GetPageRemote(), source);
+    } else if (IsContextualTasksSidePanelRearchitectureEnabled()) {
+      controller->OnTaskChanged(web_contents, task_id);
+      controller->SetErrorPageVisible(true);
+      RecordErrorPageShown(source);
     }
   }
 }
@@ -3885,6 +3924,9 @@ bool ContextualTasksUiService::IsPendingErrorPage(const base::Uuid& task_id) {
     return false;
   }
   RecordErrorPageShown(*it->second.pending_error_page_source);
+  if (IsContextualTasksSidePanelRearchitectureEnabled()) {
+    it->second.pending_error_page_source.reset();
+  }
   return true;
 }
 

@@ -292,6 +292,32 @@ struct Version {
 
 @end
 
+@interface TestOrderedWindowsSwizzler : NSObject
++ (NSArray<NSWindow*>* __strong*)testOrderedWindows;
++ (std::unique_ptr<base::apple::ScopedObjCClassSwizzler>&)swizzler;
+@end
+
+@implementation TestOrderedWindowsSwizzler
++ (NSArray<NSWindow*>* __strong*)testOrderedWindows {
+  static NSArray<NSWindow*>* windows = nil;
+  return &windows;
+}
+- (NSArray<NSWindow*>*)orderedWindows {
+  if (NSArray<NSWindow*>* windows =
+          *[TestOrderedWindowsSwizzler testOrderedWindows]) {
+    return windows;
+  }
+  return [TestOrderedWindowsSwizzler swizzler]
+      ->InvokeOriginal<NSArray<NSWindow*>*>(self, _cmd);
+}
++ (std::unique_ptr<base::apple::ScopedObjCClassSwizzler>&)swizzler {
+  static base::NoDestructor<
+      std::unique_ptr<base::apple::ScopedObjCClassSwizzler>>
+      swizzler;
+  return *swizzler;
+}
+@end
+
 namespace content {
 
 // A stub class for WebContentsNSViewHost.
@@ -582,7 +608,19 @@ class WindowOcclusionBrowserTestMac : public ContentBrowserTest {
     host_b_.OnWindowVisibilityChanged(visibility);
   }
 
+  void OverrideOrderedWindows(NSArray<NSWindow*>* windows) {
+    if (![TestOrderedWindowsSwizzler swizzler]) {
+      [TestOrderedWindowsSwizzler swizzler] =
+          std::make_unique<base::apple::ScopedObjCClassSwizzler>(
+              [NSApplication class], [TestOrderedWindowsSwizzler class],
+              @selector(orderedWindows));
+    }
+    *[TestOrderedWindowsSwizzler testOrderedWindows] = windows;
+  }
+
   void TearDownInProcessBrowserTestFixture() override {
+    *[TestOrderedWindowsSwizzler testOrderedWindows] = nil;
+    [TestOrderedWindowsSwizzler swizzler].reset();
     [window_a_web_contents_view_cocoa_ setHost:nullptr];
     [window_b_web_contents_view_cocoa_ setHost:nullptr];
   }
@@ -1201,6 +1239,164 @@ IN_PROC_BROWSER_TEST_F(WindowOcclusionBrowserTestMac,
   AddSubviewOfView(window_a_web_contents_view_cocoa_, window_a_.contentView);
   EXPECT_EQ(WindowAWebContentsVisibility(),
             remote_cocoa::mojom::Visibility::kVisible);
+}
+
+// Verifies that a child window is not occluded by its parent window, even if
+// the parent is active and would otherwise occlude an inactive window, in
+// either order in -[NSApplication orderedWindows].
+IN_PROC_BROWSER_TEST_F(
+    WindowOcclusionBrowserTestMac,
+    ManualOcclusionDetectionActiveParentDoesNotOccludeChildWindow) {
+  InitWindowA();
+  [window_a_ setCanBecomeKeyOrMainForTesting:YES];
+
+  InitWindowB(NSInsetRect(window_a_.frame, 10, 10));
+  [window_b_ setCanBecomeKeyOrMainForTesting:YES];
+
+  [window_a_ addChildWindow:window_b_ ordered:NSWindowAbove];
+  WaitForOcclusionUpdate();
+
+  OverrideOrderedWindows(@[ window_b_, window_a_ ]);
+
+  [window_a_ setKeyWindowForTesting:YES];
+  [window_a_ setMainWindowForTesting:YES];
+
+  PostNotification(NSWindowDidBecomeMainNotification, window_a_);
+
+  EXPECT_EQ(WindowBWebContentsVisibility(),
+            remote_cocoa::mojom::Visibility::kVisible);
+  EXPECT_FALSE([window_b_ isOccluded]);
+  EXPECT_EQ(WindowAWebContentsVisibility(),
+            remote_cocoa::mojom::Visibility::kVisible);
+
+  // A stale list can put the parent ahead of its child. It still can't cover
+  // the child.
+  OverrideOrderedWindows(@[ window_a_, window_b_ ]);
+  PostNotification(NSWindowDidBecomeMainNotification, window_a_);
+
+  EXPECT_EQ(WindowBWebContentsVisibility(),
+            remote_cocoa::mojom::Visibility::kVisible);
+  EXPECT_FALSE([window_b_ isOccluded]);
+
+  [window_a_ removeChildWindow:window_b_];
+}
+
+// Verifies that a child window is still occluded by an unrelated active window
+// that covers it, ensuring the parent exemption doesn't bypass all occlusion.
+IN_PROC_BROWSER_TEST_F(
+    WindowOcclusionBrowserTestMac,
+    ManualOcclusionDetectionActiveNonParentOccludesChildWindow) {
+  InitWindowA();
+  [window_a_ setCanBecomeKeyOrMainForTesting:YES];
+
+  InitWindowB(NSInsetRect(window_a_.frame, 10, 10));
+  [window_b_ setCanBecomeKeyOrMainForTesting:YES];
+
+  [window_a_ addChildWindow:window_b_ ordered:NSWindowAbove];
+  WaitForOcclusionUpdate();
+
+  WindowAndWebContents third = MakeWindowAndWebContents(window_a_.frame);
+  [third.window setCanBecomeKeyOrMainForTesting:YES];
+  OrderWindowFront(third.window);
+  [third.window setKeyWindowForTesting:YES];
+  [third.window setMainWindowForTesting:YES];
+
+  OverrideOrderedWindows(@[ window_b_, third.window, window_a_ ]);
+
+  PostNotification(NSWindowDidBecomeMainNotification, third.window);
+
+  EXPECT_EQ(WindowBWebContentsVisibility(),
+            remote_cocoa::mojom::Visibility::kOccluded);
+
+  // Simulate switching back to `window_a_` (the parent) while `third.window`
+  // remains ahead of both `window_b_` and `window_a_` in `orderedWindows` (e.g.
+  // during Cmd+` window cycling or in Stage Manager). Even though `window_b_`
+  // itself is not key or main, its parent `window_a_` is active, so `window_b_`
+  // should not be occluded by the now-inactive `third.window`.
+  OverrideOrderedWindows(@[ third.window, window_b_, window_a_ ]);
+  [third.window setKeyWindowForTesting:NO];
+  [third.window setMainWindowForTesting:NO];
+  [window_a_ setKeyWindowForTesting:YES];
+  [window_a_ setMainWindowForTesting:YES];
+  PostNotification(NSWindowDidResignKeyNotification, third.window);
+  PostNotification(NSWindowDidBecomeKeyNotification, window_a_);
+
+  EXPECT_EQ(WindowAWebContentsVisibility(),
+            remote_cocoa::mojom::Visibility::kVisible);
+  EXPECT_EQ(WindowBWebContentsVisibility(),
+            remote_cocoa::mojom::Visibility::kVisible);
+  EXPECT_FALSE([window_b_ isOccluded]);
+
+  [window_a_ removeChildWindow:window_b_];
+  [third.window close];
+}
+
+// Verifies that clicking a child modal dialog (e.g. a tab-modal alert) in
+// `window_a_` while `window_b_` is active marks `window_a_` as visible and
+// `window_b_` as occluded, even when AppKit leaves `window_b_` as the main
+// window because child dialogs cannot become main (see crbug.com/40116493).
+IN_PROC_BROWSER_TEST_F(
+    WindowOcclusionBrowserTestMac,
+    ManualOcclusionDetectionActiveChildDialogDoesNotOccludeParentWindow) {
+  InitWindowA();
+  [window_a_ setCanBecomeKeyOrMainForTesting:YES];
+
+  // Create a child dialog window (without a WebContents, like a tab-modal
+  // alert) attached to `window_a_`.
+  WebContentsHostWindowForOcclusionTesting* child_dialog =
+      [[WebContentsHostWindowForOcclusionTesting alloc]
+          initWithContentRect:NSInsetRect(window_a_.frame, 10, 10)
+                    styleMask:NSWindowStyleMaskBorderless
+                      backing:NSBackingStoreBuffered
+                        defer:YES];
+  child_dialog.releasedWhenClosed = NO;
+  [child_dialog setFrame:NSInsetRect(window_a_.frame, 10, 10) display:NO];
+  OrderWindowFront(child_dialog);
+  [window_a_ addChildWindow:child_dialog ordered:NSWindowAbove];
+  WaitForOcclusionUpdate();
+
+  // Open a second browser window `window_b_` covering `window_a_` as the
+  // initially active key and main window.
+  InitWindowB(window_a_.frame);
+  [window_b_ setCanBecomeKeyOrMainForTesting:YES];
+  [window_b_ setKeyWindowForTesting:YES];
+  [window_b_ setMainWindowForTesting:YES];
+  OverrideOrderedWindows(@[ window_b_, child_dialog, window_a_ ]);
+  PostNotification(NSWindowDidBecomeMainNotification, window_b_);
+
+  EXPECT_EQ(WindowAWebContentsVisibility(),
+            remote_cocoa::mojom::Visibility::kOccluded);
+  EXPECT_EQ(WindowBWebContentsVisibility(),
+            remote_cocoa::mojom::Visibility::kVisible);
+
+  // Simulate clicking `child_dialog` in `window_a_` while `window_b_` is
+  // active. Because child dialogs cannot become main, AppKit makes
+  // `child_dialog` the key window, resigns key from `window_b_`, and leaves
+  // `window_b_` as the main window while `window_a_` is neither key nor main
+  // (crbug.com/40116493).
+  [window_b_ setKeyWindowForTesting:NO];
+  [child_dialog setKeyWindowForTesting:YES];
+  OverrideOrderedWindows(@[ child_dialog, window_a_, window_b_ ]);
+  PostNotification(NSWindowDidResignKeyNotification, window_b_);
+  PostNotification(NSWindowDidBecomeKeyNotification, child_dialog);
+
+  EXPECT_EQ(WindowAWebContentsVisibility(),
+            remote_cocoa::mojom::Visibility::kVisible);
+  EXPECT_EQ(WindowBWebContentsVisibility(),
+            remote_cocoa::mojom::Visibility::kOccluded);
+
+  // Also verify when `orderedWindows` is still stale (`window_b_` ahead of
+  // `child_dialog` and `window_a_`).
+  OverrideOrderedWindows(@[ window_b_, child_dialog, window_a_ ]);
+  PostNotification(NSWindowDidBecomeKeyNotification, child_dialog);
+
+  EXPECT_EQ(WindowAWebContentsVisibility(),
+            remote_cocoa::mojom::Visibility::kVisible);
+  EXPECT_EQ(WindowBWebContentsVisibility(),
+            remote_cocoa::mojom::Visibility::kOccluded);
+
+  [window_a_ removeChildWindow:child_dialog];
+  [child_dialog close];
 }
 
 }  // namespace content

@@ -5,7 +5,7 @@
 import '//resources/cr_components/searchbox/searchbox_dropdown.js';
 import '//resources/cr_components/searchbox/searchbox_input.js';
 import '//resources/cr_components/searchbox/searchbox_compose_button.js';
-import './omnibox_popup_contextual_entrypoint.js';
+import 'chrome://omnibox-popup.top-chrome/shared/omnibox_popup_contextual_entrypoint.js';
 
 import type {ComposeboxLensSearchElement} from '//resources/cr_components/composebox/composebox_lens_search.js';
 import type {CurrentTabChipElement} from '//resources/cr_components/composebox/current_tab_chip.js';
@@ -29,11 +29,11 @@ import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 import {SelectionLineState} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 import type {AutocompleteMatch, AutocompleteResult, OmniboxPopupSelection, PageCallbackRouter as SearchboxPageCallbackRouter, PageHandlerInterface as SearchboxPageHandlerInterface, SelectionDirection, SelectionStep, UrlEmphasis} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 import type {Url} from '//resources/mojo/url/mojom/url.mojom-webui.js';
+import {browserProxyFactory, MatchesUpdate, OmniboxEscapeAction} from 'chrome://omnibox-popup.top-chrome/shared/omnibox_popup.mojom-webui.js';
+import type {OmniboxInputState, PageCallbackRouter as PopupPageCallbackRouter, PageHandlerInterface as PopupPageHandlerInterface} from 'chrome://omnibox-popup.top-chrome/shared/omnibox_popup.mojom-webui.js';
+import type {OmniboxPopupContextualEntrypointElement} from 'chrome://omnibox-popup.top-chrome/shared/omnibox_popup_contextual_entrypoint.js';
+import type {OmniboxPopupContextualEntrypointButtonElement} from 'chrome://omnibox-popup.top-chrome/shared/omnibox_popup_contextual_entrypoint_button.js';
 
-import {browserProxyFactory, MatchesUpdate, OmniboxEscapeAction} from './omnibox_popup.mojom-webui.js';
-import type {OmniboxInputState, PageCallbackRouter as PopupPageCallbackRouter, PageHandlerInterface as PopupPageHandlerInterface} from './omnibox_popup.mojom-webui.js';
-import type {OmniboxPopupContextualEntrypointElement} from './omnibox_popup_contextual_entrypoint.js';
-import type {OmniboxPopupContextualEntrypointButtonElement} from './omnibox_popup_contextual_entrypoint_button.js';
 import {getCss} from './omnibox_popup_searchbox.css.js';
 import {getHtml} from './omnibox_popup_searchbox.html.js';
 import {TextfieldModel} from './textfield_model.js';
@@ -153,6 +153,10 @@ export class OmniboxPopupSearchboxElement extends
         type: Boolean,
         reflect: true,
       },
+      persistentAimButtonEnabled_: {
+        type: Boolean,
+        reflect: true,
+      },
       multiLineEnabled: {
         type: Boolean,
         reflect: true,
@@ -260,6 +264,8 @@ export class OmniboxPopupSearchboxElement extends
       loadTimeData.getBoolean('searchboxMultiline');
   protected accessor webuiShadowEnabled_: boolean =
       loadTimeData.getBoolean('omniboxFullWebUIShadowEnabled');
+  protected accessor persistentAimButtonEnabled_: boolean =
+      loadTimeData.getBoolean('composeboxPersistentAimButton');
   protected accessor searchboxDynamicColorScheme_: boolean =
       loadTimeData.getBoolean('searchboxDynamicColorScheme');
   protected accessor searchboxDynamicAnimation_: boolean =
@@ -273,11 +279,11 @@ export class OmniboxPopupSearchboxElement extends
     icon: '',
   };
 
-  private getContextualEntrypoint_():
-      OmniboxPopupContextualEntrypointElement|null {
-    return this.shadowRoot.querySelector<
-        OmniboxPopupContextualEntrypointElement>(
-        'omnibox-popup-contextual-entrypoint');
+  private getContextualEntrypoint_(): OmniboxPopupContextualEntrypointElement
+      |null {
+    return this.shadowRoot
+        .querySelector<OmniboxPopupContextualEntrypointElement>(
+            'omnibox-popup-contextual-entrypoint');
   }
 
   override get showContextEntrypoint(): boolean {
@@ -317,7 +323,8 @@ export class OmniboxPopupSearchboxElement extends
   protected accessor permanentDisplayText_: string = '';
   protected accessor aimButtonIconOnly_: boolean = false;
   // True during an active IME (Input Method Editor) text composition session.
-  // Used to suppress intermediate selection updates until composition finishes.
+  // Used to suppress intermediate selection updates until composition finishes,
+  // and to end the composition before showing another tab's text.
   private isComposing_: boolean = false;
   // True if the user has typed directly into the WebUI DOM input element since
   // the last `onSetInputState_` invocation.
@@ -534,14 +541,14 @@ export class OmniboxPopupSearchboxElement extends
     }
   }
 
-  getContextualEntrypointButton():
-      OmniboxPopupContextualEntrypointButtonElement|null {
+  getContextualEntrypointButton(): OmniboxPopupContextualEntrypointButtonElement
+      |null {
     const entrypoint = this.getContextualEntrypoint_();
     return entrypoint ? entrypoint.getContextEntrypointElement() : null;
   }
 
-  getContextualChipElement():
-      (CurrentTabChipElement|ComposeboxLensSearchElement)|null {
+  getContextualChipElement(): (CurrentTabChipElement|
+                               ComposeboxLensSearchElement)|null {
     const entrypoint = this.getContextualEntrypoint_();
     return entrypoint ? entrypoint.getContextualChipElement() : null;
   }
@@ -549,7 +556,7 @@ export class OmniboxPopupSearchboxElement extends
   isContextualChipVirtualFocused(): boolean {
     return this.showContextualChip &&
         this.selection.state ===
-            SelectionLineState.kFocusedButtonContextualChip;
+        SelectionLineState.kFocusedButtonContextualChip;
   }
 
   getLensSearchIconElement(): ComposeboxLensSearchElement|null {
@@ -1414,6 +1421,18 @@ export class OmniboxPopupSearchboxElement extends
     if (state.isTabSwitch) {
       performance.mark(
           'OmniboxPopupSearchboxElement::onSetInputState_:TabSwitch');
+    }
+
+    // Like `OmniboxViewViews::SaveStateToTab()`, end any IME composition
+    // before showing another tab's text, so that the IME doesn't keep composing
+    // into it. This compares tab IDs since `isTabSwitch` is false for a new tab
+    // that focuses the omnibox. There's no web API to end a composition, but
+    // blurring the input does it: Blink commits the composition, whose text is
+    // already in the old tab's draft, and the browser cancels the IME's
+    // composition. The input is refocused below if the new tab's omnibox is
+    // focused.
+    if (this.isComposing_ && state.tabId !== this.tabId_) {
+      this.$.input.blur();
     }
     this.hasReceivedInitialInputState_ = true;
 

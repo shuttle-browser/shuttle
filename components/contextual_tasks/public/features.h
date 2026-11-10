@@ -29,6 +29,7 @@ BASE_DECLARE_FEATURE(kContextualTasksPinningV2);
 BASE_DECLARE_FEATURE(kContextualTasksEphemeralPinButtonRefactor);
 BASE_DECLARE_FEATURE(kContextualTasksPinnedButtonActiveIndicator);
 BASE_DECLARE_FEATURE(kContextualTasksUnifyPinButtonLogos);
+BASE_DECLARE_FEATURE(kContextualTasksPinningStringVariants);
 BASE_DECLARE_FEATURE(kEphemeralPinningVisibleWhenPermanentlyPinned);
 BASE_DECLARE_FEATURE(kContextualTasksEphemeralButtonContextMenu);
 BASE_DECLARE_FEATURE(kContextualTasksEphemeralButtonAutoDismiss);
@@ -381,12 +382,16 @@ extern bool GetEnableRightHandContextualTasksEphemeralButton();
 BASE_DECLARE_FEATURE_PARAM(bool,
                            kEnableCircularEphemeralButtonNextToBatterySaver);
 
-// Controls whether the ephemeral contextual tasks toolbar button context menu
-// displays "Close side panel" instead of "Hide side panel".
-extern const base::FeatureParam<bool>
-    kContextualTasksEphemeralButtonContextMenuCloseSidePanel;
+// Option for the label shown on the ephemeral contextual tasks toolbar button
+// context menu to close/dismiss the side panel.
+enum class EphemeralButtonContextMenuOption {
+  kHideSidePanel,
+  kCloseSidePanel,
+  kDismissActiveSearch,
+  kDismissActiveSearchInTab,
+};
 
-bool ShouldUseCloseSidePanelForEphemeralButtonContextMenu();
+EphemeralButtonContextMenuOption GetEphemeralButtonContextMenuOption();
 
 // Duration in minutes after closing the contextual tasks side panel before the
 // ephemeral toolbar button is automatically dismissed and its task
@@ -419,6 +424,29 @@ bool ShouldUseSuperGIconForPinButtons();
 // Returns whether both the toolbar and ephemeral pin buttons should be
 // unified to use the gray (monochrome) Super G logo.
 bool ShouldUseGraySuperGIconForPinButtons();
+
+// User-facing string variant replacing "Google Search AI Mode" across
+// Contextual Tasks pinning, tooltips, IPH, and tutorial strings.
+// LINT.IfChange(PinningStringVariant)
+enum class PinningStringVariant {
+  // Uses "Google Search AI Mode" (default).
+  kAiMode,
+  // Uses "Google Search side panel".
+  kSidePanel,
+  // Uses "Google Search in side panel".
+  kInSidePanel,
+  // Uses "Google Search in Chrome".
+  kInChrome,
+  // Uses "Google Search panel".
+  kPanel,
+};
+// LINT.ThenChange(
+//   //chrome/browser/about_flags.cc:PinningStringVariant,
+//   //components/contextual_tasks/public/features.cc:PinningStringVariant,
+//   //components/contextual_tasks/public/features.cc:PinningStringVariantDescription
+// )
+
+PinningStringVariant GetContextualTasksPinningStringVariant();
 
 // UI Options to expand the contextual tasks side panel to tab.
 extern const base::FeatureParam<ExpandButtonOption, true> kExpandButtonOptions;
@@ -676,7 +704,12 @@ extern bool IsContextualTasksUnboundedMenuEnabled();
 
 inline constexpr char kContextualTasksSearchCapabilitiesHeaderName[] =
     "Chrome-Search-Capabilities-Version";
-inline constexpr char kContextualTasksSearchCapabilitiesDefaultVersion[] = "1";
+// The default version for the `Chrome-Search-Capabilities-Version` HTTP header.
+// Version 1: Initial version/implementation.
+// Version 1.1: Adds `TAB_PICKER` `InjectChromeInput` support to show and hide
+//              the tab picker based on eligible open tabs.
+inline constexpr char kContextualTasksSearchCapabilitiesDefaultVersion[] =
+    "1.1";
 
 extern const base::FeatureParam<std::string>
     kContextualTasksSearchCapabilitiesVersion;
@@ -749,6 +782,8 @@ extern const char kContextualTasksEphemeralButtonAutoDismissName[];
 extern const char kContextualTasksEphemeralButtonAutoDismissDescription[];
 extern const char kContextualTasksUnifyPinButtonLogosName[];
 extern const char kContextualTasksUnifyPinButtonLogosDescription[];
+extern const char kContextualTasksPinningStringVariantsName[];
+extern const char kContextualTasksPinningStringVariantsDescription[];
 extern const char kABASearchJourneysName[];
 extern const char kABASearchJourneysDescription[];
 extern const char kAllowSignedOutUserInDesktopAndroidName[];

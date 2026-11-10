@@ -124,10 +124,36 @@ const base::FeatureParam<bool>
         "ContextualTasksEphemeralButtonContextMenuCloseSidePanel",
         false);
 
-bool ShouldUseCloseSidePanelForEphemeralButtonContextMenu() {
-  return base::FeatureList::IsEnabled(
-             kContextualTasksEphemeralButtonContextMenu) &&
-         kContextualTasksEphemeralButtonContextMenuCloseSidePanel.Get();
+constexpr base::FeatureParam<EphemeralButtonContextMenuOption>::Option
+    kContextualTasksEphemeralButtonContextMenuOptions[] = {
+        {EphemeralButtonContextMenuOption::kHideSidePanel, "hide-side-panel"},
+        {EphemeralButtonContextMenuOption::kCloseSidePanel, "close-side-panel"},
+        {EphemeralButtonContextMenuOption::kDismissActiveSearch,
+         "dismiss-active-search"},
+        {EphemeralButtonContextMenuOption::kDismissActiveSearchInTab,
+         "dismiss-active-search-in-tab"},
+};
+
+const base::FeatureParam<EphemeralButtonContextMenuOption>
+    kContextualTasksEphemeralButtonContextMenuOption(
+        &kContextualTasksEphemeralButtonContextMenu,
+        "ContextualTasksEphemeralButtonContextMenuOption",
+        EphemeralButtonContextMenuOption::kHideSidePanel,
+        &kContextualTasksEphemeralButtonContextMenuOptions);
+
+EphemeralButtonContextMenuOption GetEphemeralButtonContextMenuOption() {
+  if (!base::FeatureList::IsEnabled(
+          kContextualTasksEphemeralButtonContextMenu)) {
+    return EphemeralButtonContextMenuOption::kHideSidePanel;
+  }
+  const EphemeralButtonContextMenuOption option =
+      kContextualTasksEphemeralButtonContextMenuOption.Get();
+  if (option != EphemeralButtonContextMenuOption::kHideSidePanel) {
+    return option;
+  }
+  return kContextualTasksEphemeralButtonContextMenuCloseSidePanel.Get()
+             ? EphemeralButtonContextMenuOption::kCloseSidePanel
+             : EphemeralButtonContextMenuOption::kHideSidePanel;
 }
 
 // Automatically dismisses the ephemeral contextual tasks toolbar button and
@@ -189,6 +215,40 @@ bool ShouldUseGraySuperGIconForPinButtons() {
   return base::FeatureList::IsEnabled(kContextualTasksUnifyPinButtonLogos) &&
          kContextualTasksUnifyPinButtonLogoOption.Get() ==
              UnifyPinButtonLogoOption::kGraySuperG;
+}
+
+// Replaces "Google Search AI Mode" across Contextual Tasks pinning, tooltips,
+// IPH, and tutorial strings with the selected string variant.
+BASE_FEATURE(kContextualTasksPinningStringVariants,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// LINT.IfChange(PinningStringVariant)
+constexpr base::FeatureParam<PinningStringVariant>::Option
+    kContextualTasksPinningStringVariantOptions[] = {
+        {PinningStringVariant::kAiMode, "ai-mode"},
+        {PinningStringVariant::kSidePanel, "side-panel"},
+        {PinningStringVariant::kInSidePanel, "in-side-panel"},
+        {PinningStringVariant::kInChrome, "in-chrome"},
+        {PinningStringVariant::kPanel, "panel"},
+};
+// LINT.ThenChange(
+//   //chrome/browser/about_flags.cc:PinningStringVariant,
+//   //components/contextual_tasks/public/features.cc:PinningStringVariantDescription,
+//   //components/contextual_tasks/public/features.h:PinningStringVariant
+// )
+
+constexpr base::FeatureParam<PinningStringVariant>
+    kContextualTasksPinningStringVariant(
+        &kContextualTasksPinningStringVariants,
+        "ContextualTasksPinningStringVariant",
+        PinningStringVariant::kAiMode,
+        &kContextualTasksPinningStringVariantOptions);
+
+PinningStringVariant GetContextualTasksPinningStringVariant() {
+  if (!base::FeatureList::IsEnabled(kContextualTasksPinningStringVariants)) {
+    return PinningStringVariant::kAiMode;
+  }
+  return kContextualTasksPinningStringVariant.Get();
 }
 
 // Enables relevant context determination for contextual tasks.
@@ -1371,6 +1431,20 @@ const char kContextualTasksUnifyPinButtonLogosDescription[] =
     "Unifies the logo (Spark, Super G, or Gray Super G) used across the "
     "Contextual Tasks (Search in Chrome) permanent toolbar and ephemeral pin "
     "buttons.";
+
+// LINT.IfChange(PinningStringVariantDescription)
+const char kContextualTasksPinningStringVariantsName[] =
+    "Contextual Tasks Pinning String Variants";
+const char kContextualTasksPinningStringVariantsDescription[] =
+    "Selects the user-facing string variant ('Google Search AI Mode', "
+    "'Google Search side panel', 'Google Search in side panel', "
+    "'Google Search in Chrome', or 'Google Search panel') used across "
+    "Contextual Tasks pinning, tooltips, IPH, and tutorial strings.";
+// LINT.ThenChange(
+//   //chrome/browser/about_flags.cc:PinningStringVariant,
+//   //components/contextual_tasks/public/features.cc:PinningStringVariant,
+//   //components/contextual_tasks/public/features.h:PinningStringVariant
+// )
 
 const char kABASearchJourneysName[] = "ABA Search Journeys";
 const char kABASearchJourneysDescription[] =

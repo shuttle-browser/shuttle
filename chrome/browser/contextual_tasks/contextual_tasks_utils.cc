@@ -6,6 +6,7 @@
 
 #include <algorithm>
 
+#include "base/containers/fixed_flat_map.h"
 #include "base/feature_list.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/user_metrics.h"
@@ -44,12 +45,14 @@
 #include "chrome/browser/ui/contextual_search/tab_contextualization_controller.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
 #include "chrome/browser/ui/views/contextual_tasks/contextual_tasks_ephemeral_button_controller.h"
+#include "chrome/grit/branded_strings.h"
 #include "components/contextual_tasks/public/features.h"
 #include "components/lens/contextual_input.h"
 #include "components/omnibox/common/composebox_features.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/sessions/content/session_tab_helper.h"
 #include "components/sessions/core/session_id.h"
+#include "components/strings/grit/components_strings.h"
 #include "ui/actions/actions.h"
 #endif
 #include "chrome/common/webui_url_constants.h"
@@ -69,6 +72,7 @@
 #include "content/public/common/url_constants.h"
 #include "net/base/url_util.h"
 #include "third_party/lens_server_proto/aim_communication.pb.h"
+#include "third_party/lens_server_proto/search_communication.pb.h"
 #include "ui/base/device_form_factor.h"
 #include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
@@ -255,7 +259,12 @@ bool IsTabSharingEligible(Profile* profile) {
           kContextualTasksForceEntryPointEligibility)) {
     return true;
   }
-  if (!profile || profile->IsOffTheRecord()) {
+  if (!profile || (profile->IsOffTheRecord() &&
+                   !IsContextualTasksRearchitectureEnabled())) {
+    return false;
+  }
+  if (!contextual_search::ContextualSearchService::IsContextSharingEnabled(
+          profile->GetPrefs())) {
     return false;
   }
   auto* aim_service = AimEligibilityServiceFactory::GetForProfile(profile);
@@ -267,14 +276,12 @@ bool AreContextualTasksUpdatedEntryPointsEnabled(Profile* profile) {
   if (!base::FeatureList::IsEnabled(kContextualTasksUpdatedEntryPoints)) {
     return false;
   }
-  if (!profile) {
+  if (!CanShareTabContext(profile)) {
     return false;
   }
   auto* eligibility_manager =
       ContextualTasksEligibilityManager::GetForProfile(profile);
-  auto* aim_service = AimEligibilityServiceFactory::GetForProfile(profile);
-  return eligibility_manager && eligibility_manager->IsSidePanelAvailable() &&
-         aim_service && aim_service->IsAimEligible();
+  return eligibility_manager && eligibility_manager->IsSidePanelAvailable();
 }
 
 bool ShouldShowAskGoogleContextMenu(Profile* profile) {
@@ -295,7 +302,10 @@ bool ShouldUseContextualTasksContextMenuSubmenu(Profile* profile) {
 }
 
 bool CanShareTabContext(Profile* profile) {
-  if (!profile || profile->IsOffTheRecord() || !IsTabSharingEligible(profile)) {
+  if (!profile ||
+      (profile->IsOffTheRecord() &&
+       !IsContextualTasksRearchitectureEnabled()) ||
+      !IsTabSharingEligible(profile)) {
     return false;
   }
   return contextual_search::ContextualSearchService::IsContextSharingEnabled(
@@ -720,12 +730,24 @@ void UpdatePinButtonVisibilityState(BrowserWindowInterface* browser_window) {
             is_pinning_eligible ? actions::ActionPinnableState::kPinnable
                                 : actions::ActionPinnableState::kNotPinnable));
 
-    bool should_show_ephemeral = false;
-    if (auto* ephemeral_controller =
-            ContextualTasksEphemeralButtonController::From(browser_window)) {
-      should_show_ephemeral = ephemeral_controller->ShouldShowEphemeralButton();
+    if (!browser_window->GetProfile()->IsOffTheRecord()) {
+      // Unpinned toolbar presence is owned by `ShowActionEphemerallyInToolbar`;
+      // hiding `action_item` directly bypasses `AnimatingLayoutManager`
+      // fade-out and leaves a popped-out button queued for removal that
+      // resurrects if eligibility is restored before layout completes.
+      if (!GetEffectivePinState(browser_window->GetProfile())) {
+        action_item->SetVisible(true);
+        return;
+      }
+
+      bool should_show_ephemeral = false;
+      if (auto* ephemeral_controller =
+              ContextualTasksEphemeralButtonController::From(browser_window)) {
+        should_show_ephemeral =
+            ephemeral_controller->ShouldShowEphemeralButton();
+      }
+      action_item->SetVisible(is_pinning_eligible || should_show_ephemeral);
     }
-    action_item->SetVisible(is_pinning_eligible || should_show_ephemeral);
     return;
   }
 
@@ -739,6 +761,80 @@ void UpdatePinButtonVisibilityState(BrowserWindowInterface* browser_window) {
         action_item->SetVisible(is_pinning_eligible);
       }
     }
+  }
+}
+
+int GetContextualTasksPinningStringId(int default_resource_id) {
+  const auto variant = GetContextualTasksPinningStringVariant();
+  if (variant == PinningStringVariant::kAiMode) {
+    return default_resource_id;
+  }
+
+  struct VariantIds {
+    int side_panel;
+    int in_side_panel;
+    int in_chrome;
+    int panel;
+  };
+#define CONTEXTUAL_TASKS_PINNING_STRING_VARIANTS(base_id)        \
+  {                                                              \
+    base_id, {                                                   \
+      base_id##_SIDE_PANEL, base_id##_IN_SIDE_PANEL,             \
+          base_id##_IN_CHROME, base_id##_PANEL                   \
+    }                                                            \
+  }
+  static constexpr auto kVariants =
+      base::MakeFixedFlatMap<int, VariantIds>({
+          CONTEXTUAL_TASKS_PINNING_STRING_VARIANTS(
+              IDS_CONTEXTUAL_TASKS_CUSTOMIZE_CHROME_LABEL),
+          CONTEXTUAL_TASKS_PINNING_STRING_VARIANTS(
+              IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CLOSE_TOOL_TIP),
+          CONTEXTUAL_TASKS_PINNING_STRING_VARIANTS(
+              IDS_CONTEXTUAL_TASKS_SIDE_PANEL_REOPEN_TOOL_TIP),
+          CONTEXTUAL_TASKS_PINNING_STRING_VARIANTS(
+              IDS_SIDE_PANEL_CONTEXTUAL_TASKS_PINNABLE_IPH),
+          CONTEXTUAL_TASKS_PINNING_STRING_VARIANTS(
+              IDS_CONTEXTUAL_TASKS_EPHEMERAL_TOOLBAR_BUTTON_IPH),
+          CONTEXTUAL_TASKS_PINNING_STRING_VARIANTS(
+              IDS_CONTEXTUAL_TASKS_EPHEMERAL_TOOLBAR_BUTTON_IPH_SCREENREADER),
+          CONTEXTUAL_TASKS_PINNING_STRING_VARIANTS(
+              IDS_CONTEXTUAL_TASKS_PINNED_ICON_CHANGED_IPH),
+          CONTEXTUAL_TASKS_PINNING_STRING_VARIANTS(
+              IDS_CONTEXTUAL_TASKS_PINNED_ICON_CHANGED_IPH_SCREENREADER),
+          CONTEXTUAL_TASKS_PINNING_STRING_VARIANTS(
+              IDS_TUTORIAL_CONTEXTUAL_TASKS_STEP3),
+      });
+#undef CONTEXTUAL_TASKS_PINNING_STRING_VARIANTS
+
+  const auto it = kVariants.find(default_resource_id);
+  if (it == kVariants.end()) {
+    return default_resource_id;
+  }
+
+  switch (variant) {
+    case PinningStringVariant::kAiMode:
+      return default_resource_id;
+    case PinningStringVariant::kSidePanel:
+      return it->second.side_panel;
+    case PinningStringVariant::kInSidePanel:
+      return it->second.in_side_panel;
+    case PinningStringVariant::kInChrome:
+      return it->second.in_chrome;
+    case PinningStringVariant::kPanel:
+      return it->second.panel;
+  }
+}
+
+int GetContextualTasksEphemeralButtonContextMenuCloseTextId() {
+  switch (GetEphemeralButtonContextMenuOption()) {
+    case EphemeralButtonContextMenuOption::kHideSidePanel:
+      return IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CONTEXT_MENU_REMOVE;
+    case EphemeralButtonContextMenuOption::kCloseSidePanel:
+      return IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CONTEXT_MENU_CLOSE;
+    case EphemeralButtonContextMenuOption::kDismissActiveSearch:
+      return IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CONTEXT_MENU_DISMISS_ACTIVE_SEARCH;
+    case EphemeralButtonContextMenuOption::kDismissActiveSearchInTab:
+      return IDS_CONTEXTUAL_TASKS_EPHEMERAL_BUTTON_CONTEXT_MENU_DISMISS_ACTIVE_SEARCH_IN_TAB;
   }
 }
 #endif
@@ -759,6 +855,17 @@ lens::ClientToAimMessage GetHandshakeMessageProto() {
     ping->add_capabilities(lens::FeatureCapability::UNLOCK_INPUT);
     ping->add_capabilities(lens::FeatureCapability::LOCK_INPUT);
   }
+  return message;
+}
+
+lens::ClientToSearchMessage GetSearchHandshakeMessageProto(Profile* profile) {
+  lens::ClientToSearchMessage message;
+  lens::ClientToSearchMessage::HandshakePing* ping =
+      message.mutable_handshake_ping();
+  if (CanShareTabContext(profile)) {
+    ping->add_capabilities(lens::ClientToSearchMessage::HandshakePing::TABS);
+  }
+  ping->add_capabilities(lens::ClientToSearchMessage::HandshakePing::LENS);
   return message;
 }
 

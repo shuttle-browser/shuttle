@@ -1194,7 +1194,7 @@ class ContextualTasksContextMenuAskGoogleInteractiveUiTest
 //  (3) User selects the "Ask Google about this page" item from the context
 //      menu.
 //  (4) The Contextual Tasks side panel opens in zero state with the
-//      kContentAreaContextMenuPage invocation source.
+//      kContentAreaContextMenuPageAskGoogle invocation source.
 // Disabled on Mac because the Mac interaction test util implementation does
 // not support selecting an item in the native context menu.
 #if BUILDFLAG(IS_MAC)
@@ -1206,6 +1206,8 @@ class ContextualTasksContextMenuAskGoogleInteractiveUiTest
 #endif
 IN_PROC_BROWSER_TEST_P(ContextualTasksContextMenuAskGoogleInteractiveUiTest,
                        MAYBE_AskGoogleContextMenuClickOpensSidePanel) {
+  SkipIfIncognito(
+      "Ask Google entry points are not supported in Incognito mode.");
   WaitForTemplateURLServiceToLoad();
   SidePanelUI::From(browser())->DisableAnimationsForTesting();
 
@@ -1276,20 +1278,22 @@ IN_PROC_BROWSER_TEST_P(ContextualTasksContextMenuAskGoogleInteractiveUiTest,
             }
             return session_handle->invocation_source();
           },
-          std::make_optional(
-              lens::LensOverlayInvocationSource::kContentAreaContextMenuPage),
-          "Side panel session has kContentAreaContextMenuPage invocation "
-          "source"));
+          std::make_optional(lens::LensOverlayInvocationSource::
+                                 kContentAreaContextMenuPageAskGoogle),
+          "Side panel session has kContentAreaContextMenuPageAskGoogle "
+          "invocation source"));
 }
 
 // This tests the following CUJ:
 //  (1) User navigates to a webpage.
 //  (2) User clicks the 3-dot app menu button on the browser toolbar.
 //  (3) User selects the "Ask Google about this page" item from the app menu.
-//  (4) The Contextual Tasks side panel opens in zero state with the kAppMenu
-//      invocation source.
+//  (4) The Contextual Tasks side panel opens in zero state with the
+//      kAppMenuAskGoogle invocation source.
 IN_PROC_BROWSER_TEST_P(ContextualTasksContextMenuAskGoogleInteractiveUiTest,
                        AskGoogleAppMenuClickOpensSidePanel) {
+  SkipIfIncognito(
+      "Ask Google entry points are not supported in Incognito mode.");
   WaitForTemplateURLServiceToLoad();
   SidePanelUI::From(browser())->DisableAnimationsForTesting();
 
@@ -1359,8 +1363,9 @@ IN_PROC_BROWSER_TEST_P(ContextualTasksContextMenuAskGoogleInteractiveUiTest,
             }
             return session_handle->invocation_source();
           },
-          std::make_optional(lens::LensOverlayInvocationSource::kAppMenu),
-          "Side panel session has kAppMenu invocation source"));
+          std::make_optional(
+              lens::LensOverlayInvocationSource::kAppMenuAskGoogle),
+          "Side panel session has kAppMenuAskGoogle invocation source"));
 }
 
 // This tests the following CUJ:
@@ -1474,7 +1479,7 @@ class ContextualTasksContextMenuSubmenuInteractiveUiTest
 //  (3) User opens the Contextual Tasks submenu and selects "Ask Google about
 //      this page".
 //  (4) The Contextual Tasks side panel opens in zero state with the
-//      kContentAreaContextMenuPage invocation source.
+//      kContentAreaContextMenuPageAskGoogle invocation source.
 // Disabled on Mac because the Mac interaction test util implementation does
 // not support selecting an item in the native context menu.
 #if BUILDFLAG(IS_MAC)
@@ -1486,6 +1491,8 @@ class ContextualTasksContextMenuSubmenuInteractiveUiTest
 #endif
 IN_PROC_BROWSER_TEST_P(ContextualTasksContextMenuSubmenuInteractiveUiTest,
                        MAYBE_AskGoogleSubmenuItemClickOpensSidePanel) {
+  SkipIfIncognito(
+      "Ask Google entry points are not supported in Incognito mode.");
   WaitForTemplateURLServiceToLoad();
   SidePanelUI::From(browser())->DisableAnimationsForTesting();
 
@@ -1556,10 +1563,10 @@ IN_PROC_BROWSER_TEST_P(ContextualTasksContextMenuSubmenuInteractiveUiTest,
             }
             return session_handle->invocation_source();
           },
-          std::make_optional(
-              lens::LensOverlayInvocationSource::kContentAreaContextMenuPage),
-          "Side panel session has kContentAreaContextMenuPage invocation "
-          "source"));
+          std::make_optional(lens::LensOverlayInvocationSource::
+                                 kContentAreaContextMenuPageAskGoogle),
+          "Side panel session has kContentAreaContextMenuPageAskGoogle "
+          "invocation source"));
 }
 
 // This tests the following CUJ:
@@ -1567,10 +1574,12 @@ IN_PROC_BROWSER_TEST_P(ContextualTasksContextMenuSubmenuInteractiveUiTest,
 //  (2) User clicks the 3-dot app menu button on the browser toolbar.
 //  (3) User opens the Contextual Tasks submenu and selects "Ask Google about
 //      this page".
-//  (4) The Contextual Tasks side panel opens in zero state with the kAppMenu
-//      invocation source.
+//  (4) The Contextual Tasks side panel opens in zero state with the
+//      kAppMenuAskGoogle invocation source.
 IN_PROC_BROWSER_TEST_P(ContextualTasksContextMenuSubmenuInteractiveUiTest,
                        AskGoogleAppMenuSubmenuItemClickOpensSidePanel) {
+  SkipIfIncognito(
+      "Ask Google entry points are not supported in Incognito mode.");
   WaitForTemplateURLServiceToLoad();
   SidePanelUI::From(browser())->DisableAnimationsForTesting();
 
@@ -1641,8 +1650,9 @@ IN_PROC_BROWSER_TEST_P(ContextualTasksContextMenuSubmenuInteractiveUiTest,
             }
             return session_handle->invocation_source();
           },
-          std::make_optional(lens::LensOverlayInvocationSource::kAppMenu),
-          "Side panel session has kAppMenu invocation source"));
+          std::make_optional(
+              lens::LensOverlayInvocationSource::kAppMenuAskGoogle),
+          "Side panel session has kAppMenuAskGoogle invocation source"));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1701,6 +1711,8 @@ class ContextualTasksContextMenuRouteOmniboxInteractiveUiTest
 #endif
 IN_PROC_BROWSER_TEST_P(ContextualTasksContextMenuRouteOmniboxInteractiveUiTest,
                        MAYBE_AskGoogleContextMenuClickOpensOmnibox) {
+  SkipIfIncognito(
+      "Ask Google entry points are not supported in Incognito mode.");
   DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kTabId);
 
   const GURL page_url =
@@ -1741,6 +1753,8 @@ IN_PROC_BROWSER_TEST_P(ContextualTasksContextMenuRouteOmniboxInteractiveUiTest,
 //  (3) The Omnibox popup opens in AIM mode (OmniboxPopupState::kAim).
 IN_PROC_BROWSER_TEST_P(ContextualTasksContextMenuRouteOmniboxInteractiveUiTest,
                        AskGoogleAppMenuClickOpensOmnibox) {
+  SkipIfIncognito(
+      "Ask Google entry points are not supported in Incognito mode.");
   DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kTabId);
 
   const GURL page_url =

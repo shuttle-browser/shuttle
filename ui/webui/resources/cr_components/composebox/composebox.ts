@@ -113,10 +113,7 @@ export class ComposeboxElement extends ComposeboxEmbedderMixin
         type: Boolean,
         reflect: true,
       },
-      isFollowupQuery: {type: Boolean},
-      enableFileHint: {type: Boolean},
       isSidePanel: {type: Boolean},
-      inputPlaceholderOverride: {type: String},
       // Must be property so can pass it down to children.
       searchboxCallbackRouter_: {type: Object},
       applyContextButtonBackground: {
@@ -127,9 +124,6 @@ export class ComposeboxElement extends ComposeboxEmbedderMixin
   }
 
   accessor isSidePanel: boolean = false;
-  accessor isFollowupQuery: boolean = false;
-  accessor enableFileHint: boolean = false;
-  accessor inputPlaceholderOverride: string = '';
   accessor disableComposeboxAnimation: boolean = false;
   accessor observeResize: boolean = true;
   accessor lensButtonTriggersOverlay: boolean = false;
@@ -154,6 +148,11 @@ export class ComposeboxElement extends ComposeboxEmbedderMixin
   private get webUIOmniboxAskGAboutThisPageEnabled_(): boolean {
     return loadTimeData.valueExists('webUIOmniboxAskGAboutThisPageEnabled') &&
         loadTimeData.getBoolean('webUIOmniboxAskGAboutThisPageEnabled');
+  }
+  private get contextualTasksUpdatedEntryPointsEnabled_(): boolean {
+    return loadTimeData.valueExists(
+               'contextualTasksUpdatedEntryPointsEnabled') &&
+        loadTimeData.getBoolean('contextualTasksUpdatedEntryPointsEnabled');
   }
   private pageHandler_: PageHandlerRemote;
   private searchboxHandler_: SearchboxPageHandlerRemote;
@@ -299,11 +298,6 @@ export class ComposeboxElement extends ComposeboxEmbedderMixin
       this.applyContextButtonBackground = hasBackground && !inToolMode;
     }
 
-    if (changedProperties.has('inputPlaceholderOverride') ||
-        changedProperties.has('enableFileHint')) {
-      this.updateInputPlaceholder();
-    }
-
     // If it is the first render, or 'entrypointName' has changed from its default.
     if (!this.hasUpdated || changedProperties.has('entrypointName')) {
       this.voiceSearchCoherenceEnabled =
@@ -362,35 +356,6 @@ export class ComposeboxElement extends ComposeboxEmbedderMixin
     this.expanding_ = expanding;
   }
 
-  // Default logic moved to mixin. This override is for contextual_tasks.
-  override hasValidQuery(): boolean {
-    // If there is at least one file that supports unimodal search, query is
-    // valid.
-    if (this.attachedContext.values().find(
-            (file: ComposeboxFile) => file.supportsUnimodal)) {
-      return true;
-    }
-
-    // If an autocomplete match is selected, it's a valid query.
-    if (this.selectedMatchIndex >= 0 && !!this.result) {
-      return true;
-    }
-
-    if (this.input.trim().length > 0) {
-      return true;
-    }
-
-    // TODO(crbug.com/485648942): Update to drive Deep Search behavior from the
-    //   PEC API's ToolSubstateConfig.
-    // Allow empty query for Deep Search follow-ups.
-    if (this.inputState?.activeTool === ToolMode.kDeepSearch &&
-        this.isFollowupQuery) {
-      return true;
-    }
-
-    return false;
-  }
-
   // TODO(crbug.com/486706573): common logic moved to mixin. Move embedder
   // specific logic to the embedder class (contextual_tasks).
   override deleteFile(uuidToDelete: UnguessableToken, fromUserAction?: boolean):
@@ -447,12 +412,18 @@ export class ComposeboxElement extends ComposeboxEmbedderMixin
       }
       return;
     }
-    // AutoSuggestedTabContext is routed differently for Omnibox Page Action.
-    // when it opens a side panel to cobrowse.
+    // AutoSuggestedTabContext is routed differently for Ask Google entry points
+    // (except homework action chip) when opening a side panel to cobrowse.
     // TODO(crbug.com/486707842): Move check to the
     // Contextual Tasks embedder.
-    const askGAndPageAction = this.webUIOmniboxAskGAboutThisPageEnabled_ &&
-        invocationSource === 'OmniboxPageAction' && this.isSidePanel;
+    const isOmniboxAskG = this.webUIOmniboxAskGAboutThisPageEnabled_ &&
+        invocationSource === 'OmniboxPageAction';
+    const isUpdatedEntryPoint =
+        this.contextualTasksUpdatedEntryPointsEnabled_ &&
+        (invocationSource === 'ContentAreaContextMenuPageAskGoogle' ||
+         invocationSource === 'AppMenuAskGoogle');
+    const askGAndPageAction =
+        (isOmniboxAskG || isUpdatedEntryPoint) && this.isSidePanel;
 
     // We should delete the automatic active tab if it is different from the
     // current tab when webUIOmniboxAskGAboutThisPageEnabled_ is true. Make sure
@@ -590,42 +561,6 @@ export class ComposeboxElement extends ComposeboxEmbedderMixin
     e.preventDefault();
   }
 
-  // TODO(crbug.com/486706573): Refactor this function and move the common logic
-  // to the mixin class. Move embedder specific logic to the embedder class.
-  override updateInputPlaceholder() {
-    if (this.inputPlaceholderOverride) {
-      this.inputPlaceholder = this.inputPlaceholderOverride;
-      return;
-    }
-
-    // The file hint should only be shown when there is context that was
-    // deliberately added by the user (i.e. not the automatic active tab).
-    const isOnlyAutoTab = this.attachedContext.size === 1
-        && !!this.automaticActiveTab;
-    const shouldUseFileHint = this.enableFileHint && this.hasFiles() &&
-        !isOnlyAutoTab && this.inputState?.activeTool === ToolMode.kUnspecified;
-    if (shouldUseFileHint) {
-      if (this.attachedContext.size > 1) {
-        this.inputPlaceholder = this.i18n('composeboxHintTextAskAboutThese');
-        return;
-      }
-      const file = this.attachedContext.values().next().value!;
-      if (file.type === 'tab') {
-        this.inputPlaceholder = this.i18n('composeboxHintTextAskAboutThisTab');
-        return;
-      } else if (file.type.includes('image')) {
-        this.inputPlaceholder =
-            this.i18n('composeboxHintTextAskAboutThisImage');
-        return;
-      } else if (file.type === 'pdf' || file.type === 'application/pdf') {
-        this.inputPlaceholder = this.i18n('composeboxHintTextAskAboutThisDoc');
-        return;
-      }
-    }
-
-    super.updateInputPlaceholder();
-  }
-
   protected onComposeboxFocusin_(e: FocusEvent) {
     // Exit early if the focus is still within the composebox.
     if (this.$.composebox.contains(e.relatedTarget as Node)) {
@@ -691,8 +626,6 @@ export class ComposeboxElement extends ComposeboxEmbedderMixin
   }
 
   override submitCleanup() {
-    // TODO: crbug.com/486707842 - Move to the Contextual Tasks embedder
-    this.cacheSubmittedTabs();
     if (this.isCollapsible) {
       this.clearAllInputs(/* querySubmitted= */ true,
                           /* shouldBlockAutoSuggestedTabs= */ false);

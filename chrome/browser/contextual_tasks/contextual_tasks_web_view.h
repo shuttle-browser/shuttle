@@ -10,6 +10,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/time/time.h"
 #include "components/web_modal/web_contents_modal_dialog_manager_delegate.h"
 #include "content/public/browser/media_stream_request.h"
 #include "content/public/browser/web_contents_delegate.h"
@@ -86,6 +87,13 @@ class ContextualTasksWebView
   // Returns whether the ghost loader overlay is currently visible.
   bool IsGhostLoaderVisible() const;
 
+  // Toggles the visibility of the protected page error scrim overlay.
+  void SetErrorPageVisible(bool visible);
+
+  // Returns whether the protected page error scrim overlay is currently
+  // visible.
+  bool IsErrorPageVisible() const;
+
   // views::View:
   void OnThemeChanged() override;
 
@@ -151,6 +159,16 @@ class ContextualTasksWebView
   void UpdateToolbarStateFromWebContents(content::WebContents* wc,
                                          bool use_last_committed_url = false);
 
+  // Synchronizes `ghost_loader_view_` mode and visibility with
+  // `is_ghost_loader_visible_` and `is_error_page_visible_`.
+  void UpdateScrimVisibility();
+
+  // Consumes and returns whether `source_rfh` has a valid transient user
+  // activation or a recent unconsumed browser-verified user interaction (when
+  // Blink already consumed the transient activation before sending `OpenURL()`,
+  // e.g. for Cmd+Click).
+  bool ConsumeUserActivation(content::RenderFrameHost* source_rfh);
+
   // The browser window interface associated with this view.
   raw_ptr<BrowserWindowInterface> browser_window_ = nullptr;
 
@@ -175,6 +193,15 @@ class ContextualTasksWebView
   // Whether the next DidStopLoading() corresponds to an initial or aborted
   // about:blank navigation that should not dismiss the ghost loader.
   bool ignore_next_stop_loading_for_about_blank_ = false;
+
+  // Desired visibility states for the ghost loader and protected page error
+  // scrims hosted in `ghost_loader_view_`.
+  bool is_ghost_loader_visible_ = false;
+  bool is_error_page_visible_ = false;
+
+  // Timestamp of the last browser-verified user interaction consumed by
+  // `ConsumeUserActivation()` to prevent replay.
+  base::TimeTicks last_consumed_interaction_time_;
 
   base::WeakPtrFactory<ContextualTasksWebView> weak_ptr_factory_{this};
 };

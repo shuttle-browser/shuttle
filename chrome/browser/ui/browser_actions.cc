@@ -251,6 +251,8 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/ui_base_features.h"
+#include "ui/gfx/geometry/size.h"
+#include "ui/gfx/image/image_skia_operations.h"
 #include "ui/gfx/text_utils.h"
 #include "ui/gfx/vector_icon_types.h"
 #include "ui/menus/simple_menu_model.h"
@@ -682,8 +684,10 @@ void BrowserActions::InitializeSidePanelActions() {
     if (contextual_tasks::ShouldUseSuperGIconForPinButtons()) {
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
       contextual_tasks_image = ui::ImageModel::FromImageSkia(
-          *ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(
-              IDR_GOOGLE_G_GRADIENT_16_ALT));
+          gfx::ImageSkiaOperations::CreateResizedImage(
+              *ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(
+                  IDR_GOOGLE_G_GRADIENT_20),
+              skia::ImageOperations::RESIZE_BEST, gfx::Size(18, 18)));
 #else
       contextual_tasks_image = ui::ImageModel::FromVectorIcon(
           vector_icons::kGoogleColorIcon, ui::kColorIcon);
@@ -697,6 +701,9 @@ void BrowserActions::InitializeSidePanelActions() {
           vector_icons::kGoogleColorIcon, ui::kColorIcon);
 #endif
     }
+    const std::u16string contextual_tasks_label = l10n_util::GetStringUTF16(
+        contextual_tasks::GetContextualTasksPinningStringId(
+            IDS_CONTEXTUAL_TASKS_CUSTOMIZE_CHROME_LABEL));
     root_action_item_->AddChild(
         actions::ActionItem::Builder(
             base::BindRepeating(
@@ -805,10 +812,8 @@ void BrowserActions::InitializeSidePanelActions() {
                 },
                 bwi))
             .SetActionId(kActionSidePanelShowContextualTasks)
-            .SetText(l10n_util::GetStringUTF16(
-                IDS_CONTEXTUAL_TASKS_CUSTOMIZE_CHROME_LABEL))
-            .SetTooltipText(l10n_util::GetStringUTF16(
-                IDS_CONTEXTUAL_TASKS_CUSTOMIZE_CHROME_LABEL))
+            .SetText(contextual_tasks_label)
+            .SetTooltipText(contextual_tasks_label)
             .SetImage(contextual_tasks_image)
             .SetProperty(
                 actions::kActionItemPinnableKey,
@@ -3810,7 +3815,7 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
                 chrome::ExecAskGoogleAboutThisPage(
                     bwi,
                     lens::LensOverlayInvocationSource::
-                        kContentAreaContextMenuPage,
+                        kContentAreaContextMenuPageAskGoogle,
                     omnibox::ChromeAimEntryPoint::
                         DESKTOP_CHROME_PAGE_CONTEXT_MENU_ASK_GOOGLE);
               },
@@ -4368,7 +4373,7 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
                   return;
                 }
                 chrome::ExecAskGoogleAboutThisPage(
-                    bwi, lens::LensOverlayInvocationSource::kAppMenu,
+                    bwi, lens::LensOverlayInvocationSource::kAppMenuAskGoogle,
                     omnibox::ChromeAimEntryPoint::
                         DESKTOP_CHROME_APP_MENU_ASK_GOOGLE);
               },

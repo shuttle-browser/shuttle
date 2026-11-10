@@ -101,6 +101,7 @@
 <translation id="1291506870746876680">Die Berechtigungen für <ph name="BEGIN_BOLD" /><ph name="SITE_NAME" /><ph name="END_BOLD" /> werden zurückgesetzt und damit deaktiviert, wenn du diese Website verlässt.</translation>
 <translation id="1293491796138057740">Deine Informationen werden im Google Wallet-Konto von <ph name="USER_EMAIL" /> gespeichert. Du kannst sie in allen Google-Produkten verwenden, um Formulare schneller auszufüllen.</translation>
 <translation id="1293556467332435079">Dateien</translation>
+<translation id="1294703224699789269">Es gelten unsere <ph name="BEGIN_LINK" />Nutzungsbedingungen<ph name="END_LINK" />, die <ph name="BEGIN_LINK" />Standortnutzungsbedingungen für Korea<ph name="END_LINK" /> und unsere <ph name="BEGIN_LINK" />Datenschutzhinweise<ph name="END_LINK" />. Chats werden geprüft und zum Trainieren generativer KI-Modelle verwendet. Gemini ist eine KI und kann Fehler machen, auch bei Informationen über Personen. Einige Inhalte sind möglicherweise nicht für alle Nutzer geeignet. Du kannst deinen <ph name="BEGIN_LINK" />Verlauf verwalten<ph name="END_LINK" />, einschließlich Informationen zu deinem Standort. <ph name="BEGIN_LINK" />Weitere Informationen zu möglichen Einstellungen<ph name="END_LINK" /></translation>
 <translation id="129553762522093515">Kürzlich geschlossen</translation>
 <translation id="1296581780163690620">Datei herunterladen? (<ph name="FILE_SIZE" />)</translation>
 <translation id="1300812261204968311">„Mit KI-Modus suchen“ abgeschlossen.</translation>
@@ -385,6 +386,7 @@
 <translation id="2104436223719117661">Trends bei Suchanfragen</translation>
 <translation id="21133533946938348">Tab anpinnen</translation>
 <translation id="2117650889962717098">Im Inkognitomodus bleiben deine Browsing-Aktivitäten privat</translation>
+<translation id="2119126821484134587">Damit Gemini dich individuell unterstützen kann, werden einige deiner Daten (z. B. Teile deiner Chats, dein Standort und andere relevante Informationen) an andere Google-Dienste wie Google Maps und Google Flüge weitergegeben. Diese Informationen können zur Verbesserung dieser Dienste verwendet werden, auch wenn du deinen Verlauf in Gemini-Apps später löschst. Weitere Informationen findest du im <ph name="BEGIN_LINK" />Privacy Hub für Gemini-Apps<ph name="END_LINK" />.</translation>
 <translation id="2119636449201577317">Öffnen in…</translation>
 <translation id="2119962645034852864">Einige Dienste sind für dein Konto nicht verfügbar</translation>
 <translation id="2120553909046681540">Deine Organisation hat das private Surfen deaktiviert.</translation>
@@ -392,7 +394,6 @@
 <translation id="2139867232736819575">Nach von dir kopiertem Text suchen</translation>
 <translation id="2140913838150159519">Tab anpinnen</translation>
 <translation id="2147127444698817042">Nur für iPhone</translation>
-<translation id="2148326276832455306">Chats werden geprüft und zur Verbesserung von Google AI verwendet. Du kannst deine <ph name="BEGIN_LINK" />Aktivitäten verwalten<ph name="END_LINK" />, einschließlich Informationen zu deinem Standort. <ph name="BEGIN_LINK" />Weitere Informationen zu möglichen Einstellungen<ph name="END_LINK" /></translation>
 <translation id="2148799636999124959">Zum schnellen Anmelden auf Websites und in Apps.</translation>
 <translation id="2149968176347646218">Verbindung ist nicht sicher</translation>
 <translation id="2149973817440762519">Lesezeichen bearbeiten</translation>
@@ -458,7 +459,6 @@
 <translation id="2327445548174191329">Von <ph name="DEVICE_NAME" /></translation>
 <translation id="2330607597130465898">Kein Safe Browsing</translation>
 <translation id="233375395665273385">Löschen und abmelden</translation>
-<translation id="2340966584724330791">Google erhebt Daten aus deinen Chats sowie die von dir mit Gemini geteilten Inhalte (z. B. Dateien, Videos, Bildschirminhalte und Fotos). Außerdem werden dein Feedback, Daten der Websites, die du mit Gemini besuchst, Informationen zur Produktnutzung und Standortinformationen (z. B. der ungefähre Ort deines Geräts, deine IP‑Adresse oder die in deinem Google-Konto hinterlegte Privat- oder Arbeitsadresse) aufgezeichnet.</translation>
 <translation id="2350463587705616331">Hintergrund in Sepia</translation>
 <translation id="2351097562818989364">Übersetzungseinstellungen zurückgesetzt</translation>
 <translation id="2353784052777482798">{COUNT,plural, =1{Du kannst dein Passwort für {DOMAIN_ONE} in deinem Google-Konto ({EMAIL}) speichern.}=2{Du kannst deine Passwörter für {DOMAIN_ONE} und {DOMAIN_TWO} in deinem Google-Konto ({EMAIL}) speichern.}=3{Du kannst deine Passwörter für {DOMAIN_ONE}, {DOMAIN_TWO} und {OTHER_DOMAINS_COUNT} weitere Domain in deinem Google-Konto {EMAIL} speichern.}other{Du kannst deine Passwörter für {DOMAIN_ONE}, {DOMAIN_TWO} und {OTHER_DOMAINS_COUNT} weitere Domains in deinem Google-Konto ({EMAIL}) speichern}}</translation>
@@ -671,6 +671,7 @@
 <translation id="3038136505713492417">Bestätige deine Identität, um deine Passkeys auf diesem Gerät verwenden zu können</translation>
 <translation id="3039671569659952257">Ordner löschen</translation>
 <translation id="3041835740069544003">Chrome kann jetzt dank der optimierten Formularbearbeitung noch mehr Formulare erkennen und ausfüllen. Dazu können Seiteninhalte und URLs in einem vertraulichen Profil in der Cloud verarbeitet werden. Du kannst diese Funktion in den Einstellungen verwalten.</translation>
+<translation id="3042118633250374317">Google verwendet deinen Verlauf, um seine Dienste bereitzustellen, Google, seine Nutzer und die Öffentlichkeit zu schützen sowie seine Dienste mithilfe von menschlichen Prüfern weiterzuentwickeln und zu verbessern. Gib also keine Informationen ein, die nicht überprüft oder verwendet werden sollen.</translation>
 <translation id="3050988301648974170">Passwortcheck öffnen</translation>
 <translation id="3053332585453689122">Sendet die URLs der von dir besuchten Websites sowie eine kleine Auswahl an Seiteninhalten, Downloads, Erweiterungsaktivitäten und Systeminformationen an Google Safe Browsing, um zu prüfen, ob die URLs schädlich sind.</translation>
 <translation id="3055102495753300780">Datenspeicherung</translation>
@@ -720,6 +721,7 @@
 <translation id="3186796054637504691">Verlauf und Websitedaten löschen</translation>
 <translation id="3190558889382726167">Passwort gespeichert</translation>
 <translation id="3190736958609431397">Nicht mehr beobachten</translation>
+<translation id="3192820089569442694">Bei deiner Anfrage zur Deaktivierung der Datennutzung ist ein Fehler aufgetreten</translation>
 <translation id="3208260410153224535">Deine Organisation hat die Anmeldung deaktiviert. Neue Lesezeichen, Passwörter und weitere Informationen werden nur auf diesem Gerät gespeichert.</translation>
 <translation id="3211969308836412674">Website loslösen</translation>
 <translation id="3213807041830307252">Per Kamera und Fotogalerie kannst du das, was du siehst, kaufen, übersetzen oder identifizieren.</translation>
@@ -741,7 +743,6 @@
 <translation id="3265736395246760288">Du kannst dich auf allen deinen synchronisierten Geräten schneller anmelden.</translation>
 <translation id="3268166994745151153">Das bedeutet, dass dein aktueller Fortschritt verloren geht</translation>
 <translation id="3272527697863656322">Abbrechen</translation>
-<translation id="3272955648592358996">Deine Daten verbessern Google AI</translation>
 <translation id="3273510436356991673">Startbildschirm personalisieren</translation>
 <translation id="327455571215090823">Nutze die Cloud – für eine smartere „Autofill“-Funktion</translation>
 <translation id="3277021493514034324">Websiteadresse kopiert</translation>
@@ -787,6 +788,7 @@
 <translation id="344589138074534176">Weitere Informationen zu Google Lens</translation>
 <translation id="3449029510150690417">Erstelle eine neue Tabgruppe, indem du ihr einen Namen und eine Farbe gibst</translation>
 <translation id="345348365500626747">Adresse gefunden</translation>
+<translation id="3453878468834191501">Der aktuelle Tab wird mit Gemini geteilt, wenn du einen neuen Chat startest. <ph name="BEGIN_LINK" />Weitere Informationen zu KI und Datenschutz<ph name="END_LINK" /></translation>
 <translation id="3459644598174926977">Du kannst ganz natürliche Unterhaltungen mit Gemini Live führen, um Fragen zu einer Seite zu stellen oder Ideen zu sammeln.</translation>
 <translation id="3462768334899086950">Das bedeutet, dass deine ungespeicherte Datei und deine aktuellen Tabs verloren gehen</translation>
 <translation id="3464194322481586217">Preis kann nicht beobachtet werden.</translation>
@@ -917,7 +919,6 @@
 <translation id="3888863481921783344">Dadurch werden dir Personen angezeigt, die du zu deinem Termin einladen kannst.</translation>
 <translation id="3891414008432200754">Preis</translation>
 <translation id="3892144330757387737">Hier wird dein Verlauf angezeigt</translation>
-<translation id="3892695492576181257">Wenn diese Option aktiviert ist, werden deine Aktivitäten im Aktivitätsverlauf in Gemini-Apps 18 Monate lang gespeichert. Du kannst den Zeitraum auf 3 oder 36 Monate ändern. Google nutzt deine Aktivitäten, um Google-Dienste (einschließlich Gemini-Modelle) zu entwickeln und zu verbessern, und um Google, seine Nutzer und die Öffentlichkeit mithilfe von Prüfern zu schützen. Von Dienstanbietern überprüfte Daten werden von deinem Konto getrennt und 3 Jahre lang gespeichert.</translation>
 <translation id="3893858854379998374">Wenn du neue Lesezeichen in deinem Konto speichern möchtest, lösche deine nicht verwendeten Lesezeichen</translation>
 <translation id="3897092660631435901">Menü</translation>
 <translation id="3904270275864974753">Karussell bearbeiten</translation>
@@ -1112,6 +1113,7 @@
 <translation id="4488754974567924717">Wenn deine Passwörter gehackt werden, informieren wir dich darüber</translation>
 <translation id="4489536976005181779">{count,plural, =1{Die Seite wurde der Leseliste in deinem Konto {email} hinzugefügt}other{Die Seiten wurden der Leseliste in deinem Konto {email} hinzugefügt}}</translation>
 <translation id="4493604894403585654">Du bist als <ph name="USER_EMAIL" /> angemeldet. Du kannst die Synchronisierung jederzeit in den Einstellungen beenden. Google kann die Google Suche und andere Dienste auf der Grundlage deines Verlaufs personalisieren.</translation>
+<translation id="4495251723189610737">Deine Chats werden in deinem Gemini-Verlauf gespeichert. Der Verlauf umfasst deine Audioaufnahmen, Gemini Live-Videos und ‑Bildschirmfreigaben, Inhalte, die du mit Gemini teilst (z. B. Prompts, <ph name="BEGIN_LINK" />Uploads<ph name="END_LINK" /> und <ph name="BEGIN_LINK" />Bildschirme<ph name="END_LINK" />), Antworten von Gemini, Aufgaben und Toolaufrufe, Feedback, Informationen von Websites, die du mit Gemini besuchst, Daten zur Produktnutzung, den ungefähren Ort deines Geräts, deine IP-Adresse sowie die in deinem Google-Konto hinterlegte Privat- oder Arbeitsadresse. Es können auch Daten aus Apps enthalten sein, die du mit Gemini verbindest.</translation>
 <translation id="4502423230170890588">Von diesem Gerät entfernen</translation>
 <translation id="4508486880075514067">Auf Vollbild maximieren</translation>
 <translation id="4508750114462689118">Anmeldeangebot schließen</translation>
@@ -1200,6 +1202,7 @@
 <translation id="4759238208242260848">Downloads</translation>
 <translation id="4764612367328936189">Deine Organisation lässt die Anmeldung nur mit bestimmten Konten zu. Unzulässige Konten sind ausgeblendet. <ph name="BEGIN_LINK" />Weitere Informationen<ph name="END_LINK" /></translation>
 <translation id="4769198578611055647">Mit dieser PIN kannst du von jedem Gerät auf deine gespeicherten Passkeys zugreifen</translation>
+<translation id="476946043193006313">Deine Aktivitäten helfen beim Trainieren generativer KI</translation>
 <translation id="4782952780741793211">Bestätigungscode:</translation>
 <translation id="4787847736989526091"><ph name="VALUE" />, <ph name="ADDITIONAL_INFO" /></translation>
 <translation id="478808905805139173">Im Inkognitomodus öffnen?</translation>
@@ -1216,6 +1219,7 @@
 <translation id="4808744395915275922">Updates</translation>
 <translation id="4813345808229079766">Verbindung</translation>
 <translation id="4821595350501541683">Tabs wurden geschlossen und Browserdaten gelöscht</translation>
+<translation id="4821645169621230110">Wie dein Verlauf verwendet wird</translation>
 <translation id="4823322556950229674">Wenn du die Adressleiste und den Button „Zurück“ gedrückt hältst, kannst du beide Elemente nach unten verschieben</translation>
 <translation id="4824480232751123840">Lautstärke</translation>
 <translation id="4824497107140370669">{count,plural, =0{{domain}}=1{{domain} und ein weiterer}other{{domain} und {count} weitere}}</translation>
@@ -1243,6 +1247,7 @@
 <translation id="4877597489778380935">Später erinnern</translation>
 <translation id="4881695831933465202">Öffnen</translation>
 <translation id="4883766694719903356">Inkognito-Tabraster</translation>
+<translation id="4884205780547482830">Deine Daten helfen beim Trainieren generativer KI</translation>
 <translation id="4884937942297374058">Erweiterter Schutz ist deaktiviert</translation>
 <translation id="4887391901725877182">Untertitelung</translation>
 <translation id="488785315393301722">Details ansehen</translation>
@@ -1428,7 +1433,6 @@
 <translation id="5447973833955560753">Wiederherstellungspasswort</translation>
 <translation id="5448623529214315261">Foto „<ph name="INDEX" />“ gespeichert</translation>
 <translation id="5452354193031718372">Starkes Passwort verwenden:</translation>
-<translation id="5453088693079603292">Welche Aktivitäten werden aufgezeichnet?</translation>
 <translation id="5454211924362324495">Wenn du verhindern möchtest, dass andere dein Passwort verwenden, <ph name="BEGIN_LINK" />ändere es auf <ph name="WEBSITE" /><ph name="END_LINK" /></translation>
 <translation id="5457082343331641453">Suchanfrage ergänzen</translation>
 <translation id="5457226814769348910">Offlineversion öffnen</translation>
@@ -1542,7 +1546,6 @@ Handoff muss auch im Abschnitt „Allgemein“ deiner Einstellungen aktiviert se
 <translation id="5801568494490449797">Einstellungen</translation>
 <translation id="5803566855766646066">Möchtest du diese neue Karte wirklich verwerfen?</translation>
 <translation id="5804241973901381774">Berechtigungen</translation>
-<translation id="58081802114142635">Google AI lernt von deinen Aktivitäten</translation>
 <translation id="5817176759448082654">Passwortcheck</translation>
 <translation id="5818161931099046557">Im Google-Konto bearbeiten</translation>
 <translation id="5819208479324046259">Verwaltet von <ph name="MANAGER" />. <ph name="BEGIN_LINK" />Weitere Informationen<ph name="END_LINK" /></translation>
@@ -1591,7 +1594,6 @@ Handoff muss auch im Abschnitt „Allgemein“ deiner Einstellungen aktiviert se
 <translation id="5971459446352190251">QR‑Code-Suche</translation>
 <translation id="5971872012779224351">{count,plural, =1{1 Lesezeichen gelöscht}other{{count} Lesezeichen gelöscht}}</translation>
 <translation id="5972844218283131174">Auswahl für alle aufheben</translation>
-<translation id="597482816780655631">Gemini ist eine KI und kann Fehler machen, auch bei Informationen über Personen. Einige Inhalte sind möglicherweise nicht für alle Nutzer geeignet. Chats werden geprüft und zur Verbesserung von Google AI verwendet. <ph name="BEGIN_LINK" />Hier findest du weitere Informationen zu möglichen Einstellungen.<ph name="END_LINK" /> Es gelten unsere <ph name="BEGIN_LINK" />Nutzungsbedingungen<ph name="END_LINK" /> und <ph name="BEGIN_LINK" />Datenschutzhinweise<ph name="END_LINK" />.</translation>
 <translation id="5976160379964388480">Sonstige</translation>
 <translation id="5977976211062815271">Auf diesem Gerät</translation>
 <translation id="5986043348928676121">Weiter</translation>
@@ -1626,6 +1628,7 @@ Handoff muss auch im Abschnitt „Allgemein“ deiner Einstellungen aktiviert se
 <translation id="6078236141387574983">Höhe des Tabellenblatts wieder anpassen</translation>
 <translation id="6084848228346514841">Tabs auswählen</translation>
 <translation id="6089212833343035912">PIN für Google Passwortmanager</translation>
+<translation id="6090690847556987004">Bei dieser Einstellung ist ein Fehler aufgetreten. Aktualisiere Chrome und iOS und starte dann dein Gerät neu, um es noch einmal zu versuchen. Wenn dieser Fehler weiterhin auftritt, unterstützt dein iPhone diese Einstellung möglicherweise nicht.</translation>
 <translation id="6090760257419195752">Geschlossene Warnungen</translation>
 <translation id="6094325891006032858">Erweitertes Safe Browsing aktivieren</translation>
 <translation id="6096965253650248286"><ph name="COUNT" /> gefunden</translation>
@@ -1725,6 +1728,7 @@ Handoff muss auch im Abschnitt „Allgemein“ deiner Einstellungen aktiviert se
 <translation id="6347953390226388422">{count,plural, =1{Diese Adresse wird aus deinem Google-Konto (<ph name="USER_EMAIL" />) und von diesem Gerät gelöscht.}other{Diese Adressen werden aus deinem Google-Konto (<ph name="USER_EMAIL" />) und von diesem Gerät gelöscht.}}</translation>
 <translation id="634878792104344809">Passwörter, Verlauf und mehr auf allen Geräten synchronisieren</translation>
 <translation id="6350745006329795504">Meine Geräte verwalten</translation>
+<translation id="6351000590398820964">Gemini ist eine KI und kann Fehler machen, auch bei Informationen über Personen. Einige Inhalte sind möglicherweise nicht für alle Nutzer geeignet. Chats werden geprüft und zum Trainieren generativer KI-Modelle verwendet. <ph name="BEGIN_LINK" />Hier findest du weitere Informationen zu möglichen Einstellungen.<ph name="END_LINK" /> Es gelten unsere <ph name="BEGIN_LINK" />Nutzungsbedingungen<ph name="END_LINK" /> und <ph name="BEGIN_LINK" />Datenschutzhinweise<ph name="END_LINK" />.</translation>
 <translation id="6351147166808964033">Tab-Wechsler starten</translation>
 <translation id="63519665078626091">Wenn du den Web Inspector verwenden möchtest, musst du auf einem Computer mithilfe eines Kabels eine Verbindung zu Safari herstellen und über das Menü „Entwickler“ auf das iPad zugreifen. Du kannst das Menü „Entwickler“ im Bereich „Erweitert“ in den Safari-Einstellungen auf deinem Computer aktivieren.</translation>
 <translation id="6354695695659930684">Fügt Passwort ein</translation>
@@ -1817,7 +1821,6 @@ Handoff muss auch im Abschnitt „Allgemein“ deiner Einstellungen aktiviert se
 <translation id="6609890790934458793">Passwörter für <ph name="WEBSITE" />, <ph name="SECOND_WEBSITE" /> und <ph name="THIRD_WEBSITE" /> werden gelöscht. Deine Konten werden nicht gelöscht.</translation>
 <translation id="661266467055912436">Verbessert die Sicherheit für dich und alle im Internet.</translation>
 <translation id="6612912757320004438">Tab-Benachrichtigungen zulassen…</translation>
-<translation id="6613372200395638275">Damit Gemini dich individuell unterstützen kann, werden einige deiner Daten (z. B. Teile deiner Chats, dein Standort und andere relevante Informationen) mit anderen Google-Diensten wie Google Maps und Google Flüge geteilt. Diese Dienste können diese Informationen zu ihrer Verbesserung verwenden, auch wenn du deine Aktivitäten in Gemini-Apps später löschst. Weitere Informationen findest du im <ph name="BEGIN_LINK" />Privacy Hub für Gemini-Apps<ph name="END_LINK" />.</translation>
 <translation id="6617761071025228250">Text löschen</translation>
 <translation id="6619015782482868078">Aquamarinfarbenes Design</translation>
 <translation id="6620279676667515405">Abbrechen</translation>
@@ -1893,6 +1896,7 @@ Handoff muss auch im Abschnitt „Allgemein“ deiner Einstellungen aktiviert se
 <translation id="6830728435402077660">Nicht sicher</translation>
 <translation id="6831043979455480757">Übersetzen</translation>
 <translation id="6842136130964845393">Bestätige deine Identität, damit du jederzeit auf deine gespeicherten Passwörter zugreifen kannst</translation>
+<translation id="6843744036364481304">Welcher Chatverlauf wird gespeichert?</translation>
 <translation id="6844773122575789617">KI-Modus aktivieren</translation>
 <translation id="6851516051005285358">Desktop-Version</translation>
 <translation id="6857446173140146664">Hintergrund löschen</translation>
@@ -1977,7 +1981,6 @@ Wenn du auf deinem Computer fortfahren möchtest, wechsle zu <ph name="OTHER_EMA
 <translation id="7091023926159231962">{count,plural, =1{{count} Passwort konnte nicht importiert werden}other{{count} Passwörter konnten nicht importiert werden}}</translation>
 <translation id="7095110968493193530">Im Google Passwortmanager für <ph name="EMAIL" /></translation>
 <translation id="7097046145876891318">Tippe in der Adressleiste auf „Preisentwicklung“, um Preisänderungen im Zeitverlauf zu sehen</translation>
-<translation id="7098554251807199977">Deine Unterhaltungen mit Gemini und deine <ph name="BEGIN_LINK" />Google Workspace-Daten<ph name="END_LINK" /> werden nicht überprüft und auch nicht verwendet, um generative KI-Modelle zu optimieren.</translation>
 <translation id="7102005569666697658">Wird heruntergeladen… <ph name="FILE_SIZE" /></translation>
 <translation id="7104701424653979232">„Menü“ → Einstellungen → „Zahlungsmethoden“</translation>
 <translation id="7108338896283013870">Ausblenden</translation>
@@ -2018,6 +2021,7 @@ Wenn du auf deinem Computer fortfahren möchtest, wechsle zu <ph name="OTHER_EMA
 <translation id="7223134495231529579">In Downloads speichern</translation>
 <translation id="722339453342442311">Jetzt prüfen</translation>
 <translation id="7227235818314667565">Freigaben verwalten</translation>
+<translation id="7232376892719594461">Deine Unterhaltungen mit Gemini und deine <ph name="BEGIN_LINK" />Google Workspace-Daten<ph name="END_LINK" /> werden nicht überprüft und auch nicht verwendet, um generative KI-Modelle zu trainieren.</translation>
 <translation id="7233006041370588369">Wähle ein Passwort für das automatische Ausfüllen aus.</translation>
 <translation id="7238074332967840767">Sicherheit</translation>
 <translation id="723874023660911012">Profil wechseln</translation>
@@ -2122,6 +2126,7 @@ Du kannst „Level Up“ jederzeit wieder aktivieren.</translation>
 <translation id="7557508262441527045">Abgemeldet</translation>
 <translation id="7561196759112975576">Immer</translation>
 <translation id="7561982940498449837">Menü schließen</translation>
+<translation id="7562347727679121642">Bild zur Suche hinzufügen</translation>
 <translation id="7566349809380613217">„<ph name="GROUP_TITLE" />“ geöffnet, geteilte Gruppe mit <ph name="NUMBER_OF_TABS" />, <ph name="CREATION_TEXT" /></translation>
 <translation id="7567579665882069209">Lesezeichen sind ausgeblendet</translation>
 <translation id="7575664680938145959">Mit einem Fingertipp öffnen</translation>
@@ -2417,7 +2422,6 @@ Du kannst „Level Up“ jederzeit wieder aktivieren.</translation>
 <translation id="8439758443371991593">„Zur Leseliste hinzufügen“ ausblenden</translation>
 <translation id="8443986842926457191">Die URL ist länger als 2048 Zeichen.</translation>
 <translation id="8449869326050867919">Passwort geteilt</translation>
-<translation id="8461708300275916315">Wenn du jünger als 18 Jahre bist</translation>
 <translation id="8473815223723723001">Bild mit Gemini bearbeiten</translation>
 <translation id="8473863474539038330">Adressen und andere Daten</translation>
 <translation id="8474378002946546633">Benachrichtigungen zulassen</translation>
@@ -2497,7 +2501,6 @@ Du kannst „Level Up“ jederzeit wieder aktivieren.</translation>
 <translation id="8672733398999596205">Alle aktivieren</translation>
 <translation id="8674716540979958118">Du nutzt kompromittierte Passwörter.</translation>
 <translation id="8679900250380464358">Zur Leseliste hinzufügen</translation>
-<translation id="8680643216091361291">Die Einstellung <ph name="BEGIN_LINK" />Aktivitäten speichern<ph name="END_LINK" /> ist standardmäßig deaktiviert. Google speichert deine Chats dann 3 Tage lang. Sie werden verwendet, damit die Gemini-Apps richtig funktionieren und sicher sind und um dein Feedback zur Fehlerbehebung zu nutzen. Du kannst „Aktivitäten speichern“ aktivieren, um Google AI für alle zu verbessern.</translation>
 <translation id="8680787084697685621">Die Anmeldeinformationen für dieses Konto sind veraltet.</translation>
 <translation id="868648444055742370">„<ph name="SITE_DOMAIN" />“ darf nicht auf dein Mikrofon zugreifen</translation>
 <translation id="8690752723634292147">Löschen bestätigen</translation>
@@ -2529,7 +2532,9 @@ Du kannst „Level Up“ jederzeit wieder aktivieren.</translation>
 <translation id="8746155870861185046">Markierung teilen</translation>
 <translation id="8748678031495824833">KI-Tools auf der Seite öffnen</translation>
 <translation id="8750037785291841318">Hier werden deine Tabs angezeigt</translation>
+<translation id="8751126814549746156">Der Verlauf wird nach 18 Monaten automatisch gelöscht. Du kannst diesen Zeitraum in den Einstellungen ändern. Chats, die von Dienstleistern überprüft wurden, werden von deinem Konto getrennt und bis zu 3 Jahre lang aufbewahrt. Du kannst den Verlauf jederzeit <ph name="BEGIN_LINK" />deaktivieren<ph name="END_LINK" />.</translation>
 <translation id="8756969031206844760">Passwort aktualisieren?</translation>
+<translation id="8762190205387442931">Chats werden geprüft und zum Trainieren generativer KI-Modelle verwendet. Du kannst deinen <ph name="BEGIN_LINK" />Verlauf verwalten<ph name="END_LINK" />, einschließlich Informationen zu deinem Standort. <ph name="BEGIN_LINK" />Weitere Informationen zu möglichen Einstellungen<ph name="END_LINK" /></translation>
 <translation id="8763613688786959833">Zum letzten Tab</translation>
 <translation id="8766790350274092814">Passwörter für <ph name="WEBSITE" /> und <ph name="SECOND_WEBSITE" /> werden gelöscht. Deine Konten werden nicht gelöscht.</translation>
 <translation id="8775144690796719618">Ungültige URL</translation>
@@ -2555,7 +2560,6 @@ Du kannst „Level Up“ jederzeit wieder aktivieren.</translation>
 <translation id="882557203579758546">Auf Seite suchen…</translation>
 <translation id="8829809207373502270">Dieser Passkey funktioniert nicht mehr. Er wurde von <ph name="WEBSITE" /> gelöscht und wird demnächst auch von hier entfernt. <ph name="BEGIN_LINK" />Info zu Passkeys<ph name="END_LINK" /></translation>
 <translation id="8831208860914609320">Alle inaktiven Tabs schließen</translation>
-<translation id="8831871601813227635">Es gelten unsere <ph name="BEGIN_LINK" />Nutzungsbedingungen<ph name="END_LINK" />, die <ph name="BEGIN_LINK" />Standortnutzungsbedingungen für Korea<ph name="END_LINK" /> und unsere <ph name="BEGIN_LINK" />Datenschutzhinweise<ph name="END_LINK" />. Chats werden geprüft und zur Verbesserung von Google AI verwendet. Gemini ist eine KI und kann Fehler machen, auch bei Informationen über Personen. Einige Inhalte sind möglicherweise nicht für alle Nutzer geeignet. Du kannst deine <ph name="BEGIN_LINK" />Aktivitäten verwalten<ph name="END_LINK" />, einschließlich Informationen zu deinem Standort. <ph name="BEGIN_LINK" />Weitere Informationen zu möglichen Einstellungen<ph name="END_LINK" /></translation>
 <translation id="8837654851594567190">Nach Publisher sortieren</translation>
 <translation id="884351711508006491">Deine Informationen werden auf deinem Gerät gespeichert.</translation>
 <translation id="8844136307393039959">Preissenkung bei deinem beobachteten Produkt</translation>
@@ -2575,6 +2579,7 @@ Du kannst „Level Up“ jederzeit wieder aktivieren.</translation>
 <translation id="8893208530912252670">Videos</translation>
 <translation id="890009681345348416">Über 40 Passwörter wurden automatisch ausgefüllt,</translation>
 <translation id="8900845556227858314">Browser-App</translation>
+<translation id="8903042868629070803">Wenn du mindestens 18 Jahre alt bist, verwendet Google deinen Verlauf auch, um <ph name="BEGIN_LINK" />generative KI-Modelle zu trainieren<ph name="END_LINK" />. Du kannst dies für zukünftige Chats jederzeit <ph name="BEGIN_LINK" />deaktivieren<ph name="END_LINK" />.</translation>
 <translation id="890565330728586731">Zurück</translation>
 <translation id="8907722425137681851">Auf Seite suchen…</translation>
 <translation id="8909135823018751308">Teilen...</translation>
@@ -2669,6 +2674,7 @@ Du kannst „Level Up“ jederzeit wieder aktivieren.</translation>
 <translation id="9203951165704618409">Du kannst festlegen, dass die Adressleiste unten statt oben angezeigt wird, und so den Browser deinen Wünschen entsprechend anpassen.</translation>
 <translation id="9205189991633470489">Inkognitosperre</translation>
 <translation id="9206887540681440657">Geschwindigkeit</translation>
+<translation id="9218088788182688902">Bei dieser Einstellung ist ein Fehler aufgetreten. Aktualisiere Chrome und iPadOS und starte dann dein Gerät neu, um es noch einmal zu versuchen. Wenn dieser Fehler weiterhin auftritt, unterstützt dein iPad diese Einstellung möglicherweise nicht.</translation>
 <translation id="9218430445555521422">Als Standard festlegen</translation>
 <translation id="9219103736887031265">Bilder</translation>
 <translation id="9219154867334666734">Auf Tabs suchen…</translation>

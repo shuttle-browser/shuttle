@@ -7,9 +7,11 @@
 
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "base/cancelable_callback.h"
+#include "base/containers/enum_set.h"
 #include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
@@ -19,24 +21,24 @@
 #include "build/build_config.h"
 #include "chrome/browser/ui/browser_window/public/browser_collection_observer.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
+#include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_context_menu_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_everywhere_service.h"
 #include "chrome/browser/ui/views/permissions/permission_prompt_observer.h"
 #include "chrome/browser/ui/webui/top_chrome/webui_contents_wrapper.h"
 #include "components/prefs/pref_change_registrar.h"
-#include "content/public/browser/context_menu_params.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/blink/public/mojom/page/draggable_region.mojom-forward.h"
 #include "third_party/skia/include/core/SkRegion.h"
 #include "ui/base/interaction/element_identifier.h"
+#include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/native_ui_types.h"
-#include "ui/menus/simple_menu_model.h"
-#include "ui/views/context_menu_controller.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_observer.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "base/functional/callback.h"
 #include "base/threading/sequence_bound.h"
+#include "base/win/windows_types.h"
 #include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_shortcut_win.h"
 #endif
 
@@ -45,7 +47,6 @@ class ScopedKeepAlive;
 class SkBitmap;
 
 namespace views {
-class MenuRunner;
 class UnhandledKeyboardEventHandler;
 }  // namespace views
 
@@ -59,16 +60,26 @@ class OmniboxEverywhereWidgetDelegate;
 
 // Manages the desktop Omnibox Everywhere native window (views::Widget)
 // lifecycle and handles switching between different profiles.
-// TODO(b/543460015): Factor out ui::SimpleMenuModel::Delegate and
-// views::ContextMenuController implementation into a dedicated
-// OmniboxEverywhereContextMenuController class.
-class OmniboxEverywhereUIManager : public views::WidgetObserver,
-                                   public WebUIContentsWrapper::Host,
-                                   public BrowserCollectionObserver,
-                                   public ui::SimpleMenuModel::Delegate,
-                                   public views::ContextMenuController,
-                                   public PermissionPromptObserver::Observer {
+class OmniboxEverywhereUIManager
+    : public views::WidgetObserver,
+      public WebUIContentsWrapper::Host,
+      public BrowserCollectionObserver,
+      public OmniboxEverywhereContextMenuController::Delegate,
+      public PermissionPromptObserver::Observer {
  public:
+  // Modal surfaces owned by the widget that keep it from being dismissed on
+  // deactivation.
+  enum class Modal {
+    kFileChooser,
+    kDrivePicker,
+    kHotkeyDropdown,
+    kScreensharePicker,
+    kScreenshareDisclosure,
+    kPermissionPrompt,
+    kMinValue = kFileChooser,
+    kMaxValue = kPermissionPrompt,
+  };
+
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kOmniboxEverywhereElementId);
 
   // Fixed popup window width:
@@ -100,30 +111,6 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
   // dismissal is deferred (see `HandleWidgetDeactivated()`).
   static constexpr base::TimeDelta kPendingDismissalPollInterval =
       base::Milliseconds(50);
-
-  enum ContextMenuCommandId {
-    kUndo = 1,
-    kCut = 2,
-    kCopy = 3,
-    kPaste = 4,
-    kPasteAndSearch = 5,
-    kDelete = 6,
-    kSelectAll = 7,
-    kManageSearchEngines = 8,
-    kAlwaysShowAiMode = 9,
-    kShowShortcuts = 10,
-    kCustomizeKeyboardShortcut = 11,
-    kSettings = 12,
-    kMinimize = 13,
-    kClose = 14,
-    kEmoji = 15,
-#if BUILDFLAG(IS_MAC)
-    kWritingDirectionMenu = 16,
-    kWritingDirectionDefault = 17,
-    kWritingDirectionLtr = 18,
-    kWritingDirectionRtl = 19,
-#endif  // BUILDFLAG(IS_MAC)
-  };
 
   using ContentsWrapperFactory =
       base::RepeatingCallback<std::unique_ptr<WebUIContentsWrapper>(Profile*)>;
@@ -208,19 +195,6 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
   bool HandleKeyboardEvent(content::WebContents* source,
                            const input::NativeWebKeyboardEvent& event) override;
 
-  // ui::SimpleMenuModel::Delegate:
-  bool GetAcceleratorForCommandId(int command_id,
-                                  ui::Accelerator* accelerator) const override;
-  void ExecuteCommand(int command_id, int event_flags) override;
-  bool IsCommandIdEnabled(int command_id) const override;
-  bool IsCommandIdChecked(int command_id) const override;
-
-  // views::ContextMenuController:
-  void ShowContextMenuForViewImpl(
-      views::View* source,
-      const gfx::Point& point,
-      ui::mojom::MenuSourceType source_type) override;
-
   // PermissionPromptObserver::Observer:
   void OnPermissionPromptChanged(bool is_showing,
                                  const gfx::Size& prompt_size) override;
@@ -286,6 +260,12 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
   bool start_menu_shortcut_requested_for_testing() const {
     return start_menu_shortcut_requested_;
   }
+  // Returns whether a window is on the current virtual desktop.
+  using IsOnCurrentVirtualDesktopCallback = base::RepeatingCallback<bool(HWND)>;
+  void SetIsOnCurrentVirtualDesktopCallbackForTesting(
+      IsOnCurrentVirtualDesktopCallback callback) {
+    is_on_current_virtual_desktop_ = std::move(callback);
+  }
 #endif
 
   // For testing:
@@ -295,26 +275,11 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
   const std::optional<SkRegion>& draggable_region_for_testing() const {
     return draggable_region_;
   }
-  bool is_file_chooser_open_for_testing() const {
-    return is_file_chooser_open_;
-  }
-  bool is_drive_picker_open_for_testing() const {
-    return is_drive_picker_open_;
-  }
-  bool is_screenshare_picker_open_for_testing() const {
-    return is_screenshare_picker_open_;
-  }
-  bool is_screenshare_disclosure_open_for_testing() const {
-    return is_screenshare_disclosure_open_;
+  bool IsModalOpenForTesting(Modal modal) const {
+    return open_modals_.Has(modal);
   }
   views::Widget* disclosure_dialog_widget_for_testing() {
     return disclosure_dialog_widget_.get();
-  }
-  bool is_permission_prompt_open_for_testing() const {
-    return is_permission_prompt_open_;
-  }
-  bool is_hotkey_dropdown_open_for_testing() const {
-    return is_hotkey_dropdown_open_;
   }
   bool is_hotkey_dropdown_deactivation_task_pending_for_testing() const {
     return !hotkey_dropdown_deactivation_task_.IsCancelled();
@@ -325,11 +290,9 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
   OmniboxEverywhereRegionSelectOverlay* region_select_overlay_for_testing() {
     return region_select_overlay_.get();
   }
-  bool is_context_menu_open_for_testing() const {
-    return is_context_menu_open_;
-  }
-  void set_is_context_menu_open_for_testing(bool open) {
-    is_context_menu_open_ = open;
+  OmniboxEverywhereContextMenuController*
+  context_menu_controller_for_testing() {
+    return context_menu_controller_.get();
   }
   bool is_dragging_for_testing() const { return is_dragging_; }
 #if defined(USE_AURA)
@@ -338,19 +301,14 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
   }
 #endif
   bool is_demoted() const { return is_demoted_; }
-  void OnContextMenuClosedForTesting() { OnContextMenuClosed(); }
-  const ui::SimpleMenuModel* context_menu_model_for_testing() const {
-    return context_menu_model_.get();
-  }
-  using MenuRunnerFactory = base::RepeatingCallback<std::unique_ptr<
-      views::MenuRunner>(ui::MenuModel*, base::RepeatingClosure)>;
-  void SetMenuRunnerFactoryForTesting(MenuRunnerFactory factory) {
-    menu_runner_factory_ = std::move(factory);
-  }
 
  private:
+  using ModalSet = base::EnumSet<Modal, Modal::kMinValue, Modal::kMaxValue>;
+
   void EnsureContentsWrapperInitialized(Profile* profile);
-  void CreateAndInitWidget(gfx::NativeWindow context);
+  // Creates the widget. If `bounds` is not set, uses the default position.
+  void CreateAndInitWidget(gfx::NativeWindow context,
+                           std::optional<gfx::Rect> bounds);
   void ActivateAndFocus();
   void OnEphemeralModelPrefChanged();
 
@@ -359,10 +317,12 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
   void OnStartMenuShortcutChecked(bool shortcut_exists);
 #endif
   void OnMostVisitedPrefChanged();
+  OmniboxEverywhereService* GetOmniboxEverywhereService();
   void MaybeRecordFreImpression();
   void MaybeShowLensPromo();
   void EndLensPromo();
   static gfx::Rect CalculateWidgetBounds(int height);
+  void ApplyPendingAutoResize();
   void AdjustWidgetBoundsToWorkArea();
 
   // Try and acquire process and profile keep alives. If unsuccessful, releases
@@ -375,18 +335,14 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
 
   std::unique_ptr<WebUIContentsWrapper> CreateContentsWrapper(Profile* profile);
 
-  void ShowContextMenu(const content::ContextMenuParams& params,
-                       std::u16string clipboard_text);
-  void ResetContextMenuModels();
-  void BuildInputContextMenu(const content::ContextMenuParams& params,
-                             const std::u16string& clipboard_text);
-  void BuildSelectionContextMenu(const content::ContextMenuParams& params);
-  void BuildBackgroundContextMenu(const content::ContextMenuParams& params);
-  void AppendSettingsContextMenu();
-  std::u16string GetPasteAndGoMenuLabel(
-      const std::u16string& clipboard_text) const;
+  // OmniboxEverywhereContextMenuController::Delegate:
+  views::Widget* GetContextMenuHostWidget() override;
+  content::WebContents* GetContextMenuWebContents() override;
+  Profile* GetContextMenuProfile() override;
+  void OnContextMenuClosed() override;
 #if BUILDFLAG(IS_WIN)
-  void AppendWindowControlsContextMenu();
+  void MinimizeFromContextMenu() override;
+  void CloseFromContextMenu() override;
 #endif  // BUILDFLAG(IS_WIN)
 
   // Destroys the widget and the WebContents, and releases keep-alives.
@@ -405,7 +361,6 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
   // period timestamp, and any open context menu).
   void CancelTransientUiState();
   void OnWidgetClosed(views::Widget::ClosedReason reason);
-  void OnContextMenuClosed();
   void HandleWidgetDeactivated();
   // Runs on `pending_dismissal_timer_` until the mouse button is released,
   // then either re-focuses the widget (if a drag entered the WebContents and
@@ -415,6 +370,7 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
   void OnScreenshotDisclosureClosed(base::OnceClosure on_accepted,
                                     base::OnceClosure on_cancelled,
                                     views::Widget::ClosedReason reason);
+  void SetModalOpen(Modal modal, bool open);
   void UpdateModalInteractionState();
 
 #if defined(USE_AURA)
@@ -424,7 +380,6 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
   // The native window hosting the Omnibox Everywhere UI.
   raw_ptr<Profile> profile_ = nullptr;
   ContentsWrapperFactory contents_wrapper_factory_;
-  MenuRunnerFactory menu_runner_factory_;
 
   std::unique_ptr<WebUIContentsWrapper> contents_wrapper_;
   std::unique_ptr<OmniboxEverywhereWidgetDelegate> widget_delegate_;
@@ -437,14 +392,11 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
       scoped_ignore_input_events_;
   base::OneShotTimer capture_release_timer_;
 
-  bool is_file_chooser_open_ = false;
-  bool is_drive_picker_open_ = false;
-  bool is_hotkey_dropdown_open_ = false;
-  bool is_context_menu_open_ = false;
+  // Tracks the modal surfaces (file chooser, pickers, permission prompt, etc.)
+  // that keep the widget from being dismissed. The region select overlay is
+  // tracked by `region_select_overlay_` instead.
+  ModalSet open_modals_;
   bool is_demoted_ = false;
-  bool is_screenshare_picker_open_ = false;
-  bool is_screenshare_disclosure_open_ = false;
-  bool is_permission_prompt_open_ = false;
   bool suppress_restore_on_screenshare_picker_closed_ = false;
   bool is_dragging_ = false;
   // True while an external drag is hovering over `web_contents()` during a
@@ -462,12 +414,8 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
 
   std::unique_ptr<views::UnhandledKeyboardEventHandler>
       unhandled_keyboard_event_handler_;
-  content::ContextMenuParams last_context_menu_params_;
-#if BUILDFLAG(IS_MAC)
-  std::unique_ptr<ui::SimpleMenuModel> writing_direction_submenu_model_;
-#endif  // BUILDFLAG(IS_MAC)
-  std::unique_ptr<ui::SimpleMenuModel> context_menu_model_;
-  std::unique_ptr<views::MenuRunner> context_menu_runner_;
+  std::unique_ptr<OmniboxEverywhereContextMenuController>
+      context_menu_controller_;
 
   std::optional<base::TimeTicks> last_shown_time_;
   // Task posted when the widget is deactivated, used to either dismiss or
@@ -491,6 +439,8 @@ class OmniboxEverywhereUIManager : public views::WidgetObserver,
 
 #if BUILDFLAG(IS_WIN)
   base::SequenceBound<OmniboxEverywhereShortcutHelperWin> shortcut_helper_;
+
+  IsOnCurrentVirtualDesktopCallback is_on_current_virtual_desktop_;
 
   // Tracks whether shortcut creation has succeeded or is in flight.
   // Reset on failure so subsequent persistent widgets can retry.

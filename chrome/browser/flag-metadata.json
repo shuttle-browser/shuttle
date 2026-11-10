@@ -2515,6 +2515,11 @@
     "expiry_milestone": 160
   },
   {
+    "name": "contextual-tasks-pinning-string-variants",
+    "owners": [ "dianaou@google.com", "chrome-contextual-tasks-eng@google.com" ],
+    "expiry_milestone": 160
+  },
+  {
     "name": "contextual-tasks-pinning-v2",
     "owners": [ "dianaou@google.com", "chrome-contextual-tasks-eng@google.com" ],
     "expiry_milestone": 160
@@ -8948,6 +8953,11 @@
     "name": "searchbox-embedded-permission",
     "owners": [ "jamesleung@google.com", "chrome-desktop-search@google.com"],
     "expiry_milestone": 180
+  },
+  {
+    "name": "seccomp-filter-gpu-sandbox",
+    "owners": [ "kbr@chromium.org", "//sandbox/OWNERS" ],
+    "expiry_milestone": 179
   },
   {
     "name": "secure-payment-confirmation-credential-discovery-mode",

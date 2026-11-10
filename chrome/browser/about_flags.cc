@@ -4647,17 +4647,32 @@ const FeatureEntry::FeatureVariation
 
 const FeatureEntry::FeatureParam
     kContextualTasksEphemeralButtonContextMenuHideSidePanel[] = {
-        {"ContextualTasksEphemeralButtonContextMenuCloseSidePanel", "false"}};
+        {"ContextualTasksEphemeralButtonContextMenuOption", "hide-side-panel"}};
 const FeatureEntry::FeatureParam
     kContextualTasksEphemeralButtonContextMenuCloseSidePanel[] = {
-        {"ContextualTasksEphemeralButtonContextMenuCloseSidePanel", "true"}};
+        {"ContextualTasksEphemeralButtonContextMenuOption",
+         "close-side-panel"}};
+const FeatureEntry::FeatureParam
+    kContextualTasksEphemeralButtonContextMenuDismissActiveSearch[] = {
+        {"ContextualTasksEphemeralButtonContextMenuOption",
+         "dismiss-active-search"}};
+const FeatureEntry::FeatureParam
+    kContextualTasksEphemeralButtonContextMenuDismissActiveSearchInTab[] = {
+        {"ContextualTasksEphemeralButtonContextMenuOption",
+         "dismiss-active-search-in-tab"}};
 
 const FeatureEntry::FeatureVariation
     kContextualTasksEphemeralButtonContextMenuVariations[] = {
         {"with 'Hide side panel'",
          kContextualTasksEphemeralButtonContextMenuHideSidePanel, nullptr},
         {"with 'Close side panel'",
-         kContextualTasksEphemeralButtonContextMenuCloseSidePanel, nullptr}};
+         kContextualTasksEphemeralButtonContextMenuCloseSidePanel, nullptr},
+        {"with 'Dismiss active Google Search'",
+         kContextualTasksEphemeralButtonContextMenuDismissActiveSearch,
+         nullptr},
+        {"with 'Dismiss active search in this tab'",
+         kContextualTasksEphemeralButtonContextMenuDismissActiveSearchInTab,
+         nullptr}};
 
 const FeatureEntry::FeatureParam
     kContextualTasksPinnedButtonActiveIndicatorWithoutContextMenu[] = {
@@ -4702,6 +4717,39 @@ const FeatureEntry::FeatureVariation
          nullptr},
         {"with Gray Super G logo",
          kContextualTasksUnifyPinButtonLogosGraySuperG, nullptr}};
+
+// LINT.IfChange(PinningStringVariant)
+const FeatureEntry::FeatureParam kContextualTasksPinningStringVariantsAiMode[] =
+    {{"ContextualTasksPinningStringVariant", "ai-mode"}};
+const FeatureEntry::FeatureParam
+    kContextualTasksPinningStringVariantsSidePanel[] = {
+        {"ContextualTasksPinningStringVariant", "side-panel"}};
+const FeatureEntry::FeatureParam
+    kContextualTasksPinningStringVariantsInSidePanel[] = {
+        {"ContextualTasksPinningStringVariant", "in-side-panel"}};
+const FeatureEntry::FeatureParam
+    kContextualTasksPinningStringVariantsInChrome[] = {
+        {"ContextualTasksPinningStringVariant", "in-chrome"}};
+const FeatureEntry::FeatureParam kContextualTasksPinningStringVariantsPanel[] =
+    {{"ContextualTasksPinningStringVariant", "panel"}};
+
+const FeatureEntry::FeatureVariation
+    kContextualTasksPinningStringVariantsVariations[] = {
+        {"with 'Google Search AI Mode'",
+         kContextualTasksPinningStringVariantsAiMode, nullptr},
+        {"with 'Google Search side panel'",
+         kContextualTasksPinningStringVariantsSidePanel, nullptr},
+        {"with 'Google Search in side panel'",
+         kContextualTasksPinningStringVariantsInSidePanel, nullptr},
+        {"with 'Google Search in Chrome'",
+         kContextualTasksPinningStringVariantsInChrome, nullptr},
+        {"with 'Google Search panel'",
+         kContextualTasksPinningStringVariantsPanel, nullptr}};
+// LINT.ThenChange(
+//   //components/contextual_tasks/public/features.cc:PinningStringVariant,
+//   //components/contextual_tasks/public/features.cc:PinningStringVariantDescription,
+//   //components/contextual_tasks/public/features.h:PinningStringVariant
+// )
 
 const FeatureEntry::FeatureParam
     kContextualTasksUpdatedEntryPointsSidePanelRouting[] = {
@@ -7469,23 +7517,25 @@ const FeatureEntry kFeatureEntries[] = {
     {"composebox-persistent-aim-button-realbox",
      flag_descriptions::kComposeboxPersistentAimButtonRealboxName,
      flag_descriptions::kComposeboxPersistentAimButtonRealboxDescription,
-     kOsDesktop,
+     kOsDesktop | kOsAndroid,
      FEATURE_VALUE_TYPE(omnibox::kComposeboxPersistentAimButtonRealbox)},
 
     {"composebox-persistent-aim-button-with-x",
      flag_descriptions::kComposeboxPersistentAimButtonWithXName,
      flag_descriptions::kComposeboxPersistentAimButtonWithXDescription,
-     kOsDesktop,
+     kOsDesktop | kOsAndroid,
      FEATURE_VALUE_TYPE(omnibox::kComposeboxPersistentAimButtonWithX)},
 
     {"composebox-personalized-hint-text",
      flag_descriptions::kComposeboxPersonalizedHintTextName,
-     flag_descriptions::kComposeboxPersonalizedHintTextDescription, kOsDesktop,
+     flag_descriptions::kComposeboxPersonalizedHintTextDescription,
+     kOsDesktop | kOsAndroid,
      FEATURE_VALUE_TYPE(omnibox::kComposeboxPersonalizedHintText)},
 
     {"composebox-realbox-outside-click",
      flag_descriptions::kComposeboxRealboxOutsideClickName,
-     flag_descriptions::kComposeboxRealboxOutsideClickDescription, kOsDesktop,
+     flag_descriptions::kComposeboxRealboxOutsideClickDescription,
+     kOsDesktop | kOsAndroid,
      FEATURE_VALUE_TYPE(omnibox::kComposeboxRealboxOutsideClick)},
 
     {"composebox-skills-contextual-tasks",
@@ -12315,6 +12365,17 @@ const FeatureEntry kFeatureEntries[] = {
          kContextualTasksUnifyPinButtonLogosVariations,
          "ContextualTasksUnifyPinButtonLogos")},
 
+    {"contextual-tasks-pinning-string-variants",
+     contextual_tasks::flag_descriptions::
+         kContextualTasksPinningStringVariantsName,
+     contextual_tasks::flag_descriptions::
+         kContextualTasksPinningStringVariantsDescription,
+     kOsDesktop,
+     FEATURE_WITH_PARAMS_VALUE_TYPE(
+         contextual_tasks::kContextualTasksPinningStringVariants,
+         kContextualTasksPinningStringVariantsVariations,
+         "ContextualTasksPinningStringVariants")},
+
     {"contextual-tasks-private-api-no-animation",
      contextual_tasks::flag_descriptions::
          kContextualTasksPrivateApiNoAnimationName,
@@ -14352,6 +14413,11 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kMixedFixedIntervalMatcherName,
      flag_descriptions::kMixedFixedIntervalMatcherDescription, kOsAndroid,
      FEATURE_VALUE_TYPE(features::kMixedFixedIntervalMatcher)},
+
+    {"seccomp-filter-gpu-sandbox",
+     flag_descriptions::kSeccompFilterGpuSandboxName,
+     flag_descriptions::kSeccompFilterGpuSandboxDescription, kOsAndroid,
+     FEATURE_VALUE_TYPE(sandbox::policy::features::kSeccompFilterGpuSandbox)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
     {"persistent-widget-api", flag_descriptions::kPersistentWidgetAPIName,
