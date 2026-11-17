@@ -92,15 +92,18 @@ source_set("impl") {
     "//chrome/browser:browser_process",
     "//chrome/browser/component_updater",
     "//chrome/browser/profiles:profile_manager",
+    "//chrome/common",
     "//chrome/common:constants",
     "//chrome/services/speech/buildflags",
     "//components/language/core/browser",
+    "//components/omnibox/common",
     "//components/user_prefs",
     "//content/public/browser",
     "//extensions/buildflags",
     "//media/mojo/mojom:speech_recognition",
     "//media/mojo/mojom:web_speech_recognition",
     "//mojo/public/cpp/bindings",
+    "//url",
   ]
 
   if (!is_android) {

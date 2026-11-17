@@ -109,6 +109,8 @@ export class SettingsMainElement extends SettingsMainElementBase {
   private pendingViewSwitching_: PromiseResolver<void> = new PromiseResolver();
   private topLevelEquivalentRoute_: Route = getTopLevelRoute();
   private currentQuery_: string = '';
+  private hasSearched_: boolean = false;
+  private renderedRoutes_: Set<Route> = new Set();
 
   override connectedCallback() {
     super.connectedCallback();
@@ -122,6 +124,21 @@ export class SettingsMainElement extends SettingsMainElementBase {
   override disconnectedCallback() {
     super.disconnectedCallback();
     this.eventTracker_.removeAll();
+  }
+
+  override willUpdate(changedProperties: PropertyValues<this>) {
+    super.willUpdate(changedProperties);
+
+    const changedPrivateProperties =
+        changedProperties as Map<PropertyKey, unknown>;
+    if (changedPrivateProperties.has('inSearchMode_')) {
+      this.hasSearched_ ||= this.inSearchMode_;
+    }
+    if (changedPrivateProperties.has('lastRoute_') && this.lastRoute_) {
+      for (let r: Route|null = this.lastRoute_; r !== null; r = r.parent) {
+        this.renderedRoutes_.add(r);
+      }
+    }
   }
 
   override updated(changedProperties: PropertyValues<this>) {
@@ -272,8 +289,7 @@ export class SettingsMainElement extends SettingsMainElementBase {
   }
 
   protected renderPlugin_(route: Route): boolean {
-    return this.inSearchMode_ ||
-        (!!this.lastRoute_ && route.contains(this.lastRoute_));
+    return this.hasSearched_ || this.renderedRoutes_.has(route);
   }
 
   protected showPage_(

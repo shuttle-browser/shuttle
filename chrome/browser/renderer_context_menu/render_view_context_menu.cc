@@ -1224,19 +1224,8 @@ void RenderViewContextMenu::InitMenu() {
 #if !BUILDFLAG(IS_CHROMEOS)
   if (content_type_->SupportsGroup(
           ContextMenuContentType::ITEM_GROUP_PARTIAL_TRANSLATE) &&
-      !features::IsMenuSimplificationEnabled() &&
-      search::DefaultSearchProviderIsGoogle(GetProfile()) &&
-      CanTranslate(/*menu_logging=*/false)) {
-    // If the target language isn't supported in partial translation, fall
-    // back to showing the full page translate menu item. Partial translate
-    // uses a different backend that supports a subset of translation
-    // languages, so the current full page target language may not be
-    // supported.
-    if (CanPartiallyTranslateTargetLanguage()) {
-      AppendPartialTranslateItem();
-    } else {
-      AppendTranslateItem();
-    }
+      !features::IsMenuSimplificationEnabled()) {
+    AppendTranslateOrPartialTranslateItem();
   }
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
@@ -4155,7 +4144,7 @@ bool RenderViewContextMenu::CanTranslate(bool menu_logging) {
 return false;
 }
 
-bool RenderViewContextMenu::CanPartiallyTranslateTargetLanguage() {
+bool RenderViewContextMenu::CanPartiallyTranslate() {
 return false;
 }
 
