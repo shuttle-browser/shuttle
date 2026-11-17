@@ -493,9 +493,43 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     `NEW_*` → `kNew*`, also in fork-only code); two Opus agents per area with the error list worked well.
   - **sccache-dist path limit**: a few compiles fail remotely with "provided value is too long when setting path"
     (deep gen paths in the input tar) and sccache compiles them on the Mac; harmless at 3 per 14k.
+- **Security respin 158.0.8127.31 → .45 (2026-11-17)**: 830 upstream files (206 ios/); 512 modify/delete → deletion,
+  72 new files in pruned dirs dropped, 30 conflict hunks in 24 files (all `ours-deleted-new`/`ours-subset-new`/other:
+  none resolvable by script). ~1 h from snapshot to `gn gen` green. V8 15.8.62.31 merged cleanly. Gotchas:
+  - **Which CVE fixes are missing**: match the crbug ids from the Chrome Releases post against `+log/<old>..<new>` of
+    chromium/src *and* the DEPS repos (V8, Skia, PDFium, ANGLE, Dawn; their revisions from each tag's DEPS) on the
+    157 and 158 branches; fixes found on neither branch landed on main before the branch point (check the 157
+    cherry-pick's origin with `+log/<branch-base>..<origin>` = empty). A crbug id can match an unrelated commit:
+    CVE-2026-126912's src commit was only image baselines, the fix was in Skia.
+  - **A "theirs" hunk brings back base lines the fork deleted**: page_info's theirs side re-added
+    `//chrome/browser/ui/web_applications` next to the new `views/site_data` dep (`gn gen`: unable to load). Take
+    theirs only for the new lines.
+  - **An "ours" hunk in a fork-deleted region drops new upstream declarations** whose definitions merged cleanly
+    elsewhere: `TriggerKeyboardLockUniformImageRetry` (CSD host .h) only failed at compile time.
+  - **New upstream code points at removed WebUI**: speech `GetRoutingParams` used `chrome://new-tab-page`
+    (`ChromeUINewTabPageURLAsGURL`, gone with the WebUI NTP). Sweep the merge diff for removed URL constants too.
+  - **Builds**: Mac dev (out/Sccache, last green at .18) ~13.4k steps, ~3 h 50 min on sccache-dist at 8 jobs (remote CPUs
+    8/10 busy; Blink/V8 heavy: `web_feature.mojom` 5.1k objects, `paint_op_buffer.h` 3.4k); VM mac-lto 10 min,
+    linux-lto 18 min, ~$1.70; release rebuild at the merge commit (same tree) ~$0.60.
 
 ## Gotchas
 
+- **`xbuild-run.sh linux-lto --version X` makes only the tarball**: the .deb/.rpm need `--deb X` as well (158.0.2:
+  `--version 158.0.2 --deb 158.0.2`). `--version` refuses an existing `release/v<X>/linux`, so move a tarball-only
+  result aside before rerunning.
+- **`publish-packages.sh` wants the per-file `.sha256` next to each package**: pass the copies in
+  `release/v<X>/linux/`, not the top-level copies in `release/v<X>/` ("FATAL: no <file>.sha256").
+- **Local Network privacy can hit sccache mid-build**: once the WorkerDeck gateway loses LAN access, every compile
+  falls back to the Mac without an error (`logs/sccache.log`: "Could not perform distributed compile, falling back
+  to local ... No route to host"). `build-sccache.sh`'s preflight only catches it at start ("no build servers
+  reachable" while `nc`/`curl` reach the scheduler). Fix: restart the gateway under the current VS Code, stop the idle
+  sccache server (`sccache --stop-server`), restart the build.
+- **Don't wait on a process with `pgrep -f <pattern>` from a shell whose command line contains the pattern**: it
+  matches itself and never ends. Wait on the PID (`while kill -0 <pid>`) or a log line.
+- **Estimating a rebuild**: a siso dry run (`siso ninja -C out/<Dir> -n -offline chrome`) undercounts, because
+  regenerated headers (mojom, json5, grit) only dirty their includers at build time. `siso query deps -C out/<Dir>`
+  dumps the deps log of the last build (~18M lines, 6 s); counting objects that include a changed file or a
+  regenerated header gave ~10.8k of 40k for .18 → .45 (real: ~13.4k steps incl. regeneration and links).
 - **Spot preemption right after a VM build** (2026-11-10): a preemption 30 s after the link lost the unwritten pages:
   `out/<Dir>/shuttle` all zeros ("Exec format error"), 1,878 zero-filled `thinlto-cache` entries (later links reuse
   them: hundreds of "undefined hidden symbol" errors), lost siso state (the rerun became a near-full rebuild the
