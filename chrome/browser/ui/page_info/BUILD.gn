@@ -73,8 +73,6 @@ source_set("impl") {
       "//chrome/browser/ui/browser_web_contents_delegate",
       "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/views/site_data",
-      "//chrome/browser/ui/web_applications",
-      "//chrome/browser/web_applications",
     ]
     if (is_chromeos) {
       deps += [ "//chrome/browser/ash/floating_sso" ]
