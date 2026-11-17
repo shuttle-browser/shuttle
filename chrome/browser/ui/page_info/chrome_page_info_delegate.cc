@@ -88,7 +88,7 @@
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/page_info/page_info_infobar_delegate.h"
-#include "chrome/browser/ui/tab_dialogs.h"
+#include "chrome/browser/ui/views/site_data/page_specific_site_data_dialog_controller.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/vector_icons/vector_icons.h"
 #include "content/public/browser/reload_type.h"
@@ -300,7 +300,8 @@ void ChromePageInfoDelegate::ShowSyncSettings() {
 
 void ChromePageInfoDelegate::OpenCookiesDialog() {
   FocusWebContents();
-  TabDialogs::FromWebContents(web_contents_)->ShowCollectedCookies();
+  PageSpecificSiteDataDialogController::CreateAndShowForWebContents(
+      web_contents_);
 }
 
 void ChromePageInfoDelegate::OpenCertificateDialog(

@@ -24,6 +24,7 @@
 #include "extensions/buildflags/buildflags.h"
 #include "media/mojo/mojom/speech_recognition_error.mojom.h"
 #include "media/mojo/mojom/speech_recognition_result.mojom.h"
+#include "url/origin.h"
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 #include "chrome/browser/extensions/extension_service.h"
@@ -133,6 +134,14 @@ ChromeSpeechRecognitionManagerDelegate::GetEventListener() {
 }
 
 #if !BUILDFLAG(IS_ANDROID)
+base::flat_map<std::string, std::string>
+ChromeSpeechRecognitionManagerDelegate::GetRoutingParams(
+    const url::Origin& origin) {
+  // Shuttle: upstream routes the WebUI NTP Realbox (chrome://new-tab-page) to
+  // voice search here; the fork has no WebUI NTP, so there is nothing to route.
+  return {};
+}
+
 void ChromeSpeechRecognitionManagerDelegate::BindSpeechRecognitionContext(
     mojo::PendingReceiver<media::mojom::SpeechRecognitionContext>
         recognition_receiver,

@@ -2603,6 +2603,93 @@ suite('ShortcutsReorder', () => {
     assertTrue(showLessButton.disabled);
     assertTrue(addShortcutButton.disabled);
   });
+
+  test(
+      'shows drag icon and hides action menu button in reorder mode',
+      async () => {
+        document.body.innerHTML = window.trustedTypes!.emptyHTML;
+        await setUpTest({shortcutsReorderEnabled: true});
+        await addTiles(2);
+        const tile = queryTiles()[0]!;
+        const dragPanIcon = tile.querySelector<HTMLElement>('.drag-pan-icon')!;
+        const actionMenuButton =
+            tile.querySelector<HTMLElement>('#actionMenuButton')!;
+
+        // In default mode the drag icon is hidden.
+        assertFalse(isVisible(dragPanIcon));
+        assertEquals('0', getComputedStyle(dragPanIcon).opacity);
+
+        // Enter reorder mode.
+        actionMenuButton.click();
+        await microtasksFinished();
+        $$<HTMLElement>(mostVisited, '#actionMenuReorder').click();
+        await new Promise(requestAnimationFrame);
+        await microtasksFinished();
+
+        tile.dispatchEvent(new MouseEvent('mouseenter'));
+        await microtasksFinished();
+
+        // Verify the drag icon is visible and the action menu button is hidden.
+        assertTrue(isVisible(dragPanIcon));
+        assertEquals('1', getComputedStyle(dragPanIcon).opacity);
+        assertFalse(isVisible(actionMenuButton));
+      });
+
+  test(
+      'does not show drag icon for non-custom most visited tiles', async () => {
+        document.body.innerHTML = window.trustedTypes!.emptyHTML;
+        await setUpTest({shortcutsReorderEnabled: true});
+        await addTiles(2);
+        const tile = queryTiles()[0]!;
+        const dragPanIcon = tile.querySelector<HTMLElement>('.drag-pan-icon')!;
+
+        tile.dispatchEvent(new MouseEvent('mouseenter'));
+        await microtasksFinished();
+
+        assertFalse(isVisible(dragPanIcon));
+      });
+
+  test('announces tile move', async () => {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    await setUpTest({shortcutsReorderEnabled: true});
+    await addTiles(2);
+    const tile = queryTiles()[0]!;
+    const actionMenuButton =
+        tile.querySelector<HTMLElement>('#actionMenuButton')!;
+
+    // Enter reorder mode.
+    actionMenuButton.click();
+    await microtasksFinished();
+    $$<HTMLElement>(mostVisited, '#actionMenuReorder').click();
+    await new Promise(requestAnimationFrame);
+    await microtasksFinished();
+
+    const announcer = mostVisited.shadowRoot.querySelector('#announcer')!;
+    const announcementPromise = new Promise<void>(resolve => {
+      const observer = new MutationObserver(() => {
+        if (announcer.textContent.trim()) {
+          observer.disconnect();
+          resolve();
+        }
+      });
+      observer.observe(
+          announcer, {childList: true, characterData: true, subtree: true});
+    });
+
+    // Move tile.
+    tile.dispatchEvent(
+        new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
+    await announcementPromise;
+
+    assertEquals('Moved a to position 2 of 2.', announcer.textContent.trim());
+
+    // Exit reorder mode and verify the announcement is cleared.
+    tile.dispatchEvent(
+        new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+    await microtasksFinished();
+
+    assertEquals('', announcer.textContent.trim());
+  });
 });
 
 suite('ShortcutsAutoRemovalToast', () => {

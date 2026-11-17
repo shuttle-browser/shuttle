@@ -922,10 +922,10 @@ void RenderWidgetHostViewBase::DestroyOrDefer() {
 #endif  // BUILDFLAG(IS_WIN)
     OnDestroyOrDefer();
     NotifyObserversAboutShutdown();
+    // Must run before `CleanUpHostObservers()`, which clears `frame_connector_`
+    // on `RenderWidgetHostViewChildFrame` so `GetRootView()` returns null.
+    DestroyUnboundedSurfaceForThisView();
     CleanUpHostObservers();
-    if (unbounded_surface_window_) {
-      DestroyUnboundedSurface(unbounded_surface_window_->GetWeakPtr());
-    }
     if (text_input_manager_) {
       text_input_manager_->Unregister(this);
       text_input_manager_ = nullptr;
@@ -1069,8 +1069,27 @@ RenderWidgetHostViewBase::ConvertSubframeBoundsToScreenWithoutConstraints(
 }
 
 void RenderWidgetHostViewBase::DismissUnboundedSurface() {
+  dismiss_unbounded_surface_called_for_testing_ = true;
   if (unbounded_surface_window_) {
     unbounded_surface_window_->Dismiss();
+  } else if (RenderWidgetHostViewBase* root_view = GetRootView();
+             root_view && root_view != this) {
+    root_view->DismissUnboundedSurface();
+  }
+}
+
+bool RenderWidgetHostViewBase::TakeDismissUnboundedSurfaceCalledForTesting() {
+  return std::exchange(dismiss_unbounded_surface_called_for_testing_, false);
+}
+
+void RenderWidgetHostViewBase::DestroyUnboundedSurfaceForThisView() {
+  if (unbounded_surface_window_) {
+    DestroyUnboundedSurface(unbounded_surface_window_->GetWeakPtr());
+  } else if (RenderWidgetHostViewBase* root_view = GetRootView()) {
+    if (UnboundedSurfaceWindow* window = root_view->GetUnboundedSurfaceWindow();
+        window && window->GetTargetView() == this) {
+      root_view->DestroyUnboundedSurface(window->GetWeakPtr());
+    }
   }
 }
 
