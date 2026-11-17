@@ -26,6 +26,10 @@ class WebMouseEvent;
 class WebMouseWheelEvent;
 }
 
+namespace ui {
+class Cursor;
+}
+
 namespace content {
 
 class RenderWidgetHostViewBase;
@@ -84,6 +88,9 @@ class CONTENT_EXPORT UnboundedSurfaceWindow {
 
   virtual void RouteMouseEvent(const blink::WebMouseEvent& event);
   virtual void RouteMouseWheelEvent(const blink::WebMouseWheelEvent& event);
+  // Updates the cursor shown while the pointer is over the surface window, on
+  // platforms where the surface window pushes cursor updates directly.
+  virtual void DisplayCursor(const ui::Cursor& cursor) {}
   virtual gfx::Rect GetBounds() const = 0;
   virtual void CopyFromSurface(
       const gfx::Rect& src_subrect,
@@ -120,6 +127,13 @@ class CONTENT_EXPORT UnboundedSurfaceWindow {
 
   template <typename EventType>
   RenderWidgetHostViewBase* PrepareEventForTargetView(EventType& web_event);
+
+  // Mouse events over this window bypass RenderWidgetHostInputEventRouter, so
+  // the root view's CursorManager has its view-under-cursor overridden with
+  // `target_view` while the pointer is over the surface and cleared on mouse
+  // leave or window destruction. No-op while the pointer is locked.
+  void SetViewUnderCursorOverride(RenderWidgetHostViewBase* target_view);
+  void ClearViewUnderCursorOverride();
 
   raw_ptr<Delegate> delegate_ = nullptr;
 };

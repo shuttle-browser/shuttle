@@ -10,6 +10,7 @@
 #import <vector>
 
 #import "base/functional/callback_helpers.h"
+#import "base/strings/sys_string_conversions.h"
 #import "base/test/metrics/histogram_tester.h"
 #import "base/test/scoped_feature_list.h"
 #import "components/actor/core/task_source_info.h"
@@ -27,6 +28,8 @@
 #import "ios/chrome/browser/assistant/coordinator/assistant_container_commands.h"
 #import "ios/chrome/browser/assistant/ui/assistant_container_detent.h"
 #import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
+#import "ios/chrome/browser/fullscreen/public/fullscreen_metrics.h"
+#import "ios/chrome/browser/fullscreen/ui_bundled/test/test_fullscreen_controller.h"
 #import "ios/chrome/browser/intelligence/actor/public/actor_task_lifecycle_observer.h"
 #import "ios/chrome/browser/intelligence/actor/public/actor_types.h"
 #import "ios/chrome/browser/intelligence/actor/ui/actuation_worklog_view_data.h"
@@ -60,6 +63,7 @@
 #import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/fullscreen_commands.h"
 #import "ios/chrome/browser/shared/public/commands/gemini_commands.h"
 #import "ios/chrome/browser/shared/public/commands/settings_commands.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
@@ -87,6 +91,7 @@
 - (void)setActuationActive:(BOOL)actuationActive;
 - (GeminiConfiguration*)createGeminiConfigurationForActiveWebState:
     (GeminiStartupState*)startupState;
+- (void)propagatePageContext:(GeminiPageContext*)pageContext;
 @end
 
 namespace {
@@ -171,6 +176,18 @@ constexpr actor::ActorTaskId kTaskId = actor::ActorTaskId(1);
 
 - (void)setActuationActive:(BOOL)active {
   _actuationActive = active;
+}
+@end
+
+// Fake zero-state consumer recording whether suggestions are hidden (i.e. set
+// to an empty array).
+@interface FakeGeminiZeroStateConsumer : NSObject <GeminiZeroStateConsumer>
+@property(nonatomic, assign, getter=isHidden) BOOL hidden;
+@end
+
+@implementation FakeGeminiZeroStateConsumer
+- (void)setZeroStateSuggestions:(NSArray<ZeroStateSuggestion*>*)suggestions {
+  _hidden = suggestions && suggestions.count == 0;
 }
 @end
 
@@ -375,6 +392,7 @@ class GeminiContainerMediatorTest : public PlatformTest {
 
     scene_state_ = [[SceneState alloc] init];
     browser_ = std::make_unique<TestBrowser>(profile_.get(), scene_state_);
+    TestFullscreenController::CreateForBrowser(browser_.get());
 
     CommandDispatcher* dispatcher = browser_->GetCommandDispatcher();
     mock_settings_handler_ = OCMProtocolMock(@protocol(SettingsCommands));
@@ -385,6 +403,7 @@ class GeminiContainerMediatorTest : public PlatformTest {
                              forProtocol:@protocol(GeminiCommands)];
     mock_container_handler_ =
         OCMProtocolMock(@protocol(AssistantContainerCommands));
+    mock_fullscreen_handler_ = OCMProtocolMock(@protocol(FullscreenCommands));
 
     startup_state_ = [[GeminiStartupState alloc]
         initWithEntryPoint:gemini::EntryPoint::OverflowMenu];
@@ -400,6 +419,9 @@ class GeminiContainerMediatorTest : public PlatformTest {
            sharedTabsDelegate:&shared_tabs_delegate_
         sessionMetricsManager:session_metrics_manager_];
     mediator_.containerHandler = mock_container_handler_;
+    mediator_.fullscreenHandler = mock_fullscreen_handler_;
+    mediator_.fullscreenController =
+        TestFullscreenController::FromBrowser(browser_.get());
     mediator_.geminiHandler = mock_gemini_handler_;
   }
 
@@ -442,6 +464,7 @@ class GeminiContainerMediatorTest : public PlatformTest {
   id mock_settings_handler_;
   id mock_gemini_handler_;
   id mock_container_handler_;
+  id mock_fullscreen_handler_;
 };
 
 // Tests that createGeminiConfigurationForActiveWebState returns nil when no
@@ -1772,6 +1795,9 @@ TEST_F(GeminiContainerMediatorTest,
   web::FakeWebState* web_state = AppendActiveWebState();
   web_state->SetCurrentURL(GURL("https://example.com"));
   web_state->SetVisibleURL(GURL("https://example.com"));
+  web_state->SetContentsMimeType("text/html");
+  web_state->WasShown();
+  web_state->SetLoading(true);
 
   [mediator_ connect];
   EXPECT_EQ(std::optional<NSInteger>(kInitialHeight),
@@ -2245,6 +2271,186 @@ TEST_F(GeminiContainerMediatorTest, TestPrefChangesIgnoredAfterDisconnect) {
 
   EXPECT_EQ(call_count,
             shared_tabs_delegate_.save_active_page_context_call_count_);
+}
+
+// Fixture for zero-state suggestions visibility tests, with an eligible active
+// page and a connected mediator.
+class GeminiContainerMediatorZeroStateTest
+    : public GeminiContainerMediatorTest {
+ protected:
+  void SetUp() override {
+    GeminiContainerMediatorTest::SetUp();
+    scoped_feature_list_.InitWithFeatures(
+        {kAssistantContainer, kIOSGeminiBottomSheetMigration,
+         kZeroStateSuggestions, kZeroStateSuggestionsCentralization},
+        {});
+
+    zero_state_consumer_ = [[FakeGeminiZeroStateConsumer alloc] init];
+    mediator_.zeroStateConsumer = zero_state_consumer_;
+    mediator_.startupState = startup_state_;
+
+    container_handler_ = [[FakeAssistantContainerCommandsHandler alloc] init];
+    mediator_.containerHandler = container_handler_;
+    container_consumer_ = [[FakeGeminiContainerConsumer alloc] init];
+    container_consumer_.contentHeight = kContentHeight;
+    mediator_.consumer = container_consumer_;
+
+    web_state_ = AppendActiveWebState();
+    web_state_->SetCurrentURL(GURL("https://example.com"));
+    web_state_->SetVisibleURL(GURL("https://example.com"));
+    web_state_->SetContentsMimeType("text/html");
+    web_state_->WasShown();
+    web_state_->SetLoading(true);
+
+    [mediator_ connect];
+  }
+
+  // Returns the Gemini tab ID of the active tab.
+  NSString* ActiveTabID() {
+    return base::SysUTF8ToNSString(
+        GeminiTabHelper::FromWebState(web_state_)->GetClientId());
+  }
+
+  static constexpr CGFloat kContentHeight = 240.0;
+
+  base::test::ScopedFeatureList scoped_feature_list_;
+  FakeGeminiZeroStateConsumer* zero_state_consumer_;
+  FakeAssistantContainerCommandsHandler* container_handler_;
+  FakeGeminiContainerConsumer* container_consumer_;
+  raw_ptr<web::FakeWebState> web_state_ = nullptr;
+};
+
+// Tests that detaching the active tab's page context hides zero-state
+// suggestions and resets the medium detent to its default, and that
+// re-attaching it fetches them again and sizes the detent to the content.
+TEST_F(GeminiContainerMediatorZeroStateTest,
+       TestSuggestionsHiddenWhenActiveTabDetachedAndRestoredOnAttach) {
+  ASSERT_FALSE(zero_state_consumer_.hidden);
+  ASSERT_EQ(std::optional<NSInteger>(kContentHeight),
+            container_handler_.mediumDetentHeight);
+
+  [mediator_ didDetachTabWithID:ActiveTabID()];
+  EXPECT_TRUE(zero_state_consumer_.hidden);
+  EXPECT_EQ(std::nullopt, container_handler_.mediumDetentHeight);
+
+  // Input plate changes while suggestions are hidden size the detent to the
+  // content again.
+  constexpr CGFloat kNanoBananaContentHeight = 300.0;
+  container_consumer_.contentHeight = kNanoBananaContentHeight;
+  [mediator_ inputPlateDidChangeNanoBananaAttachment:YES];
+  EXPECT_EQ(std::optional<NSInteger>(kNanoBananaContentHeight),
+            container_handler_.mediumDetentHeight);
+  container_consumer_.contentHeight = kContentHeight;
+
+  [mediator_ didAttachTabWithID:ActiveTabID()];
+  EXPECT_FALSE(zero_state_consumer_.hidden);
+  EXPECT_EQ(std::optional<NSInteger>(kContentHeight),
+            container_handler_.mediumDetentHeight);
+}
+
+// Tests that detaching a tab other than the active one doesn't hide zero-state
+// suggestions.
+TEST_F(GeminiContainerMediatorZeroStateTest,
+       TestSuggestionsShownWhenInactiveTabDetached) {
+  ASSERT_FALSE(zero_state_consumer_.hidden);
+
+  [mediator_ didDetachTabWithID:@"inactive_tab_id"];
+  EXPECT_FALSE(zero_state_consumer_.hidden);
+}
+
+// Tests that zero-state suggestions are hidden when the computed page context
+// turns out to be ineligible.
+TEST_F(GeminiContainerMediatorZeroStateTest,
+       TestSuggestionsHiddenWhenPageContextIneligible) {
+  ASSERT_FALSE(zero_state_consumer_.hidden);
+
+  GeminiPageContext* page_context = [[GeminiPageContext alloc] init];
+  page_context.geminiPageContextComputationState =
+      ios::provider::GeminiPageContextComputationState::kProtected;
+  [mediator_ propagatePageContext:page_context];
+  EXPECT_TRUE(zero_state_consumer_.hidden);
+}
+
+// Tests that zero-state suggestions are hidden when the user disabled page
+// content sharing.
+TEST_F(GeminiContainerMediatorZeroStateTest,
+       TestSuggestionsHiddenWhenPageContentSharingDisabled) {
+  ASSERT_FALSE(zero_state_consumer_.hidden);
+
+  profile_->GetPrefs()->SetBoolean(prefs::kIOSBWGPageContentSetting, false);
+  EXPECT_TRUE(zero_state_consumer_.hidden);
+}
+
+// Tests that transitioning from thinking (minimized) to responding (auto-expand
+// to medium detent) exits fullscreen when `kFullscreenRefactoring` is disabled.
+TEST_F(GeminiContainerMediatorTest,
+       TestThinkingToRespondingExitsFullscreenLegacy) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      {kAssistantContainer, kIOSGeminiBottomSheetMigration},
+      {kFullscreenRefactoring});
+
+  TestFullscreenController* fullscreen_controller =
+      TestFullscreenController::FromBrowser(browser_.get());
+  ASSERT_TRUE(fullscreen_controller);
+
+  [mediator_ didSwitchToMode:ios::provider::GeminiViewMode::kFloaty];
+
+  // Enter fullscreen while thinking (minimized detent).
+  fullscreen_controller->EnterFullscreen();
+  ASSERT_EQ(0.0, fullscreen_controller->GetProgress());
+
+  [mediator_
+      didUpdateProcessingStatus:ios::provider::GeminiClientMode::kThinking
+                      sessionID:@"session"
+                 conversationID:@"conv"];
+  // Detent is minimized during thinking, so fullscreen remains active.
+  EXPECT_EQ(0.0, fullscreen_controller->GetProgress());
+
+  // Transitioning from thinking to responding auto-expands to medium detent,
+  // which should exit fullscreen.
+  [mediator_
+      didUpdateProcessingStatus:ios::provider::GeminiClientMode::kResponding
+                      sessionID:@"session"
+                 conversationID:@"conv"];
+  EXPECT_EQ(1.0, fullscreen_controller->GetProgress());
+}
+
+// Tests that transitioning from thinking (minimized) to responding (auto-expand
+// to medium detent) dispatches `exitFullscreenWithTrigger:animated:` when
+// `kFullscreenRefactoring` is enabled.
+TEST_F(GeminiContainerMediatorTest,
+       TestThinkingToRespondingExitsFullscreenRefactored) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      {kAssistantContainer, kIOSGeminiBottomSheetMigration,
+       kFullscreenRefactoring},
+      {});
+
+  [mediator_ didSwitchToMode:ios::provider::GeminiViewMode::kFloaty];
+
+  id strict_fullscreen_handler =
+      OCMStrictProtocolMock(@protocol(FullscreenCommands));
+  mediator_.fullscreenHandler = strict_fullscreen_handler;
+
+  // Transitioning to thinking sets detent to minimized, so fullscreen should
+  // not exit.
+  [mediator_
+      didUpdateProcessingStatus:ios::provider::GeminiClientMode::kThinking
+                      sessionID:@"session"
+                 conversationID:@"conv"];
+  EXPECT_OCMOCK_VERIFY(strict_fullscreen_handler);
+
+  // Transitioning to responding auto-expands to medium detent, which should
+  // exit fullscreen via `fullscreenHandler`.
+  OCMExpect([strict_fullscreen_handler
+      exitFullscreenWithTrigger:FullscreenModeTransitionTrigger::kForcedByCode
+                       animated:YES]);
+  [mediator_
+      didUpdateProcessingStatus:ios::provider::GeminiClientMode::kResponding
+                      sessionID:@"session"
+                 conversationID:@"conv"];
+  EXPECT_OCMOCK_VERIFY(strict_fullscreen_handler);
 }
 
 }  // namespace

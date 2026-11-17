@@ -970,6 +970,11 @@
     "expiry_milestone": 175
   },
   {
+    "name": "audio-selection-improvement",
+    "owners": [ "zhangwenyu@google.com", "cros-device-enablement@google.com" ],
+    "expiry_milestone": 151
+  },
+  {
     "name": "auto-framing-override",
     "owners": [ "kamesan@chromium.org", "chromeos-camera-eng@google.com" ],
     "expiry_milestone": 116
@@ -2557,6 +2562,11 @@
   {
     "name": "contextual-tasks-side-panel-tab-state",
     "owners": [ "juanmojica@google.com", "chrome-contextual-tasks-eng@google.com" ],
+    "expiry_milestone": 165
+  },
+  {
+    "name": "contextual-tasks-single-tab-menu-item",
+    "owners": [ "kiehl@google.com", "chrome-contextual-tasks-eng@google.com" ],
     "expiry_milestone": 165
   },
   {
@@ -7016,7 +7026,16 @@
       "philyan@chromium.org",
       "media-dev@chromium.org"
     ],
-    "expiry_milestone": 160
+    "expiry_milestone": 180
+  },
+  {
+    "name": "media-codec-block-model-encrypted",
+    "owners": [
+      "dalecurtis@chromium.org",
+      "philyan@chromium.org",
+      "media-dev@chromium.org"
+    ],
+    "expiry_milestone": 180
   },
   {
     "name": "media-codec-block-model-output",

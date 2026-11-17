@@ -82,22 +82,12 @@ const char kURLOnLastInteractionDictKey[] = "url_on_last_interaction";
 const char kDataGovernanceManagedLinkURL[] =
     "https://support.google.com/a/answer/15706919";
 const char kActivityLinkURL[] = "https://myactivity.google.com/product/gemini";
-const char kLocationInfoLinkURL[] =
-    "https://support.google.com/gemini?p=gemini_mobile_app_location_info";
 const char kChoicesLinkURL[] =
-    "https://support.google.com/gemini?p=your_choices";
+    "https://support.google.com/gemini/answer/"
+    "13594961?visit_id=639210347224714317-2286050145&p=activity_settings&rd=1#"
+    "pn_config_settings&zippy=%2Cconfiguring-your-settings";
 const char kConnectedServicesLinkURL[] =
     "https://support.google.com/gemini/answer/13594961";
-const char kUploadsLinkURL[] =
-    "https://support.google.com/gemini/answer/14903178";
-const char kScreensLinkURL[] =
-    "https://support.google.com/gemini/answer/15850607";
-const char kPauseActivityLinkURL[] =
-    "https://support.google.com/gemini?p=pause_activity";
-const char kImproveSettingLinkURL[] =
-    "https://support.google.com/gemini?p=improve_setting";
-const char kTrainingSettingLinkURL[] =
-    "https://support.google.com/gemini?p=training_setting";
 
 // Consent row links for Live FRE.
 const char kLivePrivacyNoticeLinkURL[] =
@@ -121,18 +111,9 @@ const char kWatchLinkURL[] = "https://support.google.com/gemini?p=about_ai";
 NSString* const kGeminiDataGovernanceManagedLinkAction =
     @"GeminiDataGovernanceManagedLinkAction";
 NSString* const kGeminiActivityLinkAction = @"GeminiActivityLinkAction";
-NSString* const kGeminiLocationInfoLinkAction = @"GeminiLocationInfoLinkAction";
 NSString* const kGeminiChoicesLinkAction = @"GeminiChoicesLinkAction";
 NSString* const kGeminiConnectedServicesLinkAction =
     @"GeminiConnectedServicesLinkAction";
-NSString* const kGeminiUploadsLinkAction = @"GeminiUploadsLinkAction";
-NSString* const kGeminiScreensLinkAction = @"GeminiScreensLinkAction";
-NSString* const kGeminiPauseActivityLinkAction =
-    @"GeminiPauseActivityLinkAction";
-NSString* const kGeminiImproveSettingLinkAction =
-    @"GeminiImproveSettingLinkAction";
-NSString* const kGeminiTrainingSettingLinkAction =
-    @"GeminiTrainingSettingLinkAction";
 
 // Action identifiers for links in the Live FRE Gemini consent rows.
 NSString* const kGeminiLivePrivacyNoticeLinkAction =

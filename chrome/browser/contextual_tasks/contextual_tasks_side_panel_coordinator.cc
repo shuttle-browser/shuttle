@@ -1207,7 +1207,8 @@ void ContextualTasksSidePanelCoordinator::UnshareTabs(
     target_web_contents.push_back(active_contents);
   }
 
-  // 2. Also include any open browser tabs hosting a full-tab AI Mode thread.
+  // 2. Also include any open browser tabs hosting a full-tab AI Mode session
+  // (including zero-state tabs that do not have a task ID yet).
   if (browser_window_) {
     if (auto* tab_list = TabListInterface::From(browser_window_)) {
       for (tabs::TabInterface* tab : tab_list->GetAllTabs()) {
@@ -1216,7 +1217,9 @@ void ContextualTasksSidePanelCoordinator::UnshareTabs(
             tab_contents ? ContextualTasksWebContentsUserData::FromWebContents(
                                tab_contents)
                          : nullptr;
-        if (user_data && user_data->GetEffectiveTaskId().has_value() &&
+        if (user_data &&
+            (user_data->GetEffectiveTaskId().has_value() ||
+             user_data->GetExistingContextualSessionHandle()) &&
             !std::ranges::contains(target_web_contents, tab_contents)) {
           target_web_contents.push_back(tab_contents);
         }
@@ -2912,7 +2915,7 @@ void ContextualTasksSidePanelCoordinator::AttachTabsToTask(
 
       auto result = CaptureAndUploadTabContext(tab_handle_id, session_handle,
                                                std::move(on_context_uploaded),
-                                               browser_window_);
+                                               browser_window_, user_data);
       base::UnguessableToken token =
           result.has_value() ? *result : session_handle->CreateContextToken();
       if (!result.has_value() && active_task_context_provider_) {
@@ -2922,7 +2925,6 @@ void ContextualTasksSidePanelCoordinator::AttachTabsToTask(
         user_data->RecordTabIdMapping(tab_handle_id, session_id.id());
         if (result.has_value()) {
           user_data->AssociateTabWithTask(session_id);
-          user_data->OnTabContextUploadStarted(*result);
         }
       }
       if (omnibox::IsTabDeselectionInComposeboxEnabled() ||

@@ -944,6 +944,9 @@ public final class ProductionSupportedFlagList {
         Flag.baseFeature(
                 MediaFeatures.MEDIA_CODEC_BLOCK_MODEL,
                 "Controls use of MediaCodec's LinearBlock mode."),
+        Flag.baseFeature(
+                MediaFeatures.MEDIA_CODEC_BLOCK_MODEL_ENCRYPTED,
+                "Controls use of MediaCodec's LinearBlock mode for encrypted playback."),
         Flag.baseFeature(BlinkFeatures.FETCH_LATER_API, "Enables FetchLater API."),
         Flag.baseFeature(
                 ContentFeatures.IO_THREAD_INTERACTIVE_THREAD_TYPE,
@@ -1551,6 +1554,11 @@ public final class ProductionSupportedFlagList {
                 "When enabled, MHTML responses with mixed-case MIME types (e.g."
                         + " \"Multipart/Related\") for URLs other than file: and content: are"
                         + " treated as downloads, matching lowercase MHTML MIME types."),
+        Flag.baseFeature(
+                NetFeatures.QUIC_PRECONNECT_INITIAL_RTT,
+                "When enabled, Profile#preconnect configures the client-side initial RTT on"
+                        + " uncached QUIC sessions to reduce the initial handshake Probe Timeout"
+                        + " (PTO) delay."),
         // Add new commandline switches and features above. The final entry should have a
         // trailing comma for cleaner diffs.
     };

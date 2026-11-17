@@ -320,23 +320,11 @@ const CGFloat kPromoMaxImpressionCount = 3;
     [self openNewTabWithURL:GURL(kDataGovernanceManagedLinkURL)];
   } else if ([actionString isEqualToString:kGeminiActivityLinkAction]) {
     [self openNewTabWithURL:GURL(kActivityLinkURL)];
-  } else if ([actionString isEqualToString:kGeminiLocationInfoLinkAction]) {
-    [self openNewTabWithURL:GURL(kLocationInfoLinkURL)];
   } else if ([actionString isEqualToString:kGeminiChoicesLinkAction]) {
     [self openNewTabWithURL:GURL(kChoicesLinkURL)];
   } else if ([actionString
                  isEqualToString:kGeminiConnectedServicesLinkAction]) {
     [self openNewTabWithURL:GURL(kConnectedServicesLinkURL)];
-  } else if ([actionString isEqualToString:kGeminiUploadsLinkAction]) {
-    [self openNewTabWithURL:GURL(kUploadsLinkURL)];
-  } else if ([actionString isEqualToString:kGeminiScreensLinkAction]) {
-    [self openNewTabWithURL:GURL(kScreensLinkURL)];
-  } else if ([actionString isEqualToString:kGeminiPauseActivityLinkAction]) {
-    [self openNewTabWithURL:GURL(kPauseActivityLinkURL)];
-  } else if ([actionString isEqualToString:kGeminiImproveSettingLinkAction]) {
-    [self openNewTabWithURL:GURL(kImproveSettingLinkURL)];
-  } else if ([actionString isEqualToString:kGeminiTrainingSettingLinkAction]) {
-    [self openNewTabWithURL:GURL(kTrainingSettingLinkURL)];
   }
 }
 

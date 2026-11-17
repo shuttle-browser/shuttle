@@ -21,6 +21,8 @@
 #import "ios/chrome/browser/assistant/coordinator/assistant_container_commands.h"
 #import "ios/chrome/browser/assistant/ui/assistant_container_view_controller.h"
 #import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
+#import "ios/chrome/browser/fullscreen/public/fullscreen_metrics.h"
+#import "ios/chrome/browser/fullscreen/ui_bundled/fullscreen_controller.h"
 #import "ios/chrome/browser/intelligence/actor/model/actor_service.h"
 #import "ios/chrome/browser/intelligence/actor/public/actor_task_lifecycle_observer.h"
 #import "ios/chrome/browser/intelligence/actor/public/actor_types.h"
@@ -58,7 +60,9 @@
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list_observer.h"
+#import "ios/chrome/browser/shared/public/commands/fullscreen_commands.h"
 #import "ios/chrome/browser/shared/public/commands/gemini_commands.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/signin/model/authentication_service.h"
 #import "ios/chrome/browser/signin/model/identity_manager_factory.h"
 #import "ios/chrome/grit/ios_strings.h"
@@ -100,6 +104,14 @@ using ios::provider::GeminiViewState;
 @end
 
 namespace {
+
+// Returns whether a page context in computation `state` can be shared with
+// Gemini.
+bool IsPageContextComputationEligible(
+    ios::provider::GeminiPageContextComputationState state) {
+  return state == ios::provider::GeminiPageContextComputationState::kSuccess ||
+         state == ios::provider::GeminiPageContextComputationState::kPending;
+}
 
 // Internal C++ observer for `WebStateList` active `WebState` changes.
 class GeminiContainerMediatorWebStateListObserver
@@ -200,6 +212,14 @@ class GeminiContainerMediatorTabHelperObserver
   // Lens overlay state notifier observed to dismiss the container when Lens
   // Overlay prepares.
   LensOverlayStateNotifier* _lensOverlayStateNotifier;
+  // Incremented whenever the zero-state suggestions are updated, so that
+  // results from superseded fetches are dropped.
+  // TODO(crbug.com/582737077): Remove and cancel in-flight fetch instead
+  NSUInteger _zeroStateSuggestionsRequestID;
+  // Whether the last page context propagated for the active tab can't be
+  // shared with Gemini (e.g. protected page). Updated on every page context
+  // propagation, including partial ones on navigation and tab switches.
+  BOOL _activePageContextIneligible;
 }
 
 - (instancetype)
@@ -256,6 +276,10 @@ class GeminiContainerMediatorTabHelperObserver
   GeminiPageContext* initialPageContext =
       pageContext ? pageContext : geminiTabHelper->GetPartialPageContext();
   [self applyUserPrefsToPageContext:initialPageContext];
+  // Seed the eligibility before the initial zero-state fetch, which runs before
+  // the first page context propagation.
+  _activePageContextIneligible = !IsPageContextComputationEligible(
+      initialPageContext.geminiPageContextComputationState);
 
   return [self createGeminiConfigurationWithTabHelper:geminiTabHelper
                                           pageContext:initialPageContext
@@ -287,21 +311,25 @@ class GeminiContainerMediatorTabHelperObserver
   }
 
   GeminiTabHelper* geminiTabHelper = [self activeTabHelper];
-  if (!geminiTabHelper ||
+  BOOL pageContextDetached =
+      ios::provider::GetCurrentPageContextAttachmentState() ==
+      ios::provider::GeminiPageContextAttachmentState::kDetached;
+  if (!geminiTabHelper || pageContextDetached || _activePageContextIneligible ||
+      ![self isPageContextEligibleForTabHelper:geminiTabHelper] ||
       ![self shouldShowSuggestionChipsForEntryPoint:startupState.entryPoint]) {
-    [self.zeroStateConsumer setZeroStateSuggestions:@[]];
-    [self updateZeroStateMediumDetentHeight];
+    [self setZeroStateSuggestions:@[]];
     return;
   }
 
   // Set the suggestions to nil to show empty buttons while fetching them.
-  [self.zeroStateConsumer setZeroStateSuggestions:nil];
-  [self updateZeroStateMediumDetentHeight];
+  [self setZeroStateSuggestions:nil];
 
+  NSUInteger requestID = _zeroStateSuggestionsRequestID;
   __weak __typeof(self) weakSelf = self;
   geminiTabHelper->FetchZeroStateSuggestions(
       base::BindOnce(^(NSArray<ZeroStateSuggestion*>* suggestions) {
-        [weakSelf onZeroStateSuggestionsFetched:suggestions];
+        [weakSelf onZeroStateSuggestionsFetched:suggestions
+                                      requestID:requestID];
       }));
 }
 
@@ -384,6 +412,8 @@ class GeminiContainerMediatorTabHelperObserver
   _geminiHandler = nil;
   _sharedTabsDelegate = nullptr;
   _sessionMetricsManager = nil;
+  self.fullscreenHandler = nil;
+  _fullscreenController = nullptr;
   _consumer = nil;
   _webStateList = nullptr;
   _prefObserverBridge.reset();
@@ -675,12 +705,18 @@ class GeminiContainerMediatorTabHelperObserver
     _sharedTabsDelegate->UpdateLocalTabAttachmentState(
         tabID, ios::provider::GeminiPageContextAttachmentState::kAttached);
   }
+  if ([self isActiveTabID:tabID]) {
+    [self fetchZeroStateSuggestions:_startupState];
+  }
 }
 
 - (void)didDetachTabWithID:(NSString*)tabID {
   if (_sharedTabsDelegate) {
     _sharedTabsDelegate->UpdateLocalTabAttachmentState(
         tabID, ios::provider::GeminiPageContextAttachmentState::kDetached);
+  }
+  if ([self isActiveTabID:tabID]) {
+    [self setZeroStateSuggestions:@[]];
   }
 }
 
@@ -849,6 +885,10 @@ class GeminiContainerMediatorTabHelperObserver
         setAssistantContainerMediumDetentHeight:std::nullopt];
   }
 
+  if (containerUIState.detent != AssistantContainerDetent::kMinimized) {
+    [self exitFullscreen];
+  }
+
   [self.containerHandler
       animateAssistantContainerToDetent:containerUIState.detent];
   [self.containerHandler
@@ -905,12 +945,68 @@ class GeminiContainerMediatorTabHelperObserver
 
 #pragma mark - Private
 
+// Exits fullscreen mode.
+- (void)exitFullscreen {
+  if (IsFullscreenRefactoringEnabled()) {
+    [self.fullscreenHandler
+        exitFullscreenWithTrigger:FullscreenModeTransitionTrigger::kForcedByCode
+                         animated:YES];
+  } else {
+    _fullscreenController->ExitFullscreen();
+  }
+}
+
 // Updates the zero-state consumer with fetched `suggestions` and adapts the
-// medium detent height of the assistant container.
+// medium detent height of the assistant container. Results of superseded
+// requests are dropped so they don't re-show hidden suggestions.
 - (void)onZeroStateSuggestionsFetched:
-    (NSArray<ZeroStateSuggestion*>*)suggestions {
+            (NSArray<ZeroStateSuggestion*>*)suggestions
+                            requestID:(NSUInteger)requestID {
+  if (requestID != _zeroStateSuggestionsRequestID) {
+    return;
+  }
+  [self setZeroStateSuggestions:suggestions];
+}
+
+// Forwards `suggestions` to the zero-state consumer, drops any in-flight fetch
+// result and adapts the medium detent height of the assistant container.
+- (void)setZeroStateSuggestions:(NSArray<ZeroStateSuggestion*>*)suggestions {
+  if (!self.zeroStateConsumer) {
+    return;
+  }
+  ++_zeroStateSuggestionsRequestID;
   [self.zeroStateConsumer setZeroStateSuggestions:suggestions];
-  [self updateZeroStateMediumDetentHeight];
+  if (suggestions && suggestions.count == 0) {
+    [self resetZeroStateMediumDetentHeight];
+  } else {
+    [self updateZeroStateMediumDetentHeight];
+  }
+}
+
+// Returns whether the page context of `tabHelper` can be attached: the user
+// allows sharing page content and the page is eligible for Gemini.
+- (BOOL)isPageContextEligibleForTabHelper:(GeminiTabHelper*)tabHelper {
+  return _profile->GetPrefs()->GetBoolean(prefs::kIOSBWGPageContentSetting) &&
+         tabHelper->IsGeminiChatAvailableForWebState();
+}
+
+// Returns whether `tabID` identifies the active tab. In multi-tab mode, other
+// tabs can be attached or detached without affecting the active page context.
+- (BOOL)isActiveTabID:(NSString*)tabID {
+  GeminiTabHelper* tabHelper = [self activeTabHelper];
+  return tabHelper && [tabID isEqualToString:base::SysUTF8ToNSString(
+                                                 tabHelper->GetClientId())];
+}
+
+// Resets the medium detent height of the assistant container to its default
+// when in zero state. Used when suggestions are hidden since the remaining
+// content is too short for a content-sized detent.
+- (void)resetZeroStateMediumDetentHeight {
+  if (!_stateManager.currentUIState.zeroStateVisible ||
+      !IsIOSGeminiBottomSheetMigrationEnabled()) {
+    return;
+  }
+  [self.containerHandler setAssistantContainerMediumDetentHeight:std::nullopt];
 }
 
 // Updates the medium detent height of the assistant container to match the
@@ -1047,6 +1143,18 @@ class GeminiContainerMediatorTabHelperObserver
   ios::provider::UpdateActivePageContext(
       pageContext,
       _sharedTabsDelegate ? _sharedTabsDelegate->GetInactiveSharedTabs() : nil);
+
+  // Some pages are only known to be ineligible once their page context is
+  // computed (e.g. protected pages). Suggestions are refetched only when the
+  // page becomes eligible again, rather than on every page context update.
+  BOOL wasIneligible = _activePageContextIneligible;
+  _activePageContextIneligible = !IsPageContextComputationEligible(
+      pageContext.geminiPageContextComputationState);
+  if (_activePageContextIneligible) {
+    [self setZeroStateSuggestions:@[]];
+  } else if (wasIneligible && _stateManager.currentUIState.zeroStateVisible) {
+    [self fetchZeroStateSuggestions:_startupState];
+  }
 }
 
 - (void)updateFloatyWithPartialPageContext {
@@ -1089,6 +1197,9 @@ class GeminiContainerMediatorTabHelperObserver
       newTabHelper->AddObserver(_tabHelperObserver.get());
       [self onPageContextUpdated:newActive];
     }
+    if (_stateManager.currentUIState.zeroStateVisible) {
+      [self fetchZeroStateSuggestions:_startupState];
+    }
   }
 }
 
@@ -1127,6 +1238,9 @@ class GeminiContainerMediatorTabHelperObserver
   }
 
   [self updateFloatyWithPartialPageContext];
+  if (_stateManager.currentUIState.zeroStateVisible) {
+    [self fetchZeroStateSuggestions:_startupState];
+  }
 }
 
 - (void)onWebStateListDestroyed {

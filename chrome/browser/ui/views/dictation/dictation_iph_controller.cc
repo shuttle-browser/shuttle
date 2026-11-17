@@ -6,22 +6,28 @@
 
 #include "base/functional/bind.h"
 #include "base/notreached.h"
+#include "chrome/browser/dictation/dictation_keyed_service.h"
+#include "chrome/browser/dictation/hotkey_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/dictation/dictation_iph.h"
 #include "chrome/browser/ui/views/dictation/text_field_filter.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/contents_web_view.h"
+#include "chrome/browser/user_education/user_education_service.h"
+#include "chrome/browser/user_education/user_education_service_factory.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/branded_strings.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/prefs/pref_service.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/user_education/common/feature_promo/feature_promo_controller.h"
+#include "components/user_education/common/user_education_storage_service.h"
 #include "content/public/browser/focused_node_details.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
+#include "ui/base/accelerators/accelerator.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/gfx/geometry/point.h"
 #include "ui/gfx/geometry/rect.h"
@@ -43,6 +49,8 @@ constexpr int kKeyPressesBeforeClose = 3;
 // change. Retry the medium/large field check this often, this many times.
 constexpr base::TimeDelta kFieldTypeRetryDelay = base::Milliseconds(50);
 constexpr int kMaxFieldTypeRetries = 5;
+
+constexpr int kCaretSlop = 4;
 
 bool IsUserInitiatedFocus(blink::mojom::FocusType focus_type) {
   switch (focus_type) {
@@ -69,6 +77,12 @@ DictationIphController::DictationIphController(tabs::TabInterface& tab)
   tab_will_deactivate_subscription_ = tab.RegisterWillDeactivate(
       base::BindRepeating(&DictationIphController::OnTabWillDeactivate,
                           base::Unretained(this)));
+  if (auto* const dictation_service =
+          DictationKeyedService::Get(tab.GetContents()->GetBrowserContext())) {
+    session_ended_subscription_ =
+        dictation_service->AddSessionEndedCallback(base::BindRepeating(
+            &DictationIphController::OnSessionEnded, base::Unretained(this)));
+  }
 }
 
 DictationIphController::~DictationIphController() = default;
@@ -188,15 +202,9 @@ void DictationIphController::MaybeShowPromo(int retries_left,
     return;
   }
 
-  if (auto* const user_education = GetUserEducation()) {
-    key_presses_while_showing_ = 0;
-    // The body refers to the context menu item by name, which is branded.
-    user_education::FeaturePromoParams params(
-        feature_engagement::kIPHDictationFeature);
-    params.body_params =
-        l10n_util::GetStringUTF16(IDS_DICTATION_CONTEXT_MENU_STRING);
-    user_education->MaybeShowFeaturePromo(std::move(params));
-  }
+  // The body refers to the context menu item by name, which is branded.
+  RequestPromo(feature_engagement::kIPHDictationFeature,
+               l10n_util::GetStringUTF16(IDS_DICTATION_CONTEXT_MENU_STRING));
 }
 
 void DictationIphController::DidGetUserInteraction(
@@ -275,8 +283,11 @@ BrowserUserEducationInterface* DictationIphController::GetUserEducation()
 
 bool DictationIphController::IsPromoActive() const {
   auto* const user_education = GetUserEducation();
-  return user_education && user_education->IsFeaturePromoActive(
-                               feature_engagement::kIPHDictationFeature);
+  return user_education &&
+         (user_education->IsFeaturePromoActive(
+              feature_engagement::kIPHDictationFeature) ||
+          user_education->IsFeaturePromoActive(
+              feature_engagement::kIPHDictationHotkeyFeature));
 }
 
 bool DictationIphController::HasUsedDictation() const {
@@ -296,13 +307,16 @@ bool DictationIphController::IsAnchoredNode(
 
 void DictationIphController::IgnorePromo() {
   key_presses_while_showing_ = 0;
-  // This also cancels the IPH if it is still queued. Aborting a showing IPH
+  // This also cancels an IPH that is still queued. Aborting a showing IPH
   // neither dismisses nor snoozes it. The user education framework only has
   // the last show time, so the IPH is blocked for
   // `user_education::features::GetAbortCooldown()` (4 hours) after this.
-  // See `FeaturePromoLifecycle::CanShowSnoozePromo()`.
+  // See `FeaturePromoLifecycle::CanShowSnoozePromo()`. `CanRequestPromo()`
+  // waits longer.
   if (auto* const user_education = GetUserEducation()) {
     user_education->AbortFeaturePromo(feature_engagement::kIPHDictationFeature);
+    user_education->AbortFeaturePromo(
+        feature_engagement::kIPHDictationHotkeyFeature);
   }
 }
 
@@ -317,6 +331,77 @@ void DictationIphController::HideAnchor() {
   // Destroy rather than hide the anchor, so it never outlives its host
   // `ContentsWebView` (e.g. when the tab moves to another window).
   anchor_.reset();
+}
+
+void DictationIphController::OnSessionEnded(
+    const content::GlobalDOMNodeId& target) {
+  // The session may have ended because Dictation was just disabled, e.g. by
+  // policy, in which case the hotkey no longer works.
+  DictationKeyedService* const dictation_service =
+      DictationKeyedService::Get(web_contents()->GetBrowserContext());
+  if (!dictation_service || !dictation_service->IsEnabledAndReady()) {
+    return;
+  }
+  if (!anchor_ || !IsAnchoredNode(target)) {
+    return;
+  }
+  content::RenderFrameHost* const rfh =
+      target.document.AsRenderFrameHostIfValid();
+  // `IsAnchorCurrent()` needs the frame's view, which is destroyed when the
+  // renderer crashes.
+  if (!rfh || !rfh->IsRenderFrameLive() || !IsAnchorCurrent(*rfh)) {
+    return;
+  }
+
+  Profile* const profile =
+      Profile::FromBrowserContext(web_contents()->GetBrowserContext());
+  // The IPH tells the user which hotkey to press, so there must be one.
+  const ui::Accelerator hotkey = GetDictationHotkeyFromPrefs(profile);
+  if (hotkey.IsEmpty()) {
+    return;
+  }
+  RequestPromo(feature_engagement::kIPHDictationHotkeyFeature,
+               hotkey.GetShortcutText());
+}
+
+bool DictationIphController::IsAnchorCurrent(
+    content::RenderFrameHost& rfh) const {
+  const std::optional<gfx::Rect> caret =
+      web_contents()->GetFocusSelectionBounds(&rfh);
+  if (!caret) {
+    return false;
+  }
+  // If the caret isn't inside the anchor, the page scrolled or the field moved
+  // or grew since the anchor was placed.
+  gfx::Rect field = anchor_->GetScreenBounds();
+  field.Outset(kCaretSlop);
+  return field.Contains(*caret);
+}
+
+bool DictationIphController::CanRequestPromo(
+    const base::Feature& iph_feature) const {
+  UserEducationService* const user_education_service =
+      UserEducationServiceFactory::GetForBrowserContext(
+          web_contents()->GetBrowserContext());
+  if (!user_education_service) {
+    return false;
+  }
+  const user_education::UserEducationStorageService& storage =
+      user_education_service->user_education_storage_service();
+  return CanRequestDictationIph(storage.ReadPromoData(iph_feature),
+                                storage.GetCurrentTime());
+}
+
+void DictationIphController::RequestPromo(const base::Feature& iph_feature,
+                                          std::u16string body) {
+  BrowserUserEducationInterface* const user_education = GetUserEducation();
+  if (!user_education || !CanRequestPromo(iph_feature)) {
+    return;
+  }
+  user_education::FeaturePromoParams params(iph_feature);
+  params.body_params = std::move(body);
+  key_presses_while_showing_ = 0;
+  user_education->MaybeShowFeaturePromo(std::move(params));
 }
 
 }  // namespace dictation

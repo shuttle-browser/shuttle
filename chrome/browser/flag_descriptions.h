@@ -6361,6 +6361,12 @@ inline constexpr char kMediaCodecBlockModelName[] = "MediaCodec Block Model";
 inline constexpr char kMediaCodecBlockModelDescription[] =
     "Enables Block Model for MediaCodec on Android.";
 
+inline constexpr char kMediaCodecBlockModelEncryptedName[] =
+    "MediaCodec Block Model Encrypted";
+inline constexpr char kMediaCodecBlockModelEncryptedDescription[] =
+    "Enables Block Model for MediaCodec on Android for encrypted playback. "
+    "Has no effect unless MediaCodec Block Model is enabled.";
+
 inline constexpr char kMediaCodecBlockModelOutputName[] =
     "MediaCodec Block Model Output";
 inline constexpr char kMediaCodecBlockModelOutputDescription[] =
@@ -7528,6 +7534,11 @@ inline constexpr char kAshSplitKeyboardRefactorName[] =
     "Split keyboard refactor";
 inline constexpr char kAshSplitKeyboardRefactorDescription[] =
     "Enable split keyboard refactor on ChromeOS.";
+
+inline constexpr char kAudioSelectionImprovementName[] =
+    "Enable audio selection improvement algorithm";
+inline constexpr char kAudioSelectionImprovementDescription[] =
+    "Enable set-based audio selection improvement algorithm.";
 
 inline constexpr char kAutoFramingOverrideName[] =
     "Auto-framing control override";

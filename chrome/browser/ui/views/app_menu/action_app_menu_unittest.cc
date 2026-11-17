@@ -5,6 +5,9 @@
 #include "chrome/browser/ui/views/app_menu/action_app_menu.h"
 
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "base/functional/callback_helpers.h"
 #include "base/i18n/number_formatting.h"
@@ -85,6 +88,7 @@
 #include "components/search/ntp_features.h"
 #include "components/tabs/public/mock_tab_interface.h"
 #include "components/user_education/common/tutorial/tutorial_description.h"
+#include "components/vector_icons/vector_icons.h"
 #include "components/zoom/zoom_controller.h"
 #include "content/public/test/test_renderer_host.h"
 #include "content/public/test/web_contents_tester.h"
@@ -104,6 +108,8 @@
 #include "ui/display/screen.h"
 #include "ui/events/base_event_utils.h"
 #include "ui/events/event.h"
+#include "ui/events/gesture_detection/gesture_configuration.h"
+#include "ui/events/test/event_generator.h"
 #include "ui/gfx/color_palette.h"
 #include "ui/gfx/text_utils.h"
 #include "ui/strings/grit/ax_strings.h"
@@ -138,6 +144,7 @@
 
 #if BUILDFLAG(IS_MAC)
 #include "ui/views/controls/menu/menu_closure_animation_mac.h"
+#include "ui/views/controls/menu/menu_cocoa_watcher_mac.h"
 #endif
 
 #if !BUILDFLAG(IS_CHROMEOS)
@@ -175,12 +182,28 @@ class ActionAppMenuTest : public ActionAppMenuTestBase {
   }
 
   void TearDown() override {
+#if BUILDFLAG(IS_MAC)
+    views::MenuCocoaWatcherMac::SetNotificationFilterForTesting(
+        views::MacNotificationFilter::DontIgnoreNotifications);
+#endif
     button_ = nullptr;
     widget_.reset();
     ActionAppMenuTestBase::TearDown();
   }
 
  protected:
+  // Shows `widget_` so menus opened from it are visible. On Mac the menu host
+  // stays hidden while its parent is, and MenuController treats events on a
+  // hidden menu as outside it. Showing the widget makes it key, which would
+  // cancel the menu on Mac, so window and app notifications are ignored.
+  void ShowWidgetForPointerEvents() {
+#if BUILDFLAG(IS_MAC)
+    views::MenuCocoaWatcherMac::SetNotificationFilterForTesting(
+        views::MacNotificationFilter::IgnoreAllNotifications);
+#endif
+    widget_->Show();
+  }
+
   // The fixture's actions have plain text. Sets `action_id`'s text to the
   // string with mnemonic used in production, and returns its mnemonic.
   char16_t SetTextWithMnemonic(actions::ActionId action_id, int string_id) {
@@ -241,6 +264,40 @@ class ActionAppMenuTest : public ActionAppMenuTestBase {
     return views::AsViewClass<AppMenuFooterButton>(container->children()[0]);
   }
 
+#if defined(USE_AURA)
+  // Production menu rows have icons, while the test fixture's actions have no
+  // images by default. Populates a 16x16 icon on every iconless action.
+  static void SetDefaultActionIcons() {
+    actions::ActionItemVector items;
+    actions::ActionManager::Get().GetActions(items);
+    for (actions::ActionItem* item : items) {
+      if (item->GetImage().IsEmpty() &&
+          item->GetActionId() != kActionZoomSubmenu) {
+        item->SetImage(ui::ImageModel::FromVectorIcon(
+            vector_icons::kSettingsIcon, ui::kColorIcon, 16));
+      }
+    }
+  }
+
+  // Representative points across `button` in `button`'s local coordinates:
+  // center, top-left corner, upper-left quarter, icon center, label start, and
+  // bottom-left corner.
+  static std::vector<gfx::Point> FooterButtonTestPoints(
+      const AppMenuFooterButton& button) {
+    CHECK_GE(button.children().size(), 2u);
+    const views::View* icon = button.children()[0];
+    const views::View* label = button.children()[1];
+    return {
+        button.GetLocalBounds().CenterPoint(),
+        gfx::Point(4, 4),
+        gfx::Point(button.width() / 4, 4),
+        icon->bounds().CenterPoint(),
+        gfx::Point(label->bounds().x() + 2, button.height() / 2),
+        gfx::Point(4, button.height() - 4),
+    };
+  }
+#endif  // defined(USE_AURA)
+
   // Returns the text that `button`'s label shows.
   static std::u16string GetLabelText(const views::View& button) {
     for (const views::View* child : button.children()) {
@@ -267,6 +324,39 @@ class ActionAppMenuTest : public ActionAppMenuTestBase {
     ui::AXNodeData data;
     button.GetViewAccessibility().GetAccessibleNodeData(&data);
     return data.GetStringAttribute(ax::mojom::StringAttribute::kKeyShortcuts);
+  }
+
+  // Sends a finger tap at `point` in `view` through `view`'s menu widget, so
+  // child views get the tap first and the MenuController only sees it if no
+  // view handles it. Call ShowWidgetForPointerEvents() before opening the menu.
+  static void TapAt(views::View* view, const gfx::Point& point) {
+    views::Widget* widget = view->GetWidget();
+    CHECK(widget->IsVisible());
+    const gfx::Point location =
+        views::View::ConvertPointToTarget(view, widget->GetRootView(), point);
+    ui::GestureEvent tap_down(
+        location.x(), location.y(), 0, ui::EventTimeForNow(),
+        ui::GestureEventDetails(ui::EventType::kGestureTapDown));
+    widget->OnGestureEvent(&tap_down);
+    ui::GestureEvent tap(location.x(), location.y(), 0, ui::EventTimeForNow(),
+                         ui::GestureEventDetails(ui::EventType::kGestureTap));
+    widget->OnGestureEvent(&tap);
+  }
+
+  // Mouse twin of TapAt().
+  static void ClickAt(views::View* view, const gfx::Point& point) {
+    views::Widget* widget = view->GetWidget();
+    CHECK(widget->IsVisible());
+    const gfx::Point location =
+        views::View::ConvertPointToTarget(view, widget->GetRootView(), point);
+    ui::MouseEvent press(ui::EventType::kMousePressed, location, location,
+                         ui::EventTimeForNow(), ui::EF_LEFT_MOUSE_BUTTON,
+                         ui::EF_LEFT_MOUSE_BUTTON);
+    widget->OnMouseEvent(&press);
+    ui::MouseEvent release(ui::EventType::kMouseReleased, location, location,
+                           ui::EventTimeForNow(), ui::EF_LEFT_MOUSE_BUTTON,
+                           ui::EF_LEFT_MOUSE_BUTTON);
+    widget->OnMouseEvent(&release);
   }
 
   std::unique_ptr<views::Widget> widget_;
@@ -1887,15 +1977,432 @@ TEST_F(ActionAppMenuTest, TappingDisabledZoomButtonDoesNotCrash) {
       ui::GestureEventDetails(ui::EventType::kGestureTapDown));
   root->GetMenuController()->OnGestureEvent(root->GetSubmenu(), &tap_down);
 
-  EXPECT_CALL(on_menu_closed, Run()).Times(1);
+  // The disabled button doesn't handle the tap, so it falls through to the
+  // zoom row. That row only hosts its controls, so the menu stays open, as it
+  // does for a mouse click.
+  EXPECT_CALL(on_menu_closed, Run()).Times(0);
   ui::GestureEvent tap(tap_location.x(), tap_location.y(), 0,
                        ui::EventTimeForNow(),
                        ui::GestureEventDetails(ui::EventType::kGestureTap));
   root->GetMenuController()->OnGestureEvent(root->GetSubmenu(), &tap);
+
+  EXPECT_TRUE(menu.IsShowing());
+  testing::Mock::VerifyAndClearExpectations(&on_menu_closed);
+  EXPECT_CALL(on_menu_closed, Run());
+  menu.CloseMenu();
+}
+
+// A finger tap that lands between two block buttons is not handled by either
+// button. It must leave the menu open like a mouse click there does, rather
+// than activate the block row itself (whose command id 0 is kActionCut).
+TEST_F(ActionAppMenuTest, GestureTapOnBlockRowGapKeepsMenuOpen) {
+  ShowWidgetForPointerEvents();
+#if BUILDFLAG(IS_MAC)
+  // A wrong Accept() would close the menu only after the closure animation;
+  // skip it so WaitForMenuClosureAnimation() below exposes that.
+  views::MenuClosureAnimationMac::ScopedDisableAnimationsForTesting
+      disable_closure_animations;
+#endif
+  base::HistogramTester histogram_tester;
+  base::MockCallback<base::RepeatingClosure> on_menu_closed;
+  ActionAppMenu menu(&mock_window_interface_, on_menu_closed.Get());
+  menu.RunMenu(button_->button_controller(), views::MenuRunner::NO_FLAGS);
+  ASSERT_TRUE(menu.IsShowing());
+
+  AppMenuBlockButton* new_tab_button = GetBlockButton(menu, 0);
+  AppMenuBlockButton* new_window_button = GetBlockButton(menu, 1);
+  ASSERT_TRUE(new_tab_button);
+  ASSERT_TRUE(new_window_button);
+  ASSERT_LT(new_tab_button->bounds().right(), new_window_button->bounds().x());
+  const gfx::Point gap(
+      (new_tab_button->bounds().right() + new_window_button->bounds().x()) / 2,
+      new_tab_button->bounds().CenterPoint().y());
+
+  EXPECT_CALL(mock_action_invoked_, Call(_, _, _)).Times(0);
+  EXPECT_CALL(on_menu_closed, Run()).Times(0);
+  TapAt(new_tab_button->parent(), gap);
+  views::test::WaitForMenuClosureAnimation();
+
+  EXPECT_TRUE(menu.IsShowing());
+  histogram_tester.ExpectUniqueSample("WrenchMenu.MenuAction",
+                                      MENU_ACTION_MENU_OPENED, 1);
+  testing::Mock::VerifyAndClearExpectations(&on_menu_closed);
+  EXPECT_CALL(on_menu_closed, Run());
+  menu.CloseMenu();
+}
+
+// Guard test: the block button handles the tap itself, so this passes with or
+// without the tap gate. It fails if the gate starts swallowing taps that a
+// child button would handle.
+TEST_F(ActionAppMenuTest, GestureTapOnBlockButtonInvokesAction) {
+  ShowWidgetForPointerEvents();
+  base::MockCallback<base::RepeatingClosure> on_menu_closed;
+  ActionAppMenu menu(&mock_window_interface_, on_menu_closed.Get());
+  menu.RunMenu(button_->button_controller(), views::MenuRunner::NO_FLAGS);
+  ASSERT_TRUE(menu.IsShowing());
+
+  AppMenuBlockButton* new_window_button = GetBlockButton(menu, 1);
+  ASSERT_TRUE(new_window_button);
+
+  EXPECT_CALL(on_menu_closed, Run());
+  EXPECT_CALL(mock_action_invoked_, Call(kActionNewWindow, _, _));
+  TapAt(new_window_button, new_window_button->GetLocalBounds().CenterPoint());
   views::test::WaitForMenuClosureAnimation();
 
   EXPECT_FALSE(menu.IsShowing());
 }
+
+// Footer twin of GestureTapOnBlockRowGapKeepsMenuOpen: a tap on the empty space
+// between the footer buttons leaves the menu open.
+TEST_F(ActionAppMenuTest, GestureTapOnFooterRowGapKeepsMenuOpen) {
+  ShowWidgetForPointerEvents();
+#if BUILDFLAG(IS_MAC)
+  views::MenuClosureAnimationMac::ScopedDisableAnimationsForTesting
+      disable_closure_animations;
+#endif
+  base::HistogramTester histogram_tester;
+  base::MockCallback<base::RepeatingClosure> on_menu_closed;
+  ActionAppMenu menu(&mock_window_interface_, on_menu_closed.Get());
+  menu.RunMenu(button_->button_controller(), views::MenuRunner::NO_FLAGS);
+  ASSERT_TRUE(menu.IsShowing());
+
+  views::SubmenuView* submenu = menu.root_menu_item_for_testing()->GetSubmenu();
+  views::MenuItemView* footer_item =
+      submenu->GetMenuItemAt(submenu->GetMenuItems().size() - 1);
+  auto* footer_view =
+      views::AsViewClass<AppMenuFooterView>(footer_item->children()[0]);
+  ASSERT_TRUE(footer_view);
+  // The top container is [left buttons, flexible spacer, right buttons].
+  views::View* top_container = footer_view->top_container_for_testing();
+  ASSERT_EQ(top_container->children().size(), 3u);
+  views::View* spacer = top_container->children()[1];
+  ASSERT_GT(spacer->width(), 0);
+
+  EXPECT_CALL(mock_action_invoked_, Call(_, _, _)).Times(0);
+  EXPECT_CALL(on_menu_closed, Run()).Times(0);
+  TapAt(spacer, spacer->GetLocalBounds().CenterPoint());
+  views::test::WaitForMenuClosureAnimation();
+
+  EXPECT_TRUE(menu.IsShowing());
+  histogram_tester.ExpectUniqueSample("WrenchMenu.MenuAction",
+                                      MENU_ACTION_MENU_OPENED, 1);
+  testing::Mock::VerifyAndClearExpectations(&on_menu_closed);
+  EXPECT_CALL(on_menu_closed, Run());
+  menu.CloseMenu();
+}
+
+// Opens `menu`, attaches a chip to the Print row and returns the chip.
+AppMenuChipView* AttachChipToPrintRow(ActionAppMenu& menu) {
+  views::MenuItemView* print_item =
+      menu.root_menu_item_for_testing()->GetMenuItemByID(kActionPrint);
+  CHECK(print_item);
+  AppMenuChipView::AttachTo(print_item, u"New");
+  print_item->ScrollRectToVisible(print_item->GetLocalBounds());
+  print_item->GetWidget()->LayoutRootViewIfNecessary();
+  const auto chip = std::ranges::find_if(print_item->children(),
+                                         &views::IsViewClass<AppMenuChipView>);
+  CHECK(chip != print_item->children().end());
+  return views::AsViewClass<AppMenuChipView>(*chip);
+}
+
+// A chip row's body activates the row. Fails if AppMenuChipView::AttachTo()
+// stops opting the row in, because the tap gate then blocks the row.
+TEST_F(ActionAppMenuTest, GestureTapOnChipRowInvokesAction) {
+  ShowWidgetForPointerEvents();
+#if BUILDFLAG(IS_MAC)
+  // Accept() runs the closure animation on its own timers, which
+  // WaitForMenuClosureAnimation() does not wait for.
+  views::MenuClosureAnimationMac::ScopedDisableAnimationsForTesting
+      disable_closure_animations;
+#endif
+  base::MockCallback<base::RepeatingClosure> on_menu_closed;
+  ActionAppMenu menu(&mock_window_interface_, on_menu_closed.Get());
+  menu.RunMenu(button_->button_controller(), views::MenuRunner::NO_FLAGS);
+  ASSERT_TRUE(menu.IsShowing());
+  AppMenuChipView* chip = AttachChipToPrintRow(menu);
+
+  EXPECT_CALL(on_menu_closed, Run());
+  EXPECT_CALL(mock_action_invoked_, Call(kActionPrint, _, _));
+  TapAt(chip, chip->GetLocalBounds().CenterPoint());
+  views::test::WaitForMenuClosureAnimation();
+
+  EXPECT_FALSE(menu.IsShowing());
+}
+
+// Mouse twin of GestureTapOnChipRowInvokesAction. Fails without the chip
+// opt-in, because the mouse gate already blocked chip rows.
+TEST_F(ActionAppMenuTest, ClickOnChipRowInvokesAction) {
+  ShowWidgetForPointerEvents();
+#if BUILDFLAG(IS_MAC)
+  views::MenuClosureAnimationMac::ScopedDisableAnimationsForTesting
+      disable_closure_animations;
+#endif
+  base::MockCallback<base::RepeatingClosure> on_menu_closed;
+  ActionAppMenu menu(&mock_window_interface_, on_menu_closed.Get());
+  menu.RunMenu(button_->button_controller(), views::MenuRunner::NO_FLAGS);
+  ASSERT_TRUE(menu.IsShowing());
+  AppMenuChipView* chip = AttachChipToPrintRow(menu);
+
+  EXPECT_CALL(on_menu_closed, Run());
+  EXPECT_CALL(mock_action_invoked_, Call(kActionPrint, _, _));
+  ClickAt(chip, chip->GetLocalBounds().CenterPoint());
+  views::test::WaitForMenuClosureAnimation();
+
+  EXPECT_FALSE(menu.IsShowing());
+}
+
+#if defined(USE_AURA)
+// A finger tap on any part of the Settings footer button activates Settings,
+// even when the finger's bounding box also covers a 16x16 row icon above or
+// behind the pinned footer.
+TEST_F(ActionAppMenuTest, TouchTapWithFingerSizeActivatesSettingsAnywhere) {
+  ShowWidgetForPointerEvents();
+  views::MenuController::TurnOffMenuSelectionHoldForTest();
+  SetDefaultActionIcons();
+  ui::GestureConfiguration* const gesture_config =
+      ui::GestureConfiguration::GetInstance();
+  const float old_default_radius = gesture_config->default_radius();
+  gesture_config->set_default_radius(25);
+  ui::test::EventGenerator generator(GetContext());
+
+  for (const float radius : {0.f, 20.f, 40.f}) {
+    for (size_t point_index = 0; point_index < 6; ++point_index) {
+      SCOPED_TRACE(testing::Message()
+                   << "radius=" << radius << " point_index=" << point_index);
+      testing::NiceMock<base::MockCallback<base::RepeatingClosure>>
+          on_menu_closed;
+      ActionAppMenu menu(&mock_window_interface_, on_menu_closed.Get());
+      menu.RunMenu(button_->button_controller(), views::MenuRunner::NO_FLAGS);
+      ASSERT_TRUE(menu.IsShowing());
+
+      AppMenuFooterButton* settings_button = GetSettingsFooterButton(menu);
+      ASSERT_TRUE(settings_button);
+      const std::vector<gfx::Point> points =
+          FooterButtonTestPoints(*settings_button);
+      gfx::Point screen_point = points[point_index];
+      views::View::ConvertPointToScreen(settings_button, &screen_point);
+
+      EXPECT_CALL(mock_action_invoked_, Call(kActionOptions, _, _)).Times(1);
+      generator.SetTouchRadius(radius, radius);
+      generator.PressTouch(screen_point);
+      generator.ReleaseTouch();
+      base::RunLoop().RunUntilIdle();
+
+      EXPECT_FALSE(menu.IsShowing());
+      testing::Mock::VerifyAndClearExpectations(&mock_action_invoked_);
+      if (menu.IsShowing()) {
+        menu.CloseMenu();
+        base::RunLoop().RunUntilIdle();
+      }
+    }
+  }
+
+  gesture_config->set_default_radius(old_default_radius);
+}
+
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+// Guard test: a finger tap anywhere on the Help footer button opens the Help
+// submenu.
+TEST_F(ActionAppMenuTest, TouchTapWithFingerSizeOpensHelpSubmenu) {
+  ShowWidgetForPointerEvents();
+  views::MenuController::TurnOffMenuSelectionHoldForTest();
+  SetDefaultActionIcons();
+  ui::GestureConfiguration* const gesture_config =
+      ui::GestureConfiguration::GetInstance();
+  const float old_default_radius = gesture_config->default_radius();
+  gesture_config->set_default_radius(25);
+  ui::test::EventGenerator generator(GetContext());
+
+  for (const float radius : {0.f, 20.f, 40.f}) {
+    for (size_t point_index = 0; point_index < 6; ++point_index) {
+      SCOPED_TRACE(testing::Message()
+                   << "radius=" << radius << " point_index=" << point_index);
+      testing::NiceMock<base::MockCallback<base::RepeatingClosure>>
+          on_menu_closed;
+      ActionAppMenu menu(&mock_window_interface_, on_menu_closed.Get());
+      menu.RunMenu(button_->button_controller(), views::MenuRunner::NO_FLAGS);
+      ASSERT_TRUE(menu.IsShowing());
+
+      // M158 has no kSubmenuItemKey; the footer anchors the hidden Help
+      // submenu item to the Help button.
+      views::MenuItemView* help_submenu_item =
+          menu.root_menu_item_for_testing()->GetMenuItemByID(
+              kActionHelpSubmenu);
+      ASSERT_TRUE(help_submenu_item);
+      AppMenuFooterButton* help_button =
+          views::AsViewClass<AppMenuFooterButton>(
+              help_submenu_item->GetAnchorView());
+      ASSERT_TRUE(help_button);
+      const std::vector<gfx::Point> points =
+          FooterButtonTestPoints(*help_button);
+      gfx::Point screen_point = points[point_index];
+      views::View::ConvertPointToScreen(help_button, &screen_point);
+
+      generator.SetTouchRadius(radius, radius);
+      generator.PressTouch(screen_point);
+      generator.ReleaseTouch();
+      base::RunLoop().RunUntilIdle();
+
+      EXPECT_TRUE(menu.IsShowing());
+      EXPECT_TRUE(help_submenu_item->SubmenuIsShowing());
+      if (menu.IsShowing()) {
+        menu.CloseMenu();
+        base::RunLoop().RunUntilIdle();
+      }
+    }
+  }
+
+  gesture_config->set_default_radius(old_default_radius);
+}
+#endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
+
+// Mouse twin of TouchTapWithFingerSizeActivatesSettingsAnywhere. Mouse
+// targeting is point-based, so this passes before and after the gesture
+// targeting fix.
+TEST_F(ActionAppMenuTest, ClickActivatesSettingsAnywhere) {
+  ShowWidgetForPointerEvents();
+  views::MenuController::TurnOffMenuSelectionHoldForTest();
+  SetDefaultActionIcons();
+  ui::test::EventGenerator generator(GetContext());
+
+  for (size_t point_index = 0; point_index < 6; ++point_index) {
+    SCOPED_TRACE(testing::Message() << "point_index=" << point_index);
+    testing::NiceMock<base::MockCallback<base::RepeatingClosure>>
+        on_menu_closed;
+    ActionAppMenu menu(&mock_window_interface_, on_menu_closed.Get());
+    menu.RunMenu(button_->button_controller(), views::MenuRunner::NO_FLAGS);
+    ASSERT_TRUE(menu.IsShowing());
+
+    AppMenuFooterButton* settings_button = GetSettingsFooterButton(menu);
+    ASSERT_TRUE(settings_button);
+    const std::vector<gfx::Point> points =
+        FooterButtonTestPoints(*settings_button);
+    gfx::Point screen_point = points[point_index];
+    views::View::ConvertPointToScreen(settings_button, &screen_point);
+
+    EXPECT_CALL(mock_action_invoked_, Call(kActionOptions, _, _)).Times(1);
+    generator.MoveMouseTo(screen_point);
+    generator.ClickLeftButton();
+    base::RunLoop().RunUntilIdle();
+
+    EXPECT_FALSE(menu.IsShowing());
+    testing::Mock::VerifyAndClearExpectations(&mock_action_invoked_);
+    if (menu.IsShowing()) {
+      menu.CloseMenu();
+      base::RunLoop().RunUntilIdle();
+    }
+  }
+}
+
+// Taps 60 times with a finger radius across menu controls and gaps, then taps
+// Settings near its top-left edge and verifies that Settings still activates.
+TEST_F(ActionAppMenuTest, RepeatedTouchTapsThenSettingsTapActivates) {
+  ShowWidgetForPointerEvents();
+  views::MenuController::TurnOffMenuSelectionHoldForTest();
+  SetDefaultActionIcons();
+  ui::GestureConfiguration* const gesture_config =
+      ui::GestureConfiguration::GetInstance();
+  const float old_default_radius = gesture_config->default_radius();
+  gesture_config->set_default_radius(25);
+  ui::test::EventGenerator generator(GetContext());
+  generator.SetTouchRadius(20.f, 20.f);
+
+  testing::NiceMock<base::MockCallback<base::RepeatingClosure>> on_menu_closed;
+  auto menu = std::make_unique<ActionAppMenu>(&mock_window_interface_,
+                                              on_menu_closed.Get());
+  menu->RunMenu(button_->button_controller(), views::MenuRunner::NO_FLAGS);
+  ASSERT_TRUE(menu->IsShowing());
+
+  EXPECT_CALL(mock_action_invoked_, Call(_, _, _)).Times(testing::AnyNumber());
+  for (int i = 0; i < 60; ++i) {
+    if (!menu->IsShowing()) {
+      menu.reset();
+      menu = std::make_unique<ActionAppMenu>(&mock_window_interface_,
+                                             on_menu_closed.Get());
+      menu->RunMenu(button_->button_controller(), views::MenuRunner::NO_FLAGS);
+      ASSERT_TRUE(menu->IsShowing());
+    }
+    views::MenuItemView* root = menu->root_menu_item_for_testing();
+    views::SubmenuView* submenu = root->GetSubmenu();
+    views::MenuItemView* zoom_item = root->GetMenuItemByID(kActionZoomSubmenu);
+    ASSERT_TRUE(zoom_item);
+    auto* zoom_view =
+        views::AsViewClass<AppMenuZoomView>(zoom_item->children()[0]);
+    ASSERT_TRUE(zoom_view);
+
+    gfx::Point screen_point;
+    switch (i % 5) {
+      case 0: {
+        zoom_item->ScrollRectToVisible(zoom_item->GetLocalBounds());
+        views::View* plus = zoom_view->zoom_plus_button_for_testing();
+        screen_point = plus->GetBoundsInScreen().CenterPoint();
+        break;
+      }
+      case 1: {
+        zoom_item->ScrollRectToVisible(zoom_item->GetLocalBounds());
+        views::View* minus = zoom_view->zoom_minus_button_for_testing();
+        screen_point = minus->GetBoundsInScreen().CenterPoint();
+        break;
+      }
+      case 2: {
+        zoom_item->ScrollRectToVisible(zoom_item->GetLocalBounds());
+        screen_point = gfx::Point(12, zoom_item->height() / 2);
+        views::View::ConvertPointToScreen(zoom_item, &screen_point);
+        break;
+      }
+      case 3: {
+        AppMenuBlockButton* b0 = GetBlockButton(*menu, 0);
+        AppMenuBlockButton* b1 = GetBlockButton(*menu, 1);
+        b0->ScrollRectToVisible(b0->GetLocalBounds());
+        screen_point = gfx::Point((b0->bounds().right() + b1->bounds().x()) / 2,
+                                  b0->bounds().CenterPoint().y());
+        views::View::ConvertPointToScreen(b0->parent(), &screen_point);
+        break;
+      }
+      case 4: {
+        views::MenuItemView* footer_item =
+            submenu->GetMenuItemAt(submenu->GetMenuItems().size() - 1);
+        auto* footer_view =
+            views::AsViewClass<AppMenuFooterView>(footer_item->children()[0]);
+        views::View* spacer =
+            footer_view->top_container_for_testing()->children()[1];
+        screen_point = spacer->GetBoundsInScreen().CenterPoint();
+        break;
+      }
+    }
+    generator.PressTouch(screen_point);
+    generator.ReleaseTouch();
+    base::RunLoop().RunUntilIdle();
+    EXPECT_TRUE(menu->IsShowing()) << "i=" << i;
+  }
+
+  if (!menu->IsShowing()) {
+    menu.reset();
+    menu = std::make_unique<ActionAppMenu>(&mock_window_interface_,
+                                           on_menu_closed.Get());
+    menu->RunMenu(button_->button_controller(), views::MenuRunner::NO_FLAGS);
+  }
+  ASSERT_TRUE(menu->IsShowing());
+  testing::Mock::VerifyAndClearExpectations(&mock_action_invoked_);
+
+  AppMenuFooterButton* settings_button = GetSettingsFooterButton(*menu);
+  ASSERT_TRUE(settings_button);
+  gfx::Point settings_point(settings_button->width() / 4, 4);
+  views::View::ConvertPointToScreen(settings_button, &settings_point);
+
+  EXPECT_CALL(mock_action_invoked_, Call(kActionOptions, _, _)).Times(1);
+  generator.PressTouch(settings_point);
+  generator.ReleaseTouch();
+  base::RunLoop().RunUntilIdle();
+
+  EXPECT_FALSE(menu->IsShowing());
+  if (menu->IsShowing()) {
+    menu->CloseMenu();
+    base::RunLoop().RunUntilIdle();
+  }
+  gesture_config->set_default_radius(old_default_radius);
+}
+#endif  // defined(USE_AURA)
 
 TEST_F(ActionAppMenuTest, SearchBarDisabledByDefault) {
   base::MockCallback<base::RepeatingClosure> on_menu_closed;

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {html, nothing} from '//resources/lit/v3_0/lit.rollup.js';
+import {html, nothing, repeat} from '//resources/lit/v3_0/lit.rollup.js';
 
 import type {MostVisitedElement} from './most_visited.js';
 
@@ -14,7 +14,10 @@ export function getHtml(this: MostVisitedElement) {
     .style="--tile-background-color: ${this.getBackgroundColorStyle_()};
             --column-count: ${this.columnCount_};
             --row-count: ${this.rowCount_};">
-  ${this.tiles_.map((item, index) => html`
+  ${repeat(
+      this.tiles_,
+      (item) => `${item.url}:${this.isFromEnterpriseShortcut_(item.source)}`,
+      (item, index) => html`
     <div class="tile" ?query-tile="${item.isQueryTile}"
         ?hidden="${this.isHidden_(index)}" title="${item.title}"
         @dragstart="${this.onDragstart_}" @touchstart="${this.onTouchstart_}"
@@ -25,13 +28,18 @@ export function getHtml(this: MostVisitedElement) {
       <a href="${this.inReorderMode_ ? '' : item.url}"
           aria-label="${this.getTileAriaLabel_(item.title)}" draggable="false">
       </a>
+      <div class="drag-pan-icon" aria-hidden="true"
+          ?hidden="${!this.inReorderMode_ ||
+              (!this.customLinksEnabled_ &&
+               !this.isFromEnterpriseShortcut_(item.source))}">
+      </div>
       <cr-icon-button id="actionMenuButton" class="icon-more-vert"
           title="${this.getMoreActionText_(item.title)}"
           @click="${this.onTileActionButtonClick_}" tabindex="0"
-          ?hidden="${this.nonEditable ||
+          ?hidden="${this.nonEditable || this.inReorderMode_ ||
               (!this.customLinksEnabled_ &&
                !this.isFromEnterpriseShortcut_(item.source))}"
-          ?disabled="${this.inReorderMode_}" data-index="${index}">
+          data-index="${index}">
       </cr-icon-button>
       <cr-icon-button id="removeButton" class="icon-clear"
           title="${this.getRemoveButtonText_(item.title)}"
@@ -152,6 +160,9 @@ export function getHtml(this: MostVisitedElement) {
       ${this.i18n('linkRemove')}
     </button>
   </cr-action-menu>
+</div>
+<div id="announcer" class="sr-only" aria-live="polite" aria-atomic="true">
+  ${this.reorderAnnouncement_}
 </div>
 <cr-toast-manager id="toastManager" duration="10000">
   <cr-button id="undo" aria-label="${this.i18n('undoDescription')}"

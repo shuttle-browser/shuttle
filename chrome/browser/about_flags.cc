@@ -1371,6 +1371,9 @@ const FeatureEntry::FeatureParam kVoiceSearchCoherenceRealboxArm4Params[] = {
     {"VoiceSearchCoherenceRealboxAutoEndpoint", "true"},
     {"VoiceSearchCoherenceRealboxHelperText", "true"}};
 
+const FeatureEntry::FeatureParam kVoiceSearchCoherenceRealboxArm5Params[] = {
+    {"VoiceSearchCoherenceRealboxKeepLegacyUi", "true"}};
+
 const FeatureEntry::FeatureVariation
     kVoiceSearchCoherenceSearchboxVariations[] = {
         {"Arm 1: Wave only, manual submit + Listening",
@@ -1380,7 +1383,9 @@ const FeatureEntry::FeatureVariation
         {"Arm 3: Wave + Transcript, manual submit + Listening",
          kVoiceSearchCoherenceRealboxArm3Params, nullptr},
         {"Arm 4: Wave + Transcript, 3s auto endpoint + Listening",
-         kVoiceSearchCoherenceRealboxArm4Params, nullptr}};
+         kVoiceSearchCoherenceRealboxArm4Params, nullptr},
+        {"Arm 5: Legacy voice search UI, updated model",
+         kVoiceSearchCoherenceRealboxArm5Params, nullptr}};
 
 const FeatureEntry::FeatureParam
     kVoiceSearchCoherenceComposeboxCobrowsingParams[] = {
@@ -5643,6 +5648,10 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kApplyManagedProxyBypassListVerbatimDescription,
      kOsCrOS,
      FEATURE_VALUE_TYPE(ash::features::kApplyManagedProxyBypassListVerbatim)},
+    {"audio-selection-improvement",
+     flag_descriptions::kAudioSelectionImprovementName,
+     flag_descriptions::kAudioSelectionImprovementDescription, kOsCrOS,
+     FEATURE_VALUE_TYPE(ash::features::kAudioSelectionImprovement)},
     {"cras-processor-wav-dump", flag_descriptions::kCrasProcessorWavDumpName,
      flag_descriptions::kCrasProcessorWavDumpDescription, kOsCrOS,
      PLATFORM_FEATURE_NAME_TYPE("CrOSLateBootCrasProcessorWavDump")},
@@ -12248,6 +12257,11 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kMediaCodecBlockModelDescription, kOsAndroid,
      FEATURE_VALUE_TYPE(media::kMediaCodecBlockModel)},
 
+    {"media-codec-block-model-encrypted",
+     flag_descriptions::kMediaCodecBlockModelEncryptedName,
+     flag_descriptions::kMediaCodecBlockModelEncryptedDescription, kOsAndroid,
+     FEATURE_VALUE_TYPE(media::kMediaCodecBlockModelEncrypted)},
+
     {"media-codec-block-model-output",
      flag_descriptions::kMediaCodecBlockModelOutputName,
      flag_descriptions::kMediaCodecBlockModelOutputDescription, kOsAndroid,
@@ -12440,6 +12454,13 @@ const FeatureEntry kFeatureEntries[] = {
          kContextualTasksTabBasedSuggestionsDescription,
      kOsDesktop | kOsAndroid,
      FEATURE_VALUE_TYPE(contextual_tasks::kContextualTasksTabBasedSuggestions)},
+
+    {"contextual-tasks-single-tab-menu-item",
+     contextual_tasks::flag_descriptions::kContextualTasksSingleTabMenuItemName,
+     contextual_tasks::flag_descriptions::
+         kContextualTasksSingleTabMenuItemDescription,
+     kOsDesktop | kOsAndroid,
+     FEATURE_VALUE_TYPE(contextual_tasks::kContextualTasksSingleTabMenuItem)},
 
     {"contextual-tasks-side-panel-tab-state",
      contextual_tasks::flag_descriptions::kContextualTasksSidePanelTabStateName,

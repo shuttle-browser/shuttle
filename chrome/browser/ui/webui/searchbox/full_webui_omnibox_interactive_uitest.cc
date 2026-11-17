@@ -45,6 +45,8 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
+#include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
+#include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
 #include "chrome/browser/ui/extensions/settings_api_bubble_helpers.h"
 #include "chrome/browser/ui/find_bar/find_bar.h"
 #include "chrome/browser/ui/find_bar/find_bar_controller.h"
@@ -600,6 +602,38 @@ class FullWebUIOmniboxInteractiveTestBase
                  InAnyContext(WaitForWebUIInputValue(text)));
   }
 
+  // Like an IME, sets `text` as the composition at the WebUI input's caret,
+  // with the caret after it.
+  auto SetWebUICompositionText(const std::u16string& text) {
+    return InAnyContext(
+        WithElement(kPopupWebView, [text](ui::TrackedElement* el) {
+          const int caret = base::checked_cast<int>(text.length());
+          content::SendImeSetCompositionTextToWidget(
+              GetWidgetHost(el), text, /*ime_text_spans=*/{},
+              gfx::Range::InvalidRange(), /*selection_start=*/caret,
+              /*selection_end=*/caret);
+        }));
+  }
+
+  // Like an IME, replaces the composition in the WebUI input with `text` and
+  // commits it, with the caret after it.
+  auto CommitWebUIComposition(const std::u16string& text) {
+    return InAnyContext(
+        WithElement(kPopupWebView, [text](ui::TrackedElement* el) {
+          content::SendImeCommitTextToWidget(
+              GetWidgetHost(el), text, /*ime_text_spans=*/{},
+              gfx::Range::InvalidRange(), /*relative_cursor_pos=*/0);
+        }));
+  }
+
+  // Returns the widget host of the instrumented WebContents `el`.
+  static content::RenderWidgetHost* GetWidgetHost(ui::TrackedElement* el) {
+    return AsInstrumentedWebContents(el)
+        ->web_contents()
+        ->GetRenderWidgetHostView()
+        ->GetRenderWidgetHost();
+  }
+
   auto PasteWebUIText(const std::string& text) {
     return Steps(InAnyContext(ExecuteJsAt(kPopupWebView, kWebUIInput,
                                           base::StringPrintf(R"(el => {
@@ -1096,6 +1130,20 @@ class FullWebUIOmniboxInteractiveTestBase
               return widget && widget->IsActive();
             },
             "WaitForPopupWidgetActive"));
+  }
+
+  // On ChromeOS, waits until immersive fullscreen has hidden top chrome. A
+  // no-op elsewhere.
+  auto WaitForImmersiveTopChromeHidden() {
+#if BUILDFLAG(IS_CHROMEOS)
+    return Steps(PollUntil(
+        [this]() {
+          return !ImmersiveModeController::From(browser())->IsRevealed();
+        },
+        "WaitForImmersiveTopChromeHidden"));
+#else
+    return Steps();
+#endif
   }
 
   auto WaitForBrowserActive() {
@@ -1787,16 +1835,6 @@ IN_PROC_BROWSER_TEST_P(FullWebUIOmniboxInteractiveTest,
 // composed text.
 IN_PROC_BROWSER_TEST_P(FullWebUIOmniboxInteractiveTest,
                        ImeCompositionEndsOnTabSwitch) {
-  // Composes "def" at the WebUI input's caret, like an IME.
-  auto compose = [](ui::TrackedElement* el) {
-    content::SendImeSetCompositionTextToWidget(
-        AsInstrumentedWebContents(el)
-            ->web_contents()
-            ->GetRenderWidgetHostView()
-            ->GetRenderWidgetHost(),
-        u"def", /*ime_text_spans=*/{}, gfx::Range::InvalidRange(),
-        /*selection_start=*/3, /*selection_end=*/3);
-  };
   RunTestSequence(
       OpenInitialTabAndFocusOmnibox(kTab1, GURL("chrome://version/")),
       InputWebUIText("abc"),
@@ -1806,7 +1844,7 @@ IN_PROC_BROWSER_TEST_P(FullWebUIOmniboxInteractiveTest,
         el.addEventListener(
             'compositionend', e => window.endedCompositions.push(e.data));
       })")),
-      InAnyContext(WithElement(kPopupWebView, compose)),
+      SetWebUICompositionText(u"def"),
       InAnyContext(WaitForWebUIInputValue("abcdef")),
       // Open a New Tab Page. Its omnibox is focused too, so the input stays
       // focused.
@@ -1817,10 +1855,29 @@ IN_PROC_BROWSER_TEST_P(FullWebUIOmniboxInteractiveTest,
       InAnyContext(CheckJsResultAt(kPopupWebView, kWebUIInput,
                                    "() => window.endedCompositions.join()",
                                    "def")),
-      // Switch back to Tab 1, whose draft has the composed text.
+      // Switch back to Tab 1, whose draft has the composed text, with the caret
+      // after it.
       UninstrumentWebContents(kPopupWebView),
       SwitchTabAndRestorePopup(kTabStripElementId, 1),
-      WaitForWebUIInputValue("abcdef"));
+      WaitForWebUIInputValue("abcdef"), CheckWebUIInputSelection(6, 6));
+}
+
+// Verifies that, like with the Views omnibox, text committed from an IME
+// composition in the WebUI input is handled like typed text: it's inline
+// autocompleted, and it's undone as one edit.
+IN_PROC_BROWSER_TEST_P(FullWebUIOmniboxInteractiveTest,
+                       ImeCompositionCommitIsHandledLikeTyping) {
+  AddTypedUrlToHistory(GURL("http://example.com/"));
+  RunTestSequence(OpenNtpAndWaitForPopupReady(kTab1),
+                  SetWebUICompositionText(u"exa"),
+                  InAnyContext(WaitForWebUIInputValue("exa")),
+                  // Committing the composition inline autocompletes it.
+                  CommitWebUIComposition(u"exa"),
+                  InAnyContext(WaitForWebUIInputValue("example.com")),
+                  InAnyContext(CheckWebUIInputSelection(3, 11)),
+                  // Undo removes the committed text.
+                  PressWebUIAcceleratorKey(ui::VKEY_Z),
+                  InAnyContext(WaitForWebUIInputValue("")));
 }
 
 // Verifies that a custom selection range on a steady-state URL is preserved
@@ -3199,6 +3256,52 @@ IN_PROC_BROWSER_TEST_P(FullWebUIOmniboxInteractiveTest,
       PollUntil([is_popup_offscreen]() { return !is_popup_offscreen(); },
                 "WaitForPopupOnscreen"));
 }
+
+// Verifies that leaving fullscreen closes a popup kept open for a draft typed
+// in fullscreen, keeping the draft, and reopens it unfocused once the
+// transition completes.
+IN_PROC_BROWSER_TEST_P(FullWebUIOmniboxInteractiveTest,
+                       ExitingFullscreenHidesDraftPopupTypedInFullscreen) {
+  if (IsWebUIToolbarEnabled()) {
+    GTEST_SKIP() << "TODO(b/577150359): With the WebUI toolbar, the popup "
+                    "isn't closed in fullscreen or reopened after.";
+  }
+  bool saw_close = false;
+  base::CallbackListSubscription subscription;
+  auto* const popup_state_manager =
+      BrowserView::GetBrowserViewForBrowser(browser())
+          ->GetLocationBarView()
+          ->GetOmniboxController()
+          ->popup_state_manager();
+  RunTestSequence(
+      WaitForBrowserActive(),
+      AddInstrumentedTab(kTab1, GURL("chrome://version/")),
+      WaitForWebContentsReady(kTab1),
+      Do([this]() { ui_test_utils::ToggleFullscreenModeAndWait(browser()); }),
+      WaitForPopupTransitionLockout(),
+      SendKeyPress(kBrowserViewElementId, ui::VKEY_L,
+                   ui::EF_PLATFORM_ACCELERATOR),
+      WaitForPopupReady(), WaitForPopupActive(), InputWebUIText("test draft"),
+      WaitForWebUIInputValue("test draft"), ClickWebPageBody(kTab1),
+      WaitForVisibleOmniboxUnfocused(),
+      CheckPopupState(OmniboxPopupState::kFull), Do([&]() {
+        subscription = popup_state_manager->AddPopupStateChangedCallback(
+            base::BindLambdaForTesting(
+                [&](OmniboxPopupState old_state, OmniboxPopupState new_state) {
+                  if (new_state == OmniboxPopupState::kNone) {
+                    saw_close = true;
+                  }
+                }));
+      }),
+      UninstrumentWebContents(kPopupWebView),
+      Do([this]() { ui_test_utils::ToggleFullscreenModeAndWait(browser()); }),
+      CheckResult([&]() { return saw_close; }, true,
+                  "PopupClosedExitingFullscreen"),
+      WaitForPopupState(OmniboxPopupState::kFull),
+      InAnyContext(
+          InstrumentNonTabWebView(kPopupWebView, GetActivePopupWebView())),
+      WaitForWebUIInputValue("test draft"), WaitForVisibleOmniboxUnfocused());
+}
 #endif  // BUILDFLAG(IS_MAC)
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -3226,6 +3329,77 @@ IN_PROC_BROWSER_TEST_P(FullWebUIOmniboxInteractiveTest,
       CheckResult([this]() { return IsBrowserOrPopupActive(second_browser_); },
                   true, "SecondBrowserStaysActive"));
 }
+
+// Verifies that the popup stays over the location bar as the immersive reveal
+// slides top chrome out and back in.
+IN_PROC_BROWSER_TEST_P(FullWebUIOmniboxInteractiveTest,
+                       PopupFollowsLocationBarDuringImmersiveReveal) {
+  // The popup widget's offset from the location bar, if the popup is open.
+  auto get_popup_offset = [this]() -> std::optional<gfx::Vector2d> {
+    views::Widget* popup_widget = GetPopupWidget(browser());
+    if (!popup_widget || !popup_widget->IsVisible()) {
+      return std::nullopt;
+    }
+    const gfx::Point location_bar_origin =
+        BrowserView::GetBrowserViewForBrowser(browser())
+            ->GetLocationBar()
+            ->BoundsInScreen()
+            .origin();
+    return popup_widget->GetWindowBoundsInScreen().origin() -
+           location_bar_origin;
+  };
+  std::optional<gfx::Vector2d> initial_offset;
+  auto is_aligned = [&]() { return get_popup_offset() == initial_offset; };
+  auto is_revealed = [this]() {
+    return ImmersiveModeController::From(browser())->IsRevealed();
+  };
+  // `IsRevealed()` is true as soon as the reveal starts, so also wait for top
+  // chrome to finish sliding in, i.e. for the location bar to stop moving.
+  std::optional<int> location_bar_y;
+  auto location_bar_settled = [&]() {
+    const int y = BrowserView::GetBrowserViewForBrowser(browser())
+                      ->GetLocationBar()
+                      ->BoundsInScreen()
+                      .y();
+    const bool settled = location_bar_y == y;
+    location_bar_y = y;
+    return settled;
+  };
+  auto reveal = [&]() {
+    return ImmersiveModeController::From(browser())->GetRevealedLock(
+        ImmersiveModeController::ANIMATE_REVEAL_YES);
+  };
+  std::unique_ptr<ImmersiveRevealedLock> revealed_lock;
+  RunTestSequence(
+      FocusOmniboxOnInitialNtp(kTab1), WaitForPopupActive(),
+      Do([&]() { initial_offset = get_popup_offset(); }),
+      CheckResult([&]() { return initial_offset.has_value(); }, true,
+                  "HasInitialOffset"),
+      ClickWebPageBody(kTab1), WaitForPopupDismissed(),
+      Do([this]() { ui_test_utils::ToggleFullscreenModeAndWait(browser()); }),
+      WaitForImmersiveTopChromeHidden(), WaitForPopupTransitionLockout(),
+      // Reveal top chrome and leave a popup open for an unfocused draft.
+      Do([&]() { revealed_lock = reveal(); }),
+      PollUntil(is_revealed, "WaitForTopChromeRevealed"),
+      SendKeyPress(kBrowserViewElementId, ui::VKEY_L,
+                   ui::EF_PLATFORM_ACCELERATOR),
+      WaitForPopupActive(), InputWebUIText("test draft"),
+      WaitForWebUIInputValue("test draft"), ClickWebPageBody(kTab1),
+      WaitForVisibleOmniboxUnfocused(),
+      CheckPopupState(OmniboxPopupState::kFull),
+      // Slide top chrome out, then back in, with the popup open.
+      Do([&]() { revealed_lock.reset(); }), WaitForImmersiveTopChromeHidden(),
+      PollUntil(is_aligned, "WaitForPopupAlignedAfterHide"),
+      CheckPopupState(OmniboxPopupState::kFull), Do([&]() {
+        location_bar_y.reset();
+        revealed_lock = reveal();
+      }),
+      PollUntil(is_revealed, "WaitForTopChromeRevealedAgain"),
+      PollUntil(location_bar_settled, "WaitForLocationBarSettled"),
+      PollUntil(is_aligned, "WaitForPopupAlignedAfterReveal"),
+      CheckPopupState(OmniboxPopupState::kFull));
+}
+
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 // Verifies that while the popup is collapsed (no dropdown), it does not extend
@@ -5264,6 +5438,131 @@ IN_PROC_BROWSER_TEST_P(FullWebUIOmniboxInteractiveTest,
           true, "OmniboxShowsPageB"));
 }
 #endif  // !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_CHROMEOS)
+
+// ChromeOS keeps a draft popup open in fullscreen.
+#if !BUILDFLAG(IS_CHROMEOS)
+// Verifies that a fullscreen transition closes a popup kept open for an
+// unfocused draft, keeping the draft, and that the popup reopens unfocused once
+// it can show again: after the transition on macOS, where the location bar
+// stays drawn, and after leaving fullscreen elsewhere.
+IN_PROC_BROWSER_TEST_P(FullWebUIOmniboxInteractiveTest,
+                       FullscreenClosesUnfocusedDraftPopupAndReopensIt) {
+  if (IsWebUIToolbarEnabled()) {
+    GTEST_SKIP() << "TODO(b/577150359): With the WebUI toolbar, the popup "
+                    "isn't closed in fullscreen or reopened after.";
+  }
+  [[maybe_unused]] bool is_mac = BUILDFLAG(IS_MAC);
+  bool saw_close = false;
+  base::CallbackListSubscription subscription;
+  auto* const popup_state_manager =
+      BrowserView::GetBrowserViewForBrowser(browser())
+          ->GetLocationBarView()
+          ->GetOmniboxController()
+          ->popup_state_manager();
+  RunTestSequence(
+      OpenInitialTabAndFocusOmnibox(kTab1, GURL("chrome://version/")),
+      InputWebUIText("test draft"), WaitForWebUIInputValue("test draft"),
+      ClickWebPageBody(kTab1), WaitForVisibleOmniboxUnfocused(),
+      CheckPopupState(OmniboxPopupState::kFull), Do([&]() {
+        subscription = popup_state_manager->AddPopupStateChangedCallback(
+            base::BindLambdaForTesting(
+                [&](OmniboxPopupState old_state, OmniboxPopupState new_state) {
+                  if (new_state == OmniboxPopupState::kNone) {
+                    saw_close = true;
+                  }
+                }));
+      }),
+      UninstrumentWebContents(kPopupWebView),
+      Do([this]() { ui_test_utils::ToggleFullscreenModeAndWait(browser()); }),
+      CheckResult([&]() { return saw_close; }, true,
+                  "PopupClosedEnteringFullscreen"),
+      CheckUserInputInProgress(true),
+      WaitForPopupState(is_mac ? OmniboxPopupState::kFull
+                               : OmniboxPopupState::kNone),
+      Do([&]() { saw_close = false; }),
+      Do([this]() { ui_test_utils::ToggleFullscreenModeAndWait(browser()); }),
+      WaitForPopupState(OmniboxPopupState::kFull),
+      InAnyContext(
+          InstrumentNonTabWebView(kPopupWebView, GetActivePopupWebView())),
+      WaitForWebUIInputValue("test draft"), WaitForVisibleOmniboxUnfocused(),
+      CheckResult([&]() { return saw_close; }, BUILDFLAG(IS_MAC),
+                  "PopupClosedExitingFullscreenOnMac"));
+}
+
+// Verifies that leaving fullscreen doesn't reopen a popup closed without a
+// draft.
+IN_PROC_BROWSER_TEST_P(FullWebUIOmniboxInteractiveTest,
+                       FullscreenKeepsPopupClosedWithoutDraft) {
+  if (IsWebUIToolbarEnabled()) {
+    GTEST_SKIP() << "TODO(b/577150359): With the WebUI toolbar, the popup "
+                    "isn't closed in fullscreen or reopened after.";
+  }
+  RunTestSequence(
+      OpenInitialTabAndFocusOmnibox(kTab1, GURL("chrome://version/")),
+      ClickWebPageBody(kTab1),
+      InAnyContext(WaitForHide(OmniboxPopupPresenter::kRoundedResultsFrame)),
+      UninstrumentWebContents(kPopupWebView), WaitForOmniboxFocus(false),
+      CheckUserInputInProgress(false),
+      Do([this]() { ui_test_utils::ToggleFullscreenModeAndWait(browser()); }),
+      Do([this]() { ui_test_utils::ToggleFullscreenModeAndWait(browser()); }),
+      WaitForPopupTransitionLockout(),
+      CheckPopupState(OmniboxPopupState::kNone),
+      CheckResult(
+          [this]() {
+            return GetPopupWidget(browser()) &&
+                   GetPopupWidget(browser())->IsVisible();
+          },
+          false, "PopupWidgetHidden"));
+}
+#endif  // !BUILDFLAG(IS_CHROMEOS)
+
+#if BUILDFLAG(IS_MAC)
+// Verifies that tab fullscreen, which hides the toolbar, keeps a popup closed
+// for an unfocused draft, keeping the draft, and that the popup reopens
+// unfocused once tab fullscreen exits.
+IN_PROC_BROWSER_TEST_P(FullWebUIOmniboxInteractiveTest,
+                       TabFullscreenKeepsDraftPopupClosedUntilExit) {
+  if (IsWebUIToolbarEnabled()) {
+    GTEST_SKIP() << "TODO(b/577150359): With the WebUI toolbar, the popup "
+                    "isn't closed in fullscreen or reopened after.";
+  }
+  auto set_tab_fullscreen = [this](bool fullscreen) {
+    content::WebContents* const web_contents =
+        browser()->tab_strip_model()->GetActiveWebContents();
+    FullscreenController* const fullscreen_controller =
+        ExclusiveAccessManager::From(browser())->fullscreen_controller();
+    ui_test_utils::FullscreenWaiter waiter(browser(),
+                                           {.tab_fullscreen = fullscreen});
+    if (fullscreen) {
+      fullscreen_controller->EnterFullscreenModeForTab(
+          web_contents->GetPrimaryMainFrame());
+    } else {
+      fullscreen_controller->ExitFullscreenModeForTab(web_contents);
+    }
+    waiter.Wait();
+    // The waiter can return as soon as tab fullscreen is requested. Wait for
+    // the window transition too, which is when `BrowserView` calls
+    // `ReshowPopup()`.
+    base::RunLoop run_loop(base::RunLoop::Type::kNestableTasksAllowed);
+    fullscreen_controller->RunOrDeferUntilTransitionIsComplete(
+        run_loop.QuitClosure());
+    run_loop.Run();
+  };
+  RunTestSequence(
+      OpenInitialTabAndFocusOmnibox(kTab1, GURL("chrome://version/")),
+      InputWebUIText("test draft"), WaitForWebUIInputValue("test draft"),
+      ClickWebPageBody(kTab1), WaitForVisibleOmniboxUnfocused(),
+      CheckPopupState(OmniboxPopupState::kFull),
+      UninstrumentWebContents(kPopupWebView),
+      Do([&]() { set_tab_fullscreen(true); }), WaitForPopupTransitionLockout(),
+      CheckPopupState(OmniboxPopupState::kNone), CheckUserInputInProgress(true),
+      Do([&]() { set_tab_fullscreen(false); }),
+      WaitForPopupState(OmniboxPopupState::kFull),
+      InAnyContext(
+          InstrumentNonTabWebView(kPopupWebView, GetActivePopupWebView())),
+      WaitForWebUIInputValue("test draft"), WaitForVisibleOmniboxUnfocused());
+}
+#endif  // BUILDFLAG(IS_MAC)
 
 // Verifies that opening the find bar (Ctrl/Cmd+F) while the omnibox is focused
 // blurs the omnibox, closes the popup, and sends key presses to the find bar,
