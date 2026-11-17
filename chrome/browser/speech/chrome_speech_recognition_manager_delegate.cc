@@ -6,14 +6,11 @@
 
 #include <string>
 
-#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/threading/thread_restrictions.h"
 #include "build/build_config.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/pref_names.h"
-#include "chrome/common/webui_url_constants.h"
-#include "components/omnibox/common/omnibox_features.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -140,16 +137,8 @@ ChromeSpeechRecognitionManagerDelegate::GetEventListener() {
 base::flat_map<std::string, std::string>
 ChromeSpeechRecognitionManagerDelegate::GetRoutingParams(
     const url::Origin& origin) {
-  // The new NTP Realbox voice search UI uses continuous recognition, which
-  // the speech service otherwise routes to its dictation recognizer. These
-  // parameters ask it to treat the requests as voice search.
-  if (base::FeatureList::IsEnabled(omnibox::kVoiceSearchCoherenceSearchbox) &&
-      origin.IsSameOriginWith(chrome::ChromeUINewTabPageURLAsGURL())) {
-    return {
-        {"client", "chrome-ntp"},
-        {"condition", "search"},
-    };
-  }
+  // Shuttle: upstream routes the WebUI NTP Realbox (chrome://new-tab-page) to
+  // voice search here; the fork has no WebUI NTP, so there is nothing to route.
   return {};
 }
 

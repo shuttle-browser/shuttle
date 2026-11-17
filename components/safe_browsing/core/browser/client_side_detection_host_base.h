@@ -537,6 +537,12 @@ class ClientSideDetectionHostBase : public history::HistoryServiceObserver {
 
   void TriggerSecondForceRequest();
 
+  void TriggerKeyboardLockUniformImageRetry(
+      std::unique_ptr<ClientPhishingRequest> verdict,
+      std::optional<bool> did_match_high_confidence_allowlist,
+      bool is_invalid_ip,
+      PhishingDetectorResult result);
+
   // This pointer may be nullptr if client-side phishing detection is
   // disabled.
   base::WeakPtr<ClientSideDetectionServiceBase> csd_service_;
