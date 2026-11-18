@@ -35,6 +35,7 @@ source_set("impl") {
   deps = [
     ":shared",
     "//base:i18n",
+    "//chrome/browser/shuttle",
     "//chrome/app:command_ids",
     "//chrome/app:generated_resources_grit",
     "//chrome/app/vector_icons",

@@ -157,8 +157,8 @@ void NewTabButtonMenuModel::AddNewTabInAgentItems() {
     }
   }
   if (more_agents_) {
-    AddSubMenu(kAgentCommandBase - 1, u"New tab in another agent",
-               more_agents_.get());
+    AddSubMenuWithStringId(kAgentCommandBase - 1,
+                           IDS_NEW_TAB_IN_ANOTHER_AGENT, more_agents_.get());
   }
 }
 

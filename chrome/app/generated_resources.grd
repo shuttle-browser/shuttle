@@ -6782,6 +6782,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
         <message name="IDS_NEW_TAB_IN_GROUP_NO_GROUPS" desc="The label of a context menu item for adding a new tab into a group, and no groups are open.">
           New tab for agent
         </message>
+        <message name="IDS_NEW_TAB_IN_ANOTHER_AGENT" desc="The label of the new tab button context menu submenu that lists the agents not shown in the menu itself; picking one opens a new tab in that agent.">
+          New tab in another agent
+        </message>
         <message name="IDS_NEW_TAB_IN_GROUP_NO_NAME" desc="The label of a context menu item for adding a new tab into an existing group with no name.">
           {NUM_TABS, plural, =1 {New tab in 1 tab} other {New tab in # tabs}}
         </message>
@@ -6795,6 +6798,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
         </message>
         <message name="IDS_NEW_TAB_IN_GROUP_NO_GROUPS" desc="The label of a context menu item for adding a new tab into a group, and no groups are open.">
           New Tab for Agent
+        </message>
+        <message name="IDS_NEW_TAB_IN_ANOTHER_AGENT" desc="In Title Case: The label of the new tab button context menu submenu that lists the agents not shown in the menu itself; picking one opens a new tab in that agent.">
+          New Tab in Another Agent
         </message>
         <message name="IDS_NEW_TAB_IN_GROUP_NO_NAME" desc="The label of a context menu item for adding a new tab into an existing group with no name.">
           {NUM_TABS, plural, =1 {New Tab in 1 Tab} other {New Tab in # Tabs}}

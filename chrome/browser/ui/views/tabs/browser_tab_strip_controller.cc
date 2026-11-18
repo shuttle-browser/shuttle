@@ -20,6 +20,7 @@
 #include "chrome/browser/resource_coordinator/tab_lifecycle_unit_external.h"
 #include "chrome/browser/resource_coordinator/tab_lifecycle_unit_source.h"
 #include "chrome/browser/search/search.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_tabstrip.h"
@@ -437,6 +438,22 @@ void BrowserTabStripController::OnDropIndexUpdate(
 }
 
 void BrowserTabStripController::CreateNewTab(NewTabTypes context) {
+  // Shuttle: the "+" button, pressed while an agent's tab is shown, adds a
+  // tab to that agent (its right-click menu picks any agent), like
+  // shared::NewTabButton::NotifyClick. Cmd/Ctrl+T, the menus' "New tab" and
+  // the other ways to a new tab stay plain.
+  if (context == NewTabTypes::kNewTabButton) {
+    auto* const browser = browser_view_->browser();
+    content::WebContents* const shown = model_->GetActiveWebContents();
+    if (auto* agents = shuttle::ShuttleService::Get(browser->GetProfile());
+        agents && shown) {
+      const std::string agent_id = agents->AgentOfTab(shown);
+      if (!agent_id.empty() &&
+          agents->OpenNewTabInAgent(agent_id, {.browser = browser})) {
+        return;
+      }
+    }
+  }
   chrome::NewTab(browser_view_->browser(), context);
 }
 

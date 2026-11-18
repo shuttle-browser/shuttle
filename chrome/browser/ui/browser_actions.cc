@@ -31,7 +31,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
-#include "chrome/browser/shuttle/shuttle_service.h"
 #include "chrome/browser/ui/accelerator_table.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
@@ -427,18 +426,6 @@ void BrowserActions::InitializeChromeMenuActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
-                // Shuttle: the new tab button, pressed while looking at an
-                // agent's tab, adds a tab to that agent (its right-click menu
-                // picks any agent). Ctrl+T stays a plain new tab.
-                if (auto* agents =
-                        shuttle::ShuttleService::Get(bwi->GetProfile())) {
-                  const std::string agent_id = agents->AgentOfTab(
-                      bwi->GetTabStripModel()->GetActiveWebContents());
-                  if (!agent_id.empty() &&
-                      agents->OpenNewTabInAgent(agent_id, {.browser = bwi})) {
-                    return;
-                  }
-                }
                 const NewTabTypes new_tab_type =
                     context.GetProperty(chrome::kActionInvocationSourceKey) ==
                             chrome::ActionInvocationSource::kViewButton
