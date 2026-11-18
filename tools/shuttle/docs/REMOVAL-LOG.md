@@ -1228,3 +1228,17 @@ tabs and new windows never hung; the Mac was never affected. `capture-tab` (Copy
   with `smoke-page-tools` active on Linux headless again. Repro: `scripts/repro-screenshot-hang.mjs` (raw / sidecar
   with a logging CDP proxy / replay / plain tab modes).
 - Upstream: worth a crbug (background tab + headless + ForceRedraw); not filed yet.
+
+## Fork commit 62 (2026-11-18): zero-suggest cache factory built at startup
+
+Nothing removed. Crash (DCHECK, dev builds with `dcheck_always_on`) found in the issue #36 preview: "+" on a blank
+agent tab aborted in `DependencyManager::AddComponent` while `ZeroSuggestCacheServiceFactory::GetInstance()` ran for
+the first time from `ZeroSuggestProvider::OnPrefetchURLLoadComplete` → `StoreRemoteResponse` →
+`ChromeAutocompleteProviderClient` (macOS reports `Shuttle-2026-11-18-09*.ips`). Upstream builds the factory at startup
+only as a `DependsOn` of `ChromeBrowsingDataRemoverDelegateFactory` and `PageContentAnnotationsServiceFactory`; the fork
+pruned page content annotations (0ff02c9d57) and trimmed the remover factory, so nothing built it before the
+keyed-service graph was sealed. Latent since the 157 merge; official builds (no DCHECKs) built it late silently.
+- `chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.cc`: `ZeroSuggestCacheServiceFactory::GetInstance()`
+  next to the other autocomplete factories.
+- Verified: "+" on a blank agent tab, no crash (out/Sccache, 2026-11-18). Same class of bug to expect when a prune
+  drops the last `DependsOn` of a factory that is still used lazily.

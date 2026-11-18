@@ -20,6 +20,7 @@
 #include "chrome/browser/autocomplete/in_memory_url_index_factory.h"
 #include "chrome/browser/autocomplete/provider_state_service_factory.h"
 #include "chrome/browser/autocomplete/shortcuts_backend_factory.h"
+#include "chrome/browser/autocomplete/zero_suggest_cache_service_factory.h"
 #include "chrome/browser/background/background_contents_service_factory.h"
 #include "chrome/browser/background_fetch/background_fetch_delegate_factory.h"
 #include "chrome/browser/background_sync/background_sync_controller_factory.h"
@@ -442,6 +443,11 @@ void ChromeBrowserMainExtraPartsProfiles::
   AutocompleteClassifierFactory::GetInstance();
   AutocompleteControllerEmitterFactory::GetInstance();
   AutocompleteDictionaryPreloadServiceFactory::GetInstance();
+  // Shuttle: upstream builds this only as a dependency of the browsing data
+  // remover and page content annotations factories; the fork dropped both
+  // edges, so the first zero-suggest prefetch built it after the dependency
+  // graph was sealed (DCHECK in DependencyManager::AddComponent).
+  ZeroSuggestCacheServiceFactory::GetInstance();
 #if BUILDFLAG(IS_ANDROID)
   AutocompleteControllerAndroid::EnsureFactoryBuilt();
   AuxiliarySearchDonationServiceFactory::GetInstance();
