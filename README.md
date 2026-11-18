@@ -188,6 +188,17 @@ Shuttle is Chromium plus a series of fork commits on `main` (`git log chromium..
 smoke tests and the removal log live in
 **[`tools/shuttle/`](tools/shuttle/)** in this repo.
 
+## Contributors
+
+Thanks to everyone who helped shape Shuttle:
+
+- [@JeremiahChurch](https://github.com/JeremiahChurch): agent management (#36): tab focus, last active and Keep,
+  idle-agent cleanup, "+" in an agent, per-agent resource usage.
+- [@rhukster](https://github.com/rhukster): screenshot scale (#27): `screenshot` in CSS pixels by default.
+- [@81zi](https://github.com/81zi): agent storage isolation for tabs opened over a session's CDP endpoint (#12).
+
+Found a bug or have an idea? [Open an issue](https://github.com/shuttle-browser/shuttle/issues).
+
 ## License
 
 Shuttle's changes are released under the [BSD-3-Clause license](LICENSE-SHUTTLE). Chromium and its third-party
