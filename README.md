@@ -172,7 +172,7 @@ claude mcp add --transport http shuttle http://shuttle-box:9222/mcp --header "Au
 
 ## Status and limits
 
-The latest release is Shuttle 158.0.1, on Chromium 158.0.8127.31. The major version is the Chromium major a release is
+The latest release is Shuttle 158.0.2, on Chromium 158.0.8127.45. The major version is the Chromium major a release is
 built on; each release's notes give the full Chromium version.
 
 - No auto-update yet: watch Releases. Security fixes follow Chromium stable releases with a delay.
