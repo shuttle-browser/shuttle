@@ -57,7 +57,11 @@ const shot = async name => {
 };
 await sleep(2500);
 
-const first = await ev(`const c = qa('.card.agent[data-agent^="${P}"]'); return c.length + '/' + c.flatMap(x => [...x.querySelectorAll('.tab-row')]).length;`);
+// Rows with sessions expand to their tabs (Settings "All sites" style).
+const first = await ev(`const c = qa('.agent[data-agent^="${P}"]');
+  for (const x of c) { const m = x.querySelector('.item-main.expandable'); if (m) m.click(); }
+  await wait(300);
+  return c.length + '/' + c.flatMap(x => [...x.querySelectorAll('.item-main[data-target]')]).length;`);
 check('page lists seeded agents + tabs', first === '2/2', first);
 await shot('agents-dark.png');
 
@@ -81,7 +85,7 @@ check('invalid id shows error', invalid === 'true:true', invalid);
 const avatar = 'data:image/svg+xml;base64,' + Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="#9B6BFF"/></svg>')
   .toString('base64');
-await ev(`q('.card[data-agent=${P}steve] .more').click(); await wait(200); q('#menuEdit').click(); await wait(300);
+await ev(`q('.agent[data-agent=${P}steve] .more').click(); await wait(200); q('#menuEdit').click(); await wait(300);
   type(q('#nameInput'), 'Steve Jr'); type(q('#avatarInput'), ${JSON.stringify(avatar)}); await wait(100);`);
 await sleep(200);
 if (shotDir) {
@@ -93,18 +97,18 @@ await ev(`q('#editSave').click();`);
 await sleep(800);
 a = (await mcp('list-agents', {avatarData: true})).agents.find(x => x.id === P + 'steve');
 check('edit name+avatar', a.name === 'Steve Jr' && a.avatar === avatar);
-const imgOk = await ev(`await wait(300); const img = q('.card[data-agent=${P}steve] .avatar img');
+const imgOk = await ev(`await wait(300); const img = q('.agent[data-agent=${P}steve] .avatar img');
   return img ? img.complete && img.naturalWidth > 0 : 'no img';`);
 check('avatar image renders (CSP)', imgOk === true, String(imgOk));
 
 // Open a tab as Steve (no session yet).
-await ev(`q('.card[data-agent=${P}steve] .open-tab').click(); await wait(300); type(q('#urlInput'), '${local('/steve')}');
+await ev(`q('.agent[data-agent=${P}steve] .open-tab').click(); await wait(300); type(q('#urlInput'), '${local('/steve')}');
   await wait(100); q('#openConfirm').click();`);
 await sleep(1500);
 const ss = (await mcp('list-sessions')).sessions.filter(x => x.agent === P + 'steve');
 check('open tab as agent', ss.length === 1 && ss[0].tabs.length === 1 && ss[0].tabs[0].url.includes('/steve'),
       JSON.stringify(ss.map(x => x.tabs.map(t => t.url))));
-const bad = await ev(`q('.card[data-agent=${P}steve] .open-tab').click(); await wait(300);
+const bad = await ev(`q('.agent[data-agent=${P}steve] .open-tab').click(); await wait(300);
   type(q('#urlInput'), 'file:///etc/passwd'); await wait(100); q('#openConfirm').click(); await wait(500);
   const e = q('#urlInput').invalid ? q('#urlInput').errorMessage : ''; q('#openDialog').cancel(); return e;`);
 check('non-http URL rejected', /http/.test(bad), bad);
@@ -112,21 +116,23 @@ check('non-http URL rejected', /http/.test(bad), bad);
 // Show tab: clicking one of Alice's tabs brings it to the front.
 await sleep(2500);
 const alice = (await mcp('list-sessions')).sessions.find(x => x.agent === P + 'alice');
-await ev(`q('.tab-row[data-target="${alice.tabs[0].targetId}"]').click();`);
+await ev(`const m = q('.agent[data-agent=${P}alice] .item-main.expandable');
+  if (!q('.item-main[data-target="${alice.tabs[0].targetId}"]')) { m.click(); await wait(300); }
+  q('.item-main[data-target="${alice.tabs[0].targetId}"]').click();`);
 await sleep(800);
 const {result: {sessionId: ts}} = await send('Target.attachToTarget', {targetId: alice.tabs[0].targetId, flatten: true});
 const vis = await send('Runtime.evaluate', {expression: 'document.visibilityState', returnByValue: true}, ts);
 check('show tab activates it', vis.result.result.value === 'visible', vis.result.result.value);
 
-// End Alice's session.
+// End Alice's session (one session: "End session" in the row's menu).
 await send('Target.activateTarget', {targetId: pageId});
 await sleep(300);
-await ev(`q('cr-button[data-session="${alice.sessionId}"]').click();`);
+await ev(`q('.agent[data-agent=${P}alice] .more').click(); await wait(200); q('#menuEndSessions').click();`);
 await sleep(1000);
 check('end session', !(await mcp('list-sessions')).sessions.some(x => x.sessionId === alice.sessionId));
 
 // Delete the dialog-created agent via the menu + confirmation dialog.
-await ev(`q('.card[data-agent=${P}bot] .more').click(); await wait(200); q('#menuDelete').click(); await wait(300);
+await ev(`q('.agent[data-agent=${P}bot] .more').click(); await wait(200); q('#menuDelete').click(); await wait(300);
   q('#deleteConfirm').click();`);
 await sleep(1500);
 check('delete agent', !(await mcp('list-agents')).agents.some(x => x.id === P + 'bot'));
@@ -134,11 +140,11 @@ check('delete agent', !(await mcp('list-agents')).agents.some(x => x.id === P + 
 // Live refresh: an agent created over MCP shows up without a reload.
 await mcp('create-agent', {id: P + 'late', name: 'Late Arrival'});
 await sleep(2600);
-check('live refresh', await ev(`return qa('.card .name').some(n => n.textContent.includes('Late Arrival'));`) === true);
+check('live refresh', await ev(`return qa('.agent .name').some(n => n.textContent.includes('Late Arrival'));`) === true);
 
 // Search filters the list.
 const filtered = await ev(`const t = q('cr-toolbar'); t.getSearchField().setValue('stev'); await wait(400);
-  const n = qa('.card.agent[data-agent^="${P}"]').length; t.getSearchField().setValue(''); await wait(300); return n;`);
+  const n = qa('.agent[data-agent^="${P}"]').length; t.getSearchField().setValue(''); await wait(300); return n;`);
 check('search filters agents', filtered === 1, String(filtered));
 await shot('agents-light.png');
 

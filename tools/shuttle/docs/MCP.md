@@ -24,6 +24,42 @@ Many agents share one Shuttle instance. Smoke tests: `scripts/smoke-mcp.mjs`, `s
   leased to its latest session); "Take back from agent" reopens it in the user's storage. Dragging out leaves it
   leased but ungrouped (known gap).
 - No startup window: Shuttle starts windowless unless it has URLs; the first agent tab or the user creates a window.
+- "+" while an agent's tab is shown opens a blank tab for that agent (its storage, its latest session or a new one, in
+  its group); Cmd/Ctrl+T stays a plain user tab. Right-click on "+" lists "New tab in <agent>" (agents with open
+  sessions; the rest under "New tab in another agent"). "New tab to the right" / "New tab in group" inside an agent's
+  group open an agent tab at that position. Such tabs belong to the session and close with it.
+
+## Activity, keep and cleanup
+
+- `lastActiveAt` (`list-agents`): the latest of the agent's recorded activity and its open sessions' activity. Recorded
+  in `shuttle.profiles` when a session opens, at most once a minute while it is in use (the session activity signals,
+  see "Session lifetime"), when it closes and at browser shutdown; a crash loses at most a minute. Agents from before
+  this was recorded start at the first start of the version that added it. Throwaway agents have their own clock.
+- `keep: true` (`create-agent` / `update-agent`, toggle "Keep this agent" on `chrome://agents`): never deleted in bulk.
+  `delete-agent` still deletes it. Refused on throwaway agents.
+- `delete-idle-agents { olderThanDays, exclude?, ids?, dryRun? }` deletes persistent agents that have no open session,
+  aren't kept and were last active at least `olderThanDays` (integer 1-3650) days ago; `exclude` = ids or names with
+  `*`/`?` wildcards. Returns `{ agents: [{id, name, lastActiveAt}], deleted, dryRun, skipped? }`.
+  - `dryRun: true` only lists. Without it the call lists and deletes in one step (the set is fixed inside the call).
+  - `ids` (the list from a dry run) limits the call to those agents: each is checked again and the ones no longer
+    eligible (used again, kept, gone) come back in `skipped`. Nothing outside `ids` is deleted. `chrome://agents`
+    "Clean up" confirms this way, so the dialog deletes at most what it showed.
+  - Every argument is type-checked: a present `dryRun` that isn't a boolean, a non-integer `olderThanDays` or a
+    non-string-array `exclude`/`ids` is an error (nothing deleted).
+
+## Resource usage per agent
+
+- Agents are storage partitions, and Chromium never shares a renderer process between storage partitions, so every
+  renderer process (main frames, out-of-process iframes, workers) belongs to exactly one agent or to the user's default
+  storage: per-agent usage is measured over whole processes, not estimated. Browser, GPU, network, utility processes
+  are "Browser (shared)". `AgentUsageService` (`chrome/browser/shuttle/agent_usage.*`) sums the task manager's numbers
+  per agent (memory footprint and CPU per process, network per task) every 2 s, only while something subscribes.
+- Task Manager: an "Agents" tab with one row per agent plus "You" and "Browser (shared)": memory, CPU, network,
+  processes, tabs; "Close sessions" ends an agent's sessions (storage kept).
+- `chrome://agents`: memory and CPU on each agent row, sort by Memory / CPU, "Task Manager" opens the Agents tab.
+  The page samples while visible (stops ~10 s after it stops asking).
+- `list-agents { usage: true }` adds `memoryBytes`, `cpuPercent` (of one core) and `processes` per agent (zeros
+  without processes). Waits for a sample with CPU (the second completed task-manager refresh, ~2-3 s, at most 6 s) unless sampling already runs; a metric not measured by then is left out (never reported as 0). Tab counts are per tab (out-of-process iframes don't add).
   Linux: a person starting it (tty/desktop) gets `chrome://agents`; it keeps running windowless while a session is open.
 
 ## Endpoint and protocol
@@ -150,7 +186,8 @@ Lit WebUI (`chrome/browser/resources/agents`, `chrome/browser/ui/webui/agents`) 
 (Chromium Settings look, no custom brand colors). Lists agents with avatar, sessions and tabs (2 s refresh while
 visible); create, edit name/color/avatar (file → center crop 256 px data: URL) and "Keep session cookies after
 restart", delete (storage wiped), end session,
-focus a tab, "Open tab" (foreground tab in the agent's storage, e.g. to sign in). Calls the MCP tools via
+focus a tab, "Open tab" (foreground tab in the agent's storage, e.g. to sign in), last active time and "Kept",
+sort by name / last active / memory / CPU (toolbar, next to search), "Clean up" (see "Activity, keep and cleanup"), "Task Manager". Calls the MCP tools via
 `chrome.send('callTool')` (allowlisted in `build_webui.gni` `legacy_chrome_send_users`).
 
 ## Open

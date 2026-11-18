@@ -514,6 +514,34 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 
 ## Gotchas
 
+- **WebUI icons: the fork's `cr:` iconset is pruned** (`ui/webui/resources/cr_elements/icons.html.ts`): no
+  `cr:help-outline`, `cr:expand-more/less`; an unknown icon renders as nothing, no error. List the ids with
+  `grep -o 'id="[a-z0-9-]*"' ui/webui/resources/cr_elements/icons.html.ts`. For Settings-style rows use the CSS icon
+  classes of `cr_icons_lit.css` on `cr-icon-button` (`icon-expand-more`, `subpage-arrow`, `icon-delete-gray`,
+  `icon-more-vert`), as Settings does.
+- **Settings look on a fork WebUI page**: Settings' `<html>` carries `$i18n{roundedIconsAttribute}
+  $i18n{webuiRoundedIconsAttribute}` (rounded trash/chevron variants in `cr_icons_lit.css`), includes
+  `cr-page-host-style-lit` (154% line height) and forces the toolbar shadow (`cr-scrollable` +
+  `cr-scrollable-top-shadow force-on`). Without them the page looks close but not the same (chrome://agents,
+  2026-11-18). The strings come from `webui::SetupWebUIDataSource` defaults: no C++ needed.
+- **Screenshots/DOM of chrome://agents over CDP**: the pinned home tab isn't in `/json/list`. Open the page in a
+  background tab from the browser endpoint (`Target.createTarget {url: "chrome://agents", background: true}`,
+  attach flat, `Emulation.setDeviceMetricsOverride`, `Page.captureScreenshot`, close). Measure Settings the same way
+  (`chrome://settings/content/all`; its iron-list renders entries only after a first `captureScreenshot`). Run a
+  second dev instance next to the installed Shuttle with `SHUTTLE_APP=<out>/Shuttle.app scripts/launch-shuttle.sh
+  9223 ~/.shuttle/dev-profile`.
+- **Controls next to the toolbar search** (chrome://agents sort): `cr-toolbar` has a fork-added `center-end` slot
+  after the search field and a `centered-content` part. Style the center with `cr-toolbar:not([narrow])::part(...)`
+  (scope to `:not([narrow])`, or the rule also overrides the narrow-mode search icon width); `white-space: nowrap` on
+  `cr-toolbar` keeps the right-hand buttons on one line (they wrap otherwise). The Mac window minimum is 500 px wide
+  (`Browser.setWindowBounds` clamps), the narrow threshold 900 px.
+- **Testing idle-agent cleanup**: `lastActiveAt` is never earlier than the agent's creation. To make an agent look
+  idle, backdate both `last_active` and `created` in `<profile>/Default/Preferences` (`shuttle.profiles.<id>`,
+  base::Time microseconds as a string) while that browser is closed.
+- **WebUI lint in the build**: `@webui-eslint/lit-element-template-structure` fails the build on a ternary in a
+  template whose true branch isn't an `html\`` literal (e.g. `${cond ? list.map(...) : nothing}`); return `[]` from a
+  method instead. `#include=` in a CSS wrapper header must stay on one line.
+
 - **`xbuild-run.sh linux-lto --version X` makes only the tarball**: the .deb/.rpm need `--deb X` as well (158.0.2:
   `--version 158.0.2 --deb 158.0.2`). `--version` refuses an existing `release/v<X>/linux`, so move a tarball-only
   result aside before rerunning.
