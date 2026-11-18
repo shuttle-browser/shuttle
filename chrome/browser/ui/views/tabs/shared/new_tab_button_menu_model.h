@@ -5,6 +5,10 @@
 #ifndef CHROME_BROWSER_UI_VIEWS_TABS_SHARED_NEW_TAB_BUTTON_MENU_MODEL_H_
 #define CHROME_BROWSER_UI_VIEWS_TABS_SHARED_NEW_TAB_BUTTON_MENU_MODEL_H_
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "base/memory/raw_ptr.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/menus/simple_menu_model.h"
@@ -29,10 +33,15 @@ class NewTabButtonMenuModel : public ui::SimpleMenuModel,
                                   ui::Accelerator* accelerator) const override;
 
  private:
-  void AddNewTabInGroupItem();
+  // Shuttle: "New tab in <agent>" items. The agents with open tabs come
+  // first; the rest are under "More agents".
+  void AddNewTabInAgentItems();
   void AddNewSplitTabItem();
 
   raw_ptr<BrowserWindowInterface> browser_;
+  // Command id (kAgentCommandBase + n) -> agent id.
+  std::vector<std::string> agent_ids_;
+  std::unique_ptr<ui::SimpleMenuModel> more_agents_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_TABS_SHARED_NEW_TAB_BUTTON_MENU_MODEL_H_

@@ -52,6 +52,8 @@ constexpr char kName[] = "name";
 constexpr char kColor[] = "color";
 constexpr char kAvatar[] = "avatar";
 constexpr char kCreated[] = "created";
+constexpr char kLastActive[] = "last_active";
+constexpr char kKeep[] = "keep";
 
 // Indexed by TabGroupColorId.
 constexpr std::array<std::string_view, 9> kColorNames = {
@@ -84,6 +86,14 @@ void ApplyIdentity(base::DictValue& dict,
       dict.Remove(kAvatar);
     } else {
       dict.Set(kAvatar, *identity.avatar);
+    }
+  }
+  if (identity.keep) {
+    // Stored only when on.
+    if (*identity.keep) {
+      dict.Set(kKeep, true);
+    } else {
+      dict.Remove(kKeep);
     }
   }
   if (identity.persist_session_cookies) {
@@ -264,6 +274,24 @@ ProfileRegistry::ProfileRegistry(Profile* profile)
       file_task_runner_(base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
            base::TaskShutdownBehavior::BLOCK_SHUTDOWN})) {
+  // Agents from before activity was recorded start their idle clock now, so
+  // a cleanup by age can't sweep an agent that was in use yesterday.
+  {
+    std::vector<std::string> unstamped;
+    for (auto [id, value] : profile_->GetPrefs()->GetDict(prefs::kProfiles)) {
+      const base::DictValue* dict = value.GetIfDict();
+      if (!dict || !dict->Find(kLastActive)) {
+        unstamped.push_back(id);
+      }
+    }
+    if (!unstamped.empty()) {
+      ScopedDictPrefUpdate update(profile_->GetPrefs(), prefs::kProfiles);
+      for (const std::string& id : unstamped) {
+        update->EnsureDict(id)->Set(kLastActive,
+                                    base::TimeToValue(base::Time::Now()));
+      }
+    }
+  }
   // Profiles deleted while their partition was loaded: their directories can
   // be removed now, before any agent tab loads them again.
   const base::ListValue& pending =
@@ -435,6 +463,11 @@ std::optional<ProfileRegistry::Entry> ProfileRegistry::Get(
     }
     entry.persist_session_cookies =
         dict->FindBool(prefs::kPersistSessionCookies).value_or(true);
+    if (const base::Value* last_active = dict->Find(kLastActive)) {
+      entry.last_active =
+          base::ValueToTime(*last_active).value_or(base::Time());
+    }
+    entry.keep = dict->FindBool(kKeep).value_or(false);
   }
   return entry;
 }
@@ -500,6 +533,25 @@ std::vector<std::string> ProfileRegistry::ThrowawayIds() const {
     ids.push_back(id);
   }
   return ids;
+}
+
+void ProfileRegistry::RecordActivity(const std::string& id,
+                                     base::Time when,
+                                     bool throttle) {
+  if (throwaway_.contains(id) || !Exists(id)) {
+    return;
+  }
+  const base::DictValue* dict =
+      profile_->GetPrefs()->GetDict(prefs::kProfiles).FindDict(id);
+  const base::Value* stored = dict ? dict->Find(kLastActive) : nullptr;
+  if (std::optional<base::Time> last =
+          stored ? base::ValueToTime(*stored) : std::nullopt) {
+    if (when <= *last || (throttle && when - *last < base::Minutes(1))) {
+      return;
+    }
+  }
+  ScopedDictPrefUpdate update(profile_->GetPrefs(), prefs::kProfiles);
+  update->EnsureDict(id)->Set(kLastActive, base::TimeToValue(when));
 }
 
 void ProfileRegistry::TouchThrowaway(const std::string& id) {

@@ -21,6 +21,26 @@ export interface Agent {
   expiresAt?: string;
   sessions: number;
   tabs: number;
+  // Last use: the latest session activity or its creation.
+  lastActiveAt?: string;
+  // Never removed by the bulk cleanup.
+  keep?: boolean;
+}
+
+export interface IdleAgent {
+  id: string;
+  name: string;
+  lastActiveAt: string;
+}
+
+// Resource usage per agent, measured over its renderer processes (memory in
+// bytes, cpu in percent of one core). Agents without processes are missing;
+// `sampled` is false until the first sample (memory; shortly after the first
+// ask), `cpuSampled` until the second (CPU needs two, ~2 s later).
+export interface UsageSnapshot {
+  sampled: boolean;
+  cpuSampled: boolean;
+  agents: Record<string, {memory: number, cpu: number, processes: number}>;
 }
 
 export interface AgentTab {
@@ -41,6 +61,7 @@ export interface AgentIdentity {
   color?: string;
   avatar?: string;
   persistSessionCookies?: boolean;
+  keep?: boolean;
 }
 
 // The page runs the same MCP tools agents use (list-agents, create-agent,
@@ -51,11 +72,22 @@ export interface BrowserProxy {
   createAgent(id: string, identity: AgentIdentity): Promise<Agent>;
   updateAgent(id: string, identity: AgentIdentity): Promise<Agent>;
   deleteAgent(id: string): Promise<void>;
+  // Persistent agents with no session and no activity for `days` days, minus
+  // agents marked keep. dryRun lists them without deleting.
+  deleteIdleAgents(days: number, dryRun: boolean, ids?: string[]):
+      Promise<{agents: IdleAgent[], deleted: number, skipped?: string[]}>;
   closeSession(sessionId: string): Promise<void>;
   openTab(agentId: string, url: string): Promise<void>;
   showTab(targetId: string): Promise<void>;
   // This browser's MCP endpoint ('' if unknown).
   getMcpUrl(): Promise<string>;
+  getUsage(): Promise<UsageSnapshot>;
+  // Opens the Task Manager on its Agents tab.
+  openTaskManager(): void;
+  // Favicons (data: URLs) of agent tabs, by target id; tabs without one are
+  // missing.
+  getFavicons(targetIds: string[]): Promise<Record<string, string>>;
+  closeTab(targetId: string): Promise<void>;
 }
 
 export class BrowserProxyImpl implements BrowserProxy {
@@ -85,6 +117,13 @@ export class BrowserProxyImpl implements BrowserProxy {
     return this.callTool_<void>('delete-agent', {id});
   }
 
+  deleteIdleAgents(days: number, dryRun: boolean, ids?: string[]) {
+    return this.callTool_<
+        {agents: IdleAgent[], deleted: number, skipped?: string[]}>(
+        'delete-idle-agents',
+        ids ? {olderThanDays: days, dryRun, ids} : {olderThanDays: days, dryRun});
+  }
+
   closeSession(sessionId: string) {
     return this.callTool_<void>('close-session', {sessionId});
   }
@@ -100,6 +139,22 @@ export class BrowserProxyImpl implements BrowserProxy {
   getMcpUrl(): Promise<string> {
     return sendWithPromise('getMcpUrl');
   }
+
+  getUsage(): Promise<UsageSnapshot> {
+    return sendWithPromise('getUsage');
+  }
+  openTaskManager() {
+    chrome.send('openTaskManager');
+  }
+
+  getFavicons(targetIds: string[]): Promise<Record<string, string>> {
+    return sendWithPromise('getFavicons', targetIds);
+  }
+
+  closeTab(targetId: string) {
+    return this.callTool_<void>('release-tab', {targetId});
+  }
+
 
   static getInstance(): BrowserProxy {
     return instance || (instance = new BrowserProxyImpl());

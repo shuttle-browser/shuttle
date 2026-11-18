@@ -19,7 +19,7 @@ import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
 import {getCss} from './app.css.js';
 import {getHtml} from './app.html.js';
-import type {Agent, AgentIdentity, BrowserProxy, Session} from './browser_proxy.js';
+import type {Agent, AgentIdentity, BrowserProxy, IdleAgent, Session, UsageSnapshot} from './browser_proxy.js';
 import {AGENT_COLORS, BrowserProxyImpl} from './browser_proxy.js';
 
 // Avatar images from files: edge length in px, and the browser's size limit.
@@ -31,7 +31,7 @@ const REFRESH_MS = 2000;
 
 // Quick start: the user's open/closed choice (otherwise open while there are
 // no agents).
-const QUICK_START_KEY = 'quickStart';
+const SORT_KEY = 'agentSort';
 const DEFAULT_MCP_URL = 'http://127.0.0.1:9222/mcp';
 
 export const EXAMPLE_PROMPT = 'Use the Shuttle browser (MCP server "shuttle"): ' +
@@ -52,6 +52,7 @@ export interface EditState {
   persistSessionCookies: boolean;
   // Throwaway agents have no avatar and keep nothing on disk.
   throwaway: boolean;
+  keep: boolean;
 }
 
 export interface AgentsAppElement {
@@ -59,7 +60,10 @@ export interface AgentsAppElement {
     deleteDialog: CrDialogElement,
     editDialog: CrDialogElement,
     menu: CrActionMenuElement,
+    toolbarMenu: CrActionMenuElement,
     openDialog: CrDialogElement,
+    cleanupDialog: CrDialogElement,
+    helpDialog: CrDialogElement,
   };
 }
 
@@ -89,8 +93,16 @@ export class AgentsAppElement extends CrLitElement {
       openUrl_: {type: String},
       openError_: {type: String},
       deleteAgent_: {type: Object},
+      sort_: {type: String},
+      usage_: {type: Object},
+      cleanupDays_: {type: Number},
+      cleanupAgents_: {type: Array},
+      cleanupError_: {type: String},
+      cleanupDaysValid_: {type: Boolean},
       mcpUrl_: {type: String},
-      quickStartChoice_: {type: String},
+      expanded_: {type: Object},
+      menuAgent_: {type: Object},
+      favicons_: {type: Object},
       copied_: {type: String},
     };
   }
@@ -106,10 +118,22 @@ export class AgentsAppElement extends CrLitElement {
   protected accessor openUrl_: string = '';
   protected accessor openError_: string = '';
   protected accessor deleteAgent_: Agent|null = null;
+  // 'name', 'recent' (most recently active first), 'memory' or 'cpu' (most
+  // first).
+  protected accessor sort_: string =
+      window.localStorage.getItem(SORT_KEY) || 'name';
+  protected accessor usage_: UsageSnapshot|null = null;
+  protected accessor cleanupDays_: number = 14;
+  protected accessor cleanupAgents_: IdleAgent[]|null = null;
+  protected accessor cleanupError_: string = '';
+  protected accessor cleanupDaysValid_: boolean = true;
+  // Previews answer out of order when the days change quickly: only the
+  // latest request may fill the list.
+  private cleanupRequest_: number = 0;
   protected accessor mcpUrl_: string = DEFAULT_MCP_URL;
   // 'open', 'closed' or '' (automatic).
-  protected accessor quickStartChoice_: string =
-      window.localStorage.getItem(QUICK_START_KEY) || '';
+  // Agents whose sessions and tabs are shown (row expanded).
+  protected accessor expanded_: Set<string> = new Set();
   // Which copy button just copied (shows "Copied").
   protected accessor copied_: string = '';
 
@@ -117,7 +141,9 @@ export class AgentsAppElement extends CrLitElement {
   private browserProxy_: BrowserProxy = BrowserProxyImpl.getInstance();
   private timer_: number|null = null;
   // Agent whose "more actions" menu is open.
-  private menuAgent_: Agent|null = null;
+  protected accessor menuAgent_: Agent|null = null;
+  // Favicons of the tabs in expanded rows, by target id.
+  protected accessor favicons_: Record<string, string> = {};
   private onVisibilityChange_ = () => this.schedule_();
 
   override connectedCallback() {
@@ -165,6 +191,14 @@ export class AgentsAppElement extends CrLitElement {
       this.error_ = String(e);
     }
     this.loaded_ = true;
+    await this.refreshFavicons_();
+    // Usage is a nicety: a failure doesn't show as an error. Asking keeps the
+    // browser sampling; it stops ~10 s after the page stops asking (hidden).
+    try {
+      this.usage_ = await this.browserProxy_.getUsage();
+    } catch {
+      this.usage_ = null;
+    }
     this.schedule_();
   }
 
@@ -179,16 +213,92 @@ export class AgentsAppElement extends CrLitElement {
     await this.refresh_();
   }
 
-  protected quickStartOpen_(): boolean {
-    if (this.quickStartChoice_) {
-      return this.quickStartChoice_ === 'open';
-    }
-    return this.loaded_ && !this.agents_.length;
+  protected onHelpClick_() {
+    this.$.helpDialog.showModal();
   }
 
-  protected onQuickStartToggleClick_() {
-    this.quickStartChoice_ = this.quickStartOpen_() ? 'closed' : 'open';
-    window.localStorage.setItem(QUICK_START_KEY, this.quickStartChoice_);
+  protected onHelpCloseClick_() {
+    this.$.helpDialog.close();
+  }
+
+  // A click on the backdrop (outside the dialog box) closes it.
+  protected onHelpDialogClick_(e: MouseEvent) {
+    const box = this.$.helpDialog.getNative().getBoundingClientRect();
+    if (e.clientX < box.left || e.clientX > box.right ||
+        e.clientY < box.top || e.clientY > box.bottom) {
+      this.$.helpDialog.close();
+    }
+  }
+
+  protected isExpanded_(agent: Agent): boolean {
+    return agent.sessions > 0 && this.expanded_.has(agent.id);
+  }
+
+  // The agent's sessions while its row is expanded, else none.
+  protected shownSessionsOf_(agent: Agent): Session[] {
+    return this.isExpanded_(agent) ? this.sessionsOf_(agent) : [];
+  }
+
+  private async refreshFavicons_() {
+    const ids = this.agents_.flatMap(agent => this.shownSessionsOf_(agent))
+                    .flatMap(session => session.tabs.map(tab => tab.targetId));
+    if (!ids.length) {
+      return;
+    }
+    try {
+      this.favicons_ = await this.browserProxy_.getFavicons(ids);
+    } catch {
+      // Favicons are a nicety.
+    }
+  }
+
+  protected onAgentToggleClick_(e: Event) {
+    const agent = this.agentFor_(e);
+    if (!agent || !agent.sessions) {
+      return;
+    }
+    const expanded = new Set(this.expanded_);
+    if (!expanded.delete(agent.id)) {
+      expanded.add(agent.id);
+    }
+    this.expanded_ = expanded;
+    this.refreshFavicons_();
+  }
+
+  // "5 agents, 2 working · 1.2 GB · 14% CPU" (usage once sampled).
+  protected summaryText_(): string {
+    const working = this.agents_.filter(a => a.sessions > 0).length;
+    let text = `${this.plural_(this.agents_.length, 'agent')}, ${
+        working} working`;
+    if (this.usage_?.sampled && Object.keys(this.usage_.agents).length) {
+      const all = Object.values(this.usage_.agents);
+      const memory = all.reduce((sum, u) => sum + u.memory, 0);
+      const cpu = all.reduce((sum, u) => sum + u.cpu, 0);
+      if (memory) {
+        text += ` · ${this.bytesText_(memory)}${this.cpuSuffix_(cpu)}`;
+      }
+    }
+    return text;
+  }
+
+  // Second line of an agent row: id, sessions and tabs or last activity,
+  // usage.
+  protected agentDetailText_(agent: Agent): string {
+    const parts = [agent.id];
+    if (agent.sessions > 0) {
+      // Sessions only matter when there are several (one per MCP client).
+      if (agent.sessions > 1) {
+        parts.push(this.plural_(agent.sessions, 'session'));
+      }
+      parts.push(this.plural_(agent.tabs, 'tab'));
+    } else if (!agent.throwaway && agent.lastActiveAt) {
+      parts.push(this.lastActiveText_(agent));
+    }
+    const usage = this.agentUsageText_(agent);
+    if (usage) {
+      parts.push(usage);
+    }
+    return parts.join(' · ');
   }
 
   protected examplePrompt_(): string {
@@ -227,11 +337,80 @@ export class AgentsAppElement extends CrLitElement {
 
   protected visibleAgents_(): Agent[] {
     const query = this.search_.trim().toLowerCase();
-    if (!query) {
-      return this.agents_;
-    }
-    return this.agents_.filter(
+    const agents = !query ? this.agents_ : this.agents_.filter(
         a => a.name.toLowerCase().includes(query) || a.id.includes(query));
+    const sorted = [...agents];
+    if (this.sort_ === 'recent') {
+      const time = (a: Agent) =>
+          a.lastActiveAt ? new Date(a.lastActiveAt).getTime() : 0;
+      sorted.sort((a, b) => time(b) - time(a));
+    } else if (this.sort_ === 'memory' || this.sort_ === 'cpu') {
+      // Until the first sample is in, by name.
+      const value = (a: Agent) => this.sort_ === 'memory' ?
+          this.usageOf_(a)?.memory ?? 0 :
+          this.usageOf_(a)?.cpu ?? 0;
+      sorted.sort(
+          (a, b) => value(b) - value(a) || a.name.localeCompare(b.name));
+    } else {
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return sorted;
+  }
+
+  protected onSortChange_(e: Event) {
+    this.sort_ = (e.target as HTMLSelectElement).value;
+    try {
+      window.localStorage.setItem(SORT_KEY, this.sort_);
+    } catch {
+      // Not remembered.
+    }
+  }
+
+  private usageOf_(agent: Agent) {
+    return this.usage_?.sampled ? this.usage_.agents[agent.id] : undefined;
+  }
+
+  // "412 MB · 3.1% CPU" for agents with processes once sampled, else ''.
+  protected agentUsageText_(agent: Agent): string {
+    const usage = this.usageOf_(agent);
+    // The first sample can come before the process footprint is measured.
+    if (!usage || !usage.memory) {
+      return '';
+    }
+    return `${this.bytesText_(usage.memory)}${this.cpuSuffix_(usage.cpu)}`;
+  }
+
+  // " · 3.1% CPU" once CPU is measured, else ''.
+  private cpuSuffix_(cpu: number): string {
+    if (!this.usage_?.cpuSampled) {
+      return '';
+    }
+    return ` · ${cpu < 10 ? cpu.toFixed(1) : Math.round(cpu)}% CPU`;
+  }
+
+  protected bytesText_(bytes: number): string {
+    const mb = bytes / (1024 * 1024);
+    if (mb >= 1024) {
+      return `${(mb / 1024).toFixed(1)} GB`;
+    }
+    return `${Math.round(mb)} MB`;
+  }
+
+  protected onToolbarMoreClick_(e: Event) {
+    this.$.toolbarMenu.showAt(e.currentTarget as HTMLElement);
+  }
+
+  protected onTaskManagerClick_() {
+    this.$.toolbarMenu.close();
+    this.browserProxy_.openTaskManager();
+  }
+
+  protected lastActiveText_(agent: Agent): string {
+    if (agent.sessions > 0) {
+      return 'Active now';
+    }
+    return agent.lastActiveAt ? `Last active ${this.since_(agent.lastActiveAt)}` :
+                                '';
   }
 
   protected sessionsOf_(agent: Agent): Session[] {
@@ -296,6 +475,7 @@ export class AgentsAppElement extends CrLitElement {
       avatar: '',
       persistSessionCookies: true,
       throwaway: false,
+      keep: false,
     });
   }
 
@@ -316,6 +496,7 @@ export class AgentsAppElement extends CrLitElement {
         avatar: agent.avatar || '',
         persistSessionCookies: agent.persistSessionCookies !== false,
         throwaway: !!agent.throwaway,
+        keep: !!agent.keep,
       });
     }
   }
@@ -429,6 +610,12 @@ export class AgentsAppElement extends CrLitElement {
     }
   }
 
+  protected onKeepChange_(e: CustomEvent<boolean>) {
+    if (this.edit_) {
+      this.edit_ = {...this.edit_, keep: e.detail};
+    }
+  }
+
   private slug_(name: string): string {
     return name.toLowerCase()
         .normalize('NFKD')
@@ -459,10 +646,12 @@ export class AgentsAppElement extends CrLitElement {
       color: edit.color,
       avatar: edit.avatar.trim(),
       persistSessionCookies: edit.persistSessionCookies,
+      keep: edit.keep,
     };
     if (edit.throwaway) {
       delete identity.avatar;
       delete identity.persistSessionCookies;
+      delete identity.keep;
     }
     try {
       if (edit.id) {
@@ -487,6 +676,68 @@ export class AgentsAppElement extends CrLitElement {
     }
     this.$.editDialog.close();
     await this.refresh_();
+  }
+
+  // Cleanup of idle agents ---------------------------------------------------
+
+  protected async onCleanupClick_() {
+    this.$.toolbarMenu.close();
+    this.cleanupAgents_ = null;
+    this.cleanupError_ = '';
+    this.cleanupDaysValid_ = true;
+    await this.updateComplete;
+    this.$.cleanupDialog.showModal();
+    await this.previewCleanup_();
+  }
+
+  protected async previewCleanup_() {
+    const request = ++this.cleanupRequest_;
+    this.cleanupAgents_ = null;
+    this.cleanupError_ = '';
+    try {
+      const result = await this.browserProxy_.deleteIdleAgents(
+          this.cleanupDays_, /*dryRun=*/ true);
+      if (request === this.cleanupRequest_) {
+        this.cleanupAgents_ = result.agents;
+      }
+    } catch (e) {
+      if (request === this.cleanupRequest_) {
+        this.cleanupError_ = String(e);
+      }
+    }
+  }
+
+  protected onCleanupDaysInput_(e: Event) {
+    const text = (e.target as HTMLInputElement).value.trim();
+    const days = Number(text);
+    this.cleanupDaysValid_ =
+        /^[0-9]+$/.test(text) && days >= 1 && days <= 3650;
+    if (!this.cleanupDaysValid_) {
+      // Nothing to confirm while the field doesn't hold a valid age.
+      ++this.cleanupRequest_;
+      this.cleanupAgents_ = null;
+      return;
+    }
+    if (days !== this.cleanupDays_ || this.cleanupAgents_ === null) {
+      this.cleanupDays_ = days;
+      this.previewCleanup_();
+    }
+  }
+
+  protected onCleanupCancelClick_() {
+    this.$.cleanupDialog.cancel();
+  }
+
+  protected onCleanupConfirmClick_() {
+    // Deletes only the agents the list showed; each is checked again, so one
+    // that was used or marked Keep meanwhile stays.
+    const ids = (this.cleanupAgents_ ?? []).map(agent => agent.id);
+    if (!this.cleanupDaysValid_ || !ids.length) {
+      return;
+    }
+    this.$.cleanupDialog.close();
+    this.act_(this.browserProxy_.deleteIdleAgents(
+        this.cleanupDays_, /*dryRun=*/ false, ids));
   }
 
   // Delete -----------------------------------------------------------------
@@ -521,8 +772,12 @@ export class AgentsAppElement extends CrLitElement {
 
   // Open tab as agent ------------------------------------------------------
 
-  protected async onOpenTabClick_(e: Event) {
-    this.openAgent_ = this.agentFor_(e);
+  protected onOpenTabClick_(e: Event) {
+    this.showOpenDialog_(this.agentFor_(e));
+  }
+
+  private async showOpenDialog_(agent: Agent|null) {
+    this.openAgent_ = agent;
     if (!this.openAgent_) {
       return;
     }
@@ -565,10 +820,26 @@ export class AgentsAppElement extends CrLitElement {
 
   // Sessions and tabs ------------------------------------------------------
 
+  protected onMenuEndSessionsClick_() {
+    this.$.menu.close();
+    const agent = this.menuAgent_;
+    if (agent) {
+      this.act_(Promise.all(this.sessionsOf_(agent).map(
+          session => this.browserProxy_.closeSession(session.sessionId))));
+    }
+  }
+
   protected onCloseSessionClick_(e: Event) {
     const id = (e.currentTarget as HTMLElement).dataset['session'];
     if (id) {
       this.act_(this.browserProxy_.closeSession(id));
+    }
+  }
+
+  protected onCloseTabClick_(e: Event) {
+    const id = (e.currentTarget as HTMLElement).dataset['target'];
+    if (id) {
+      this.act_(this.browserProxy_.closeTab(id));
     }
   }
 

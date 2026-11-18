@@ -7,8 +7,11 @@
  * #import=chrome://resources/cr_elements/cr_shared_vars.css.js
  * #import=chrome://resources/cr_elements/cr_shared_style_lit.css.js
  * #import=chrome://resources/cr_elements/cr_icons_lit.css.js
+ * #import=chrome://resources/cr_elements/md_select_lit.css.js
+ * #import=chrome://resources/cr_elements/cr_scrollable_lit.css.js
+ * #import=chrome://resources/cr_elements/cr_page_host_style_lit.css.js
  * #scheme=relative
- * #include=cr-shared-style-lit cr-icons-lit
+ * #include=cr-page-host-style-lit cr-shared-style-lit cr-icons-lit md-select-lit cr-scrollable-lit
  * #css_wrapper_metadata_end */
 
 /* Tab group colors, matching the tab strip. */
@@ -80,24 +83,75 @@
   --group: var(--group-orange);
 }
 
+/* nowrap (inherited into cr-toolbar's shadow tree): the buttons on the right
+   stay on one line and the center shrinks instead. */
 cr-toolbar {
   flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Search and sort share the toolbar's center, as wide as the panel below
+   (680px): the search field takes what the sort select (sized to its text)
+   leaves. Narrower windows shrink the center; under cr-toolbar's narrow
+   threshold the search folds into its icon and the select sits beside it. */
+cr-toolbar::part(centered-content) {
+  align-items: center;
+}
+
+cr-toolbar:not([narrow])::part(centered-content) {
+  flex: 0 1 var(--cr-centered-card-max-width);
+  gap: 8px;
+  min-width: 0;
+}
+
+cr-toolbar:not([narrow])::part(search-field) {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+/* Like the search field: a pill on the toolbar, no outline. */
+#sort {
+  --md-select-bg-color: var(--color-toolbar-search-field-background,
+      var(--cr-fallback-color-base-container));
+  --md-select-side-padding: 16px;
+  border: none;
+  border-radius: 100px;
+  flex-shrink: 0;
+  font-size: 13px;
+  width: auto;
+}
+
+cr-toolbar[narrow] #sort {
+  --md-select-side-padding: 12px;
+  margin-inline-start: 4px;
+}
+
+/* The open search takes the whole narrow toolbar. */
+cr-toolbar[narrow][showing-search_] #sort {
+  display: none;
 }
 
 #container {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   overflow-y: auto;
+  position: relative;
+  scrollbar-gutter: stable;
 }
 
+/* A full-height panel, like the Settings pages. */
 #content {
+  background-color: var(--cr-card-background-color);
   box-sizing: border-box;
   display: flex;
+  flex: 1 0 auto;
   flex-direction: column;
-  gap: 16px;
   margin: 0 auto;
   max-width: var(--cr-centered-card-max-width);
-  padding: 24px 0 48px;
-  width: var(--cr-centered-card-width-percentage);
+  padding-bottom: 16px;
+  width: 100%;
 }
 
 .card {
@@ -115,26 +169,42 @@ cr-toolbar {
   padding: 12px var(--cr-section-padding);
 }
 
-#quickStart {
-  margin-bottom: 16px;
+#help {
+  margin-inline-start: 8px;
 }
 
-.quick-start-header {
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  text-align: start;
-  width: 100%;
+/* Narrow windows (the browser's minimum is 500px): New agent as an icon,
+   so the toolbar fits on one line. */
+#createCompact {
+  display: none;
+}
+
+@media (max-width: 560px) {
+  #create {
+    display: none;
+  }
+
+  #createCompact {
+    display: inline-flex;
+  }
+
+  #help {
+    margin-inline-start: 0;
+  }
+}
+
+#toolbarMore {
+  margin-inline-end: 12px;
+}
+
+#helpDialog {
+  --cr-dialog-width: 640px;
 }
 
 .quick-start-body {
-  border-top: var(--cr-separator-line);
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 16px var(--cr-section-padding);
 }
 
 .step {
@@ -176,7 +246,11 @@ cr-toolbar {
 }
 
 #empty {
-  padding: 64px 0;
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 64px var(--cr-section-padding);
   text-align: center;
 }
 
@@ -195,8 +269,141 @@ cr-toolbar {
   width: 100%;
 }
 
-.row + .row {
+/* Rows follow chrome://settings/content/all (site-entry): 56px (children
+   48px), 32px icon buttons, separators with 16px either side; laid out like
+   the chrome://settings/content list, measured in the same build: rows span
+   the 680px panel with 20px padding inside, so separators run edge to edge.
+   Tab rows indent their content under the agent's name (20px + 24px avatar
+   + 16px). */
+#list {
+  padding-top: 8px;
+}
+
+/* Totals, pinned under the list: a strip of the panel's width. */
+#footer {
+  background-color: var(--cr-card-background-color);
   border-top: var(--cr-separator-line);
+  box-sizing: border-box;
+  color: var(--cr-secondary-text-color);
+  flex-shrink: 0;
+  margin: 0 auto;
+  max-width: var(--cr-centered-card-max-width);
+  padding: 12px 20px;
+  width: 100%;
+}
+
+#summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-empty {
+  padding: 24px var(--cr-section-padding);
+  text-align: center;
+}
+
+.list-item {
+  align-items: center;
+  box-sizing: border-box;
+  display: flex;
+  min-height: 56px;
+  padding: 0 20px;
+}
+
+.agent + .agent > .list-item:first-child,
+.list-item.child {
+  border-top: var(--cr-separator-line);
+}
+
+.list-item.child {
+  min-height: 48px;
+  padding-inline-start: 60px;
+}
+
+.item-main {
+  align-items: center;
+  align-self: stretch;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.item-main.expandable,
+.child .item-main {
+  cursor: pointer;
+}
+
+.avatar,
+.favicon {
+  margin-inline-end: 16px;
+}
+
+.list-item .text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-item .text.two-line {
+  margin: 8px 0;
+}
+
+.list-item .text.two-line .secondary {
+  margin-top: 0.1em;
+}
+
+.spacing {
+  padding-inline-start: 1ch;
+}
+
+.expand,
+.subpage-arrow,
+.open-tab {
+  margin-inline-start: 16px;
+}
+
+.open-tab {
+  flex-shrink: 0;
+}
+
+.list-item .trailing {
+  margin-inline-end: 0;
+  margin-inline-start: -8px;
+}
+
+.favicon {
+  flex-shrink: 0;
+  height: 16px;
+  width: 16px;
+}
+
+.favicon.placeholder {
+  background-color: var(--cr-secondary-text-color);
+  border-radius: 50%;
+  opacity: 0.4;
+}
+
+.separator {
+  border-inline-start: var(--cr-separator-line);
+  flex-shrink: 0;
+  height: 32px;
+  margin: 0 16px;
+}
+
+/* The agent's avatar takes the favicon's place; 24px keeps its initial
+   readable (Settings' favicons are 16px). */
+.list-item .avatar {
+  font-size: 12px;
+  height: 24px;
+  width: 24px;
+}
+
+.session-item .close-session {
+  margin-inline-start: 16px;
 }
 
 .text {
@@ -218,12 +425,12 @@ cr-toolbar {
   font-weight: 400;
 }
 
+/* Like the site names in Settings: regular weight, body size. */
 .name {
-  font-size: 108%;
-  font-weight: 500;
+  font-weight: 400;
 }
 
-.temporary {
+.chip {
   align-items: center;
   background: var(--cr-hover-background-color);
   border-radius: 8px;
@@ -237,7 +444,7 @@ cr-toolbar {
   vertical-align: middle;
 }
 
-.temporary cr-icon {
+.chip cr-icon {
   --iron-icon-height: 14px;
   --iron-icon-width: 14px;
 }
@@ -268,55 +475,6 @@ cr-toolbar {
   height: 100%;
   object-fit: cover;
   width: 100%;
-}
-
-.more {
-  margin-inline-start: -8px;
-}
-
-/* Sessions and tabs are indented under the agent, like sub-settings. */
-.session-row,
-.tab-row {
-  padding-inline-start: calc(var(--cr-section-padding) + 56px);
-}
-
-.tab-row {
-  background: none;
-  border: none;
-  border-top: var(--cr-separator-line);
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  min-height: var(--cr-section-min-height);
-  text-align: start;
-}
-
-.tab-row .text {
-  display: flex;
-  gap: 12px;
-}
-
-.tab-row .secondary {
-  flex-shrink: 0;
-}
-
-.tab-title {
-  flex: 1;
-}
-
-.tab-row:hover {
-  background-color: var(--cr-hover-background-color);
-}
-
-.tab-row:focus-visible {
-  outline: 2px solid var(--cr-focus-outline-color);
-  outline-offset: -2px;
-}
-
-.tab-row cr-icon {
-  --iron-icon-height: 20px;
-  --iron-icon-width: 20px;
-  color: var(--cr-secondary-text-color);
 }
 
 cr-dialog [slot=body] {
@@ -371,4 +529,19 @@ cr-dialog [slot=body] {
 .swatch:focus-visible {
   outline: 2px solid var(--cr-focus-outline-color);
   outline-offset: 4px;
+}
+
+.error {
+  color: var(--cr-fallback-color-error);
+}
+
+#cleanupDays {
+  width: 4em;
+}
+
+#cleanupList {
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0;
+  padding-inline-start: 20px;
 }

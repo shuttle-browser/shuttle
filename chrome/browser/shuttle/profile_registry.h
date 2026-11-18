@@ -68,6 +68,12 @@ class ProfileRegistry {
     bool throwaway = false;
     // Throwaway agents: deleted after this long without activity.
     base::TimeDelta idle_timeout;
+    // Persistent agents: the last time one of its sessions was opened or
+    // active (recorded when a session opens and closes). Null if unknown.
+    base::Time last_active;
+    // Persistent agents: never removed by delete-idle-agents or the bulk
+    // cleanup on chrome://agents (for agents that hold a real login).
+    bool keep = false;
   };
 
   // Fields to set; unset fields are left as they are.
@@ -83,6 +89,8 @@ class ProfileRegistry {
     std::optional<bool> persist_session_cookies;
     // Throwaway agents only.
     std::optional<base::TimeDelta> idle_timeout;
+    // Persistent agents only.
+    std::optional<bool> keep;
   };
 
   // Id prefix reserved for throwaway agents.
@@ -135,6 +143,12 @@ class ProfileRegistry {
   // Activity of a throwaway agent outside its sessions (creation, a session
   // closing). No-op for other ids.
   void TouchThrowaway(const std::string& id);
+  // Persistent agents: records activity at `when` if it is newer than the
+  // stored time. With `throttle`, skips the write when the stored time is less
+  // than a minute older (callers on hot paths throttle per session as well).
+  void RecordActivity(const std::string& id,
+                      base::Time when,
+                      bool throttle = true);
   // The last TouchThrowaway (or creation), or null for other ids.
   base::TimeTicks ThrowawayLastActive(const std::string& id) const;
 

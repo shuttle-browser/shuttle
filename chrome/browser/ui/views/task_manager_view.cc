@@ -15,11 +15,13 @@
 #include "build/build_config.h"
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/browser_process.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/task_manager/common/task_manager_features.h"
 #include "chrome/browser/task_manager/task_manager_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/task_manager/agent_usage_table_model.h"
 #include "chrome/browser/ui/task_manager/task_manager_columns.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/common/pref_names.h"
@@ -68,7 +70,6 @@
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_WIN)
-#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/shell_integration_win.h"
 #include "ui/base/win/shell.h"
 #include "ui/views/win/hwnd_util.h"
@@ -108,9 +109,22 @@ base::span<const TaskManagerView::FilterTab> GetTabDefinitions() {
               .icon = &(features::IsRoundedIconsEnabled() ? kViewListIcon
                                                           : kViewListOldIcon),
           },
+          // Shuttle: per-agent usage (AgentUsageTableModel). Titled in
+          // CreateTabbedPane(); only added with a Shuttle profile.
+          {
+              .associated_category = DisplayCategory::kAgents,
+              .title_id = 0,
+              .icon = &kPeopleGroupOldIcon,
+          },
       });
   return kTabDefinitions;
 }
+
+// Shuttle: hardcoded, as the fork's other agent UI strings.
+constexpr char16_t kAgentsTabTitle[] = u"Agents";
+constexpr char16_t kCloseSessionsLabel[] = u"Close sessions";
+constexpr char16_t kCloseSessionsDescription[] =
+    u"Closes the agent's sessions and their tabs. Its storage stays.";
 
 }  // namespace
 
@@ -118,6 +132,9 @@ TaskManagerView::~TaskManagerView() {
   // Delete child views now, while our table model still exists.
   tabs_ = nullptr;
   tab_table_ = nullptr;
+  agent_table_ = nullptr;
+  tab_table_parent_ = nullptr;
+  agent_table_parent_ = nullptr;
   RemoveAllChildViews();
 
   // When the view is destroyed, the lifecycle of the Task Manager is complete.
@@ -135,7 +152,9 @@ task_manager::TaskManagerTableModel* TaskManagerView::Show(
     return g_task_manager_view->table_model_.get();
   }
 
-  g_task_manager_view = new TaskManagerView(start_action);
+  // Shuttle: the browser's profile gives the Agents tab its agents.
+  g_task_manager_view = new TaskManagerView(
+      start_action, browser ? browser->GetProfile() : nullptr);
 
   // On Chrome OS, pressing Search-Esc when there are no open browser windows
   // will open the task manager on the root window for new windows.
@@ -178,6 +197,14 @@ task_manager::TaskManagerTableModel* TaskManagerView::Show(
   window->SetTitle(l10n_util::GetStringUTF16(IDS_TASK_MANAGER_TITLE));
 #endif
   return g_task_manager_view->table_model_.get();
+}
+
+// static
+void TaskManagerView::ShowOnAgentsTab(BrowserWindowInterface* browser) {
+  Show(browser);
+  if (g_task_manager_view) {
+    g_task_manager_view->SelectAgentsTab();
+  }
 }
 
 // static
@@ -255,6 +282,10 @@ bool TaskManagerView::AcceleratorPressed(const ui::Accelerator& accelerator) {
 views::View* TaskManagerView::GetInitiallyFocusedView() {
   // Set initial focus to |tab_table_| so that screen readers can navigate the
   // UI when the dialog is opened without having to manually assign focus first.
+  // Shuttle: or to the agent table on the Agents tab.
+  if (agents_tab_active_) {
+    return agent_table_;
+  }
   return tab_table_;
 }
 
@@ -272,6 +303,11 @@ std::string TaskManagerView::GetWindowName() const {
 }
 
 bool TaskManagerView::OnAccept() {
+  // Shuttle: "Close sessions" on the Agents tab.
+  if (agents_tab_active_) {
+    CloseSelectedAgentSessions();
+    return false;
+  }
   EndSelectedProcess();
 
   // Just kill the process, don't close the task manager dialog.
@@ -280,6 +316,11 @@ bool TaskManagerView::OnAccept() {
 
 bool TaskManagerView::IsDialogButtonEnabled(
     ui::mojom::DialogButton button) const {
+  // Shuttle: "Close sessions" needs an agent with open sessions.
+  if (agents_tab_active_) {
+    const std::optional<size_t> row = agent_table_->GetFirstSelectedRow();
+    return row.has_value() && agent_model_->CanCloseSessions(row.value());
+  }
   return IsEndProcessButtonEnabled();
 }
 
@@ -293,6 +334,10 @@ void TaskManagerView::WindowClosing() {
     g_task_manager_view = nullptr;
   }
   table_model_->StoreColumnsSettings();
+  // Shuttle: stop sampling agent usage.
+  if (agent_model_) {
+    agent_model_->SetActive(false);
+  }
 }
 
 void TaskManagerView::GetGroupRange(size_t model_index,
@@ -315,14 +360,21 @@ void TaskManagerView::OnKeyDown(ui::KeyboardCode keycode) {
 }
 
 void TaskManagerView::OnWidgetInitialized() {
+  // Shuttle: "Close sessions" if the Agents tab was restored.
   GetOkButton()->GetViewAccessibility().SetDescription(
-      l10n_util::GetStringUTF16(IDS_TASK_MANAGER_KILL_ACCESSIBILITY_NAME));
+      agents_tab_active_ ? std::u16string(kCloseSessionsDescription)
+                         : l10n_util::GetStringUTF16(
+                               IDS_TASK_MANAGER_KILL_ACCESSIBILITY_NAME));
 }
 
 void TaskManagerView::ShowContextMenuForViewImpl(
     views::View* source,
     const gfx::Point& point,
     ui::mojom::MenuSourceType source_type) {
+  // Shuttle: the column menu is the task table's.
+  if (agents_tab_active_) {
+    return;
+  }
   menu_model_ = std::make_unique<ui::SimpleMenuModel>(this);
 
   for (const auto& table_column : columns_) {
@@ -361,9 +413,13 @@ void TaskManagerView::SearchBarOnInputChanged(std::u16string_view query) {
       GetTabDefinitions()[tabs_->GetSelectedTabIndex()].associated_category);
 }
 
-TaskManagerView::TaskManagerView(StartAction start_action)
+TaskManagerView::TaskManagerView(StartAction start_action, Profile* profile)
     : is_always_on_top_(false) {
   task_manager::RecordNewOpenEvent(start_action);
+  // Shuttle: before Init(), which adds the Agents tab if there is a model.
+  agent_model_ = AgentUsageTableModel::CreateForProfile(
+      profile, base::BindRepeating(&TaskManagerView::DialogModelChanged,
+                                   base::Unretained(this)));
   set_use_custom_frame(false);
   SetHasWindowSizeControls(true);
   SetTitle(IDS_TASK_MANAGER_TITLE);
@@ -460,6 +516,16 @@ std::unique_ptr<views::View> TaskManagerView::CreateHeaderSeparatorUnderlay(
 void TaskManagerView::PerformFilter(DisplayCategory category) {
   SaveCategoryToLocalState(category);
 
+  // Shuttle: the Agents tab has its own table and model.
+  const bool agents = category == DisplayCategory::kAgents;
+  SetAgentsTabActive(agents);
+  if (agents) {
+    if (agent_model_) {
+      agent_model_->SetSearchTerms(search_terms_);
+    }
+    return;
+  }
+
   // When `select_on_remove_` is enabled, the selection will automatically jump
   // to some next/previous row if available. However, this setting needs to be
   // temporarily disabled during model updates to achieve the desired selection
@@ -496,8 +562,16 @@ std::unique_ptr<views::TabbedPaneTabStrip> TaskManagerView::CreateTabbedPane(
   tabs->SetDrawTabDivider(false);
 
   for (const auto& tab_definition : GetTabDefinitions()) {
-    auto* tab = tabs->AddTab(l10n_util::GetStringUTF16(tab_definition.title_id),
-                             tab_definition.icon);
+    // Shuttle: the Agents tab (last) only with a Shuttle profile.
+    const bool agents_tab =
+        tab_definition.associated_category == DisplayCategory::kAgents;
+    if (agents_tab && !agent_model_) {
+      continue;
+    }
+    auto* tab = tabs->AddTab(
+        agents_tab ? std::u16string(kAgentsTabTitle)
+                   : l10n_util::GetStringUTF16(tab_definition.title_id),
+        tab_definition.icon);
     tab->SetTitleMargin(title_insets);
     tab->SetTabOutsets(tab_outsets);
 
@@ -574,15 +648,22 @@ void TaskManagerView::Init() {
   tab_table->SetGrouper(this);
   tab_table->SetGrouperVisibility(false);
   tab_table->SetSortOnPaint(true);
-  // Disables alternating row colors on all platforms, including macOS.
-  tab_table->SetAlternatingRowColorsEnabled(base::PassKey<TaskManagerView>(),
-                                            false);
-  tab_table->SetMouseHoveringEnabled(true);
-  tab_table->SetRowPadding(views::DISTANCE_TABLE_VERTICAL_TEXT_PADDING);
   tab_table->set_observer(this);
   tab_table->SetSelectOnFocus(true);
   tab_table->set_context_menu_controller(this);
   set_context_menu_controller(this);
+
+  // Shuttle: the Agents tab's table, shown instead of `tab_table` while that
+  // tab is selected. No grouper, no column menu.
+  std::unique_ptr<views::TableView> agent_table;
+  if (agent_model_) {
+    agent_table = std::make_unique<views::TableView>(
+        agent_model_.get(), AgentUsageTableModel::GetColumns(),
+        views::TableType::kTextOnly, /*single_selection=*/true);
+    agent_table_ = agent_table.get();
+    agent_table->set_observer(this);
+    agent_table->SetSelectOnFocus(true);
+  }
 
   SetButtons(static_cast<int>(ui::mojom::DialogButton::kOk));
   SetButtonLabel(ui::mojom::DialogButton::kOk,
@@ -591,35 +672,12 @@ void TaskManagerView::Init() {
       base::BindRepeating(&TaskManagerView::OnAccept, base::Unretained(this)));
 
   const auto* provider = ChromeLayoutProvider::Get();
-  const float corner_radius =
-      provider->GetCornerRadiusMetric(views::Emphasis::kHigh);
 
-  views::TableHeaderStyle header_style(
-      /*cell_vertical_padding=*/14, /*cell_horizontal_padding=*/12,
-      /*resize_bar_vertical_padding=*/16,
-      /*separator_horizontal_padding=*/0,
-      /*font_weight=*/gfx::Font::Weight::MEDIUM,
-      /*separator_horizontal_color_id=*/ui::kColorSysDivider,
-      /*separator_vertical_color_id=*/ui::kColorSysDivider,
-      /*background_color_id=*/kColorTaskManagerTableHeaderBackground,
-      /*focus_ring_upper_corner_radius=*/corner_radius,
-      /*header_sort_state=*/true);
-  tab_table->SetHeaderStyle(header_style);
-
-  views::TableStyle table_style = {
-      .background_tokens =
-          views::TableBackgroundStyle{
-              .background = kColorTaskManagerTableBackground,
-              .alternate = kColorTaskManagerTableBackgroundAlternate,
-              .selected_focused =
-                  kColorTaskManagerTableBackgroundSelectedFocused,
-              .selected_unfocused =
-                  kColorTaskManagerTableBackgroundSelectedUnfocused,
-          },
-      .icons_have_background = true,
-      .inset_focus_ring = true,
-  };
-  tab_table->SetTableStyle(table_style);
+  // Shuttle: shared with the agent table.
+  ConfigureTable(tab_table.get());
+  if (agent_table) {
+    ConfigureTable(agent_table.get());
+  }
 
   // Margins around all contents
   const gfx::Insets dialog_insets =
@@ -642,15 +700,12 @@ void TaskManagerView::Init() {
   CreateHeader(provider);
 
   // Add Process List (a.k.a Scroll View)
-  auto* tab_table_parent =
-      AddChildView(CreateProcessView(std::move(tab_table)));
-
-  tab_table_parent->SetPaintToLayer(ui::LAYER_TEXTURED);
-
-  ui::Layer* scroll_view_layer = tab_table_parent->layer();
-  scroll_view_layer->SetRoundedCornerRadius(
-      gfx::RoundedCornersF(corner_radius));
-  scroll_view_layer->SetIsFastRoundedCorner(true);
+  tab_table_parent_ = AddTableScrollView(std::move(tab_table));
+  // Shuttle: the agent table, hidden until the Agents tab is selected.
+  if (agent_table) {
+    agent_table_parent_ = AddTableScrollView(std::move(agent_table));
+    agent_table_parent_->SetVisible(false);
+  }
 
   table_model_->RetrieveSavedColumnsSettingsAndUpdateTable(true);
 
@@ -664,6 +719,104 @@ void TaskManagerView::Init() {
 #endif
 }
 
+void TaskManagerView::ConfigureTable(views::TableView* table) {
+  const auto* provider = ChromeLayoutProvider::Get();
+  const float corner_radius =
+      provider->GetCornerRadiusMetric(views::Emphasis::kHigh);
+
+  // Disables alternating row colors on all platforms, including macOS.
+  table->SetAlternatingRowColorsEnabled(base::PassKey<TaskManagerView>(),
+                                        false);
+  table->SetMouseHoveringEnabled(true);
+  table->SetRowPadding(views::DISTANCE_TABLE_VERTICAL_TEXT_PADDING);
+
+  views::TableHeaderStyle header_style(
+      /*cell_vertical_padding=*/14, /*cell_horizontal_padding=*/12,
+      /*resize_bar_vertical_padding=*/16,
+      /*separator_horizontal_padding=*/0,
+      /*font_weight=*/gfx::Font::Weight::MEDIUM,
+      /*separator_horizontal_color_id=*/ui::kColorSysDivider,
+      /*separator_vertical_color_id=*/ui::kColorSysDivider,
+      /*background_color_id=*/kColorTaskManagerTableHeaderBackground,
+      /*focus_ring_upper_corner_radius=*/corner_radius,
+      /*header_sort_state=*/true);
+  table->SetHeaderStyle(header_style);
+
+  views::TableStyle table_style = {
+      .background_tokens =
+          views::TableBackgroundStyle{
+              .background = kColorTaskManagerTableBackground,
+              .alternate = kColorTaskManagerTableBackgroundAlternate,
+              .selected_focused =
+                  kColorTaskManagerTableBackgroundSelectedFocused,
+              .selected_unfocused =
+                  kColorTaskManagerTableBackgroundSelectedUnfocused,
+          },
+      .icons_have_background = true,
+      .inset_focus_ring = true,
+  };
+  table->SetTableStyle(table_style);
+}
+
+views::View* TaskManagerView::AddTableScrollView(
+    std::unique_ptr<views::TableView> table) {
+  const float corner_radius =
+      ChromeLayoutProvider::Get()->GetCornerRadiusMetric(
+          views::Emphasis::kHigh);
+  auto* parent = AddChildView(CreateProcessView(std::move(table)));
+
+  parent->SetPaintToLayer(ui::LAYER_TEXTURED);
+
+  ui::Layer* scroll_view_layer = parent->layer();
+  scroll_view_layer->SetRoundedCornerRadius(
+      gfx::RoundedCornersF(corner_radius));
+  scroll_view_layer->SetIsFastRoundedCorner(true);
+  return parent;
+}
+
+void TaskManagerView::SetAgentsTabActive(bool active) {
+  if (!agent_model_ || agents_tab_active_ == active) {
+    return;
+  }
+  agents_tab_active_ = active;
+  tab_table_parent_->SetVisible(!active);
+  agent_table_parent_->SetVisible(active);
+  agent_model_->SetActive(active);
+  SetButtonLabel(ui::mojom::DialogButton::kOk,
+                 active ? std::u16string(kCloseSessionsLabel)
+                        : l10n_util::GetStringUTF16(IDS_TASK_MANAGER_KILL_V2));
+  // Before OnWidgetInitialized() there is no button yet; it picks the right
+  // description itself.
+  if (GetWidget() && GetOkButton()) {
+    GetOkButton()->GetViewAccessibility().SetDescription(
+        active ? std::u16string(kCloseSessionsDescription)
+               : l10n_util::GetStringUTF16(
+                     IDS_TASK_MANAGER_KILL_ACCESSIBILITY_NAME));
+  }
+  DialogModelChanged();
+}
+
+void TaskManagerView::SelectAgentsTab() {
+  if (!agent_model_) {
+    return;
+  }
+  for (size_t i = 0; i < tabs_->GetTabCount(); ++i) {
+    if (GetTabDefinitions()[i].associated_category ==
+        DisplayCategory::kAgents) {
+      tabs_->SelectTab(tabs_->GetTabAtIndex(i));
+      return;
+    }
+  }
+}
+
+void TaskManagerView::CloseSelectedAgentSessions() {
+  const std::optional<size_t> row = agent_table_->GetFirstSelectedRow();
+  if (row.has_value()) {
+    agent_model_->CloseSessions(row.value());
+  }
+  DialogModelChanged();
+}
+
 void TaskManagerView::InitAlwaysOnTopState() {
   RetrieveSavedAlwaysOnTopState();
   GetWidget()->SetZOrderLevel(is_always_on_top_
@@ -672,6 +825,10 @@ void TaskManagerView::InitAlwaysOnTopState() {
 }
 
 void TaskManagerView::ActivateSelectedTab() {
+  // Shuttle: agent rows have no tab to activate.
+  if (agents_tab_active_) {
+    return;
+  }
   const std::optional<size_t> active_row =
       tab_table_->selection_model().active();
   if (active_row.has_value()) {
@@ -716,7 +873,9 @@ void TaskManagerView::RestoreSavedCategory() {
 
   // Finds the tab index of the category to restore, or does nothing if the
   // category no longer exists as a tab.
-  for (size_t i = 0; i < GetTabDefinitions().size(); ++i) {
+  // Shuttle: the Agents tab may be missing (not a Shuttle profile).
+  for (size_t i = 0; i < GetTabDefinitions().size() && i < tabs_->GetTabCount();
+       ++i) {
     if (GetTabDefinitions()[i].associated_category == parsed_category) {
       tabs_->SelectTab(tabs_->GetTabAtIndex(i), /*animate=*/false);
       break;

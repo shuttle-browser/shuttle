@@ -94,6 +94,11 @@ task_manager::TaskManagerTableModel* ShowTaskManager(
   return task_manager::TaskManagerView::Show(browser, start_action);
 }
 
+// Shuttle: chrome://agents opens the Task Manager on its Agents tab.
+void ShowTaskManagerOnAgentsTab(BrowserWindowInterface* browser) {
+  task_manager::TaskManagerView::ShowOnAgentsTab(browser);
+}
+
 void HideTaskManager() {
   task_manager::TaskManagerView::Hide();
 }

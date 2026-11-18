@@ -5,6 +5,8 @@
 if (!is_android) {
   source_set("task_manager") {
     sources = [
+      "agent_usage_table_model.cc",
+      "agent_usage_table_model.h",
       "task_manager_columns.cc",
       "task_manager_columns.h",
       "task_manager_table_model.cc",
@@ -14,6 +16,8 @@ if (!is_android) {
     public_deps = [
       "//base",
       "//chrome/app:generated_resources",
+      "//chrome/browser/profiles:profile",
+      "//chrome/browser/shuttle",
       "//chrome/browser/task_manager",
       "//ui/base",
     ]

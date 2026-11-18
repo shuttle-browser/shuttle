@@ -9,15 +9,18 @@ assert(!is_android)
 
 source_set("shuttle") {
   public = [
+    "agent_usage.h",
     "home_tab.h",
     "shuttle_service.h",
     "shuttle_service_factory.h",
+    "tab_placement.h",
   ]
 
   public_deps = [
     ":network_access",
     "//base",
     "//chrome/browser/profiles:profile",
+    "//chrome/browser/task_manager",
     "//components/keyed_service/core",
     "//content/public/browser",
     "//ui/gfx",
@@ -62,6 +65,7 @@ source_set("impl") {
   sources = [
     "agent_browser_sidecar.cc",
     "agent_browser_sidecar.h",
+    "agent_usage.cc",
     "avatar_cache.cc",
     "avatar_cache.h",
     "home_tab.cc",
@@ -94,6 +98,7 @@ source_set("impl") {
     "//chrome/browser/lifetime",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/profiles/keep_alive",
+    "//chrome/browser/task_manager",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/navigator",
     "//chrome/browser/ui/tabs:tab_enums",
