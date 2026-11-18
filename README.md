@@ -190,14 +190,13 @@ smoke tests and the removal log live in
 
 ## Contributors
 
-Thanks to everyone who helped shape Shuttle:
+Everyone who has shaped Shuttle with code, issues and ideas. Thank you.
 
-- [@JeremiahChurch](https://github.com/JeremiahChurch): agent management (#36): tab focus, last active and Keep,
-  idle-agent cleanup, "+" in an agent, per-agent resource usage.
-- [@rhukster](https://github.com/rhukster): screenshot scale (#27): `screenshot` in CSS pixels by default.
-- [@81zi](https://github.com/81zi): agent storage isolation for tabs opened over a session's CDP endpoint (#12).
-
-Found a bug or have an idea? [Open an issue](https://github.com/shuttle-browser/shuttle/issues).
+<p>
+<a href="https://github.com/JeremiahChurch" title="@JeremiahChurch: agent management, #36"><img src="https://github.com/JeremiahChurch.png?size=112" width="56" height="56" alt="@JeremiahChurch"></a>
+<a href="https://github.com/rhukster" title="@rhukster: screenshot scale, #27"><img src="https://github.com/rhukster.png?size=112" width="56" height="56" alt="@rhukster"></a>
+<a href="https://github.com/81zi" title="@81zi: agent storage isolation, #12"><img src="https://github.com/81zi.png?size=112" width="56" height="56" alt="@81zi"></a>
+</p>
 
 ## License
 
