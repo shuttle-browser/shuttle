@@ -133,7 +133,7 @@ and it stays signed in.
 
 | MCP tool | What it does |
 | --- | --- |
-| `list-agents`, `create-agent`, `update-agent`, `delete-agent` | Manage agents (name, color, avatar). Deleting wipes the agent's storage. |
+| `list-agents`, `create-agent`, `update-agent`, `delete-agent`, `delete-idle-agents` | Manage agents (name, color, avatar, keep); `list-agents { usage: true }` adds memory/CPU/network per agent. Deleting wipes the agent's storage. |
 | `open-session`, `close-session`, `list-sessions`, `update-session` | A session is one task run by an agent; returns a scoped `cdpEndpoint`. |
 | `allocate-tab`, `release-tab`, `navigate-tab` | Lease tabs to a session (they run at full speed in the background). |
 | `capture-tab`, `set-tab-viewport` | Screenshots and device viewports (e.g. 390×844). |
@@ -172,7 +172,7 @@ claude mcp add --transport http shuttle http://shuttle-box:9222/mcp --header "Au
 
 ## Status and limits
 
-The latest release is Shuttle 158.0.2, on Chromium 158.0.8127.45. The major version is the Chromium major a release is
+The latest release is Shuttle 158.0.3, on Chromium 158.0.8127.45. The major version is the Chromium major a release is
 built on; each release's notes give the full Chromium version.
 
 - No auto-update yet: watch Releases. Security fixes follow Chromium stable releases with a delay.

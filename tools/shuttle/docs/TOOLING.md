@@ -289,7 +289,7 @@ step below runs with `SHUTTLE_GN_EXTRA=config/args-lto.gn`, packaging included (
    NOTES.md --latest <files>` (a short SHA fails with HTTP 422), `scripts/publish-packages.sh` for the apt/dnf repo,
    then the website's version and download links.
 5. After a Chromium bump or a tool change, update the root `README.md`: the Chromium badge, the "Status and limits"
-   version line and the tool counts (13 native in `kTools`, 25 page tools in `config/agent-browser-tools.json`;
+   version line and the tool counts (14 native in `kTools`, 25 page tools in `config/agent-browser-tools.json`;
    `docs/MCP.md` lists both). A third-party review on 2026-10-16 quoted the stale numbers back at us.
 
 ## Upstream merges
