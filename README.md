@@ -188,6 +188,16 @@ Shuttle is Chromium plus a series of fork commits on `main` (`git log chromium..
 smoke tests and the removal log live in
 **[`tools/shuttle/`](tools/shuttle/)** in this repo.
 
+## Contributors
+
+Everyone who has shaped Shuttle with code, issues and ideas. Thank you.
+
+<p>
+<a href="https://github.com/JeremiahChurch" title="@JeremiahChurch: agent management, #36"><img src="https://github.com/JeremiahChurch.png?size=112" width="56" height="56" alt="@JeremiahChurch"></a>
+<a href="https://github.com/rhukster" title="@rhukster: screenshot scale, #27"><img src="https://github.com/rhukster.png?size=112" width="56" height="56" alt="@rhukster"></a>
+<a href="https://github.com/81zi" title="@81zi: agent storage isolation, #12"><img src="https://github.com/81zi.png?size=112" width="56" height="56" alt="@81zi"></a>
+</p>
+
 ## License
 
 Shuttle's changes are released under the [BSD-3-Clause license](LICENSE-SHUTTLE). Chromium and its third-party
