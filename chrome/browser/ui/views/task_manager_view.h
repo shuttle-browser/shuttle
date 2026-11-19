@@ -25,6 +25,7 @@
 
 class BrowserWindowInterface;
 class ChromeLayoutProvider;
+class Profile;
 
 namespace views {
 class MenuRunner;
@@ -34,6 +35,8 @@ class View;
 }  // namespace views
 
 namespace task_manager {
+
+class AgentUsageTableModel;
 
 // The new task manager UI container.
 class TaskManagerView : public TableViewDelegate,
@@ -63,6 +66,10 @@ class TaskManagerView : public TableViewDelegate,
   static task_manager::TaskManagerTableModel* Show(
       BrowserWindowInterface* browser,
       StartAction start_action = StartAction::kOther);
+
+  // Shuttle: shows the Task Manager (as Show()) on its Agents tab, if it has
+  // one (`browser`'s profile is a Shuttle profile).
+  static void ShowOnAgentsTab(BrowserWindowInterface* browser);
 
   // Hides the Task Manager if it is showing.
   static void Hide();
@@ -120,7 +127,9 @@ class TaskManagerView : public TableViewDelegate,
  private:
   friend class TaskManagerViewTest;
 
-  explicit TaskManagerView(StartAction start_action = StartAction::kOther);
+  // Shuttle: `profile` (may be null) gives the Agents tab its agents.
+  explicit TaskManagerView(StartAction start_action = StartAction::kOther,
+                           Profile* profile = nullptr);
 
   // Creates the header for the view.
   void CreateHeader(const ChromeLayoutProvider* provider);
@@ -145,6 +154,17 @@ class TaskManagerView : public TableViewDelegate,
 
   // Creates the child controls (header, table, etc).
   void Init();
+
+  // Shuttle: styles `table` as the task table.
+  void ConfigureTable(views::TableView* table);
+  // Shuttle: adds the scroll view around `table` to the dialog.
+  views::View* AddTableScrollView(std::unique_ptr<views::TableView> table);
+
+  // Shuttle: the Agents tab. Shows the agent table instead of the task table
+  // (and "Close sessions" instead of "End process") while selected.
+  void SetAgentsTabActive(bool active);
+  void SelectAgentsTab();
+  void CloseSelectedAgentSessions();
 
   // Called when the user presses the "End Task" button.
   bool OnAccept();
@@ -181,6 +201,14 @@ class TaskManagerView : public TableViewDelegate,
   std::unique_ptr<views::MenuRunner> menu_runner_;
 
   raw_ptr<views::TableView> tab_table_ = nullptr;
+
+  // Shuttle: the Agents tab; null (and no tab) without a Shuttle profile.
+  std::unique_ptr<AgentUsageTableModel> agent_model_;
+  raw_ptr<views::TableView> agent_table_ = nullptr;
+  // The scroll views around `tab_table_` and `agent_table_`.
+  raw_ptr<views::View> tab_table_parent_ = nullptr;
+  raw_ptr<views::View> agent_table_parent_ = nullptr;
+  bool agents_tab_active_ = false;
 
   // all possible columns, not necessarily visible.
   std::vector<ui::TableColumn> columns_;

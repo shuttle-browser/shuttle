@@ -17,15 +17,23 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/task/thread_pool.h"
+#include "base/time/time.h"
+#include "base/timer/timer.h"
 #include "base/values.h"
-#include "chrome/browser/shuttle/shuttle_service.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/shuttle/agent_usage.h"
 #include "chrome/browser/shuttle/mcp_tools.h"
 #include "chrome/browser/shuttle/session_manager.h"
-#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
+#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+#include "chrome/browser/ui/dialogs/browser_dialogs.h"
 #include "chrome/browser/ui/webui/theme_source.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/grit/agents_resources.h"
 #include "chrome/grit/agents_resources_map.h"
+#include "content/public/browser/favicon_status.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/url_data_source.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
@@ -33,12 +41,18 @@
 #include "content/public/browser/web_ui_message_handler.h"
 #include "content/public/common/url_constants.h"
 #include "services/network/public/mojom/content_security_policy.mojom.h"
+#include "ui/base/webui/web_ui_util.h"
+#include "ui/gfx/image/image.h"
 #include "ui/webui/webui_util.h"
 #include "url/gurl.h"
 
 namespace shuttle {
 
 namespace {
+
+// chrome://agents stops sampling resource usage this long after its last
+// request (it asks every few seconds while visible).
+constexpr base::TimeDelta kUsageIdleTimeout = base::Seconds(10);
 
 // The MCP endpoint of this browser, from the port the remote debugging server
 // wrote to DevToolsActivePort (9222 unless taken). Empty if unknown.
@@ -79,6 +93,16 @@ class AgentsHandler : public content::WebUIMessageHandler {
     web_ui()->RegisterMessageCallback(
         "getMcpUrl", base::BindRepeating(&AgentsHandler::HandleGetMcpUrl,
                                          base::Unretained(this)));
+    web_ui()->RegisterMessageCallback(
+        "getUsage", base::BindRepeating(&AgentsHandler::HandleGetUsage,
+                                        base::Unretained(this)));
+    web_ui()->RegisterMessageCallback(
+        "openTaskManager",
+        base::BindRepeating(&AgentsHandler::HandleOpenTaskManager,
+                            base::Unretained(this)));
+    web_ui()->RegisterMessageCallback(
+        "getFavicons", base::BindRepeating(&AgentsHandler::HandleGetFavicons,
+                                           base::Unretained(this)));
     web_ui()->RegisterMessageCallback(
         "showTab", base::BindRepeating(&AgentsHandler::HandleShowTab,
                                        base::Unretained(this)));
@@ -191,6 +215,53 @@ class AgentsHandler : public content::WebUIMessageHandler {
     }
   }
 
+  // [callbackId]: resolves with { sampled, cpuSampled, agents: { id: { memory,
+  // cpu, processes } } } (memory in bytes, cpu in percent of one core).
+  // Sampling starts with the first call and stops when the page stops asking
+  // (hidden, closed): the task manager costs CPU while it refreshes.
+  void HandleGetUsage(const base::ListValue& args) {
+    AllowJavascript();
+    ShuttleService* agents = service();
+    if (!agents) {
+      Reject(args[0], "Agents are not available");
+      return;
+    }
+    if (!usage_subscription_) {
+      usage_subscription_ = agents->usage().Subscribe(nullptr);
+    }
+    usage_timeout_.Start(FROM_HERE, kUsageIdleTimeout, this,
+                         &AgentsHandler::StopMeasuring);
+    const AgentUsageService& usage = agents->usage();
+    base::DictValue per_agent;
+    for (const auto& [id, agent] : usage.agents()) {
+      per_agent.Set(
+          id, base::DictValue()
+                  .Set("memory", static_cast<double>(agent.memory.InBytes()))
+                  .Set("cpu", agent.cpu)
+                  .Set("processes", agent.processes));
+    }
+    ResolveJavascriptCallback(
+        args[0], base::Value(base::DictValue()
+                                 .Set("sampled", usage.has_sample())
+                                 .Set("cpuSampled", usage.cpu_ready())
+                                 .Set("agents", std::move(per_agent))));
+  }
+
+  // []: opens the Task Manager on its Agents tab.
+  void HandleOpenTaskManager(const base::ListValue& args) {
+    chrome::ShowTaskManagerOnAgentsTab(
+        GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
+            web_ui()->GetWebContents()));
+  }
+
+  void StopMeasuring() {
+    usage_timeout_.Stop();
+    usage_subscription_.reset();
+  }
+
+  // content::WebUIMessageHandler:
+  void OnJavascriptDisallowed() override { StopMeasuring(); }
+
   // [callbackId, targetId]: brings an agent's tab to the front.
   void HandleShowTab(const base::ListValue& args) {
     AllowJavascript();
@@ -206,6 +277,38 @@ class AgentsHandler : public content::WebUIMessageHandler {
     ResolveJavascriptCallback(callback_id, base::Value());
   }
 
+  // [callbackId, [targetId...]]: resolves with { targetId: data: URL } for
+  // the agent tabs whose page has a favicon (from the tab itself: agent tabs
+  // aren't all in the favicon database).
+  void HandleGetFavicons(const base::ListValue& args) {
+    AllowJavascript();
+    base::DictValue favicons;
+    const base::ListValue* ids =
+        args.size() > 1 ? args[1].GetIfList() : nullptr;
+    if (!ids) {
+      Reject(args[0], "Expected a list of target ids");
+      return;
+    }
+    for (const base::Value& id : *ids) {
+      if (!id.is_string()) {
+        continue;
+      }
+      content::WebContents* contents = SessionManager::FindTab(id.GetString());
+      content::NavigationEntry* entry =
+          contents ? contents->GetController().GetLastCommittedEntry()
+                   : nullptr;
+      if (!entry || !entry->GetFavicon().valid ||
+          entry->GetFavicon().image.IsEmpty()) {
+        continue;
+      }
+      favicons.Set(id.GetString(), webui::GetBitmapDataUrl(
+                                       entry->GetFavicon().image.AsBitmap()));
+    }
+    ResolveJavascriptCallback(args[0], base::Value(std::move(favicons)));
+  }
+
+  std::unique_ptr<AgentUsageService::Subscription> usage_subscription_;
+  base::OneShotTimer usage_timeout_;
   base::WeakPtrFactory<AgentsHandler> weak_factory_{this};
 };
 

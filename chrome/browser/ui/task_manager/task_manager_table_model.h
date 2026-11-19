@@ -43,7 +43,10 @@ enum class DisplayCategory : uint8_t {
   kAll = 0,
   kTabsAndExtensions = 1,
   kSystem = 2,
-  kMax = kSystem
+  // Shuttle: the Agents tab (AgentUsageTableModel; TaskManagerTableModel never
+  // gets this category).
+  kAgents = 3,
+  kMax = kAgents
 };
 
 class TaskManagerValuesStringifier;

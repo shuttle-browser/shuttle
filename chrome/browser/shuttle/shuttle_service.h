@@ -17,6 +17,7 @@
 #include "base/types/expected.h"
 #include "base/values.h"
 #include "chrome/browser/shuttle/profile_registry.h"
+#include "chrome/browser/shuttle/tab_placement.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "content/public/browser/devtools_manager_delegate.h"
 #include "ui/gfx/image/image_skia.h"
@@ -33,6 +34,7 @@ class TabGroupId;
 
 namespace shuttle {
 
+class AgentUsageService;
 class AvatarCache;
 class PageToolManager;
 class ProfileRegistry;
@@ -71,9 +73,20 @@ class ShuttleService : public KeyedService {
   struct AgentSummary {
     std::string id;
     std::string name;
+    // The agent has an open session (so tabs in the tab strip).
+    bool open = false;
   };
-  // All agents, by name.
+  // All agents: those with open sessions first, then by name.
   std::vector<AgentSummary> ListAgents() const;
+  // For the user (new tab button, its menu, "New tab to the right" in an
+  // agent's group): opens a blank tab in `agent_id`'s storage, leased to its
+  // latest session (or a new one), at `placement`. Returns the tab, or null if
+  // the agent is gone.
+  content::WebContents* OpenNewTabInAgent(const std::string& agent_id,
+                                          const TabPlacement& placement);
+  // Closes the agent's sessions (their tabs); its storage stays (Task
+  // Manager's "Close sessions").
+  void CloseAgentSessions(const std::string& agent_id);
   // The agent `contents` works for (is leased to), or "".
   std::string AgentOfTab(content::WebContents* contents) const;
   // The agent whose tabs form `group`, or "".
@@ -100,6 +113,11 @@ class ShuttleService : public KeyedService {
 
   ProfileRegistry& profiles() { return *profiles_; }
   SessionManager& sessions() { return *sessions_; }
+  // Per-agent memory, CPU and network (Task Manager, chrome://agents, MCP).
+  AgentUsageService& usage() { return *usage_; }
+  base::WeakPtr<ShuttleService> GetWeakPtr() {
+    return weak_factory_.GetWeakPtr();
+  }
 
   // KeyedService:
   void Shutdown() override;
@@ -120,6 +138,7 @@ class ShuttleService : public KeyedService {
   std::unique_ptr<AvatarCache> avatars_;
   // After sessions_: sidecars die before the sessions they serve.
   std::unique_ptr<PageToolManager> page_tools_;
+  std::unique_ptr<AgentUsageService> usage_;
   base::RepeatingTimer throwaway_timer_;
   base::WeakPtrFactory<ShuttleService> weak_factory_{this};
 };

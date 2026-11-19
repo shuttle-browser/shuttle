@@ -31,7 +31,8 @@ export function getHtml(this: CrToolbarElement) {
   </div>
 </div>
 
-<div id="centeredContent" ?hidden="${!this.showSearch}">
+<div id="centeredContent" part="centered-content"
+    ?hidden="${!this.showSearch}">
   <cr-toolbar-search-field id="search" ?narrow="${this.narrow}"
       part="search-field" exportparts="search-input"
       label="${this.searchPrompt}" clear-label="${this.clearLabel}"
@@ -41,6 +42,8 @@ export function getHtml(this: CrToolbarElement) {
       ?autofocus="${this.autofocus}" icon-override="${this.searchIconOverride}"
       input-aria-description="${this.searchInputAriaDescription}">
   </cr-toolbar-search-field>
+  <!-- Shuttle: controls beside the search field (chrome://agents sort). -->
+  <slot name="center-end"></slot>
 </div>
 
 <div id="rightContent">

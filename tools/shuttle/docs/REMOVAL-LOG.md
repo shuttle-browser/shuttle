@@ -1242,3 +1242,31 @@ keyed-service graph was sealed. Latent since the 157 merge; official builds (no 
   next to the other autocomplete factories.
 - Verified: "+" on a blank agent tab, no crash (out/Sccache, 2026-11-18). Same class of bug to expect when a prune
   drops the last `DependsOn` of a factory that is still used lazily.
+
+## Fork commit 63 (2026-11-18): agent management UX (issue #36)
+
+Nothing removed. The five items Jeremiah Church proposed in issue #36, reworked after review (co-authored; their
+branch `JeremiahChurch/shuttle sh/agent-ux-fixes`). Needs fork commit 62 (the "+" menu's blank agent tab hit its
+DCHECK). One upstream file changed: `cr_toolbar.html.ts` gets a `center-end` slot after the search field and a
+`centered-content` part (chrome://agents puts its sort select there; unused elsewhere). Plan and decisions:
+`plans/AGENT-UX-ISSUE-36.md`; behavior: `MCP.md` "Activity, keep and cleanup", "Resource usage per agent".
+- Activity: `SessionManager::Touch` persists `last_active` at most once a minute per session, `RecordAllActivity` at
+  shutdown; `ProfileRegistry::RecordActivity` only moves forward.
+- `delete-idle-agents`: strict types (`dryRun`, `olderThanDays`, `exclude`, `ids`), `ids` pins the set from a preview
+  and reports `skipped`; chrome://agents confirms with the previewed ids.
+- New tab in agent: `TabPlacement` (window, index, foreground) through `OpenTabForUser` / `AllocateTab`;
+  `AddAndReturnTabAt` returns the created tab; dead `AddNewTabInGroupItem` removed.
+- `AgentUsageService` (`chrome/browser/shuttle/agent_usage.*`): per-agent memory/CPU/network from the task manager by
+  storage partition, sampling only while subscribed. Task Manager "Agents" tab (`AgentUsageTableModel`, second
+  `TableView`, "Close sessions", `chrome::ShowTaskManagerOnAgentsTab`); `list-agents { usage: true }`.
+- chrome://agents rebuilt in the Settings look (full-height panel, full-width list like chrome://settings/content,
+  expandable rows with favicons, search + sort select in the toolbar center, Help dialog for Quick start, toolbar New
+  agent + ⋮ menu, totals footer; one-line toolbar down to the 500 px window minimum).
+- SH-Review (2026-11-18, before the PR): B1-B3 of the contributor-branch review resolved; three new findings fixed
+  in this commit. (F1, P2) Usage samples were taken when a task-manager refresh started, so a cold `list-agents
+  {usage}` answered with the first CPU calculation (NaN, shown as 0): samples now come from
+  `OnTasksRefreshedWithBackgroundCalculations`, CPU counts from the second, unmeasured metrics are left out.
+  (F2, P2) One group per agent: opening the agent in a second window replaced the first window's group, which then
+  no longer resolved to the agent ("New tab to the right" there opened in default storage); now every group maps
+  back to its agent (`group_agents_`), one per window. (F3, P3) Out-of-process iframes counted as extra tabs: tabs
+  are counted once per tab id. Fork 62: no findings.

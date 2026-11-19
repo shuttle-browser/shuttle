@@ -15,10 +15,11 @@
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/timer/timer.h"
 #include "base/time/time.h"
+#include "base/timer/timer.h"
 #include "base/types/expected.h"
 #include "build/build_config.h"
+#include "chrome/browser/shuttle/tab_placement.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "ui/gfx/geometry/size.h"
@@ -59,6 +60,9 @@ struct Session {
   // advance while the machine sleeps).
   base::Time last_activity;
   base::TimeTicks last_activity_ticks;
+  // When last_activity was last written to the agent's persistent record
+  // (ProfileRegistry::RecordActivity, at most once a minute per session).
+  base::TimeTicks activity_recorded_ticks;
   // Closed after this long without activity; zero = never.
   base::TimeDelta idle_timeout;
   // MCP tool calls in flight (BeginWork/EndWork).
@@ -88,6 +92,10 @@ class SessionManager : public TabStripModelObserver {
                           std::nullopt);
   // Records activity. No-op for unknown sessions.
   void Touch(const std::string& session_id);
+  // Writes every open session's last activity to its agent's persistent
+  // record, unthrottled (browser shutdown: activity since the last
+  // once-a-minute write would be lost otherwise).
+  void RecordAllActivity();
   // An MCP tool call for the session is running: the session doesn't idle
   // out until it ends (EndWork also counts as activity). No-op for unknown
   // sessions.
@@ -125,10 +133,13 @@ class SessionManager : public TabStripModelObserver {
 
   // Opens a background tab in the session's profile partition, leased to
   // the session, and starts loading `url` (about:blank if empty).
+  // `placement`: the window and index (OpenTabForUser); default: wherever
+  // agent tabs open.
   base::expected<content::WebContents*, std::string> AllocateTab(
       const std::string& session_id,
       const GURL& url,
-      std::optional<gfx::Size> viewport);
+      std::optional<gfx::Size> viewport,
+      const TabPlacement& placement = TabPlacement());
   void ReleaseTab(content::WebContents* contents);
   // Closes without beforeunload/unload handlers (no dialog can keep the tab):
   // for automatic closes, which must not leave a tab behind.
@@ -136,17 +147,20 @@ class SessionManager : public TabStripModelObserver {
 
   // For the user (chrome://agents): opens `url` (about:blank if empty) in a
   // new foreground tab of `agent_id`, leased to its latest session (or a new
-  // one), and brings its window to the front.
+  // one), and brings its window to the front. `placement` picks the window,
+  // the index and whether the tab comes to the front.
   base::expected<content::WebContents*, std::string> OpenTabForUser(
       const std::string& agent_id,
-      const GURL& url);
+      const GURL& url,
+      const TabPlacement& placement = TabPlacement());
   // Activates `contents` in its tab strip and brings its window to the
   // front. Returns false if it isn't in a tab strip.
   static bool ShowTab(content::WebContents* contents);
   // For agents (CDP Page.bringToFront / Target.activateTarget): activates
   // `contents` in its tab strip, but only if its window isn't the active one
-  // (that would switch the tab the user is looking at). Never activates the
-  // window or the app, so agents can't steal focus.
+  // (that would switch the tab the user is looking at) and the tab currently
+  // shown isn't leased to another session (the user may be watching it).
+  // Never activates the window or the app, so agents can't steal focus.
   static void SelectTab(content::WebContents* contents);
 
   // For the user (tab context menu): hands a tab to `agent_id` (joins the
@@ -260,9 +274,20 @@ class SessionManager : public TabStripModelObserver {
   std::unique_ptr<ScopedProfileKeepAlive> sessions_profile_keep_alive_;
 #endif
   SessionClosedCallback session_closed_callback_;
-  // Agent id -> its tab group. Created with the agent's first tab (a tab
-  // group can't be empty); gone once its last tab closes.
-  std::map<std::string, tab_groups::TabGroupId> groups_;
+  // The agent's tab group in `tab_strip`, if it has one there.
+  std::optional<tab_groups::TabGroupId> GroupOfAgentIn(
+      const std::string& agent_id,
+      const TabStripModel* tab_strip) const;
+  // Starts the agent's group in `tab_strip` with the tab at `index` (not for
+  // an unknown agent).
+  void StartGroup(TabStripModel* tab_strip,
+                  int index,
+                  const std::string& agent_id);
+
+  // Tab group -> agent id: one group per window the agent has tabs in.
+  // Created with the agent's first tab there (a tab group can't be empty).
+  // Groups that closed stay listed (ids are unique; FindGroup skips them).
+  std::map<tab_groups::TabGroupId, std::string> group_agents_;
   std::set<raw_ptr<TabStripModel>> observed_;
   // Set while this class changes group visuals itself.
   bool applying_visuals_ = false;

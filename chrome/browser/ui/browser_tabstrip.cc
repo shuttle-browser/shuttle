@@ -8,6 +8,8 @@
 
 #include "base/command_line.h"
 #include "base/feature_list.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
@@ -42,6 +44,23 @@ content::WebContents* AddAndReturnTabAt(
     std::optional<tab_groups::TabGroupId> group,
     bool pinned,
     std::optional<NavigateParams::WindowAction> window_action) {
+  // Shuttle: a blank new tab in an agent's tab group ("New tab to the right",
+  // "New tab in group") is a tab of that agent (its storage, leased to its
+  // session), not a user tab that would be reopened into the agent's storage
+  // afterwards. Same window, index and foreground state; agent tabs are never
+  // pinned.
+  if (group && url.is_empty()) {
+    if (auto* agents = shuttle::ShuttleService::Get(browser->GetProfile())) {
+      const std::string agent_id = agents->AgentOfGroup(*group);
+      if (!agent_id.empty()) {
+        if (content::WebContents* contents = agents->OpenNewTabInAgent(
+                agent_id,
+                {.browser = browser, .index = idx, .foreground = foreground})) {
+          return contents;
+        }
+      }
+    }
+  }
   const GURL resolved_url = url.is_empty() ? GetNewTabURL(browser) : url;
   NavigateParams params(browser, resolved_url, ui::PAGE_TRANSITION_TYPED);
   params.disposition = foreground ? WindowOpenDisposition::kNewForegroundTab

@@ -21,15 +21,16 @@
 #include "base/strings/string_util.h"
 #include "base/values.h"
 #include "base/version_info/version_info.h"
-#include "chrome/browser/shuttle/shuttle_service_factory.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/shuttle/agent_usage.h"
 #include "chrome/browser/shuttle/avatar_cache.h"
 #include "chrome/browser/shuttle/mcp_tools.h"
 #include "chrome/browser/shuttle/page_tools.h"
 #include "chrome/browser/shuttle/profile_registry.h"
 #include "chrome/browser/shuttle/session_cdp_filter.h"
 #include "chrome/browser/shuttle/session_manager.h"
+#include "chrome/browser/shuttle/shuttle_service_factory.h"
 #include "chrome/browser/shuttle/switches.h"
-#include "chrome/browser/profiles/profile.h"
 #include "content/public/browser/web_contents.h"
 
 namespace shuttle {
@@ -183,7 +184,8 @@ ShuttleService::ShuttleService(Profile* profile)
                               base::Unretained(sessions_.get())))),
       page_tools_(std::make_unique<PageToolManager>(sessions_.get(),
                                                     profiles_.get(),
-                                                    profile->GetPath())) {
+                                                    profile->GetPath())),
+      usage_(std::make_unique<AgentUsageService>(profile)) {
   sessions_->SetSessionClosedCallback(base::BindRepeating(
       &PageToolManager::OnSessionClosed, base::Unretained(page_tools_.get())));
 }
@@ -402,12 +404,27 @@ std::vector<ShuttleService::AgentSummary> ShuttleService::ListAgents()
     const {
   std::vector<AgentSummary> agents;
   for (const ProfileRegistry::Entry& entry : profiles_->List()) {
-    agents.push_back({entry.id, entry.name});
+    agents.push_back(
+        {entry.id, entry.name, !sessions_->SessionsOf(entry.id).empty()});
   }
   std::ranges::sort(agents, [](const AgentSummary& a, const AgentSummary& b) {
+    if (a.open != b.open) {
+      return a.open;
+    }
     return base::ToLowerASCII(a.name) < base::ToLowerASCII(b.name);
   });
   return agents;
+}
+
+content::WebContents* ShuttleService::OpenNewTabInAgent(
+    const std::string& agent_id,
+    const TabPlacement& placement) {
+  return sessions_->OpenTabForUser(agent_id, GURL(), placement)
+      .value_or(nullptr);
+}
+
+void ShuttleService::CloseAgentSessions(const std::string& agent_id) {
+  sessions_->CloseProfileSessions(agent_id);
 }
 
 std::string ShuttleService::AgentOfTab(
@@ -457,6 +474,7 @@ void ShuttleService::Shutdown() {
   // Cookies set shortly before exit are otherwise lost (seen in the
   // partition spike with Browser.close).
   throwaway_timer_.Stop();
+  sessions_->RecordAllActivity();
   profiles_->FlushAllCookies();
   page_tools_->Shutdown();
 }

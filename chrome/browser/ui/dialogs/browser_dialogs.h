@@ -65,6 +65,9 @@ namespace chrome {
 task_manager::TaskManagerTableModel* ShowTaskManager(
     BrowserWindowInterface* browser,
     task_manager::StartAction start_action = task_manager::StartAction::kOther);
+// Shuttle: shows the Task Manager on its Agents tab (per-agent memory, CPU,
+// network), if `browser`'s profile is a Shuttle profile.
+void ShowTaskManagerOnAgentsTab(BrowserWindowInterface* browser);
 void HideTaskManager();
 
 // Show `dialog_model` as a modal dialog to `browser`.

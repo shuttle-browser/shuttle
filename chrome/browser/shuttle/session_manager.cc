@@ -318,6 +318,8 @@ const Session& SessionManager::Open(
   session.last_activity = session.opened;
   session.last_activity_ticks = base::TimeTicks::Now();
   session.idle_timeout = idle_timeout.value_or(base::TimeDelta());
+  session.activity_recorded_ticks = session.last_activity_ticks;
+  registry_->RecordActivity(agent_id, session.opened);
   UpdateIdleTimer();
 #if BUILDFLAG(IS_LINUX)
   UpdateKeepAlive();
@@ -330,8 +332,23 @@ void SessionManager::Touch(const std::string& session_id) {
   if (it == sessions_.end()) {
     return;
   }
-  it->second.last_activity = base::Time::Now();
-  it->second.last_activity_ticks = base::TimeTicks::Now();
+  Session& session = it->second;
+  session.last_activity = base::Time::Now();
+  session.last_activity_ticks = base::TimeTicks::Now();
+  // Persist it now and then, so an agent used in a long-lived session isn't
+  // idle by its record after a restart or crash (bulk cleanup by age).
+  if (session.last_activity_ticks - session.activity_recorded_ticks >=
+      base::Minutes(1)) {
+    session.activity_recorded_ticks = session.last_activity_ticks;
+    registry_->RecordActivity(session.agent, session.last_activity);
+  }
+}
+
+void SessionManager::RecordAllActivity() {
+  for (auto& [id, session] : sessions_) {
+    registry_->RecordActivity(session.agent, session.last_activity,
+                              /*throttle=*/false);
+  }
 }
 
 void SessionManager::BeginWork(const std::string& session_id) {
@@ -500,6 +517,8 @@ bool SessionManager::Close(const std::string& session_id) {
     return false;
   }
   std::string agent_id = it->second.agent;
+  registry_->RecordActivity(agent_id, it->second.last_activity,
+                            /*throttle=*/false);
   std::vector<content::WebContents*> tabs = TabsOf(session_id);
   // The user's active tab is one of the session's: the home tab gets focus
   // (the tabs close one by one; the next-tab rule would pick a sibling).
@@ -548,7 +567,8 @@ void SessionManager::CloseProfileSessions(const std::string& agent_id) {
 base::expected<content::WebContents*, std::string> SessionManager::AllocateTab(
     const std::string& session_id,
     const GURL& requested_url,
-    std::optional<gfx::Size> viewport) {
+    std::optional<gfx::Size> viewport,
+    const TabPlacement& placement) {
   const Session* session = Get(session_id);
   if (!session) {
     return base::unexpected("Unknown session: " + session_id);
@@ -565,10 +585,17 @@ base::expected<content::WebContents*, std::string> SessionManager::AllocateTab(
   // Lease before insertion, so the tab is never seen unleased.
   Lease(contents, session_id);
 
-  NavigateParams params(profile_.get(), url, ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
+  NavigateParams params =
+      placement.browser ? NavigateParams(placement.browser.get(), url,
+                                         ui::PAGE_TRANSITION_AUTO_TOPLEVEL)
+                        : NavigateParams(profile_.get(), url,
+                                         ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
   params.contents_to_insert = std::move(new_contents);
   params.disposition = WindowOpenDisposition::kNewBackgroundTab;
-  params.window_action = NavigateParams::WindowAction::kShowWindowInactive;
+  params.tabstrip_index = placement.index;
+  params.window_action =
+      placement.browser ? NavigateParams::WindowAction::kNoAction
+                        : NavigateParams::WindowAction::kShowWindowInactive;
   {
     // A window this opens is the agent's: it closes with the agent's tabs.
     base::AutoReset<bool> agent_tab = home_tabs_->OpeningAgentTab();
@@ -589,15 +616,19 @@ base::expected<content::WebContents*, std::string> SessionManager::AllocateTab(
 }
 
 base::expected<content::WebContents*, std::string>
-SessionManager::OpenTabForUser(const std::string& agent_id, const GURL& url) {
+SessionManager::OpenTabForUser(const std::string& agent_id,
+                               const GURL& url,
+                               const TabPlacement& placement) {
   if (!registry_->Exists(agent_id)) {
     return base::unexpected("Unknown agent: " + agent_id);
   }
   const Session* session = LatestSession(agent_id);
   std::string session_id = session ? session->id : Open(agent_id).id;
   ASSIGN_OR_RETURN(content::WebContents * contents,
-                   AllocateTab(session_id, url, std::nullopt));
-  ShowTab(contents);
+                   AllocateTab(session_id, url, std::nullopt, placement));
+  if (placement.foreground) {
+    ShowTab(contents);
+  }
   return contents;
 }
 
@@ -630,9 +661,19 @@ void SessionManager::SelectTab(content::WebContents* contents) {
       continue;
     }
     ui::BaseWindow* window = browser->GetWindow();
-    if (index != tab_strip->active_index() && !(window && window->IsActive())) {
-      tab_strip->ActivateTabAt(index);
+    if (index == tab_strip->active_index() || (window && window->IsActive())) {
+      return;
     }
+    // Never pull the visible tab away from another session's tab: the user
+    // may be watching it while typing in another app (the window is then not
+    // active). Only a tab the user owns, or one of the same session, is
+    // replaced.
+    content::WebContents* visible = tab_strip->GetActiveWebContents();
+    std::string visible_session = visible ? SessionOf(visible) : std::string();
+    if (!visible_session.empty() && visible_session != SessionOf(contents)) {
+      return;
+    }
+    tab_strip->ActivateTabAt(index);
     return;
   }
 }
@@ -771,21 +812,39 @@ void SessionManager::AddToSessionGroup(
   }
   TabStripModel* tab_strip = location.tab_strip;
   Observe(tab_strip);
-  auto group = groups_.find(agent_id);
-  if (group != groups_.end() && FindGroup(group->second) == tab_strip) {
-    if (tab_strip->GetTabGroupForTab(location.index) != group->second) {
-      tab_strip->AddToExistingGroup({location.index}, group->second);
+  if (std::optional<tab_groups::TabGroupId> group =
+          GroupOfAgentIn(agent_id, tab_strip)) {
+    if (tab_strip->GetTabGroupForTab(location.index) != *group) {
+      tab_strip->AddToExistingGroup({location.index}, *group);
     }
     return;
   }
-  // No group yet, or it closed or lives in another window: start one here.
+  // No group in this window yet (or it closed): start one here. The agent's
+  // groups in other windows stay its own.
+  StartGroup(tab_strip, location.index, agent_id);
+}
+
+std::optional<tab_groups::TabGroupId> SessionManager::GroupOfAgentIn(
+    const std::string& agent_id,
+    const TabStripModel* tab_strip) const {
+  for (const auto& [group, group_agent] : group_agents_) {
+    if (group_agent == agent_id && FindGroup(group) == tab_strip) {
+      return group;
+    }
+  }
+  return std::nullopt;
+}
+
+void SessionManager::StartGroup(TabStripModel* tab_strip,
+                                int index,
+                                const std::string& agent_id) {
   std::optional<ProfileRegistry::Entry> agent = registry_->Get(agent_id);
   if (!agent) {
     return;
   }
   base::AutoReset<bool> applying(&applying_visuals_, true);
-  tab_groups::TabGroupId new_group = tab_strip->AddToNewGroup({location.index});
-  groups_.insert_or_assign(agent_id, new_group);
+  tab_groups::TabGroupId new_group = tab_strip->AddToNewGroup({index});
+  group_agents_.insert_or_assign(new_group, agent_id);
   tab_strip->ChangeTabGroupVisuals(
       new_group, tab_groups::TabGroupVisualData(base::UTF8ToUTF16(agent->name),
                                                 agent->color));
@@ -793,23 +852,25 @@ void SessionManager::AddToSessionGroup(
 
 void SessionManager::RefreshGroups(const std::string& agent_id) {
   std::optional<ProfileRegistry::Entry> agent = registry_->Get(agent_id);
-  auto group = groups_.find(agent_id);
-  if (!agent || group == groups_.end()) {
+  if (!agent) {
     return;
   }
-  TabStripModel* tab_strip = FindGroup(group->second);
-  if (!tab_strip) {
-    return;
-  }
-  // Keep the group's collapsed state: it lives in the same visual data, and
-  // the default (expanded) would undo every collapse.
-  tab_groups::TabGroupVisualData visuals(
-      base::UTF8ToUTF16(agent->name), agent->color,
-      tab_strip->IsGroupCollapsed(group->second));
-  // Also unchanged visuals: the avatar may have changed, and this repaints
-  // the group's header.
   base::AutoReset<bool> applying(&applying_visuals_, true);
-  tab_strip->ChangeTabGroupVisuals(group->second, visuals);
+  for (const auto& [group, group_agent] : group_agents_) {
+    TabStripModel* tab_strip =
+        group_agent == agent_id ? FindGroup(group) : nullptr;
+    if (!tab_strip) {
+      continue;
+    }
+    // Keep the group's collapsed state: it lives in the same visual data, and
+    // the default (expanded) would undo every collapse.
+    tab_groups::TabGroupVisualData visuals(base::UTF8ToUTF16(agent->name),
+                                           agent->color,
+                                           tab_strip->IsGroupCollapsed(group));
+    // Also unchanged visuals: the avatar may have changed, and this repaints
+    // the group's header.
+    tab_strip->ChangeTabGroupVisuals(group, visuals);
+  }
 }
 
 void SessionManager::OnTabGroupChanged(const TabGroupChange& change) {
@@ -914,16 +975,15 @@ void SessionManager::TakeBackIfUngrouped(
 
 void SessionManager::AdoptTab(base::WeakPtr<content::WebContents> contents,
                               const std::string& agent_id) {
-  auto group = groups_.find(agent_id);
-  if (!contents || AgentOf(contents.get()) == agent_id ||
-      group == groups_.end()) {
+  if (!contents || AgentOf(contents.get()) == agent_id) {
     return;
   }
   TabLocation location = FindInTabStrips(contents.get());
   TabStripModel* tab_strip = location.tab_strip;
-  if (!tab_strip ||
-      tab_strip->GetTabGroupForTab(location.index) != group->second) {
-    return;  // Moved out of the group again.
+  std::optional<tab_groups::TabGroupId> group =
+      tab_strip ? tab_strip->GetTabGroupForTab(location.index) : std::nullopt;
+  if (!group || AgentOfGroup(*group) != agent_id) {
+    return;  // Moved out of the agent's group again.
   }
   const Session* session = LatestSession(agent_id);
   std::string session_id = session ? session->id : Open(agent_id).id;
@@ -948,10 +1008,9 @@ void SessionManager::AdoptTab(base::WeakPtr<content::WebContents> contents,
       CreateAgentContents(agent_id, url, /*hidden=*/!active);
   content::WebContents* adopted = new_contents.get();
   Lease(adopted, session_id);
-  tab_strip->InsertWebContentsAt(location.index + 1, std::move(new_contents),
-                                 active ? AddTabTypes::ADD_ACTIVE
-                                        : AddTabTypes::ADD_NONE,
-                                 group->second);
+  tab_strip->InsertWebContentsAt(
+      location.index + 1, std::move(new_contents),
+      active ? AddTabTypes::ADD_ACTIVE : AddTabTypes::ADD_NONE, *group);
   int old_index = tab_strip->GetIndexOfWebContents(contents.get());
   if (old_index != TabStripModel::kNoTab) {
     tab_strip->CloseWebContentsAt(old_index, TabCloseTypes::CLOSE_NONE);
@@ -970,22 +1029,14 @@ void SessionManager::HandTabToAgent(content::WebContents* contents,
   }
   TabStripModel* tab_strip = location.tab_strip;
   Observe(tab_strip);
-  auto group = groups_.find(agent_id);
-  if (group != groups_.end() && FindGroup(group->second) == tab_strip) {
+  if (std::optional<tab_groups::TabGroupId> group =
+          GroupOfAgentIn(agent_id, tab_strip)) {
     // TabGroupedStateChanged adopts it.
-    tab_strip->AddToExistingGroup({location.index}, group->second);
+    tab_strip->AddToExistingGroup({location.index}, *group);
     return;
   }
   // The agent has no tabs in this window: the tab starts its group here.
-  {
-    base::AutoReset<bool> applying(&applying_visuals_, true);
-    tab_groups::TabGroupId new_group =
-        tab_strip->AddToNewGroup({location.index});
-    groups_.insert_or_assign(agent_id, new_group);
-    tab_strip->ChangeTabGroupVisuals(
-        new_group, tab_groups::TabGroupVisualData(
-                       base::UTF8ToUTF16(agent->name), agent->color));
-  }
+  StartGroup(tab_strip, location.index, agent_id);
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
       base::BindOnce(&SessionManager::AdoptTab, weak_factory_.GetWeakPtr(),
@@ -1066,12 +1117,8 @@ void SessionManager::Observe(TabStripModel* tab_strip) {
 
 std::string SessionManager::AgentOfGroup(
     const tab_groups::TabGroupId& group) const {
-  for (const auto& [agent_id, agent_group] : groups_) {
-    if (agent_group == group) {
-      return agent_id;
-    }
-  }
-  return std::string();
+  auto it = group_agents_.find(group);
+  return it == group_agents_.end() ? std::string() : it->second;
 }
 
 TabStripModel* SessionManager::FindGroup(
