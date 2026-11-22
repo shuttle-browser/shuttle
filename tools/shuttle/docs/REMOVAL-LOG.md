@@ -1270,3 +1270,23 @@ DCHECK). One upstream file changed: `cr_toolbar.html.ts` gets a `center-end` slo
   no longer resolved to the agent ("New tab to the right" there opened in default storage); now every group maps
   back to its agent (`group_agents_`), one per window. (F3, P3) Out-of-process iframes counted as extra tabs: tabs
   are counted once per tab id. Fork 62: no findings.
+
+## Fork commit 64 (2026-11-22): "+" opens in the shown agent on both tab strips (issue #36 follow-up)
+
+Nothing removed. Jeremiah Church's 0b6bcad046 (author), from their review of #39: on the classic tab strip "+" goes
+`TabStrip::NewTabButtonPressed` → `BrowserTabStripController::CreateNewTab`, not `kActionNewTab`, so it opened a plain
+tab next to an agent's tab. `CreateNewTab(kNewTabButton)` now takes the agent path; `AgentOfTab(nullptr)` returns "".
+On top (Toby's decision, 2026-11-22): only "+" opens in the agent. Fork 63 had hooked `kActionNewTab`, but under the
+default `CommandActionUpdater` (`kUseActionsForBrowserCommands`) `IDC_NEW_TAB` runs that action too: Cmd/Ctrl+T, File
+> New Tab, the app menu's and the "+" menu's plain "New tab" all opened in the agent. `kActionNewTab` is upstream
+again; the shared strip's "+" opens the agent tab in `shared::NewTabButton::NotifyClick` before the action (Linux
+middle-click still pastes a URL, as upstream). Their doc change ("Cmd/Ctrl+T opens in the agent", true for fork 63)
+was replaced by the new rule. The "+" menu's "New tab in another agent" is a string (`IDS_NEW_TAB_IN_ANOTHER_AGENT`,
+both title cases; a new message, so no translations yet). Sessions opened from the "+" menu keep no idle timeout
+(user-opened, like chrome://agents "Open tab").
+- SH-Review (2026-11-22, before the PR): F1 (P2) the first version only excluded the `kAppMenu` and
+  `kKeyboardShortcut` invocation sources; native Mac Cmd+T, File > New Tab, the default `AppMenuModel` and the "+"
+  menu's "New tab" pass none and still opened in the agent. Fixed by moving the agent path into the button.
+  Re-review: F1 closed; F2 (P3) `shared:impl` lacked the `//chrome/browser/shuttle` dep (also for the existing menu
+  model include): added. Skipping `Button::NotifyClick` on the agent path also skips its ElementTracker activation
+  (no new-tab tutorial consumer; noted only).
