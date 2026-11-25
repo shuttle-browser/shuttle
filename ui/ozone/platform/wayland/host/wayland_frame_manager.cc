@@ -128,7 +128,7 @@ WaylandFrameManager::~WaylandFrameManager() {
 }
 
 void WaylandFrameManager::RecordFrame(std::unique_ptr<WaylandFrame> frame) {
-  DCHECK_LE(pending_frames_.size(), 6u);
+  CHECK_LE(pending_frames_.size(), 6u, base::NotFatalUntil::M163);
   TRACE_EVENT(
       "viz,benchmark,graphics.pipeline", "Graphics.Pipeline",
       perfetto::Flow::Global(frame->trace_id),
@@ -274,8 +274,8 @@ void WaylandFrameManager::MaybeProcessPendingFrame() {
 }
 
 void WaylandFrameManager::PlayBackFrame(std::unique_ptr<WaylandFrame> frame) {
-  DCHECK(!frame->buffer_lost);
-  DCHECK(window_->IsSurfaceConfigured());
+  CHECK(!frame->buffer_lost, base::NotFatalUntil::M163);
+  CHECK(window_->IsSurfaceConfigured(), base::NotFatalUntil::M163);
 
   TRACE_EVENT(
       "viz,benchmark,graphics.pipeline", "Graphics.Pipeline",
@@ -348,7 +348,7 @@ void WaylandFrameManager::PlayBackFrame(std::unique_ptr<WaylandFrame> frame) {
   WaylandSubsurface* reference_above = nullptr;
   for (auto& [subsurface, config] :
        std::views::reverse(frame->subsurfaces_to_overlays)) {
-    DCHECK(subsurface);
+    CHECK(subsurface, base::NotFatalUntil::M163);
     auto* surface = subsurface->wayland_surface();
     if (empty_frame || !config.buffer_id ||
         wl_fixed_from_double(config.opacity) == 0) {
@@ -389,13 +389,15 @@ void WaylandFrameManager::PlayBackFrame(std::unique_ptr<WaylandFrame> frame) {
     }
   }
 
-  DCHECK(fatal_error_message_.empty());
+  CHECK(fatal_error_message_.empty(), base::NotFatalUntil::M163);
 
-  DCHECK(empty_frame || !connection_->presentation() ||
-         frame->pending_feedback || frame->feedback.has_value());
+  CHECK(empty_frame || !connection_->presentation() ||
+            frame->pending_feedback || frame->feedback.has_value(),
+        base::NotFatalUntil::M163);
   TRACE_EVENT_BEGIN("wayland", "WaylandFrameManager.PlaybackFrame",
                     perfetto::Track(frame->frame_id));
   root_surface->Commit(true);
+  window_->OnFrameCommitted(frame->seq);
 
   frame->root_config = wl::WaylandOverlayConfig();
   frame->subsurfaces_to_overlays.clear();
@@ -423,12 +425,12 @@ std::optional<bool> WaylandFrameManager::ApplySurfaceConfigure(
     WaylandSurface* surface,
     wl::WaylandOverlayConfig& config,
     bool set_opaque_region) {
-  DCHECK(surface);
+  CHECK(surface, base::NotFatalUntil::M163);
   if (!config.buffer_id)
     return true;
 
   if (!ValidateRect(config.bounds_rect)) {
-    DCHECK(fatal_error_message_.empty());
+    CHECK(fatal_error_message_.empty(), base::NotFatalUntil::M163);
     // A fatal error must be set here and handled outside the Playback method as
     // terminating the gpu during the playback is illegal - a pending frame will
     // DCHECK in ::ClearStates.
@@ -475,10 +477,11 @@ std::optional<bool> WaylandFrameManager::ApplySurfaceConfigure(
   WaylandBufferHandle* buffer_handle =
       connection_->buffer_manager_host()->GetBufferHandle(surface,
                                                           config.buffer_id);
-  DCHECK(buffer_handle);
+  CHECK(buffer_handle, base::NotFatalUntil::M163);
   bool will_attach = surface->AttachBuffer(buffer_handle);
   // If we don't attach a released buffer, graphics freeze will occur.
-  DCHECK(will_attach || !buffer_handle->released(surface));
+  CHECK(will_attach || !buffer_handle->released(surface),
+        base::NotFatalUntil::M163);
 
   // `damage_region` is specified in the root surface coordinates space, the
   // same as `bounds_rect`. To get these rect values in local surface space we
@@ -595,7 +598,7 @@ void WaylandFrameManager::OnFrameDone(void* data,
                                       wl_callback* callback,
                                       uint32_t time) {
   auto* self = static_cast<WaylandFrameManager*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
   self->HandleFrameCallback(callback);
 }
 
@@ -607,6 +610,8 @@ void WaylandFrameManager::HandleFrameCallback(wl_callback* callback) {
     // frames should just be ignored.
     return;
   }
+  // TODO(crbug.com/583272114): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(submitted_frames_.back()->wl_frame_callback.get() == callback);
   TRACE_EVENT("wayland", "HandleFrameCallback", "cb_owner_frame_id",
               submitted_frames_.back()->frame_id);
@@ -644,7 +649,7 @@ void WaylandFrameManager::OnPresented(
     uint32_t seq_lo,
     uint32_t flags) {
   auto* self = static_cast<WaylandFrameManager*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
   self->HandlePresentationFeedback(
       presentation_feedback,
       gfx::PresentationFeedback(self->connection_->ConvertPresentationTime(
@@ -658,7 +663,7 @@ void WaylandFrameManager::OnDiscarded(
     void* data,
     struct wp_presentation_feedback* presentation_feedback) {
   auto* self = static_cast<WaylandFrameManager*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
   self->HandlePresentationFeedback(presentation_feedback,
                                    gfx::PresentationFeedback::Failure(),
                                    true /* discarded */);
@@ -714,8 +719,13 @@ void WaylandFrameManager::VerifyNumberOfSubmittedFrames() {
          it < (submitted_frames_.end() - kMaxFramesInFlight); it++) {
       if (!(*it)->submission_acked || !(*it)->pending_feedback)
         break;
-      DCHECK(!(*it)->feedback.has_value());
-      (*it)->feedback = gfx::PresentationFeedback::Failure();
+      // The frame may already have a result while its feedback request is
+      // still outstanding, e.g. if Hide() or a failed surface configure marked
+      // it as failed, or if the feedback for a later frame arrived first. Keep
+      // that result and only drop the request.
+      if (!(*it)->feedback.has_value()) {
+        (*it)->feedback = gfx::PresentationFeedback::Failure();
+      }
       (*it)->pending_feedback.reset();
     }
   }
@@ -767,7 +777,7 @@ bool WaylandFrameManager::EnsureWlBuffersExist(WaylandFrame& frame) {
 void WaylandFrameManager::OnExplicitBufferRelease(WaylandSurface* surface,
                                                   wl_buffer* buffer,
                                                   base::ScopedFD fence) {
-  DCHECK(buffer);
+  CHECK(buffer, base::NotFatalUntil::M163);
 
   // Releases may not necessarily come in order, so search the submitted
   // buffers.
@@ -786,7 +796,8 @@ void WaylandFrameManager::OnExplicitBufferRelease(WaylandSurface* surface,
         } else {
           frame->merged_release_fence_fd = std::move(fence);
         }
-        DCHECK(frame->merged_release_fence_fd.is_valid());
+        CHECK(frame->merged_release_fence_fd.is_valid(),
+              base::NotFatalUntil::M163);
       }
 
       TRACE_EVENT_INSTANT("wayland", "OnExplicitBufferRelease", "frame_id",
@@ -804,7 +815,7 @@ void WaylandFrameManager::OnExplicitBufferRelease(WaylandSurface* surface,
 void WaylandFrameManager::OnWlBufferRelease(WaylandSurface* surface,
                                             wl_buffer* buffer,
                                             bool is_destruct) {
-  DCHECK(buffer);
+  CHECK(buffer, base::NotFatalUntil::M163);
 
   // Releases may not necessarily come in order, so search the submitted
   // buffers.
@@ -825,7 +836,8 @@ void WaylandFrameManager::OnWlBufferRelease(WaylandSurface* surface,
           } else {
             frame->merged_release_fence_fd = std::move(fence);
           }
-          DCHECK(frame->merged_release_fence_fd.is_valid());
+          CHECK(frame->merged_release_fence_fd.is_valid(),
+                base::NotFatalUntil::M163);
         }
       }
 
@@ -880,6 +892,8 @@ void WaylandFrameManager::MaybeProcessSubmittedFrames() {
     if (!all_buffers_released)
       break;
 
+    // TODO(crbug.com/582622866): CHECK-exclusion: Convert to a CHECK once we
+    // are confident it won't be triggered.
     DCHECK((*iter)->submission_acked);
     if ((*(iter + 1))->submission_acked)
       continue;
@@ -946,23 +960,27 @@ void WaylandFrameManager::MaybeProcessSubmittedFrames() {
   }
 
   ClearProcessedSubmittedFrames();
+  // TODO(crbug.com/582622866): CHECK-exclusion: Convert to a CHECK once we
+  // are confident it won't be triggered.
   DCHECK_LE(submitted_frames_.size(), kMaxNumberOfFrames);
 
   UpdatePresentationFlushTimer();
 }
 
 void WaylandFrameManager::SetFakeFeedback(WaylandFrame* frame) {
-  DCHECK(!frame->feedback.has_value() || frame->feedback->failed());
+  CHECK(!frame->feedback.has_value() || frame->feedback->failed(),
+        base::NotFatalUntil::M163);
   frame->feedback = frame->feedback.value_or(gfx::PresentationFeedback(
       base::TimeTicks::Now(), base::TimeDelta(), GetPresentationKindFlags(0)));
 }
 
 void WaylandFrameManager::ProcessOldSubmittedFrame(WaylandFrame* frame) {
-  DCHECK(!submitted_frames_.empty());
-  DCHECK(!frame->submission_acked);
-  DCHECK(!frame->presentation_acked);
-  DCHECK(frame->pending_feedback || frame->feedback.has_value() ||
-         !connection_->presentation());
+  CHECK(!submitted_frames_.empty(), base::NotFatalUntil::M163);
+  CHECK(!frame->submission_acked, base::NotFatalUntil::M163);
+  CHECK(!frame->presentation_acked, base::NotFatalUntil::M163);
+  CHECK(frame->pending_feedback || frame->feedback.has_value() ||
+            !connection_->presentation(),
+        base::NotFatalUntil::M163);
   frame->submission_acked = true;
 
   // If presentation feedback is not supported, use a fake feedback. This
@@ -1006,7 +1024,8 @@ void WaylandFrameManager::ClearProcessedSubmittedFrames() {
   while (submitted_frames_.size() > 1 &&
          submitted_frames_.front()->submitted_buffers.empty() &&
          submitted_frames_.front()->presentation_acked) {
-    DCHECK(submitted_frames_.front()->submission_acked);
+    CHECK(submitted_frames_.front()->submission_acked,
+          base::NotFatalUntil::M163);
     submitted_frames_.pop_front();
   }
 }
@@ -1019,7 +1038,7 @@ void WaylandFrameManager::FrameCallbackTimeout() {
 }
 
 void WaylandFrameManager::CreateBeginFrameSource() {
-  DCHECK(!begin_frame_source_);
+  CHECK(!begin_frame_source_, base::NotFatalUntil::M163);
   begin_frame_source_ =
       std::make_unique<BeginFrameSourceWayland>(window_, this);
 }
@@ -1082,7 +1101,7 @@ void WaylandFrameManager::SetVideoCapture() {
 }
 
 void WaylandFrameManager::ReleaseVideoCapture() {
-  DCHECK_GT(video_capture_count_, 0);
+  CHECK_GT(video_capture_count_, 0, base::NotFatalUntil::M163);
   --video_capture_count_;
   OnVideoCaptureUpdate();
 }

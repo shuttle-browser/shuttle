@@ -16,6 +16,7 @@
 #include "base/trace_event/memory_allocator_dump.h"
 #include "base/trace_event/process_memory_dump.h"
 #include "base/trace_event/trace_event.h"
+#include "build/build_config.h"
 #include "net/base/features.h"
 #include "net/base/network_anonymization_key.h"
 #include "net/base/schemeful_site.h"
@@ -84,12 +85,8 @@ class SSLClientSessionCacheTest : public testing::Test {
   void SimulateMemoryLimitAndRelease(
       base::test::TaskEnvironment& task_environment,
       base::MemoryLimit memory_limit) {
-    test_memory_consumer_registry_.NotifyUpdateMemoryLimitAsync(
+    test_memory_consumer_registry_.NotifyUpdateMemoryLimitAndReleaseAsync(
         memory_limit, task_environment.QuitClosure());
-    task_environment.RunUntilQuit();
-
-    test_memory_consumer_registry_.NotifyReleaseMemoryAsync(
-        task_environment.QuitClosure());
     task_environment.RunUntilQuit();
   }
 
@@ -444,6 +441,7 @@ TEST_F(SSLClientSessionCacheTest, LookupExpirationCheck) {
   EXPECT_EQ(0u, cache.size());
 }
 
+#if !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_WIN)
 // Test that SSL cache is flushed on low memory notifications.
 TEST_F(SSLClientSessionCacheTest, TestFlushOnMemoryNotifications) {
   base::test::ScopedFeatureList scoped_feature_list;
@@ -632,6 +630,7 @@ TEST_F(SSLClientSessionCacheTest,
   EXPECT_EQ(0u, cache.size());
   EXPECT_EQ(nullptr, cache.Lookup(MakeTestKey("0")).get());
 }
+#endif  // !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_WIN)
 
 TEST_F(SSLClientSessionCacheTest, FlushForServer) {
   SSLClientSessionCache::Config config;

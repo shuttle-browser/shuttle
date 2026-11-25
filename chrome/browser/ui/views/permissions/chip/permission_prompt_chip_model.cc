@@ -188,7 +188,7 @@ void PermissionPromptChipModel::UpdateWithUserDecision(
   user_decision_ = user_decision;
 
   int cam_mic_combo_accessibility_text_id;
-  switch (user_decision_) {
+  switch (user_decision) {
     case permissions::PermissionAction::GRANTED:
       should_display_blocked_icon_ = false;
       chip_theme_ = PermissionChipTheme::kNormalVisibility;
@@ -222,8 +222,6 @@ void PermissionPromptChipModel::UpdateWithUserDecision(
       cam_mic_combo_accessibility_text_id =
           IDS_PERMISSIONS_CAMERA_AND_MICROPHONE_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT;
       break;
-    case permissions::PermissionAction::NUM:
-      NOTREACHED();
   }
 
   const auto& requests = delegate_->Requests();

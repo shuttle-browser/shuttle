@@ -8,14 +8,14 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
+#include "absl/status/status.h"            // from @com_google_absl
+#include "absl/status/status_macros.h"     // from @com_google_absl
+#include "absl/status/statusor.h"          // from @com_google_absl
+#include "absl/strings/str_cat.h"          // from @com_google_absl
+#include "absl/strings/str_join.h"         // from @com_google_absl
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_macros.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter.h"  // from @litert
 
 namespace mediapipe {
 
@@ -113,7 +113,7 @@ TfLiteSignatureReader::GetInputOutputTensorNamesFromAllTfliteSignatures(
   std::vector<const std::string*> model_signature_keys =
       interpreter.signature_keys();
   for (const std::string* signature_key : model_signature_keys) {
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         SignatureInputOutputTensorNames input_output_tensor_names,
         GetInputOutputTensorNamesFromTfliteSignature(interpreter,
                                                      signature_key));

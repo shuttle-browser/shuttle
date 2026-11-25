@@ -48,8 +48,8 @@ rust_static_library("bridge_rust_side") {
   deps = [
     ":path_bridge",
     "//third_party/rust/font_types/v0_12:lib",
-    "//third_party/rust/read_fonts/v0_45:lib",
-    "//third_party/rust/skrifa/v0_48:lib",
+    "//third_party/rust/read_fonts/v0_46:lib",
+    "//third_party/rust/skrifa/v0_49:lib",
   ]
   configs -= [ "//build/config/compiler:chromium_code" ]
   configs += [
@@ -63,7 +63,6 @@ rust_static_library("bridge_rust_side") {
 config("skia_config") {
   defines = [
     "SK_ENABLE_SKSL",
-    "SK_UNTIL_CRBUG_1187654_IS_FIXED",
     "SK_USER_CONFIG_HEADER=\"../../skia/config/SkUserConfig.h\"",
     "SK_USE_PARTITION_ALLOC",
     "SK_WIN_FONTMGR_NO_SIMULATIONS",
@@ -86,6 +85,10 @@ config("skia_config") {
     "SK_CODEC_COLOR_PROFILE_PARSE_WITH_RUST",
     "SK_EXIF_PARSE_WITH_RUST",
   ]
+
+  if (use_partition_alloc_as_malloc) {
+    defines += [ "SK_USE_PARTITION_ALLOC_AS_MALLOC" ]
+  }
 
   if (!allow_avx512) {
     defines += [ "SK_DISABLE_AVX512_OPTS" ]
@@ -499,8 +502,15 @@ component("skia") {
   all_dependent_configs = [ ":skia_config" ]
 
   deps += [
+    ":rust_bmp_ffi",
     ":rust_common_ffi",
+    ":rust_common_ffi_cpp",
+    ":rust_exif_ffi",
+    ":rust_icc_ffi",
+    ":rust_ico_ffi",
+    ":rust_jpeg_ffi",
     ":rust_png_ffi",
+    ":rust_png_ffi_cpp",
     ":skcms",
     ":skia_opts",
     ":skia_switches",
@@ -516,11 +526,11 @@ component("skia") {
   }
   public_deps = [
     ":buildflags",
-    ":rust_bmp_ffi",
-    ":rust_exif_ffi",
-    ":rust_icc_ffi",
-    ":rust_ico_ffi",
-    ":rust_jpeg_ffi",
+    ":rust_bmp_ffi_cpp",
+    ":rust_exif_ffi_cpp",
+    ":rust_icc_ffi_cpp",
+    ":rust_ico_ffi_cpp",
+    ":rust_jpeg_ffi_cpp",
     ":skia_core_and_effects",
     ":skia_core_public_headers",
   ]
@@ -659,7 +669,6 @@ cargo_crate("rust_common_ffi") {
   crate_root = skia_rust_common_ffi_crate_root
   sources = skia_rust_common_ffi_rs_srcs
   cxx_bindings = skia_rust_common_ffi_cxx_bridge_srcs
-  public_deps = [ ":rust_common_ffi_cpp" ]
   library_configs -= [ "//build/config/compiler:chromium_code" ]
   library_configs += [
     ":skia_config",
@@ -692,7 +701,6 @@ rust_static_library("rust_png_ffi") {
   crate_root = skia_codec_rust_png_ffi_crate_root
   sources = skia_codec_rust_png_ffi_rs_srcs
   cxx_bindings = skia_codec_rust_png_ffi_cxx_bridge_srcs
-  public_deps = [ ":rust_png_ffi_cpp" ]
   deps = [
     ":rust_common_ffi",
     "//third_party/rust/png/v0_18:lib",
@@ -722,7 +730,6 @@ rust_static_library("rust_bmp_ffi") {
   crate_root = skia_codec_rust_bmp_ffi_crate_root
   sources = skia_codec_rust_bmp_ffi_rs_srcs
   cxx_bindings = skia_codec_rust_bmp_ffi_cxx_bridge_srcs
-  public_deps = [ ":rust_bmp_ffi_cpp" ]
   deps = [
     ":rust_common_ffi",
     "//third_party/rust/image/v0_25:lib",
@@ -747,7 +754,13 @@ source_set("rust_bmp_ffi_cpp") {
     ":skia_core_public_headers",
     "//build/rust:cxx_cppdeps",
   ]
-  deps = [ ":rust_bmp_ffi_cxx_generated_gen" ]
+
+  # Compiles private Skia files that include raw_ptr.h. ":skia" depends on
+  # partition_alloc privately, so this needs the dep directly.
+  deps = [
+    ":rust_bmp_ffi_cxx_generated_gen",
+    "//base/allocator/partition_allocator:raw_ptr",
+  ]
   check_includes =
       false  # Logically part of skia, but split out for build reasons
   configs -= [ "//build/config/compiler:chromium_code" ]
@@ -764,7 +777,6 @@ rust_static_library("rust_ico_ffi") {
   crate_root = skia_codec_rust_ico_ffi_crate_root
   sources = skia_codec_rust_ico_ffi_rs_srcs
   cxx_bindings = skia_codec_rust_ico_ffi_cxx_bridge_srcs
-  public_deps = [ ":rust_ico_ffi_cpp" ]
   deps = [
     ":rust_common_ffi",
     "//third_party/rust/image/v0_25:lib",
@@ -794,9 +806,10 @@ source_set("rust_ico_ffi_cpp") {
   # embedded images, so it needs their generated cxx bridge headers and
   # C++ glue code.
   deps = [
-    ":rust_bmp_ffi",
+    ":rust_bmp_ffi_cpp",
     ":rust_ico_ffi_cxx_generated_gen",
-    ":rust_png_ffi",
+    ":rust_png_ffi_cpp",
+    ":rust_png_ffi_cxx_generated_gen",
   ]
   check_includes =
       false  # Logically part of skia, but split out for build reasons
@@ -814,7 +827,6 @@ rust_static_library("rust_jpeg_ffi") {
   crate_root = skia_codec_rust_jpeg_ffi_crate_root
   sources = skia_codec_rust_jpeg_ffi_rs_srcs
   cxx_bindings = skia_codec_rust_jpeg_ffi_cxx_bridge_srcs
-  public_deps = [ ":rust_jpeg_ffi_cpp" ]
   deps = [
     ":rust_common_ffi",
     "//third_party/rust/jpeg_encoder/v0_7:lib",
@@ -844,7 +856,13 @@ source_set("rust_jpeg_ffi_cpp") {
     ":skia_core_public_headers",
     "//build/rust:cxx_cppdeps",
   ]
-  deps = [ ":rust_jpeg_ffi_cxx_generated_gen" ]
+
+  # Compiles private Skia files that include raw_ptr.h. ":skia" depends on
+  # partition_alloc privately, so this needs the dep directly.
+  deps = [
+    ":rust_jpeg_ffi_cxx_generated_gen",
+    "//base/allocator/partition_allocator:raw_ptr",
+  ]
   check_includes =
       false  # Logically part of skia, but split out for build reasons
   configs -= [ "//build/config/compiler:chromium_code" ]
@@ -861,7 +879,6 @@ rust_static_library("rust_icc_ffi") {
   crate_root = skia_rust_icc_ffi_crate_root
   sources = skia_rust_icc_ffi_rs_srcs
   cxx_bindings = skia_rust_icc_ffi_cxx_bridge_srcs
-  public_deps = [ ":rust_icc_ffi_cpp" ]
   deps = [
     ":rust_common_ffi",
     "//third_party/rust/moxcms/v0_8:lib",
@@ -903,7 +920,6 @@ rust_static_library("rust_exif_ffi") {
   crate_root = skia_rust_exif_ffi_crate_root
   sources = skia_rust_exif_ffi_rs_srcs
   cxx_bindings = skia_rust_exif_ffi_cxx_bridge_srcs
-  public_deps = [ ":rust_exif_ffi_cpp" ]
   deps = [ ":rust_common_ffi" ]
   configs -= [ "//build/config/compiler:chromium_code" ]
   configs += [

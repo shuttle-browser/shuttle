@@ -51,7 +51,7 @@ class CC_PAINT_EXPORT DisplayItemList
   void Raster(
       SkCanvas* canvas,
       ImageProvider* image_provider = nullptr,
-      const ScrollOffsetMap* raster_inducing_scroll_offsets = nullptr) const;
+      const RasterInducingValues* raster_inducing_values = nullptr) const;
   void Raster(SkCanvas* canvas, const PlaybackParams& params) const;
   std::vector<size_t> OffsetsOfOpsToRaster(SkCanvas* canvas) const;
 
@@ -193,6 +193,9 @@ class CC_PAINT_EXPORT DisplayItemList
   }
   bool has_discardable_images() const {
     return paint_op_buffer_.has_discardable_images();
+  }
+  bool has_read_back_disallowed_content() const {
+    return paint_op_buffer_.has_read_back_disallowed_content();
   }
   const gfx::ContentColorVolume& content_color_volume() const {
     return paint_op_buffer_.content_color_volume();

@@ -19,7 +19,8 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/tensor/regex_preprocessor_calculator.pb.h"
 #include "mediapipe/framework/api2/node.h"
 #include "mediapipe/framework/api2/port.h"
@@ -114,7 +115,7 @@ absl::Status RegexPreprocessorCalculator::Open(CalculatorContext* cc) {
     return absl::InvalidArgumentError("No tensor metadata found");
   }
 
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       const auto* tokenizer_metadata,
       metadata_extractor->FindFirstProcessUnit(
           *tensor_metadata, tflite::ProcessUnitOptions_RegexTokenizerOptions));
@@ -123,9 +124,9 @@ absl::Status RegexPreprocessorCalculator::Open(CalculatorContext* cc) {
   }
   const tflite::RegexTokenizerOptions* regex_tokenizer_options =
       tokenizer_metadata->options_as<tflite::RegexTokenizerOptions>();
-  MP_ASSIGN_OR_RETURN(tokenizer_,
-                      tasks::text::tokenizers::CreateRegexTokenizerFromOptions(
-                          regex_tokenizer_options, metadata_extractor));
+  ABSL_ASSIGN_OR_RETURN(
+      tokenizer_, tasks::text::tokenizers::CreateRegexTokenizerFromOptions(
+                      regex_tokenizer_options, metadata_extractor));
 
   const auto& options =
       cc->Options<mediapipe::RegexPreprocessorCalculatorOptions>();

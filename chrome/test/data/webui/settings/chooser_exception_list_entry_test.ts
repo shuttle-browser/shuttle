@@ -2,18 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// clang-format off
 import 'chrome://webui-test/cr_elements/cr_policy_strings.js';
 
-import {flush} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 import type {ChooserExceptionListEntryElement} from 'chrome://settings/lazy_load.js';
 import {ChooserType, SiteSettingsBrowserProxyImpl} from 'chrome://settings/lazy_load.js';
 import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
-import {eventToPromise, isChildVisible, isVisible} from 'chrome://webui-test/test_util.js';
+import {eventToPromise, isChildVisible, isVisible, microtasksFinished} from 'chrome://webui-test/test_util.js';
 
 import {TestSiteSettingsBrowserProxy} from './test_site_settings_browser_proxy.js';
 import {assertTooltipIsHidden, createChooserException, createSiteException} from './test_util.js';
-// clang-format on
 
 /**
  * @fileoverview Suite of tests for chooser-exception-list-entry.
@@ -41,17 +38,16 @@ suite('ChooserExceptionListEntry', function() {
 
   test(
       'User granted chooser exceptions should show the reset button',
-      function() {
+      async function() {
         testElement.exception =
             createChooserException(ChooserType.USB_DEVICES, [
               createSiteException('https://foo.com'),
             ]);
 
-        // Flush the container to ensure that the container is populated.
-        flush();
+        await microtasksFinished();
 
         const siteListEntry =
-            testElement.shadowRoot!.querySelector('site-list-entry');
+            testElement.shadowRoot.querySelector('site-list-entry');
         assertTrue(!!siteListEntry);
 
         // Ensure that the action menu button is not visible.
@@ -65,7 +61,7 @@ suite('ChooserExceptionListEntry', function() {
   test(
       'Policy granted chooser exceptions should show the policy indicator ' +
           'icon',
-      function() {
+      async function() {
         testElement.exception =
             createChooserException(ChooserType.USB_DEVICES, [
               createSiteException('https://foo.com', {
@@ -74,11 +70,10 @@ suite('ChooserExceptionListEntry', function() {
               }),
             ]);
 
-        // Flush the container to ensure that the container is populated.
-        flush();
+        await microtasksFinished();
 
         const siteListEntry =
-            testElement.shadowRoot!.querySelector('site-list-entry');
+            testElement.shadowRoot.querySelector('site-list-entry');
         assertTrue(!!siteListEntry);
 
         // Ensure that the action menu button is not visible.
@@ -90,26 +85,31 @@ suite('ChooserExceptionListEntry', function() {
       });
 
   test(
-      'Site exceptions from mixed sources should display properly', function() {
+      'Site exceptions from mixed sources should display properly',
+      async function() {
         // The SiteExceptions returned by the getChooserExceptionList will be
         // ordered by provider source, then alphabetically by requesting origin
         // and embedding origin.
-        testElement.exception =
-            createChooserException(ChooserType.USB_DEVICES, [
+        testElement.exception = createChooserException(
+            ChooserType.USB_DEVICES,
+            [
               createSiteException('https://foo.com', {
                 enforcement: chrome.settingsPrivate.Enforcement.ENFORCED,
                 controlledBy: chrome.settingsPrivate.ControlledBy.USER_POLICY,
               }),
               createSiteException('https://bar.com'),
-            ]);
+            ],
+            {displayName: 'Gadget'});
 
-        // Flush the container to ensure that the container is populated.
-        flush();
+        await microtasksFinished();
+
+        const header = testElement.shadowRoot.querySelector('h2');
+        assertTrue(!!header);
+        assertEquals('Gadget', header.textContent);
 
         const siteListEntries =
             testElement.$.listContainer.querySelectorAll('site-list-entry');
-        assertTrue(!!siteListEntries);
-        assertEquals(siteListEntries.length, 2);
+        assertEquals(2, siteListEntries.length);
 
         // The first entry should be policy enforced.
         assertFalse(isChildVisible(siteListEntries[0]!, '#actionMenuButton'));
@@ -135,15 +135,14 @@ suite('ChooserExceptionListEntry', function() {
               }),
             ]);
 
-        // Flush the container to ensure that the container is populated.
-        flush();
+        await microtasksFinished();
 
         const siteListEntry =
-            testElement.shadowRoot!.querySelector('site-list-entry');
+            testElement.shadowRoot.querySelector('site-list-entry');
         assertTrue(!!siteListEntry);
 
         const policyIndicator =
-            siteListEntry.shadowRoot!.querySelector('cr-policy-pref-indicator');
+            siteListEntry.shadowRoot.querySelector('cr-policy-pref-indicator');
         assertTrue(!!policyIndicator);
 
         const icon =
@@ -154,7 +153,6 @@ suite('ChooserExceptionListEntry', function() {
         assertTrue(!!crTooltip);
 
         // This tooltip is never shown since a common tooltip will be used.
-        assertTrue(!!crTooltip);
         assertTooltipIsHidden(crTooltip);
 
         const wait = eventToPromise('show-tooltip', document);
@@ -172,18 +170,17 @@ suite('ChooserExceptionListEntry', function() {
               createSiteException('https://foo.com'),
             ]);
 
-        // Flush the container to ensure that the container is populated.
-        flush();
+        await microtasksFinished();
 
         const siteListEntry =
-            testElement.shadowRoot!.querySelector('site-list-entry');
+            testElement.shadowRoot.querySelector('site-list-entry');
         assertTrue(!!siteListEntry);
 
         // Ensure that the action menu button is not visible.
         assertFalse(isChildVisible(siteListEntry, '#actionMenuButton'));
 
         const resetButton =
-            siteListEntry.shadowRoot!.querySelector<HTMLElement>('#resetSite');
+            siteListEntry.shadowRoot.querySelector<HTMLElement>('#resetSite');
         assertTrue(!!resetButton);
         assertTrue(isVisible(resetButton));
 
@@ -196,4 +193,55 @@ suite('ChooserExceptionListEntry', function() {
         assertEquals('https://foo.com', args[1]);
         assertEquals('object', typeof args[2]);
       });
+
+  test('Focusgroup attribute is set on list container', function() {
+    assertEquals(
+        'listbox block',
+        testElement.$.listContainer.getAttribute('focusgroup'));
+  });
+});
+
+suite('ChooserExceptionListEntryFocus', function() {
+  let testElement: ChooserExceptionListEntryElement;
+  let browserProxy: TestSiteSettingsBrowserProxy;
+
+  setup(function() {
+    browserProxy = new TestSiteSettingsBrowserProxy();
+    SiteSettingsBrowserProxyImpl.setInstance(browserProxy);
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    testElement = document.createElement('chooser-exception-list-entry');
+    document.body.appendChild(testElement);
+  });
+
+  test('Focus restored when last item is deleted', async function() {
+    testElement.exception = createChooserException(ChooserType.USB_DEVICES, [
+      createSiteException('https://foo.com'),
+      createSiteException('https://bar.com'),
+    ]);
+    await microtasksFinished();
+
+    let siteListEntries =
+        testElement.$.listContainer.querySelectorAll('site-list-entry');
+    assertEquals(2, siteListEntries.length);
+    const resetButton1 =
+        siteListEntries[1]!.shadowRoot.querySelector<HTMLElement>('#resetSite');
+    assertTrue(!!resetButton1);
+    resetButton1.focus();
+    assertEquals(siteListEntries[1], testElement.shadowRoot.activeElement);
+    assertEquals(resetButton1, siteListEntries[1]!.shadowRoot.activeElement);
+
+    // Simulate the list refresh after the user resets the last site.
+    testElement.exception = createChooserException(ChooserType.USB_DEVICES, [
+      createSiteException('https://foo.com'),
+    ]);
+    await microtasksFinished();
+
+    siteListEntries =
+        testElement.$.listContainer.querySelectorAll('site-list-entry');
+    assertEquals(1, siteListEntries.length);
+    assertEquals(siteListEntries[0], testElement.shadowRoot.activeElement);
+    assertEquals(
+        siteListEntries[0]!.shadowRoot.querySelector('#resetSite'),
+        siteListEntries[0]!.shadowRoot.activeElement);
+  });
 });

@@ -25,8 +25,9 @@ TEST(VoiceIsolationWindowedFftTest, WindowOlaProperty) {
   constexpr size_t kNumHopsPerBlock = 2;
   WindowedFft windowed_fft(/*fft_size=*/kFftSize);
 
-  const std::vector<float>& window = windowed_fft.fft_window_;
-  const std::vector<float>& inv_window = windowed_fft.inv_fft_window_;
+  base::span<const float> window = windowed_fft.fft_window_for_testing();
+  base::span<const float> inv_window =
+      windowed_fft.inv_fft_window_for_testing();
 
   ASSERT_EQ(window.size(), kFftSize);
   ASSERT_EQ(window.size(), inv_window.size());
@@ -149,12 +150,10 @@ TEST(StftVoiceIsolationTest, ProcessAudioLoopback) {
   std::vector<float> input(frame_size, 0.0f);
   std::vector<float> output(frame_size, 0.0f);
 
-  // Send a sine wave.
-  // We need to send enough frames to flush the overlap-add delay.
-  // Delay is usually one hop (frame_size).
-  // So Output[N] depends on Input[N] and Input[N-1] (due to window overlap).
-  // Actually, wait. algorithmic delay of fft_size / 2.
-  // So first frame output will be fade-in.
+  // Send a sine wave across multiple frames. The STFT has an algorithmic delay
+  // of one hop (`fft_size / 2` samples, i.e. half of `frame_size`), so the
+  // first half of the first output frame is faded in from the initial zero
+  // buffer.
 
   constexpr int kNumFrames = 10;
   std::vector<float> full_input;

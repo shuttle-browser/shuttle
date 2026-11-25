@@ -8,7 +8,6 @@
 #include <utility>
 #include <vector>
 
-#include "base/auto_reset.h"
 #include "base/feature_list.h"
 #include "base/memory/raw_ptr.h"
 #include "base/notimplemented.h"
@@ -31,8 +30,8 @@ namespace viz {
 namespace {
 
 base::TimeDelta ComputeAdpfTarget(const BeginFrameArgs& args) {
-  if (args.possible_deadlines) {
-    const auto& deadline = args.possible_deadlines->GetOSPreferredDeadline();
+  if (!args.possible_deadlines.empty()) {
+    const auto& deadline = args.possible_deadlines.GetOSPreferredDeadline();
     // Arbitrarily use 75% of the deadline for CPU work.
     return deadline.latch_delta * 3 / 4;
   }
@@ -73,11 +72,7 @@ void DisplayScheduler::BeginFrameObserver::OnBeginFrameSourcePausedChanged(
 
 bool DisplayScheduler::BeginFrameObserver::OnBeginFrameDerivedImpl(
     const BeginFrameArgs& args) {
-  if (base::FeatureList::IsEnabled(features::kDisplaySchedulerAsClient)) {
-    return true;
-  } else {
-    return scheduler_->OnBeginFrame(args);
-  }
+  return true;
 }
 
 DisplayScheduler::DisplayScheduler(BeginFrameSource* begin_frame_source,
@@ -89,7 +84,6 @@ DisplayScheduler::DisplayScheduler(BeginFrameSource* begin_frame_source,
       begin_frame_source_(begin_frame_source),
       task_runner_(task_runner),
       last_undrawn_begin_frame_args_(std::nullopt),
-      inside_surface_damaged_(false),
       visible_(false),
       output_surface_lost_(false),
       inside_begin_frame_deadline_interval_(false),
@@ -110,9 +104,7 @@ DisplayScheduler::DisplayScheduler(BeginFrameSource* begin_frame_source,
       hint_session_factory_(hint_session_factory),
       tick_clock_(base::DefaultTickClock::GetInstance()),
       decider_(use_platform_preferred_deadlines_) {
-  if (base::FeatureList::IsEnabled(features::kDisplaySchedulerAsClient)) {
-    begin_frame_source_->SetSchedulerClient(this);
-  }
+  begin_frame_source_->SetSchedulerClient(this);
   begin_frame_deadline_timer_.SetTaskRunner(task_runner);
   begin_frame_deadline_closure_ = base::BindRepeating(
       &DisplayScheduler::OnBeginFrameDeadline, weak_ptr_factory_.GetWeakPtr());
@@ -124,9 +116,7 @@ DisplayScheduler::DisplayScheduler(BeginFrameSource* begin_frame_source,
 }
 
 DisplayScheduler::~DisplayScheduler() {
-  if (base::FeatureList::IsEnabled(features::kDisplaySchedulerAsClient)) {
-    begin_frame_source_->SetSchedulerClient(nullptr);
-  }
+  begin_frame_source_->SetSchedulerClient(nullptr);
   // It is possible for DisplayScheduler to be destroyed while there's an
   // in-flight swap. So always mark the gpu as not busy during destruction.
   begin_frame_source_->SetIsGpuBusy(false);
@@ -163,6 +153,7 @@ void DisplayScheduler::SetVisible(bool visible) {
   visible_ = visible;
   if (!visible_) {
     last_undrawn_begin_frame_args_ = std::nullopt;
+    swap_for_previous_frame_task_.Cancel();
     decider_.OnDisplayInvisible();
   }
   // If going invisible, we'll stop observing begin frames once we try
@@ -178,23 +169,23 @@ void DisplayScheduler::OnRootFrameMissing(bool missing) {
 
 void DisplayScheduler::OnDisplayDamaged(SurfaceId surface_id,
                                         BeginFrameId frame_id) {
-  // We may cause a new BeginFrame to be run inside this method, but to help
-  // avoid being reentrant to the caller of SurfaceDamaged, track when this is
-  // happening with |inside_surface_damaged_|.
-  base::AutoReset<bool> auto_reset(&inside_surface_damaged_, true);
-
   needs_draw_ = true;
-  MaybeStartObservingBeginFrames();
-  UpdateHasPendingSurfaces();
 
   if (allow_multiple_swaps_per_vsync_ && CanDrawForPreviousFrame(frame_id)) {
-    // Note: In case of multiple surfaces submitting late damage only the first
-    // one will cause the immediate swap, as a `last_undrawn_begin_frame_args_`
-    // gets reset when a successful DrawAndSwap takes place.
-    ForceImmediateSwapForPreviousFrame();
-    return;
+    // Post the swap task before`MaybeStartObservingBeginFrames() so that if
+    // re-adding the BeginFrameObserver triggers a `MISSED` BeginFrame, the
+    // previous frame swap task is queued ahead of `missed_begin_frame_task_`.
+    if (swap_for_previous_frame_task_.IsCancelled()) {
+      swap_for_previous_frame_task_.Reset(
+          base::BindOnce(&DisplayScheduler::AttemptSwapForPreviousFrame,
+                         base::Unretained(this)));
+      task_runner_->PostTask(FROM_HERE,
+                             swap_for_previous_frame_task_.callback());
+    }
   }
 
+  MaybeStartObservingBeginFrames();
+  UpdateHasPendingSurfaces();
   ScheduleBeginFrameDeadline();
 }
 
@@ -339,8 +330,8 @@ bool DisplayScheduler::DrawAndSwap(const BeginFrameArgs& begin_frame_args) {
   params.begin_frame_args = begin_frame_args;
   params.expected_display_time = current_frame_display_time(begin_frame_args);
   params.max_pending_swaps = MaxPendingSwaps(begin_frame_args);
-  if (begin_frame_args.possible_deadlines) {
-    auto& deadlines = *begin_frame_args.possible_deadlines;
+  if (!begin_frame_args.possible_deadlines.empty()) {
+    const auto& deadlines = begin_frame_args.possible_deadlines;
     auto earliest_input_time =
         damage_tracker_
             ? damage_tracker_->GetEarliestInputGenerationTimeOfDamagedSurfaces()
@@ -372,8 +363,7 @@ bool DisplayScheduler::DrawAndSwap(const BeginFrameArgs& begin_frame_args) {
       // submitted to.
       if (last_targeted_latch_time_ > preferred_latch_time ||
           last_targeted_latch_time_ > now || preferred_latch_time < now) {
-        for (const auto& deadline :
-             begin_frame_args.possible_deadlines->deadlines) {
+        for (const auto& deadline : deadlines.deadlines) {
           base::TimeTicks latch_time =
               begin_frame_args.frame_time + deadline.latch_delta;
           if (latch_time > last_targeted_latch_time_ && latch_time > now) {
@@ -415,22 +405,6 @@ bool DisplayScheduler::OnBeginFrame(const BeginFrameArgs& args) {
   TRACE_EVENT2("viz", "DisplayScheduler::BeginFrame", "args", args.AsValue(),
                "now", now);
 
-  if (inside_surface_damaged_) {
-    // Repost this so that we don't run a missed BeginFrame on the same
-    // callstack. Otherwise we end up running unexpected scheduler actions
-    // immediately while inside some other action (such as submitting a
-    // CompositorFrame for a SurfaceFactory).
-    DCHECK_EQ(args.type, BeginFrameArgs::MISSED);
-    DCHECK(missed_begin_frame_task_.IsCancelled());
-    missed_begin_frame_task_.Reset(
-        base::BindOnce(base::IgnoreResult(&DisplayScheduler::OnBeginFrame),
-                       // The CancelableOnceCallback will not run after it is
-                       // destroyed, which happens when |this| is destroyed.
-                       base::Unretained(this), args));
-    task_runner_->PostTask(FROM_HERE, missed_begin_frame_task_.callback());
-    return true;
-  }
-
   // Save the |BeginFrameArgs| as the callback (missed_begin_frame_task_) can be
   // destroyed if we StopObservingBeginFrames(), and it would take the |args|
   // with it. Instead save the args and cancel the |missed_begin_frame_task_|.
@@ -444,9 +418,10 @@ bool DisplayScheduler::OnBeginFrame(const BeginFrameArgs& args) {
   // may run on another thread (see use of `RunOrPostTask` in
   // `ExternalBeginFrameSourceWin`). To keep that other thread responsive, run
   // the continuation on the VizCompositorThread if a potentially expensive call
-  // to `OnBeginFrameDeadline()` is needed.
+  // to `OnBeginFrameDeadline()` or `AttemptSwapForPreviousFrame()` is needed.
   CHECK(task_runner_->RunsTasksInCurrentSequence());
-  if (inside_begin_frame_deadline_interval_ &&
+  if ((inside_begin_frame_deadline_interval_ ||
+       !swap_for_previous_frame_task_.IsCancelled()) &&
       !task_runner_->BelongsToCurrentThread()) {
     task_runner_->PostTask(
         FROM_HERE, base::BindOnce(&DisplayScheduler::OnBeginFrameContinuation,
@@ -463,6 +438,8 @@ void DisplayScheduler::OnBeginFrameContinuation(const BeginFrameArgs& args) {
   // synchronously trigger the previous deadline before progressing.
   if (inside_begin_frame_deadline_interval_) {
     OnBeginFrameDeadline();
+  } else if (!swap_for_previous_frame_task_.IsCancelled()) {
+    AttemptSwapForPreviousFrame();
   }
 
   // Schedule the deadline.
@@ -525,7 +502,7 @@ int DisplayScheduler::MaxPendingSwaps(const BeginFrameArgs& args) const {
   int max_pending_swaps_for_refresh_rate =
       MaxPendingSwapsForRefreshRate(args.interval);
 
-  if (!args.possible_deadlines) {
+  if (args.possible_deadlines.empty()) {
     return max_pending_swaps_for_refresh_rate;
   }
 
@@ -533,7 +510,7 @@ int DisplayScheduler::MaxPendingSwaps(const BeginFrameArgs& args) const {
     // Estimate the max pending swap based on the frame rate and presentation
     // time.
     int deadline_max_pending_swaps = MaxPendingSwapsForDeadline(
-        args.possible_deadlines->GetOSPreferredDeadline(), args.interval);
+        args.possible_deadlines.GetOSPreferredDeadline(), args.interval);
     return std::clamp(deadline_max_pending_swaps, 1,
                       max_pending_swaps_for_refresh_rate);
   }
@@ -554,7 +531,7 @@ void DisplayScheduler::SetNeedsOneBeginFrame(const BeginFrameArgs& args,
                                              bool needs_draw) {
   // If we are not currently observing BeginFrames because needs_draw_ is false,
   // we will stop observing again after one BeginFrame in AttemptDrawAndSwap().
-  StartObservingBeginFrames();
+  StartObservingBeginFrames(/*post_missed_begin_frame=*/false);
   if (needs_draw)
     needs_draw_ = true;
   if (base::FeatureList::IsEnabled(features::kNoLateBeginFrames) &&
@@ -569,22 +546,33 @@ void DisplayScheduler::SetNeedsOneBeginFrame(const BeginFrameArgs& args,
 
 void DisplayScheduler::MaybeStartObservingBeginFrames() {
   if (ShouldDraw())
-    StartObservingBeginFrames();
+    StartObservingBeginFrames(/*post_missed_begin_frame=*/true);
 }
 
-void DisplayScheduler::StartObservingBeginFrames() {
+void DisplayScheduler::StartObservingBeginFrames(bool post_missed_begin_frame) {
   if (!observing_begin_frame_source_) {
+    observing_begin_frame_source_ = true;
     begin_frame_source_->AddObserver(&begin_frame_observer_);
     // TODO(crbug.com/40900977): Some tests still have reliance on Missed
     // begin frames. We should update the test helpers.
-    if (base::FeatureList::IsEnabled(features::kDisplaySchedulerAsClient)) {
-      auto args = begin_frame_observer_.LastUsedBeginFrameArgs();
-      if (args.IsValid() && args.type == BeginFrameArgs::MISSED &&
-          args.frame_time > current_begin_frame_args_.frame_time) {
-        OnBeginFrame(begin_frame_observer_.LastUsedBeginFrameArgs());
+    auto args = begin_frame_observer_.LastUsedBeginFrameArgs();
+    if (args.IsValid() && args.type == BeginFrameArgs::MISSED &&
+        args.frame_time > current_begin_frame_args_.frame_time) {
+      if (post_missed_begin_frame) {
+        // Post the missed begin frame to avoid running unexpected scheduler
+        // actions immediately while inside some other action.
+        DCHECK(missed_begin_frame_task_.IsCancelled());
+        missed_begin_frame_task_.Reset(
+            base::BindOnce(base::IgnoreResult(&DisplayScheduler::OnBeginFrame),
+                           // The CancelableOnceCallback will not run after it
+                           // is destroyed, which happens when |this| is
+                           // destroyed.
+                           base::Unretained(this), args));
+        task_runner_->PostTask(FROM_HERE, missed_begin_frame_task_.callback());
+      } else {
+        OnBeginFrame(args);
       }
     }
-    observing_begin_frame_source_ = true;
   }
 }
 
@@ -625,7 +613,7 @@ bool DisplayScheduler::CanDrawForPreviousFrame(
       begin_frame_id != last_undrawn_begin_frame_args_->frame_id) {
     return false;
   }
-  if (!last_undrawn_begin_frame_args_->possible_deadlines.has_value()) {
+  if (last_undrawn_begin_frame_args_->possible_deadlines.empty()) {
     // The frame can't be drawn late if there are no late deadlines to choose
     // from.
     return false;
@@ -638,7 +626,7 @@ bool DisplayScheduler::CanDrawForPreviousFrame(
     return false;
   }
 
-  const auto& deadlines = *begin_frame_args.possible_deadlines;
+  const auto& deadlines = begin_frame_args.possible_deadlines;
   auto earliest_input_time =
       damage_tracker_
           ? damage_tracker_->GetEarliestInputGenerationTimeOfDamagedSurfaces()
@@ -665,12 +653,15 @@ bool DisplayScheduler::CanDrawForPreviousFrame(
   return true;
 }
 
-void DisplayScheduler::ForceImmediateSwapForPreviousFrame() {
-  TRACE_EVENT0("viz", "DisplayScheduler::ForceImmediateSwapForPreviousFrame");
-  CHECK(last_undrawn_begin_frame_args_.has_value());
-  // Synchronous draw and swap as part of display damage notification makes sure
-  // begin frame task is ran separately using `missed_begin_frame_task_`.
-  CHECK(!inside_begin_frame_deadline_interval_);
+void DisplayScheduler::AttemptSwapForPreviousFrame() {
+  TRACE_EVENT("viz", "DisplayScheduler::AttemptSwapForPreviousFrame");
+  swap_for_previous_frame_task_.Cancel();
+
+  if (!last_undrawn_begin_frame_args_.has_value() ||
+      !CanDrawForPreviousFrame(last_undrawn_begin_frame_args_->frame_id)) {
+    return;
+  }
+
   // `last_undrawn_begin_frame_args_` could be reset in case of successful draw
   // and swap, so make a copy.
   auto begin_frame_args = *last_undrawn_begin_frame_args_;
@@ -809,6 +800,8 @@ void DisplayScheduler::ScheduleBeginFrameDeadline() {
 
 bool DisplayScheduler::AttemptDrawAndSwap(
     const BeginFrameArgs& begin_frame_args) {
+  swap_for_previous_frame_task_.Cancel();
+
   if (!last_undrawn_begin_frame_args_ ||
       begin_frame_args.frame_id != last_undrawn_begin_frame_args_->frame_id) {
     inside_begin_frame_deadline_interval_ = false;
@@ -840,9 +833,8 @@ void DisplayScheduler::OnBeginFrameDeadline() {
   if (did_draw) {
     result = DisplaySchedulerDrawResult::kDrawn;
   } else {
-    bool can_draw_late =
-        allow_multiple_swaps_per_vsync_ &&
-        current_begin_frame_args_.possible_deadlines.has_value();
+    bool can_draw_late = allow_multiple_swaps_per_vsync_ &&
+                         !current_begin_frame_args_.possible_deadlines.empty();
     if (can_draw_late) {
       last_undrawn_begin_frame_args_ = current_begin_frame_args_;
       result = DisplaySchedulerDrawResult::kMayDrawLate;

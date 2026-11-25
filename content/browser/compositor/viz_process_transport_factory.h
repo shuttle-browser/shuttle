@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
 #include "build/build_config.h"
 #include "components/viz/common/surfaces/frame_sink_id_allocator.h"
 #include "components/viz/common/surfaces/subtree_capture_id_allocator.h"
@@ -73,6 +74,8 @@ class VizProcessTransportFactory : public ui::ContextFactory,
   viz::FrameSinkId AllocateFrameSinkId() override;
   viz::SubtreeCaptureId AllocateSubtreeCaptureId() override;
   viz::HostFrameSinkManager* GetHostFrameSinkManager() override;
+  scoped_refptr<base::SingleThreadTaskRunner> GetCompositorTaskRunner()
+      override;
 
   // ImageTransportFactory implementation.
   void DisableGpuCompositing() override;
@@ -133,7 +136,7 @@ class VizProcessTransportFactory : public ui::ContextFactory,
       compositing_mode_reporter_;
 
   // ContextProvider used on worker threads for rasterization.
-  scoped_refptr<viz::RasterContextProvider> worker_context_provider_;
+  scoped_refptr<viz::ContextProviderCommandBuffer> worker_context_provider_;
 
   // ContextProvider used on the main thread. Shared by ui::Compositors.
   scoped_refptr<viz::ContextProviderCommandBuffer> main_context_provider_;

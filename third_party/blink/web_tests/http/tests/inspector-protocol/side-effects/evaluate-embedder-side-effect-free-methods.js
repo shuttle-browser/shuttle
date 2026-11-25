@@ -24,6 +24,9 @@
 
     var textNode = document.createTextNode('footext');
     var divNoAttrs = document.createElement('div');
+    var documentFragment = document.createDocumentFragment();
+    var shadowHost = document.createElement('div');
+    var shadowRoot = shadowHost.attachShadow({mode: 'open'});
 
     var htmlCollection = document.getElementsByTagName('div');
     var nodeList = document.getElementsByName('div-name');
@@ -50,6 +53,11 @@
   await checkHasSideEffect(`monitorEvents()`);
   await checkHasSideEffect(`unmonitorEvents()`);
 
+  // NonElementParentNode
+  await checkHasNoSideEffect(`document.getElementById('foo')`);
+  await checkHasNoSideEffect(`documentFragment.getElementById('foo')`);
+  await checkHasNoSideEffect(`shadowRoot.getElementById('foo')`);
+
   // Document
   await checkHasNoSideEffect(`document.getElementsByTagName('div')`);
   await checkHasNoSideEffect(`document.getElementsByTagNameNS(namespace, 'div')`);
@@ -64,6 +72,12 @@
   await checkHasNoSideEffect(`domTokenList.contains('foo')`);
   await checkHasNoSideEffect(`domTokenList.contains({})`);
   await checkHasNoSideEffect(`domTokenList.contains()`);
+
+  // CSSStyleDeclaration
+  await checkHasNoSideEffect(`bodyStyle.getPropertyValue('display')`);
+  await checkHasNoSideEffect(`bodyStyle.getPropertyPriority('display')`);
+  await checkHasNoSideEffect(
+      `global_getComputedStyle(div).getPropertyValue('display')`);
 
   // Element
   await checkHasNoSideEffect(`div.getAttributeNames()`);
@@ -88,6 +102,9 @@
   await checkHasNoSideEffect(`divNoAttrs.hasAttributeNS(namespace)`);
 
   await checkHasNoSideEffect(`div.hasAttributes()`);
+  await checkHasNoSideEffect(`div.matches('div')`);
+  await checkHasNoSideEffect(`div.webkitMatchesSelector('div')`);
+  await checkHasNoSideEffect(`spanWithClass.closest('div')`);
 
   // Node
   var testNodes = ['div', 'document', 'textNode'];
@@ -102,9 +119,13 @@
 
   // Performance
   await checkHasNoSideEffect(`performance.now()`);
+  await checkHasNoSideEffect(`performance.getEntries()`);
+  await checkHasNoSideEffect(`performance.getEntriesByType('navigation')`);
+  await checkHasNoSideEffect(`performance.getEntriesByName('foo')`);
 
   // Window
   await checkHasNoSideEffect(`global_getSelection()`);
+  await checkHasNoSideEffect(`window.matchMedia('(min-width: 100px)')`);
 
   // Collection getters (e.g. HTMLCollection, NodeList)
   var indexedCollections = [
@@ -121,7 +142,11 @@
 
   // May update layout/scroll/style
   await checkHasNoSideEffect(`div.getBoundingClientRect()`);
+  await checkHasNoSideEffect(`div.getBoundingClientRect().toJSON()`);
   await checkHasNoSideEffect(`global_getComputedStyle(div)`);
+  await checkHasNoSideEffect(`div.getClientRects()`);
+  await checkHasNoSideEffect(`div.checkVisibility()`);
+  await checkHasNoSideEffect(`div.checkVisibility({checkOpacity: true})`);
 
   testRunner.completeTest();
 

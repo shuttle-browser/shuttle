@@ -12,7 +12,6 @@
 #include "base/check_op.h"
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/time/time.h"
 #include "build/build_config.h"
 #include "ui/gfx/geometry/cubic_bezier.h"
 #include "ui/gfx/geometry/rect.h"
@@ -187,6 +186,11 @@ double Tween::CalculateValue(Tween::Type type, double state) {
       static const gfx::CubicBezier bezier(0.05, 0.7, 0.1, 1);
       return bezier.Solve(state);
     }
+
+    case ACCEL_90_DECEL_5_70: {
+      static const gfx::CubicBezier bezier(0.9, 0, 0.95, 0.3);
+      return bezier.Solve(state);
+    }
   }
 
   NOTREACHED();
@@ -276,22 +280,6 @@ double Tween::DoubleValueBetween(double value, double start, double target) {
 // static
 float Tween::FloatValueBetween(double value, float start, float target) {
   return static_cast<float>(start + (target - start) * value);
-}
-
-// static
-float Tween::ClampedFloatValueBetween(const base::TimeTicks& time,
-                                      const base::TimeTicks& start_time,
-                                      float start,
-                                      const base::TimeTicks& target_time,
-                                      float target,
-                                      gfx::Tween::Type type) {
-  if (time <= start_time)
-    return start;
-  if (time >= target_time)
-    return target;
-
-  const double progress = (time - start_time) / (target_time - start_time);
-  return FloatValueBetween(CalculateValue(type, progress), start, target);
 }
 
 // static

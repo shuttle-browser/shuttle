@@ -121,8 +121,6 @@ constexpr APIPermissionInfo::InitInfo permissions_to_register[] = {
     // Register private permissions.
     {APIPermissionID::kActivityLogPrivate, "activityLogPrivate",
      APIPermissionInfo::kFlagCannotBeOptional},
-    {APIPermissionID::kAutoTestPrivate, "autotestPrivate",
-     APIPermissionInfo::kFlagCannotBeOptional},
     {APIPermissionID::kChromeosInfoPrivate, "chromeosInfoPrivate",
      APIPermissionInfo::kFlagCannotBeOptional},
     {APIPermissionID::kCommandLinePrivate, "commandLinePrivate",

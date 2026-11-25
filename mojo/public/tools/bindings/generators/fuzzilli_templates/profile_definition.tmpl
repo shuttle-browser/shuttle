@@ -72,10 +72,10 @@ private let mojoBuiltins: [String: ILType] = [
     "{{receiver|fully_qualified_name}}CallbackRouter":
        .constructor([] => .js{{receiver|format_unique_name}}CallbackRouter),
 {%- endfor %}
-{%- for struct in structs %}
+{%- for struct in js_structs %}
     "{{struct|fully_qualified_name}}": .{{struct|format_il_type}}Constructor,
 {%- endfor %}
-{%- for union in unions %}
+{%- for union in js_unions %}
     {%- for field in union.fields %}
     "{{union|fully_qualified_name}}.{{field.name}}": .{{union|format_il_type}}
         {{- field.name|to_camel}}Constructor,
@@ -148,10 +148,10 @@ let mojo{{primary.name}}Profile = Profile(
         (Mojo{{receiver|format_unique_name}}RouterListenerGenerator, 5000),
     {%- endif %}
 {%- endfor %}
-{%- for array in arrays %}
+{%- for array in js_arrays %}
         (Mojo{{array|format_unique_name}}Generator, 1),
 {%- endfor %}
-{%- for m in maps %}
+{%- for m in js_maps %}
         (Mojo{{m|format_unique_name}}Generator, 1),
 {%- endfor %}
     ] + commonMojoCodeGenerators,

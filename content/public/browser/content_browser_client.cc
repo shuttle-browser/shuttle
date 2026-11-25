@@ -15,11 +15,13 @@
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/functional/callback_helpers.h"
+#include "base/i18n/language_tag.h"
 #include "base/memory/safe_ref.h"
 #include "base/no_destructor.h"
 #include "base/notimplemented.h"
 #include "base/notreached.h"
 #include "base/supports_user_data.h"
+#include "base/task/responsiveness/responsiveness_calculator_delegate.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool/thread_pool_instance.h"
 #include "base/uuid.h"
@@ -48,7 +50,6 @@
 #include "content/public/browser/prerender_web_contents_delegate.h"
 #include "content/public/browser/process_selection_deferring_condition.h"
 #include "content/public/browser/render_frame_host.h"
-#include "content/public/browser/responsiveness_calculator_delegate.h"
 #include "content/public/browser/security_principal.h"
 #include "content/public/browser/site_instance.h"
 #include "content/public/browser/sms_fetcher.h"
@@ -90,6 +91,7 @@
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/features_generated.h"
 #include "third_party/blink/public/common/loader/url_loader_throttle.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 #include "third_party/blink/public/common/renderer_preferences/renderer_preferences.h"
 #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
 #include "third_party/blink/public/mojom/file_system_access/file_system_access_cloud_identifier.mojom.h"
@@ -204,6 +206,11 @@ bool ContentBrowserClient::ShouldUseSpareRenderProcessHost(
     const GURL& site_url,
     std::optional<SpareProcessRefusedByEmbedderReason>& refused_reason) {
   refused_reason = std::nullopt;
+  return true;
+}
+
+bool ContentBrowserClient::CanBrowserContextUseSpareRenderProcessHost(
+    BrowserContext* browser_context) {
   return true;
 }
 
@@ -478,8 +485,8 @@ ContentBrowserClient::GetQuarantineConnectionCallback() {
   return base::NullCallback();
 }
 
-std::string ContentBrowserClient::GetApplicationLocale() {
-  return "en-US";
+base::i18n::LanguageTag ContentBrowserClient::GetApplicationLocale() {
+  return base::i18n::GetKnownLanguageTag("en-US");
 }
 
 std::string ContentBrowserClient::GetAcceptLangs(BrowserContext* context) {
@@ -668,8 +675,7 @@ bool ContentBrowserClient::AllowWorkerWriteToClipboard(
 
 bool ContentBrowserClient::IsPrivacySandboxReportingDestinationAttested(
     content::BrowserContext* browser_context,
-    const url::Origin& destination_origin,
-    content::PrivacySandboxInvokingAPI invoking_api) {
+    const url::Origin& destination_origin) {
   return false;
 }
 
@@ -787,6 +793,12 @@ ContentBrowserClient::GetGeolocationSystemPermissionManager() {
   return nullptr;
 }
 
+#if BUILDFLAG(IS_WIN)
+bool ContentBrowserClient::SystemMayPromptForVideoCapture() {
+  return false;
+}
+#endif
+
 #if BUILDFLAG(IS_ANDROID)
 bool ContentBrowserClient::ShouldUseGmsCoreGeolocationProvider() {
   return false;
@@ -872,6 +884,12 @@ TtsControllerDelegate* ContentBrowserClient::GetTtsControllerDelegate() {
   return nullptr;
 }
 #endif
+
+std::optional<blink::Manifest> ContentBrowserClient::MaybeOverrideManifest(
+    RenderFrameHost* render_frame_host,
+    const blink::Manifest& manifest) {
+  return std::nullopt;
+}
 
 TtsPlatform* ContentBrowserClient::GetTtsPlatform() {
   return nullptr;
@@ -1226,6 +1244,16 @@ ContentBrowserClient::GetNetworkContextsParentDirectory() {
   return {};
 }
 
+std::optional<base::FilePath>
+ContentBrowserClient::GetNetworkContextsDataDirectory() {
+  return std::nullopt;
+}
+
+std::optional<base::FilePath>
+ContentBrowserClient::GetNetworkContextsCacheDirectory() {
+  return std::nullopt;
+}
+
 base::DictValue ContentBrowserClient::GetNetLogConstants() {
   return base::DictValue();
 }
@@ -1306,7 +1334,7 @@ FontAccessDelegate* ContentBrowserClient::GetFontAccessDelegate() {
   return nullptr;
 }
 
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
 SmartCardDelegate* ContentBrowserClient::GetSmartCardDelegate() {
   return nullptr;
 }
@@ -1568,8 +1596,8 @@ ContentBrowserClient::MaybeOverrideSourceURLForClipboardAccess(
 }
 
 BrowserContext* ContentBrowserClient::GetUserBrowserContext(
-    RenderFrameHost& render_frame_host) {
-  return render_frame_host.GetBrowserContext();
+    WebContents& web_contents) {
+  return web_contents.GetBrowserContext();
 }
 
 bool ContentBrowserClient::IsClipboardPasteAllowed(
@@ -1854,7 +1882,7 @@ bool ContentBrowserClient::ShouldSkipBeforeUnloadDialog(
   return false;
 }
 
-std::unique_ptr<ResponsivenessCalculatorDelegate>
+std::unique_ptr<base::ResponsivenessCalculatorDelegate>
 ContentBrowserClient::CreateResponsivenessCalculatorDelegate() {
   return nullptr;
 }
@@ -2031,10 +2059,6 @@ std::optional<std::vector<std::u16string>>
 ContentBrowserClient::GetClipboardTypesIfPolicyApplied(
     const ui::ClipboardSequenceNumberToken& seqno) {
   return std::nullopt;
-}
-
-bool ContentBrowserClient::UsePrefetchPrerenderIntegration() {
-  return false;
 }
 
 #if !BUILDFLAG(IS_ANDROID)

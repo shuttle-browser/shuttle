@@ -46,12 +46,24 @@ BrowserMemoryCoordinatorImpl::BrowserMemoryCoordinatorImpl() {
 
 BrowserMemoryCoordinatorImpl::~BrowserMemoryCoordinatorImpl() {
   CHECK_EQ(g_instance, this);
+  // The policies are destroyed after this body runs, and removing them would
+  // notify consumers. This runs after the thread pool has shut down, so
+  // consumers can't receive notifications anymore.
+  policy_manager_.PrepareForShutdown();
   g_instance = nullptr;
 }
 
 void BrowserMemoryCoordinatorImpl::InitializePolicies() {
   CHECK(base::FeatureList::GetInstance());
-  CHECK(!zero_limit_policy_);
+  // Ensures that no consumer is notified before the "disabled" overrides are
+  // applied.
+  CHECK(!policy_manager_.HasPolicies());
+
+  registry_.Get().OnFeatureListInitialized();
+
+  memory_pressure_listener_policy_.emplace(policy_manager_);
+  memory_pressure_listener_policy_registration_.emplace(
+      policy_manager_, *memory_pressure_listener_policy_);
 
   if (base::FeatureList::IsEnabled(kMemoryCoordinatorZeroLimit)) {
     zero_limit_policy_.emplace(policy_manager_);

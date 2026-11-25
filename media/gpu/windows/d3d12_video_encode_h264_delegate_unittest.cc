@@ -4,8 +4,13 @@
 
 #include "media/gpu/windows/d3d12_video_encode_h264_delegate.h"
 
+#include <algorithm>
 #include <array>
+#include <optional>
+#include <vector>
 
+#include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "base/strings/stringprintf.h"
 #include "media/base/media_switches.h"
 #include "media/base/win/d3d12_mocks.h"
@@ -186,6 +191,10 @@ class D3D12VideoEncodeH264DelegateTest
           return S_OK;
         });
 
+    CreateEncoderDelegate();
+  }
+
+  void CreateEncoderDelegate() override {
     gpu::GpuDriverBugWorkarounds gpu_workarounds{};
     gpu_workarounds.disable_d3d12_h264_encoder_non_reference_frames = true;
     encoder_delegate_ = std::make_unique<D3D12VideoEncodeH264Delegate>(
@@ -391,6 +400,93 @@ TEST_F(D3D12VideoEncodeH264DelegateTest, EncodeFrame) {
   EXPECT_EQ(nalu.nal_unit_type, H264NALU::kPPS);
 }
 
+TEST_F(D3D12VideoEncodeH264DelegateTest, EncodeKeyFrameSignalsVideoSignalType) {
+  VideoEncodeAccelerator::Config config = GetDefaultH264Config();
+  ASSERT_TRUE(encoder_delegate_->Initialize(config).is_ok());
+
+  struct ColourDescription {
+    int colour_primaries;
+    int transfer_characteristics;
+    int matrix_coefficients;
+  };
+  struct TestCase {
+    const char* name;
+    gfx::ColorSpace color_space;
+    bool video_full_range_flag;
+    std::optional<ColourDescription> colour_description;
+  };
+  const TestCase kTestCases[] = {
+      // RGB input is converted to BT.709 YUV and keeps its full range.
+      {"SRGB", gfx::ColorSpace::CreateSRGB(), true,
+       ColourDescription{1, 13, 1}},
+      {"REC709", gfx::ColorSpace::CreateREC709(), false,
+       ColourDescription{1, 1, 1}},
+      // Primaries without an H.264 code point are signalled as unspecified.
+      {"AdobeRGBPrimaries",
+       gfx::ColorSpace(gfx::ColorSpace::PrimaryID::ADOBE_RGB,
+                       gfx::ColorSpace::TransferID::SRGB,
+                       gfx::ColorSpace::MatrixID::BT709,
+                       gfx::ColorSpace::RangeID::LIMITED),
+       false, ColourDescription{2, 13, 1}},
+      // Nothing here has a 4:2:0 H.264 code point, but full range must still
+      // be signalled.
+      {"FullRangeWithoutColourDescription",
+       gfx::ColorSpace(gfx::ColorSpace::PrimaryID::ADOBE_RGB,
+                       gfx::ColorSpace::TransferID::GAMMA24,
+                       gfx::ColorSpace::MatrixID::GBR,
+                       gfx::ColorSpace::RangeID::FULL),
+       true, std::nullopt},
+      {"Invalid", gfx::ColorSpace(), false, std::nullopt},
+  };
+
+  auto input_frame =
+      CreateResource(config.input_visible_size, config.input_format);
+  constexpr size_t kBufferSize = 1024;
+  constexpr size_t kStreamSize = 512;
+  EXPECT_CALL(*GetVideoEncoderWrapper(), GetEncoderOutputMetadata)
+      .WillRepeatedly(
+          [&] { return GetEncoderOutputMetadataResourceMap(kStreamSize); });
+  for (const TestCase& test_case : kTestCases) {
+    SCOPED_TRACE(test_case.name);
+    auto shared_memory = base::UnsafeSharedMemoryRegion::Create(kBufferSize);
+    BitstreamBuffer bitstream_buffer(0, shared_memory.Duplicate(), kBufferSize);
+    VideoEncoder::EncodeOptions encode_opts;
+    encode_opts.key_frame = true;
+    auto result_or_error = encoder_delegate_->Encode(
+        input_frame, gfx::Rect(config.input_visible_size),
+        test_case.color_space, bitstream_buffer, encode_opts);
+    ASSERT_TRUE(result_or_error.has_value());
+
+    H264Parser parser;
+    base::WritableSharedMemoryMapping map = shared_memory.Map();
+    parser.SetStream(map.data(), map.size());
+    H264NALU nalu;
+    ASSERT_EQ(parser.AdvanceToNextNALU(&nalu), H264Parser::Result::kOk);
+    ASSERT_EQ(nalu.nal_unit_type, H264NALU::kSPS);
+    int sps_id;
+    ASSERT_EQ(parser.ParseSPS(&sps_id), H264Parser::Result::kOk);
+    const H264SPS* sps = parser.GetSPS(sps_id);
+    ASSERT_TRUE(sps);
+
+    const bool video_signal_type_present =
+        test_case.video_full_range_flag ||
+        test_case.colour_description.has_value();
+    EXPECT_EQ(sps->vui_parameters_present_flag, video_signal_type_present);
+    EXPECT_EQ(sps->video_signal_type_present_flag, video_signal_type_present);
+    EXPECT_EQ(sps->video_full_range_flag, test_case.video_full_range_flag);
+    EXPECT_EQ(sps->colour_description_present_flag,
+              test_case.colour_description.has_value());
+    if (test_case.colour_description) {
+      EXPECT_EQ(sps->colour_primaries,
+                test_case.colour_description->colour_primaries);
+      EXPECT_EQ(sps->transfer_characteristics,
+                test_case.colour_description->transfer_characteristics);
+      EXPECT_EQ(sps->matrix_coefficients,
+                test_case.colour_description->matrix_coefficients);
+    }
+  }
+}
+
 TEST_F(D3D12VideoEncodeH264DelegateTest, EncodeFramesAndVerifyKeyFrameFlag) {
   VideoEncodeAccelerator::Config config = GetDefaultH264Config();
   config.gop_length = 5;
@@ -503,19 +599,98 @@ TEST_F(D3D12VideoEncodeH264DelegateTest, EncodeWithManualReferenceControl) {
       gfx::ColorSpace::CreateSRGB(), bitstream_buffer, encode_opts);
   ASSERT_TRUE(result_or_error.has_value());
 
+  const std::array<
+      D3D12_VIDEO_ENCODER_PICTURE_CONTROL_CODEC_DATA_H264_REFERENCE_PICTURE_MARKING_OPERATION,
+      3>
+      kExpectedMmcoOps = {{
+          {.memory_management_control_operation = 4,
+           .max_long_term_frame_idx_plus1 = 3},
+          {.memory_management_control_operation = 6, .long_term_frame_idx = 2},
+          {.memory_management_control_operation = 0},
+      }};
+  EXPECT_CALL(*GetVideoEncoderWrapper(), Encode)
+      .Times(2)
+      .WillRepeatedly([&](const D3D12_VIDEO_ENCODER_ENCODEFRAME_INPUT_ARGUMENTS&
+                              input_arguments,
+                          const D3D12_VIDEO_ENCODER_RECONSTRUCTED_PICTURE&) {
+        const D3D12_VIDEO_ENCODER_PICTURE_CONTROL_CODEC_DATA_H264* pic_params =
+            input_arguments.PictureControlDesc.PictureControlCodecData
+                .pH264PicData;
+        EXPECT_EQ(pic_params->FrameType,
+                  D3D12_VIDEO_ENCODER_FRAME_TYPE_H264_P_FRAME);
+        // SAFETY: |RefPicMarkingOperationsCommandsCount| bounds
+        // |pRefPicMarkingOperationsCommands|.
+        auto marking_ops = UNSAFE_BUFFERS(
+            base::span(pic_params->pRefPicMarkingOperationsCommands,
+                       pic_params->RefPicMarkingOperationsCommandsCount));
+        EXPECT_EQ(marking_ops.size(), kExpectedMmcoOps.size());
+        for (size_t i = 0;
+             i < marking_ops.size() && i < kExpectedMmcoOps.size(); i++) {
+          EXPECT_EQ(marking_ops[i].memory_management_control_operation,
+                    kExpectedMmcoOps[i].memory_management_control_operation);
+          EXPECT_EQ(marking_ops[i].max_long_term_frame_idx_plus1,
+                    kExpectedMmcoOps[i].max_long_term_frame_idx_plus1);
+          EXPECT_EQ(marking_ops[i].long_term_frame_idx,
+                    kExpectedMmcoOps[i].long_term_frame_idx);
+        }
+        return EncoderStatus::Codes::kOk;
+      });
+
+  encode_opts.key_frame = false;
   encode_opts.reference_buffers = {0};
-  encode_opts.update_buffer = std::nullopt;
+  encode_opts.update_buffer = 1;
   result_or_error = encoder_delegate_->Encode(
       input_frame, gfx::Rect(config.input_visible_size),
       gfx::ColorSpace::CreateSRGB(), bitstream_buffer, encode_opts);
   ASSERT_TRUE(result_or_error.has_value());
 
-  encode_opts.reference_buffers = {0};
-  encode_opts.update_buffer = 0;
+  // Encode the same frame again: MMCO 4 must still be sent even though the
+  // long-term frame index does not grow past the tracked maximum.
   result_or_error = encoder_delegate_->Encode(
       input_frame, gfx::Rect(config.input_visible_size),
       gfx::ColorSpace::CreateSRGB(), bitstream_buffer, encode_opts);
   ASSERT_TRUE(result_or_error.has_value());
+}
+
+TEST_F(D3D12VideoEncodeH264DelegateTest, DisplayContentCapsQp) {
+  // The frames are far larger than the bitrate allows, so the rate controller
+  // raises the QP as far as it can.
+  constexpr size_t kFrameSize = 200000;
+  VideoEncodeAccelerator::Config config = GetDefaultH264Config();
+  config.bitrate = Bitrate::ConstantBitrate(100000u);
+  std::vector<base::TimeDelta> timestamps;
+  for (int i = 0; i < 30; ++i) {
+    timestamps.push_back(i * base::Seconds(1) / config.framerate);
+  }
+
+  // Camera content may use the full H.264 QP range.
+  config.content_type = VideoEncodeAccelerator::Config::ContentType::kCamera;
+  std::vector<int> camera_qps =
+      InitializeAndEncodeFrames(config, kFrameSize, timestamps);
+  ASSERT_EQ(camera_qps.size(), timestamps.size());
+  EXPECT_GT(std::ranges::max(camera_qps),
+            static_cast<int>(kH264DesktopSWBRCMaxQuantizer));
+
+  // Screen content is capped so that text stays readable.
+  CreateEncoderDelegate();
+  config.content_type = VideoEncodeAccelerator::Config::ContentType::kDisplay;
+  std::vector<int> display_qps =
+      InitializeAndEncodeFrames(config, kFrameSize, timestamps);
+  ASSERT_EQ(display_qps.size(), timestamps.size());
+  EXPECT_LE(std::ranges::max(display_qps),
+            static_cast<int>(kH264DesktopSWBRCMaxQuantizer));
+}
+
+TEST_F(D3D12VideoEncodeH264DelegateTest, RateControlUsesFrameTimestamps) {
+  // Static screen content can arrive at 1 fps while the encoder is configured
+  // for 30 fps. Each frame then has a 30 times larger bit budget, so the same
+  // frames must end up with a lower QP than when they arrive at 30 fps.
+  VideoEncodeAccelerator::Config config = GetDefaultH264Config();
+  config.bitrate = Bitrate::ConstantBitrate(1000000u);
+  config.content_type = VideoEncodeAccelerator::Config::ContentType::kDisplay;
+  auto [qp_at_1fps, qp_at_30fps] = GetLastQpAtIntervalAndAtConfigFramerate(
+      config, /*frame_size=*/20000, /*num_frames=*/30, base::Seconds(1));
+  EXPECT_LT(qp_at_1fps, qp_at_30fps);
 }
 
 }  // namespace media

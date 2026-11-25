@@ -289,8 +289,6 @@ BrowserViewTabbedLayoutImpl::CalculateProposedLayout(
     gfx::Rect organizer_tray_bounds;
     if (show_organizer_tray) {
       views().organizer_tray->SetTargetWidth(target_organizer_width);
-      views().organizer_tray->SetTopLeadingExclusion(
-          gfx::ToCeiledSize(params.leading_exclusion.ContentWithPadding()));
 
       const double reveal_amount =
           layout_data_->organizer_panel_animation.reveal_amount;
@@ -547,7 +545,7 @@ void BrowserViewTabbedLayoutImpl::OnLayoutParamsChanged(
   // If the size of the visual client area changes, the size of our working
   // client area should change by the same amount.
   const gfx::Insets insets =
-      new_params.visual_client_area.InsetsFrom(old_params.visual_client_area);
+      old_params.visual_client_area.InsetsFrom(new_params.visual_client_area);
   layout_data_->revised_params.visual_client_area.Inset(insets);
 }
 
@@ -593,11 +591,16 @@ void BrowserViewTabbedLayoutImpl::DoPostLayoutVisualAdjustments(
             views()
                 .organizer_tray->background()
                 ->AsA<CustomCornersBackground>()) {
-      const bool blur = features::IsGlassFrameEnabled();
 
+      // Background blur is used in glass mode (Shuttle: no vertical tab strip
+      // to blend with).
+      const bool use_background_blur = in_glass_mode();
+      const double background_opacity =
+          anim.panel_opacity *
+          (use_background_blur ? flyover_panel_opacity : 1.0);
+      background->SetUseBackgroundBlur(use_background_blur);
       background->SetPrimaryColor(CustomCorners::ColorChoiceWithAlpha(
-          organizer_panel::kOrganizerPanelBackgroundColor,
-          anim.panel_opacity * (blur ? flyover_panel_opacity : 1.0)));
+          organizer_panel::kOrganizerPanelBackgroundColor, background_opacity));
 
       CustomCornersBackground::Corners corners;
       corners[CornerOrientation::kTopLeading] =
@@ -626,7 +629,6 @@ void BrowserViewTabbedLayoutImpl::DoPostLayoutVisualAdjustments(
         corner.radius = radius;
       }
       background->SetCorners(corners);
-      background->SetUseBackgroundBlur(blur);
     }
 
     views().organizer_tray->layer()->SetOpacity(anim.panel_opacity);

@@ -254,6 +254,15 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//ios/chrome/browser/incognito_reauth/ui_bundled/incognito_reauth_constants.h:IncognitoLockSettingStartupState) -->
 
+<!-- LINT.IfChange(IOSActorActionTargetType) -->
+
+<enum name="IOSActorActionTargetType">
+  <int value="0" label="DOM node"/>
+  <int value="1" label="Coordinate"/>
+</enum>
+
+<!-- LINT.ThenChange(//ios/chrome/browser/intelligence/actor/tools/public/metrics.h:IOSActorActionTargetType) -->
+
 <!-- LINT.IfChange(IOSActorBackgroundTaskEndReason) -->
 
 <enum name="IOSActorBackgroundTaskEndReason">
@@ -371,22 +380,6 @@ chromium-metrics-reviews@google.com.
 </enum>
 
 <!-- LINT.ThenChange(/ios/chrome/browser/first_run/best_features/ui/metrics_util.h:BestFeaturesDetailScreenActionType) -->
-
-<!-- LINT.IfChange(IOSBestFeaturesItemType) -->
-
-<enum name="IOSBestFeaturesItemType">
-  <int value="0" label="Lens Search"/>
-  <int value="1" label="Enhanced Safe Browsing"/>
-  <int value="2" label="Locked Incognito Tabs"/>
-  <int value="3" label="Save and Autofill Passwords"/>
-  <int value="4" label="Tab Groups"/>
-  <int value="5" label="Price Tracking and Insights"/>
-  <int value="6" label="Autofill Passwords in Other Apps"/>
-  <int value="7" label="Share Passwords with Family"/>
-  <int value="8" label="Incognito Browsing"/>
-</enum>
-
-<!-- LINT.ThenChange(/ios/chrome/browser/first_run/public/best_features_item.h:BestFeaturesItemType) -->
 
 <!-- LINT.IfChange(IOSBestFeaturesMainScreenActionType) -->
 
@@ -685,6 +678,17 @@ chromium-metrics-reviews@google.com.
   <int value="2" label="No Recent Icon Launches"/>
   <int value="3" label="Low Engagement User with No Recent Icon Launches"/>
 </enum>
+
+<!-- LINT.IfChange(IOSDownloadWebViewExtractionSource) -->
+
+<enum name="IOSDownloadWebViewExtractionSource">
+  <int value="0" label="Blob URL">Downloaded using in-memory blob URL.</int>
+  <int value="1" label="WKDownload">
+    Downloaded via WKDownload using the original URL.
+  </int>
+</enum>
+
+<!-- LINT.ThenChange(/ios/web/download/crw_web_view_download.h:IOSDownloadWebViewExtractionSource) -->
 
 <!-- LINT.IfChange(IOSDownloadWebViewResult) -->
 
@@ -1701,6 +1705,7 @@ chromium-metrics-reviews@google.com.
   <int value="0" label="Gemini - Enterprise Policies"/>
   <int value="1" label="Lens - Enterprise Policies"/>
   <int value="2" label="Lens - Non Google Search Engine"/>
+  <int value="3" label="Gemini - Incognito"/>
 </enum>
 
 <!-- LINT.ThenChange(/ios/chrome/browser/intelligence/page_action_menu/utils/ai_hub_metrics.h:IOSPageActionMenuFooterReason) -->
@@ -1891,7 +1896,7 @@ chromium-metrics-reviews@google.com.
   <int value="15" label="Stay Safe default browser promo"/>
   <int value="16" label="Post-default browser abandonment alert."/>
   <int value="17" label="Fullscreen sign-in promo."/>
-  <int value="18" label="Welcome Back promo"/>
+  <int value="18" label="(Obsolete) Welcome Back promo"/>
   <int value="19" label="(Obsolete) BWG promo"/>
   <int value="20" label="Safari Import (Remind Me Later)"/>
   <int value="21" label="Default Browser off cycle promo"/>
@@ -2370,6 +2375,18 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(/ios/chrome/browser/content_suggestions/tips/model/tips_metrics.h:IOSTipsNTPCustomizationPromoAction) -->
 
+<!-- LINT.IfChange(IOSTipsNTPThemeActionableAction) -->
+
+<enum name="IOSTipsNTPThemeActionableAction">
+  <int value="0" label="Default theme selected"/>
+  <int value="1" label="Color theme selected"/>
+  <int value="2" label="Preset image selected"/>
+  <int value="3" label="Photo picker opened"/>
+  <int value="4" label="See More tapped"/>
+</enum>
+
+<!-- LINT.ThenChange(/ios/chrome/browser/content_suggestions/tips/model/tips_metrics.h:IOSTipsNTPThemeActionableAction) -->
+
 <!-- LINT.IfChange(TrustedVaultNotificationEvents) -->
 
 <enum name="IOSTipsTrustedVaultNotificationEvents">
@@ -2631,6 +2648,16 @@ chromium-metrics-reviews@google.com.
   <int value="5"
       label="Bottom Sheet couldn't be presented for various reasons"/>
 </enum>
+
+<!-- LINT.IfChange(PaymentsBottomSheetUserGestureStatus) -->
+
+<enum name="PaymentsBottomSheetUserGestureStatus">
+  <int value="0" label="Valid user gesture"/>
+  <int value="1" label="No user gesture"/>
+  <int value="2" label="User not interacting"/>
+</enum>
+
+<!-- LINT.ThenChange(//ios/chrome/browser/autofill/model/bottom_sheet/autofill_bottom_sheet_tab_helper.h:PaymentsBottomSheetUserGestureStatus) -->
 
 <enum name="PaymentsSuggestionBottomSheetExitReason">
   <int value="0" label="Bottom Sheet dismissed"/>
@@ -3200,20 +3227,6 @@ chromium-metrics-reviews@google.com.
 </enum>
 
 <!-- LINT.ThenChange(/ios/web/webui/web_ui_metrics.h:WebUIMojoActions) -->
-
-<!-- LINT.IfChange(WelcomeBackPromoRegistrationResult) -->
-
-<enum name="WelcomeBackPromoRegistrationResult">
-  <int value="0" label="Success"/>
-  <int value="1" label="Failure_TimeSinceActiveLimitNotMet"/>
-  <int value="2" label="Failure_MinEligibleFeaturesNotMet"/>
-  <int value="3" label="Failure_SessionEndTimeNil"/>
-  <int value="4" label="Failure_FirstRun"/>
-  <int value="5" label="Failure_TrackerInitialization"/>
-  <int value="6" label="Failure_NotResurrectedUser"/>
-</enum>
-
-<!-- LINT.ThenChange(/ios/chrome/browser/welcome_back/metrics/welcome_back_metrics.h:WelcomeBackPromoRegistrationResult) -->
 
 <enum name="WhatsNewType">
   <int value="-1" label="Error"/>

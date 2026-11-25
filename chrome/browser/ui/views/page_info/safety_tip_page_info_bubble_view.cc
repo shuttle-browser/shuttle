@@ -88,8 +88,7 @@ SafetyTipPageInfoBubbleView::SafetyTipPageInfoBubbleView(
   auto header_view = std::make_unique<ThemeTrackingNonAccessibleImageView>(
       *bundle.GetImageSkiaNamed(IDR_SAFETY_TIP_ILLUSTRATION_LIGHT),
       *bundle.GetImageSkiaNamed(IDR_SAFETY_TIP_ILLUSTRATION_DARK),
-      base::BindRepeating(&views::BubbleDialogDelegate::background_color,
-                          base::Unretained(this)));
+      background_color());
   GetBubbleFrameView()->SetHeaderView(std::move(header_view));
 
   // Add text description.
@@ -215,10 +214,6 @@ void SafetyTipPageInfoBubbleView::PrimaryPageChanged(content::Page& page) {
   // There's no great ClosedReason for this, so we use kUnspecified to signal
   // that a more specific action_taken_ may have already been set.
   GetWidget()->CloseWithReason(views::Widget::ClosedReason::kUnspecified);
-}
-
-void SafetyTipPageInfoBubbleView::DidChangeVisibleSecurityState() {
-  // Do nothing. (Base class closes the bubble.)
 }
 
 void ShowSafetyTipDialog(

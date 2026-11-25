@@ -160,8 +160,11 @@ enum RuleSetFlags {
   kFontFeatureValuesRules = 1 << 7,
   kViewTransitionRules = 1 << 8,
   kFunctionRules = 1 << 9,
+  kFullRecalcRules = 1 << 10,
 };
 
+// Includes kFullRecalcRules: layer-order changes can affect rules in unchanged
+// sheets and therefore require subtree style recalc.
 const unsigned kRuleSetFlagsAll = ~0u;
 
 unsigned GetRuleSetFlags(const HeapHashSet<Member<RuleSet>> rule_sets) {
@@ -891,8 +894,8 @@ bool StyleEngine::NeedsActiveStyleUpdate() const {
 }
 
 void StyleEngine::UpdateActiveStyle() {
-  DCHECK(GetDocument().IsActive());
-  DCHECK(IsMainThread());
+  CHECK(GetDocument().IsActive());
+  CHECK(IsMainThread());
   TRACE_EVENT0("blink", "Document::updateActiveStyle");
   UpdateViewport();
   UpdateActiveStyleSheets();
@@ -1959,6 +1962,12 @@ bool HasAttributeDependentStyle(const Element& element) {
   if (style && style->HasAttrFunction()) {
     return true;
   }
+  if (ContainerQueryEvaluator* evaluator =
+          element.GetContainerQueryEvaluator()) {
+    if (evaluator->DependsOnAttr()) {
+      return true;
+    }
+  }
   return element.PseudoElementStylesDependOnAttr();
 }
 
@@ -2906,6 +2915,22 @@ void StyleEngine::InvalidateForRuleSetChanges(
   if (invalidation_root.GetStyleChangeType() == kSubtreeStyleChange) {
     return;
   }
+  // An unstyled root already marked for recalc (e.g. a newly inserted shadow
+  // host) needs nothing: matching could only mark it again, and we never
+  // descend below an unstyled root. Without a ComputedStyle, an independent
+  // style change is handled as a full recalc anyway.
+  if (invalidation_root.NeedsStyleRecalc() &&
+      !invalidation_root.GetComputedStyle()) {
+    return;
+  }
+
+  if (changed_rule_flags & kFullRecalcRules) {
+    invalidation_root.SetNeedsStyleRecalc(
+        kSubtreeStyleChange,
+        StyleChangeReasonForTracing::Create(
+            style_change_reason::kActiveStylesheetsUpdate));
+    return;
+  }
 
   SelectorFilter selector_filter;
   selector_filter.PushAllParentsOf(tree_scope);
@@ -2975,6 +3000,8 @@ class StyleEngine::AtRuleCascadeMap {
     return true;
   }
 
+  PropertyRegistry::RegistrationMap& Registrations() { return registrations_; }
+
  private:
   uint16_t GetLayerOrder(bool is_user_style, const CascadeLayer* layer) {
     if (!layer) {
@@ -2994,6 +3021,7 @@ class StyleEngine::AtRuleCascadeMap {
 
   Document& document_;
   HashMap<AtomicString, Priority> map_;
+  PropertyRegistry::RegistrationMap registrations_;
 };
 
 void StyleEngine::ApplyUserRuleSetChanges(
@@ -3081,15 +3109,13 @@ void StyleEngine::ApplyUserRuleSetChanges(
     MarkCounterStylesNeedUpdate();
   }
 
-  if (changed_rule_flags &
-      (kPropertyRules | kFontPaletteValuesRules | kFontFeatureValuesRules)) {
-    if (changed_rule_flags & kPropertyRules) {
-      ClearPropertyRules();
-      AtRuleCascadeMap cascade_map(GetDocument());
-      AddPropertyRulesFromSheets(cascade_map, new_style_sheets,
-                                 true /* is_user_style */);
-    }
+  if (changed_rule_flags & kPropertyRules) {
+    UpdatePropertyRules(new_style_sheets,
+                        document_style_sheet_collection_->ActiveStyleSheets());
+  }
 
+  if (changed_rule_flags &
+      (kFontPaletteValuesRules | kFontFeatureValuesRules)) {
     if (changed_rule_flags & kFontPaletteValuesRules) {
       font_palette_values_rule_map_.clear();
       AddFontPaletteValuesRulesFromSheets(new_style_sheets);
@@ -3243,12 +3269,7 @@ void StyleEngine::ApplyRuleSetChanges(
     // @property rules are (for now) ignored in shadow trees, per spec.
     // https://drafts.css-houdini.org/css-properties-values-api-1/#at-property-rule
     if (tree_scope.RootNode().IsDocumentNode()) {
-      ClearPropertyRules();
-      AtRuleCascadeMap cascade_map(GetDocument());
-      AddPropertyRulesFromSheets(cascade_map, active_user_style_sheets_,
-                                 true /* is_user_style */);
-      AddPropertyRulesFromSheets(cascade_map, new_style_sheets,
-                                 false /* is_user_style */);
+      UpdatePropertyRules(active_user_style_sheets_, new_style_sheets);
     }
   }
 
@@ -3579,8 +3600,23 @@ void StyleEngine::ClearKeyframeRules() {
   keyframes_rule_map_.clear();
 }
 
-void StyleEngine::ClearPropertyRules() {
-  PropertyRegistration::RemoveDeclaredProperties(GetDocument());
+void StyleEngine::UpdatePropertyRules(
+    const ActiveStyleSheetVector& user_style_sheets,
+    const ActiveStyleSheetVector& author_style_sheets) {
+  AtRuleCascadeMap cascade_map(GetDocument());
+  AddPropertyRulesFromSheets(cascade_map, user_style_sheets,
+                             true /* is_user_style */);
+  AddPropertyRulesFromSheets(cascade_map, author_style_sheets,
+                             false /* is_user_style */);
+
+  if (!GetDocument().GetPropertyRegistry() &&
+      cascade_map.Registrations().empty()) {
+    return;
+  }
+  if (GetDocument().EnsurePropertyRegistry().UpdateDeclaredProperties(
+          std::move(cascade_map.Registrations()))) {
+    PropertyRegistryChanged();
+  }
 }
 
 void StyleEngine::AddPropertyRulesFromSheets(
@@ -3720,8 +3756,7 @@ void StyleEngine::AddPropertyRules(AtRuleCascadeMap& cascade_map,
       continue;
     }
 
-    GetDocument().EnsurePropertyRegistry().DeclareProperty(name, *registration);
-    PropertyRegistryChanged();
+    cascade_map.Registrations().Set(name, registration);
   }
 }
 
@@ -4335,6 +4370,15 @@ void StyleEngine::ViewportDefiningElementDidChange() {
 
   LayoutObject* layout_object = body->GetLayoutObject();
   if (layout_object && layout_object->IsLayoutBlock()) {
+    if (!layout_object->Style().ScrollMarkerGroupNone()) {
+      // The body box is a scroll container only if its overflow is not
+      // propagated to the viewport (see LayoutBlock::RespectsCSSOverflow()).
+      // When that changes, the ::scroll-marker pseudo-elements inside it move
+      // between its ::scroll-marker-group and the root's. The body style did
+      // not change, so reattach it to detach the markers from their old group.
+      body->SetNeedsReattachLayoutTree();
+      return;
+    }
     // When the overflow style for documentElement changes to or from visible,
     // it changes whether the body element's box should have scrollable overflow
     // on its own box or propagated to the viewport. If the body style did not

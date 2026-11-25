@@ -39,9 +39,6 @@ class NewTabUI : public content::WebUIController {
 
   ~NewTabUI() override;
 
-  // Checks whether the given URL points to the (blank) chrome://newtab page.
-  static bool IsNewTab(const GURL& url);
-
   // TODO(dbeam): why are these static |Set*()| methods on NewTabUI?
 
   // Adds "url", "title", and "direction" keys on incoming dictionary, setting

@@ -116,6 +116,8 @@ DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(PageInfoMainView,
                                       kMerchantTrustElementId);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(PageInfoMainView,
                                       kSeeExtensionsButtonElementId);
+DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(PageInfoMainView,
+                                      kResetPermissionsButtonElementId);
 
 PageInfoMainView::ContainerView::ContainerView(bool set_extra_right_margin) {
   auto box_layout = std::make_unique<views::BoxLayout>(
@@ -281,6 +283,8 @@ void PageInfoMainView::SetPermissionInfo(
   if (permission_info_list.empty() && chosen_object_info_list.empty()) {
     toggle_rows_.clear();
     syncable_permission_rows_.clear();
+    chosen_object_rows_.clear();
+    reset_button_ = nullptr;
     permissions_view_->RemoveAllChildViews();
     return;
   }
@@ -368,11 +372,15 @@ void PageInfoMainView::SetPermissionInfo(
   reset_button_ = content_view->AddChildView(
       std::make_unique<views::MdTextButton>(base::BindRepeating(
           [=](PageInfoMainView* view) {
-            for (PermissionToggleRowView* toggle_row : view->toggle_rows_) {
-              toggle_row->ResetPermission();
+            // Iterate by index because `ResetPermission()` can synchronously
+            // trigger `SetPermissionInfo()` when the last active permission or
+            // chosen object is revoked, which clears `toggle_rows_` and
+            // `chosen_object_rows_` and destroys all child views.
+            for (size_t i = 0; i < view->toggle_rows_.size(); ++i) {
+              view->toggle_rows_[i]->ResetPermission();
             }
-            for (ChosenObjectView* object_row : view->chosen_object_rows_) {
-              object_row->ResetPermission();
+            for (size_t i = 0; i < view->chosen_object_rows_.size(); ++i) {
+              view->chosen_object_rows_[i]->ResetPermission();
             }
             view->chosen_object_rows_.clear();
             view->PreferredSizeChanged();
@@ -393,6 +401,8 @@ void PageInfoMainView::SetPermissionInfo(
       gfx::Insets::TLBR(controls_spacing, side_offset, controls_spacing, 0));
   reset_button_->SetID(
       PageInfoViewFactory::VIEW_ID_PAGE_INFO_RESET_PERMISSIONS_BUTTON);
+  reset_button_->SetProperty(views::kElementIdentifierKey,
+                             kResetPermissionsButtonElementId);
 
   // If a permission is in a non-default state or chooser object is present,
   // show reset button.
@@ -436,6 +446,8 @@ void PageInfoMainView::SetIdentityInfo(const IdentityInfo& identity_info) {
 
   title_->SetText(presenter_->GetSubjectNameForDisplay());
 
+  connection_button_ = nullptr;
+  security_content_view_ = nullptr;
   security_container_view_->RemoveAllChildViews();
   extended_site_info_section_->SetVisible(false);
   if (identity_info.safe_browsing_status ==

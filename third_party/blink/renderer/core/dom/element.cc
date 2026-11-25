@@ -689,7 +689,6 @@ void InvalidateForCanvasClipChange(LayoutObject* layout_object) {
 }
 
 inline bool ShouldBlockInlineScriptAttributeSet(
-    ExecutionContext* context,
     Element* target,
     const EventListener* listener,
     Element::AttributeModificationReason reason) {
@@ -700,12 +699,22 @@ inline bool ShouldBlockInlineScriptAttributeSet(
   bool modified_by_author =
       reason == Element::AttributeModificationReason::kDirectly ||
       reason == Element::AttributeModificationReason::kByParser;
-  ContentSecurityPolicy* csp =
-      context ? context->GetContentSecurityPolicy() : nullptr;
+
+  // A document created without a window (e.g. a document created by DOMParser,
+  // or an owner document of template contents) has an empty CSP list, even
+  // though the document's ExecutionContext may have a CSP.
+  LocalDOMWindow* window = target->GetDocument().domWindow();
+  if (!window) {
+    return false;
+  }
+
+  // Check the CSP list of the element's node document, which is held by the
+  // document's window.
+  ContentSecurityPolicy* csp = window->GetContentSecurityPolicy();
   return listener && modified_by_author && csp &&
          !csp->AllowInline(ContentSecurityPolicy::InlineType::kScriptAttribute,
                            target, listener->ScriptBody(), String(),
-                           context->Url().GetString(),
+                           window->Url().GetString(),
                            TextPosition::BelowRangePosition());
 }
 
@@ -3579,11 +3588,18 @@ DOMRect* Element::GetBoundingClientRectForBinding() {
   return GetBoundingClientRect();
 }
 
-ContainerQueryList* Element::matchContainer(const String& query) {
+ContainerQueryList* Element::matchContainer(const String& query,
+                                            ExceptionState& exception_state) {
   CSSParserContext* context =
       MakeGarbageCollected<CSSParserContext>(GetDocument());
   auto* container_queries =
       ContainerQueryParser::ParseContainerQuerySet(query, *context);
+  if (!container_queries) {
+    exception_state.ThrowDOMException(
+        DOMExceptionCode::kSyntaxError,
+        StrCat({"Failed to parse the container query list '", query, "'."}));
+    return nullptr;
+  }
   auto* list = MakeGarbageCollected<ContainerQueryList>(
       GetDocument().GetExecutionContext(), container_queries, this);
   ContainerQueryListController::From(GetDocument())
@@ -4773,7 +4789,7 @@ void Element::RemovedFrom(ContainerNode& insertion_point) {
     if (!GetDocument().StatePreservingAtomicMoveInProgress()) {
       if (ElementAnimations* element_animations =
               data->GetElementAnimations()) {
-        element_animations->CssAnimations().Cancel();
+        element_animations->CssAnimations().Cancel(document);
         element_animations->CssImageAnimations().Clear();
       }
     }
@@ -5109,7 +5125,7 @@ void Element::DetachLayoutTree(bool performing_reattach) {
     if (ElementAnimations* element_animations = data->GetElementAnimations()) {
       if (!performing_reattach) {
         DocumentLifecycle::DetachScope will_detach(GetDocument().Lifecycle());
-        element_animations->CssAnimations().Cancel();
+        element_animations->CssAnimations().Cancel(GetDocument());
         element_animations->CssImageAnimations().Clear();
         element_animations->SetAnimationStyleChange(false);
       }
@@ -5847,7 +5863,7 @@ StyleRecalcChange Element::RecalcOwnStyle(
   DCHECK(GetDocument().InStyleRecalc());
 
   StyleRecalcContext new_style_recalc_context = style_recalc_context;
-  if (change.RecalcChildren() || change.RecalcContainerQueryDependent(*this)) {
+  if (change.RecalcChildren() || change.RecalcFlagDependent(*this)) {
     if (NeedsStyleRecalc()) {
       if (NodeRareData* data = RareData()) {
         // This element needs recalc because its parent changed inherited
@@ -5947,13 +5963,25 @@ StyleRecalcChange Element::RecalcOwnStyle(
     old_style = nullptr;
   }
 
-  if (GetOverscrollAreaTracker() && old_style && new_style &&
-      old_style->IsInert() != new_style->IsInert()) {
-    // Toggle invokers inside closed overscroll areas depend on the container's
-    // inertness via OverscrollAreaTracker::ShouldRemoveInertness(), and closed
-    // areas block independent inherited property propagation.
-    child_change =
-        child_change.EnsureAtLeast(StyleRecalcChange::kRecalcDescendants);
+  if (old_style && new_style) {
+    if (GetOverscrollAreaTracker() &&
+        old_style->IsInert() != new_style->IsInert()) {
+      // Toggle invokers inside closed overscroll areas depend on the
+      // container's inertness via
+      // OverscrollAreaTracker::ShouldRemoveInertness(), and closed areas block
+      // independent inherited property propagation.
+      child_change =
+          child_change.EnsureAtLeast(StyleRecalcChange::kRecalcDescendants);
+    }
+    if (RuntimeEnabledFeatures::CompositeHoverStyleEnabled()) {
+      if (!style_recalc_context.has_hover_affected_ancestor &&
+          !old_style->AffectedByHover() &&
+          !old_style->AffectedByNonSubjectHoverSelector() &&
+          (new_style->AffectedByHover() ||
+           new_style->AffectedByNonSubjectHoverSelector())) {
+        child_change = child_change.ForceClearPrecomputedHover();
+      }
+    }
   }
 
   if (!new_style) {
@@ -5965,7 +5993,7 @@ StyleRecalcChange Element::RecalcOwnStyle(
         // means an animation set display:none, and an animation shouldn't
         // cancel itself in this case.
         if (base_is_display_none) {
-          element_animations->CssAnimations().Cancel();
+          element_animations->CssAnimations().Cancel(GetDocument());
           element_animations->CssImageAnimations().Clear();
         }
       }
@@ -7245,7 +7273,7 @@ void Element::SetTargetedSnapAreaIdsForSnapContainers() {
       box = box->ContainingScrollContainer();
       continue;
     }
-    box = box->ContainingBlock();
+    box = box->ContainingBox();
   }
 }
 
@@ -7257,7 +7285,7 @@ void Element::ClearTargetedSnapAreaIdsForSnapContainers() {
         scrollable_area->SetTargetedSnapAreaId(std::nullopt);
       }
     }
-    box = box->ContainingBlock();
+    box = box->ContainingBox();
   }
 }
 
@@ -8511,9 +8539,12 @@ void Element::RemoveAttributeInternal(wtf_size_t index,
   // where removing all attributes send us into O(n²)).
 }
 
-void Element::AppendAttributeInternal(const QualifiedName& name,
-                                      const AtomicString& value,
+void Element::AppendAttributeInternal(QualifiedName name,
+                                      AtomicString value,
                                       AttributeModificationReason reason) {
+  // `name` and `value` are passed by value because they may be references
+  // into `ElementData::Attributes()`, which can be reallocated by
+  // `WillModifyAttribute()`, `Append()`, or `DidAddAttribute()`.
   if (reason !=
       AttributeModificationReason::kBySynchronizationOfLazyAttribute) {
     WillModifyAttribute(name, g_null_atom, value);
@@ -8837,7 +8868,7 @@ void Element::Focus(const FocusParams& params) {
   if (should_consume_user_activation) {
     // Fenced frames should consume user activation when attempting to pull
     // focus across a fenced boundary into itself.
-    // TODO(crbug.com/848778) Right now the browser can't verify that the
+    // TODO(crbug.com/40091540) Right now the browser can't verify that the
     // renderer properly consumed user activation. When user activation code is
     // migrated to the browser, move this logic to the browser as well.
     LocalFrame::ConsumeTransientUserActivation(GetDocument().GetFrame());
@@ -8881,8 +8912,7 @@ void Element::SetFocused(bool now_focused,
   FocusStateChanged();
 
   if (GetLayoutObject() || now_focused ||
-      (IsA<HTMLAreaElement>(*this) && GetComputedStyle() &&
-       RuntimeEnabledFeatures::HTMLAreaElementDisplayNoneEnabled())) {
+      (IsA<HTMLAreaElement>(*this) && GetComputedStyle())) {
     return;
   }
 
@@ -9313,8 +9343,7 @@ void Element::FocusStateChanged() {
   // <area> is an exception, since its focus ring is painted by the <img> that
   // uses its <map>, so its focus style needs to stay current.
   if (!GetLayoutObject()) {
-    if (!IsA<HTMLAreaElement>(*this) ||
-        !RuntimeEnabledFeatures::HTMLAreaElementDisplayNoneEnabled()) {
+    if (!IsA<HTMLAreaElement>(*this)) {
       return;
     }
 
@@ -9552,6 +9581,15 @@ bool Element::IsVideoAd() const {
   if (const NodeRareData* data = RareData()) {
     if (auto* monitor = data->GetDisplayAdElementMonitor()) {
       return monitor->IsVideoAd();
+    }
+  }
+  return false;
+}
+
+bool Element::IsStickyAd() const {
+  if (const NodeRareData* data = RareData()) {
+    if (const auto* monitor = data->GetDisplayAdElementMonitor()) {
+      return monitor->IsStickyAd();
     }
   }
   return false;
@@ -10229,8 +10267,12 @@ DisplayLockContext* Element::GetDisplayLockContextFromRareData() const {
 }
 
 DisplayLockContext& Element::EnsureDisplayLockContext() {
+  if (DisplayLockContext* context = GetDisplayLockContext()) {
+    return *context;
+  }
+  auto* context = MakeGarbageCollected<DisplayLockContext>(this);
   SetHasDisplayLockContext();
-  return EnsureRareData().EnsureDisplayLockContext(this).RefreshNodeAndUnwrap(
+  return EnsureRareData().SetDisplayLockContext(*context).RefreshNodeAndUnwrap(
       *this);
 }
 
@@ -10790,8 +10832,7 @@ bool Element::ShouldStoreComputedStyle(const ComputedStyle& style) const {
   }
 
   // An <area> has no box, but remains interactive through its image map.
-  if (IsA<HTMLAreaElement>(*this) &&
-      RuntimeEnabledFeatures::HTMLAreaElementDisplayNoneEnabled()) {
+  if (IsA<HTMLAreaElement>(*this)) {
     return true;
   }
 
@@ -11425,7 +11466,7 @@ PseudoElement* Element::GetPseudoElement(
 
 CSSPseudoElement* Element::pseudo(const AtomicString& type) {
   auto [pseudo_id, pseudo_argument] =
-      CSSPseudoElement::ConvertTypeToSupportedPseudoId(type, this);
+      CSSPseudoElement::ConvertTypeToSupportedPseudoId(type);
   return EnsureCSSPseudoElement(pseudo_id, pseudo_argument);
 }
 
@@ -14127,10 +14168,10 @@ ALWAYS_INLINE void Element::SetAttributeInternal(
   QualifiedName existing_attribute_name = existing_attribute.GetName();
 
   // `new_value` may be a reference into `ElementData::Attributes()`, which can
-  // be reallocated if `WillModifyAttribute()` pauses in the debugger and script
-  // mutates attributes. Copy it here (rather than taking `new_value` by value
-  // in `SetAttributeInternal`, which would add refcount churn to the
-  // `AppendAttributeInternal` fast path).
+  // be reallocated if `WillModifyAttribute()` runs script (e.g. by pausing in
+  // the debugger) and mutates attributes. Copy it in the branches that invoke
+  // `WillModifyAttribute()` (and in `AppendAttributeInternal()`) rather than
+  // taking `new_value` by value in `SetAttributeInternal()`.
   if (new_value == existing_attribute.Value()) {
     if (reason !=
         AttributeModificationReason::kBySynchronizationOfLazyAttribute) {
@@ -14382,11 +14423,6 @@ Element* Element::ImplicitAnchorElement() const {
   return nullptr;
 }
 
-bool Element::HasContainerTimingIgnoreAttribute() const {
-  return FastHasAttribute(html_names::kContainertimingignoreAttr) ||
-         FastHasAttribute(html_names::kContainertimingIgnoreAttr);
-}
-
 void Element::SetHTMLUnsafeWithoutTrustedTypes(
     const String& html,
     ExceptionState& exception_state) {
@@ -14546,7 +14582,7 @@ void Element::SetElementAttributeEventListenerFromScriptBody(
   ExecutionContext* context = GetExecutionContext();
   EventListener* listener = JSEventHandlerForContentAttribute::Create(
       context, attribute_name, script_body, type);
-  if (!ShouldBlockInlineScriptAttributeSet(context, this, listener, reason)) {
+  if (!ShouldBlockInlineScriptAttributeSet(this, listener, reason)) {
     SetAttributeEventListener(event_type_name, listener);
   }
 }
@@ -14560,7 +14596,7 @@ void Element::SetDocumentAttributeEventListenerFromScriptBody(
   ExecutionContext* context = GetExecutionContext();
   EventListener* listener = JSEventHandlerForContentAttribute::Create(
       context, attribute_name, script_body, type);
-  if (!ShouldBlockInlineScriptAttributeSet(context, this, listener, reason)) {
+  if (!ShouldBlockInlineScriptAttributeSet(this, listener, reason)) {
     GetDocument().SetAttributeEventListener(event_type_name, listener);
   }
 }
@@ -14574,7 +14610,7 @@ void Element::SetWindowAttributeEventListenerFromScriptBody(
   ExecutionContext* context = GetExecutionContext();
   EventListener* listener = JSEventHandlerForContentAttribute::Create(
       context, attribute_name, script_body, type);
-  if (!ShouldBlockInlineScriptAttributeSet(context, this, listener, reason)) {
+  if (!ShouldBlockInlineScriptAttributeSet(this, listener, reason)) {
     GetDocument().SetWindowAttributeEventListener(event_type_name, listener);
   }
 }

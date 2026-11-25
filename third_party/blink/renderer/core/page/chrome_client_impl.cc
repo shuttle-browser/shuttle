@@ -663,9 +663,8 @@ const display::ScreenInfos& ChromeClientImpl::GetScreenInfos(
   return frame.GetWidgetForLocalRoot()->GetScreenInfos();
 }
 
-const display::ScreenInfo& ChromeClientImpl::GetOriginalScreenInfo(
-    LocalFrame& frame) const {
-  return frame.GetWidgetForLocalRoot()->GetOriginalScreenInfo();
+float ChromeClientImpl::GetOriginalDeviceScaleFactor(LocalFrame& frame) const {
+  return frame.GetWidgetForLocalRoot()->GetOriginalDeviceScaleFactor();
 }
 
 float ChromeClientImpl::InputEventsScaleForEmulation() const {
@@ -820,6 +819,13 @@ ColorChooser* ChromeClientImpl::OpenColorChooser(
 #endif
   }
   controller->OpenUI();
+  if (RuntimeEnabledFeatures::PagePopupEnabled() &&
+      !controller->IsPickerVisible()) {
+    // This can happen if the web view is closing (for example, showPicker()
+    // called during pagehide) or if synchronous script moved the owner
+    // element into another Page or an inactive document during popup opening.
+    return nullptr;
+  }
   return controller;
 }
 
@@ -832,8 +838,16 @@ DateTimeChooser* ChromeClientImpl::OpenDateTimeChooser(
   // picker.
 #if !BUILDFLAG(IS_ANDROID)
   if (RuntimeEnabledFeatures::InputMultipleFieldsUIEnabled()) {
-    return MakeGarbageCollected<DateTimeChooserImpl>(frame, picker_client,
-                                                     parameters);
+    auto* chooser = MakeGarbageCollected<DateTimeChooserImpl>(
+        frame, picker_client, parameters);
+    if (!chooser->IsPickerVisible()) {
+      // This can happen if the web view is closing (for example, showPicker()
+      // called during pagehide) or if synchronous script moved the owner
+      // element into another Page or an inactive document during popup
+      // opening.
+      return nullptr;
+    }
+    return chooser;
   }
 #endif
 
@@ -1344,19 +1358,22 @@ bool ChromeClientImpl::HandleKeyboardEventOnEditableElement(
 void ChromeClientImpl::DidChangeValueInTextField(
     HTMLFormControlElement& element) {
   Document& doc = element.GetDocument();
+  // Value changes caused by |document.execCommand| calls should not be
+  // interpreted as a user action. See https://crbug.com/764760.
+  if (doc.IsRunningExecCommand()) {
+    return;
+  }
+
   if (auto* fill_client = AutofillClientFromFrame(doc.GetFrame())) {
     fill_client->TextFieldValueChanged(WebFormControlElement(&element));
   }
 
-  // Value changes caused by |document.execCommand| calls should not be
-  // interpreted as a user action. See https://crbug.com/764760.
-  if (!doc.IsRunningExecCommand()) {
-    UseCounter::Count(doc, doc.GetExecutionContext()->IsSecureContext()
-                               ? WebFeature::kFieldEditInSecureContext
-                               : WebFeature::kFieldEditInNonSecureContext);
-    // The resource coordinator is not available in some tests.
-    if (auto* rc = doc.GetResourceCoordinator())
-      rc->SetHadFormInteraction();
+  UseCounter::Count(doc, doc.GetExecutionContext()->IsSecureContext()
+                             ? WebFeature::kFieldEditInSecureContext
+                             : WebFeature::kFieldEditInNonSecureContext);
+  // The resource coordinator is not available in some tests.
+  if (auto* rc = doc.GetResourceCoordinator()) {
+    rc->SetHadFormInteraction();
   }
 }
 

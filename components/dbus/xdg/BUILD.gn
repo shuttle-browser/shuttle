@@ -5,8 +5,14 @@
 source_set("xdg") {
   visibility = [ "//components/dbus/*" ]
   sources = [
+    "background_portal.cc",
+    "background_portal.h",
+    "camera_portal.cc",
+    "camera_portal.h",
     "file_transfer_portal.cc",
     "file_transfer_portal.h",
+    "inhibit_session_monitor.cc",
+    "inhibit_session_monitor.h",
     "portal.cc",
     "portal.h",
     "portal_constants.h",

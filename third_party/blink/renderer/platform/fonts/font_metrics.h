@@ -43,11 +43,12 @@ class PLATFORM_EXPORT FontMetrics {
   using ApplyBaselineTable =
       base::StrongAlias<class ApplyBaselineTableTag, bool>;
 
-  float FloatAscent(FontBaseline baseline_type = kAlphabeticBaseline,
+  float FloatAscent(FontBaseline baseline_type = FontBaseline::kAlphabetic,
                     ApplyBaselineTable apply_baseline_table =
                         ApplyBaselineTable(false)) const {
-    if (baseline_type == kAlphabeticBaseline)
+    if (baseline_type == FontBaseline::kAlphabetic) {
       return float_ascent_;
+    }
     return FloatAscentInternal(baseline_type, apply_baseline_table);
   }
 
@@ -56,11 +57,12 @@ class PLATFORM_EXPORT FontMetrics {
     int_ascent_ = static_cast<int>(lroundf(ascent));
   }
 
-  float FloatDescent(FontBaseline baseline_type = kAlphabeticBaseline,
+  float FloatDescent(FontBaseline baseline_type = FontBaseline::kAlphabetic,
                      ApplyBaselineTable apply_baseline_table =
                          ApplyBaselineTable(false)) const {
-    if (baseline_type == kAlphabeticBaseline)
+    if (baseline_type == FontBaseline::kAlphabetic) {
       return float_descent_;
+    }
     return FloatHeight() -
            FloatAscentInternal(baseline_type, apply_baseline_table);
   }
@@ -74,7 +76,7 @@ class PLATFORM_EXPORT FontMetrics {
 
   float ConvertBaseline(float value,
                         FontBaseline to,
-                        FontBaseline from = kAlphabeticBaseline) const {
+                        FontBaseline from = FontBaseline::kAlphabetic) const {
     return from == to ? value : FloatAscent(to) - FloatAscent(from) + value;
   }
   float Alphabetic(FontBaseline baseline_type) const {
@@ -86,9 +88,6 @@ class PLATFORM_EXPORT FontMetrics {
     return ConvertBaseline(CapHeight(), baseline_type);
   }
   void SetCapHeight(float cap_height) { cap_height_ = cap_height; }
-
-  int LineGap() const { return static_cast<int>(lroundf(line_gap_)); }
-  void SetLineGap(float line_gap) { line_gap_ = line_gap; }
 
   int LineSpacing() const { return static_cast<int>(lroundf(line_spacing_)); }
   void SetLineSpacing(float line_spacing) { line_spacing_ = line_spacing; }
@@ -106,19 +105,21 @@ class PLATFORM_EXPORT FontMetrics {
   void SetHasXHeight(bool has_x_height) { has_x_height_ = has_x_height; }
 
   // Integer variants of certain metrics, used for HTML rendering.
-  int Ascent(FontBaseline baseline_type = kAlphabeticBaseline,
+  int Ascent(FontBaseline baseline_type = FontBaseline::kAlphabetic,
              ApplyBaselineTable apply_baseline_table =
                  ApplyBaselineTable(false)) const {
-    if (baseline_type == kAlphabeticBaseline)
+    if (baseline_type == FontBaseline::kAlphabetic) {
       return int_ascent_;
+    }
     return IntAscentInternal(baseline_type, apply_baseline_table);
   }
 
-  int Descent(FontBaseline baseline_type = kAlphabeticBaseline,
+  int Descent(FontBaseline baseline_type = FontBaseline::kAlphabetic,
               ApplyBaselineTable apply_baseline_table =
                   ApplyBaselineTable(false)) const {
-    if (baseline_type == kAlphabeticBaseline)
+    if (baseline_type == FontBaseline::kAlphabetic) {
       return int_descent_;
+    }
     return Height() - IntAscentInternal(baseline_type, apply_baseline_table);
   }
 
@@ -128,12 +129,12 @@ class PLATFORM_EXPORT FontMetrics {
   // LayoutNG should use LayoutUnit for the block progression metrics.
   // TODO(kojii): Consider keeping converted values.
   LayoutUnit FixedAscent(
-      FontBaseline baseline_type = kAlphabeticBaseline) const {
+      FontBaseline baseline_type = FontBaseline::kAlphabetic) const {
     return LayoutUnit::FromFloatRound(FloatAscent(baseline_type));
   }
 
   LayoutUnit FixedDescent(
-      FontBaseline baseline_type = kAlphabeticBaseline) const {
+      FontBaseline baseline_type = FontBaseline::kAlphabetic) const {
     return LayoutUnit::FromFloatRound(FloatDescent(baseline_type));
   }
 
@@ -158,7 +159,7 @@ class PLATFORM_EXPORT FontMetrics {
   }
 
   FontHeight GetFontHeight(
-      FontBaseline baseline_type = kAlphabeticBaseline) const {
+      FontBaseline baseline_type = FontBaseline::kAlphabetic) const {
     // TODO(kojii): In future, we'd like to use LayoutUnit metrics to support
     // sub-CSS-pixel layout.
     return FontHeight(LayoutUnit(Ascent(baseline_type)),
@@ -172,9 +173,6 @@ class PLATFORM_EXPORT FontMetrics {
   }
 
   bool HasZeroWidth() const { return has_zero_width_; }
-  void SetHasZeroWidth(bool has_zero_width) {
-    has_zero_width_ = has_zero_width;
-  }
 
   std::optional<float> UnderlineThickness() const {
     return underline_thickness_;
@@ -234,7 +232,6 @@ class PLATFORM_EXPORT FontMetrics {
     float_descent_ = 0;
     int_ascent_ = 0;
     int_descent_ = 0;
-    line_gap_ = 0;
     line_spacing_ = 0;
     x_height_ = 0;
     has_x_height_ = false;
@@ -253,7 +250,6 @@ class PLATFORM_EXPORT FontMetrics {
   float cap_height_ = 0;
   float float_ascent_ = 0;
   float float_descent_ = 0;
-  float line_gap_ = 0;
   float line_spacing_ = 0;
   float x_height_ = 0;
   float zero_width_ = 0;

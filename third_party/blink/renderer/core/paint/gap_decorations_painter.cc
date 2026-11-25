@@ -26,58 +26,6 @@ namespace blink {
 
 namespace {
 
-// TODO(javiercon): clean up now that we have a lot of layout algorithm-specific
-// code, potentially look into subclassing gap geometry for each container type.
-//
-// Returns whether a lane is empty along a whole segment, meaning the segment
-// lies inside one of the lane's empty openings. A segment that only partly
-// overlaps empty space is not empty.
-bool IsLaneEmptyForSegment(
-    base::span<const TrackOpeningCoordinates>& remaining_empty_openings,
-    LayoutUnit start,
-    LayoutUnit end) {
-  if (end <= start) {
-    return true;
-  }
-
-  // Segments are checked in increasing order. An opening that ends before
-  // this segment starts cannot contain this or any later segment, so skip it
-  // for good.
-  while (!remaining_empty_openings.empty() &&
-         remaining_empty_openings.front().end_position <= start) {
-    remaining_empty_openings = remaining_empty_openings.subspan(1u);
-  }
-
-  // A lane with no empty openings left is occupied along this segment.
-  if (remaining_empty_openings.empty()) {
-    return false;
-  }
-  const TrackOpeningCoordinates& opening = remaining_empty_openings.front();
-  return opening.start_position <= start && end <= opening.end_position;
-}
-
-// Returns whether a grid-lanes rule segment between `start` and `end` is
-// visible, based on whether each adjacent lane is empty along it.
-//
-// `before_openings` and `after_openings` are the empty openings of the
-// lanes before and after the main gap.
-bool IsGridLanesSegmentVisible(
-    LayoutUnit start,
-    LayoutUnit end,
-    RuleVisibilityItems rule_visibility,
-    base::span<const TrackOpeningCoordinates>& before_openings,
-    base::span<const TrackOpeningCoordinates>& after_openings) {
-  GapSegmentState segment_state(GapSegmentState::kNone);
-  if (IsLaneEmptyForSegment(before_openings, start, end)) {
-    segment_state |= GapSegmentState::kEmptyBefore;
-  }
-  if (IsLaneEmptyForSegment(after_openings, start, end)) {
-    segment_state |= GapSegmentState::kEmptyAfter;
-  }
-  return CSSGapDecorationUtils::IsRuleSegmentVisible(segment_state,
-                                                     rule_visibility);
-}
-
 // Returns the total number of row gaps, including gaps suppressed by
 // fragmentation. Grid and flex store the total on the first fragment. For
 // multicol, it is derived from the last one.
@@ -111,7 +59,7 @@ wtf_size_t StitchedRowGapCount(const PhysicalBoxFragment& box_fragment,
     }
   }
   if (const GapGeometry* last_gap_geometry = last_fragment.GetGapGeometry()) {
-    total_row_gap_count += last_gap_geometry->MulticolPaintableMainGapCount();
+    total_row_gap_count += last_gap_geometry->PaintableGapCount(kForRows);
   }
   return total_row_gap_count;
 }
@@ -327,7 +275,7 @@ void AdvanceCrossGapOwnerCursor(const GapGeometry& gap_geometry,
 
 }  // namespace
 
-// TODO(samomekarajr): Consider refactoring the Paint method to improve
+// TODO(javiercon): Consider refactoring the Paint method to improve
 // modularity by ensuring each method handles a single responsibility.
 void GapDecorationsPainter::Paint(GridTrackSizingDirection track_direction,
                                   const PaintInfo& paint_info,
@@ -367,33 +315,29 @@ void GapDecorationsPainter::Paint(GridTrackSizingDirection track_direction,
       is_main ? gap_geometry.GetMainGaps().size()
               : gap_geometry.GetCrossGaps().size();
 
-  // Grid and multicol use empty-side states derived from aligned tracks or
-  // rows. Grid-lanes segment bounds depend on cross gaps from both adjacent
-  // lanes, so query lane coverage after the generated intersections define the
-  // segment.
-  const bool must_compute_lane_visibility =
-      is_main &&
-      gap_geometry.GetContainerType() ==
-          GapGeometry::ContainerType::kGridLanes &&
+  // Empty-side segment states are needed only when some segments can be
+  // hidden.
+  const bool needs_empty_segment_states =
       rule_visibility != RuleVisibilityItems::kAll;
 
   const bool has_row_gap_fragmentation =
       gap_geometry.HasRowGapFragmentation(box_fragment_, is_main);
-  const bool has_fragmented_flex_cross_gap_indices =
-      !is_main && gap_geometry.HasFragmentedFlexCrossGapDecorationIndices();
+  const std::optional<wtf_size_t> stored_gap_slot_count =
+      gap_geometry.StoredGapSlotCount(track_direction);
+  // TODO(javiercon): The choice between the stored, stitched, and
+  // fragment-local gap slot counts below, and the stitched gap index in the gap
+  // loop, is container knowledge. Move it behind one container-agnostic entry
+  // point in the gap geometry.
+  //
   // Total gap slot count used to resolve the current color, style, and width
   // lists. Grid-lanes may replace it with a lane-local count, since decoration
-  // assignments reset across lanes.
-  wtf_size_t gap_slot_count = fragment_relative_gap_count;
-  if (has_fragmented_flex_cross_gap_indices) {
-    gap_slot_count = gap_geometry.FragmentedFlexCrossGapCount();
+  // assignments reset across lanes. Gaps that cannot be painted, such as
+  // multicol spanner main gaps, do not consume decoration values.
+  wtf_size_t gap_slot_count = gap_geometry.PaintableGapCount(track_direction);
+  if (stored_gap_slot_count) {
+    gap_slot_count = *stored_gap_slot_count;
   } else if (has_row_gap_fragmentation) {
     gap_slot_count = StitchedRowGapCount(box_fragment_, gap_geometry);
-  } else if (is_main && gap_geometry.GetContainerType() ==
-                            GapGeometry::ContainerType::kMultiColumn) {
-    // Multicol spanner main gaps are only used to generate cross-gap
-    // intersections. They are not painted and do not consume decoration values.
-    gap_slot_count = gap_geometry.MulticolPaintableMainGapCount();
   }
 
   // When `overlap-join` is specified, the decoration extends to meet the
@@ -433,10 +377,7 @@ void GapDecorationsPainter::Paint(GridTrackSizingDirection track_direction,
   // needed to generate the gap's intersections, and for flex it also resolves
   // the stitched gap index across fragments.
   std::optional<wtf_size_t> cross_gap_owner_index;
-  if (!is_main &&
-      (gap_geometry.GetContainerType() == GapGeometry::ContainerType::kFlex ||
-       gap_geometry.GetContainerType() ==
-           GapGeometry::ContainerType::kGridLanes)) {
+  if (gap_geometry.AreGapsOwned(track_direction)) {
     cross_gap_owner_index = 0u;
   }
 
@@ -445,10 +386,9 @@ void GapDecorationsPainter::Paint(GridTrackSizingDirection track_direction,
   wtf_size_t paint_order_gap_index = 0;
   for (wtf_size_t gap_index = 0; gap_index < fragment_relative_gap_count;
        ++gap_index) {
-    // Make sure we skip any multicol `MainGap`s generated by spanners.
-    // This is because those `MainGap`s are not painted, and only used to
-    // generate the `CrossGap` intersections.
-    if (gap_geometry.IsMultiColSpanner(gap_index, track_direction)) {
+    // Skip gaps that cannot be painted, such as multicol spanner `MainGap`s.
+    // Those gaps are only used to generate the `CrossGap` intersections.
+    if (!gap_geometry.IsPaintableGap(track_direction, gap_index)) {
       continue;
     }
     // For flex and grid-lanes cross gaps, advance the owner cursor to the flex
@@ -462,7 +402,9 @@ void GapDecorationsPainter::Paint(GridTrackSizingDirection track_direction,
     // `stitched_gap_index` is this gap's index in the full container's
     // geometric paint order.
     wtf_size_t stitched_gap_index = paint_order_gap_index++;
-    if (has_row_gap_fragmentation && !has_fragmented_flex_cross_gap_indices) {
+    // A stored gap slot count comes with stored decoration value indices, so
+    // these gaps do not need a stitched index.
+    if (has_row_gap_fragmentation && !stored_gap_slot_count) {
       stitched_gap_index = box_fragment_.GetLayoutObject()->StitchedRowGapIndex(
           box_fragment_, stitched_gap_index, cross_gap_owner_index);
     }
@@ -489,18 +431,12 @@ void GapDecorationsPainter::Paint(GridTrackSizingDirection track_direction,
         gap_geometry.GetGapCenterOffset(track_direction, gap_index);
 
     gap_geometry.GenerateIntersectionListForGap(
-        track_direction, gap_index, intersections, cross_gap_owner_index);
-
-    base::span<const TrackOpeningCoordinates> before_empty_openings;
-    base::span<const TrackOpeningCoordinates> after_empty_openings;
-    if (must_compute_lane_visibility) {
-      before_empty_openings = gap_geometry.EmptyOpeningsForLane(gap_index);
-      after_empty_openings = gap_geometry.EmptyOpeningsForLane(gap_index + 1);
-    }
+        track_direction, gap_index, cross_gap_owner_index,
+        needs_empty_segment_states, intersections);
 
     const wtf_size_t intersection_count = intersections.size();
-
     CHECK_GE(intersection_count, 2u);
+
     const wtf_size_t last_intersection_index = intersection_count - 1;
     wtf_size_t start = 0;
     while (start < last_intersection_index) {
@@ -522,20 +458,6 @@ void GapDecorationsPainter::Paint(GridTrackSizingDirection track_direction,
       const LayoutUnit end_cross_width =
           gap_geometry.GetCrossWidthForIntersection(
               track_direction, gap_index, end, is_main, intersections);
-
-      if (must_compute_lane_visibility) {
-        // Check visibility against the segment's gutter-edge bounds.
-        const LayoutUnit segment_start =
-            intersections[start].GetOffset() + start_cross_width / 2;
-        const LayoutUnit segment_end =
-            intersections[end].GetOffset() - end_cross_width / 2;
-        if (!IsGridLanesSegmentVisible(segment_start, segment_end,
-                                       rule_visibility, before_empty_openings,
-                                       after_empty_openings)) {
-          start = end;
-          continue;
-        }
-      }
 
       const bool start_is_cap_intersection = gap_geometry.IsCapIntersection(
           cross_direction, gap_index, start, is_main, rule_visibility,

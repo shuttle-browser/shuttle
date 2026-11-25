@@ -5,9 +5,11 @@
 // clang-format off
 import {COLORS_CSS_SELECTOR} from 'chrome://resources/cr_components/color_change_listener/colors_css_updater.js';
 import type {CrDrawerElement, CrToolbarElement, CrToolbarSearchFieldElement, SettingsUiElement} from 'chrome://settings/settings.js';
-import {loadTimeData, MAX_QUERY_LENGTH, Router, routes} from 'chrome://settings/settings.js';
-import {assertEquals, assertFalse, assertNotEquals, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import {loadTimeData, MAX_QUERY_LENGTH, MAX_SEARCH_RESULTS, Router, routes, settingsSearchBrowserProxyFactory, SettingsSearchManagerImpl} from 'chrome://settings/settings.js';
+import {assertDeepEquals, assertEquals, assertFalse, assertNotEquals, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {eventToPromise, isVisible, microtasksFinished} from 'chrome://webui-test/test_util.js';
+
+import {TestSettingsSearchHandler} from './test_settings_search_handler.js';
 // clang-format on
 
 /** @fileoverview Suite of tests for the Settings layout. */
@@ -77,6 +79,7 @@ suite('SettingsUISearch', function() {
   let searchField: CrToolbarSearchFieldElement;
 
   setup(function() {
+    loadTimeData.overrideValues({enableSettingsSearch2026: false});
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
     ui = document.createElement('settings-ui');
     document.body.appendChild(ui);
@@ -235,5 +238,56 @@ suite('SettingsRefresh2026', () => {
     assertFalse(ui.$.leftMenu.hasAttribute('collapsed'));
     assertFalse(isVisible(ui.$.leftMenu));
     assertTrue(ui.$.toolbar.showMenu);
+  });
+});
+
+suite('SettingsSearch2026', () => {
+  let ui: SettingsUiElement;
+  let searchField: CrToolbarSearchFieldElement;
+  let handler: TestSettingsSearchHandler;
+
+  function createSettingsUi() {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    ui = document.createElement('settings-ui');
+    document.body.appendChild(ui);
+    searchField = ui.$.toolbar.getSearchField();
+  }
+
+  setup(() => {
+    window.history.replaceState(undefined, '', routes.BASIC.path);
+    loadTimeData.overrideValues({enableSettingsSearch2026: true});
+    handler = new TestSettingsSearchHandler();
+    settingsSearchBrowserProxyFactory.setInstance({handler});
+    SettingsSearchManagerImpl.resetInstanceForTesting();
+
+    createSettingsUi();
+  });
+
+  test('ForwardsToolbarSearchToSearchHandler', async () => {
+    searchField.setValue('theme');
+    assertDeepEquals(
+        ['theme', MAX_SEARCH_RESULTS], await handler.whenCalled('search'));
+    assertEquals('', Router.getInstance().getQueryParameters().toString());
+  });
+
+  // TODO(b:578148222): Update once the URL `search` param is supported with
+  // the search dropdown.
+  test('IgnoresSearchUrlParam', async () => {
+    Router.getInstance().navigateTo(
+        routes.BASIC, new URLSearchParams('search=theme'));
+    await microtasksFinished();
+    assertEquals('', searchField.getValue());
+    assertEquals(0, handler.getCallCount('search'));
+  });
+
+  test('DisabledFlagDoesNotUseSearchHandler', () => {
+    loadTimeData.overrideValues({enableSettingsSearch2026: false});
+    createSettingsUi();
+    assertFalse(!!ui.shadowRoot.querySelector('settings-search-dropdown'));
+
+    searchField.setValue('theme');
+    assertEquals(0, handler.getCallCount('search'));
+    assertEquals(
+        'search=theme', Router.getInstance().getQueryParameters().toString());
   });
 });

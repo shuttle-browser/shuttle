@@ -4,6 +4,12 @@
             "blink-ai.crossbench": {
                 "crossbench_name": "blink-ai",
                 "arguments": []
+            },
+            "blink-ai-v4.crossbench": {
+                "crossbench_name": "blink-ai",
+                "arguments": [
+                    "--model=v4"
+                ]
             }
         },
         "benchmarks": {}
@@ -26,9 +32,6 @@
     "2": {
         "benchmarks": {
             "speedometer2": {
-                "abridged": false
-            },
-            "speedometer3": {
                 "abridged": false
             }
         },

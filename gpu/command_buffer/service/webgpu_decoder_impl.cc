@@ -74,7 +74,8 @@
 #if BUILDFLAG(IS_WIN)
 #include <dawn/native/D3D11Backend.h>
 #include <dawn/native/D3D12Backend.h>
-#include "ui/gl/gl_angle_util_win.h"
+
+#include "gpu/config/gpu_info_collector.h"
 #endif
 
 namespace gpu {
@@ -160,7 +161,8 @@ class WebGPUDecoderImpl final : public WebGPUDecoder {
       gles2::Outputter* outputter,
       const GpuPreferences& gpu_preferences,
       scoped_refptr<SharedContextState> shared_context_state,
-      std::unique_ptr<DawnCachingInterface> dawn_caching_interface_factory,
+      std::unique_ptr<DawnCachingInterface> dawn_caching_interface,
+      scoped_refptr<DawnInstance> dawn_instance,
       IsolationKeyProvider* isolation_key_provider);
 
   WebGPUDecoderImpl(const WebGPUDecoderImpl&) = delete;
@@ -424,6 +426,12 @@ class WebGPUDecoderImpl final : public WebGPUDecoder {
 
   bool use_blocklist() const;
 
+  // The safety level is queried from `dawn_instance_` so that it always
+  // matches the configuration of the instance servicing this decoder.
+  webgpu::SafetyLevel safety_level() const {
+    return dawn_instance_->safety_level();
+  }
+
   bool ClearSharedImageWithSkia(const Mailbox& mailbox);
 
   scoped_refptr<SharedContextState> shared_context_state_;
@@ -432,11 +440,9 @@ class WebGPUDecoderImpl final : public WebGPUDecoder {
       shared_image_representation_factory_;
 
   std::unique_ptr<DawnCachingInterface> dawn_caching_interface_;
-  std::unique_ptr<dawn::platform::Platform> dawn_platform_;
-  std::unique_ptr<DawnInstance> dawn_instance_;
+  scoped_refptr<DawnInstance> dawn_instance_;
   std::unique_ptr<DawnServiceMemoryTransferService> memory_transfer_service_;
 
-  webgpu::SafetyLevel safety_level_ = webgpu::SafetyLevel::kSafe;
   WebGPUAdapterName use_webgpu_adapter_ = WebGPUAdapterName::kDefault;
   WebGPUPowerPreference use_webgpu_power_preference_ =
       WebGPUPowerPreference::kNone;
@@ -1084,8 +1090,11 @@ std::unique_ptr<WebGPUDecoder> CreateWebGPUDecoderImpl(
     gles2::Outputter* outputter,
     const GpuPreferences& gpu_preferences,
     scoped_refptr<SharedContextState> shared_context_state,
+    scoped_refptr<DawnInstance> dawn_instance,
     const DawnCacheOptions& dawn_cache_options,
     IsolationKeyProvider* isolation_key_provider) {
+  CHECK(dawn_instance);
+
   // Construct a Dawn caching interface if the Dawn configurations enables it.
   // If a handle was set, pass the relevant handle and CacheBlob callback so that
   // writing to disk is enabled. Otherwise pass an incognito in-memory version.
@@ -1109,7 +1118,7 @@ std::unique_ptr<WebGPUDecoder> CreateWebGPUDecoderImpl(
       client, command_buffer_service, shared_image_manager,
       std::move(memory_tracker), outputter, gpu_preferences,
       std::move(shared_context_state), std::move(dawn_caching_interface),
-      isolation_key_provider);
+      std::move(dawn_instance), isolation_key_provider);
 }
 
 WebGPUDecoderImpl::WebGPUDecoderImpl(
@@ -1121,6 +1130,7 @@ WebGPUDecoderImpl::WebGPUDecoderImpl(
     const GpuPreferences& gpu_preferences,
     scoped_refptr<SharedContextState> shared_context_state,
     std::unique_ptr<DawnCachingInterface> dawn_caching_interface,
+    scoped_refptr<DawnInstance> dawn_instance,
     IsolationKeyProvider* isolation_key_provider)
     : WebGPUDecoder(client, command_buffer_service, outputter),
       shared_context_state_(std::move(shared_context_state)),
@@ -1132,22 +1142,11 @@ WebGPUDecoderImpl::WebGPUDecoderImpl(
           base::FeatureList::IsEnabled(features::kWebGPUBlobCache)
               ? std::move(dawn_caching_interface)
               : nullptr),
-      dawn_platform_(new DawnPlatform(
-          /*progress_reporter=*/nullptr,
-          /*uma_prefix=*/"GPU.WebGPU.",
-          /*record_cache_count_uma=*/false)),
+      dawn_instance_(std::move(dawn_instance)),
       memory_transfer_service_(new DawnServiceMemoryTransferService(this)),
       wire_serializer_(new DawnServiceSerializer(client)),
       isolation_key_provider_(isolation_key_provider) {
-  if (gpu_preferences.enable_webgpu_developer_features ||
-      gpu_preferences.enable_webgpu_experimental_features) {
-    safety_level_ = webgpu::SafetyLevel::kSafeExperimental;
-  }
-  if (gpu_preferences.enable_unsafe_webgpu) {
-    safety_level_ = webgpu::SafetyLevel::kUnsafe;
-  }
-  dawn_instance_ = DawnInstance::Create(dawn_platform_.get(), gpu_preferences,
-                                        safety_level_);
+  CHECK(dawn_instance_);
 
   use_webgpu_adapter_ = gpu_preferences.use_webgpu_adapter;
   use_webgpu_power_preference_ = gpu_preferences.use_webgpu_power_preference;
@@ -1253,8 +1252,6 @@ void WebGPUDecoderImpl::Destroy(bool have_context) {
   known_device_metadata_.clear();
   wire_server_ = nullptr;
 
-  dawn_instance_->DisconnectDawnPlatform();
-
   destroyed_ = true;
 }
 
@@ -1300,13 +1297,13 @@ bool WebGPUDecoderImpl::IsFeatureExposed(wgpu::FeatureName feature) const {
     case wgpu::FeatureName::MultiDrawIndirect:
     case wgpu::FeatureName::SharedBufferMemoryD3D12Resource:
     case wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix:
-      return safety_level_ == webgpu::SafetyLevel::kUnsafe;
+      return safety_level() == webgpu::SafetyLevel::kUnsafe;
     case wgpu::FeatureName::AdapterPropertiesD3D:
     case wgpu::FeatureName::AdapterPropertiesVk:
     case wgpu::FeatureName::AdapterPropertiesMemoryHeaps:
     case wgpu::FeatureName::ShaderModuleCompilationOptions:
-      return safety_level_ == webgpu::SafetyLevel::kUnsafe ||
-             safety_level_ == webgpu::SafetyLevel::kSafeExperimental;
+      return safety_level() == webgpu::SafetyLevel::kUnsafe ||
+             safety_level() == webgpu::SafetyLevel::kSafeExperimental;
     case wgpu::FeatureName::CoreFeaturesAndLimits:
     case wgpu::FeatureName::DepthClipControl:
     case wgpu::FeatureName::Depth32FloatStencil8:
@@ -1335,7 +1332,7 @@ bool WebGPUDecoderImpl::IsFeatureExposed(wgpu::FeatureName feature) const {
     case wgpu::FeatureName::AtomicVec2uMinMax: {
       // Likely case when no features are blocked.
       if (runtime_unsafe_features_.empty() ||
-          safety_level_ == webgpu::SafetyLevel::kUnsafe) {
+          safety_level() == webgpu::SafetyLevel::kUnsafe) {
         return true;
       }
 
@@ -1371,8 +1368,8 @@ WGPUFuture WebGPUDecoderImpl::RequestAdapterImpl(
   if (force_webgpu_compat_ ||
       (static_cast<wgpu::FeatureLevel>(options->featureLevel) ==
            wgpu::FeatureLevel::Compatibility &&
-       (safety_level_ == webgpu::SafetyLevel::kUnsafe ||
-        safety_level_ == webgpu::SafetyLevel::kSafeExperimental ||
+       (safety_level() == webgpu::SafetyLevel::kUnsafe ||
+        safety_level() == webgpu::SafetyLevel::kSafeExperimental ||
         base::FeatureList::IsEnabled(features::kWebGPUCompatibilityMode)))) {
     feature_level = wgpu::FeatureLevel::Compatibility;
   }
@@ -1590,7 +1587,7 @@ WGPUFuture WebGPUDecoderImpl::RequestDeviceImpl(
 
   // Enable timestamp quantization by default for privacy, unless
   // --enable-webgpu-developer-features is used.
-  if (safety_level_ == webgpu::SafetyLevel::kSafe) {
+  if (safety_level() == webgpu::SafetyLevel::kSafe) {
     require_device_enabled_toggles.push_back("timestamp_quantization");
   } else {
     require_device_disabled_toggles.push_back("timestamp_quantization");
@@ -1677,7 +1674,7 @@ bool WebGPUDecoderImpl::use_blocklist() const {
   // Enable the blocklist unless --enable-unsafe-webgpu or
   // --disable-dawn-features=adapter_blocklist
   return !(
-      safety_level_ == webgpu::SafetyLevel::kUnsafe ||
+      safety_level() == webgpu::SafetyLevel::kUnsafe ||
       std::ranges::contains(require_disabled_toggles_, "adapter_blocklist"));
 }
 
@@ -1689,7 +1686,7 @@ wgpu::Adapter WebGPUDecoderImpl::CreatePreferredAdapter(
   // The fallback adapter is SwiftShader, which is only allowed with
   // --enable-unsafe-webgpu. Don't make Dawn load it otherwise.
   const bool allow_fallback_adapter =
-      safety_level_ == webgpu::SafetyLevel::kUnsafe;
+      safety_level() == webgpu::SafetyLevel::kUnsafe;
   if (force_fallback && !allow_fallback_adapter) {
     return nullptr;
   }
@@ -1754,31 +1751,17 @@ wgpu::Adapter WebGPUDecoderImpl::CreatePreferredAdapter(
   ChainStruct(adapter_options, &dawn_adapter_toggles);
 
 #if BUILDFLAG(IS_WIN)
-  // On Windows, query the LUID of ANGLE's adapter.
-  Microsoft::WRL::ComPtr<ID3D11Device> d3d11_device =
-      gl::QueryD3D11DeviceObjectFromANGLE();
-  if (!d3d11_device) {
-    LOG(ERROR) << "Failed to query ID3D11Device from ANGLE.";
-    return nullptr;
-  }
-
-  Microsoft::WRL::ComPtr<IDXGIDevice> dxgi_device;
-  HRESULT hr = d3d11_device.As(&dxgi_device);
-  CHECK_EQ(hr, S_OK);
-  Microsoft::WRL::ComPtr<IDXGIAdapter> dxgi_adapter;
-  hr = dxgi_device->GetAdapter(&dxgi_adapter);
-  CHECK_EQ(hr, S_OK);
-
-  DXGI_ADAPTER_DESC adapter_desc;
-  if (!SUCCEEDED(dxgi_adapter->GetDesc(&adapter_desc))) {
-    LOG(ERROR) << "Failed to get DXGI_ADAPTER_DESC from ANGLE.";
-    return nullptr;
-  }
-
-  // Chain the LUID from ANGLE.
   dawn::native::d3d::RequestAdapterOptionsLUID adapter_options_luid = {};
-  adapter_options_luid.adapterLUID = adapter_desc.AdapterLuid;
-  ChainStruct(adapter_options, &adapter_options_luid);
+  if (!force_fallback) {
+    // On Windows, query the LUID of ANGLE's adapter.
+    if (!GetActiveAdapterLuid(&adapter_options_luid.adapterLUID)) {
+      LOG(ERROR) << "Failed to query ID3D11Device from ANGLE.";
+      return nullptr;
+    }
+
+    // Chain the LUID from ANGLE.
+    ChainStruct(adapter_options, &adapter_options_luid);
+  }
 #endif
 
 #if BUILDFLAG(USE_DAWN) && BUILDFLAG(DAWN_ENABLE_BACKEND_OPENGLES)

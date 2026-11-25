@@ -80,12 +80,12 @@
 #include "third_party/blink/renderer/core/layout/forms/layout_fieldset.h"
 #include "third_party/blink/renderer/core/layout/forms/layout_text_control.h"
 #include "third_party/blink/renderer/core/layout/fragmentation_utils.h"
-#include "third_party/blink/renderer/core/layout/gap/gap_geometry.h"
 #include "third_party/blink/renderer/core/layout/geometry/box_strut.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_rect.h"
 #include "third_party/blink/renderer/core/layout/hit_test_result.h"
 #include "third_party/blink/renderer/core/layout/inline/inline_cursor.h"
 #include "third_party/blink/renderer/core/layout/layout_box_model_object.h"
+#include "third_party/blink/renderer/core/layout/layout_box_utils.h"
 #include "third_party/blink/renderer/core/layout/layout_embedded_content.h"
 #include "third_party/blink/renderer/core/layout/layout_html_canvas.h"
 #include "third_party/blink/renderer/core/layout/layout_inline.h"
@@ -153,7 +153,6 @@ static const unsigned kBackgroundObscurationTestMaxDepth = 4;
 
 struct SameSizeAsLayoutBox : public LayoutBoxModelObject {
   PhysicalOffset frame_location_;
-  PhysicalSize frame_size_;
   PhysicalSize previous_size;
   LayoutResultList previous_layout_results;
   MinMaxSizes intrinsic_logical_widths;
@@ -252,7 +251,7 @@ LayoutUnit TextAreaIntrinsicBlockSize(const HTMLTextAreaElement& textarea,
     return box;
   })();
 
-  return target_box.FirstLineStyleRef().ComputedLineHeightAsFixed() *
+  return target_box.FirstLineStyle().ComputedLineHeightAsFixed() *
              textarea.rows() +
          scrollbar_thickness;
 }
@@ -265,7 +264,7 @@ LayoutUnit TextFieldIntrinsicBlockSize(const HTMLInputElement& input,
   const LayoutBox& target_box = (inner_editor && inner_editor->GetLayoutBox())
                                     ? *inner_editor->GetLayoutBox()
                                     : box;
-  return target_box.FirstLineStyleRef().ComputedLineHeightAsFixed();
+  return target_box.FirstLineStyle().ComputedLineHeightAsFixed();
 }
 
 LayoutUnit FileUploadControlIntrinsicInlineSize(const HTMLInputElement& input,
@@ -528,14 +527,8 @@ const PhysicalBoxFragment& FragmentForBottomEdge(
 
 }  // namespace
 
-LayoutBoxRareData::LayoutBoxRareData()
-    :  // TODO(rego): We should store these based on physical direction.
-      has_override_containing_block_content_logical_width_(false),
-      has_previous_content_box_rect_(false) {}
-
 void LayoutBoxRareData::Trace(Visitor* visitor) const {
   visitor->Trace(layout_child_);
-  visitor->Trace(previous_gap_geometries_);
 }
 
 LayoutBox::LayoutBox(ContainerNode* node) : LayoutBoxModelObject(node) {
@@ -825,8 +818,8 @@ void LayoutBox::UpdateShapeOutsideInfoAfterStyleChange(
   }
 
   if (shape_outside || shape_outside != old_shape_outside) {
-    if (auto* containing_block = ContainingBlock()) {
-      containing_block->SetChildNeedsLayout();
+    if (LayoutBox* container = ContainingBox()) {
+      container->SetChildNeedsLayout();
     }
   }
 }
@@ -863,22 +856,22 @@ void LayoutBox::UpdateGridPositionAfterStyleChange(
   const bool was_out_of_flow = old_style->HasOutOfFlowPosition();
   const bool is_out_of_flow = Style().HasOutOfFlowPosition();
 
-  LayoutBox* containing_block = ContainingBlock();
-  if ((containing_block && containing_block->IsLayoutGridOrGridLanes()) &&
+  LayoutBox* container = ContainingBox();
+  if ((container && container->IsLayoutGridOrGridLanes()) &&
       GridStyleChanged(old_style, Style())) {
     // Out-of-flow items do not impact grid/grid-lanes placement.
     // TODO(kschmi): Scope this so that it only dirties the grid/grid-lanes when
     // track sizing depends on item sizes.
     if (!was_out_of_flow || !is_out_of_flow) {
-      containing_block->SetGridPlacementDirty(true);
+      container->SetGridPlacementDirty(true);
     }
 
     // For out-of-flow elements with grid/grid-lanes container as containing
     // block, we need to run the entire algorithm to place and size them
     // correctly. As a result, we trigger a full layout.
     if (is_out_of_flow) {
-      containing_block->SetNeedsLayout(layout_invalidation_reason::kGridChanged,
-                                       kMarkContainerChain);
+      container->SetNeedsLayout(layout_invalidation_reason::kGridChanged,
+                                kMarkContainerChain);
     }
   }
 
@@ -909,31 +902,23 @@ void LayoutBox::UpdateScrollSnapMappingAfterStyleChange(
   // scroll-snap-align invalidates layout as we need to propagate the
   // snap-areas up the fragment-tree.
   if (old_style.GetScrollSnapAlign() != Style().GetScrollSnapAlign()) {
-    if (auto* containing_block = ContainingBlock()) {
-      containing_block->SetNeedsLayout(layout_invalidation_reason::kStyleChange,
-                                       kMarkContainerChain);
+    if (LayoutBox* container = ContainingBox()) {
+      container->SetNeedsLayout(layout_invalidation_reason::kStyleChange,
+                                kMarkContainerChain);
     }
   }
 
-  auto SnapAreaDidChange = [&]() {
-    auto* snap_container = ContainingScrollContainer();
-    if (snap_container && !snap_container->NeedsLayout()) {
-      snap_container->GetScrollableArea()->EnqueueForSnapUpdateIfNeeded();
-    }
-  };
-
-  // scroll-snap-stop and scroll-margin invalidate the snap area.
+  // scroll-snap-stop, scroll-margin, and transform invalidate the snap area.
   if (old_style.ScrollSnapStop() != Style().ScrollSnapStop() ||
       old_style.ScrollMarginBottom() != Style().ScrollMarginBottom() ||
       old_style.ScrollMarginLeft() != Style().ScrollMarginLeft() ||
       old_style.ScrollMarginTop() != Style().ScrollMarginTop() ||
-      old_style.ScrollMarginRight() != Style().ScrollMarginRight()) {
-    SnapAreaDidChange();
-  }
-
-  // Transform invalidates the snap area.
-  if (old_style.Transform() != Style().Transform()) {
-    SnapAreaDidChange();
+      old_style.ScrollMarginRight() != Style().ScrollMarginRight() ||
+      old_style.Transform() != Style().Transform()) {
+    auto* snap_container = ContainingScrollContainer();
+    if (snap_container && !snap_container->NeedsLayout()) {
+      snap_container->GetScrollableArea()->EnqueueForSnapUpdateIfNeeded();
+    }
   }
 }
 
@@ -986,9 +971,7 @@ void LayoutBox::LayoutSubtreeRoot() {
   const LayoutResult* result = BlockNode(this).Layout(space);
   GetDocument().GetFrame()->GetInputMethodController().DidLayoutSubtree(*this);
 
-  if (IsOutOfFlowPositioned()) {
-    result->CopyMutableOutOfFlowData(*previous_result);
-  }
+  result->CopyMutableData(*previous_result);
 
   // Even if we are a subtree layout root we need to mark our containing-block
   // for layout if:
@@ -1004,9 +987,9 @@ void LayoutBox::LayoutSubtreeRoot() {
   if (previous_fragment.FirstBaseline() != fragment.FirstBaseline() ||
       previous_fragment.LastBaseline() != fragment.LastBaseline() ||
       fragment.HasPropagatedLayoutObjects()) {
-    if (auto* containing_block = ContainingBlock()) {
-      containing_block->SetNeedsLayout(
-          layout_invalidation_reason::kChildChanged, kMarkContainerChain);
+    if (auto* container = ContainingBox()) {
+      container->SetNeedsLayout(layout_invalidation_reason::kChildChanged,
+                                kMarkContainerChain);
     }
   }
 }
@@ -1910,29 +1893,12 @@ bool LayoutBox::ApplyBoxClips(
 
 // TODO (lajava) Shouldn't we implement these functions based on physical
 // direction ?.
-LayoutUnit LayoutBox::OverrideContainingBlockContentLogicalWidth() const {
-  NOT_DESTROYED();
-  DCHECK(HasOverrideContainingBlockContentLogicalWidth());
-  return rare_data_->override_containing_block_content_logical_width_;
-}
-
-// TODO (lajava) Shouldn't we implement these functions based on physical
-// direction ?.
-bool LayoutBox::HasOverrideContainingBlockContentLogicalWidth() const {
-  NOT_DESTROYED();
-  return rare_data_ &&
-         rare_data_->has_override_containing_block_content_logical_width_;
-}
-
-// TODO (lajava) Shouldn't we implement these functions based on physical
-// direction ?.
 void LayoutBox::SetOverrideContainingBlockContentLogicalWidth(
     LayoutUnit logical_width) {
   NOT_DESTROYED();
   DCHECK_GE(logical_width, LayoutUnit(-1));
   EnsureRareData().override_containing_block_content_logical_width_ =
       logical_width;
-  EnsureRareData().has_override_containing_block_content_logical_width_ = true;
 }
 
 bool LayoutBox::HitTestAllPhases(HitTestResult& result,
@@ -2154,8 +2120,8 @@ void LayoutBox::ImageChanged(WrappedImagePtr image,
     ShapeOutsideInfo& info = ShapeOutsideInfo::EnsureInfo(*this);
     if (!info.IsComputingShape()) {
       info.MarkShapeAsDirty();
-      if (auto* containing_block = ContainingBlock()) {
-        containing_block->SetChildNeedsLayout();
+      if (auto* container = ContainingBox()) {
+        container->SetChildNeedsLayout();
       }
     }
   }
@@ -2423,15 +2389,18 @@ LayoutUnit LayoutBox::ContainingBlockLogicalHeightForRelPositioned() const {
 
 LayoutUnit LayoutBox::ContainingBlockLogicalWidthForContent() const {
   NOT_DESTROYED();
-  if (HasOverrideContainingBlockContentLogicalWidth())
-    return OverrideContainingBlockContentLogicalWidth();
-
-  const LayoutBox* cb = ContainingBlock();
-  if (IsOutOfFlowPositioned()) {
-    const PhysicalSize size = cb->PhysicalPaddingBoxRect().size;
-    return cb->Style().IsHorizontalWritingMode() ? size.width : size.height;
+  if (rare_data_ &&
+      rare_data_->override_containing_block_content_logical_width_) {
+    return *rare_data_->override_containing_block_content_logical_width_;
   }
-  return cb->ContentLogicalWidth();
+
+  const LayoutBox* container = ContainingBox();
+  if (IsOutOfFlowPositioned()) {
+    const PhysicalSize size = container->PhysicalPaddingBoxRect().size;
+    return container->Style().IsHorizontalWritingMode() ? size.width
+                                                        : size.height;
+  }
+  return container->ContentLogicalWidth();
 }
 
 PhysicalOffset LayoutBox::OffsetFromContainerInternal(
@@ -2601,7 +2570,7 @@ void LayoutBox::AppendLayoutResult(const LayoutResult* result) {
   // |layout_results_| is particularly critical when side effects are disabled.
   DCHECK(!DisableLayoutSideEffectsScope::IsDisabled());
   layout_results_.push_back(std::move(result));
-  InvalidateCachedGeometry();
+  SetHavePhysicalFragmentsChanged();
   CheckDidAddFragment(*this, fragment);
 }
 
@@ -2637,7 +2606,7 @@ void LayoutBox::ReplaceLayoutResult(const LayoutResult* result,
   // |layout_results_| is particularly critical when side effects are disabled.
   DCHECK(!DisableLayoutSideEffectsScope::IsDisabled());
   layout_results_[index] = std::move(result);
-  InvalidateCachedGeometry();
+  SetHavePhysicalFragmentsChanged();
   CheckDidAddFragment(*this, fragment, index);
 
   if (got_new_fragment && !fragment.GetBreakToken()) {
@@ -2682,7 +2651,7 @@ void LayoutBox::RebuildFragmentTreeSpine() {
       // are now outdated. Remove them.
       measure_cache->Clear();
     }
-    container = container->ContainingNGBox();
+    container = container->ContainingBox();
   }
 
   if (container && container->NeedsLayout()) {
@@ -2705,7 +2674,7 @@ void LayoutBox::ShrinkLayoutResults(wtf_size_t results_to_keep) {
   // |layout_results_| is particularly critical when side effects are disabled.
   DCHECK(!DisableLayoutSideEffectsScope::IsDisabled());
   layout_results_.Shrink(results_to_keep);
-  InvalidateCachedGeometry();
+  SetHavePhysicalFragmentsChanged();
 }
 
 #if EXPENSIVE_DCHECKS_ARE_ON()
@@ -2716,12 +2685,6 @@ void LayoutBox::CheckMayHaveFragmentItems() const {
   }
 }
 #endif
-
-void LayoutBox::InvalidateCachedGeometry() {
-  NOT_DESTROYED();
-  SetHasValidCachedGeometry(false);
-  SetHavePhysicalFragmentsChanged();
-}
 
 // static
 void LayoutBox::InvalidateItems(const LayoutResult& result) {
@@ -2850,7 +2813,7 @@ bool LayoutBox::DoesAncestryAllowColumnSpanner(
   NOT_DESTROYED();
   DCHECK(IsInsideMulticol());
   for (const LayoutBox* ancestor = Parent()->EnclosingBox(); ancestor;
-       ancestor = ancestor->ContainingBlock()) {
+       ancestor = ancestor->ContainingBox()) {
     if (ancestor->IsMulticolContainer()) {
       return true;
     }
@@ -2965,8 +2928,8 @@ void LayoutBox::RemovePositionedObjects(LayoutObject* stay_within) {
   // Fixed containing blocks are always absolute containing blocks too,
   // so we only need to look for absolute containing blocks.
   if (has_positioned_children_in_fragment_tree) {
-    if (LayoutBox* containing_block = ContainingBlockForAbsolutePosition()) {
-      containing_block->SetChildNeedsLayout(kMarkContainerChain);
+    if (LayoutBox* container = ContainingBoxForAbsolutePosition()) {
+      container->SetChildNeedsLayout(kMarkContainerChain);
     }
   }
 }
@@ -3358,18 +3321,10 @@ RecalcScrollableOverflowResult LayoutBox::RecalcScrollableOverflow() {
         }
       }
 
-      if (RuntimeEnabledFeatures::
-              LayoutCloneForScrollableOverflowChangeEnabled()) {
-        if (rebuild_fragment_tree || scrollable_overflow) {
-          layout_result = LayoutResult::CloneWithPostLayoutFragments(
-              *layout_result, scrollable_overflow);
-          SetHavePhysicalFragmentsChanged();
-        }
-      } else {
-        if (scrollable_overflow) {
-          fragment.GetMutableForStyleRecalc().SetScrollableOverflow(
-              *scrollable_overflow);
-        }
+      if (rebuild_fragment_tree || scrollable_overflow) {
+        layout_result = LayoutResult::CloneWithPostLayoutFragments(
+            *layout_result, scrollable_overflow);
+        SetHavePhysicalFragmentsChanged();
       }
     }
     SetScrollableOverflowFromLayoutResults();
@@ -3492,30 +3447,31 @@ void LayoutBox::SetVisualOverflow(const PhysicalRect& self,
   }
 }
 
+void LayoutBox::RecalcVisualOverflow() {
+  NOT_DESTROYED();
+  if (!PhysicalFragmentCount()) {
+    ClearVisualOverflow();
+    return;
+  }
+
+  DCHECK(!DisplayLockUtilities::LockedAncestorPreventingPrePaint(*this));
+  for (const PhysicalBoxFragment& fragment : PhysicalFragments()) {
+    fragment.GetMutableForPainting().RecalcInkOverflow();
+  }
+}
+
 void LayoutBox::ClearVisualOverflow() {
   NOT_DESTROYED();
   if (overflow_)
     overflow_->visual_overflow.reset();
-  // overflow_ will be reset by MutableForPainting::ClearPreviousOverflowData()
-  // if we don't need it to store previous overflow data.
-}
-
-bool LayoutBox::CanUseFragmentsForVisualOverflow() const {
-  NOT_DESTROYED();
-  // TODO(crbug.com/1144203): Legacy, or no-fragments-objects such as
-  // table-column. What to do with them is TBD.
-  if (!PhysicalFragmentCount())
-    return false;
-  const PhysicalBoxFragment& fragment = *GetPhysicalFragment(0);
-  if (!fragment.CanUseFragmentsForInkOverflow())
-    return false;
-  return true;
+  // overflow_ will be reset by
+  // MutableForPainting::ClearPreviousVisualOverflowData() if we don't need it
+  // to store previous overflow data.
 }
 
 // Copy visual overflow from |PhysicalFragments()|.
 void LayoutBox::CopyVisualOverflowFromFragments() {
   NOT_DESTROYED();
-  DCHECK(CanUseFragmentsForVisualOverflow());
   const PhysicalRect previous_visual_overflow =
       VisualOverflowRectAllowingUnset();
   CopyVisualOverflowFromFragmentsWithoutInvalidations();
@@ -3527,7 +3483,6 @@ void LayoutBox::CopyVisualOverflowFromFragments() {
 
 void LayoutBox::CopyVisualOverflowFromFragmentsWithoutInvalidations() {
   NOT_DESTROYED();
-  DCHECK(CanUseFragmentsForVisualOverflow());
   if (!PhysicalFragmentCount()) [[unlikely]] {
     DCHECK(IsLayoutTableCol());
     ClearVisualOverflow();
@@ -3536,7 +3491,6 @@ void LayoutBox::CopyVisualOverflowFromFragmentsWithoutInvalidations() {
 
   if (PhysicalFragmentCount() == 1) {
     const PhysicalBoxFragment& fragment = *GetPhysicalFragment(0);
-    DCHECK(fragment.CanUseFragmentsForInkOverflow());
     if (!fragment.HasInkOverflow()) {
       ClearVisualOverflow();
       return;
@@ -3547,15 +3501,12 @@ void LayoutBox::CopyVisualOverflowFromFragmentsWithoutInvalidations() {
   }
 
   // When block-fragmented, stitch visual overflows from all fragments.
-  const LayoutBox* cb = ContainingBlock();
-  DCHECK(cb);
-  const WritingMode writing_mode = cb->Style().GetWritingMode();
+  const WritingMode writing_mode = ContainingBox()->Style().GetWritingMode();
   bool has_overflow = false;
   PhysicalRect self_rect;
   PhysicalRect contents_rect;
   const PhysicalBoxFragment* last_fragment = nullptr;
   for (const PhysicalBoxFragment& fragment : PhysicalFragments()) {
-    DCHECK(fragment.CanUseFragmentsForInkOverflow());
     if (!fragment.HasInkOverflow()) {
       last_fragment = &fragment;
       continue;
@@ -3706,8 +3657,6 @@ void LayoutBox::CheckIsVisualOverflowComputed() const {
   /*
   if (InkOverflow::ReadUnsetAsNoneScope::IsActive())
     return;
-  if (!CanUseFragmentsForVisualOverflow())
-    return;
   // TODO(crbug.com/1203402): MathML needs some more work.
   if (IsMathML())
     return;
@@ -3766,56 +3715,18 @@ LayoutUnit LayoutBox::StitchedBlockSize() const {
 
 PhysicalSize LayoutBox::StitchedSize() const {
   NOT_DESTROYED();
-  if (!HasValidCachedGeometry()) {
-    // const_cast in order to update the cached value.
-    const_cast<LayoutBox*>(this)->SetHasValidCachedGeometry(true);
-    const_cast<LayoutBox*>(this)->frame_size_ = ComputeSize();
-  }
-  return frame_size_;
-}
-
-PhysicalSize LayoutBox::ComputeSize() const {
-  NOT_DESTROYED();
-  const auto& results = GetLayoutResults();
-  if (results.size() == 0) {
+  if (!PhysicalFragmentCount()) {
     return PhysicalSize();
   }
-  const auto& first_fragment = results[0]->GetPhysicalFragment();
-  if (results.size() == 1u) {
+  const auto& first_fragment = *GetPhysicalFragment(0);
+  if (PhysicalFragmentCount() == 1u ||
+      (first_fragment.GetBreakToken() &&
+       first_fragment.GetBreakToken()->IsRepeated())) {
     return first_fragment.Size();
   }
   WritingModeConverter converter(first_fragment.Style().GetWritingDirection());
-  const BlockBreakToken* previous_break_token = nullptr;
-  LogicalSize size;
-  for (const auto& result : results) {
-    const auto& physical_fragment =
-        To<PhysicalBoxFragment>(result->GetPhysicalFragment());
-    LogicalSize fragment_logical_size =
-        converter.ToLogical(physical_fragment.Size());
-    if (physical_fragment.IsFirstForNode()) {
-      // Inline-size will only be set at the first fragment. Subsequent
-      // fragments may have different inline-size (either because fragmentainer
-      // inline-size is variable, or e.g. because available inline-size is
-      // affected by floats). The legacy engine doesn't handle variable
-      // inline-size (since it doesn't really understand fragmentation).  This
-      // means that things like offsetWidth won't work correctly (since that's
-      // still being handled by the legacy engine), but at least layout,
-      // painting and hit-testing will be correct.
-      size = fragment_logical_size;
-    } else {
-      DCHECK(previous_break_token);
-      size.block_size = fragment_logical_size.block_size +
-                        previous_break_token->ConsumedBlockSize();
-    }
-    previous_break_token = physical_fragment.GetBreakToken();
-    // Continue in order to update logical height, unless this fragment is
-    // past the block-end of the generating node (happens with overflow) or
-    // is a repeated one.
-    if (!previous_break_token || previous_break_token->IsRepeated() ||
-        previous_break_token->IsAtBlockEnd()) {
-      break;
-    }
-  }
+  LogicalSize size = converter.ToLogical(first_fragment.Size());
+  size.block_size = BoxTotalBlockSize(*this);
   return converter.ToPhysical(size);
 }
 
@@ -3960,23 +3871,7 @@ void LayoutBox::MutableForPainting::SavePreviousPhysicalFragments() {
   GetLayoutBox().previous_layout_results_ = GetLayoutBox().layout_results_;
 }
 
-void LayoutBox::MutableForPainting::SavePreviousOverflowData() {
-  DCHECK(!RuntimeEnabledFeatures::PrePaintBoxInvalidatorUsesFragmentsEnabled());
-  if (!GetLayoutBox().overflow_)
-    GetLayoutBox().overflow_ = MakeGarbageCollected<BoxOverflowModel>();
-  auto& previous_overflow = GetLayoutBox().overflow_->previous_overflow_data;
-  if (!previous_overflow)
-    previous_overflow.emplace();
-  previous_overflow->previous_scrollable_overflow_rect =
-      GetLayoutBox().ScrollableOverflowRect();
-  previous_overflow->previous_visual_overflow_rect =
-      GetLayoutBox().VisualOverflowRect();
-  previous_overflow->previous_self_visual_overflow_rect =
-      GetLayoutBox().SelfVisualOverflowRect();
-}
-
 void LayoutBox::MutableForPainting::SavePreviousVisualOverflowData() {
-  DCHECK(RuntimeEnabledFeatures::PrePaintBoxInvalidatorUsesFragmentsEnabled());
   if (!GetLayoutBox().overflow_) {
     GetLayoutBox().overflow_ = MakeGarbageCollected<BoxOverflowModel>();
   }
@@ -3989,25 +3884,6 @@ void LayoutBox::MutableForPainting::SavePreviousVisualOverflowData() {
       GetLayoutBox().VisualOverflowRect();
   previous_overflow->previous_self_visual_overflow_rect =
       GetLayoutBox().SelfVisualOverflowRect();
-}
-
-void LayoutBox::MutableForPainting::SavePreviousGapGeometries() {
-  DCHECK(!RuntimeEnabledFeatures::PrePaintBoxInvalidatorUsesFragmentsEnabled());
-  auto* previous_gap_geometries =
-      MakeGarbageCollected<GCedHeapVector<Member<const GapGeometry>>>();
-  for (const PhysicalBoxFragment& fragment :
-       GetLayoutBox().PhysicalFragments()) {
-    previous_gap_geometries->push_back(fragment.GetGapGeometry());
-  }
-  GetLayoutBox().EnsureRareData().previous_gap_geometries_ =
-      previous_gap_geometries;
-}
-
-void LayoutBox::MutableForPainting::ClearPreviousGapGeometries() {
-  DCHECK(!RuntimeEnabledFeatures::PrePaintBoxInvalidatorUsesFragmentsEnabled());
-  if (auto* rare_data = GetLayoutBox().rare_data_.Get()) {
-    rare_data->previous_gap_geometries_ = nullptr;
-  }
 }
 
 void LayoutBox::MutableForPainting::SetPreviousGeometryForLayoutShiftTracking(
@@ -4492,19 +4368,19 @@ LayoutBox::NonOverflowingScrollRanges() const {
   return layout_results.front()->NonOverflowingScrollRanges();
 }
 
-const BoxStrut& LayoutBox::OutOfFlowInsetsForGetComputedStyle() const {
+const PhysicalBoxStrut& LayoutBox::InsetsForGetComputedStyle() const {
   NOT_DESTROYED();
-  const auto& layout_results = GetLayoutResults();
   // We should call this function only after the node is laid out.
-  CHECK(layout_results.size());
+  CHECK(PhysicalFragmentCount());
   // We only need to check the first fragment, because when the box is
   // fragmented, insets are duplicated on all fragments.
 #if EXPENSIVE_DCHECKS_ARE_ON()
-  AssertSameDataOnLayoutResults(layout_results, [](const auto& result) {
-    return result->OutOfFlowInsetsForGetComputedStyle();
+  AssertSameDataOnLayoutResults(GetLayoutResults(), [](const auto& result) {
+    return To<PhysicalBoxFragment>(result->GetPhysicalFragment())
+        .UsedPositionInsets();
   });
 #endif
-  return GetLayoutResults().front()->OutOfFlowInsetsForGetComputedStyle();
+  return GetPhysicalFragment(0)->UsedPositionInsets();
 }
 
 Element* LayoutBox::AccessibilityAnchor() const {
@@ -4633,7 +4509,6 @@ PhysicalRect LayoutBox::BoundingBoxRelativeToFirstFragment() const {
 
 bool LayoutBox::IsReadingFlowContainer() const {
   NOT_DESTROYED();
-  // TODO(celestepan): For grid-lanes, we'll want to replace the keywords used.
   const ComputedStyle& style = Style();
   switch (style.ReadingFlow()) {
     case EReadingFlow::kNormal:
@@ -4642,15 +4517,13 @@ bool LayoutBox::IsReadingFlowContainer() const {
     case EReadingFlow::kFlexFlow:
       return IsFlexibleBox();
     case EReadingFlow::kGridRows:
-      return IsLayoutGrid() ||
-             (IsLayoutGridLanes() &&
-              style.GridLanesTrackSizingDirection() == kForRows);
     case EReadingFlow::kGridColumns:
-      return IsLayoutGrid() ||
-             (IsLayoutGridLanes() &&
-              style.GridLanesTrackSizingDirection() == kForColumns);
     case EReadingFlow::kGridOrder:
-      return IsLayoutGridOrGridLanes();
+      return IsLayoutGrid();
+    case EReadingFlow::kGridLanesFlow:
+    case EReadingFlow::kGridLanesTrack:
+    case EReadingFlow::kGridLanesOrder:
+      return IsLayoutGridLanes();
     case EReadingFlow::kSourceOrder:
       return IsLayoutBlock() || IsFlexibleBox() || IsLayoutGridOrGridLanes();
   }

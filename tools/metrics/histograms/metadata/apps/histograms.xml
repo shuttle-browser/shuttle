@@ -1361,18 +1361,6 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="Apps.AppList.SuggestedContent.Enabled" enum="BooleanEnabled"
-    expires_after="2027-03-01">
-  <owner>chenjih@google.com</owner>
-  <owner>chromeos-launcher-search@google.com</owner>
-  <summary>
-    Whether or not the user has enabled Suggested Content in the launcher. This
-    is logged once per UMA upload, and only for any user that has the Suggested
-    Content toggle feature flag enabled. Warning: this histogram was expired
-    from 2023-06-04 to 2023-08-18; data may be missing.
-  </summary>
-</histogram>
-
 <histogram
     name="Apps.AppList.SystemInfoProvider.CrosHealthdProbeError.{ProbeErrorSourceStruct}"
     enum="CrosDiagnosticsCrosHealthdProbeError" expires_after="2027-03-01">
@@ -1915,7 +1903,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Apps.AppShim.LaunchResult.{LaunchMode}"
-    enum="AppShimLaunchResult" expires_after="2027-03-01">
+    enum="AppShimLaunchResult" expires_after="2027-05-02">
   <owner>mek@chromium.org</owner>
   <owner>pwa-team@google.com</owner>
   <summary>
@@ -1923,6 +1911,25 @@ chromium-metrics-reviews@google.com.
     launch process completes (either successfully connecting, or giving up). If
     the first launch attempt fails, Chrome may attempt to recreate the shim and
     retry. Success after recreation is recorded as a separate bucket.
+  </summary>
+  <token key="LaunchMode">
+    <variant name="Background"
+        summary="Background launch (e.g. notifications)"/>
+    <variant name="Normal" summary="Normal foreground launch"/>
+  </token>
+</histogram>
+
+<histogram name="Apps.AppShim.Lifecycle.{LaunchMode}"
+    enum="AppShimLifecycleState" expires_after="2027-05-02">
+  <owner>mek@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <summary>
+    Records the lifecycle progression of an App Shim launch initiated by Chrome.
+    Recorded when the launch starts, gets a PID, connects, disconnects before
+    handshake, terminates after connecting, or fails to launch entirely. If the
+    first launch attempt fails, Chrome recreates the shim and retries; each
+    attempt records its own pre-connect lifecycle states (up to twice per
+    LaunchShim call).
   </summary>
   <token key="LaunchMode">
     <variant name="Background"
@@ -1942,7 +1949,6 @@ chromium-metrics-reviews@google.com.
   </summary>
   <token key="Operation">
     <variant name="SecCodeCheckValidityAdHoc"/>
-    <variant name="SecCodeCheckValidityLegacy"/>
     <variant name="SecCodeCopyGuestWithAttributes"/>
     <variant name="SecCodeCopySigningInformation"/>
   </token>
@@ -1961,6 +1967,42 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="Apps.AppShim.TimeToConnect.{LaunchMode}" units="ms"
+    expires_after="2027-05-02">
+  <owner>mek@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <summary>
+    Records the time from when Chrome initiates an App Shim launch attempt until
+    the App Shim successfully connects via mojo (kBootstrapConnected). If the
+    first launch attempt fails and Chrome recreates the shim and retries, this
+    records the duration of the successful attempt only. This does not include
+    time taken to process the launch request if the shim was already running.
+  </summary>
+  <token key="LaunchMode">
+    <variant name="Background"
+        summary="Background launch (e.g. notifications)"/>
+    <variant name="Normal" summary="Normal foreground launch"/>
+  </token>
+</histogram>
+
+<histogram name="Apps.AppShim.TimeToFailure.{LaunchMode}" units="ms"
+    expires_after="2027-05-02">
+  <owner>mek@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <summary>
+    Records the time from when Chrome initiates an App Shim launch attempt until
+    the App Shim fails to connect (either kDisconnectedBeforeHandshake or
+    kLaunchFailed). If the first launch attempt fails and Chrome recreates the
+    shim and retries, this is recorded for each failed attempt (up to twice per
+    LaunchShim call).
+  </summary>
+  <token key="LaunchMode">
+    <variant name="Background"
+        summary="Background launch (e.g. notifications)"/>
+    <variant name="Normal" summary="Normal foreground launch"/>
+  </token>
+</histogram>
+
 <histogram name="Apps.AppShim.WillTerminate" enum="Boolean"
     expires_after="2027-03-01">
   <owner>mek@chromium.org</owner>
@@ -1971,7 +2013,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Apps.AppShimRegistry.HmacKeyStore.LoadResult"
-    enum="AppShimRegistryGetHmacKeyResult" expires_after="2027-02-28">
+    enum="AppShimRegistryGetHmacKeyResult" expires_after="2027-05-02">
   <owner>mek@chromium.org</owner>
   <owner>src/chrome/browser/web_applications/OWNERS</owner>
   <summary>
@@ -1982,7 +2024,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Apps.AppShimRegistry.HmacKeyStore.SaveResult"
-    enum="AppShimRegistrySaveHmacKeyResult" expires_after="2027-02-28">
+    enum="AppShimRegistrySaveHmacKeyResult" expires_after="2027-05-02">
   <owner>mek@chromium.org</owner>
   <owner>src/chrome/browser/web_applications/OWNERS</owner>
   <summary>
@@ -2674,7 +2716,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Apps.SessionRestoreExitResult" enum="SessionRestoreExitResult"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>dandersson@chromium.org</owner>
   <owner>fanafan@chromium.org</owner>
   <owner>chromeos-wm-corexp@google.com</owner>

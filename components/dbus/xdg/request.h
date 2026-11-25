@@ -11,6 +11,7 @@
 #include "base/component_export.h"
 #include "base/functional/callback.h"
 #include "base/memory/ptr_util.h"
+#include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/types/expected.h"
 #include "components/dbus/utils/variant.h"
@@ -109,11 +110,45 @@ class COMPONENT_EXPORT(COMPONENTS_DBUS) Request {
     return request;
   }
 
+  // Makes a request whose effect lasts until the request is closed, such as
+  // org.freedesktop.portal.Inhibit. Unlike other requests, a successful
+  // response doesn't end it: the request stays open until this object is
+  // destroyed, which calls "Close". `callback` runs at most once, with the
+  // results of a successful response or with an error. Some portals never
+  // emit a response for such requests, so `callback` may never run.
+  // `callback` never runs after this object is destroyed. Release() is not
+  // supported.
+  template <typename... Args>
+  static std::unique_ptr<Request> CreateLongLived(
+      scoped_refptr<dbus::Bus> bus,
+      dbus::ObjectProxy* object_proxy,
+      const std::string& interface_name,
+      const std::string& method_name,
+      Dictionary&& options,
+      ResponseCallback callback,
+      const Args&... arguments)
+    requires(dbus_utils::IsSupportedDBusType<Args> && ...)
+  {
+    auto request =
+        base::WrapUnique(new Request(std::move(bus), std::move(callback)));
+    request->long_lived_ = true;
+
+    dbus::MethodCall method_call(interface_name, method_name);
+    dbus::MessageWriter writer(&method_call);
+    (dbus_utils::WriteValue(writer, arguments), ...);
+
+    request->Initialize(object_proxy, &method_call, &writer, std::move(options),
+                        std::string());
+    return request;
+  }
+
   Request(Request&& other) noexcept = delete;
   Request& operator=(Request&& other) noexcept = delete;
 
   // If the request has not finished, the destructor will call the "Close"
-  // method on the request object, and the callback will not be run.
+  // method on the request object, and the callback will not be run. If the
+  // method call hasn't returned yet, "Close" is called once the reply names
+  // the request's object path.
   ~Request();
 
   void SetCallback(ResponseCallback callback);
@@ -124,6 +159,25 @@ class COMPONENT_EXPORT(COMPONENTS_DBUS) Request {
 
  private:
   Request(scoped_refptr<dbus::Bus> bus, ResponseCallback callback);
+
+  // Handles the method reply, which may arrive after `request` is destroyed.
+  // `close_after_reply` is set if the request must then be closed.
+  static void OnMethodReply(
+      base::WeakPtr<Request> request,
+      scoped_refptr<base::RefCountedData<bool>> close_after_reply,
+      scoped_refptr<dbus::Bus> bus,
+      const std::string& portal_service_name,
+      const dbus::ObjectPath& expected_object_path,
+      dbus::Response* response,
+      dbus::ErrorResponse* error_response);
+
+  // Calls "Close" on the request object at `request_object_path`.
+  static void CloseRequest(scoped_refptr<dbus::Bus> bus,
+                           const std::string& portal_service_name,
+                           const dbus::ObjectPath& request_object_path);
+
+  // Stops tracking the request without closing it.
+  void EndRequest();
 
   void OnMethodResponse(dbus::Response* response,
                         dbus::ErrorResponse* error_response);
@@ -146,6 +200,12 @@ class COMPONENT_EXPORT(COMPONENTS_DBUS) Request {
   ResponseCallback callback_;
   std::string portal_service_name_;
   bool released_ = false;
+  bool method_call_pending_ = false;
+  bool long_lived_ = false;
+  // Shared with the method reply callback, which closes the request if this
+  // object is destroyed before the reply.
+  scoped_refptr<base::RefCountedData<bool>> close_after_reply_ =
+      base::MakeRefCounted<base::RefCountedData<bool>>(false);
   base::WeakPtrFactory<Request> weak_ptr_factory_{this};
 };
 

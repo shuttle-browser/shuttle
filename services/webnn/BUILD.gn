@@ -222,6 +222,8 @@ component("webnn_service") {
       "ort/dispatch_context_impl_ort.h",
       "ort/environment.cc",
       "ort/environment.h",
+      "ort/epcontext_model_validator.cc",
+      "ort/epcontext_model_validator.h",
       "ort/external_weights_manager.cc",
       "ort/external_weights_manager.h",
       "ort/graph_builder_ort.cc",
@@ -286,4 +288,18 @@ mojolpm_fuzzer_test("webnn_graph_mojolpm_textproto_fuzzer") {
     "//services/webnn/public/mojom:mojom_mojolpm",
     "//third_party/libprotobuf-mutator",
   ]
+}
+
+# The ORT EPContext model validator is only compiled on Windows.
+if (is_win) {
+  test("webnn_ort_epcontext_model_validator_fuzzer") {
+    sources = [ "ort/epcontext_model_validator_fuzzer.cc" ]
+    fuzztests = [ "EpcontextModelValidatorFuzzTest.ValidateNeverCrashes" ]
+    deps = [
+      ":epcontext_model_validator_test_support",
+      ":webnn_service",
+      "//base",
+      "//third_party/fuzztest:fuzztest_gtest_main",
+    ]
+  }
 }

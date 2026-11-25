@@ -44,7 +44,7 @@ class BoxPaintInvalidatorTest : public PaintAndRasterInvalidationTest {
     SCOPED_TRACE(test_title);
 
     UpdateAllLifecyclePhasesForTest();
-    auto& target = *GetDocument().getElementById(AtomicString("target"));
+    auto& target = *GetElementById("target");
     auto& box = *target.GetLayoutBox();
     auto paint_offset = box.FirstFragment().PaintOffset();
     box.SetShouldCheckForPaintInvalidation();
@@ -97,12 +97,54 @@ class BoxPaintInvalidatorTest : public PaintAndRasterInvalidationTest {
 
 INSTANTIATE_PAINT_TEST_SUITE_P(BoxPaintInvalidatorTest);
 
+TEST_P(BoxPaintInvalidatorTest, SavePreviousGeometriesOnLastFragment) {
+  SetBodyInnerHTML(R"HTML(
+    <div style="columns:2; column-gap:0; width:200px; height:100px;
+                column-fill:auto;">
+      <div id="target" style="height:150px; outline:5px solid blue;"></div>
+    </div>
+  )HTML");
+  UpdateAllLifecyclePhasesForTest();
+  auto& target = *GetElementById("target");
+  auto& box = *target.GetLayoutBox();
+  ASSERT_EQ(2u, box.PhysicalFragmentCount());
+  const PhysicalSize old_size = box.PreviousSize();
+  const PhysicalRect old_visual_overflow = box.PreviousVisualOverflowRect();
+  const auto* old_fragment = &*box.PreviousPhysicalFragments().begin();
+
+  target.setAttribute(html_names::kStyleAttr,
+                      AtomicString("height:180px; outline:10px solid blue;"));
+  GetDocument().View()->UpdateLifecycleToLayoutClean(
+      DocumentUpdateReason::kTest);
+  ASSERT_NE(old_size, box.StitchedSize());
+  ASSERT_TRUE(box.HavePhysicalFragmentsChanged());
+
+  PaintInvalidatorContext context;
+  context.painting_layer = box.PaintingLayer();
+  context.fragment_data = &box.FirstFragment();
+  context.old_paint_offset = box.FirstFragment().PaintOffset();
+  context.is_last_for_node = false;
+  BoxPaintInvalidator(box, context).InvalidatePaint();
+  EXPECT_EQ(old_size, box.PreviousSize());
+  EXPECT_EQ(old_visual_overflow, box.PreviousVisualOverflowRect());
+  EXPECT_EQ(old_fragment, &*box.PreviousPhysicalFragments().begin());
+  EXPECT_TRUE(box.HavePhysicalFragmentsChanged());
+
+  context.is_last_for_node = true;
+  BoxPaintInvalidator(box, context).InvalidatePaint();
+  EXPECT_EQ(box.StitchedSize(), box.PreviousSize());
+  EXPECT_EQ(box.VisualOverflowRect(), box.PreviousVisualOverflowRect());
+  EXPECT_EQ(box.GetPhysicalFragment(0),
+            &*box.PreviousPhysicalFragments().begin());
+  EXPECT_FALSE(box.HavePhysicalFragmentsChanged());
+}
+
 // Paint invalidation for empty content is needed for updating composited layer
 // bounds for correct composited hit testing. It won't cause raster invalidation
 // (tested in paint_and_raster_invalidation_test.cc).
 TEST_P(BoxPaintInvalidatorTest, ComputePaintInvalidationReasonEmptyContent) {
   SetUpHTML();
-  auto& target = *GetDocument().getElementById(AtomicString("target"));
+  auto& target = *GetElementById("target");
   auto& box = *target.GetLayoutBox();
   // Remove border.
   target.setAttribute(html_names::kClassAttr, g_empty_atom);
@@ -130,7 +172,7 @@ TEST_P(BoxPaintInvalidatorTest, ComputePaintInvalidationReasonEmptyContent) {
 
 TEST_P(BoxPaintInvalidatorTest, ComputePaintInvalidationReasonBasic) {
   SetUpHTML();
-  auto& target = *GetDocument().getElementById(AtomicString("target"));
+  auto& target = *GetElementById("target");
   auto& box = *target.GetLayoutBox();
   // Remove border.
   target.setAttribute(html_names::kClassAttr, g_empty_atom);
@@ -198,7 +240,7 @@ TEST_P(BoxPaintInvalidatorTest,
   )HTML");
 
   UpdateAllLifecyclePhasesForTest();
-  auto& target = *GetDocument().getElementById(AtomicString("target"));
+  auto& target = *GetElementById("target");
   target.setAttribute(html_names::kStyleAttr, g_empty_atom);
   UpdateAllLifecyclePhasesForTest();
   // This test passes if no underinvalidation occurs.
@@ -206,7 +248,7 @@ TEST_P(BoxPaintInvalidatorTest,
 
 TEST_P(BoxPaintInvalidatorTest, ComputePaintInvalidationReasonOtherCases) {
   SetUpHTML();
-  auto& target = *GetDocument().getElementById(AtomicString("target"));
+  auto& target = *GetElementById("target");
 
   // The target initially has border.
   ExpectFullPaintInvalidationOnGeometryChange("With border");
@@ -236,7 +278,7 @@ TEST_P(BoxPaintInvalidatorTest, ComputePaintInvalidationReasonOtherCases) {
 
 TEST_P(BoxPaintInvalidatorTest, ComputePaintInvalidationReasonOutline) {
   SetUpHTML();
-  auto& target = *GetDocument().getElementById(AtomicString("target"));
+  auto& target = *GetElementById("target");
   auto* object = target.GetLayoutObject();
 
   GetDocument().View()->SetTracksRasterInvalidations(true);
@@ -275,7 +317,7 @@ TEST_P(BoxPaintInvalidatorTest, InvalidateHitTestOnCompositingStyleChange) {
   )HTML");
 
   UpdateAllLifecyclePhasesForTest();
-  auto& target = *GetDocument().getElementById(AtomicString("target"));
+  auto& target = *GetElementById("target");
   target.setAttribute(html_names::kStyleAttr, g_empty_atom);
   UpdateAllLifecyclePhasesForTest();
   // This test passes if no under-invalidation occurs.
@@ -301,13 +343,13 @@ TEST_P(BoxPaintInvalidatorTest, GapDecorationGridChildSizeChange) {
   )HTML");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* grid = GetDocument().getElementById(AtomicString("grid"));
+  auto* grid = GetElementById("grid");
   ASSERT_TRUE(grid);
   auto* grid_object = grid->GetLayoutObject();
   EXPECT_FALSE(grid_object->ShouldDoFullPaintInvalidation());
 
   GetDocument().View()->SetTracksRasterInvalidations(true);
-  auto* item1 = GetDocument().getElementById(AtomicString("item1"));
+  auto* item1 = GetElementById("item1");
   item1->setAttribute(html_names::kStyleAttr, AtomicString("height: 100px"));
   UpdateAllLifecyclePhasesForTest();
   EXPECT_THAT(GetRasterInvalidationTracking()->Invalidations(),
@@ -334,13 +376,13 @@ TEST_P(BoxPaintInvalidatorTest, GapDecorationFlexChildRemoval) {
   )HTML");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* flex = GetDocument().getElementById(AtomicString("flex"));
+  auto* flex = GetElementById("flex");
   ASSERT_TRUE(flex);
   auto* flex_object = flex->GetLayoutObject();
   EXPECT_FALSE(flex_object->ShouldDoFullPaintInvalidation());
 
   GetDocument().View()->SetTracksRasterInvalidations(true);
-  auto* removable = GetDocument().getElementById(AtomicString("removable"));
+  auto* removable = GetElementById("removable");
   removable->remove();
   UpdateAllLifecyclePhasesForTest();
   EXPECT_THAT(GetRasterInvalidationTracking()->Invalidations(),
@@ -367,14 +409,14 @@ TEST_P(BoxPaintInvalidatorTest, GapDecorationNoChangeNoInvalidation) {
   )HTML");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* grid = GetDocument().getElementById(AtomicString("grid"));
+  auto* grid = GetElementById("grid");
   ASSERT_TRUE(grid);
   auto* grid_object = grid->GetLayoutObject();
 
   // Add a small enough amount of text to trigger layout within the child
   // without affecting gap geometry.
   GetDocument().View()->SetTracksRasterInvalidations(true);
-  auto* item1 = GetDocument().getElementById(AtomicString("item1"));
+  auto* item1 = GetElementById("item1");
   item1->setTextContent(AtomicString("hello"));
   UpdateAllLifecyclePhasesForTest();
   for (const auto& inv : GetRasterInvalidationTracking()->Invalidations()) {
@@ -403,7 +445,7 @@ TEST_P(BoxPaintInvalidatorTest, GapDecorationAddedToExistingGrid) {
 
   // Adding a column-rule to a grid that previously had no gap decorations
   // should not cause under-invalidation.
-  auto* grid = GetDocument().getElementById(AtomicString("grid"));
+  auto* grid = GetElementById("grid");
   ASSERT_TRUE(grid);
   grid->setAttribute(html_names::kStyleAttr,
                      AtomicString("column-rule: 2px solid red"));
@@ -430,7 +472,7 @@ TEST_P(BoxPaintInvalidatorTest, GapDecorationRemovedFromGrid) {
   UpdateAllLifecyclePhasesForTest();
 
   // Removing the column-rule should not cause under-invalidation.
-  auto* grid = GetDocument().getElementById(AtomicString("grid"));
+  auto* grid = GetElementById("grid");
   ASSERT_TRUE(grid);
   grid->setAttribute(html_names::kStyleAttr, AtomicString("column-rule: none"));
   UpdateAllLifecyclePhasesForTest();
@@ -457,7 +499,7 @@ TEST_P(BoxPaintInvalidatorTest, GapDecorationMulticolColumnRuleInvalidation) {
   UpdateAllLifecyclePhasesForTest();
 
   // Changing column-rule should not cause under-invalidation.
-  auto* multicol = GetDocument().getElementById(AtomicString("multicol"));
+  auto* multicol = GetElementById("multicol");
   ASSERT_TRUE(multicol);
   multicol->setAttribute(html_names::kStyleAttr,
                          AtomicString("column-rule: 4px solid red"));
@@ -497,7 +539,7 @@ TEST_P(BoxPaintInvalidatorTest, BorderShapeBoxShadowChange) {
 
   // Changing box-shadow while border-shape is active should not cause
   // under-invalidation (crbug.com/483350719).
-  auto* target = GetDocument().getElementById(AtomicString("target"));
+  auto* target = GetElementById("target");
   ASSERT_TRUE(target);
   target->setAttribute(html_names::kStyleAttr,
                        AtomicString("box-shadow: 0 0 20px 20px black;"));

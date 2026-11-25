@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "base/check.h"
+#include "base/containers/flat_set.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/no_destructor.h"
@@ -31,6 +32,7 @@
 #include "net/base/network_change_notifier.h"
 #include "net/base/task/task_runner.h"
 #include "net/dns/context_host_resolver.h"
+#include "net/dns/dns_alias_utility.h"
 #include "net/dns/dns_client.h"
 #include "net/dns/dns_util.h"
 #include "net/dns/host_cache.h"
@@ -93,9 +95,8 @@ class FailingRequestImpl : public HostResolver::ResolveHostRequest,
     return {};
   }
 
-  const std::set<std::string>& GetDnsAliasResults() const override {
-    static const base::NoDestructor<std::set<std::string>> kEmptyResult;
-    return *kEmptyResult;
+  const base::flat_set<std::string>& GetDnsAliasResults() const override {
+    return dns_alias_utility::EmptyDnsAliases();
   }
 
   ResolveErrorInfo GetResolveErrorInfo() const override {
@@ -133,9 +134,8 @@ class FailingServiceEndpointRequestImpl
 
   base::span<const ServiceEndpoint> GetEndpointResults() override { return {}; }
 
-  const std::set<std::string>& GetDnsAliasResults() override {
-    static const base::NoDestructor<std::set<std::string>> kEmptyResult;
-    return *kEmptyResult.get();
+  const base::flat_set<std::string>& GetDnsAliasResults() override {
+    return dns_alias_utility::EmptyDnsAliases();
   }
 
   bool EndpointsCryptoReady() override { return false; }
@@ -155,6 +155,25 @@ class FailingServiceEndpointRequestImpl
   }
 
   void ChangeRequestPriority(RequestPriority priority) override {}
+
+ private:
+  const int error_;
+};
+
+// Similar to FailingRequestImpl, but for MdnsListener.
+class FailingMdnsListenerImpl : public HostResolver::MdnsListener {
+ public:
+  explicit FailingMdnsListenerImpl(int error) : error_(error) {}
+
+  FailingMdnsListenerImpl(const FailingMdnsListenerImpl&) = delete;
+  FailingMdnsListenerImpl& operator=(const FailingMdnsListenerImpl&) = delete;
+
+  ~FailingMdnsListenerImpl() override = default;
+
+  int Start(Delegate* delegate) override {
+    DCHECK(delegate);
+    return error_;
+  }
 
  private:
   const int error_;
@@ -536,10 +555,20 @@ HostResolver::CreateStandaloneNetworkBoundResolver(
   if (!is_builtin_resolver_supported) {
     manager_options.insecure_dns_mode = InsecureDnsMode::kDisabled;
   }
-  return std::make_unique<ContextHostResolver>(
-      HostResolverManager::CreateNetworkBoundHostResolverManager(
-          manager_options, target_network, net_log),
-      std::move(resolve_context));
+  std::unique_ptr<HostResolver> resolver =
+      std::make_unique<ContextHostResolver>(
+          HostResolverManager::CreateNetworkBoundHostResolverManager(
+              manager_options, target_network, net_log),
+          std::move(resolve_context));
+
+  if (!host_mapping_rules.empty()) {
+    auto remapped_resolver =
+        std::make_unique<MappedHostResolver>(std::move(resolver));
+    remapped_resolver->SetRulesFromString(host_mapping_rules);
+    resolver = std::move(remapped_resolver);
+  }
+
+  return resolver;
 #else   // !BUILDFLAG(IS_ANDROID)
   NOTIMPLEMENTED();
   return nullptr;
@@ -588,7 +617,7 @@ int HostResolver::SquashErrorCode(int error) {
 // static
 AddressList HostResolver::EndpointResultToAddressList(
     base::span<const HostResolverEndpointResult> endpoints,
-    const std::set<std::string>& aliases) {
+    const base::flat_set<std::string>& aliases) {
   AddressList list;
 
   auto authority_endpoint = std::ranges::find_if_not(
@@ -612,7 +641,7 @@ bool HostResolver::MayUseNAT64ForIPv4Literal(HostResolverFlags flags,
                                              const IPAddress& ip_address) {
   return !(flags & HOST_RESOLVER_DEFAULT_FAMILY_SET_DUE_TO_NO_IPV6) &&
          ip_address.IsValid() && ip_address.IsIPv4() &&
-         (source != HostResolverSource::LOCAL_ONLY);
+         !ip_address.IsLoopback() && (source != HostResolverSource::LOCAL_ONLY);
 }
 
 // static
@@ -642,6 +671,12 @@ HostResolver::CreateFailingProbeRequest(int error) {
 std::unique_ptr<HostResolver::ServiceEndpointRequest>
 HostResolver::CreateFailingServiceEndpointRequest(int error) {
   return std::make_unique<FailingServiceEndpointRequestImpl>(error);
+}
+
+// static
+std::unique_ptr<HostResolver::MdnsListener>
+HostResolver::CreateFailingMdnsListener(int error) {
+  return std::make_unique<FailingMdnsListenerImpl>(error);
 }
 
 }  // namespace net

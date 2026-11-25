@@ -12,6 +12,7 @@
 #include <memory>
 #include <utility>
 
+#include "base/feature_list.h"
 #include "base/numerics/angle_conversions.h"
 #include "base/time/time.h"
 #include "base/trace_event/typed_macros.h"
@@ -21,6 +22,7 @@
 #include "third_party/blink/public/common/input/web_pointer_event.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/events/base_event_utils.h"
+#include "ui/events/blink/blink_features.h"
 #include "ui/events/event_constants.h"
 #include "ui/events/gesture_detection/gesture_event_data.h"
 #include "ui/events/gesture_event_details.h"
@@ -200,9 +202,9 @@ WebTouchPoint CreateWebTouchPoint(const MotionEvent& event,
   float minor_radius = event.GetTouchMinor(pointer_index) / 2.f;
   float orientation_deg = base::RadToDeg(event.GetOrientation(pointer_index));
 
-  DCHECK_GE(major_radius, 0);
-  DCHECK_GE(minor_radius, 0);
-  DCHECK_GE(major_radius, minor_radius);
+  CHECK_GE(major_radius, 0, base::NotFatalUntil::M163);
+  CHECK_GE(minor_radius, 0, base::NotFatalUntil::M163);
+  CHECK_GE(major_radius, minor_radius, base::NotFatalUntil::M163);
   // Orientation lies in [-180, 180] for a stylus, and [-90, 90] for other
   // touchscreen inputs. There are exceptions on Android when a device is
   // rotated, yielding touch orientations in the range of [-180, 180].
@@ -210,8 +212,8 @@ WebTouchPoint CreateWebTouchPoint(const MotionEvent& event,
   // for floating point conversion.
   // TODO(e_hakkinen): Also pass unaltered stylus orientation, avoiding loss of
   // quadrant information, see crbug.com/493728.
-  DCHECK_GT(orientation_deg, -180.01f);
-  DCHECK_LT(orientation_deg, 180.01f);
+  CHECK_GT(orientation_deg, -180.01f, base::NotFatalUntil::M163);
+  CHECK_LT(orientation_deg, 180.01f, base::NotFatalUntil::M163);
   if (orientation_deg >= 90.f)
     orientation_deg -= 180.f;
   else if (orientation_deg < -90.f)
@@ -255,12 +257,12 @@ blink::WebTouchEvent CreateWebTouchEventFromMotionEvent(
   // TODO(mustaq): MotionEvent flags seems unrelated, should use
   // metaState instead?
 
-  DCHECK_NE(event.GetUniqueEventId(), 0U);
+  CHECK_NE(event.GetUniqueEventId(), 0U, base::NotFatalUntil::M163);
   result.unique_touch_event_id = event.GetUniqueEventId();
   result.touches_length =
       std::min(static_cast<unsigned>(event.GetPointerCount()),
                static_cast<unsigned>(WebTouchEvent::kTouchesLengthCap));
-  DCHECK_GT(result.touches_length, 0U);
+  CHECK_GT(result.touches_length, 0U, base::NotFatalUntil::M163);
 
   for (size_t i = 0; i < result.touches_length; ++i)
     result.touches[i] = CreateWebTouchPoint(event, i);
@@ -271,36 +273,55 @@ blink::WebTouchEvent CreateWebTouchEventFromMotionEvent(
 int EventFlagsToWebEventModifiers(int flags) {
   int modifiers = 0;
 
-  if (flags & EF_SHIFT_DOWN)
+  if (flags & EF_SHIFT_DOWN) {
     modifiers |= blink::WebInputEvent::kShiftKey;
-  if (flags & EF_CONTROL_DOWN)
+  }
+  if (flags & EF_CONTROL_DOWN) {
     modifiers |= blink::WebInputEvent::kControlKey;
-  if (flags & EF_ALT_DOWN)
+  }
+  if (flags & EF_ALT_DOWN) {
     modifiers |= blink::WebInputEvent::kAltKey;
-  if (flags & EF_COMMAND_DOWN)
+  }
+  if (flags & EF_COMMAND_DOWN) {
     modifiers |= blink::WebInputEvent::kMetaKey;
-  if (flags & EF_ALTGR_DOWN)
+  }
+  if (flags & EF_ALTGR_DOWN) {
     modifiers |= blink::WebInputEvent::kAltGrKey;
-  if (flags & EF_NUM_LOCK_ON)
+  }
+  if (flags & EF_NUM_LOCK_ON) {
     modifiers |= blink::WebInputEvent::kNumLockOn;
-  if (flags & EF_CAPS_LOCK_ON)
+  }
+  if (flags & EF_CAPS_LOCK_ON) {
     modifiers |= blink::WebInputEvent::kCapsLockOn;
-  if (flags & EF_SCROLL_LOCK_ON)
+  }
+  if (flags & EF_SCROLL_LOCK_ON) {
     modifiers |= blink::WebInputEvent::kScrollLockOn;
-  if (flags & EF_LEFT_MOUSE_BUTTON)
+  }
+  if (flags & EF_LEFT_MOUSE_BUTTON) {
     modifiers |= blink::WebInputEvent::kLeftButtonDown;
-  if (flags & EF_MIDDLE_MOUSE_BUTTON)
+  }
+  if (flags & EF_MIDDLE_MOUSE_BUTTON) {
     modifiers |= blink::WebInputEvent::kMiddleButtonDown;
-  if (flags & EF_RIGHT_MOUSE_BUTTON)
+  }
+  if (flags & EF_RIGHT_MOUSE_BUTTON) {
     modifiers |= blink::WebInputEvent::kRightButtonDown;
-  if (flags & EF_BACK_MOUSE_BUTTON)
+  }
+  if (flags & EF_BACK_MOUSE_BUTTON) {
     modifiers |= blink::WebInputEvent::kBackButtonDown;
-  if (flags & EF_FORWARD_MOUSE_BUTTON)
+  }
+  if (flags & EF_FORWARD_MOUSE_BUTTON) {
     modifiers |= blink::WebInputEvent::kForwardButtonDown;
-  if (flags & EF_IS_REPEAT)
+  }
+  if (flags & EF_IS_REPEAT) {
     modifiers |= blink::WebInputEvent::kIsAutoRepeat;
-  if (flags & EF_TOUCH_ACCESSIBILITY)
+  }
+  if ((flags & EF_FROM_DEBUGGER) &&
+      base::FeatureList::IsEnabled(features::kPreserveDebuggerInputOrigin)) {
+    modifiers |= blink::WebInputEvent::kFromDebugger;
+  }
+  if (flags & EF_TOUCH_ACCESSIBILITY) {
     modifiers |= blink::WebInputEvent::kIsTouchAccessibility;
+  }
 
   return modifiers;
 }
@@ -352,7 +373,7 @@ WebGestureEvent CreateWebGestureEvent(const GestureEventDetails& details,
       break;
     case EventType::kGestureDoubleTap:
       gesture.SetType(WebInputEvent::Type::kGestureDoubleTap);
-      DCHECK_EQ(1, details.tap_count());
+      CHECK_EQ(1, details.tap_count(), base::NotFatalUntil::M163);
       gesture.data.tap.tap_count = details.tap_count();
       gesture.data.tap.width =
           IfNanUseMaxFloat(details.bounding_box_f().width());
@@ -362,7 +383,7 @@ WebGestureEvent CreateWebGestureEvent(const GestureEventDetails& details,
       break;
     case EventType::kGestureTap:
       gesture.SetType(WebInputEvent::Type::kGestureTap);
-      DCHECK_GE(details.tap_count(), 1);
+      CHECK_GE(details.tap_count(), 1, base::NotFatalUntil::M163);
       gesture.data.tap.tap_count = details.tap_count();
       gesture.data.tap.width =
           IfNanUseMaxFloat(details.bounding_box_f().width());
@@ -371,7 +392,7 @@ WebGestureEvent CreateWebGestureEvent(const GestureEventDetails& details,
       break;
     case EventType::kGestureTapUnconfirmed:
       gesture.SetType(WebInputEvent::Type::kGestureTapUnconfirmed);
-      DCHECK_EQ(1, details.tap_count());
+      CHECK_EQ(1, details.tap_count(), base::NotFatalUntil::M163);
       gesture.data.tap.tap_count = details.tap_count();
       gesture.data.tap.width =
           IfNanUseMaxFloat(details.bounding_box_f().width());
@@ -728,34 +749,52 @@ void SetWebPointerPropertiesFromMotionEventData(
 int WebEventModifiersToEventFlags(int modifiers) {
   int flags = 0;
 
-  if (modifiers & blink::WebInputEvent::kShiftKey)
+  if (modifiers & blink::WebInputEvent::kShiftKey) {
     flags |= EF_SHIFT_DOWN;
-  if (modifiers & blink::WebInputEvent::kControlKey)
+  }
+  if (modifiers & blink::WebInputEvent::kControlKey) {
     flags |= EF_CONTROL_DOWN;
-  if (modifiers & blink::WebInputEvent::kAltKey)
+  }
+  if (modifiers & blink::WebInputEvent::kAltKey) {
     flags |= EF_ALT_DOWN;
-  if (modifiers & blink::WebInputEvent::kAltGrKey)
+  }
+  if (modifiers & blink::WebInputEvent::kAltGrKey) {
     flags |= EF_ALTGR_DOWN;
-  if (modifiers & blink::WebInputEvent::kMetaKey)
+  }
+  if (modifiers & blink::WebInputEvent::kMetaKey) {
     flags |= EF_COMMAND_DOWN;
-  if (modifiers & blink::WebInputEvent::kCapsLockOn)
+  }
+  if (modifiers & blink::WebInputEvent::kCapsLockOn) {
     flags |= EF_CAPS_LOCK_ON;
-  if (modifiers & blink::WebInputEvent::kNumLockOn)
+  }
+  if (modifiers & blink::WebInputEvent::kNumLockOn) {
     flags |= EF_NUM_LOCK_ON;
-  if (modifiers & blink::WebInputEvent::kScrollLockOn)
+  }
+  if (modifiers & blink::WebInputEvent::kScrollLockOn) {
     flags |= EF_SCROLL_LOCK_ON;
-  if (modifiers & blink::WebInputEvent::kLeftButtonDown)
+  }
+  if (modifiers & blink::WebInputEvent::kLeftButtonDown) {
     flags |= EF_LEFT_MOUSE_BUTTON;
-  if (modifiers & blink::WebInputEvent::kMiddleButtonDown)
+  }
+  if (modifiers & blink::WebInputEvent::kMiddleButtonDown) {
     flags |= EF_MIDDLE_MOUSE_BUTTON;
-  if (modifiers & blink::WebInputEvent::kRightButtonDown)
+  }
+  if (modifiers & blink::WebInputEvent::kRightButtonDown) {
     flags |= EF_RIGHT_MOUSE_BUTTON;
-  if (modifiers & blink::WebInputEvent::kBackButtonDown)
+  }
+  if (modifiers & blink::WebInputEvent::kBackButtonDown) {
     flags |= EF_BACK_MOUSE_BUTTON;
-  if (modifiers & blink::WebInputEvent::kForwardButtonDown)
+  }
+  if (modifiers & blink::WebInputEvent::kForwardButtonDown) {
     flags |= EF_FORWARD_MOUSE_BUTTON;
-  if (modifiers & blink::WebInputEvent::kIsAutoRepeat)
+  }
+  if (modifiers & blink::WebInputEvent::kIsAutoRepeat) {
     flags |= EF_IS_REPEAT;
+  }
+  if ((modifiers & blink::WebInputEvent::kFromDebugger) &&
+      base::FeatureList::IsEnabled(features::kPreserveDebuggerInputOrigin)) {
+    flags |= EF_FROM_DEBUGGER;
+  }
 
   return flags;
 }
@@ -803,7 +842,8 @@ EventPointerType WebPointerTypeToEventPointerType(
 
 blink::WebGestureEvent ScrollBeginFromScrollUpdate(
     const blink::WebGestureEvent& gesture_update) {
-  DCHECK(gesture_update.GetType() == WebInputEvent::Type::kGestureScrollUpdate);
+  CHECK(gesture_update.GetType() == WebInputEvent::Type::kGestureScrollUpdate,
+        base::NotFatalUntil::M163);
 
   WebGestureEvent scroll_begin(gesture_update);
   scroll_begin.SetType(WebInputEvent::Type::kGestureScrollBegin);

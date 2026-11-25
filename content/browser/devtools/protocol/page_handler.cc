@@ -30,11 +30,13 @@
 #include "base/threading/thread_restrictions.h"
 #include "base/timer/timer.h"
 #include "base/trace_event/trace_event.h"
+#include "base/types/optional_ref.h"
 #include "components/back_forward_cache/disabled_reason_id.h"
 #include "content/browser/back_forward_cache/back_forward_cache_can_store_document_result.h"
 #include "content/browser/back_forward_cache/back_forward_cache_disable.h"
 #include "content/browser/back_forward_cache/back_forward_cache_metrics.h"
 #include "content/browser/devtools/devtools_agent_host_impl.h"
+#include "content/browser/devtools/devtools_manager.h"
 #include "content/browser/devtools/devtools_session.h"
 #include "content/browser/devtools/protocol/browser_handler.h"
 #include "content/browser/devtools/protocol/devtools_mhtml_helper.h"
@@ -65,8 +67,9 @@
 #include "content/public/common/result_codes.h"
 #include "content/public/common/url_constants.h"
 #include "content/public/common/url_utils.h"
+#include "media/base/limits.h"
 #include "net/base/filename_util.h"
-#include "third_party/blink/public/common/manifest/manifest_util.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 #include "third_party/blink/public/mojom/back_forward_cache_not_restored_reasons.mojom.h"
 #include "third_party/blink/public/mojom/content_extraction/ai_page_content.mojom.h"
 #include "third_party/blink/public/mojom/frame/back_forward_cache_controller.mojom.h"
@@ -250,14 +253,14 @@ bool CanExecuteGlobalCommands(
 void GotManifest(std::optional<std::string> manifest_id,
                  std::unique_ptr<PageHandler::GetAppManifestCallback> callback,
                  const GURL& manifest_url,
-                 ::blink::mojom::ManifestPtr input_manifest,
+                 const std::optional<blink::Manifest>& input_manifest,
                  blink::mojom::ManifestDebugInfoPtr debug_info) {
   if (manifest_id &&
       (!input_manifest ||
-       manifest_id.value() != input_manifest->id.possibly_invalid_spec())) {
+       manifest_id.value() != input_manifest->id().possibly_invalid_spec())) {
     std::move(callback)->sendFailure(protocol::Response::InvalidParams(
         std::string("Page manifest id ") +
-        (input_manifest ? input_manifest->id.possibly_invalid_spec() : "none") +
+        (input_manifest ? input_manifest->id().possibly_invalid_spec() : "") +
         " does not match the input " + manifest_id.value()));
     return;
   }
@@ -310,31 +313,32 @@ void GotManifest(std::optional<std::string> manifest_id,
   };
 
   auto manifest = Page::WebAppManifest::Create();
-  if (input_manifest->background_color.has_value()) {
+  if (input_manifest->background_color().has_value()) {
     manifest.SetBackgroundColor(color_utils::SkColorToRgbaString(
-        static_cast<SkColor>(input_manifest->background_color.value())));
+        input_manifest->background_color().value()));
   }
-  if (input_manifest->description) {
+  if (input_manifest->description()) {
     manifest.SetDescription(
-        base::UTF16ToUTF8(input_manifest->description.value()));
+        base::UTF16ToUTF8(input_manifest->description().value()));
   }
   // TODO(crbug.com/331214986): Fill the WebAppManifest.dir (direction).
-  manifest.SetDisplay(base::ToString(input_manifest->display));
-  if (!input_manifest->display_override.empty()) {
+  manifest.SetDisplay(base::ToString(input_manifest->display()));
+  if (!input_manifest->display_override().empty()) {
     auto display_overrides = std::make_unique<protocol::Array<std::string>>();
-    for (const auto& display_override : input_manifest->display_override) {
+    for (const auto& display_override : input_manifest->display_override()) {
       display_overrides->push_back(base::ToString(display_override.display()));
     }
-    // TODO(crbug.com/469012990): Extend CDP for display override URL patterns.
+    // TODO(crbug.com/469012990): Extend CDP for display override URL
+    // patterns.
     manifest.SetDisplayOverrides(std::move(display_overrides));
   }
-  if (!input_manifest->file_handlers.empty()) {
+  if (!input_manifest->file_handlers().empty()) {
     auto file_handlers = std::make_unique<protocol::Array<Page::FileHandler>>();
-    for (const auto& input_file_handler : input_manifest->file_handlers) {
+    for (const auto& input_file_handler : input_manifest->file_handlers()) {
       auto file_handler = Page::FileHandler::Create();
-      if (!input_file_handler->accept.empty()) {
+      if (!input_file_handler.accept.empty()) {
         auto accepts = std::make_unique<protocol::Array<Page::FileFilter>>();
-        for (const auto& input_accept : input_file_handler->accept) {
+        for (const auto& input_accept : input_file_handler.accept) {
           auto accept = Page::FileFilter::Create();
           accept.SetName(base::UTF16ToUTF8(input_accept.first));
           if (!input_accept.second.empty()) {
@@ -350,71 +354,72 @@ void GotManifest(std::optional<std::string> manifest_id,
       }
       file_handlers->push_back(
           file_handler
-              .SetAction(input_file_handler->action.possibly_invalid_spec())
-              .SetName(base::UTF16ToUTF8(input_file_handler->name))
-              .SetLaunchType(base::ToString(input_file_handler->launch_type))
+              .SetAction(input_file_handler.action.possibly_invalid_spec())
+              .SetName(base::UTF16ToUTF8(input_file_handler.name))
+              .SetLaunchType(base::ToString(input_file_handler.launch_type))
               .Build());
     }
   }
-  if (!input_manifest->icons.empty()) {
-    manifest.SetIcons(convert_icons(input_manifest->icons));
+  if (!input_manifest->icons().empty()) {
+    manifest.SetIcons(convert_icons(input_manifest->icons()));
   }
-  manifest.SetId(input_manifest->id.possibly_invalid_spec());
+  manifest.SetId(input_manifest->id().possibly_invalid_spec());
   // TODO(crbug.com/331214986): Fill the WebAppManifest.lang.
-  if (input_manifest->launch_handler) {
+  if (input_manifest->launch_handler()) {
     manifest.SetLaunchHandler(
         Page::LaunchHandler::Create()
             .SetClientMode(base::ToString(
-                input_manifest->launch_handler.value().parsed_client_mode()))
+                input_manifest->launch_handler()->parsed_client_mode()))
             .Build());
   }
-  if (input_manifest->name) {
-    manifest.SetName(base::UTF16ToUTF8(input_manifest->name.value()));
+  if (input_manifest->name()) {
+    manifest.SetName(base::UTF16ToUTF8(input_manifest->name().value()));
   }
-  manifest.SetOrientation(base::ToString(input_manifest->orientation));
+  manifest.SetOrientation(base::ToString(input_manifest->orientation()));
   manifest.SetPreferRelatedApplications(
-      input_manifest->prefer_related_applications);
-  if (!input_manifest->protocol_handlers.empty()) {
+      input_manifest->prefer_related_applications());
+  if (!input_manifest->protocol_handlers().empty()) {
     auto protocol_handlers =
         std::make_unique<protocol::Array<Page::ProtocolHandler>>();
     for (const auto& input_protocol_handler :
-         input_manifest->protocol_handlers) {
+         input_manifest->protocol_handlers()) {
       protocol_handlers->push_back(
           Page::ProtocolHandler::Create()
-              .SetProtocol(base::UTF16ToUTF8(input_protocol_handler->protocol))
-              .SetUrl(input_protocol_handler->url.possibly_invalid_spec())
+              .SetProtocol(base::UTF16ToUTF8(input_protocol_handler.protocol))
+              .SetUrl(input_protocol_handler.url.possibly_invalid_spec())
               .Build());
     }
     manifest.SetProtocolHandlers(std::move(protocol_handlers));
   }
-  if (!input_manifest->scope_extensions.empty()) {
+  if (!input_manifest->scope_extensions().empty()) {
     auto scope_extensions =
         std::make_unique<protocol::Array<Page::ScopeExtension>>();
-    for (const auto& input_scope_extension : input_manifest->scope_extensions) {
+    for (const auto& input_scope_extension :
+         input_manifest->scope_extensions()) {
       scope_extensions->push_back(
           Page::ScopeExtension::Create()
-              .SetOrigin(input_scope_extension->origin.Serialize())
-              .SetHasOriginWildcard(input_scope_extension->has_origin_wildcard)
+              .SetOrigin(input_scope_extension.origin.Serialize())
+              .SetHasOriginWildcard(input_scope_extension.has_origin_wildcard)
               .Build());
     }
     manifest.SetScopeExtensions(std::move(scope_extensions));
   }
-  if (!input_manifest->screenshots.empty()) {
+  if (!input_manifest->screenshots().empty()) {
     auto screenshots = std::make_unique<protocol::Array<Page::Screenshot>>();
-    for (const auto& input_screenshot : input_manifest->screenshots) {
+    for (const auto& input_screenshot : input_manifest->screenshots()) {
       auto screenshot = Page::Screenshot::Create();
-      if (input_screenshot->label) {
-        screenshot.SetLabel(base::UTF16ToUTF8(input_screenshot->label.value()));
+      if (input_screenshot.label) {
+        screenshot.SetLabel(base::UTF16ToUTF8(input_screenshot.label.value()));
       }
       screenshots->push_back(
-          screenshot.SetImage(convert_icon(input_screenshot->image))
-              .SetFormFactor(base::ToString(input_screenshot->form_factor))
+          screenshot.SetImage(convert_icon(input_screenshot.image))
+              .SetFormFactor(base::ToString(input_screenshot.form_factor))
               .Build());
     }
     manifest.SetScreenshots(std::move(screenshots));
   }
-  if (input_manifest->share_target) {
-    const auto& input_share_target = input_manifest->share_target.value();
+  if (input_manifest->share_target()) {
+    const auto& input_share_target = input_manifest->share_target().value();
     auto share_target = Page::ShareTarget::Create();
     if (input_share_target.params.title) {
       share_target.SetTitle(
@@ -430,16 +435,16 @@ void GotManifest(std::optional<std::string> manifest_id,
     }
     manifest.SetShareTarget(
         share_target
-            .SetAction(
-                input_manifest->share_target->action.possibly_invalid_spec())
-            .SetMethod(base::ToString(input_manifest->share_target->method))
-            .SetEnctype(base::ToString(input_manifest->share_target->action))
+            .SetAction(input_share_target.action.possibly_invalid_spec())
+            .SetMethod(base::ToString(input_share_target.method))
+            .SetEnctype(base::ToString(input_share_target.action))
             .Build());
   }
-  if (!input_manifest->related_applications.empty()) {
+  if (!input_manifest->related_applications().empty()) {
     auto related_apps =
         std::make_unique<protocol::Array<Page::RelatedApplication>>();
-    for (const auto& input_related_app : input_manifest->related_applications) {
+    for (const auto& input_related_app :
+         input_manifest->related_applications()) {
       auto related_app = Page::RelatedApplication::Create();
       if (input_related_app.id) {
         related_app.SetId(base::UTF16ToUTF8(input_related_app.id.value()));
@@ -450,10 +455,10 @@ void GotManifest(std::optional<std::string> manifest_id,
     }
     manifest.SetRelatedApplications(std::move(related_apps));
   }
-  manifest.SetScope(input_manifest->scope.possibly_invalid_spec());
-  if (!input_manifest->shortcuts.empty()) {
+  manifest.SetScope(input_manifest->scope().possibly_invalid_spec());
+  if (!input_manifest->shortcuts().empty()) {
     auto shortcuts = std::make_unique<protocol::Array<Page::Shortcut>>();
-    for (const auto& input_shortcut : input_manifest->shortcuts) {
+    for (const auto& input_shortcut : input_manifest->shortcuts()) {
       shortcuts->push_back(
           Page::Shortcut::Create()
               .SetName(base::UTF16ToUTF8(input_shortcut.name))
@@ -462,18 +467,16 @@ void GotManifest(std::optional<std::string> manifest_id,
     }
     manifest.SetShortcuts(std::move(shortcuts));
   }
-  manifest.SetStartUrl(input_manifest->start_url.possibly_invalid_spec());
-  if (input_manifest->theme_color.has_value()) {
+  manifest.SetStartUrl(input_manifest->start_url().possibly_invalid_spec());
+  if (input_manifest->theme_color().has_value()) {
     manifest.SetThemeColor(color_utils::SkColorToRgbaString(
-        static_cast<SkColor>(input_manifest->theme_color.value())));
+        input_manifest->theme_color().value()));
   }
 
-  std::unique_ptr<Page::AppManifestParsedProperties> parsed;
-  if (!blink::IsEmptyManifest(input_manifest)) {
-    parsed = Page::AppManifestParsedProperties::Create()
-                 .SetScope(input_manifest->scope.possibly_invalid_spec())
-                 .Build();
-  }
+  std::unique_ptr<Page::AppManifestParsedProperties> parsed =
+      Page::AppManifestParsedProperties::Create()
+          .SetScope(input_manifest->scope().possibly_invalid_spec())
+          .Build();
 
   std::move(callback)->sendSuccess(
       manifest_url.possibly_invalid_spec(), std::move(errors),
@@ -1687,22 +1690,65 @@ Response PageHandler::StartScreencast(std::optional<std::string> format,
   return Response::Success();
 }
 
-Response PageHandler::StartScreenRecording(std::optional<bool> audio,
-                                           std::optional<int> max_width,
-                                           std::optional<int> max_height,
-                                           std::optional<int> frame_rate,
-                                           std::string* out_stream) {
+void PageHandler::StartScreenRecording(
+    std::optional<bool> audio,
+    std::optional<int> max_width,
+    std::optional<int> max_height,
+    std::optional<int> frame_rate,
+    std::optional<std::string> capture_area,
+    std::unique_ptr<StartScreenRecordingCallback> callback) {
   if (screencast_encoder_ || media_recorder_) {
-    return Response::ServerError("Screencast is already active");
+    callback->sendFailure(
+        Response::ServerError("Screencast is already active"));
+    return;
+  }
+
+  const std::string area = capture_area.value_or(
+      Page::StartScreenRecording::CaptureAreaEnum::Target);
+  const bool record_browser_window =
+      area == Page::StartScreenRecording::CaptureAreaEnum::BrowserWindow;
+  if (area != Page::StartScreenRecording::CaptureAreaEnum::Target &&
+      !record_browser_window) {
+    callback->sendFailure(Response::InvalidParams("Unknown captureArea"));
+    return;
+  }
+  // Invalid sizes or frame rates would fail checks in the capture device and
+  // the encoder.
+  const int width = max_width.value_or(800);
+  const int height = max_height.value_or(600);
+  if (width <= 0 || height <= 0 || width > media::limits::kMaxDimension ||
+      height > media::limits::kMaxDimension ||
+      static_cast<int64_t>(width) * height > media::limits::kMaxCanvas) {
+    callback->sendFailure(Response::InvalidParams(
+        base::StrCat({"maxWidth and maxHeight must be between 1 and ",
+                      base::NumberToString(media::limits::kMaxDimension),
+                      ", and their product at most ",
+                      base::NumberToString(media::limits::kMaxCanvas)})));
+    return;
+  }
+  if (frame_rate.value_or(0) > media::limits::kMaxFramesPerSecond) {
+    callback->sendFailure(Response::InvalidParams(base::StrCat(
+        {"frameRate must be at most ",
+         base::NumberToString(media::limits::kMaxFramesPerSecond)})));
+    return;
+  }
+  // The browser window shows more than the target page, for example the tab
+  // strip and the omnibox. Thus only trusted clients can record it.
+  if (record_browser_window && !is_trusted_) {
+    callback->sendFailure(
+        Response::ServerError("Recording the browser window is not allowed."));
+    return;
   }
 
   Response response = AssureTopLevelActiveFrame();
   if (response.IsError()) {
-    return response;
+    callback->sendFailure(std::move(response));
+    return;
   }
   RenderWidgetHostImpl* widget_host = host_->GetRenderWidgetHost();
   if (!widget_host) {
-    return Response::InternalError();
+    callback->sendFailure(Response::InternalError());
+    return;
   }
 
   media_recorder_ = std::make_unique<MediaRecorder>(
@@ -1715,15 +1761,21 @@ Response PageHandler::StartScreenRecording(std::optional<bool> audio,
     fps = 30;
   }
 
-  Response result = media_recorder_->Start(
-      host_, has_audio, max_width.value_or(800), max_height.value_or(600), fps);
-  if (result.IsError()) {
-    media_recorder_.reset();
-    return result;
+  if (record_browser_window) {
+    StartBrowserWindowRecording(has_audio, width, height, fps,
+                                std::move(callback));
+    return;
   }
 
-  *out_stream = media_recorder_->GetStream();
-  return Response::Success();
+  Response result =
+      media_recorder_->Start(host_, has_audio, width, height, fps);
+  if (result.IsError()) {
+    media_recorder_.reset();
+    callback->sendFailure(std::move(result));
+    return;
+  }
+
+  callback->sendSuccess(media_recorder_->GetStream());
 }
 
 void PageHandler::StopScreenRecording(
@@ -1737,6 +1789,16 @@ void PageHandler::StopScreenRecording(
   }
 
   auto recorder = std::move(media_recorder_);
+  // For captureArea: browserWindow, the stream only exists after the
+  // embedder answered. The pending start then fails.
+  if (recorder->GetStream().empty()) {
+    recorder.reset();
+    if (callback) {
+      callback->sendFailure(
+          Response::ServerError("Screen recording has not started yet."));
+    }
+    return;
+  }
   recorder->Stop(base::BindOnce(
       [](std::unique_ptr<MediaRecorder> recorder,
          std::unique_ptr<StopScreenRecordingCallback> callback,
@@ -1746,6 +1808,86 @@ void PageHandler::StopScreenRecording(
         }
       },
       std::move(recorder), std::move(callback)));
+}
+
+void PageHandler::StartBrowserWindowRecording(
+    bool audio,
+    int max_width,
+    int max_height,
+    int frame_rate,
+    std::unique_ptr<StartScreenRecordingCallback> callback) {
+  WebContentsImpl* web_contents =
+      WebContentsImpl::FromRenderFrameHostImpl(host_);
+  DevToolsManagerDelegate* delegate =
+      DevToolsManager::GetInstance()->delegate();
+  if (!web_contents || !delegate) {
+    media_recorder_.reset();
+    callback->sendFailure(Response::ServerError(
+        DevToolsManagerDelegate::kBrowserWindowRecordingNotSupportedError));
+    return;
+  }
+  delegate->GetBrowserWindowCaptureDevice(
+      web_contents,
+      base::BindOnce(&PageHandler::OnBrowserWindowCaptureDevice,
+                     weak_factory_.GetWeakPtr(), media_recorder_->GetWeakPtr(),
+                     audio, max_width, max_height, frame_rate,
+                     std::move(callback)));
+}
+
+void PageHandler::OnBrowserWindowCaptureDevice(
+    base::WeakPtr<MediaRecorder> recorder,
+    bool audio,
+    int max_width,
+    int max_height,
+    int frame_rate,
+    std::unique_ptr<StartScreenRecordingCallback> callback,
+    base::expected<DevToolsManagerDelegate::BrowserWindowCaptureDevice,
+                   std::string> device) {
+  // Page.stopScreenRecording can run before the embedder answers.
+  if (!recorder || recorder.get() != media_recorder_.get()) {
+    callback->sendFailure(Response::ServerError(
+        "Screen recording was stopped before it started."));
+    return;
+  }
+  if (!device.has_value()) {
+    media_recorder_.reset();
+    callback->sendFailure(Response::ServerError(device.error()));
+    return;
+  }
+  // Audio comes from the target, as when only the target is recorded.
+  WebContentsImpl* web_contents =
+      WebContentsImpl::FromRenderFrameHostImpl(host_);
+  if (!web_contents) {
+    media_recorder_.reset();
+    callback->sendFailure(Response::ServerError(
+        DevToolsManagerDelegate::kBrowserWindowRecordingNotSupportedError));
+    return;
+  }
+  media_recorder_->StartDisplayCapture(
+      device->media_id, web_contents, std::move(device->ui), audio, max_width,
+      max_height, frame_rate,
+      base::BindOnce(&PageHandler::OnBrowserWindowRecordingStarted,
+                     weak_factory_.GetWeakPtr(), std::move(recorder),
+                     std::move(callback)));
+}
+
+void PageHandler::OnBrowserWindowRecordingStarted(
+    base::WeakPtr<MediaRecorder> recorder,
+    std::unique_ptr<StartScreenRecordingCallback> callback,
+    Response response) {
+  const bool is_current = recorder && recorder.get() == media_recorder_.get();
+  if (response.IsError() || !is_current) {
+    if (is_current) {
+      media_recorder_.reset();
+    }
+    callback->sendFailure(
+        response.IsError()
+            ? std::move(response)
+            : Response::ServerError(
+                  "Screen recording was stopped before it started."));
+    return;
+  }
+  callback->sendSuccess(media_recorder_->GetStream());
 }
 
 void PageHandler::OnMediaRecorderFlushed() {
@@ -1815,10 +1957,17 @@ Response PageHandler::BringToFront() {
     return Response::ServerError(kCommandIsOnlyAvailableAtTopTarget);
   }
 
-  WebContentsImpl* web_contents =
-      static_cast<WebContentsImpl*>(WebContents::FromRenderFrameHost(host_));
-  web_contents->Activate();
-  web_contents->GetOutermostWebContents()->Focus();
+  base::WeakPtr<PageHandler> weak_self = weak_factory_.GetWeakPtr();
+  WebContentsImpl::FromRenderFrameHostImpl(host_)
+      ->GetOutermostWebContents()
+      ->Activate();
+  // Re-check this since activation can synchronously destroy the WebContents.
+  if (!weak_self || !host_) {
+    return Response::ServerError(kErrorNotAttached);
+  }
+  WebContentsImpl::FromRenderFrameHostImpl(host_)
+      ->GetOutermostWebContents()
+      ->Focus();
   return Response::Success();
 }
 

@@ -22,6 +22,8 @@ class CONTENT_EXPORT InProcessVideoCaptureProvider
       scoped_refptr<base::SingleThreadTaskRunner> device_task_runner);
 
   std::unique_ptr<VideoCaptureDeviceLauncher> CreateDeviceLauncher() override;
+  std::unique_ptr<VideoCaptureDeviceLauncher>
+  CreateDeviceLauncherWithSharedMemoryBuffers() override;
 
   void OpenNativeScreenCapturePicker(
       DesktopMediaID::Type type,
@@ -46,7 +48,9 @@ class CONTENT_EXPORT InProcessVideoCaptureProvider
   explicit InProcessVideoCaptureProvider(
       scoped_refptr<base::SingleThreadTaskRunner> device_task_runner);
 
-  void GetDeviceInfosAsync(GetDeviceInfosCallback result_callback) override;
+  void GetDeviceInfosAsync(
+      media::mojom::VideoCaptureDeviceEnumerationMode enumeration_mode,
+      GetDeviceInfosCallback result_callback) override;
 
   std::unique_ptr<NativeScreenCapturePicker> native_screen_capture_picker_;
   // The message loop of media stream device thread, where VCD's live.

@@ -90,6 +90,54 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//chrome/browser/finds/core/finds_metrics.h:FindsOptInTriggerReason) -->
 
+<!-- LINT.IfChange(MacAppShimBadgeOSStatus) -->
+
+<enum name="MacAppShimBadgeOSStatus">
+  <int value="1" label="NotDetermined"/>
+  <int value="2" label="PromptPending"/>
+  <int value="3" label="Denied"/>
+  <int value="4" label="Granted"/>
+  <int value="5" label="GrantedBadgeDisabled"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/app_shim/app_shim_controller.h:MacAppShimBadgeOSStatus) -->
+
+<!-- LINT.IfChange(MacAppShimBadgeResult) -->
+
+<enum name="MacAppShimBadgeResult">
+  <int value="0" label="Success"/>
+  <int value="1" label="BlockedByOSPermission"/>
+  <int value="2" label="NoPermissionService"/>
+  <int value="3" label="NoResponse"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/common/mac/app_shim.mojom:AppShimBadgeResult) -->
+
+<!-- LINT.IfChange(MacAppShimNotificationPermissionStatus) -->
+
+<enum name="MacAppShimNotificationPermissionStatus">
+  <int value="1" label="NotDetermined"/>
+  <int value="2" label="PromptPending"/>
+  <int value="3" label="ImplicitlyDenied"/>
+  <int value="4" label="Granted"/>
+  <int value="5" label="ExplicitlyDenied"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/web_applications/os_integration/mac/app_shim_registry.h:NotificationPermissionStatus) -->
+
+<!-- LINT.IfChange(MacNotificationDisplayResult) -->
+
+<enum name="MacNotificationDisplayResult">
+  <int value="0" label="Success"/>
+  <int value="1" label="Permission not determined"/>
+  <int value="2" label="Permission prompt pending"/>
+  <int value="3" label="Permission denied"/>
+  <int value="4" label="OS delivery failed"/>
+  <int value="5" label="Service connection failed"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/services/mac_notifications/public/mojom/mac_notifications.mojom:MacNotificationDisplayResult) -->
+
 <enum name="NotificationActionType">
   <int value="0" label="Unknown"/>
   <int value="1" label="Notification added"/>
@@ -154,6 +202,17 @@ chromium-metrics-reviews@google.com.
   <int value="3" label="onStopJob"/>
   <int value="4" label="Start native startup"/>
   <int value="5" label="Dispatch intent"/>
+</enum>
+
+<enum name="NotificationOperation">
+  <int value="0" label="Click"/>
+  <int value="1" label="Close"/>
+  <int value="2" label="Disable Permission"/>
+  <int value="3" label="Settings"/>
+  <int value="4" label="Report As Safe"/>
+  <int value="5" label="Report Warned As Spam"/>
+  <int value="6" label="Report Unwarned As Spam"/>
+  <int value="7" label="Show Original Notification"/>
 </enum>
 
 <enum name="NotificationPendingJobReason">

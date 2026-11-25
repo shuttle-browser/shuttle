@@ -256,6 +256,20 @@ try_.builder(
 )
 
 try_.builder(
+    name = "android-desktop-17-x64-fyi-rel",
+    mirrors = [
+        "ci/android-desktop-17-x64-fyi-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/android-desktop-17-x64-fyi-rel",
+            "release_try_builder",
+        ],
+    ),
+    ssd = True,
+)
+
+try_.builder(
     name = "android-desktop-arm64-binary-size",
     # TODO(crbug.com/439887309): Enable on ANDROID_BRANCHES
     #branch_selector = branches.selector.ANDROID_BRANCHES,
@@ -280,16 +294,19 @@ try_.builder(
     main_list_view = "try",
     properties = {
         "$build/binary_size": {
+            # Static initializer and expectation checks are not configured for
+            # desktop.
             "analyze_targets": [
-                "//chrome/android:chrome_and_webview_64_minimal_apks",
-                "//chrome/android:validate_expectations",
+                "//chrome/android:chrome_public_minimal_apks",
                 "//tools/binary_size:binary_size_trybot_py",
             ],
             "compile_targets": [
-                "check_chrome_static_initializers",
-                "chrome_and_webview_64_minimal_apks",
-                "validate_expectations",
+                "chrome_public_minimal_apks",
             ],
+            "size_config_json": "config/ChromeDesktop_size_config.json",
+            # Tip-of-tree analysis is uploaded only for android-binary-size,
+            # which measures different artifacts.
+            "use_tot_analysis": False,
         },
     },
     siso_remote_linking = False,
@@ -320,16 +337,19 @@ try_.builder(
     main_list_view = "try",
     properties = {
         "$build/binary_size": {
+            # Static initializer and expectation checks are not configured for
+            # desktop.
             "analyze_targets": [
-                "//chrome/android:chrome_and_webview_64_minimal_apks",
-                "//chrome/android:validate_expectations",
+                "//chrome/android:chrome_public_minimal_apks",
                 "//tools/binary_size:binary_size_trybot_py",
             ],
             "compile_targets": [
-                "check_chrome_static_initializers",
-                "chrome_and_webview_64_minimal_apks",
-                "validate_expectations",
+                "chrome_public_minimal_apks",
             ],
+            "size_config_json": "config/ChromeDesktop_size_config.json",
+            # Tip-of-tree analysis is uploaded only for android-binary-size,
+            # which measures different artifacts.
+            "use_tot_analysis": False,
         },
     },
     siso_remote_linking = False,

@@ -13,8 +13,8 @@
 #include "content/public/browser/page_navigator.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 
 using content::GlobalRequestID;
 using content::NavigationController;
@@ -38,7 +38,7 @@ NavigateParams::NavigateParams(Profile* a_profile,
                                const GURL& a_url,
                                ui::PageTransition a_transition)
     : url(a_url),
-      disposition(WindowOpenDisposition::kNewForegroundTab),
+      disposition(ui::mojom::WindowOpenDisposition::kNewForegroundTab),
       transition(a_transition),
       window_action(WindowAction::kShowWindow),
       initiating_profile(a_profile) {}
@@ -78,6 +78,7 @@ void NavigateParams::FillNavigateParamsFromOpenURLParams(
   this->started_from_context_menu = params.started_from_context_menu;
   this->is_service_worker_open_window = params.is_service_worker_open_window;
   this->user_gesture = params.user_gesture;
+  this->original_user_gesture = params.user_gesture;
   this->blob_url_loader_factory = params.blob_url_loader_factory;
   this->href_translate = params.href_translate;
   this->internal_scroll_to_text_fragment =

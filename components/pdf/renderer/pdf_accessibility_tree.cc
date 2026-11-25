@@ -29,6 +29,7 @@
 #include "base/strings/utf_string_conversion_utils.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
+#include "components/pdf/renderer/pdf_accessibility_metrics.h"
 #include "components/pdf/renderer/pdf_accessibility_tree_builder.h"
 #include "components/pdf/renderer/pdf_ax_action_target.h"
 #include "components/strings/grit/components_strings.h"
@@ -52,6 +53,7 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/gfx/geometry/point_f.h"
 #include "ui/gfx/geometry/rect_conversions.h"
+#include "ui/gfx/geometry/rect_f.h"
 #include "ui/gfx/geometry/transform.h"
 
 
@@ -428,6 +430,14 @@ bool PdfAccessibilityTree::IsDataFromPluginValid(
         return false;
       }
     }
+
+    for (const gfx::RectF& rect : page_objects.filled_rects) {
+      if (!std::isfinite(rect.x()) || !std::isfinite(rect.y()) ||
+          !std::isfinite(rect.width()) || !std::isfinite(rect.height()) ||
+          rect.IsEmpty()) {
+        return false;
+      }
+    }
   }
 
   return true;
@@ -674,6 +684,7 @@ void PdfAccessibilityTree::UnserializeNodes() {
 
   ui::AXTreeUpdate update;
   update.root_id = doc_node_->id;
+  update.nodes.reserve(nodes_.size() + 3);
   update.nodes.push_back(*doc_node_);
   update.nodes.push_back(*status_node_);
   update.nodes.push_back(*status_node_text_);
@@ -726,8 +737,7 @@ void PdfAccessibilityTree::ResetStatusNodeAttributes() {
   update.root_id = doc_node_->id;
   // `status_node_` has been either cleared out or set with a new message, so
   // add it to `ui::AXTreeUpdate`.
-  update.nodes.push_back(*status_node_);
-  update.nodes.push_back(*status_node_text_);
+  update.nodes = {*status_node_, *status_node_text_};
   if (!tree_.Unserialize(update)) {
     LOG(FATAL) << tree_.error();
   }

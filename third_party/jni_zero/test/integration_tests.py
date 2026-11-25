@@ -34,8 +34,12 @@ _SCRIPT_DIR = os.path.normpath(os.path.dirname(__file__))
 _GOLDENS_DIR = os.path.join(_SCRIPT_DIR, 'golden')
 _EXTRA_INCLUDES = 'extra_include.h'
 _JAVA_SRC_DIR = os.path.join(_SCRIPT_DIR, 'java', 'src', 'org', 'jni_zero')
-_JAVA_BIN_DIR = os.path.join(_SCRIPT_DIR, os.pardir, os.pardir, 'jdk',
-                             'current', 'bin')
+sys.path.append(
+    os.path.join(_SCRIPT_DIR, os.pardir, os.pardir, os.pardir, 'build',
+                 'android'))
+import java_home  # noqa: E402
+
+_JAVA_BIN_DIR = os.path.join(java_home.JAVA_HOME, 'bin')
 _JAVAP_PATH = os.path.normpath(os.path.join(_JAVA_BIN_DIR, 'javap'))
 
 # Set this environment variable in order to regenerate the golden text
@@ -226,7 +230,6 @@ class BaseTest(unittest.TestCase):
     golden_name = self._testMethodName
     options = CliOptions(is_javap=is_javap, **kwargs)
     name_to_goldens = {}
-    kotlin_proxy_files = []
     if srcjar:
       dir_prefix, file_prefix = _MakePrefixes(options)
       # GEN_JNI ends up in placeholder srcjar instead if passed.
@@ -237,18 +240,16 @@ class BaseTest(unittest.TestCase):
         })
     with tempfile.TemporaryDirectory() as tdir:
       for i in input_files:
-        basename_and_folder = os.path.splitext(i)[0]
+        basename_and_folder, ext = os.path.splitext(i)
         basename = os.path.basename(basename_and_folder)
         options.shared_header_files.append(f'{basename}_shared_jni.h')
         options.unshared_header_files.append(f'{basename}_jni.h')
-        if srcjar and not i.endswith('.kt'):
+        if srcjar:
+          out_ext = '.kt' if ext == '.kt' else '.java'
           name_to_goldens.update({
-              f'org/jni_zero/{basename_and_folder}Jni.java':
-              f'{golden_name}-{basename}Jni.java.golden',
+              f'org/jni_zero/{basename_and_folder}Jni{out_ext}':
+              f'{golden_name}-{basename}Jni{out_ext}.golden',
           })
-        if srcjar and i.endswith('.kt'):
-          # Kotlin proxies are written as loose files rather than into srcjar.
-          kotlin_proxy_files.append(f'{basename}Jni.kt')
 
         relative_input_file = os.path.join(_JAVA_SRC_DIR, i)
         if is_javap:
@@ -288,9 +289,6 @@ class BaseTest(unittest.TestCase):
 
       if srcjar:
         self._CheckSrcjarGoldens(srcjar_path, name_to_goldens)
-      for o in kotlin_proxy_files:
-        with open(os.path.join(tdir, o), 'r') as f:
-          self.AssertGoldenTextEquals(f.read(), f'{golden_name}-{o}.golden')
       if generate_placeholders:
         placeholder_srcjar_golden = f'{golden_name}-placeholder.srcjar.golden'
         self._CheckPlaceholderSrcjarGolden(placeholder_srcjar_path,
@@ -608,6 +606,14 @@ class Tests(BaseTest):
                           srcjar=True,
                           package_prefix='this.is.a.package.prefix',
                           package_prefix_filter='org.jni_zero')
+
+  def testPackagePrefixWithSafePointers(self):
+    self._TestGenerateJni(['SampleSafePointersKotlin.kt'],
+                          srcjar=True,
+                          package_prefix='internal',
+                          package_prefix_filter='org.jni_zero',
+                          enable_safe_pointers=True,
+                          generate_placeholders=True)
 
   def testPackagePrefixWithManualRegistration(self):
     self._TestGenerateFinal(['SampleForAnnotationProcessor.java'],

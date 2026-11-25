@@ -27,9 +27,11 @@
 #include "content/public/common/child_process_id.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
+#include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "storage/browser/blob/blob_data_builder.h"
 #include "storage/browser/blob/blob_impl.h"
 #include "storage/browser/blob/blob_storage_context.h"
+#include "storage/browser/blob/scoped_file.h"
 #include "storage/browser/blob/shareable_file_reference.h"
 #include "storage/browser/file_system/copy_or_move_hook_delegate.h"
 #include "storage/browser/file_system/file_observers.h"
@@ -44,6 +46,7 @@
 #include "storage/common/file_system/file_system_util.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/blob/blob.mojom.h"
+#include "third_party/blink/public/mojom/blob/file_backed_blob_factory.mojom.h"
 #include "third_party/blink/public/mojom/blob/serialized_blob.mojom.h"
 #include "url/gurl.h"
 #include "url/origin.h"
@@ -58,6 +61,18 @@ using storage::FileSystemURL;
 namespace content {
 
 namespace {
+
+class SnapshotPermissionTokenImpl
+    : public blink::mojom::SnapshotPermissionToken {
+ public:
+  explicit SnapshotPermissionTokenImpl(
+      scoped_refptr<storage::ShareableFileReference> file_ref)
+      : file_ref_(std::move(file_ref)) {}
+  ~SnapshotPermissionTokenImpl() override = default;
+
+ private:
+  const scoped_refptr<storage::ShareableFileReference> file_ref_;
+};
 
 void RevokeFilePermission(ChildProcessId child_id, const base::FilePath& path) {
   // This call happens on the IO thread, where there is no guarantee that the
@@ -225,25 +240,6 @@ class FileSystemManagerImpl::FileSystemCancellableOperationImpl
   }
 
   const OperationID id_;
-  // |file_system_manager_impl| owns |this| through a UniqueReceiverSet.
-  const raw_ptr<FileSystemManagerImpl> file_system_manager_impl_;
-};
-
-class FileSystemManagerImpl::ReceivedSnapshotListenerImpl
-    : public blink::mojom::ReceivedSnapshotListener {
- public:
-  ReceivedSnapshotListenerImpl(int snapshot_id,
-                               FileSystemManagerImpl* file_system_manager_impl)
-      : snapshot_id_(snapshot_id),
-        file_system_manager_impl_(file_system_manager_impl) {}
-  ~ReceivedSnapshotListenerImpl() override = default;
-
- private:
-  void DidReceiveSnapshotFile() override {
-    file_system_manager_impl_->DidReceiveSnapshotFile(snapshot_id_);
-  }
-
-  const int snapshot_id_;
   // |file_system_manager_impl| owns |this| through a UniqueReceiverSet.
   const raw_ptr<FileSystemManagerImpl> file_system_manager_impl_;
 };
@@ -1224,15 +1220,9 @@ void FileSystemManagerImpl::Cancel(
                             std::move(callback)));
 }
 
-void FileSystemManagerImpl::DidReceiveSnapshotFile(int snapshot_id) {
-  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
-  in_transit_snapshot_files_.Remove(snapshot_id);
-}
-
 void FileSystemManagerImpl::OnConnectionError() {
   CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
   if (receivers_.empty()) {
-    in_transit_snapshot_files_.Clear();
     operation_runner_.reset();
     cancellable_operations_.Clear();
   }
@@ -1369,8 +1359,9 @@ void FileSystemManagerImpl::DidCreateSnapshot(
     base::File::Error result,
     const base::File::Info& info,
     const base::FilePath& platform_path,
-    scoped_refptr<storage::ShareableFileReference> /* unused */) {
+    storage::ScopedFile temp_file) {
   CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
+  CHECK(temp_file.path().empty());
   if (result != base::File::FILE_OK) {
     std::move(callback).Run(base::File::Info(), base::FilePath(), result,
                             mojo::NullRemote());
@@ -1440,14 +1431,11 @@ void FileSystemManagerImpl::ContinueDidCreateSnapshot(
   }
 
   if (file_ref.get()) {
-    // This ref is held until DidReceiveSnapshotFile is called.
-    int request_id = in_transit_snapshot_files_.Add(file_ref);
-    mojo::PendingRemote<blink::mojom::ReceivedSnapshotListener> listener;
-    snapshot_listeners_.Add(
-        std::make_unique<ReceivedSnapshotListenerImpl>(request_id, this),
-        listener.InitWithNewPipeAndPassReceiver());
-    // Return the file info and platform_path.
-    std::move(callback).Run(info, platform_path, result, std::move(listener));
+    mojo::PendingRemote<blink::mojom::SnapshotPermissionToken> token;
+    mojo::MakeSelfOwnedReceiver(
+        std::make_unique<SnapshotPermissionTokenImpl>(std::move(file_ref)),
+        token.InitWithNewPipeAndPassReceiver());
+    std::move(callback).Run(info, platform_path, result, std::move(token));
     return;
   }
 

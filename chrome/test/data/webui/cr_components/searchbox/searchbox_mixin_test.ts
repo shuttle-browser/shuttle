@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://new-tab-page/strings.m.js';
 import 'chrome://resources/cr_components/searchbox/searchbox_compose_button.js';
 import 'chrome://resources/cr_components/searchbox/searchbox_dropdown.js';
 import 'chrome://resources/cr_components/searchbox/searchbox_input.js';
+import 'chrome://webui-test/strings.m.js';
 
 import {KeywordModeEntryMethod} from 'chrome://resources/cr_components/searchbox/keyword_mode_manager.js';
 import {createAutocompleteMatch, createAutocompleteResultForTesting, createMatchKeywordModelForTesting, createSearchMatchForTesting, SearchboxBrowserProxy} from 'chrome://resources/cr_components/searchbox/searchbox_browser_proxy.js';
@@ -647,9 +647,98 @@ suite('SearchboxMixinTest', () => {
     assertTrue(enterEvent.defaultPrevented);
     await microtasksFinished();
 
-    const args = await testProxy.handler.whenCalled('openPopupSelection');
-    assertEquals(0, args.selection.line);
+    const args =
+        await testProxy.handler.whenCalled('openPopupSelectionWithDisposition');
+    // The default match isn't previewed, so Ctrl+Enter uses the input.
+    assertEquals(-1, args.selection.line);
     assertEquals(SelectionLineState.kCtrlEnter, args.selection.state);
+  });
+
+  test('pressing Ctrl+Enter on input too quickly', async () => {
+    element.shouldAppendDotCom = true;
+    const mockInput = element.getInputElement();
+    await simulateUserTextInput(mockInput, 'hello');
+    element.onAutocompleteResultChanged(createAutocompleteResultForTesting({
+      queryId: element.activeQueryId,
+      input: 'hello',
+      matches: [
+        createSearchMatchForTesting({allowedToBeDefaultMatch: true}),
+        createUrlMatch(),
+      ],
+    }));
+    await microtasksFinished();
+    assertTrue(element.dropdownIsVisible);
+
+    // Preview the 2nd match. Then press Ctrl+Enter before the 'hello world'
+    // matches arrive.
+    mockInput.inputElement.dispatchEvent(createKeyboardEvent('ArrowDown'));
+    await microtasksFinished();
+    assertEquals(1, element.selectedMatchIndex);
+    await simulateUserTextInput(mockInput, 'hello world');
+    const queryId = element.activeQueryId;
+    const ctrlEnter = createKeyboardEvent('Enter', {ctrlKey: true});
+    mockInput.inputElement.dispatchEvent(ctrlEnter);
+    assertTrue(ctrlEnter.defaultPrevented);
+    await microtasksFinished();
+
+    // Opens the input with '.com' appended right away, instead of the stale
+    // preview, or waiting for the matches to open the default match.
+    assertEquals(
+        1, testProxy.handler.getCallCount('openPopupSelectionWithDisposition'));
+    const args =
+        testProxy.handler.getArgs('openPopupSelectionWithDisposition')[0];
+    assertEquals(-1, args.selection.line);
+    assertEquals(SelectionLineState.kCtrlEnter, args.selection.state);
+
+    element.onAutocompleteResultChanged(createAutocompleteResultForTesting({
+      queryId,
+      input: 'hello world',
+      matches: [createSearchMatchForTesting({allowedToBeDefaultMatch: true})],
+    }));
+    await microtasksFinished();
+    assertEquals(0, testProxy.handler.getCallCount('openAutocompleteMatch'));
+  });
+
+  test('pressing Ctrl+Enter in keyword mode acts as normal enter', async () => {
+    element.shouldAppendDotCom = true;
+    element.keywordModeManager.enter(
+        'youtube.com', 'YouTube', KeywordModeEntryMethod.TAB);
+    assertTrue(element.inKeywordMode);
+
+    const mockInput = element.getInputElement();
+    await simulateUserTextInput(mockInput, 'hello');
+
+    const matches = [
+      createSearchMatchForTesting({
+        allowedToBeDefaultMatch: true,
+        fillIntoEdit: 'youtube.com hello',
+        keywordModel: createMatchKeywordModelForTesting({
+          type: KeywordType.kInKeyword,
+          keyword: 'youtube.com',
+          chipHint: 'Search YouTube',
+        }),
+      }),
+    ];
+    element.onAutocompleteResultChanged(createAutocompleteResultForTesting({
+      queryId: element.activeQueryId,
+      input: 'hello',
+      matches: matches,
+    }));
+    await microtasksFinished();
+    assertTrue(element.dropdownIsVisible);
+
+    const enterEvent = createKeyboardEvent('Enter', {ctrlKey: true});
+    mockInput.inputElement.dispatchEvent(enterEvent);
+    assertTrue(enterEvent.defaultPrevented);
+    await microtasksFinished();
+
+    assertEquals(0, testProxy.handler.getCallCount('openPopupSelection'));
+    assertEquals(
+        0, testProxy.handler.getCallCount('openPopupSelectionWithDisposition'));
+    const args = await testProxy.handler.whenCalled('openAutocompleteMatch');
+    assertEquals(0, args.line);
+    assertEquals(matches[0]!.destinationUrl, args.url);
+    assertTrue(args.viaKeyboard);
   });
 
   test(
@@ -1686,6 +1775,115 @@ suite('SearchboxMixinTest', () => {
             0, testProxy.handler.getCallCount('openAutocompleteMatch'));
       });
 
+  test('pressing Enter on input too quickly then typing', async () => {
+    const mockInput = element.getInputElement();
+    await simulateUserTextInput(mockInput, 'hello');
+    element.onAutocompleteResultChanged(createAutocompleteResultForTesting({
+      queryId: element.activeQueryId,
+      input: 'hello',
+      matches: [createSearchMatchForTesting({allowedToBeDefaultMatch: true})],
+    }));
+    await microtasksFinished();
+    assertTrue(element.dropdownIsVisible);
+
+    // Press Enter before the 'hello world' matches arrive, then keep typing.
+    await simulateUserTextInput(mockInput, 'hello world');
+    const staleQueryId = element.activeQueryId;
+    const enter = createKeyboardEvent('Enter');
+    mockInput.inputElement.dispatchEvent(enter);
+    assertTrue(enter.defaultPrevented);
+    await simulateUserTextInput(mockInput, 'hello world!');
+
+    // Neither the discarded 'hello world' matches nor the 'hello world!'
+    // matches navigate, since Enter wasn't pressed for 'hello world!'.
+    element.onAutocompleteResultChanged(createAutocompleteResultForTesting({
+      queryId: staleQueryId,
+      input: 'hello world',
+      matches: [createSearchMatchForTesting({allowedToBeDefaultMatch: true})],
+    }));
+    element.onAutocompleteResultChanged(createAutocompleteResultForTesting({
+      queryId: element.activeQueryId,
+      input: 'hello world!',
+      matches: [createUrlMatch({allowedToBeDefaultMatch: true})],
+    }));
+    await microtasksFinished();
+    assertTrue(element.dropdownIsVisible);
+    assertEquals(0, testProxy.handler.getCallCount('openAutocompleteMatch'));
+  });
+
+  test(
+      'pressing Enter on input too quickly then deleting a match', async () => {
+        const mockInput = element.getInputElement();
+        const matches = await showDeletableMatches(element);
+        assertEquals(0, element.selectedMatchIndex);
+
+        // Press Enter before the 'https://local.' matches arrive, then delete
+        // the first match.
+        await simulateUserTextInput(mockInput, 'https://local.');
+        const enter = createKeyboardEvent('Enter');
+        mockInput.inputElement.dispatchEvent(enter);
+        assertTrue(enter.defaultPrevented);
+        const matchEls =
+            element.getDropdownElement().shadowRoot.querySelectorAll(
+                'cr-searchbox-match');
+        matchEls[0]!.$.remove.click();
+        const args =
+            await testProxy.handler.whenCalled('deleteAutocompleteMatch');
+        assertEquals(0, args.line);
+        assertEquals(matches[0]!.destinationUrl, args.url);
+
+        // Deleting a match after pressing Enter cancels the Enter, so the
+        // post-deletion matches don't navigate.
+        element.onAutocompleteResultChanged(createAutocompleteResultForTesting({
+          queryId: element.activeQueryId,
+          input: 'https://local.',
+          matches: [createUrlMatch({allowedToBeDefaultMatch: true})],
+        }));
+        await microtasksFinished();
+        assertTrue(element.dropdownIsVisible);
+        assertEquals(
+            0, testProxy.handler.getCallCount('openAutocompleteMatch'));
+      });
+
+  test(
+      'pressing Enter on input too quickly only waits for the first results',
+      async () => {
+        const mockInput = element.getInputElement();
+        await simulateUserTextInput(mockInput, 'hello');
+        element.onAutocompleteResultChanged(createAutocompleteResultForTesting({
+          queryId: element.activeQueryId,
+          input: 'hello',
+          matches:
+              [createSearchMatchForTesting({allowedToBeDefaultMatch: true})],
+        }));
+        await microtasksFinished();
+        assertTrue(element.dropdownIsVisible);
+
+        // Press Enter before the 'hello world' matches arrive.
+        await simulateUserTextInput(mockInput, 'hello world');
+        const enter = createKeyboardEvent('Enter');
+        mockInput.inputElement.dispatchEvent(enter);
+        assertTrue(enter.defaultPrevented);
+
+        // The first 'hello world' matches have no default match, so Enter does
+        // nothing. A later update for the same query doesn't navigate either.
+        element.onAutocompleteResultChanged(createAutocompleteResultForTesting({
+          queryId: element.activeQueryId,
+          input: 'hello world',
+          matches: [createSearchMatchForTesting()],
+        }));
+        await microtasksFinished();
+        element.onAutocompleteResultChanged(createAutocompleteResultForTesting({
+          queryId: element.activeQueryId,
+          input: 'hello world',
+          matches: [createUrlMatch({allowedToBeDefaultMatch: true})],
+        }));
+        await microtasksFinished();
+        assertTrue(element.dropdownIsVisible);
+        assertEquals(
+            0, testProxy.handler.getCallCount('openAutocompleteMatch'));
+      });
+
   test('pressing Enter on input too quickly', async () => {
     const mockInput = element.getInputElement();
     await simulateUserTextInput(mockInput, 'hello');
@@ -1729,6 +1927,44 @@ suite('SearchboxMixinTest', () => {
     assertTrue(args.areMatchesShowing);
     assertTrue(args.modifiers.shiftKey);
     assertTrue(args.viaKeyboard);
+    assertEquals(1, testProxy.handler.getCallCount('openAutocompleteMatch'));
+  });
+
+  test('pressing Shift+Enter on input too quickly', async () => {
+    const mockInput = element.getInputElement();
+    await simulateUserTextInput(mockInput, 'hello');
+    element.onAutocompleteResultChanged(createAutocompleteResultForTesting({
+      queryId: element.activeQueryId,
+      input: 'hello',
+      matches: [createSearchMatchForTesting({allowedToBeDefaultMatch: true})],
+    }));
+    await microtasksFinished();
+    assertTrue(element.dropdownIsVisible);
+
+    // Like a real Shift+Enter, press Shift by itself before pressing Enter.
+    await simulateUserTextInput(mockInput, 'hello world');
+    mockInput.inputElement.dispatchEvent(
+        createKeyboardEvent('Shift', {shiftKey: true}));
+    const shiftEnter = createKeyboardEvent('Enter', {shiftKey: true});
+    mockInput.inputElement.dispatchEvent(shiftEnter);
+    assertTrue(shiftEnter.defaultPrevented);
+
+    // Waits for the 'hello world' matches instead of opening the stale 'hello'
+    // match.
+    assertEquals(0, testProxy.handler.getCallCount('openAutocompleteMatch'));
+
+    const matches = [createUrlMatch({allowedToBeDefaultMatch: true})];
+    element.onAutocompleteResultChanged(createAutocompleteResultForTesting({
+      queryId: element.activeQueryId,
+      input: 'hello world',
+      matches,
+    }));
+    await microtasksFinished();
+
+    const args = await testProxy.handler.whenCalled('openAutocompleteMatch');
+    assertEquals(0, args.line);
+    assertEquals(matches[0]!.destinationUrl, args.url);
+    assertTrue(args.modifiers.shiftKey);
     assertEquals(1, testProxy.handler.getCallCount('openAutocompleteMatch'));
   });
 
@@ -1943,6 +2179,73 @@ suite('SearchboxMixinTest', () => {
         assertTrue(element.keywordModeManager.isInKeywordMode);
         assertEquals(keyword, element.keywordModeManager.activeKeyword);
         assertEquals('', mockInput.inputElement.value);
+      });
+
+  test('input text appears on page call from browser', async () => {
+    const input = element.getInputElement();
+    assertEquals(input.inputElement.value, '');
+
+    let textUpdatedEventCount = 0;
+    input.addEventListener('searchbox-input-text-updated', () => {
+      textUpdatedEventCount++;
+    });
+
+    testProxy.callbackRouterRemote.setInputText('Hello');
+    await microtasksFinished();
+
+    assertEquals(input.inputElement.value, 'Hello');
+    assertEquals(0, textUpdatedEventCount);
+  });
+
+  test(
+      'first mouse press after committing a composition freezes its results',
+      async () => {
+        const mockInput = element.getInputElement();
+        function commit() {
+          mockInput.inputElement.dispatchEvent(
+              new CompositionEvent('compositionend', {data: 'にほん'}));
+        }
+        function pressMouse() {
+          element.getDropdownElement().dispatchEvent(
+              new MouseEvent('mousedown', {bubbles: true, composed: true}));
+        }
+        mockInput.inputElement.value = 'にほん';
+        mockInput.inputElement.dispatchEvent(new InputEvent('input', {
+          inputType: 'insertCompositionText',
+          data: 'にほん',
+          isComposing: true,
+        }));
+
+        // Like the browser, commit the composition before dispatching the
+        // mouse press that ended it, e.g. on a match.
+        commit();
+        const queryId = element.activeQueryId;
+        pressMouse();
+        assertEquals(-1, element.activeQueryId);
+
+        // The results for the committed text don't replace the matches under
+        // the pointer.
+        element.onAutocompleteResultChanged(createAutocompleteResultForTesting({
+          queryId,
+          input: 'にほん',
+          matches: [createSearchMatchForTesting()],
+        }));
+        await microtasksFinished();
+        assertEquals(null, element.result);
+
+        // Later presses don't freeze them, e.g. once deleting a match
+        // unfroze them.
+        element.unfreezeActiveQueryId();
+        pressMouse();
+        assertEquals(queryId, element.activeQueryId);
+
+        // Neither do presses after a key press, e.g. Enter, which waits for
+        // the results.
+        commit();
+        const secondQueryId = element.activeQueryId;
+        mockInput.inputElement.dispatchEvent(createKeyboardEvent('Enter'));
+        pressMouse();
+        assertEquals(secondQueryId, element.activeQueryId);
       });
 
   test('question mark keyword entry', async () => {
@@ -3313,7 +3616,8 @@ suite('SearchboxMixinVirtualFocusTest', () => {
     await microtasksFinished();
 
     assertTrue(ctrlEnterEvent.defaultPrevented);
-    const args = await testProxy.handler.whenCalled('openPopupSelection');
+    const args =
+        await testProxy.handler.whenCalled('openPopupSelectionWithDisposition');
     assertEquals(0, args.selection.line);
     assertEquals(SelectionLineState.kCtrlEnter, args.selection.state);
   });
@@ -3990,6 +4294,71 @@ suite('SearchboxMixinVirtualFocusTest', () => {
         assertEquals('youtube.com', mockInput.inputElement.value);
         // Leaving keyword mode doesn't activate a keyword.
         assertEquals(1, testProxy.handler.getCallCount('activateKeyword'));
+      });
+
+  test(
+      'Enter on keyword chip opens the selection only with text after keyword',
+      async () => {
+        loadTimeData.overrideValues({realboxVirtualFocusNavigation: true});
+        element.virtualFocusEnabledOverride = true;
+
+        const mockInput = element.getInputElement();
+        await simulateUserTextInput(mockInput, 'youtube.com cats');
+
+        const defaultMatch = createSearchMatchForTesting({
+          fillIntoEdit: 'youtube.com cats',
+          allowedToBeDefaultMatch: true,
+          keywordModel: createMatchKeywordModelForTesting({
+            type: KeywordType.kChip,
+            keyword: 'youtube.com',
+            chipHint: 'Search YouTube',
+          }),
+        });
+
+        element.onAutocompleteResultChanged(createAutocompleteResultForTesting({
+          queryId: element.activeQueryId,
+          input: 'youtube.com cats',
+          matches: [defaultMatch],
+        }));
+        await microtasksFinished();
+
+        // Tab selects the keyword chip, leaving the text after the keyword.
+        mockInput.inputElement.dispatchEvent(createKeyboardEvent('Tab'));
+        await microtasksFinished();
+        assertEquals(SelectionLineState.kKeywordMode, element.selection.state);
+        assertEquals('cats', mockInput.inputElement.value);
+
+        // Enter asks the browser to open the keyword chip selection, which
+        // searches the keyword for the text, forwarding modifier keys.
+        mockInput.inputElement.dispatchEvent(createKeyboardEvent('Enter'));
+        await microtasksFinished();
+        assertEquals(1, testProxy.handler.getCallCount('openPopupSelection'));
+        let args = testProxy.handler.getArgs('openPopupSelection')[0];
+        assertDeepEquals(
+            {line: 0, state: SelectionLineState.kKeywordMode, actionIndex: 0},
+            args.selection);
+        assertDeepEquals(
+            {altKey: false, ctrlKey: false, metaKey: false, shiftKey: false},
+            args.modifiers);
+        assertEquals(
+            0, testProxy.handler.getCallCount('openAutocompleteMatch'));
+
+        mockInput.inputElement.dispatchEvent(
+            createKeyboardEvent('Enter', {altKey: true, shiftKey: true}));
+        await microtasksFinished();
+        assertEquals(2, testProxy.handler.getCallCount('openPopupSelection'));
+        args = testProxy.handler.getArgs('openPopupSelection')[1];
+        assertDeepEquals(
+            {altKey: true, ctrlKey: false, metaKey: false, shiftKey: true},
+            args.modifiers);
+
+        // Without text after the keyword, Enter does nothing.
+        mockInput.inputElement.value = '';
+        mockInput.inputElement.dispatchEvent(createKeyboardEvent('Enter'));
+        await microtasksFinished();
+        assertEquals(2, testProxy.handler.getCallCount('openPopupSelection'));
+        assertEquals(
+            0, testProxy.handler.getCallCount('openAutocompleteMatch'));
       });
 
   test('dynamic keyword space triggering pref change', async () => {

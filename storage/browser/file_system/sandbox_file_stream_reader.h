@@ -18,7 +18,6 @@
 #include "base/types/expected.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/net_errors.h"
-#include "storage/browser/blob/shareable_file_reference.h"
 #include "storage/browser/file_system/file_stream_reader.h"
 #include "storage/browser/file_system/file_system_operation_runner.h"
 #include "storage/browser/file_system/file_system_url.h"
@@ -30,6 +29,7 @@ class FilePath;
 namespace storage {
 
 class FileSystemContext;
+class ScopedFile;
 
 // FileStreamReader implementation for Sandboxed FileSystem files.
 // This wraps either a LocalFileStreamReader or a MemoryFileStreamReader,
@@ -53,7 +53,7 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) SandboxFileStreamReader
   ~SandboxFileStreamReader() override;
 
   // FileStreamReader overrides.
-  int Read(net::IOBuffer* buf,
+  int Read(scoped_refptr<net::IOBuffer> buf,
            int buf_len,
            net::CompletionOnceCallback callback) override;
   int64_t GetLength(GetLengthCallback callback) override;
@@ -63,19 +63,18 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) SandboxFileStreamReader
   using SnapshotCallback = FileSystemOperationRunner::SnapshotFileCallback;
 
   int CreateSnapshot(SnapshotCallback callback);
-  void DidCreateSnapshotForRead(net::IOBuffer* read_buf,
+  void DidCreateSnapshotForRead(scoped_refptr<net::IOBuffer> read_buf,
                                 int read_len,
                                 net::CompletionOnceCallback callback,
                                 base::File::Error file_error,
                                 const base::File::Info& file_info,
                                 const base::FilePath& platform_path,
-                                scoped_refptr<ShareableFileReference> file_ref);
-  void DidCreateSnapshotForGetLength(
-      GetLengthCallback callback,
-      base::File::Error file_error,
-      const base::File::Info& file_info,
-      const base::FilePath& platform_path,
-      scoped_refptr<ShareableFileReference> file_ref);
+                                ScopedFile temp_file);
+  void DidCreateSnapshotForGetLength(GetLengthCallback callback,
+                                     base::File::Error file_error,
+                                     const base::File::Info& file_info,
+                                     const base::FilePath& platform_path,
+                                     ScopedFile temp_file);
   void CreateFileReader(const base::FilePath& platform_path);
 
   void OnRead(net::CompletionOnceCallback callback, int rv);
@@ -87,7 +86,6 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) SandboxFileStreamReader
   const int64_t initial_offset_;
   const base::Time expected_modification_time_;
   std::unique_ptr<FileStreamReader> file_reader_;
-  scoped_refptr<ShareableFileReference> snapshot_ref_;
   bool has_pending_create_snapshot_;
   base::WeakPtrFactory<SandboxFileStreamReader> weak_factory_{this};
 };

@@ -82,7 +82,6 @@
 #include "third_party/blink/public/mojom/credentialmanagement/credential_type_flags.mojom.h"
 #include "third_party/icu/source/common/unicode/locid.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/native_ui_types.h"
 
 
@@ -169,7 +168,7 @@ class CableLinkingEventHandler : public ProfileObserver {
 
   // ProfileObserver:
   void OnProfileWillBeDestroyed(Profile* profile) override {
-    DCHECK_EQ(profile, profile_);
+    CHECK_EQ(profile, profile_, base::NotFatalUntil::M163);
     profile_->RemoveObserver(this);
     profile_ = nullptr;
   }
@@ -274,6 +273,11 @@ void ChromeAuthenticatorRequestDelegate::SetRelyingPartyId(
 void ChromeAuthenticatorRequestDelegate::SetUIPresentation(
     UIPresentation ui_presentation) {
   dialog_controller_->SetUIPresentation(ui_presentation);
+}
+
+void ChromeAuthenticatorRequestDelegate::SetAmbientChipOnly(
+    bool ambient_chip_only) {
+  dialog_model_->ambient_chip_only = ambient_chip_only;
 }
 
 bool ChromeAuthenticatorRequestDelegate::DoesBlockRequestOnFailure(
@@ -434,8 +438,9 @@ void ChromeAuthenticatorRequestDelegate::ConfigureDiscoveries(
     std::optional<std::string_view> user_name,
     bool browser_provided_passkeys_available,
     device::FidoDiscoveryFactory* discovery_factory) {
-  DCHECK(request_type == device::FidoRequestType::kGetAssertion ||
-         resident_key_requirement.has_value());
+  CHECK(request_type == device::FidoRequestType::kGetAssertion ||
+            resident_key_requirement.has_value(),
+        base::NotFatalUntil::M163);
   request_source_ = request_source;
 
   // Without the UI enabled, discoveries like caBLE, Android AOA, iCloud
@@ -499,7 +504,7 @@ void ChromeAuthenticatorRequestDelegate::SelectAccount(
         callback) {
   if (!webauthn_ui_enabled()) {
     // Requests with UI disabled should never reach account selection.
-    DCHECK(IsVirtualEnvironmentEnabled());
+    CHECK(IsVirtualEnvironmentEnabled(), base::NotFatalUntil::M163);
 
     // The browser is being automated. Select the first credential to support
     // automation of discoverable credentials.
@@ -645,7 +650,7 @@ void ChromeAuthenticatorRequestDelegate::OnRetryUserVerification(int attempts) {
 }
 
 void ChromeAuthenticatorRequestDelegate::OnStartOver() {
-  DCHECK(start_over_callback_);
+  CHECK(start_over_callback_, base::NotFatalUntil::M163);
   // If the request is restarted within the same delegate, record the
   // outcome for the prior attempt before resetting for the new attempt.
   MaybeRecordHybridPasskeyOutcome(
@@ -660,7 +665,7 @@ void ChromeAuthenticatorRequestDelegate::OnStartOver() {
 
 void ChromeAuthenticatorRequestDelegate::OnModelDestroyed(
     AuthenticatorRequestDialogModel* model) {
-  DCHECK_EQ(model, dialog_model_.get());
+  CHECK_EQ(model, dialog_model_.get(), base::NotFatalUntil::M163);
 }
 
 void ChromeAuthenticatorRequestDelegate::OnStepTransition() {
@@ -676,7 +681,7 @@ void ChromeAuthenticatorRequestDelegate::OnCancelRequest() {
 
   // |cancel_callback_| must be invoked at most once as invocation of
   // |cancel_callback_| will destroy |this|.
-  DCHECK(cancel_callback_);
+  CHECK(cancel_callback_, base::NotFatalUntil::M163);
   std::move(cancel_callback_).Run();
 }
 
@@ -684,7 +689,7 @@ content::RenderFrameHost*
 ChromeAuthenticatorRequestDelegate::GetRenderFrameHost() const {
   content::RenderFrameHost* ret =
       content::RenderFrameHost::FromID(render_frame_host_id_);
-  DCHECK(ret);
+  CHECK(ret, base::NotFatalUntil::M163);
   return ret;
 }
 

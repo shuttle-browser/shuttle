@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include "base/functional/callback.h"
+#include "base/time/time.h"
 #include "remoting/codec/encoder_bitrate_filter.h"
 #include "remoting/codec/scoped_vpx_codec.h"
 #include "remoting/codec/video_encoder_active_map.h"
@@ -29,6 +30,12 @@ namespace remoting {
 // once the old implementation is no longer in use.
 class WebrtcVideoEncoderVpx : public WebrtcVideoEncoder {
  public:
+  // Minimum supported VP9 encode speed (also used for lossless color encode).
+  static constexpr int kVp9MinEncoderSpeed = 5;
+  static constexpr int kVp9DefaultEncoderSpeed = 9;
+  static constexpr int kVp9MaxEncoderSpeed = 9;
+  static constexpr int kVp8DefaultEncoderSpeed = 16;
+
   // Creates encoder for the specified protocol.
   static std::unique_ptr<WebrtcVideoEncoder> CreateForVP8();
   static std::unique_ptr<WebrtcVideoEncoder> CreateForVP9();
@@ -84,6 +91,11 @@ class WebrtcVideoEncoderVpx : public WebrtcVideoEncoder {
   vpx_active_map_t active_map_;
   // TODO(joedow): Remove this flag after we're done with performance tuning.
   const bool use_active_map_ = true;
+
+  // This timestamp is monotonically increased using the current frame duration.
+  // It's only used for rate control and is not related to the timestamps on the
+  // incoming frames to encode.
+  base::TimeDelta artificial_timestamp_;
 
   EncoderBitrateFilter bitrate_filter_;
 };

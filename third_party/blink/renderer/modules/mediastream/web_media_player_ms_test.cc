@@ -16,9 +16,12 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/notreached.h"
 #include "base/run_loop.h"
+#include "base/synchronization/lock.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/test/bind.h"
 #include "base/test/gmock_callback_support.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "cc/layers/layer.h"
@@ -51,6 +54,7 @@
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
 #include "third_party/blink/renderer/platform/testing/io_task_runner_testing_platform_support.h"
 #include "third_party/blink/renderer/platform/testing/task_environment.h"
+#include "third_party/blink/renderer/platform/testing/testing_platform_support.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
@@ -650,8 +654,10 @@ class WebMediaPlayerMSTest
     submitter_ptr_ = submitter_.get();
   }
   ~WebMediaPlayerMSTest() override {
-    player_->Shutdown();
-    player_.reset();
+    if (player_) {
+      player_->Shutdown();
+      player_.reset();
+    }
     client_->Detach();
     base::RunLoop().RunUntilIdle();
   }
@@ -1008,6 +1014,7 @@ void WebMediaPlayerMSTest::TestRequestFrameCallbackWithVideoFrameMetadata(
 void WebMediaPlayerMSTest::MapTimestampsToRenderTimeTicks(
     const std::vector<base::TimeDelta>& timestamps,
     std::vector<base::TimeTicks>* wall_clock_times) {
+  base::AutoLock lock(compositor_->current_frame_lock_);
   compositor_->MapTimestampsToRenderTimeTicks(timestamps, wall_clock_times);
 }
 
@@ -1702,6 +1709,8 @@ TEST_P(WebMediaPlayerMSTest, HandlesTimestampMappingForUnknownFrame) {
 }
 
 TEST_P(WebMediaPlayerMSTest, OutOfOrderEnqueue) {
+  // The frame count expectations below assume presentation-time counting.
+  base::test::ScopedFeatureList features(kMediaStreamCountFramesWhenPresented);
   InitializeWebMediaPlayerMS();
   LoadAndGetFrameProvider(true);
 
@@ -1747,8 +1756,16 @@ TEST_P(WebMediaPlayerMSTest, OutOfOrderEnqueue) {
   EXPECT_EQ(frame->timestamp(), kStep * 2);
   compositor_->PutCurrentFrame();
 
+  // Frames 1 and 3 were discarded by the buffer reset, frame 2 was presented.
+  EXPECT_EQ(compositor_->total_frame_count(), 3u);
+  EXPECT_EQ(compositor_->dropped_frame_count(), 2u);
+
   compositor_->StopRendering();
   task_environment_.RunUntilIdle();
+
+  // The reset path also posted frame 2 to the compositor thread; that task
+  // finds it already presented and must not count it again.
+  EXPECT_EQ(compositor_->total_frame_count(), 3u);
 }
 
 TEST_P(WebMediaPlayerMSTest, ValidPreferredInterval) {
@@ -1806,9 +1823,67 @@ TEST_P(WebMediaPlayerMSTest, OnContextLost) {
 
   compositor_->EnqueueFrame(gpu_frame, true);
   base::RunLoop().RunUntilIdle();
+  EXPECT_EQ(compositor_->total_frame_count(), 2u);
   // frame with gpu resource should be reset if context is lost
   compositor_->OnContextLost();
   EXPECT_NE(gpu_frame, compositor_->GetCurrentFrame());
+  // The synthesized black frame is not a frame from the source.
+  EXPECT_EQ(compositor_->total_frame_count(), 2u);
+}
+
+TEST_P(WebMediaPlayerMSTest,
+       ReplaceCurrentFrameWithACopyHandlesPlayerShutdownDuringCopy) {
+  class ContextProviderTestingPlatform : public TestingPlatformSupport {
+   public:
+    explicit ContextProviderTestingPlatform(base::OnceClosure on_query)
+        : on_query_(std::move(on_query)) {}
+
+    scoped_refptr<viz::RasterContextProvider> SharedMainThreadContextProvider()
+        override {
+      std::move(on_query_).Run();
+      return nullptr;
+    }
+
+   private:
+    base::OnceClosure on_query_;
+  };
+
+  InitializeWebMediaPlayerMS();
+  LoadAndGetFrameProvider(false);
+
+  const gfx::Size frame_size(320, 240);
+  auto shared_image = test_sii_->CreateSharedImage(
+      {viz::MultiPlaneFormat::kNV12, frame_size, gfx::ColorSpace(),
+       gpu::SharedImageUsageSet(gpu::SHARED_IMAGE_USAGE_CPU_WRITE_ONLY |
+                                gpu::SHARED_IMAGE_USAGE_DISPLAY_READ),
+       "WebMediaPlayerMSTest"},
+      gpu::kNullSurfaceHandle, gfx::BufferUsage::GPU_READ);
+  auto gpu_frame = media::VideoFrame::WrapMappableSharedImage(
+      std::move(shared_image), test_sii_->GenVerifiedSyncToken(),
+      base::NullCallback(), gfx::Rect(frame_size), frame_size,
+      base::TimeDelta());
+
+  compositor_->SetVideoFrameProviderClient(submitter_ptr_);
+  compositor_->EnqueueFrame(std::move(gpu_frame), /*is_copy=*/false);
+  RunCompositorTaskRunner();
+
+  bool compositor_destroyed = false;
+  ScopedTestingPlatformSupport<ContextProviderTestingPlatform,
+                               base::OnceClosure>
+      platform(base::BindLambdaForTesting([&]() {
+        base::RunLoop destroy_loop;
+        EXPECT_CALL(*submitter_ptr_, StopUsingProvider()).WillOnce([&]() {
+          compositor_destroyed = true;
+          destroy_loop.Quit();
+        });
+        compositor_ = nullptr;
+        player_->Shutdown();
+        player_.reset();
+        destroy_loop.Run();
+      }));
+
+  compositor_->ReplaceCurrentFrameWithACopy();
+  EXPECT_TRUE(compositor_destroyed);
 }
 
 TEST_P(WebMediaPlayerMSTest, VolumeMultiplierAdjustsOutputVolume) {

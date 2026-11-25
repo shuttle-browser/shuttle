@@ -203,7 +203,7 @@ class JavaClass:
     return '$' in self.name
 
   def is_safe_pointer(self):
-    return self in SAFE_POINTER_CLASSES
+    return self.class_without_prefix in SAFE_POINTER_CLASSES
 
   def get_outer_class(self):
     return JavaClass(f'{self.package_with_slashes}/{self.outer_class_name}',
@@ -331,9 +331,9 @@ class JavaType:
     return self.to_cpp()
 
   def to_backend_cpp_type(self):
+    if self.converted_type:
+      return self.converted_type
     if not self.is_safe_pointer():
-      if self.converted_type:
-        return self.converted_type
       return self.to_cpp()
 
     assert self.generics and len(self.generics) == 1
@@ -341,11 +341,11 @@ class JavaType:
     inner_cpp = inner_type.converted_type
     assert inner_cpp, f'Missing C++ mapping for safe pointer: {inner_type}'
 
-    if self.java_class == JNI_PTR_CLASS:
+    if self.class_without_prefix == JNI_PTR_CLASS:
       return f'{inner_cpp}*'
-    if self.java_class == JNI_UNIQUE_PTR_CLASS:
+    if self.class_without_prefix == JNI_UNIQUE_PTR_CLASS:
       return f'::jni_zero::JniUniquePtr<{inner_cpp}>'
-    if self.java_class == JNI_RAW_PTR_CLASS:
+    if self.class_without_prefix == JNI_RAW_PTR_CLASS:
       return f'::jni_zero::JniRawPtr<{inner_cpp}>'
     raise ValueError(f'Unknown safe pointer type: {self.java_class}')
 
@@ -431,7 +431,7 @@ class JavaType:
         num_generics = 1  # Parser drops Class<T> generics.
       if num_generics and (
           self.java_class.full_name_with_slashes.startswith('java/')
-          or self.java_class == JNI_PTR_CLASS):
+          or self.class_without_prefix in (JNI_PTR_CLASS, JNI_RAW_PTR_CLASS)):
         ret += '<' + ', '.join(['*'] * num_generics) + '>'
     if self.nullable:
       ret += '?'
@@ -580,7 +580,11 @@ class JavaSignature:
 
   def to_proxy(self, *, unwrap_safe_pointers=False):
     """Converts to types used over JNI boundary."""
-    return_type = self.return_type.to_proxy()
+    if (unwrap_safe_pointers
+        and self.return_type.class_without_prefix == JNI_RAW_PTR_CLASS):
+      return_type = LONG
+    else:
+      return_type = self.return_type.to_proxy()
     param_list = self.param_list.to_proxy(
         unwrap_safe_pointers=unwrap_safe_pointers)
     return JavaSignature.from_params(return_type, param_list)
@@ -760,7 +764,7 @@ COLLECTION_CLASS = JavaClass('java/util/Collection')
 SET_CLASS = JavaClass('java/util/Set')
 
 JNI_PTR_CLASS = JavaClass('org/jni_zero/JniPtr')
-JNI_PTR_INNER_CLASS = JavaClass('org/jni_zero/JniPtrInner')
+JNI_PTR_IMPL_BASE_CLASS = JavaClass('org/jni_zero/JniPtrImplBase')
 JNI_ZERO_INTERNAL_CLASS = JavaClass('org/jni_zero/JniZeroInternal')
 JNI_UNIQUE_PTR_CLASS = JavaClass('org/jni_zero/JniUniquePtr')
 JNI_RAW_PTR_CLASS = JavaClass('org/jni_zero/JniRawPtr')

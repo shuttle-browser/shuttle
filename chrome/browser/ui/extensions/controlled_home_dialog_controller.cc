@@ -30,8 +30,8 @@
 #include "extensions/common/extension_id.h"
 #include "extensions/common/manifest.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 
@@ -193,10 +193,9 @@ void ControlledHomeDialogController::OnBubbleClosed(CloseAction action) {
   // "OnWidgetDestroying" notifications (this can at least happen when we close
   // a window with a notification open). Handle this gracefully.
   if (close_action_) {
-    // TODO(crbug.com/578002539): CHECK-exclusion: Convert to a CHECK once we
-    // are confident it won't be triggered.
-    DCHECK(close_action_ == CLOSE_DISMISS_USER_ACTION ||
-           close_action_ == CLOSE_DISMISS_DEACTIVATION);
+    CHECK(close_action_ == CLOSE_DISMISS_USER_ACTION ||
+              close_action_ == CLOSE_DISMISS_DEACTIVATION,
+          base::NotFatalUntil::M162);
     return;
   }
 
@@ -226,7 +225,8 @@ void ControlledHomeDialogController::OnBubbleClosed(CloseAction action) {
         CHECK(learn_more_url.is_valid());
         content::OpenURLParams params =
             content::OpenURLParams::CreateBrowserInitiated(
-                learn_more_url, WindowOpenDisposition::kNewForegroundTab,
+                learn_more_url,
+                ui::mojom::WindowOpenDisposition::kNewForegroundTab,
                 ui::PAGE_TRANSITION_LINK);
         web_contents_->OpenURL(params, {});
       }

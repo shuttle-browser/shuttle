@@ -235,14 +235,33 @@ def CheckoutGitRepo(name, git_url, commit, dir):
 # Git commits include timing and author metadata in their hash.
 # To ensure we get a consistent hash when applying local changes,
 # set everything to fixed values via environment variable.
+# See also `GetGitMetadataEnv` which sets the dates.
 GIT_METADATA_OVERRIDES = {
   'GIT_AUTHOR_NAME': 'Dummy Author',
   'GIT_AUTHOR_EMAIL': 'none@none.com',
-  'GIT_AUTHOR_DATE': '2099-01-01 10:10:10 -0800',
   'GIT_COMMITTER_NAME': 'Dummy Committer',
   'GIT_COMMITTER_EMAIL': 'none@none.com',
-  'GIT_COMMITTER_DATE': '2099-01-01 10:10:10 -0800',
 }
+
+
+def GetGitMetadataEnv(git_repository):
+  """Returns the env for committing local changes in `git_repository`.
+
+  The author and committer dates are set to the committer date of `HEAD`.
+  This keeps the dates fixed (see `GIT_METADATA_OVERRIDES`), and it keeps the
+  date of the checked out upstream commit after local cherry-picks.  This is
+  important, because Rust's bootstrap puts the date of `HEAD` into
+  `rustc --version`, and `#[rustversion::since(...)]` in Crubit reads it.
+  """
+  head_date = subprocess.check_output(
+    [GIT_EXE, '-C', git_repository, 'log', '-1', '--format=%cI', 'HEAD'],
+    universal_newlines=True,
+  ).strip()
+  env = os.environ.copy()
+  env.update(GIT_METADATA_OVERRIDES)
+  env['GIT_AUTHOR_DATE'] = head_date
+  env['GIT_COMMITTER_DATE'] = head_date
+  return env
 
 
 def IsGitAncestorToHead(git_repository, commit):
@@ -278,8 +297,7 @@ def GitCherryPick(
     print('Commit already an ancestor; skipping.')
     return
 
-  env = os.environ.copy()
-  env.update(GIT_METADATA_OVERRIDES)
+  env = GetGitMetadataEnv(git_repository)
   RunCommand(
     [
       'git',
@@ -299,8 +317,7 @@ def GitRevert(git_repository, commit):
   if not IsGitAncestorToHead(git_repository, commit):
     print('Commit not an ancestor; skipping.')
     return
-  env = os.environ.copy()
-  env.update(GIT_METADATA_OVERRIDES)
+  env = GetGitMetadataEnv(git_repository)
   RunCommand(
     [
       'git',
@@ -442,14 +459,14 @@ def WriteGitCommitInfo(git_repository, commit, tz):
 def AddCMakeToPath():
   """Download CMake and add it to PATH."""
   if sys.platform == 'win32':
-    zip_name = 'cmake-3.26.4-windows-x86_64.zip'
-    dir_name = ['cmake-3.26.4-windows-x86_64', 'bin']
+    zip_name = 'cmake-3.31.12-windows-x86_64.zip'
+    dir_name = ['cmake-3.31.12-windows-x86_64', 'bin']
   elif sys.platform == 'darwin':
-    zip_name = 'cmake-3.26.4-macos-universal.tar.gz'
-    dir_name = ['cmake-3.26.4-macos-universal', 'CMake.app', 'Contents', 'bin']
+    zip_name = 'cmake-3.31.12-macos-universal.tar.gz'
+    dir_name = ['cmake-3.31.12-macos-universal', 'CMake.app', 'Contents', 'bin']
   else:
-    zip_name = 'cmake-3.26.4-linux-x86_64.tar.gz'
-    dir_name = ['cmake-3.26.4-linux-x86_64', 'bin']
+    zip_name = 'cmake-3.31.12-linux-x86_64.tar.gz'
+    dir_name = ['cmake-3.31.12-linux-x86_64', 'bin']
 
   cmake_dir = os.path.join(LLVM_BUILD_TOOLS_DIR, *dir_name)
   if not os.path.exists(cmake_dir):
@@ -1151,10 +1168,9 @@ def main():
       )
       # Record the revision that we checked out, so that builds from a source
       # tarball (which has no `.git` directory) can still read it.  We use
-      # `checkout_revision` rather than `HEAD`, because the cherry-picks below
-      # (if any) commit with a dummy date (see `GIT_METADATA_OVERRIDES`).  The
-      # date has to be UTC, because that is what Crubit expects (see
-      # `crubit/cargo/build/get_llvm_commit_date.py`).
+      # `checkout_revision` rather than `HEAD`, because `HEAD` may be one of
+      # the local cherry-picks below.  The date has to be UTC, because that is
+      # what Crubit expects (see `crubit/cargo/build/get_llvm_commit_date.py`).
       WriteGitCommitInfo(LLVM_DIR, checkout_revision, tz=datetime.timezone.utc)
       # TODO(crbug.com/549080734): remove once we roll past this revision
       GitCherryPick(LLVM_DIR, '061865f32607cd064ab944407cc863186702d6f1')
@@ -1802,9 +1818,16 @@ def main():
         'SANITIZER_MIN_OSX_VERSION=' + deployment_target,
         'COMPILER_RT_ENABLE_MACCATALYST=ON',
         'COMPILER_RT_ENABLE_IOS=ON',
-        'COMPILER_RT_ENABLE_WATCHOS=ON',
-        'COMPILER_RT_ENABLE_TVOS=ON',
-        'COMPILER_RT_ENABLE_XROS=ON',
+        # Only builtin libraries are packaged for watchOS, tvOS, and visionOS;
+        # pass them via BUILTINS_CMAKE_ARGS so runtimes skips their sanitizers.
+        'BUILTINS_CMAKE_ARGS='
+        + ';'.join(
+          [
+            '-DCOMPILER_RT_ENABLE_WATCHOS=ON',
+            '-DCOMPILER_RT_ENABLE_TVOS=ON',
+            '-DCOMPILER_RT_ENABLE_XROS=ON',
+          ]
+        ),
         'DARWIN_ios_ARCHS=arm64',
         'DARWIN_iossim_ARCHS=arm64;x86_64',
         'DARWIN_osx_ARCHS=arm64;x86_64',

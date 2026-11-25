@@ -133,13 +133,12 @@ class ReplacementFragment final {
 };
 
 static bool IsInterchangeHTMLBRElement(const Node* node) {
-  DEFINE_STATIC_LOCAL(String, interchange_newline_class_string,
-                      (AppleInterchangeNewline));
   auto* html_br_element = DynamicTo<HTMLBRElement>(node);
   if (!html_br_element ||
       html_br_element->getAttribute(html_names::kClassAttr) !=
-          interchange_newline_class_string)
+          String::FromLiteral<AppleInterchangeNewline>()) {
     return false;
+  }
   UseCounter::Count(node->GetDocument(),
                     WebFeature::kEditingAppleInterchangeNewline);
   return true;
@@ -1540,6 +1539,8 @@ void ReplaceSelectionCommand::DoApply(EditingState* editing_state) {
 
   ReplacementFragment fragment(&GetDocument(), document_fragment_.Get(),
                                selection);
+  ABORT_EDITING_COMMAND_IF(!selection.IsValidFor(GetDocument()) ||
+                           !EndingSelection().IsValidFor(GetDocument()));
 
   bool trivial_replace_result =
       PerformTrivialReplace(fragment, editing_state, password_echo_behavior_);
@@ -2633,7 +2634,8 @@ bool ReplaceSelectionCommand::PerformTrivialReplace(
 
   GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kEditing);
 
-  if (node_after_insertion_pos && node_after_insertion_pos->parentNode() &&
+  if (node_after_insertion_pos && node_after_insertion_pos->isConnected() &&
+      node_after_insertion_pos->GetDocument() == GetDocument() &&
       IsA<HTMLBRElement>(*node_after_insertion_pos) &&
       ShouldRemoveEndBR(
           To<HTMLBRElement>(node_after_insertion_pos),
@@ -2653,6 +2655,12 @@ bool ReplaceSelectionCommand::PerformTrivialReplace(
     }
   }
 
+  if (!start.IsValidFor(GetDocument()) || !end.IsValidFor(GetDocument()) ||
+      (start.IsNotNull() && start > end)) {
+    editing_state->Abort();
+    return false;
+  }
+
   SetEndingSelection(SelectionForUndoStep::From(
       SelectionInDomTree::Builder()
           .SetBaseAndExtentDeprecated(select_replacement_ ? start : end, end)
@@ -2664,10 +2672,6 @@ bool ReplaceSelectionCommand::PerformTrivialReplace(
             .Build()));
   }
 
-  return true;
-}
-
-bool ReplaceSelectionCommand::IsReplaceSelectionCommand() const {
   return true;
 }
 

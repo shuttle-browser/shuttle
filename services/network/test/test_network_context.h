@@ -173,6 +173,13 @@ class TestNetworkContext : public mojom::NetworkContext {
       const base::UnguessableToken& throttling_profile_id,
       const base::UnguessableToken& throttling_client_id,
       std::vector<mojom::MatchedNetworkConditionsPtr>) override {}
+  void SetSocketLayerNetworkConditions(
+      const base::UnguessableToken& throttling_profile_id,
+      base::TimeDelta latency,
+      double download_throughput_bytes_per_second,
+      double upload_throughput_bytes_per_second) override {}
+  void ClearSocketLayerNetworkConditions(
+      const base::UnguessableToken& throttling_profile_id) override {}
   void SetAcceptLanguage(const std::string& new_accept_language) override {}
   void SetEnableReferrers(bool enable_referrers) override {}
 #if BUILDFLAG(IS_CT_SUPPORTED)
@@ -248,6 +255,7 @@ class TestNetworkContext : public mojom::NetworkContext {
           anticipated_concurrent_incoming_bidirectional_streams,
       std::vector<net::HttpRequestHeaders::HeaderKeyValuePair>
           additional_headers,
+      const std::optional<base::UnguessableToken>& throttling_profile_id,
       mojo::PendingRemote<mojom::WebTransportHandshakeClient> handshake_client,
       mojo::PendingRemote<mojom::URLLoaderNetworkServiceObserver>
           url_loader_network_observer,

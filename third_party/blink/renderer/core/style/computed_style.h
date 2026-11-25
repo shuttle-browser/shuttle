@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <ranges>
 
 #include "base/check_op.h"
 #include "base/functional/function_ref.h"
@@ -296,8 +297,6 @@ class ComputedStyle final : public ComputedStyleBase {
   friend class StyleCascade;
   // Editing has to only reveal unvisited info.
   friend class EditingStyle;
-  // Saves Border/Background information for later comparison.
-  friend class CachedUAStyle;
   // Accesses visited and unvisited colors.
   friend class ColorPropertyFunctions;
   // Accesses inset and sizing property values.
@@ -499,11 +498,6 @@ class ComputedStyle final : public ComputedStyleBase {
    * Utility functions should go in a separate section at the end of the
    * class, and be kept to a minimum.
    */
-
-  // anchor-name
-  bool AnchorNameDataEquivalent(const ComputedStyle& o) const {
-    return base::ValuesEquivalent(AnchorName(), o.AnchorName());
-  }
 
   // Regular (non-interleaved) style resolutions happen without an
   // AnchorEvaluator, which means any anchor*() function will use
@@ -783,9 +777,6 @@ class ComputedStyle final : public ComputedStyleBase {
 
   // list-style-type
   const AtomicString& ListStyleStringValue() const;
-  bool ListStyleTypeDataEquivalent(const ComputedStyle& other) const {
-    return base::ValuesEquivalent(ListStyleType(), other.ListStyleType());
-  }
 
   // list-style-position
 
@@ -947,6 +938,9 @@ class ComputedStyle final : public ComputedStyleBase {
   // accent-color
   // An empty optional means the accent-color is 'auto'
   std::optional<blink::Color> AccentColorResolved() const;
+  // Returns the color mirrored by AccentColor/AccentColorText, or nullopt when
+  // the keywords should use the system accent color.
+  CORE_EXPORT std::optional<blink::Color> ResolveMirroredAccentColor() const;
 
   // scrollbar-color
   // An empty optional means the scrollbar-color is 'auto'
@@ -1490,7 +1484,6 @@ class ComputedStyle final : public ComputedStyleBase {
 
   // Float utility functions.
   bool IsFloating() const { return Floating() != EFloat::kNone; }
-  EFloat UnresolvedFloating() const { return Floating(); }
 
   EFloat Floating(const ComputedStyle& cb_style) const {
     return Floating(cb_style.Direction());
@@ -1582,7 +1575,6 @@ class ComputedStyle final : public ComputedStyleBase {
 
   // Clear utility functions.
   bool HasClear() const { return Clear() != EClear::kNone; }
-  EClear UnresolvedClear() const { return Clear(); }
 
   EClear Clear(const ComputedStyle& cb_style) const {
     return Clear(cb_style.Direction());
@@ -1851,7 +1843,6 @@ class ComputedStyle final : public ComputedStyleBase {
   bool HasResize() const {
     return StyleType() == kPseudoIdNone && Resize() != EResize::kNone;
   }
-  EResize UnresolvedResize() const { return Resize(); }
 
   EResize UsedResize() const {
     EResize value = Resize();
@@ -1922,8 +1913,9 @@ class ComputedStyle final : public ComputedStyleBase {
   CORE_EXPORT TextDecorationLine TextDecorationsInEffect() const;
   CORE_EXPORT const AppliedTextDecorationVector& AppliedTextDecorations() const;
   CORE_EXPORT AppliedTextDecorationVector* AppliedTextDecorationData() const {
-    return IsDecoratingBox() ? EnsureAppliedTextDecorationsCache()
-                             : BaseTextDecorationData();
+    return IsDecoratingBoxIncludingPrecomputedHover()
+               ? EnsureAppliedTextDecorationsCache()
+               : BaseTextDecorationData();
   }
 
   // Returns true if this a "decorating box".
@@ -1938,9 +1930,20 @@ class ComputedStyle final : public ComputedStyleBase {
     return true;
   }
 
+  // Returns true if this box or its precomputed :hover style (see
+  // kPseudoIdPrecomputedHover) adds a text decoration.
+  bool IsDecoratingBoxIncludingPrecomputedHover() const {
+    if (IsDecoratingBox()) {
+      return true;
+    }
+    const ComputedStyle* hover_style =
+        GetCachedPseudoElementStyle(kPseudoIdPrecomputedHover);
+    return hover_style && hover_style->IsDecoratingBox();
+  }
+
   // Returns true if there are any text decorations.
   bool HasAppliedTextDecorations() const {
-    if (IsDecoratingBox()) {
+    if (IsDecoratingBoxIncludingPrecomputedHover()) {
       return true;
     }
     if (BaseTextDecorationData()) {
@@ -1953,7 +1956,14 @@ class ComputedStyle final : public ComputedStyleBase {
   // Returns (by value) the last text decoration, if any.
   std::optional<AppliedTextDecoration> LastAppliedTextDecoration() const {
     if (HasAppliedTextDecorations()) {
-      return AppliedTextDecorations().back();
+      for (const AppliedTextDecoration& decoration :
+           std::views::reverse(AppliedTextDecorations())) {
+        // Skip decorations that only apply on hover (see
+        // IsDecoratingBoxIncludingPrecomputedHover()).
+        if (decoration.Lines() != TextDecorationLine::kNone) {
+          return decoration;
+        }
+      }
     }
     return std::nullopt;
   }
@@ -2111,8 +2121,7 @@ class ComputedStyle final : public ComputedStyleBase {
     if (BorderCollapse() == EBorderCollapse::kCollapse) {
       return LogicalSize();
     }
-    return LogicalSize(LayoutUnit(HorizontalBorderSpacing()),
-                       LayoutUnit(VerticalBorderSpacing()));
+    return LogicalSize(HorizontalBorderSpacing(), VerticalBorderSpacing());
   }
 
   // Returns true if the computed style contains a 3D transform operation. This
@@ -2357,12 +2366,6 @@ class ComputedStyle final : public ComputedStyleBase {
   }
   bool NeedsTrailingSpace() const {
     return ShouldBreakOnlyAfterWhiteSpace() && ShouldWrapLine();
-  }
-
-  bool ShouldBreakWords() const {
-    return (WordBreak() == EWordBreak::kBreakWord ||
-            OverflowWrap() != EOverflowWrap::kNormal) &&
-           ShouldWrapLine();
   }
 
   // Text direction utility functions.
@@ -2910,12 +2913,6 @@ class ComputedStyle final : public ComputedStyleBase {
                                   BorderLeftWidth());
   }
 
-  PhysicalToLogical<EBorderStyle> PhysicalBorderStyleToLogical() const {
-    return PhysicalToLogical<EBorderStyle>(
-        GetWritingDirection(), BorderTopStyle(), BorderRightStyle(),
-        BorderBottomStyle(), BorderLeftStyle());
-  }
-
   static Difference ComputeDifferenceIgnoringInheritedFirstLineStyle(
       const ComputedStyle& old_style,
       const ComputedStyle& new_style);
@@ -3150,6 +3147,10 @@ class ComputedStyleBuilder final : public ComputedStyleBuilderBase {
   blink::Color GetCurrentColor() const {
     return Color().Resolve(blink::Color(), UsedColorScheme());
   }
+
+  // accent-color
+  std::optional<blink::Color> ResolveMirroredAccentColor(
+      mojom::blink::ColorScheme color_scheme) const;
 
   // column-count
   void SetColumnCount(uint16_t c) {
@@ -3442,7 +3443,8 @@ class ComputedStyleBuilder final : public ComputedStyleBuilderBase {
                                      Element& animating_element);
 
   // Copies the animated source for the given property from a parent style
-  // (e.g. when inheriting from a parent style).
+  // (e.g. when inheriting from a parent style), preserving any untracked
+  // dependencies already on the parent's source.
   CORE_EXPORT void CopyAnimatedSourceFrom(CSSPropertyID property,
                                           const ComputedStyle* parent_style,
                                           bool has_untracked_dependencies);
@@ -3604,6 +3606,11 @@ class ComputedStyleBuilder final : public ComputedStyleBuilderBase {
     SetFontDescription(description);
   }
 
+  // -internal-unbounded
+  bool IsUnboundedElementActive() const {
+    return InternalUnbounded() == EInternalUnbounded::kActive;
+  }
+
   // z-index
   void SetZIndex(int v) {
     SetHasAutoZIndexInternal(false);
@@ -3703,8 +3710,6 @@ class ComputedStyleBuilder final : public ComputedStyleBuilderBase {
                                    bool is_inherited_property) const;
   CORE_EXPORT StyleInheritedVariables& MutableInheritedVariables();
   CORE_EXPORT StyleNonInheritedVariables& MutableNonInheritedVariables();
-  void SetInheritedVariablesFrom(const ComputedStyle*);
-  void SetNonInheritedVariablesFrom(const ComputedStyle*);
   CORE_EXPORT void SetVariableData(const AtomicString& name,
                                    CSSVariableData* value,
                                    bool is_inherited_property) {

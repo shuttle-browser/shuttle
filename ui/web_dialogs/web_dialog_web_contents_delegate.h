@@ -9,6 +9,7 @@
 
 #include "base/memory/raw_ptr.h"
 #include "content/public/browser/web_contents_delegate.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 #include "ui/web_dialogs/web_dialogs_export.h"
 
 namespace blink {
@@ -53,7 +54,7 @@ class WEB_DIALOGS_EXPORT WebDialogWebContentsDelegate
         content::WebContents* source,
         std::unique_ptr<content::WebContents> new_contents,
         const GURL& target_url,
-        WindowOpenDisposition disposition,
+        ui::mojom::WindowOpenDisposition disposition,
         const blink::mojom::WindowFeatures& window_features,
         bool user_gesture) = 0;
     // This is added to allow the injection of a file chooser handler.
@@ -63,6 +64,11 @@ class WEB_DIALOGS_EXPORT WebDialogWebContentsDelegate
         content::RenderFrameHost* render_frame_host,
         scoped_refptr<content::FileSelectListener> listener,
         const blink::mojom::FileChooserParams& params) = 0;
+    // Called after the dialog's WebContents is created and before its initial
+    // navigation, so that the embedder can attach WebContentsObservers and
+    // other per-WebContents state that must see that navigation.
+    virtual void OnDialogWebContentsCreated(
+        content::WebContents* web_contents) {}
   };
 
   // |context| and |handler| must be non-NULL.
@@ -95,13 +101,17 @@ class WEB_DIALOGS_EXPORT WebDialogWebContentsDelegate
       content::WebContents* source,
       std::unique_ptr<content::WebContents> new_contents,
       const GURL& target_url,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       const blink::mojom::WindowFeatures& window_features,
       bool user_gesture,
       bool* was_blocked) override;
   void RunFileChooser(content::RenderFrameHost* render_frame_host,
                       scoped_refptr<content::FileSelectListener> listener,
                       const blink::mojom::FileChooserParams& params) override;
+
+  // Called by the view hosting the dialog's WebContents; see
+  // WebContentsHandler::OnDialogWebContentsCreated().
+  void OnDialogWebContentsCreated(content::WebContents* web_contents);
 
  private:
   // Weak pointer.  Always an original profile.

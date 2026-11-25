@@ -42,7 +42,7 @@ def __filegroups(ctx):
     return fg
 
 def __step_config(ctx, step_config):
-    remote_run = config.get(ctx, "googlechrome")  # Turn this to False when you do file access trace.
+    remote_all = config.get(ctx, "googlechrome")  # Turn this to False when you do file access trace.
 
     # Run static analysis steps locally when build server is enabled.
     # android_static_analysis = "build_server" by default.
@@ -55,14 +55,18 @@ def __step_config(ctx, step_config):
             remote_run_static_analysis = True
         if gn_args.get("enable_kythe_annotations") == "true":
             # Remote Kythe annotations isn't supported.
-            remote_run = False
+            remote_all = False
+
+    # These actions are fast enough that running them locally on developer
+    # workstations is faster than running them remotely.
+    remote_run = remote_all and (config.get(ctx, "remote-android") or config.get(ctx, "default-remote") or config.get(ctx, "builder"))
 
     step_config["rules"].extend([
         # See also https://chromium.googlesource.com/chromium/src/build/+/HEAD/android/docs/java_toolchain.md
         {
             "name": "android/write_build_config",
             "command_prefix": platform.python_bin + " ../../build/android/gyp/write_build_config.py",
-            "handler": "android_write_build_config",
+            "handler": "android_write_build_config" if remote_run else None,
             "remote": remote_run,
             "restat_content": True,
             "timeout": "2m",
@@ -187,8 +191,8 @@ def __step_config(ctx, step_config):
             # Don't include files under --generated-dir.
             # This is probably optimization for local incrmental builds.
             # However, this is harmful for remote build cache hits.
-            "ignore_extra_input_pattern": ".*srcjars.*\\.java",
-            "ignore_extra_output_pattern": ".*srcjars.*\\.java",
+            "ignore_extra_input_pattern": ".*srcjars.*\\.(java|kt)",
+            "ignore_extra_output_pattern": ".*srcjars.*\\.(java|kt)",
             "remote": remote_run,
             "restat_content": True,
             "platform_ref": "large",
@@ -209,10 +213,6 @@ def __step_config(ctx, step_config):
                 "*.pak",
                 "*.sql",
             ],
-            # *.dex and intermediate.dex.jar files are intermediate files used in incremental builds.
-            # Fo remote actions, let's ignore them, assuming remote cache hits compensate.
-            "ignore_extra_input_pattern": ".*\\.dex(\\.jar)?",
-            "ignore_extra_output_pattern": ".*\\.dex(\\.jar)?",
             "remote": remote_run,
             "restat_content": True,
             "platform_ref": "large",
@@ -242,7 +242,7 @@ def __step_config(ctx, step_config):
             "name": "android/trace_event_bytecode_rewriter",
             "command_prefix": platform.python_bin + " ../../build/android/gyp/trace_event_bytecode_rewriter.py",
             "handler": "android_trace_event_bytecode_rewriter",
-            "remote": remote_run,
+            "remote": remote_all,
             # The GN action declares only an empty .stamp output that
             # downstream proguard steps depend on.
             "restat_content": False,
@@ -275,7 +275,7 @@ def __step_config(ctx, step_config):
                 "*.pak",
                 "*.sql",
             ],
-            "remote": remote_run,
+            "remote": remote_all,
             "restat_content": True,
             "platform_ref": "large",
             "timeout": "10m",
@@ -416,11 +416,6 @@ def __android_compile_java_handler(ctx, cmd):
     #   --enable-errorprone
     #   @gen/chrome/android/chrome_test_java.sources
 
-    out = cmd.outputs[0]
-    outputs = [
-        out + ".md5.stamp",
-    ]
-
     inputs = []
     for i, arg in enumerate(cmd.args):
         for k in ["--classpath=", "--processorpath="]:
@@ -435,20 +430,11 @@ def __android_compile_java_handler(ctx, cmd):
 
     ctx.actions.fix(
         inputs = cmd.inputs + inputs,
-        outputs = cmd.outputs + outputs,
     )
 
 def __android_dex_handler(ctx, cmd):
-    out = cmd.outputs[0]
     inputs = []
-
-    # Add __dex.desugardeps to the outputs.
-    outputs = [
-        out + ".md5.stamp",
-    ]
-    for i, arg in enumerate(cmd.args):
-        if arg == "--desugar-dependencies":
-            outputs.append(ctx.fs.canonpath(cmd.args[i + 1]))
+    for arg in cmd.args:
         for k in ["--class-inputs=", "--bootclasspath=", "--classpath=", "--class-inputs-filearg=", "--dex-inputs-filearg=", "--dex-inputs="]:
             if arg.startswith(k):
                 arg = arg.removeprefix(k)
@@ -458,11 +444,8 @@ def __android_dex_handler(ctx, cmd):
                     f = ctx.fs.canonpath(f)
                     inputs.append(f)
 
-    # TODO: dex.py takes --incremental-dir to reuse the .dex produced in a previous build.
-    # Should remote dex action also take this?
     ctx.actions.fix(
         inputs = cmd.inputs + inputs,
-        outputs = cmd.outputs + outputs,
     )
 
 def __android_trace_event_bytecode_rewriter(ctx, cmd):
@@ -525,7 +508,7 @@ def __android_proguard_handler(ctx, cmd):
                     f, _, _ = f.partition(":")
                     inputs.append(ctx.fs.canonpath(f))
                 break
-        if arg in ["--sdk-jars", "--sdk-extension-jars"]:
+        if arg in ["--sdk-jars", "--sdk-extension-jars", "--sdk-api-databases"]:
             fn, v = __filearg(ctx, cmd.args[i + 1])
             if fn:
                 inputs.append(ctx.fs.canonpath(fn))

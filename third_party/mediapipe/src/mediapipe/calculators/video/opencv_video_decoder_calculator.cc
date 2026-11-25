@@ -14,7 +14,8 @@
 
 #include <stdlib.h>
 
-#include "absl/log/absl_log.h"
+#include "absl/log/absl_log.h"   // from @com_google_absl
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/image_format.pb.h"
 #include "mediapipe/framework/formats/image_frame.h"
@@ -22,7 +23,7 @@
 #include "mediapipe/framework/formats/video_stream_header.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
 #include "mediapipe/framework/port/opencv_video_inc.h"
-#include "mediapipe/framework/port/status.h"
+#include "mediapipe/framework/port/status_builder.h"
 #include "mediapipe/framework/tool/status_util.h"
 
 namespace mediapipe {
@@ -108,7 +109,7 @@ class OpenCvVideoDecoderCalculator : public CalculatorBase {
   absl::Status Open(CalculatorContext* cc) override {
     const std::string& input_file_path =
         cc->InputSidePackets().Tag(kInputFilePathTag).Get<std::string>();
-    cap_ = absl::make_unique<cv::VideoCapture>(input_file_path);
+    cap_ = std::make_unique<cv::VideoCapture>(input_file_path);
     if (!cap_->isOpened()) {
       return mediapipe::InvalidArgumentErrorBuilder(MEDIAPIPE_LOC)
              << "Fail to open video file at " << input_file_path;
@@ -141,7 +142,7 @@ class OpenCvVideoDecoderCalculator : public CalculatorBase {
                 "the video file at "
              << input_file_path;
     }
-    auto header = absl::make_unique<VideoHeader>();
+    auto header = std::make_unique<VideoHeader>();
     header->format = format_;
     header->width = width_;
     header->height = height_;
@@ -190,8 +191,8 @@ class OpenCvVideoDecoderCalculator : public CalculatorBase {
   }
 
   absl::Status Process(CalculatorContext* cc) override {
-    auto image_frame = absl::make_unique<ImageFrame>(format_, width_, height_,
-                                                     /*alignment_boundary=*/1);
+    auto image_frame = std::make_unique<ImageFrame>(format_, width_, height_,
+                                                    /*alignment_boundary=*/1);
     if (format_ == ImageFormat::GRAY8) {
       cv::Mat frame = formats::MatView(image_frame.get());
       ReadFrame(frame);

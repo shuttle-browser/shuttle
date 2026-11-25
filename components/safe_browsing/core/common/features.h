@@ -89,6 +89,13 @@ extern const base::FeatureParam<std::string> kCsdClipboardCopyApiRemoteRunners;
 extern const base::FeatureParam<std::string> kCsdClipboardCopyApiDecoders;
 extern const base::FeatureParam<bool> kCSDClipboardCopyApiSuspiciousTokenFilter;
 
+// Runs client-side phishing visual classification and image embedding in the
+// browser process, capturing page pixels via
+// `RenderWidgetHostView::CopyFromSurface`, instead of in the renderer process.
+// When enabled, the browser process owns the `Scorer` instead of distributing
+// the phishing models to renderers.
+BASE_DECLARE_FEATURE(kClientSideDetectionCopyFromSurface);
+
 // Enables sending a CSD ping on the detection of a credit card form.
 BASE_DECLARE_FEATURE(kClientSideDetectionCreditCardForm);
 // Sets the high-confidence allowlist acceptance rate for determining whether
@@ -127,6 +134,13 @@ extern const base::FeatureParam<bool> kCsdEnforceIos;
 // Killswitch for Llama forced trigger info redirect chain check.
 BASE_DECLARE_FEATURE(kClientSideDetectionForcedLlamaRedirectChainKillswitch);
 
+// Includes inner text from cross-origin and out-of-process iframes during
+// client-side detection intelligent scans.
+BASE_DECLARE_FEATURE(kClientSideDetectionIframeInnerText);
+extern const base::FeatureParam<int> kClientSideDetectionMaxIframesToExtract;
+extern const base::FeatureParam<base::TimeDelta>
+    kClientSideDetectionIframeInnerTextTimeout;
+
 // Enables sending a CSD ping when a page's image embedding matches a
 // target image embedding.
 BASE_DECLARE_FEATURE(kClientSideDetectionImageEmbeddingMatch);
@@ -134,6 +148,10 @@ BASE_DECLARE_FEATURE(kClientSideDetectionImageEmbeddingMatch);
 // embedding match.
 extern const base::FeatureParam<bool>
     kCsdImageEmbeddingMatchWithIntelligentScan;
+
+// Prepends the page title to the extracted inner text sent during client-side
+// detection intelligent scans.
+BASE_DECLARE_FEATURE(kClientSideDetectionIncludeTitleInInnerText);
 
 // Delays and retries KEYBOARD_LOCK_REQUESTED image embedding when the blurred
 // viewport image is uniform (e.g. blank white or black).
@@ -379,6 +397,13 @@ extern const base::FeatureParam<std::string>
 extern const base::FeatureParam<std::string>
     kHashPrefixRealTimeLookupsKeyFetchCustomHeader;
 
+// Killswitch for enabling OhttpKeyService for Enhanced Safe Browsing users
+// regardless of whether background lookups are allowed (e.g. on iOS).
+BASE_DECLARE_FEATURE(kHashPrefixRealTimeLookupsOhttpKeyServiceForEsb);
+
+// Enables hash-prefix real-time lookup requests on Incognito and Guest mode.
+BASE_DECLARE_FEATURE(kHashPrefixRealTimeLookupsOnIncognitoAndGuest);
+
 // Send sample hash-prefix real-time lookups for real-time lookups to catch
 // "false positives" where real-time lookup says safe but hash-prefix lookup
 // says unsafe.
@@ -412,10 +437,6 @@ extern const base::FeatureParam<std::string>
 // Safe Browsing-enabled users, and may show warnings.
 BASE_DECLARE_FEATURE_PARAM(bool, kMaliciousApkDownloadCheckTelemetryOnly);
 #endif
-
-// Enables one-time migration of enhanced-safe-browsing users to the enhanced
-// bundle.
-BASE_DECLARE_FEATURE(kMigrateEnhancedSbUserToEnhancedBundle);
 
 // When enabled, performs a one-time migration that selects the JavaScript
 // optimizer content setting that automatically blocks the browser from using
@@ -507,13 +528,6 @@ BASE_DECLARE_FEATURE(kSafeBrowsingRustDmgParser);
 
 // Skips Safe Browsing Real-Time URL lookups when the device is offline.
 BASE_DECLARE_FEATURE(kSafeBrowsingSkipRealTimeLookupIfOffline);
-
-#if BUILDFLAG(IS_ANDROID)
-// Enables sync checker to check allowlist first on Chrome on Android. This is
-// an optimization to improve the speed of Safe Browsing checks.
-// See go/skip-sync-hpd-allowlist-android for details.
-BASE_DECLARE_FEATURE(kSafeBrowsingSyncCheckerCheckAllowlist);
-#endif
 
 // Allows Safe Browsing Real-Time URL lookups to wait for DNS resolution of the
 // main frame URL.

@@ -72,13 +72,17 @@ class MODULES_EXPORT NavigatorGamepad final
   static HeapVector<Member<Gamepad>> getGamepads(Navigator&, ExceptionState&);
   HeapVector<Member<Gamepad>> Gamepads();
 
+  void SetGamepadsForTesting(HeapVector<Member<Gamepad>> gamepads) {
+    gamepads_ = std::move(gamepads);
+    should_skip_sample_for_testing_ = true;
+  }
+
   void Trace(Visitor*) const override;
 
  private:
   void SampleGamepads();
 
   void DidRemoveGamepadEventListeners();
-  bool StartUpdatingIfAttached();
   void SampleAndCompareGamepadState();
 
   // Dispatch gamepad events. Dispatching an event calls the event
@@ -164,6 +168,8 @@ class MODULES_EXPORT NavigatorGamepad final
 
   // True while processing gamepad events.
   bool processing_events_ = false;
+
+  bool should_skip_sample_for_testing_ = false;
 
   // Store the timestamps of raw input change events for UMA metrics.
   Vector<std::optional<base::TimeTicks>> raw_input_change_event_timestamps_;

@@ -63,8 +63,6 @@ class InputSyncWriter final : public InputController::SyncWriter {
   // called more than once.
   base::UnsafeSharedMemoryRegion TakeSharedMemoryRegion();
 
-  size_t shared_memory_segment_count() const { return audio_buses_.size(); }
-
   // InputController::SyncWriter implementation.
   void Write(const media::AudioBus* data,
              double volume,
@@ -120,6 +118,10 @@ class InputSyncWriter final : public InputController::SyncWriter {
   // Shared memory for audio data and associated metadata.
   base::UnsafeSharedMemoryRegion shared_memory_region_;
   base::WritableSharedMemoryMapping shared_memory_mapping_;
+
+  // Base of the trace flow IDs shared with the renderer. See
+  // `media::GetAudioTraceFlowBaseId()`.
+  uint64_t trace_flow_base_id_ = 0;
 
   // The size in bytes of a single audio segment in the shared memory.
   const uint32_t shared_memory_segment_size_;

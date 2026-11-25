@@ -59,6 +59,11 @@ chromium-metrics-reviews@google.com.
   <variant name=".AllSources" summary="Aggregated across all sources"/>
   <variant name=".DragToNewWindow"
       summary="Triggered by dragging a tab to a new window"/>
+  <variant name=".Extension"
+      summary="Triggered by an extension API or extension host helper opening
+               a new normal browser window (e.g. chrome.windows.create(),
+               chrome.tabs.create(), chrome.runtime.openOptionsPage(),
+               OpenTabHelper, or ChromeExtensionHostDelegate)"/>
   <variant name=".Launch"
       summary="Triggered by a browser launch that opens a new window (e.g. an
                OS/shell shortcut or --new-window handled by an already
@@ -66,13 +71,20 @@ chromium-metrics-reviews@google.com.
                Guest mode). As with other sources, the first window of the
                browser process is recorded under InitialWebUI.Startup instead"/>
   <variant name=".MoveTabsToNewWindow"
-      summary="Triggered by moving tab(s) to a new window (e.g. via tab
-               context menu)"/>
+      summary="Triggered by moving tab(s) or a tab group to a new window
+               (e.g. via tab or tab group context menu)"/>
+  <variant name=".Navigation"
+      summary="Triggered by a navigation in Navigate() or web app navigation
+               capturing that creates a new window (e.g. opening a link in a
+               new window or incognito window, Shift+Enter in the omnibox,
+               navigating when no tabbed browser window exists for the
+               profile, or capturing/reparenting a web app navigation into a
+               new tabbed browser window)"/>
   <variant name=".NewEmptyWindow"
-      summary="Triggered by opening a new window that usually starts with a
-               single New Tab Page (e.g. keyboard shortcut, app menu, macOS
-               Dock click, or a feature such as Glic or background mode
-               opening a window when the profile has none)"/>
+      summary="Triggered by opening a new empty window (e.g. keyboard
+               shortcut, app menu, macOS Dock click, or a feature such as
+               Glic, background mode, or ScopedTabbedBrowserDisplayer opening
+               a window when the profile has none)"/>
   <variant name=".SessionRestore" summary="Triggered by session restore"/>
   <variant name=".SessionRestoreFallback"
       summary="Triggered by session restore opening a fallback window when
@@ -107,6 +119,8 @@ chromium-metrics-reviews@google.com.
 <!-- LINT.IfChange(DefaultBrowserSetterType) -->
 
 <variants name="DefaultBrowserSetterType">
+  <variant name="AnnotatedShellIntegration"
+      summary="the annotated shell integration setter"/>
   <variant name="ShellIntegration" summary="the shell integration setter"/>
   <variant name="VisualGuide" summary="the visual guide setter"/>
 </variants>
@@ -347,16 +361,6 @@ chromium-metrics-reviews@google.com.
   <token key="Type" variants="ContextMenuAndroidTypes"/>
 </histogram>
 
-<histogram name="ContextMenu.TimeToSelectShare" units="ms"
-    expires_after="2023-02-19">
-  <owner>jeffreycohen@chromium.org</owner>
-  <owner>chrome-shared-highlighting@google.com</owner>
-  <summary>
-    Records how long it takes to press on &quot;Share&quot; from the time
-    context menu is shown. Android only.
-  </summary>
-</histogram>
-
 <histogram name="ContextMenu.ViewsTextServices.Emoji" enum="Boolean"
     expires_after="2023-10-08">
   <owner>yyushkina@chromium.org</owner>
@@ -493,6 +497,34 @@ chromium-metrics-reviews@google.com.
     Outcome of the visual guided setter flow that docks the Windows Settings
     default-apps window over the chrome://default-browser WebUI stage. Recorded
     on Windows only, when the flow tears down.
+  </summary>
+</histogram>
+
+<histogram name="DefaultBrowser.VisualGuide.RowMeasurementOutcome"
+    enum="UiaElementLocationOutcome" expires_after="2027-08-06">
+  <owner>alsan@chromium.org</owner>
+  <owner>atharvmaan@chromium.org</owner>
+  <owner>koretadaniel@chromium.org</owner>
+  <summary>
+    Outcome of one attempt by the visual guided setter to locate the &quot;Set
+    default&quot; button in the Windows Settings app, via UI Automation in a
+    utility process. Recorded on Windows once per attempt. The arrow is only
+    shown after a &quot;Located&quot; outcome; after a few failures in a row,
+    the flow stops measuring.
+  </summary>
+</histogram>
+
+<histogram name="DefaultBrowser.VisualGuide.RowMeasurementTime" units="ms"
+    expires_after="2027-08-06">
+  <owner>alsan@chromium.org</owner>
+  <owner>atharvmaan@chromium.org</owner>
+  <owner>koretadaniel@chromium.org</owner>
+  <summary>
+    Time taken by one attempt by the visual guided setter to locate the
+    &quot;Set default&quot; button in the Windows Settings app, including up to
+    10 seconds of waiting for Settings to show the page. Recorded on Windows for
+    each attempt, including ones that time out or find nothing, except attempts
+    a newer one cut short and attempts refused because the window was gone.
   </summary>
 </histogram>
 
@@ -1033,6 +1065,26 @@ chromium-metrics-reviews@google.com.
     Recorded during `RenderProcessHostImpl::Init()` for TopChromeWebUI
     processes. Records true if there is already an existing RenderProcessHost
     for TopChromeWebUI for the same profile that is initialized and not dead.
+  </summary>
+</histogram>
+
+<histogram name="InitialWebUI.Toolbar.ProfilePrewarmTakeResult"
+    enum="WebUIContentsPrerenderTakeResult" expires_after="2027-04-25">
+  <owner>mych@chromium.org</owner>
+  <owner>chrome-webium-product-eng@google.com</owner>
+  <summary>
+    Records whether a new normal browser window of a regular profile adopted the
+    WebUI toolbar that its profile prewarmed, and if not, why.
+
+    Recorded each time such a window is created while the WebUI toolbar, the
+    TopChromeWebUIPrerendering feature, and the WebUIReloadButtonPrewarmWebUI
+    and WebUIReloadButtonProfilePrewarming params of the WebUIReloadButton
+    feature are enabled. The profile builds no prewarmed toolbar when it is
+    created, only after its first window, so windows opened before that first
+    build, such as every window of a startup or session restore, record &quot;No
+    spare&quot;. So do windows opened before the profile rebuilds its prewarmed
+    toolbar after the last window took it, or while memory pressure stops the
+    rebuild.
   </summary>
 </histogram>
 
@@ -1588,6 +1640,7 @@ features through Chrome Labs. -->
     <variant name=".OpenGuestProfile"/>
     <variant name=".OpenInChrome"/>
     <variant name=".OpenInPwaWindow"/>
+    <variant name=".OpenOtherDeviceTab"/>
     <variant name=".OpenRecentTab"/>
     <variant name=".PasswordManager"/>
     <variant name=".Paste"/>

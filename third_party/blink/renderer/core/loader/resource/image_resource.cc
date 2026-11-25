@@ -126,7 +126,9 @@ ImageResource* CreateResourceForTransparentPlaceholderImage(
       GetDataForTransparentPlaceholderImageIndex(index);
   CHECK(data->size());
 
-  scoped_refptr<Image> image = BitmapImage::Create();
+  scoped_refptr<Image> image =
+      BitmapImage::Create(/*observer=*/nullptr, /*is_multipart=*/false,
+                          /*is_cors_same_origin=*/true);
   image->SetData(data, true);
   auto* image_content = ImageResourceContent::CreateLoaded(image);
   auto* resource =
@@ -377,8 +379,9 @@ void ImageResource::OnMemoryDump(WebMemoryDumpLevelOfDetail level_of_detail,
   Resource::OnMemoryDump(level_of_detail, memory_dump);
   const String name = StrCat({GetMemoryDumpName(), "/image_content"});
   auto* dump = memory_dump->CreateMemoryAllocatorDump(name);
-  if (content_->HasImage() && content_->GetImage()->HasData())
-    dump->AddScalar("size", "bytes", content_->GetImage()->DataSize());
+  if (std::optional<size_t> data_size = content_->ImageDataSize()) {
+    dump->AddScalar("size", "bytes", *data_size);
+  }
 }
 
 void ImageResource::Trace(Visitor* visitor) const {
@@ -436,12 +439,22 @@ scoped_refptr<const SharedBuffer> ImageResource::ResourceBuffer() const {
   return GetContent()->ResourceBuffer();
 }
 
+bool ImageResource::HasResourceBuffer() const {
+  // Avoids ResourceBuffer(), which can unpark and copy the encoded image.
+  return Data() ||
+         (GetContent()->HasImage() && GetContent()->GetImage()->HasData());
+}
+
 void ImageResource::AppendData(
     std::variant<SegmentedBuffer, base::span<const char>> data) {
   // We don't have a BackgroundResponseProcessor for ImageResources. So this
   // method must be called with a `span<const char>` data.
   CHECK(std::holds_alternative<base::span<const char>>(data));
   base::span<const char> span = std::get<base::span<const char>>(data);
+  // For multipart content, this counts framing bytes as well. When the
+  // multipart parser feed us data blocks via MultipartDataReceived(), the
+  // accounted amount remain the same. The accounted amount is then updated by
+  // UpdateMultipartImage() when a full part has been received.
   external_memory_accounter_.Increase(v8::Isolate::GetCurrent(), span.size());
   if (multipart_parser_) {
     multipart_parser_->AppendData(span);
@@ -542,9 +555,23 @@ void ImageResource::IntegrityFailure() {
   DCHECK_EQ(result, ImageResourceContent::UpdateImageResult::kNoDecodeError);
 }
 
-void ImageResource::UpdateImageAndClearBuffer() {
+void ImageResource::UpdateMultipartImage() {
   UpdateImage(Data(), ImageResourceContent::kClearAndUpdateImage, true);
   ClearData();
+
+  // If decoding encountered an error, the Image and data buffer will have been
+  // dropped and the memory accounter has been cleared.
+  if (ErrorOccurred()) {
+    return;
+  }
+
+  // We've transferred ownership of the data buffer from ourselves to the
+  // Image. Let the accounted memory size match that of the Image's data buffer
+  // plus any buffered bytes from the multipart parser.
+  const size_t image_buffer_size = GetContent()->ImageDataSize().value_or(0);
+  external_memory_accounter_.Set(
+      v8::Isolate::GetCurrent(),
+      image_buffer_size + multipart_parser_->BufferedBytes());
 }
 
 void ImageResource::NotifyStartLoad() {
@@ -569,7 +596,7 @@ void ImageResource::Finish(base::TimeTicks load_finish_time,
     IntegrityFailure();
   } else if (multipart_parser_) {
     if (Data())
-      UpdateImageAndClearBuffer();
+      UpdateMultipartImage();
   } else {
     UpdateImage(Data(), ImageResourceContent::kUpdateImage, true);
     // As encoded image data can be obtained from Image::Data() via `content_`
@@ -655,7 +682,7 @@ void ImageResource::OnePartInMultipartReceived(
     multipart_parsing_state_ = MultipartParsingState::kParsingFirstPart;
     return;
   }
-  UpdateImageAndClearBuffer();
+  UpdateMultipartImage();
 
   if (multipart_parsing_state_ == MultipartParsingState::kParsingFirstPart) {
     multipart_parsing_state_ = MultipartParsingState::kFinishedParsingFirstPart;

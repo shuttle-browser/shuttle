@@ -19,7 +19,6 @@ import time
 
 from devil import base_error
 from devil.android import apk_helper
-from devil.android import crash_handler
 from devil.android import device_errors
 from devil.android import device_temp_file
 from devil.android import flag_changer
@@ -88,6 +87,11 @@ FIXED_TEST_TIMEOUT_OVERHEAD = 60
 _ESTIMATED_RUNTIME_PER_CLASS_UNIT_TESTS = 1.0
 _ESTIMATED_RUNTIME_PER_TEST_UNIT_TESTS = 0.05
 
+# Additional tests in a non-unit batch reuse the first test's activity launch
+# (~8 s); on android-x64-rel chrome_public_test_apk leave-one-out replay picks
+# ~3 s per additional test.
+_ESTIMATED_RUNTIME_PER_BATCHED_TEST = 3.0
+
 # 30 minute max timeout for an instrumentation invocation to avoid shard
 # timeouts when tests never finish. The shard timeout is currently 60 minutes,
 # so this needs to be less than that.
@@ -144,6 +148,7 @@ _VALUE_WEBVIEW_REBASELINE_MODE = 'rebaseline'
 
 FEATURE_ANNOTATION = 'Feature'
 RENDER_TEST_FEATURE_ANNOTATION = 'RenderTest'
+UI_CAPTURE_FEATURE_ANNOTATION = 'UiCatalogue'
 
 _DEVICE_GOLD_DIR = 'skia_gold'
 # A map of Android product models to SDK ints. The keys can be found via `adb
@@ -455,7 +460,6 @@ class LocalDeviceInstrumentationTestRun(
                 fake_modules=None,
                 permissions=None,
                 additional_locales=None,
-                instant_app=False,
             ):
 
                 @instrumentation_tracing.no_tracing
@@ -469,7 +473,6 @@ class LocalDeviceInstrumentationTestRun(
                             fake_modules=fake_modules,
                             permissions=permissions,
                             additional_locales=additional_locales,
-                            instant_app=instant_app,
                             force_queryable=self._test_instance.IsApkForceQueryable(
                                 apk
                             ),
@@ -507,9 +510,7 @@ class LocalDeviceInstrumentationTestRun(
             )
 
             install_steps.extend(
-                install_helper(
-                    apk, instant_app=self._test_instance.IsApkInstant(apk)
-                )
+                install_helper(apk)
                 for apk in self._test_instance.additional_apks
             )
 
@@ -518,7 +519,6 @@ class LocalDeviceInstrumentationTestRun(
                 install_helper(
                     self._test_instance.test_apk,
                     permissions=permissions,
-                    instant_app=self._test_instance.test_apk_as_instant,
                 )
             )
 
@@ -837,7 +837,7 @@ class LocalDeviceInstrumentationTestRun(
             ]
 
             def bind_crash_handler(step, dev):
-                return lambda: crash_handler.RetryOnSystemCrash(step, dev)
+                return lambda: self._RetryOnSystemCrash(step, dev)
 
             install_steps = [
                 bind_crash_handler(s, device) for s in install_steps
@@ -1433,10 +1433,15 @@ class LocalDeviceInstrumentationTestRun(
         # that we only get screenshots created by that test. It has to be on
         # external storage since the default location doesn't allow file creation
         # from the instrumentation test app on Android L and M.
-        ui_capture_dir = device_temp_file.NamedDeviceTemporaryDirectory(
-            device.adb, dir=device.GetExternalStoragePath(), device_utils=device
-        )
-        extras[EXTRA_UI_CAPTURE_DIR] = ui_capture_dir.name
+        if _IsUiCaptureTest(test):
+            ui_capture_dir = device_temp_file.NamedDeviceTemporaryDirectory(
+                device.adb,
+                dir=device.GetExternalStoragePath(),
+                device_utils=device,
+            )
+            extras[EXTRA_UI_CAPTURE_DIR] = ui_capture_dir.name
+        else:
+            ui_capture_dir = contextlib.nullcontext()
 
         if self._env.trace_output:
             trace_device_file = device_temp_file.DeviceTempFile(
@@ -1657,6 +1662,8 @@ class LocalDeviceInstrumentationTestRun(
                         self._render_tests_device_output_dir = None
 
             def pull_ui_screen_captures():
+                if not _IsUiCaptureTest(test):
+                    return
                 screenshots = []
                 source_dir = ui_capture_dir.name
                 if self._env.force_main_user:
@@ -2011,7 +2018,7 @@ class LocalDeviceInstrumentationTestRun(
                     test_list_run_output
                 )
 
-            return crash_handler.RetryOnSystemCrash(_run, d)
+            return self._RetryOnSystemCrash(_run, d)
 
         raw_test_lists = self._env.parallel_devices.pMap(list_tests).pGet(None)
 
@@ -2492,29 +2499,27 @@ class LocalDeviceInstrumentationTestRun(
         tests_in_group = test if isinstance(test, (list, tuple)) else [test]
         assert tests_in_group, 'Empty test group'
 
-        is_unit_test = self._IsUnitTestBatch(test)
+        # TimeoutScale is reused here only as a relative multiplier for the
+        # estimate, not as a timeout setting.
+        scaled_test_count = sum(
+            self.GetTimeoutScaleFromAnnotations(t['annotations'])
+            for t in tests_in_group
+        )
+
         # Unit test batches (Batch.UNIT_TESTS) have much smaller overhead
         # (~1.0s base, ~0.05s per test, although they often launch
         # BlankUiTestActivity).
-        # Non-unit-test batches assume each class launches an activity
-        # (~8.0s overhead) and each test method runs in ~1.0s.
-        launch_overhead = (
-            _ESTIMATED_RUNTIME_PER_CLASS_UNIT_TESTS
-            if is_unit_test
-            else local_device_test_run.ESTIMATED_RUNTIME_PER_CLASS_DEFAULT
-        )
-        per_test_overhead = (
-            _ESTIMATED_RUNTIME_PER_TEST_UNIT_TESTS
-            if is_unit_test
-            else local_device_test_run.ESTIMATED_RUNTIME_PER_TEST_DEFAULT
-        )
+        if self._IsUnitTestBatch(test):
+            return (
+                _ESTIMATED_RUNTIME_PER_CLASS_UNIT_TESTS
+                + _ESTIMATED_RUNTIME_PER_TEST_UNIT_TESTS * scaled_test_count
+            )
 
-        # TimeoutScale is reused here only as a relative multiplier for the
-        # estimate, not as a timeout setting.
-        return launch_overhead + sum(
-            per_test_overhead
-            * self.GetTimeoutScaleFromAnnotations(t['annotations'])
-            for t in tests_in_group
+        # The first test pays the activity launch (~8 s); each further test in a
+        # batch reuses it (~3 s).
+        return (
+            local_device_test_run.ESTIMATED_RUNTIME_PER_CLASS_DEFAULT
+            + _ESTIMATED_RUNTIME_PER_BATCHED_TEST * (scaled_test_count - 1)
         )
 
     @classmethod
@@ -2559,6 +2564,17 @@ def _IsRenderTest(test):
         test = [test]
     return any(
         RENDER_TEST_FEATURE_ANNOTATION
+        in t['annotations'].get(FEATURE_ANNOTATION, {}).get('value', ())
+        for t in test
+    )
+
+
+def _IsUiCaptureTest(test):
+    """Determines if any test in the given list is a UiCatalogue test."""
+    if not isinstance(test, list):
+        test = [test]
+    return any(
+        UI_CAPTURE_FEATURE_ANNOTATION
         in t['annotations'].get(FEATURE_ANNOTATION, {}).get('value', ())
         for t in test
     )

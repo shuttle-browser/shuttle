@@ -79,17 +79,6 @@ COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
 extern const base::FeatureParam<std::string>
     kSearchEngineChoiceTriggerRepromptParams;
 
-
-// Whether state consistency across choice metadata and DSE pref state should
-// be enforced.
-// The presence of DSE choice metadata implies that a DSE choice was made,
-// and in this case we also expect a DSE to be set in prefs. There are some
-// flows that can cause the DSE pref to be cleared, like pref tampering
-// detection. When this happens, we also wipe the DSE choice metadata to
-// trigger a new choice prompt.
-COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
-BASE_DECLARE_FEATURE(kWipeChoicePrefsOnMissingDefaultSearchEngine);
-
 // Kill switch to revert the fix of using assistedQueryStats for prefetch source
 // component. See crbug.com/345275145.
 COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
@@ -130,6 +119,19 @@ BASE_DECLARE_FEATURE(kSearchSettingsUpdate);
 COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
 BASE_DECLARE_FEATURE(kSearchSettingsUpdateV2);
 #endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+
+#if BUILDFLAG(IS_ANDROID)
+// Guards search engine choice status reporting via Choice Engine infra. See
+// http://go/chrome-rcaps-dd/choice-engine-integration for more details.
+COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
+BASE_DECLARE_FEATURE(kChoiceEngineStatusReporting);
+
+// Enables the CHROME_SEARCH_ONLY scope for the device choice dialog on
+// Android, displaying search-engine-specific strings instead of OS-wide
+// default app strings.
+COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
+BASE_DECLARE_FEATURE(kChromeSearchOnlyClayScope);
+#endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_WIN)
 // When enabled, will reject encrypted keyword table hashes that are weakly

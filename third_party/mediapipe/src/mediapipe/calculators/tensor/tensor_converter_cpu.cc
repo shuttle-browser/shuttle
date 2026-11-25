@@ -18,14 +18,14 @@
 #include <cstdint>
 #include <utility>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/formats/matrix.h"
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/memory_manager.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_macros.h"
 
 namespace mediapipe {
 namespace {
@@ -117,13 +117,13 @@ absl::StatusOr<Tensor> ConvertImageFrameToTensorOnCpu(
 
   // Copy image data into tensor.
   if (image_frame.ByteDepth() == 1) {
-    MP_RETURN_IF_ERROR(NormalizeUInt8Image(image_frame, flip_vertically,
-                                           output_range, max_num_channels,
-                                           cpu_view.buffer<float>()));
+    ABSL_RETURN_IF_ERROR(NormalizeUInt8Image(image_frame, flip_vertically,
+                                             output_range, max_num_channels,
+                                             cpu_view.buffer<float>()));
   } else if (image_frame.ByteDepth() == 4) {
-    MP_RETURN_IF_ERROR(NormalizeFloatImage(image_frame, flip_vertically,
-                                           output_range, max_num_channels,
-                                           cpu_view.buffer<float>()));
+    ABSL_RETURN_IF_ERROR(NormalizeFloatImage(image_frame, flip_vertically,
+                                             output_range, max_num_channels,
+                                             cpu_view.buffer<float>()));
   } else {
     return absl::InternalError(
         "Only byte-based (8 bit) and float (32 bit) images supported.");
@@ -134,13 +134,13 @@ absl::StatusOr<Tensor> ConvertImageFrameToTensorOnCpu(
 absl::StatusOr<Tensor> ConvertMatrixToTensorOnCpu(
     const Matrix& matrix, bool row_major_matrix,
     MemoryManager* memory_manager) {
-  const int height = matrix.rows();
-  const int width = matrix.cols();
+  const int height = row_major_matrix ? matrix.rows() : matrix.cols();
+  const int width = row_major_matrix ? matrix.cols() : matrix.rows();
   const int channels = 1;
   Tensor output_tensor(Tensor::ElementType::kFloat32,
                        Tensor::Shape{1, height, width, channels},
                        memory_manager);
-  MP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       CopyMatrixToTensor(matrix, row_major_matrix,
                          output_tensor.GetCpuWriteView().buffer<float>()));
   return output_tensor;

@@ -159,15 +159,16 @@ export class SettingsAppearancePageElement extends
 
       showHoverCardImagesOption_: {type: Boolean},
       showManagedThemeDialog_: {type: Boolean},
+      // <if expr="is_macosx">
       glassEffectOptions_: {type: Array},
-      tabStripOptions_: {type: Array},
       showGlassEffectEnabled_: {type: Boolean},
+      // </if>
+      tabStripOptions_: {type: Array},
       showOrganizerPanelEnabled_: {type: Boolean},
       showEverythingMenuEnabled_: {type: Boolean},
       showResetPinnedActionsButton_: {type: Boolean},
       showCtrlTabMru_: {type: Boolean},
       tabStripUnificationEnabled_: {type: Boolean},
-      splitViewHorizontalEnabled_: {type: Boolean},
     };
   }
 
@@ -179,29 +180,34 @@ export class SettingsAppearancePageElement extends
   protected accessor defaultZoom_: number = 1.0;
 
   // Mirrored prefs.
-  protected accessor defaultFontSizePref_: PrefObject<number>|undefined =
+  private accessor defaultFontSizePref_: PrefObject<number>|undefined =
       undefined;
   protected accessor homepageIsNewTabPagePref_: PrefObject<boolean>|undefined =
       undefined;
   protected accessor homepagePref_: PrefObject<string>|undefined = undefined;
-  protected accessor pinContextualTaskButtonPref_: PrefObject<boolean>|
-      undefined = undefined;
-  protected accessor pinnedActionsPref_: PrefObject<string[]>|undefined =
+  private accessor pinContextualTaskButtonPref_: PrefObject<boolean>|undefined =
       undefined;
-  protected accessor pinSplitTabButtonPref_: PrefObject<boolean>|undefined =
+  private accessor pinnedActionsPref_: PrefObject<string[]>|undefined =
       undefined;
-  protected accessor showForwardButtonPref_: PrefObject<boolean>|undefined =
+  private accessor pinSplitTabButtonPref_: PrefObject<boolean>|undefined =
+      undefined;
+  private accessor showForwardButtonPref_: PrefObject<boolean>|undefined =
       undefined;
   protected accessor showHomeButtonPref_: PrefObject<boolean>|undefined =
       undefined;
+  // <if expr="not is_linux">
   protected accessor themeIdPref_: PrefObject<string>|undefined = undefined;
-  protected accessor themePolicyColorPref_: PrefObject<number>|undefined =
+  // </if>
+  // <if expr="is_linux">
+  private accessor themeIdPref_: PrefObject<string>|undefined = undefined;
+  // </if>
+  private accessor themePolicyColorPref_: PrefObject<number>|undefined =
       undefined;
   protected accessor verticalTabsEnabledPref_: PrefObject<boolean>|undefined =
       undefined;
 
   // <if expr="is_linux">
-  protected accessor themeSystemThemePref_: PrefObject<number>|undefined =
+  private accessor themeSystemThemePref_: PrefObject<number>|undefined =
       undefined;
   // </if>
 
@@ -221,7 +227,7 @@ export class SettingsAppearancePageElement extends
         },
       ];
 
-  protected accessor selectedColorSchemeMode_: ColorSchemeMode|undefined =
+  private accessor selectedColorSchemeMode_: ColorSchemeMode|undefined =
       undefined;
 
   /**
@@ -235,10 +241,12 @@ export class SettingsAppearancePageElement extends
     {value: 24, name: loadTimeData.getString('veryLarge')},
   ];
 
+  // <if expr="is_macosx">
   protected accessor glassEffectOptions_: DropdownMenuOptionList = [
     {value: 'false', name: loadTimeData.getString('glassEffectClassic')},
     {value: 'true', name: loadTimeData.getString('glassEffectModern')},
- ];
+  ];
+  // </if>
 
   protected accessor tabStripOptions_: DropdownMenuOptionList = [
     {value: 'true', name: loadTimeData.getString('uiFeatureAlignSide')},
@@ -253,8 +261,8 @@ export class SettingsAppearancePageElement extends
   protected accessor pageZoomLevels_: number[] =
       JSON.parse(loadTimeData.getString('presetZoomFactors'));
   protected accessor themeSublabel_: string = '';
-  protected accessor themeUrl_: string = '';
-  protected accessor systemTheme_: SystemTheme = SystemTheme.DEFAULT;
+  private accessor themeUrl_: string = '';
+  private accessor systemTheme_: SystemTheme = SystemTheme.DEFAULT;
 
   // <if expr="is_linux">
   /**
@@ -267,19 +275,19 @@ export class SettingsAppearancePageElement extends
   protected accessor showHoverCardImagesOption_: boolean =
       loadTimeData.getBoolean('showHoverCardImagesOption');
   protected accessor showManagedThemeDialog_: boolean = false;
+  // <if expr="is_macosx">
   protected accessor showGlassEffectEnabled_: boolean =
       loadTimeData.getBoolean('showGlassEffectEnabled');
+      // </if>
   protected accessor showOrganizerPanelEnabled_: boolean =
       loadTimeData.getBoolean('showOrganizerPanelEnabled');
-  protected accessor showEverythingMenuEnabled_: boolean =
+  private accessor showEverythingMenuEnabled_: boolean =
       loadTimeData.getBoolean('showEverythingMenuEnabled');
   protected accessor showResetPinnedActionsButton_: boolean = false;
   protected accessor showCtrlTabMru_: boolean =
       loadTimeData.getBoolean('showCtrlTabMru');
   protected accessor tabStripUnificationEnabled_: boolean =
       loadTimeData.getBoolean('tabStripUnificationEnabled');
-  protected accessor splitViewHorizontalEnabled_: boolean =
-      loadTimeData.getBoolean('splitViewHorizontalEnabled');
 
   private appearanceBrowserProxy_: AppearanceBrowserProxy =
       AppearanceBrowserProxyImpl.getInstance();

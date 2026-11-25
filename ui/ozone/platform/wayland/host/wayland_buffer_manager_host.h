@@ -73,6 +73,13 @@ class WaylandBufferManagerHost : public ozone::mojom::WaylandBufferManagerHost {
   bool SupportsViewporter() const;
   bool SupportsOverlays() const;
   bool SupportsSinglePixelBuffer() const;
+  // Whether the compositor is known to tone map HDR surfaces using the content
+  // light level information (CLLI: max_cll) provided by the client, instead of
+  // clipping content above the display's peak.
+  bool CompositorToneMapsUsingClli() const;
+  // Whether the compositor is known to tone map HDR surfaces using the
+  // mastering display color volume (MDCV) provided by the client.
+  bool CompositorToneMapsUsingMdcv() const;
 
   // ozone::mojom::WaylandBufferManagerHost overrides:
   //
@@ -82,10 +89,11 @@ class WaylandBufferManagerHost : public ozone::mojom::WaylandBufferManagerHost {
       mojo::PendingAssociatedRemote<ozone::mojom::WaylandBufferManagerGpu>
           buffer_manager_gpu_associated) override;
   //
-  // Called by the GPU and asks to import a wl_buffer based on a gbm file
-  // descriptor using zwp_linux_dmabuf protocol. Check comments in the
+  // Called by the GPU and asks to import a wl_buffer based on gbm file
+  // descriptors (one per plane) using zwp_linux_dmabuf protocol. Check
+  // comments in the
   // ui/ozone/platform/wayland/mojom/wayland_buffer_manager.mojom.
-  void CreateDmabufBasedBuffer(mojo::PlatformHandle dmabuf_fd,
+  void CreateDmabufBasedBuffer(std::vector<mojo::PlatformHandle> dmabuf_fds,
                                const gfx::Size& size,
                                const std::vector<uint32_t>& strides,
                                const std::vector<uint32_t>& offsets,
@@ -168,7 +176,7 @@ class WaylandBufferManagerHost : public ozone::mojom::WaylandBufferManagerHost {
  private:
   // Validates data sent from GPU. If invalid, returns false and sets an error
   // message to |error_message_|.
-  bool ValidateDataFromGpu(const base::ScopedFD& file,
+  bool ValidateDataFromGpu(const std::vector<base::ScopedFD>& fds,
                            const gfx::Size& size,
                            const std::vector<uint32_t>& strides,
                            const std::vector<uint32_t>& offsets,

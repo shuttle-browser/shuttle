@@ -22,7 +22,6 @@
 #include "chrome/browser/component_updater/hyphenation_component_installer.h"
 #include "chrome/browser/component_updater/mei_preload_component_installer.h"
 #include "chrome/browser/component_updater/pki_metadata_component_installer.h"
-#include "chrome/browser/component_updater/privacy_sandbox_attestations_component_installer.h"
 #include "chrome/browser/component_updater/private_verification_tokens_installer.h"
 #include "chrome/browser/component_updater/ssl_error_assistant_component_installer.h"
 #include "chrome/browser/component_updater/subresource_filter_component_installer.h"
@@ -54,7 +53,6 @@
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/resource_coordinator/tab_manager.h"
 #include "media/base/media_switches.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -96,6 +94,10 @@ void DeleteOldComponents(const base::FilePath& user_data_dir) {
            FILE_PATH_LITERAL(
                "Fingerprinting Protection Filter"),    // Remove in M156+
            FILE_PATH_LITERAL("PlusAddressBlocklist"),  // Remove in M158+
+           FILE_PATH_LITERAL("HistorySearch"),         // Remove in M160+
+           FILE_PATH_LITERAL(
+               "PrivacySandboxAttestationsPreloaded"),    // Remove in M159+
+           FILE_PATH_LITERAL("FirstPartySetsPreloaded"),  // Remove in M165+
 #if BUILDFLAG(IS_CHROMEOS)
            FILE_PATH_LITERAL("AppProvisioning"),
            // TODO(crbug.com/380780352): Remove these after the stepping stone.
@@ -127,7 +129,6 @@ void RegisterComponentsForUpdate() {
       cus, g_browser_process->GetApplicationLocale());
   RegisterTrustTokenKeyCommitmentsComponentIfTrustTokensEnabled(cus);
   RegisterPrivateVerificationTokensComponentIfEnabled(cus);
-  RegisterPrivacySandboxAttestationsComponent(cus);
   RegisterSSLErrorAssistantComponent(cus);
 
 
@@ -135,12 +136,7 @@ void RegisterComponentsForUpdate() {
   RegisterFileTypePoliciesComponent(cus);
 #endif
 
-#if !BUILDFLAG(IS_CHROMEOS)
-  // CRLSetFetcher attempts to load a CRL set from either the local disk or
-  // network.
-  // For Chrome OS this registration is delayed until user login.
-  component_updater::RegisterCRLSetComponent(cus);
-#endif  // !BUILDFLAG(IS_CHROMEOS)
+  RegisterCRLSetComponent(cus);
 
   RegisterOriginTrialsComponent(cus);
   RegisterMediaEngagementPreloadComponent(cus, base::OnceClosure());

@@ -6,18 +6,23 @@
 #define CHROME_BROWSER_UI_VIEWS_TABS_COMMON_TAB_STRIP_COLLECTION_CONTROLLER_H_
 
 #include <optional>
+#include <string_view>
 
 #include "base/auto_reset.h"
 #include "base/callback_list.h"
+#include "base/functional/callback_helpers.h"
+#include "chrome/browser/ui/animation/browser_animation_types.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_animating_layout_manager.h"
 #include "chrome/browser/ui/views/tabs/common/tab_drag_handler.h"
 #include "chrome/browser/ui/views/tabs/shared/tab_strip_types.h"
 #include "chrome/browser/ui/views/tabs/tab/tab_context_menu_controller.h"
+#include "components/tab_groups/tab_group_color.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "ui/base/models/list_selection_model.h"
 
+class BrowserAnimationController;
 class BrowserFrameView;
 class BrowserView;
 class ExpandOnHoverLock;
@@ -56,6 +61,16 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
       const tabs::TabInterface* tab_interface,
       bool leading) const;
   std::optional<tab_groups::TabGroupId> GetFocusedGroup() const;
+
+  struct FocusTransition {
+    tab_groups::TabGroupId target_group;
+    std::optional<tab_groups::TabGroupId> previous_group;
+    std::optional<tab_groups::TabGroupColorId> previous_group_color;
+    std::optional<tab_groups::TabGroupColorId> target_group_color;
+    bool target_follows_previous = false;
+    bool is_starting_focus_motion = false;
+  };
+  std::optional<FocusTransition> GetFocusTransition() const;
   bool IsGroupCollapsed(const tab_groups::TabGroupId& group_id) const;
   std::optional<SkColor> GetGroupColor(
       const tabs::TabInterface* tab_interface) const;
@@ -67,8 +82,8 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
   void ExtendSelectionPrevious(
       const tabs::TabInterface* tab_interface,
       const TabStripUserGestureDetails& gesture_detail);
-  void ShiftGroupUp(const tab_groups::TabGroupId& group);
-  void ShiftGroupDown(const tab_groups::TabGroupId& group);
+  void ShiftGroupPrevious(const tab_groups::TabGroupId& group);
+  void ShiftGroupNext(const tab_groups::TabGroupId& group);
   void MoveTabFirst(const tabs::TabInterface* tab_interface);
   void MoveTabLast(const tabs::TabInterface* tab_interface);
   void SelectTab(const tabs::TabInterface* tab_interface,
@@ -96,6 +111,7 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
 
   BrowserView* GetBrowserView() const { return browser_view_; }
   BrowserFrameView* GetBrowserFrameView() const;
+  BrowserAnimationController* GetBrowserAnimationController() const;
   bool IsGlassFrame() const { return is_glass_frame_; }
   void OnGlassFrameEligibilityChanged(bool is_eligible);
   int GetStrokeThickness() const;
@@ -115,6 +131,12 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
   animation_coordinator() {
     return animation_coordinator_;
   }
+  const TabCollectionAnimatingLayoutManager::AnimationCoordinator&
+  animation_coordinator() const {
+    return animation_coordinator_;
+  }
+
+  bool CanPaintThrobberToLayer() const;
 
   // Notifies BrowserCommandController that the tab with keyboard focus has
   // changed.
@@ -173,6 +195,12 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
   void AnnounceTabAddedToGroup(tab_groups::TabGroupId group_id);
   void AnnounceTabRemovedFromGroup(tab_groups::TabGroupId group_id);
 
+  void OnFocusAnimationUpdated(const BrowserAnimationController* controller,
+                               BrowserAnimationUpdate status);
+  void EndFocusTransition();
+
+  std::string_view GetFocusAnimationHistogramGroupPrefix() const;
+
   std::unique_ptr<TabContextMenuController> context_menu_controller_;
   std::unique_ptr<ExpandOnHoverLock> expand_on_hover_lock_;
 
@@ -184,6 +212,10 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
 
   TabCollectionAnimatingLayoutManager::AnimationCoordinator
       animation_coordinator_;
+
+  std::optional<FocusTransition> focus_transition_;
+  base::CallbackListSubscription focus_animation_subscription_;
+  base::ScopedClosureRunner ephemeral_group_removal_lock_;
 
   bool is_animating_layout_change_ = false;
 

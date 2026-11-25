@@ -27,12 +27,12 @@ void RegisterBrowserUserPrefs(user_prefs::PrefRegistrySyncable* registry) {
   registry->RegisterBooleanPref(kDeleteBrowsingHistory, true);
   registry->RegisterBooleanPref(kDeleteCache, true);
   registry->RegisterBooleanPref(kDeleteCookies, true);
+  registry->RegisterBooleanPref(kDeleteSiteSettings, false);
   registry->RegisterIntegerPref(kClearBrowsingDataHistoryNoticeShownTimes, 0);
 
 #if !BUILDFLAG(IS_IOS)
   registry->RegisterBooleanPref(kDeleteDownloadHistory, true);
   registry->RegisterBooleanPref(kDeleteHostedAppsData, false);
-  registry->RegisterBooleanPref(kDeleteSiteSettings, false);
   registry->RegisterBooleanPref(kDeleteSkills, false);
 #else
   registry->RegisterInt64Pref(prefs::kLastClearBrowsingDataTime, 0);

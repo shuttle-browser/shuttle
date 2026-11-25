@@ -530,7 +530,6 @@ ToRtpParameters(ExecutionContext* context,
 
 webrtc::RtpCodec ToWebrtcRtpCodec(const RTCRtpCodec* codec) {
   webrtc::RtpCodec webrtc_codec;
-  std::string mime_type = codec->mimeType().Utf8();
   auto slash_index = codec->mimeType().find('/');
   if (slash_index == kNotFound) {
     webrtc_codec.kind = webrtc::MediaType::UNSUPPORTED;
@@ -1130,16 +1129,39 @@ RTCRtpCapabilities* RTCRtpSender::getCapabilities(ScriptState* state,
 
 void RTCRtpSender::MaybeShortCircuitEncodedStreams() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  if (!encoded_streams_ && !transform_) {
-    transform_shortcircuited_ = true;
-    LogMessage("Starting short circuiting of encoded transform");
-    if (kind_ == "video") {
-      encoded_video_transformer_->StartShortCircuiting();
-    } else {
-      CHECK_EQ(kind_, "audio");
-      encoded_audio_transformer_->StartShortCircuiting();
-    }
+  short_circuit_allowed_ = true;
+  if (ShouldShortCircuit()) {
+    StartShortCircuiting();
   }
+}
+
+void RTCRtpSender::StartShortCircuiting() {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  // Encoded streams created after this point would never get any frames.
+  transform_shortcircuited_ = true;
+  LogMessage("Starting short circuiting of encoded transform");
+  if (kind_ == "video") {
+    encoded_video_transformer_->StartShortCircuiting();
+  } else {
+    CHECK_EQ(kind_, "audio");
+    encoded_audio_transformer_->StartShortCircuiting();
+  }
+}
+
+void RTCRtpSender::StopShortCircuiting() {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  LogMessage("Stopping short circuiting of encoded transform");
+  if (kind_ == "video") {
+    encoded_video_transformer_->StopShortCircuiting();
+  } else {
+    CHECK_EQ(kind_, "audio");
+    encoded_audio_transformer_->StopShortCircuiting();
+  }
+}
+
+bool RTCRtpSender::ShouldShortCircuit() const {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  return short_circuit_allowed_ && !encoded_streams_ && !transform_;
 }
 
 void RTCRtpSender::UnregisterEncodedAudioStreamCallback() {
@@ -1452,6 +1474,10 @@ void RTCRtpSender::setTransform(RTCRtpScriptTransform* transform,
   if (!transform) {
     transform_->Detach();
     transform_ = nullptr;
+    // Pass frames through untransformed instead of dropping them.
+    if (ShouldShortCircuit()) {
+      StartShortCircuiting();
+    }
     return;
   }
   if (transform->HasBeenUsed()) {
@@ -1461,6 +1487,10 @@ void RTCRtpSender::setTransform(RTCRtpScriptTransform* transform,
   }
   if (transform_) {
     transform_->Detach();
+  } else if (ShouldShortCircuit()) {
+    // Frames currently skip the transform. Without this, they would bypass the
+    // new transform too.
+    StopShortCircuiting();
   }
   transform_ = transform;
   transform_->Attach();

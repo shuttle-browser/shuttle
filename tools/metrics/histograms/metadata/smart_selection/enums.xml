@@ -1,0 +1,81 @@
+<!--
+Copyright 2026 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<histogram-configuration>
+
+<enums>
+
+<!-- LINT.IfChange(SmartSelectionDocumentMimeType) -->
+
+<enum name="SmartSelectionDocumentMimeType">
+  <int value="0" label="Unknown"/>
+  <int value="1" label="Pdf"/>
+  <int value="2" label="Html"/>
+  <int value="3" label="PlainText"/>
+  <int value="4" label="Image"/>
+  <int value="5" label="Video"/>
+  <int value="6" label="Audio"/>
+  <int value="7" label="Json"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/selection/metrics_logger.h:DocumentMimeType) -->
+
+<!-- LINT.IfChange(SmartSelectionEntryPoint) -->
+
+<enum name="SmartSelectionEntryPoint">
+  <int value="0" label="KeyboardShortcut"/>
+  <int value="1" label="ContextMenuText"/>
+  <int value="2" label="ContextMenuImage"/>
+  <int value="3" label="ContextMenuPage"/>
+  <int value="4" label="InlineCue"/>
+  <int value="5" label="CursorWiggle"/>
+  <int value="6" label="ToolbarButton"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/selection/metrics_logger.h:EntryPoint) -->
+
+<!-- LINT.IfChange(SmartSelectionSelectionOutcome) -->
+
+<enum name="SmartSelectionSelectionOutcome">
+  <int value="0" label="Text was preselected when starting the session."/>
+  <int value="1" label="The user completed a spatial selection."/>
+  <int value="2"
+      label="The user explicitly exited the selection mode (e.g., by pressing
+             ESC)."/>
+  <int value="3"
+      label="The selection mode was exited for other reasons - for example
+             tab or browser close."/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/selection/metrics_logger.h:SelectionOutcome) -->
+
+<!-- LINT.IfChange(SmartSelectionSubmissionOutcome) -->
+
+<enum name="SmartSelectionSubmissionOutcome">
+  <int value="0" label="A prompt was submitted."/>
+  <int value="1" label="A suggestion was accepted."/>
+  <int value="2"
+      label="Multiple suggestions or a suggestion and a prompt were
+             submitted."/>
+  <int value="3" label="The user explicitly exited the mode."/>
+  <int value="4"
+      label="The mode was exited for other reasons - for example tab or
+             browser close."/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/selection/metrics_logger.h:SubmissionOutcome) -->
+
+<enum name="SmartSelectionToolId">
+  <int value="0" label="Unspecified tool"/>
+  <int value="1" label="Gemini in Chrome"/>
+  <int value="2" label="Google Lens"/>
+  <int value="3" label="Google Search"/>
+  <int value="4" label="Quick Answers"/>
+</enum>
+
+</enums>
+
+</histogram-configuration>

@@ -20,11 +20,12 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
-#include "absl/strings/ascii.h"
-#include "absl/strings/string_view.h"
-#include "absl/strings/substitute.h"
+#include "absl/container/flat_hash_set.h"  // from @com_google_absl
+#include "absl/status/status.h"            // from @com_google_absl
+#include "absl/status/status_macros.h"     // from @com_google_absl
+#include "absl/strings/ascii.h"            // from @com_google_absl
+#include "absl/strings/string_view.h"      // from @com_google_absl
+#include "absl/strings/substitute.h"       // from @com_google_absl
 #include "mediapipe/calculators/tensor/bert_preprocessor_calculator.pb.h"
 #include "mediapipe/framework/api2/node.h"
 #include "mediapipe/framework/api2/port.h"
@@ -169,9 +170,9 @@ absl::Status BertPreprocessorCalculator::Open(CalculatorContext* cc) {
       &kMetadataExtractorSideIn(cc).Get();
   const tflite::ProcessUnit* tokenizer_metadata =
       metadata_extractor->GetInputProcessUnit(kTokenizerProcessUnitIndex);
-  MP_ASSIGN_OR_RETURN(tokenizer_,
-                      tasks::text::tokenizers::CreateTokenizerFromProcessUnit(
-                          tokenizer_metadata, metadata_extractor));
+  ABSL_ASSIGN_OR_RETURN(tokenizer_,
+                        tasks::text::tokenizers::CreateTokenizerFromProcessUnit(
+                            tokenizer_metadata, metadata_extractor));
 
   auto* input_tensors_metadata = metadata_extractor->GetInputTensorMetadata();
   input_ids_tensor_index_ = FindTensorIndexByMetadataName(

@@ -8,6 +8,7 @@ import argparse
 import json
 import logging
 import os
+import platform
 import re
 import shutil
 import sys
@@ -18,6 +19,11 @@ from util import build_utils
 from util import diff_utils
 import action_helpers  # build_utils adds //build to sys.path.
 import zip_helpers
+
+_CHROME_R8_BINARY_PATH = os.path.join(
+    build_utils.DIR_SOURCE_ROOT, 'third_party', 'r8', 'cipd', 'bin', 'chrome_r8'
+)
+_CHROME_R8_MAX_CPUS = 32
 
 _IGNORE_WARNINGS = (
     # Caused by protobuf runtime using -identifiernamestring in a way that
@@ -65,7 +71,7 @@ _IGNORE_WARNINGS = (
     # r8, see b/538647947. Public builds use obfuscated classes under
     # com.google.android.gms.internal.mlkit_genai_prompt, while internal Clank
     # builds use un-obfuscated classes from google3 CIPD.
-    r'com/google/(?:android/gms/internal/mlkit_genai_prompt/zzy[a-z]|mlkit/genai/prompt/internal/.*)\.class:.*Could not inline ServiceLoader\.load',
+    r'com/google/(?:android/gms/internal/mlkit_genai_prompt/zz[a-z]+|mlkit/genai/prompt/internal/.*)\.class:.*Could not inline ServiceLoader\.load',
     # This class is referenced by kotlinx-coroutines-core-jvm but it does not
     # depend on it. Not actually needed though.
     r'Missing class org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement',
@@ -154,6 +160,11 @@ def _ParseOptions():
         action='append',
         help='GN-list of .jar files to include as libraries, and that are not a '
         'part of R8\'s API database.',
+    )
+    parser.add_argument(
+        '--sdk-api-databases',
+        action='append',
+        help='GN-list of R8 API databases generated for --sdk-jars.',
     )
     parser.add_argument(
         '--main-dex-rules-path',
@@ -314,6 +325,14 @@ def _ParseOptions():
     options.sdk_extension_jars = action_helpers.parse_gn_list(
         options.sdk_extension_jars
     )
+    options.sdk_api_databases = action_helpers.parse_gn_list(
+        options.sdk_api_databases
+    )
+    for api_database in options.sdk_api_databases:
+        # R8 only warns about a missing database and then runs without API
+        # modeling, which shows up as confusing downstream failures.
+        if not os.path.exists(api_database):
+            parser.error(f'SDK API database does not exist: {api_database}')
     options.proguard_configs = action_helpers.parse_gn_list(
         options.proguard_configs
     )
@@ -446,8 +465,30 @@ def _OptimizeWithR8(options, config_paths, libraries, dynamic_config_data):
             )
         base_context = split_contexts_by_name['base']
 
+        use_chrome_r8_binary = (
+            sys.platform == 'linux' and platform.machine() == 'x86_64'
+        )
         # R8 OOMs with xmx=3G.
-        cmd = build_utils.JavaCmd(xmx='4G') + [
+        if use_chrome_r8_binary:
+            cmd = [
+                _CHROME_R8_BINARY_PATH,
+                f'-Djava.home={build_utils.JAVA_HOME}',
+                '-Xmx4G',
+                # Default initial heap size is based on total RAM. Pin it to a
+                # consistent value for better determinism and to avoid
+                # slow-downs by having it start too low.
+                '-Xms1G',
+            ]
+            # By default, R8 uses up to 48 worker threads and G1 uses ~2/3 of
+            # cores for GC threads, which over-parallelizes on many-core
+            # machines. On a 96-core machine, capping to 32 CPUs (24 R8
+            # threads, 23 GC threads) reduced chrome_public_bundle CPU time
+            # by 20% (570s -> 454s) and wall time by 4% (77.4s -> 74.3s).
+            if (os.cpu_count() or 0) > _CHROME_R8_MAX_CPUS:
+                cmd += [f'-XX:ActiveProcessorCount={_CHROME_R8_MAX_CPUS}']
+        else:
+            cmd = build_utils.JavaCmd(xmx='4G')
+        cmd += [
             # Allows -whyareyounotinlining, which we don't have by default, but
             # which is useful for one-off queries.
             '-Dcom.android.tools.r8.experimental.enablewhyareyounotinlining=1',
@@ -484,10 +525,13 @@ def _OptimizeWithR8(options, config_paths, libraries, dynamic_config_data):
                 '-Dcom.android.tools.r8.dumpkeepradiushtmltofile='
                 + options.keep_radius_output
             ]
+        if not use_chrome_r8_binary:
+            cmd += [
+                '-cp',
+                '{}:{}'.format(options.r8_path, options.custom_r8_path),
+                'org.chromium.build.ChromeR8',
+            ]
         cmd += [
-            '-cp',
-            '{}:{}'.format(options.r8_path, options.custom_r8_path),
-            'org.chromium.build.CustomR8',
             '--no-data-resources',
             '--map-id-template',
             f'{options.source_file} ({options.package_name})',
@@ -525,6 +569,9 @@ def _OptimizeWithR8(options, config_paths, libraries, dynamic_config_data):
 
         if options.min_api:
             cmd += ['--min-api', options.min_api]
+
+        for api_database in options.sdk_api_databases:
+            cmd += ['--api-database', api_database]
 
         if options.assertion_handler:
             cmd += ['--force-assertions-handler:' + options.assertion_handler]
@@ -796,6 +843,7 @@ def _Run(options):
     )
 
     depfile_inputs = options.proguard_configs + options.input_paths + libraries
+    depfile_inputs += options.sdk_api_databases
     if options.feature_resources:
         for proto_in, _ in options.feature_resources.values():
             depfile_inputs.append(proto_in)

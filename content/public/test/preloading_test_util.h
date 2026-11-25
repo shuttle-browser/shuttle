@@ -24,10 +24,10 @@ class WebContents;
 
 namespace test {
 
-// The set of UKM metric names in the PreloadingAttempt and PreloadingPrediction
-// UKM logs. This is useful for calling TestUkmRecorder::GetEntries.
-extern const std::vector<std::string> kPreloadingAttemptUkmMetrics;
-extern const std::vector<std::string> kPreloadingPredictionUkmMetrics;
+// Returns the set of UKM metric names in the PreloadingAttempt and
+// PreloadingPrediction UKM logs for calling TestUkmRecorder::GetEntries.
+std::vector<std::string> GetPreloadingAttemptUkmMetrics();
+std::vector<std::string> GetPreloadingPredictionUkmMetrics();
 
 // Used for generating histogram names recorded per trigger.
 inline constexpr char kPreloadingEmbedderHistogramSuffixForTesting[] =

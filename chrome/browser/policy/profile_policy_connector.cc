@@ -26,6 +26,7 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_switcher/browser_switcher_policy_migrator.h"
 #include "chrome/browser/enterprise/util/affiliation.h"
+#include "chrome/browser/infobars/confirm_infobar_creation_allowlist.h"
 #include "chrome/browser/infobars/simple_alert_infobar_creator.h"
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/infobars/browser_infobar_manager.h"
@@ -227,7 +228,7 @@ class LocalTestInfoBarVisibilityManager :
   void AddInfobarsForActiveLocalTestPoliciesAllTabs() {
     CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 #if BUILDFLAG(IS_ANDROID)
-    for (TabModel* model : TabModelList::models()) {
+    TabModelList::ForEachAll([this](TabModel* model) {
       for (int index = 0; index < model->GetTabCount(); ++index) {
         TabAndroid* tab = model->GetTabAt(index);
         if (tab && tab->web_contents()) {
@@ -235,7 +236,8 @@ class LocalTestInfoBarVisibilityManager :
         }
       }
       model->AddObserver(this);
-    }
+      return true;
+    });
 #else
     ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
         [this](BrowserWindowInterface* browser) {
@@ -268,6 +270,7 @@ class LocalTestInfoBarVisibilityManager :
       return;
     }
     CreateSimpleAlertInfoBar(
+        ConfirmInfoBarCreationAllowlist::GetPassKeyForMigration(),
         infobar_manager,
         infobars::InfoBarDelegate::LOCAL_TEST_POLICIES_APPLIED_INFOBAR, nullptr,
         l10n_util::GetStringUTF16(IDS_LOCAL_TEST_POLICIES_ENABLED),
@@ -279,7 +282,7 @@ class LocalTestInfoBarVisibilityManager :
   void DismissInfobarsForActiveLocalTestPoliciesAllTabs() {
     CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M162);
 #if BUILDFLAG(IS_ANDROID)
-    for (TabModel* model : TabModelList::models()) {
+    TabModelList::ForEachAll([this](TabModel* model) {
       for (int index = 0; index < model->GetTabCount(); ++index) {
         TabAndroid* tab = model->GetTabAt(index);
         if (tab) {
@@ -287,7 +290,8 @@ class LocalTestInfoBarVisibilityManager :
         }
       }
       model->RemoveObserver(this);
-    }
+      return true;
+    });
 #else
     ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
         [this](BrowserWindowInterface* browser) {

@@ -40,8 +40,14 @@ void ActionAppMenuMetrics::OnMenuOpened() {
   LogMenuActionHistogram(MENU_ACTION_MENU_OPENED);
 }
 
-void ActionAppMenuMetrics::OnWillShowSubMenu(int command_id) {
-  if (command_id == kActionSavedTabGroupsSubmenu) {
+void ActionAppMenuMetrics::OnWillShowSubMenu(actions::BaseAction* base_action) {
+  if (!base_action) {
+    return;
+  }
+
+  std::optional<actions::ActionId> action_id =
+      base_action->GetActionItem()->GetActionId();
+  if (action_id == kActionSavedTabGroupsSubmenu) {
     base::UmaHistogramMediumTimes(
         base::StrCat({kTimeToActionPrefix, "ShowSavedTabGroups"}),
         menu_opened_timer_.Elapsed());
@@ -68,6 +74,10 @@ void ActionAppMenuMetrics::LogMenuAction(actions::BaseAction* base_action) {
     }
     if (parent_id == kActionRecentTabsSubmenu) {
       LogMenuActionWithId(kActionOpenRecentTab);
+      return;
+    }
+    if (parent_id == kActionOtherDeviceTabsSubmenu) {
+      LogMenuActionWithId(kActionOpenOtherDeviceTab);
       return;
     }
     if (parent_id == kActionProfileSubmenu) {
@@ -169,6 +179,9 @@ void ActionAppMenuMetrics::LogMenuActionWithId(actions::ActionId action_id) {
       break;
     case kActionOpenRecentTab:
       RecordAction(MENU_ACTION_RECENT_TAB, "OpenRecentTab");
+      break;
+    case kActionOpenOtherDeviceTab:
+      RecordAction(MENU_ACTION_OTHER_DEVICE_TAB, "OpenOtherDeviceTab");
       break;
     case kActionRecentTabsLoginForDeviceTabs:
       RecordAction(MENU_ACTION_RECENT_TABS_LOGIN_FOR_DEVICE_TABS,

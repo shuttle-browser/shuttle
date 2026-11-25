@@ -28,16 +28,15 @@
 #include "ui/base/models/dialog_model_field.h"
 #include "ui/base/mojom/dialog_button.mojom.h"
 #include "ui/base/mojom/ui_base_types.mojom-shared.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/events/event.h"
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tabs/public/tab_dialog_manager.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "ui/views/bubble/bubble_dialog_model_host.h"
 #include "ui/views/controls/bulleted_label_list/bulleted_label_list_view.h"
 #include "ui/views/controls/label.h"
@@ -244,9 +243,8 @@ void AskBeforeHttpDialogController::ShowDialog(
 
   auto* tab = tabs::TabInterface::MaybeGetFromContents(web_contents);
   CHECK(tab);
-  dialog_widget_ =
-      tab->GetTabFeatures()->tab_dialog_manager()->CreateAndShowDialog(
-          model_host, std::move(tab_dialog_params));
+  dialog_widget_ = tabs::TabDialogManager::From(tab)->CreateAndShowDialog(
+      model_host, std::move(tab_dialog_params));
   dialog_widget_->MakeCloseSynchronous(
       base::BindOnce(&AskBeforeHttpDialogController::CloseDialogWidget,
                      weak_ptr_factory_.GetWeakPtr()));
@@ -499,7 +497,8 @@ void AskBeforeHttpDialogController::OnHelpCenterLinkClicked(
       content::OpenURLParams::CreateBrowserInitiated(
           GURL(kLearnMoreLink),
           ui::DispositionFromEventFlags(
-              event.flags(), WindowOpenDisposition::kNewForegroundTab),
+              event.flags(),
+              ui::mojom::WindowOpenDisposition::kNewForegroundTab),
           ui::PAGE_TRANSITION_LINK);
   contents->OpenURL(params, /*navigation_handle_callback=*/{});
 }

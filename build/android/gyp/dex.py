@@ -7,7 +7,6 @@
 import argparse
 import collections
 import concurrent.futures
-import functools
 import logging
 import os
 import platform
@@ -19,24 +18,37 @@ import tempfile
 import zipfile
 
 from util import build_utils
-from util import md5_check
 from util import zipbuilder
 import action_helpers  # build_utils adds //build to sys.path.
 import zip_helpers
 
 
 _DEX_XMX = '3G'  # Increase this when __final_dex OOMs.
-_CUSTOM_D8_BINARY_PATH = os.path.join(
-    build_utils.DIR_SOURCE_ROOT, 'third_party', 'r8', 'cipd', 'bin', 'custom_d8'
+_CHROME_D8_BINARY_PATH = os.path.join(
+    build_utils.DIR_SOURCE_ROOT, 'third_party', 'r8', 'cipd', 'bin', 'chrome_d8'
 )
-# For dexing, GraalVM is faster up to ~8 MiB.
-_GRAALVM_MAX_DEX_INPUT_SIZE = 8 * 1024 * 1024
-# For dex merging, GraalVM is faster up to ~20 MiB.
-_GRAALVM_MAX_MERGE_INPUT_SIZE = 20 * 1024 * 1024
-# For --file-per-class-file invocations (_CreateIntermediateDexJar), shard
-# inputs across concurrent GraalVM processes targeting ~1.5 MB per shard to
-# avoid GraalVM Serial GC pauses (e.g. 20.4 MB chrome_java: 5.60s JVM -> 1.18s).
+_CHROME_R8_BINARY_PATH = os.path.join(
+    build_utils.DIR_SOURCE_ROOT, 'third_party', 'r8', 'cipd', 'bin', 'chrome_r8'
+)
+# Caps G1 GC and D8 thread over-provisioning on many-core hosts.
+_CHROME_R8_MAX_CPUS = 32
+# Bounds G1 heap for ~1.5 MiB shards and medium unsharded intermediates. Not
+# used with chrome_d8 because Serial GC caps young generation to 10% of -Xmx.
+_CHROME_R8_SHARD_XMX_FLAG = '-Xmx256m'
+# chrome_d8 (Serial GC, smaller binary) is faster on small inputs, whereas
+# chrome_r8 --d8 (G1 GC) is faster above ~1 MiB of .class files for library
+# dexing and ~2 MiB of input jars for dex merging.
+_CHROME_R8_INTERMEDIATE_MIN_SIZE = 1024 * 1024
+_CHROME_R8_MERGE_MIN_SIZE = 2 * 1024 * 1024
+# For intermediate dex invocations (_CreateIntermediateDexJar), shard inputs
+# across concurrent GraalVM processes targeting ~1.5 MB per shard to avoid
+# GraalVM GC pauses and parallelize dexing.
 _GRAALVM_SHARD_TARGET_SIZE = int(1.5 * 1024 * 1024)
+# Start with a big heap to avoid frequent GCs. Without this, the JVM is faster
+# for large inputs (e.g. 97.6MB dex merge: 16.2s -> 11.3s, vs 13.1s for the
+# JVM). Not used for shards, which are small enough to not benefit, and whose
+# RSS would increase (129MB -> 423MB per shard).
+_GRAALVM_XMS_FLAG = '-Xms1g'
 
 DEFAULT_IGNORE_WARNINGS = (
     # Warning: Running R8 version main (build engineering), which cannot be
@@ -109,10 +121,6 @@ def _ParseArgs(args):
         help='GN-list of .jars with .dex files (added to depfile).',
     )
     parser.add_argument(
-        '--incremental-dir',
-        help='Path of directory to put intermediate dex files.',
-    )
-    parser.add_argument(
         '--intermediate',
         action='store_true',
         help='Dex must still be merged before being used.',
@@ -121,7 +129,7 @@ def _ParseArgs(args):
     parser.add_argument(
         '--skip-custom-d8',
         action='store_true',
-        help='When rebuilding the CustomD8 jar, this may be '
+        help='When rebuilding the ChromeD8 jar, this may be '
         'necessary to avoid incompatibility with the new r8 '
         'jar.',
     )
@@ -131,7 +139,10 @@ def _ParseArgs(args):
         help='Path to our customized d8 jar.',
     )
     parser.add_argument(
-        '--desugar-dependencies', help='Path to store desugar dependencies.'
+        '--allow-chrome-r8',
+        action='store_true',
+        help='Allow using the G1-GC chrome_r8 binary (with --d8) when input '
+        'size exceeds the cut-off.',
     )
     parser.add_argument('--desugar', action='store_true')
     parser.add_argument(
@@ -340,8 +351,9 @@ def _WriteServiceArgs(services_map, tmp_dir):
 
 def _MergeShardJars(shard_jars, output_path, services_map, warnings_as_errors):
     with zipbuilder.ZipBuilder() as zb:
-        for sj in shard_jars:
-            zb.add_all_from_zip(sj, compress_level=zipbuilder.KEEP_COMPRESSION)
+        for i, sj in enumerate(shard_jars):
+            name = f'classes{i + 1 if i > 0 else ""}.dex'
+            zb.add_from_zip(name, sj, 'classes.dex')
         for path, data in sorted(services_map.items()):
             zb.add_data(path, data, compress_level=0)
         zb.write(output_path, warnings_as_errors=warnings_as_errors)
@@ -361,18 +373,16 @@ def _CreateFinalDex(
         options and options.show_desugar_default_interface_warnings
     )
     if not output.endswith('.dex') and not (options and options.skip_custom_d8):
-        tmp_dex_output = os.path.join(tmp_dir, 'tmp_dex_output.jar')
         extra_args = _WriteServiceArgs(services_map, tmp_dir)
         _RunD8(
             dex_cmd + extra_args,
             d8_inputs,
-            tmp_dex_output,
+            output,
             warnings_as_errors,
             show_desugar_warnings,
         )
         logging.debug('Performed dex merging directly to jar')
     else:
-        tmp_dex_output = os.path.join(tmp_dir, 'tmp_dex_output.zip')
         tmp_dex_dir = os.path.join(tmp_dir, 'tmp_dex_dir')
         os.mkdir(tmp_dex_dir)
         _RunD8(
@@ -389,12 +399,9 @@ def _CreateFinalDex(
         if output.endswith('.dex'):
             if len(dex_files) > 1:
                 raise Exception('%d files created, expected 1' % len(dex_files))
-            tmp_dex_output = dex_files[0]
+            shutil.move(dex_files[0], output)
         else:
-            _ZipStored(sorted(dex_files), tmp_dex_output, services_map)
-
-    # The dex file is complete and can be moved out of tmp_dir.
-    shutil.move(tmp_dex_output, output)
+            _ZipStored(sorted(dex_files), output, services_map)
 
 
 def _ScanClassInputJars(class_inputs):
@@ -419,56 +426,13 @@ def _ScanClassInputJars(class_inputs):
     return jar_class_entries, service_jars
 
 
-def _ParseDesugarDeps(desugar_dependencies_file):
-    """Returns a dict of dependent/dependency mapping parsed from the file.
-
-    Example file format:
-    $ tail out/Debug/gen/base/base_java__dex.desugardeps
-    org/chromium/base/task/SingleThreadTaskRunnerImpl.class
-      <-  org/chromium/base/task/SingleThreadTaskRunner.class
-      <-  org/chromium/base/task/TaskRunnerImpl.class
-    org/chromium/base/task/TaskRunnerImpl.class
-      <-  org/chromium/base/task/TaskRunner.class
-    org/chromium/base/task/TaskRunnerImplJni$1.class
-      <-  obj/base/jni_java.turbine.jar:org/jni_zero/JniStaticTestMocker.class
-    org/chromium/base/task/TaskRunnerImplJni.class
-      <-  org/chromium/base/task/TaskRunnerImpl$Natives.class
-    """
-    dependents_from_dependency = collections.defaultdict(set)
-    if desugar_dependencies_file and os.path.exists(desugar_dependencies_file):
-        with open(desugar_dependencies_file, 'r', encoding='utf-8') as f:
-            dependent = None
-            for line in f:
-                line = line.rstrip()
-                if line.startswith('  <-  '):
-                    dependency = line[len('  <-  ') :]
-                    # Note that this is a reversed mapping from the one in CustomD8.java.
-                    dependents_from_dependency[dependency].add(dependent)
-                else:
-                    dependent = line
-    return dependents_from_dependency
-
-
-def _ComputeRequiredDesugarClasses(
-    changes, desugar_dependencies_file, class_inputs, classpath
-):
-    dependents_from_dependency = _ParseDesugarDeps(desugar_dependencies_file)
-    required_classes = set()
-    # Gather classes that need to be re-desugared from changes in the classpath.
-    for jar in classpath:
-        for subpath in changes.IterChangedSubpaths(jar):
-            dependency = '{}:{}'.format(jar, subpath)
-            required_classes.update(dependents_from_dependency[dependency])
-
-    for jar in class_inputs:
-        for subpath in changes.IterChangedSubpaths(jar):
-            required_classes.update(dependents_from_dependency[subpath])
-
-    return required_classes
-
-
 def _IsClassFile(path):
     if os.path.basename(path) in _SKIPPED_CLASS_FILE_NAMES:
+        return False
+    # Matches R8's ZipUtils.isClassFile(), which ignores META-INF/ entries
+    # (e.g. multi-release META-INF/versions/9/ classes, which would otherwise
+    # be reported as duplicate types).
+    if path.startswith(('META-INF/', '/META-INF/')):
         return False
     return path.endswith('.class')
 
@@ -490,39 +454,26 @@ def _ClassFileNestPrefix(class_path):
     return base
 
 
-@functools.cache
-def _GetFileSize(path):
-    return os.path.getsize(path)
-
-
-def _SingleShard(jar_class_entries):
-    single = {
-        jar: [name for name, _ in entries]
-        for jar, entries in jar_class_entries.items()
-        if entries
-    }
-    return [single]
-
-
-def _PartitionClassEntriesIntoShards(jar_class_entries, target_shard_size):
+def _PartitionClassEntriesIntoShards(
+    jar_class_entries, target_shard_size, total_size
+):
     """Partitions .class entries into balanced shards, keeping nests together.
 
     Args:
       jar_class_entries: Dict of {jar_path: [(entry_name, file_size), ...]}.
       target_shard_size: Target uncompressed byte size per shard.
+      total_size: Total uncompressed .class byte size across jar_class_entries.
 
     Returns:
-      List of shard dicts, each mapping {jar_path: [entry_name, ...]}.
+      List of shard dicts, each mapping {jar_path: [entry_name, ...]}, or an
+      empty list if the input fits in a single shard.
     """
-    total_size = sum(
-        sz for entries in jar_class_entries.values() for _, sz in entries
-    )
     num_shards = min(
         os.cpu_count() or 8,
         max(1, round(total_size / target_shard_size)),
     )
     if num_shards <= 1:
-        return _SingleShard(jar_class_entries)
+        return []
 
     groups = collections.defaultdict(list)
     group_sizes = collections.defaultdict(int)
@@ -534,7 +485,7 @@ def _PartitionClassEntriesIntoShards(jar_class_entries, target_shard_size):
 
     num_shards = min(num_shards, len(groups))
     if num_shards <= 1:
-        return _SingleShard(jar_class_entries)
+        return []
 
     sorted_keys = sorted(groups.keys(), key=lambda k: (-group_sizes[k], k))
     shards = [collections.defaultdict(list) for _ in range(num_shards)]
@@ -560,224 +511,85 @@ def _BuildJarInputArgs(shard_map, jar_class_entries):
 
 
 def _CreateIntermediateDexJar(
-    changes,
     options,
     tmp_dir,
-    dex_cmd,
+    d8_flags,
     output_jar,
     jar_class_entries,
     services_map,
 ):
-    allowed_changed = set(options.class_inputs)
-    allowed_changed.update(options.dex_inputs)
-    allowed_changed.update(options.classpath)
-    strings_changed = changes.HasStringChanges()
-    non_direct_input_changed = next(
-        (p for p in changes.IterChangedPaths() if p not in allowed_changed),
-        None,
+    total_class_size = sum(
+        sz for entries in jar_class_entries.values() for _, sz in entries
     )
-
-    if strings_changed or non_direct_input_changed:
-        logging.debug(
-            'Full dex required: strings_changed=%s path_changed=%s',
-            strings_changed,
-            non_direct_input_changed,
-        )
-
-    is_incremental = bool(
-        options.incremental_dir
-        and not strings_changed
-        and not non_direct_input_changed
-        and os.path.exists(output_jar)
-    )
-
-    if is_incremental:
-        required_desugar_classes_set = _ComputeRequiredDesugarClasses(
-            changes,
-            options.desugar_dependencies,
-            options.class_inputs,
-            options.classpath,
-        )
-        logging.debug(
-            'Class files needing re-desugar: %d',
-            len(required_desugar_classes_set),
-        )
-        classes_to_compile = {}
-        removed_dex_entries = []
-        for jar in options.class_inputs:
-            changed_class_set = (
-                set(changes.IterChangedSubpaths(jar))
-                | required_desugar_classes_set
-            )
-            # D8 nest-based access desugaring requires the entire nest group to
-            # be present, else it aborts with "Class X requires its nest host Y
-            # to be on program or class path." Pull in sibling nestmates by
-            # host prefix.
-            nest_prefixes = {
-                _ClassFileNestPrefix(path)
-                for path in changed_class_set
-                if _IsClassFile(path)
-            }
-            classes_to_compile[jar] = [
-                (name, sz)
-                for name, sz in jar_class_entries[jar]
-                if _ClassFileNestPrefix(name) in nest_prefixes
-            ]
-            removed_dex_entries.extend(
-                path[:-6] + '.dex'
-                for path in changes.IterRemovedSubpaths(jar)
-                if _IsClassFile(path)
-            )
-        base_jar = output_jar
-    else:
-        if options.desugar_dependencies and os.path.exists(
-            options.desugar_dependencies
-        ):
-            # Since incremental dexing only ever adds to desugar_dependencies,
-            # whenever full dexes are required the .desugardeps files need to
-            # be manually removed.
-            os.unlink(options.desugar_dependencies)
-        classes_to_compile = jar_class_entries
-        removed_dex_entries = []
-        base_jar = None
-
-    num_classes = sum(len(v) for v in classes_to_compile.values())
+    num_classes = sum(len(v) for v in jar_class_entries.values())
     logging.debug(
-        'Class entries to dex: %d (incremental=%s)', num_classes, is_incremental
+        'Class entries to dex: %d (%d bytes)', num_classes, total_class_size
     )
 
-    base_dex_cmd = dex_cmd + ['--file-per-class-file']
-    can_shard = (
-        dex_cmd[0] == _CUSTOM_D8_BINARY_PATH
-        and not options.desugar_dependencies
-        and not options.dump_inputs
-        and not options.dex_inputs
+    use_chrome_r8 = (
+        options.allow_chrome_r8
+        and total_class_size >= _CHROME_R8_INTERMEDIATE_MIN_SIZE
     )
-    if can_shard:
-        shards = _PartitionClassEntriesIntoShards(
-            classes_to_compile, _GRAALVM_SHARD_TARGET_SIZE
-        )
-    else:
-        shards = _SingleShard(classes_to_compile)
-
-    tmp_dex_output = os.path.join(tmp_dir, 'tmp_dex_output.jar')
-    if len(shards) == 1:
-        cmd_args = _BuildJarInputArgs(shards[0], jar_class_entries)
-        if base_jar:
-            cmd_args += ['--base-jar', base_jar]
-            for dex_name in removed_dex_entries:
-                cmd_args += ['--exclude-entry', dex_name]
-        cmd_args += _WriteServiceArgs(services_map, tmp_dir)
-        _RunD8(
-            base_dex_cmd + cmd_args,
-            [],
-            tmp_dex_output,
-            options.warnings_as_errors,
-            options.show_desugar_default_interface_warnings,
-        )
-    else:
-        logging.debug('Dexing across %d shards.', len(shards))
-        shard_jars = [
-            os.path.join(tmp_dir, f'shard_{i}.dex.jar')
-            for i in range(len(shards))
-        ]
-        other_shards_dex_names = []
-        if base_jar:
-            other_shards_dex_names = [
-                name[:-6] + '.dex'
-                for s in shards[1:]
-                for names in s.values()
-                for name in names
-            ]
-
-        def run_shard(idx):
-            cmd_args = _BuildJarInputArgs(shards[idx], jar_class_entries)
-            if idx == 0 and base_jar:
-                cmd_args += ['--base-jar', base_jar]
-                for dex_name in removed_dex_entries + other_shards_dex_names:
-                    cmd_args += ['--exclude-entry', dex_name]
-            _RunD8(
-                base_dex_cmd + cmd_args,
-                [],
-                shard_jars[idx],
-                options.warnings_as_errors,
-                options.show_desugar_default_interface_warnings,
-            )
-
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=len(shards)
-        ) as executor:
-            for _ in executor.map(run_shard, range(len(shards))):
-                pass
-        _MergeShardJars(
-            shard_jars,
-            tmp_dex_output,
-            services_map,
-            options.warnings_as_errors,
-        )
-
-    shutil.move(tmp_dex_output, output_jar)
-    logging.debug('Dexed class files into %s.', output_jar)
-
-
-def _OnStaleMd5(changes, options, dex_cmd):
-    logging.debug('_OnStaleMd5')
-    with build_utils.TempDir() as tmp_dir:
-        if (
-            options.incremental_dir
-            and options.class_inputs
-            and not options.skip_custom_d8
-        ):
-            jar_class_entries, class_service_jars = _ScanClassInputJars(
-                options.class_inputs
-            )
-            services_map = _CreateServicesMap(
-                class_service_jars + options.dex_inputs
-            )
-            if options.intermediate and not options.dex_inputs:
-                _CreateIntermediateDexJar(
-                    changes,
-                    options,
-                    tmp_dir,
-                    dex_cmd,
-                    options.output,
-                    jar_class_entries,
-                    services_map,
-                )
-                return
-
-            os.makedirs(options.incremental_dir, exist_ok=True)
-            inter_jar = os.path.join(
-                options.incremental_dir, 'intermediate.dex.jar'
-            )
-            _CreateIntermediateDexJar(
-                changes,
+    shards = _PartitionClassEntriesIntoShards(
+        jar_class_entries, _GRAALVM_SHARD_TARGET_SIZE, total_class_size
+    )
+    if len(shards) <= 1:
+        dex_cmd = (
+            _BuildLauncherCmd(
                 options,
-                tmp_dir,
-                dex_cmd + ['--intermediate'],
-                inter_jar,
-                jar_class_entries,
-                {},
+                use_native_binary=True,
+                use_chrome_r8=use_chrome_r8,
+                small_heap=total_class_size <= 2 * _GRAALVM_SHARD_TARGET_SIZE,
             )
-            _CreateFinalDex(
-                [inter_jar] + options.dex_inputs,
-                options.output,
-                tmp_dir,
-                dex_cmd,
-                options=options,
-                services_map=services_map,
-            )
-            return
-
-        d8_inputs = options.class_inputs + options.dex_inputs
+            + d8_flags
+        )
         _CreateFinalDex(
-            d8_inputs,
-            options.output,
+            options.class_inputs,
+            output_jar,
             tmp_dir,
             dex_cmd,
             options=options,
-            services_map=_CreateServicesMap(d8_inputs),
+            services_map=services_map,
         )
+        return
+
+    logging.debug('Dexing across %d shards.', len(shards))
+    shard_jars = [
+        os.path.join(tmp_dir, f'shard_{i}.dex.jar') for i in range(len(shards))
+    ]
+    shard_dex_cmd = (
+        _BuildLauncherCmd(
+            options,
+            use_native_binary=True,
+            use_chrome_r8=use_chrome_r8,
+            num_shards=len(shards),
+            small_heap=True,
+        )
+        + d8_flags
+    )
+
+    def run_shard(idx):
+        cmd_args = _BuildJarInputArgs(shards[idx], jar_class_entries)
+        _RunD8(
+            shard_dex_cmd + cmd_args,
+            [],
+            shard_jars[idx],
+            options.warnings_as_errors,
+            options.show_desugar_default_interface_warnings,
+        )
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=len(shards)
+    ) as executor:
+        for _ in executor.map(run_shard, range(len(shards))):
+            pass
+    _MergeShardJars(
+        shard_jars,
+        output_jar,
+        services_map,
+        options.warnings_as_errors,
+    )
+    logging.debug('Dexed class files into %s.', output_jar)
 
 
 def MergeDexAndServices(
@@ -832,6 +644,64 @@ def MergeDexAndServices(
             dex_idx += 1
 
 
+def _BuildLauncherCmd(
+    options,
+    use_native_binary,
+    use_chrome_r8=False,
+    num_shards=1,
+    small_heap=False,
+):
+    extra_sys_props = []
+    if logging.getLogger().isEnabledFor(logging.DEBUG):
+        extra_sys_props.append('-Dcom.android.tools.r8.printtimes=1')
+    if options.dump_inputs:
+        extra_sys_props.append(
+            '-Dcom.android.tools.r8.dumpinputtofile=d8inputs.zip'
+        )
+
+    if not use_native_binary:
+        cmd = build_utils.JavaCmd(xmx=_DEX_XMX)
+
+        # As of Feb 2026, a hyperfine benchmark of dexing chrome_java:
+        # Without flags: 7.744 s ± 0.177 s [User: 161.982 s, System: 8.416 s]
+        # With flags:    6.579 s ± 0.057 s [User:  37.612 s, System: 8.015 s]
+        cmd += ['-XX:TieredStopAtLevel=1'] + extra_sys_props
+        if options.skip_custom_d8:
+            return cmd + ['-cp', options.r8_jar_path, 'com.android.tools.r8.D8']
+        return cmd + [
+            '-cp',
+            f'{options.r8_jar_path}:{options.custom_d8_jar_path}',
+            'org.chromium.build.ChromeD8',
+        ]
+
+    cpu_count = os.cpu_count() or 8
+    thread_count = (
+        min(_CHROME_R8_MAX_CPUS, max(1, cpu_count // num_shards))
+        if num_shards > 1
+        else None
+    )
+    binary = _CHROME_R8_BINARY_PATH if use_chrome_r8 else _CHROME_D8_BINARY_PATH
+    cmd = [binary, f'-Djava.home={build_utils.JAVA_HOME}']
+    if not use_chrome_r8:
+        if num_shards == 1:
+            cmd += [_GRAALVM_XMS_FLAG]
+    else:
+        if small_heap:
+            cmd += [_CHROME_R8_SHARD_XMX_FLAG]
+        else:
+            cmd += [_GRAALVM_XMS_FLAG, f'-Xmx{_DEX_XMX}']
+        if num_shards > 1:
+            cmd += [f'-XX:ActiveProcessorCount={max(2, thread_count)}']
+        elif cpu_count > _CHROME_R8_MAX_CPUS:
+            cmd += [f'-XX:ActiveProcessorCount={_CHROME_R8_MAX_CPUS}']
+    cmd += extra_sys_props
+    if use_chrome_r8:
+        cmd.append('--d8')
+    if thread_count is not None:
+        cmd += ['--thread-count', str(thread_count)]
+    return cmd
+
+
 def main(args):
     build_utils.InitLogging('DEX_DEBUG')
     options = _ParseArgs(args)
@@ -839,140 +709,97 @@ def main(args):
     options.class_inputs += options.class_inputs_filearg
     options.dex_inputs += options.dex_inputs_filearg
 
-    input_paths = options.class_inputs + options.dex_inputs
-
     depfile_deps = options.class_inputs_filearg + options.dex_inputs_filearg
 
-    output_paths = [options.output]
-    track_subpaths_allowlist = (
-        list(options.class_inputs) if options.incremental_dir else []
-    )
-
-    # Shard only for dexing intermediates (not dex merging).
-    # desugar_dependencies produces an extra output, and sharding / merging it
-    # has not been implemented.
-    can_shard = bool(
-        options.incremental_dir
-        and options.intermediate
-        and options.class_inputs
-        and not options.dex_inputs
-        and not options.desugar_dependencies
-        and not options.dump_inputs
-    )
-    use_custom_d8_binary = (
+    use_native_binary = (
         not options.skip_custom_d8
         and sys.platform == 'linux'
         and platform.machine() == 'x86_64'
     )
-    if use_custom_d8_binary and not can_shard:
-        total_input_size = sum(
-            _GetFileSize(p) for p in options.class_inputs + options.dex_inputs
-        )
-        max_input_size = (
-            _GRAALVM_MAX_DEX_INPUT_SIZE
-            if options.class_inputs
-            else _GRAALVM_MAX_MERGE_INPUT_SIZE
-        )
-        use_custom_d8_binary = total_input_size < max_input_size
 
-    if use_custom_d8_binary:
-        input_paths.append(_CUSTOM_D8_BINARY_PATH)
-        if (
-            options.incremental_dir
-            and options.class_inputs
-            and not options.dex_inputs
-            and not options.desugar_dependencies
-            and not options.dump_inputs
-        ):
-            input_paths += zipbuilder.get_input_paths()
-        dex_cmd = [
-            _CUSTOM_D8_BINARY_PATH,
-            f'-Djava.home={build_utils.JAVA_HOME}',
-        ]
-    else:
-        input_paths += [
-            build_utils.JAVA_PATH_FOR_INPUTS,
-            options.r8_jar_path,
-            options.custom_d8_jar_path,
-        ]
-        dex_cmd = build_utils.JavaCmd(xmx=_DEX_XMX)
-
-        # As of Feb 2026, a hyperfine benchmark of dexing chrome_java:
-        # Without flags:
-        # Time (mean ± σ): 7.744 s ±  0.177 s   [User: 161.982 s, System: 8.416 s]
-        # With flags:
-        # Time (mean ± σ): 6.579 s ±  0.057 s   [User: 37.612 s, System: 8.015 s]
-        dex_cmd += ['-XX:TieredStopAtLevel=1']
-
-    if logging.getLogger().isEnabledFor(logging.DEBUG):
-        dex_cmd += ['-Dcom.android.tools.r8.printtimes=1']
-
-    if options.dump_inputs:
-        dex_cmd += ['-Dcom.android.tools.r8.dumpinputtofile=d8inputs.zip']
-
-    if options.skip_custom_d8:
-        dex_cmd += [
-            '-cp',
-            options.r8_jar_path,
-            'com.android.tools.r8.D8',
-        ]
-    elif not use_custom_d8_binary:
-        dex_cmd += [
-            '-cp',
-            f'{options.r8_jar_path}:{options.custom_d8_jar_path}',
-            'org.chromium.build.CustomD8',
-        ]
-
+    d8_flags = []
     if options.release:
-        dex_cmd += ['--release']
+        d8_flags += ['--release']
     elif options.intermediate:
-        dex_cmd += ['--intermediate']
+        d8_flags += ['--intermediate']
         # Discard global synthetics (e.g. from record desugaring). The final
         # dex step adds them all back via global_synthetics.dex.jar from the
         # r8 CIPD package (see third_party/r8/3pp/3pp.py).
-        dex_cmd += ['--ignore-globals']
+        d8_flags += ['--ignore-globals']
     if options.min_api:
-        dex_cmd += ['--min-api', options.min_api]
+        d8_flags += ['--min-api', options.min_api]
 
     if not options.desugar:
-        dex_cmd += ['--no-desugaring']
+        d8_flags += ['--no-desugaring']
     elif options.classpath:
-        # The classpath is used by D8 to for interface desugaring.
-        if options.desugar_dependencies and not options.skip_custom_d8:
-            dex_cmd += ['--desugar-dependencies', options.desugar_dependencies]
-            if track_subpaths_allowlist:
-                track_subpaths_allowlist += options.classpath
+        # The classpath is used by D8 for interface desugaring.
         depfile_deps += options.classpath
-        input_paths += options.classpath
-        # Still pass the entire classpath in case a new dependency is needed by
-        # desugar, so that desugar_dependencies will be updated for the next build.
         for path in options.classpath:
-            dex_cmd += ['--classpath', path]
+            d8_flags += ['--classpath', path]
 
     if options.classpath:
-        dex_cmd += ['--lib', build_utils.JAVA_HOME]
+        d8_flags += ['--lib', build_utils.JAVA_HOME]
         for path in options.bootclasspath:
-            dex_cmd += ['--lib', path]
+            d8_flags += ['--lib', path]
         depfile_deps += options.bootclasspath
-        input_paths += options.bootclasspath
 
     if options.assertion_handler:
-        dex_cmd += ['--force-assertions-handler:' + options.assertion_handler]
+        d8_flags += ['--force-assertions-handler:' + options.assertion_handler]
     if options.force_enable_assertions:
-        dex_cmd += ['--force-enable-assertions']
+        d8_flags += ['--force-enable-assertions']
 
-    # The changes feature from md5_check allows us to only re-dex the class files
-    # that have changed and the class files that need to be re-desugared by D8.
-    md5_check.CallAndWriteDepfileIfStale(
-        lambda changes: _OnStaleMd5(changes, options, dex_cmd),
-        options,
-        input_paths=input_paths,
-        input_strings=dex_cmd + [str(bool(options.incremental_dir)), 'v2'],
-        output_paths=output_paths,
-        pass_changes=True,
-        track_subpaths_allowlist=track_subpaths_allowlist,
-        depfile_deps=depfile_deps,
-    )
+    with (
+        build_utils.TempDir() as tmp_dir,
+        action_helpers.atomic_output(options.output) as output,
+    ):
+        if (
+            options.intermediate
+            and options.class_inputs
+            and not options.dex_inputs
+            and use_native_binary
+            and not options.dump_inputs
+        ):
+            jar_class_entries, class_service_jars = _ScanClassInputJars(
+                options.class_inputs
+            )
+            services_map = _CreateServicesMap(class_service_jars)
+            _CreateIntermediateDexJar(
+                options,
+                tmp_dir,
+                d8_flags,
+                output.name,
+                jar_class_entries,
+                services_map,
+            )
+        else:
+            d8_inputs = options.class_inputs + options.dex_inputs
+            use_chrome_r8 = False
+            if use_native_binary and options.allow_chrome_r8:
+                total_input_size = sum(os.path.getsize(p) for p in d8_inputs)
+                use_chrome_r8 = total_input_size >= _CHROME_R8_MERGE_MIN_SIZE
+            dex_cmd = (
+                _BuildLauncherCmd(
+                    options,
+                    use_native_binary=use_native_binary,
+                    use_chrome_r8=use_chrome_r8,
+                )
+                + d8_flags
+            )
+            _CreateFinalDex(
+                d8_inputs,
+                output.name,
+                tmp_dir,
+                dex_cmd,
+                options=options,
+                services_map=_CreateServicesMap(d8_inputs),
+            )
+
+    if options.depfile:
+        action_helpers.write_depfile(
+            options.depfile,
+            options.output,
+            inputs=depfile_deps,
+        )
 
 
 if __name__ == '__main__':

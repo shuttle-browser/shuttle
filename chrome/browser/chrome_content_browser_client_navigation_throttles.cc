@@ -38,10 +38,6 @@
 #include "components/captive_portal/content/captive_portal_service.h"
 #include "components/captive_portal/core/buildflags.h"
 #include "components/custom_handlers/protocol_handler_navigation_throttle.h"
-#include "components/dom_distiller/content/browser/distiller_page_web_contents.h"
-#include "components/dom_distiller/content/browser/distiller_referrer_throttle.h"
-#include "components/dom_distiller/core/url_constants.h"
-#include "components/dom_distiller/core/url_utils.h"
 #include "components/error_page/content/browser/net_error_auto_reloader.h"
 #include "components/guest_view/buildflags/buildflags.h"
 #include "components/history/content/browser/visited_link_navigation_throttle.h"
@@ -57,6 +53,10 @@
 #include "components/subresource_filter/content/browser/content_subresource_filter_throttle_manager.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/user_prefs/user_prefs.h"
+#include "components/web_distiller/content/browser/distiller_page_web_contents.h"
+#include "components/web_distiller/content/browser/distiller_referrer_throttle.h"
+#include "components/web_distiller/core/url_constants.h"
+#include "components/web_distiller/core/url_utils.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/navigation_throttle_registry.h"
 #include "content/public/browser/web_contents.h"
@@ -123,10 +123,10 @@
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-#include "chrome/browser/safe_browsing/delayed_warning_navigation_throttle.h"
+#include "chrome/browser/safe_browsing/interstitials/delayed_warning_navigation_throttle.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
-#include "components/safe_browsing/content/browser/safe_browsing_navigation_throttle.h"
-#include "components/safe_browsing/content/browser/ui_manager.h"
+#include "components/safe_browsing/content/browser/interstitials/ui_manager.h"
+#include "components/safe_browsing/content/browser/url_checker/safe_browsing_navigation_throttle.h"
 #include "components/safe_browsing/core/common/features.h"
 #endif  // BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 
@@ -154,13 +154,14 @@ void HandleSSLErrorWrapper(
     net::Error cert_error,
     const net::SSLInfo& ssl_info,
     const GURL& request_url,
+    std::optional<content::OpenURLParams> open_url_params,
     SSLErrorHandler::BlockingPageReadyCallback blocking_page_ready_callback) {
-  DCHECK(request_url.SchemeIsCryptographic());
+  CHECK(request_url.SchemeIsCryptographic(), base::NotFatalUntil::M163);
 
   Profile* profile =
       Profile::FromBrowserContext(web_contents->GetBrowserContext());
   // Profile should always outlive a WebContents
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M163);
 
   captive_portal::CaptivePortalService* captive_portal_service = nullptr;
 
@@ -178,7 +179,7 @@ void HandleSSLErrorWrapper(
       std::move(blocking_page_ready_callback),
       g_browser_process->network_time_tracker(), captive_portal_service,
       std::make_unique<ChromeSecurityBlockingPageFactory>(),
-      is_ssl_error_override_allowed_for_origin);
+      is_ssl_error_override_allowed_for_origin, std::move(open_url_params));
 }
 
 // Returns whether `web_contents` is within a web app.
@@ -233,6 +234,14 @@ void MaybeCreateAndAddVisitedLinkNavigationThrottle(
 void CreateAndAddChromeThrottlesForNavigation(
     content::NavigationThrottleRegistry& registry) {
   content::NavigationHandle& handle = registry.GetNavigationHandle();
+  // TopChromeWebUIProfile only hosts Top Chrome WebUIs, and does not have the
+  // keyed services and prefs that the throttles below depend on. Like the
+  // initial WebUI navigation, skip them.
+  if (Profile::FromBrowserContext(handle.GetWebContents()->GetBrowserContext())
+          ->IsTopChromeWebUIProfile()) {
+    return;
+  }
+
   if (handle.IsInMainFrame()) {
     // MetricsNavigationThrottle requires that it runs before
     // NavigationThrottles that may delay or cancel navigations, so only
@@ -463,10 +472,10 @@ void CreateAndAddChromeThrottlesForNavigation(
   DevToolsNavigationThrottle::MaybeCreateAndAdd(registry);
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-  dom_distiller::DistillerPageWebContents::MaybeCreateAndAddNavigationThrottle(
+  web_distiller::DistillerPageWebContents::MaybeCreateAndAddNavigationThrottle(
       registry);
 
-  dom_distiller::DistillerReferrerThrottle::MaybeCreateAndAdd(registry);
+  web_distiller::DistillerReferrerThrottle::MaybeCreateAndAdd(registry);
 
 
   pwc::PwcNavigationThrottle::MaybeCreateAndAdd(registry);

@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/log/absl_log.h"
-#include "absl/strings/str_cat.h"
-#include "absl/time/time.h"
+#include "absl/log/absl_log.h"     // from @com_google_absl
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
+#include "absl/time/time.h"        // from @com_google_absl
 #include "mediapipe/calculators/util/latency.pb.h"
 #include "mediapipe/calculators/util/packet_latency_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
@@ -22,7 +23,6 @@
 #include "mediapipe/framework/deps/clock.h"
 #include "mediapipe/framework/deps/monotonic_clock.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/timestamp.h"
 
 namespace mediapipe {
@@ -99,7 +99,7 @@ constexpr char kReferenceSignalTag[] = "REFERENCE_SIGNAL";
 // }
 class PacketLatencyCalculator : public CalculatorBase {
  public:
-  PacketLatencyCalculator() {}
+  PacketLatencyCalculator() = default;
 
   static absl::Status GetContract(CalculatorContract* cc);
 
@@ -286,7 +286,7 @@ absl::Status PacketLatencyCalculator::Process(CalculatorContext* cc) {
 
       // Push the latency packet to output.
       auto packet_latency =
-          absl::make_unique<PacketLatency>(packet_latencies_[i]);
+          std::make_unique<PacketLatency>(packet_latencies_[i]);
       cc->Outputs().Index(i).Add(packet_latency.release(),
                                  cc->InputTimestamp());
     }

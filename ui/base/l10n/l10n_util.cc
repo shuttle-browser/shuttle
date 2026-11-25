@@ -446,11 +446,11 @@ std::u16string GetStringFUTF16(int message_id,
 std::u16string GetStringFUTF16(int message_id,
                                const std::u16string& a,
                                size_t* offset) {
-  DCHECK(offset);
+  CHECK(offset, base::NotFatalUntil::M163);
   std::vector<size_t> offsets;
   std::vector<std::u16string> replacements = {a};
   std::u16string result = GetStringFUTF16(message_id, replacements, &offsets);
-  DCHECK_EQ(1u, offsets.size());
+  CHECK_EQ(1u, offsets.size(), base::NotFatalUntil::M163);
   *offset = offsets[0];
   return result;
 }
@@ -591,18 +591,21 @@ bool IsAcceptLanguageDisplayable(std::string_view display_locale,
          l10n_util::IsLocaleNameTranslated(locale, display_locale);
 }
 
-std::vector<std::string> KeepAcceptedLanguages(
-    base::span<const std::string> languages) {
-  std::vector<std::string> filtered_languages;
-  std::ranges::copy_if(languages, std::back_inserter(filtered_languages),
-                       IsPossibleAcceptLanguage);
+std::vector<LanguageTag> KeepAcceptedLanguages(
+    base::span<const LanguageTag> languages) {
+  std::vector<LanguageTag> filtered_languages;
+  std::ranges::copy_if(
+      languages, std::back_inserter(filtered_languages),
+      [](const LanguageTag& language) {
+        return GetAcceptLanguageMatcher().Match(language).has_value();
+      });
   return filtered_languages;
 }
 
 int GetLocalizedContentsWidthInPixels(int pixel_resource_id) {
   int width = 0;
   base::StringToInt(l10n_util::GetStringUTF8(pixel_resource_id), &width);
-  DCHECK_GT(width, 0);
+  CHECK_GT(width, 0, base::NotFatalUntil::M163);
   return width;
 }
 

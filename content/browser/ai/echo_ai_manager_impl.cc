@@ -4,6 +4,10 @@
 
 #include "content/browser/ai/echo_ai_manager_impl.h"
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
 #include "base/no_destructor.h"
 #include "base/supports_user_data.h"
 #include "base/time/time.h"
@@ -23,6 +27,7 @@
 #include "third_party/blink/public/common/features_generated.h"
 #include "third_party/blink/public/mojom/ai/ai_common.mojom.h"
 #include "third_party/blink/public/mojom/ai/ai_language_model.mojom.h"
+#include "third_party/blink/public/mojom/ai/ai_semantic_embedder.mojom.h"
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "content/browser/ai/echo_ai_decision_model.h"
@@ -34,6 +39,20 @@ namespace {
 
 const int kMockDownloadPreparationTimeMillisecond = 300;
 const int kMockModelSizeBytes = 0x10000;
+
+// Semantic Embedder web tests ask for this space to exercise the unsupported
+// path; every other name is served.
+constexpr char kEchoUnsupportedEmbeddingSpace[] = "unsupported-embedding-space";
+
+// The spaces SemanticEmbedder.params() lists in content_shell. The first is
+// the space the web tests create with (kEmbeddingSpace in
+// external/wpt/ai/resources/util.js, the same name Chrome serves); the second
+// is dated so the shutdownDate path is exercised end to end.
+constexpr char kEchoEmbeddingSpace[] = "embeddinggemma-300m";
+constexpr char kEchoDeprecatedEmbeddingSpace[] =
+    "echo-deprecated-embedding-space";
+// 2100-01-01T00:00:00Z, far enough out that no test reaches it.
+constexpr int64_t kEchoDeprecatedEmbeddingSpaceShutdownMs = 4102444800000;
 
 using blink::mojom::AILanguageCodePtr;
 
@@ -338,24 +357,46 @@ void EchoAIManagerImpl::CreateProofreader(
       std::move(client_remote));
 }
 
-
 void EchoAIManagerImpl::CanCreateSemanticEmbedder(
+    blink::mojom::AISemanticEmbedderCreateOptionsPtr options,
     CanCreateSemanticEmbedderCallback callback) {
+  if (options->embedding_space == kEchoUnsupportedEmbeddingSpace) {
+    std::move(callback).Run(blink::mojom::ModelAvailabilityCheckResult::
+                                kUnavailableUnsupportedEmbeddingSpace);
+    return;
+  }
   CanCreateClient<CanCreateSemanticEmbedderCallback>(std::move(callback));
 }
 
 void EchoAIManagerImpl::CreateSemanticEmbedder(
     mojo::PendingRemote<blink::mojom::AIManagerCreateSemanticEmbedderClient>
         client,
+    blink::mojom::AISemanticEmbedderCreateOptionsPtr options,
     mojo::PendingRemote<on_device_model::mojom::DownloadObserver> monitor) {
   mojo::Remote<blink::mojom::AIManagerCreateSemanticEmbedderClient>
       client_remote(std::move(client));
+  if (options->embedding_space == kEchoUnsupportedEmbeddingSpace) {
+    receivers_.ReportBadMessage("Unsupported embedding space");
+    return;
+  }
   if (monitor.is_valid()) {
     download_progress_observers_.Add(std::move(monitor));
   }
   CreateClient<blink::mojom::AIManagerCreateSemanticEmbedderClient,
                blink::mojom::AISemanticEmbedder, EchoAISemanticEmbedder>(
       std::move(client_remote));
+}
+
+void EchoAIManagerImpl::GetSupportedEmbeddingSpaces(
+    GetSupportedEmbeddingSpacesCallback callback) {
+  std::vector<blink::mojom::AISemanticEmbedderSpaceInfoPtr> supported_spaces;
+  supported_spaces.push_back(blink::mojom::AISemanticEmbedderSpaceInfo::New(
+      kEchoEmbeddingSpace, std::nullopt));
+  supported_spaces.push_back(blink::mojom::AISemanticEmbedderSpaceInfo::New(
+      kEchoDeprecatedEmbeddingSpace,
+      base::Time::FromMillisecondsSinceUnixEpoch(
+          kEchoDeprecatedEmbeddingSpaceShutdownMs)));
+  std::move(callback).Run(std::move(supported_spaces));
 }
 
 void EchoAIManagerImpl::CanCreateDecisionModel(

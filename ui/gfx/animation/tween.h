@@ -8,10 +8,6 @@
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/gfx/animation/animation_export.h"
 
-namespace base {
-class TimeTicks;
-}
-
 namespace gfx {
 
 class Rect;
@@ -107,6 +103,11 @@ class ANIMATION_EXPORT Tween {
 
     ACCEL_5_70_DECEL_90,  // Start at peak velocity and very soft
                           // deceleration.
+
+    ACCEL_90_DECEL_5_70,  // Time-reversed ACCEL_5_70_DECEL_90: starts very
+                          // slowly and ends at peak velocity. Use for exit
+                          // transitions that mirror an ACCEL_5_70_DECEL_90
+                          // enter.
   };
 
   Tween(const Tween&) = delete;
@@ -122,13 +123,6 @@ class ANIMATION_EXPORT Tween {
   static SkColor ColorValueBetween(double value, SkColor start, SkColor target);
   static double DoubleValueBetween(double value, double start, double target);
   static float FloatValueBetween(double value, float start, float target);
-  static float ClampedFloatValueBetween(
-      const base::TimeTicks& time,
-      const base::TimeTicks& start_time,
-      float start,
-      const base::TimeTicks& target_time,
-      float target,
-      gfx::Tween::Type type = gfx::Tween::LINEAR);
 
   // Interpolated between start and target, with every integer in this range
   // given equal weight.

@@ -65,9 +65,6 @@ const SettingsPersonalizationOptionsElementBase =
         I18nMixinLit(PrefServiceObserverMixinLit(CrLitElement))));
 
 
-export type PersonalizationOptionsElement =
-    SettingsPersonalizationOptionsElement;
-
 export class SettingsPersonalizationOptionsElement extends
     SettingsPersonalizationOptionsElementBase {
   static get is() {
@@ -92,7 +89,9 @@ export class SettingsPersonalizationOptionsElement extends
 
       showSearchAggregatorSuggest_: {type: Boolean},
 
+      // <if expr="_google_chrome">
       shouldUseMetricsConsentRestructure_: {type: Boolean},
+      // </if>
 
       spellCheckDictionariesPref_: {type: Object},
     };
@@ -106,10 +105,12 @@ export class SettingsPersonalizationOptionsElement extends
   protected accessor showSearchAggregatorSuggest_: boolean =
       loadTimeData.getBoolean('showSearchAggregatorSuggest');
 
+  // <if expr="_google_chrome">
   protected accessor shouldUseMetricsConsentRestructure_: boolean =
       loadTimeData.getBoolean('shouldUseMetricsConsentRestructure');
+  // </if>
 
-  protected accessor spellCheckDictionariesPref_:
+  private accessor spellCheckDictionariesPref_:
       chrome.settingsPrivate.PrefObject<string[]>|undefined;
 
   private browserProxy_: PrivacyPageBrowserProxy =
@@ -121,6 +122,7 @@ export class SettingsPersonalizationOptionsElement extends
     this.mirrorPref('spellcheck.dictionaries', 'spellCheckDictionariesPref_');
   }
 
+
   override firstUpdated(changedProperties: PropertyValues<this>) {
     super.firstUpdated(changedProperties);
 
@@ -130,6 +132,7 @@ export class SettingsPersonalizationOptionsElement extends
     this.addWebUiListener('metrics-reporting-change', setMetricsReporting);
     this.browserProxy_.getMetricsReporting().then(setMetricsReporting);
     // </if>
+
   }
 
   // <if expr="_google_chrome and not is_chromeos">

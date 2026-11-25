@@ -7,6 +7,7 @@
 #include <array>
 #include <map>
 #include <set>
+#include <utility>
 
 #include "base/compiler_specific.h"
 #include "build/build_config.h"
@@ -26,6 +27,31 @@ base::flat_set<std::string> GetAllowedDictionaryPolicies() {
       key::kExtensionSettings,
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   };
+}
+
+void FinalizeMergedEntry(PolicyMap::Entry* policy,
+                         base::Value merged_value,
+                         bool allow_user_cloud_policy_merging) {
+  PolicyMap::Entry primary_conflict = policy->DeepCopy();
+  policy->set_value(std::move(merged_value));
+  policy->ClearConflicts();
+  policy->AddConflictingPolicy(std::move(primary_conflict));
+  policy->source = POLICY_SOURCE_MERGED;
+
+  const PolicyMap::Entry& primary_entry = policy->conflicts.back().entry();
+  for (size_t i = 0; i < policy->conflicts.size(); ++i) {
+    PolicyMap::EntryConflict& conflict = policy->conflicts[i];
+    if (conflict.conflict_type() == PolicyMap::ConflictType::Supersede) {
+      continue;
+    }
+    const bool was_merged =
+        (i + 1 == policy->conflicts.size()) ||
+        PolicyMerger::EntriesCanBeMerged(conflict.entry(), primary_entry,
+                                         allow_user_cloud_policy_merging);
+    if (was_merged) {
+      conflict.SetConflictType(PolicyMap::ConflictType::Merged);
+    }
+  }
 }
 
 }  // namespace
@@ -179,16 +205,13 @@ void PolicyListMerger::DoMerge(PolicyMap::Entry* policy) const {
     return;
   }
 
-  auto new_conflict = policy->DeepCopy();
   base::ListValue new_value;
   for (const base::Value* it : merged_values) {
     new_value.Append(it->Clone());
   }
 
-  policy->set_value(base::Value(std::move(new_value)));
-  policy->ClearConflicts();
-  policy->AddConflictingPolicy(std::move(new_conflict));
-  policy->source = POLICY_SOURCE_MERGED;
+  FinalizeMergedEntry(policy, base::Value(std::move(new_value)),
+                      AllowUserCloudPolicyMerging());
 }
 
 PolicyDictionaryMerger::PolicyDictionaryMerger(
@@ -296,11 +319,8 @@ void PolicyDictionaryMerger::DoMerge(PolicyMap::Entry* policy,
     return;
   }
 
-  auto new_conflict = policy->DeepCopy();
-  policy->set_value(base::Value(std::move(merged_dictionary)));
-  policy->ClearConflicts();
-  policy->AddConflictingPolicy(std::move(new_conflict));
-  policy->source = POLICY_SOURCE_MERGED;
+  FinalizeMergedEntry(policy, base::Value(std::move(merged_dictionary)),
+                      AllowUserCloudPolicyMerging());
 }
 
 void PolicyGroupMerger::Merge(PolicyMap* policies) const {

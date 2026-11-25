@@ -17,8 +17,10 @@
 #include <algorithm>
 #include <memory>
 
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/port/ret_check.h"
 
 namespace {
@@ -190,7 +192,7 @@ absl::Status PacketResamplerCalculator::Process(CalculatorContext* cc) {
     header_sent_ = true;
   }
 
-  MP_RETURN_IF_ERROR(strategy_->Process(cc));
+  ABSL_RETURN_IF_ERROR(strategy_->Process(cc));
 
   last_packet_ = cc->Inputs().Get(input_data_id_).Value();
 
@@ -216,19 +218,19 @@ PacketResamplerCalculator::GetSamplingStrategy(
           << "reproducible_sampling always uses jitter with reflection, "
           << "Ignoring jitter_with_reflection setting.";
     }
-    return absl::make_unique<ReproducibleJitterWithReflectionStrategy>(this);
+    return std::make_unique<ReproducibleJitterWithReflectionStrategy>(this);
   }
 
   if (options.jitter() == 0) {
-    return absl::make_unique<NoJitterStrategy>(this);
+    return std::make_unique<NoJitterStrategy>(this);
   }
 
   if (options.jitter_with_reflection()) {
-    return absl::make_unique<LegacyJitterWithReflectionStrategy>(this);
+    return std::make_unique<LegacyJitterWithReflectionStrategy>(this);
   }
 
   // With jitter and no reflection.
-  return absl::make_unique<JitterWithoutReflectionStrategy>(this);
+  return std::make_unique<JitterWithoutReflectionStrategy>(this);
 }
 
 Timestamp PacketResamplerCalculator::PeriodIndexToTimestamp(
@@ -557,7 +559,7 @@ absl::Status JitterWithoutReflectionStrategy::Open(CalculatorContext* cc) {
 
   packet_reservoir_random_ = CreateSecureRandom(seed);
   packet_reservoir_ =
-      absl::make_unique<PacketReservoir>(packet_reservoir_random_.get());
+      std::make_unique<PacketReservoir>(packet_reservoir_random_.get());
 
   return absl::OkStatus();
 }

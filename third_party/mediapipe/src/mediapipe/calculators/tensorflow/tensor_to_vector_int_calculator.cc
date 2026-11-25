@@ -18,11 +18,11 @@
 #include <cstdint>
 #include <memory>
 
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/calculators/tensorflow/tensor_to_vector_int_calculator_options.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
-#include "mediapipe/framework/port/status.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/tensor.h"  // from @org_tensorflow
+#include "tensorflow/core/framework/types.h"   // from @org_tensorflow
 
 namespace mediapipe {
 
@@ -91,7 +91,7 @@ absl::Status TensorToVectorIntCalculator::Process(CalculatorContext* cc) {
     RET_CHECK(2 == input_tensor.dims())
         << "Expected 2-dimensional Tensor, but the tensor shape is: "
         << input_tensor.shape().DebugString();
-    auto output = absl::make_unique<std::vector<std::vector<int64_t>>>(
+    auto output = std::make_unique<std::vector<std::vector<int64_t>>>(
         input_tensor.dim_size(0),
         std::vector<int64_t>(input_tensor.dim_size(1)));
     for (int i = 0; i < input_tensor.dim_size(0); ++i) {
@@ -120,7 +120,7 @@ absl::Status TensorToVectorIntCalculator::Process(CalculatorContext* cc) {
           << "tensor shape is: " << input_tensor.shape().DebugString();
     }
     auto output =
-        absl::make_unique<std::vector<int64_t>>(input_tensor.NumElements());
+        std::make_unique<std::vector<int64_t>>(input_tensor.NumElements());
     if (tf::DT_INT32 == input_tensor.dtype()) {
       const auto& tensor_values = input_tensor.flat<int32_t>();
       for (int i = 0; i < input_tensor.NumElements(); ++i) {

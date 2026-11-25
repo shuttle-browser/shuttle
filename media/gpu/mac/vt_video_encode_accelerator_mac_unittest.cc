@@ -12,6 +12,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/unsafe_shared_memory_region.h"
 #include "base/run_loop.h"
+#include "base/test/bind.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "build/build_config.h"
@@ -149,7 +150,17 @@ class TestVEAClient : public BaseTestVEAClient {
     if (bitstream_ready_cb_) {
       std::move(bitstream_ready_cb_).Run();
     }
+    // VideoToolbox reports kOutOfPlatformEncoders when no hardware encoder is
+    // available right now, e.g. on busy CQ bots. Tests skip in that case.
+    if (status.code() == EncoderStatus::Codes::kOutOfPlatformEncoders) {
+      platform_encoder_unavailable_ = true;
+      return;
+    }
     FAIL() << "Unexpected encoder error: " << status.message();
+  }
+
+  bool platform_encoder_unavailable() const {
+    return platform_encoder_unavailable_;
   }
 
   void DetachEncoder() { encoder_ = nullptr; }
@@ -173,6 +184,7 @@ class TestVEAClient : public BaseTestVEAClient {
   int32_t next_buffer_id_ = 0;
   size_t bitstream_buffer_count_ = 0;
   size_t keyframe_count_ = 0;
+  bool platform_encoder_unavailable_ = false;
   std::optional<BitstreamBufferMetadata> last_metadata_;
   std::map<int32_t, base::WritableSharedMemoryMapping> mappings_;
 };
@@ -199,28 +211,29 @@ class ErrorExpectingVEAClient : public BaseTestVEAClient {
   base::OnceClosure error_cb_;
 };
 
-class TestOverlayImageRepresentation : public gpu::OverlayImageRepresentation {
+class TestIOSurfaceVideoImageRepresentation
+    : public gpu::VideoImageRepresentation {
  public:
-  TestOverlayImageRepresentation(gpu::SharedImageManager* manager,
-                                 gpu::SharedImageBacking* backing,
-                                 gpu::MemoryTypeTracker* tracker,
-                                 gfx::ScopedIOSurface io_surface,
-                                 base::OnceClosure destroy_cb)
-      : gpu::OverlayImageRepresentation(manager, backing, tracker),
+  TestIOSurfaceVideoImageRepresentation(gpu::SharedImageManager* manager,
+                                        gpu::SharedImageBacking* backing,
+                                        gpu::MemoryTypeTracker* tracker,
+                                        gfx::ScopedIOSurface io_surface,
+                                        base::OnceClosure destroy_cb)
+      : gpu::VideoImageRepresentation(manager, backing, tracker),
         io_surface_(std::move(io_surface)),
         destroy_cb_(std::move(destroy_cb)) {}
 
-  ~TestOverlayImageRepresentation() override {
+  ~TestIOSurfaceVideoImageRepresentation() override {
     if (destroy_cb_) {
       std::move(destroy_cb_).Run();
     }
   }
 
  protected:
-  bool BeginReadAccess(gfx::GpuFenceHandle& acquire_fence) override {
-    return true;
-  }
-  void EndReadAccess(gfx::GpuFenceHandle release_fence) override {}
+  bool BeginWriteAccess() override { return false; }
+  void EndWriteAccess() override {}
+  bool BeginReadAccess() override { return true; }
+  void EndReadAccess() override {}
   gfx::ScopedIOSurface GetIOSurface() const override { return io_surface_; }
 
  private:
@@ -233,7 +246,9 @@ class TestIOSurfaceBacking : public gpu::SharedImageBacking {
   TestIOSurfaceBacking(const gpu::Mailbox& mailbox,
                        viz::SharedImageFormat format,
                        const gfx::Size& size,
+                       gpu::SharedImageUsageSet usage,
                        gfx::ScopedIOSurface io_surface,
+                       base::OnceClosure representation_produced_cb,
                        base::OnceClosure representation_destroyed_cb)
       : gpu::SharedImageBacking(
             mailbox,
@@ -242,11 +257,12 @@ class TestIOSurfaceBacking : public gpu::SharedImageBacking {
                                  gfx::ColorSpace::CreateSRGB(),
                                  kTopLeft_GrSurfaceOrigin,
                                  kOpaque_SkAlphaType,
-                                 gpu::SHARED_IMAGE_USAGE_SCANOUT,
+                                 usage,
                                  "TestIOSurfaceBacking"),
             format.EstimatedSizeInBytes(size),
             /*is_thread_safe=*/true),
         io_surface_(std::move(io_surface)),
+        representation_produced_cb_(std::move(representation_produced_cb)),
         representation_destroyed_cb_(std::move(representation_destroyed_cb)) {}
 
   gpu::SharedImageBackingType GetType() const override {
@@ -257,16 +273,22 @@ class TestIOSurfaceBacking : public gpu::SharedImageBacking {
   void Update(gfx::GpuFenceHandle in_fence) override {}
 
  protected:
-  std::unique_ptr<gpu::OverlayImageRepresentation> ProduceOverlay(
+  std::unique_ptr<gpu::VideoImageRepresentation> ProduceVideo(
       gpu::SharedImageManager* manager,
-      gpu::MemoryTypeTracker* tracker) override {
-    return std::make_unique<TestOverlayImageRepresentation>(
+      gpu::MemoryTypeTracker* tracker,
+      gpu::VideoDevice device) override {
+    EXPECT_FALSE(device);
+    if (representation_produced_cb_) {
+      std::move(representation_produced_cb_).Run();
+    }
+    return std::make_unique<TestIOSurfaceVideoImageRepresentation>(
         manager, this, tracker, io_surface_,
         std::move(representation_destroyed_cb_));
   }
 
  private:
   gfx::ScopedIOSurface io_surface_;
+  base::OnceClosure representation_produced_cb_;
   base::OnceClosure representation_destroyed_cb_;
 };
 
@@ -529,17 +551,26 @@ std::vector<VideoCodecProfile> GetTestEncodeCodecProfiles(
 // Flush() calls VTCompressionSessionCompleteFrames() which forces the pending
 // frame out, and its callback only runs once every output has been returned to
 // the client, so quitting on either signal is safe.
-void EncodeKeyFrameAndWaitForOutput(VideoEncodeAccelerator* encoder,
-                                    scoped_refptr<VideoFrame> frame,
-                                    base::RunLoop& encode_loop) {
+//
+// Returns false if VideoToolbox reported that no hardware encoder is available
+// right now (kOutOfPlatformEncoders); the caller should then skip the test.
+[[nodiscard]] bool EncodeKeyFrameAndWaitForOutput(
+    VideoEncodeAccelerator* encoder,
+    scoped_refptr<VideoFrame> frame,
+    base::RunLoop& encode_loop,
+    const TestVEAClient& client) {
   encoder->Encode(std::move(frame), /*force_keyframe=*/true);
   encoder->Flush(base::BindOnce(
-      [](base::OnceClosure quit_closure, bool success) {
-        EXPECT_TRUE(success);
+      [](const TestVEAClient* client, base::OnceClosure quit_closure,
+         bool success) {
+        if (!client->platform_encoder_unavailable()) {
+          EXPECT_TRUE(success);
+        }
         std::move(quit_closure).Run();
       },
-      encode_loop.QuitClosure()));
+      base::Unretained(&client), encode_loop.QuitClosure()));
   encode_loop.Run();
+  return !client.platform_encoder_unavailable();
 }
 
 }  // namespace
@@ -568,7 +599,9 @@ TEST(VTVideoEncodeAcceleratorTest, EncodeCameraCaptureNv12Frame) {
         VideoEncodeAccelerator::Config::ContentType::kCamera);
     config.require_low_delay = kRequireLowDelay;
 
-    ASSERT_TRUE(encoder->Initialize(config, &client, nullptr).is_ok())
+    ASSERT_TRUE(
+        encoder->Initialize(config, &client, std::make_unique<NullMediaLog>())
+            .is_ok())
         << GetProfileName(profile);
 
     ASSERT_TRUE(client.encoder_info().has_value());
@@ -609,8 +642,10 @@ TEST(VTVideoEncodeAcceleratorTest, EncodeCameraCaptureNv12Frame) {
     EXPECT_EQ(frame->storage_type(), VideoFrame::STORAGE_MAPPABLE_SHARED_IMAGE);
     EXPECT_TRUE(frame->HasMappableSharedImage());
 
-    EncodeKeyFrameAndWaitForOutput(encoder.get(), std::move(frame),
-                                   encode_loop);
+    if (!EncodeKeyFrameAndWaitForOutput(encoder.get(), std::move(frame),
+                                        encode_loop, client)) {
+      GTEST_SKIP() << "VideoToolbox encoder is not available now";
+    }
 
     // Verify that the camera frame was encoded into a valid keyframe bitstream.
     EXPECT_EQ(client.bitstream_buffer_count(), 1u);
@@ -642,8 +677,33 @@ TEST(VTVideoEncodeAcceleratorTest, EncodeOpaqueSharedImageRgbFrames) {
   base::test::TaskEnvironment task_environment;
   const gfx::Size frame_size(640, 480);
 
+  // Matches DrawingBuffer (WebGL) and WebGPUSwapBufferProvider (WebGPU)
+  // SharedImage usage flags. Notably omits
+  // SHARED_IMAGE_USAGE_MACOS_VIDEO_TOOLBOX, verifying that SCANOUT
+  // allows encoding opaque SharedImages produced by general rendering
+  // pipelines that were not specifically tagged for VideoToolbox at
+  // allocation time.
+  const gpu::SharedImageUsageSet kScanoutUsage =
+      gpu::SHARED_IMAGE_USAGE_DISPLAY_READ | gpu::SHARED_IMAGE_USAGE_SCANOUT |
+      gpu::SHARED_IMAGE_USAGE_GLES2_READ | gpu::SHARED_IMAGE_USAGE_WEBGPU_READ;
+  // Matches a standalone 2D OffscreenCanvas under
+  // kWebRtcMacSharedImageEncode: MACOS_VIDEO_TOOLBOX without SCANOUT.
+  const gpu::SharedImageUsageSet kVideoToolboxUsage =
+      gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
+      gpu::SHARED_IMAGE_USAGE_MACOS_VIDEO_TOOLBOX;
+  struct FrameCase {
+    VideoPixelFormat rgb_format;
+    gpu::SharedImageUsageSet usage;
+  };
+  const std::vector<FrameCase> frame_cases = {
+      {PIXEL_FORMAT_ARGB, kScanoutUsage},
+      {PIXEL_FORMAT_XRGB, kScanoutUsage},
+      {PIXEL_FORMAT_ARGB, kVideoToolboxUsage},
+      {PIXEL_FORMAT_XRGB, kVideoToolboxUsage},
+  };
+
   for (VideoCodecProfile profile : profiles) {
-    for (VideoPixelFormat rgb_format : {PIXEL_FORMAT_ARGB, PIXEL_FORMAT_XRGB}) {
+    for (const auto& [rgb_format, usage] : frame_cases) {
       gpu::SharedImageManager shared_image_manager;
       auto command_buffer_helper =
           base::MakeRefCounted<TestCommandBufferHelper>(
@@ -663,7 +723,9 @@ TEST(VTVideoEncodeAcceleratorTest, EncodeOpaqueSharedImageRgbFrames) {
           VideoEncodeAccelerator::Config::ContentType::kCamera);
       config.require_low_delay = kRequireLowDelay;
 
-      ASSERT_TRUE(encoder->Initialize(config, &client, nullptr).is_ok())
+      ASSERT_TRUE(
+          encoder->Initialize(config, &client, std::make_unique<NullMediaLog>())
+              .is_ok())
           << GetProfileName(profile);
 
       ASSERT_TRUE(client.encoder_info().has_value());
@@ -679,34 +741,29 @@ TEST(VTVideoEncodeAcceleratorTest, EncodeOpaqueSharedImageRgbFrames) {
           task_environment.GetMainThreadTaskRunner());
 
       // Create an opaque RGB SharedImage backed by an IOSurface in
-      // SharedImageManager, matching WebGPU/WebGL output.
+      // SharedImageManager, matching WebGPU/WebGL/canvas output.
       gfx::ScopedIOSurface io_surface =
           gfx::CreateIOSurface(frame_size, viz::SinglePlaneFormat::kBGRA_8888);
       ASSERT_TRUE(io_surface);
 
-      // Matches DrawingBuffer (WebGL) and WebGPUSwapBufferProvider (WebGPU)
-      // SharedImage usage flags. Notably omits
-      // SHARED_IMAGE_USAGE_MACOS_VIDEO_TOOLBOX, verifying that SCANOUT
-      // allows encoding opaque SharedImages produced by general rendering
-      // pipelines that were not specifically tagged for VideoToolbox at
-      // allocation time.
       gpu::SharedImageMetadata metadata;
       metadata.format = viz::SinglePlaneFormat::kBGRA_8888;
       metadata.size = frame_size;
       metadata.color_space = gfx::ColorSpace::CreateSRGB();
       metadata.surface_origin = kTopLeft_GrSurfaceOrigin;
       metadata.alpha_type = kOpaque_SkAlphaType;
-      metadata.usage = gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
-                       gpu::SHARED_IMAGE_USAGE_SCANOUT |
-                       gpu::SHARED_IMAGE_USAGE_GLES2_READ |
-                       gpu::SHARED_IMAGE_USAGE_WEBGPU_READ;
+      metadata.usage = usage;
       auto shared_image = gpu::ClientSharedImage::CreateForTesting(metadata);
 
+      bool representation_produced = false;
       base::RunLoop destroy_loop;
       gpu::MemoryTypeTracker tracker(nullptr);
       auto backing = std::make_unique<TestIOSurfaceBacking>(
           shared_image->mailbox(), viz::SinglePlaneFormat::kBGRA_8888,
-          frame_size, std::move(io_surface), destroy_loop.QuitClosure());
+          frame_size, usage, std::move(io_surface),
+          base::BindLambdaForTesting(
+              [&representation_produced] { representation_produced = true; }),
+          destroy_loop.QuitClosure());
       auto factory_ref =
           shared_image_manager.Register(std::move(backing), &tracker);
 
@@ -719,27 +776,44 @@ TEST(VTVideoEncodeAcceleratorTest, EncodeOpaqueSharedImageRgbFrames) {
       EXPECT_TRUE(frame->HasSharedImage());
       EXPECT_FALSE(frame->HasMappableSharedImage());
 
-      EncodeKeyFrameAndWaitForOutput(encoder.get(), std::move(frame),
-                                     encode_loop);
+      const bool encoder_available = EncodeKeyFrameAndWaitForOutput(
+          encoder.get(), std::move(frame), encode_loop, client);
 
-      // Verify that the opaque RGB frame was encoded into a valid keyframe
-      // bitstream, and that sRGB input is converted and tagged as BT.709.
-      EXPECT_EQ(client.bitstream_buffer_count(), 1u);
-      EXPECT_EQ(client.keyframe_count(), 1u);
-      ASSERT_TRUE(client.last_metadata().has_value());
-      EXPECT_EQ(client.last_metadata()->encoded_color_space,
-                gfx::ColorSpace(gfx::ColorSpace::PrimaryID::BT709,
-                                gfx::ColorSpace::TransferID::BT709_APPLE,
-                                gfx::ColorSpace::MatrixID::BT709,
-                                gfx::ColorSpace::RangeID::FULL));
-      EXPECT_FALSE(client.last_status().has_value());
+      if (encoder_available) {
+        // Verify that the opaque RGB frame was encoded into a valid keyframe
+        // bitstream, and that sRGB input is converted and tagged as BT.709.
+        EXPECT_EQ(client.bitstream_buffer_count(), 1u);
+        EXPECT_EQ(client.keyframe_count(), 1u);
+        EXPECT_TRUE(client.last_metadata().has_value());
+        if (client.last_metadata().has_value()) {
+          EXPECT_EQ(client.last_metadata()->encoded_color_space,
+                    gfx::ColorSpace(gfx::ColorSpace::PrimaryID::BT709,
+                                    gfx::ColorSpace::TransferID::BT709_APPLE,
+                                    gfx::ColorSpace::MatrixID::BT709,
+                                    gfx::ColorSpace::RangeID::FULL));
+        }
+        EXPECT_FALSE(client.last_status().has_value());
+      }
 
+      // Always release the encoder and wait for it to release the SharedImage
+      // representation before `shared_image_manager` goes out of scope, also
+      // when encoding failed: SharedImageManager DCHECKs that no
+      // representation outlives it.
       client.DetachEncoder();
       encoder.reset();
-      // Verify that destroying the encoder releases the SharedImage
-      // representation, allowing the backing to be cleanly destroyed.
-      destroy_loop.Run();
+      if (encoder_available) {
+        EXPECT_TRUE(representation_produced);
+      }
+      if (representation_produced) {
+        // Verify that destroying the encoder releases the SharedImage
+        // representation, allowing the backing to be cleanly destroyed.
+        destroy_loop.Run();
+      }
       factory_ref.reset();
+
+      if (!encoder_available) {
+        GTEST_SKIP() << "VideoToolbox encoder is not available now";
+      }
     }
   }
 }
@@ -799,7 +873,9 @@ TEST(VTVideoEncodeAcceleratorTest,
           VideoEncodeAccelerator::Config::ContentType::kCamera);
       config.require_low_delay = kRequireLowDelay;
 
-      ASSERT_TRUE(encoder->Initialize(config, &client, nullptr).is_ok())
+      ASSERT_TRUE(
+          encoder->Initialize(config, &client, std::make_unique<NullMediaLog>())
+              .is_ok())
           << GetProfileName(profile);
 
       ASSERT_TRUE(client.encoder_info().has_value());
@@ -890,7 +966,9 @@ TEST(VTVideoEncodeAcceleratorTest, RejectsOpaqueSharedImagesInI420Session) {
           VideoEncodeAccelerator::Config::ContentType::kCamera);
       config.require_low_delay = kRequireLowDelay;
 
-      ASSERT_TRUE(encoder->Initialize(config, &client, nullptr).is_ok());
+      ASSERT_TRUE(
+          encoder->Initialize(config, &client, std::make_unique<NullMediaLog>())
+              .is_ok());
 
       gpu::SharedImageMetadata metadata;
       metadata.format = frame_format == PIXEL_FORMAT_NV12
@@ -953,7 +1031,9 @@ TEST(VTVideoEncodeAcceleratorTest, RejectsUnsupportedOpaqueSharedImageFormats) {
         VideoEncodeAccelerator::Config::ContentType::kCamera);
     config.require_low_delay = kRequireLowDelay;
 
-    ASSERT_TRUE(encoder->Initialize(config, &client, nullptr).is_ok());
+    ASSERT_TRUE(
+        encoder->Initialize(config, &client, std::make_unique<NullMediaLog>())
+            .is_ok());
 
     gpu::SharedImageMetadata metadata;
     metadata.format = viz::SinglePlaneFormat::kRGBA_8888;

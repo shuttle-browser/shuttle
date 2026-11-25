@@ -268,6 +268,8 @@ constexpr uint32_t kVendorImagination = 0x1010;
 constexpr uint32_t kVendorIntel = 0x8086;
 constexpr uint32_t kVendorGoogle = 0x1AE0;
 constexpr uint32_t kDeviceSwiftShader = 0xC0DE;
+constexpr uint32_t kVendorMesa = 0x10005;
+constexpr uint32_t kDeviceLavapipe = 0x0;
 
 bool IsDeviceBlocked(std::string_view field, std::string_view block_list) {
   auto disable_patterns = base::SplitString(
@@ -374,6 +376,24 @@ BASE_FEATURE(kDesktopPlaneRemovalForMFFullScreenLetterbox,
 BASE_FEATURE(kDirectCompositionUnlimitedOverlays,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+#if BUILDFLAG(IS_WIN)
+// Killswitch to use the new incremental updating tree algorithm
+// (i.e. `OsCompositorTreeBase`) to modify the DComp visual tree.
+BASE_FEATURE(kDCLayerTree2, base::FEATURE_DISABLED_BY_DEFAULT);
+
+constexpr base::FeatureParam<DCLayerTree2Mode>::Option
+    kDCLayerTree2ModeOption[] = {
+        {DCLayerTree2Mode::kIncremental, "incremental"},
+        {DCLayerTree2Mode::kFromScratch, "from_scratch"},
+};
+const base::FeatureParam<DCLayerTree2Mode> kDCLayerTree2ModeParam = {
+    &kDCLayerTree2,
+    "mode",
+    DCLayerTree2Mode::kIncremental,
+    &kDCLayerTree2ModeOption,
+};
+#endif
+
 // Allow dual GPU rendering through EGL where supported, i.e., allow a WebGL
 // or WebGPU context to be on the high performance GPU if preferred and Chrome
 // internal rendering to be on the low power GPU.
@@ -446,7 +466,7 @@ bool IsDefaultANGLEVulkan() {
   // population to protect, so answer directly.
   if (feature_list &&
       !feature_list->IsFeatureOverridden(features::kDefaultANGLEVulkan.name) &&
-      features::kDefaultANGLEVulkan.default_state ==
+      features::kDefaultANGLEVulkan.GetDefaultState() ==
           base::FEATURE_DISABLED_BY_DEFAULT) {
     return false;
   }
@@ -509,8 +529,9 @@ bool IsDefaultANGLEVulkan() {
     }
   }
 
-  // Exclude SwiftShader-based Android emulators for now.
-  if (active_gpu.driverId == VK_DRIVER_ID_GOOGLE_SWIFTSHADER) {
+  // Exclude SwiftShader and Gfxstream-based Android emulators for now.
+  if (active_gpu.driverId == VK_DRIVER_ID_GOOGLE_SWIFTSHADER ||
+      active_gpu.driverId == VK_DRIVER_ID_MESA_GFXSTREAM) {
     return false;
   }
 
@@ -699,10 +720,12 @@ bool CheckVulkanCompatibilities(
                           "PowerVR ([CDE]-Series)? [CDE]X.*");
   }
 
-  // Some devices implement Vulkan using Swiftshader. We do not want those,
-  // because of performance, and stability (crbug.com/1479335).
-  if (device_properties.vendor_id == kVendorGoogle &&
-      device_properties.device_id == kDeviceSwiftShader) {
+  // Some devices implement Vulkan using Swiftshader or Lavapipe. We do not want
+  // those, because of performance, and stability (crbug.com/1479335).
+  if ((device_properties.vendor_id == kVendorGoogle &&
+       device_properties.device_id == kDeviceSwiftShader) ||
+      (device_properties.vendor_id == kVendorMesa &&
+       device_properties.device_id == kDeviceLavapipe)) {
     return false;
   }
 

@@ -1,6 +1,6 @@
 {
-  "version": "95.20",
-  "log_list_timestamp": "2026-11-02T13:46:38Z",
+  "version": "97.3",
+  "log_list_timestamp": "2026-11-16T13:35:12Z",
   "operators": [
     {
       "name": "Google",
@@ -15,8 +15,12 @@
           "url": "https://ct.googleapis.com/logs/us1/argon2026h2/",
           "mmd": 86400,
           "state": {
-            "usable": {
-              "timestamp": "2024-09-30T22:19:27Z"
+            "readonly": {
+              "timestamp": "2026-11-13T17:30:00Z",
+              "final_tree_head": {
+                "sha256_root_hash": "y/1N4/rB/Ziykeo4ouNW+YI1fByDVKL8XmJXZNTerzU=",
+                "tree_size": 3501950757
+              }
             }
           },
           "temporal_interval": {
@@ -31,8 +35,12 @@
           "url": "https://ct.googleapis.com/logs/us1/argon2027h1/",
           "mmd": 86400,
           "state": {
-            "usable": {
-              "timestamp": "2025-12-28T00:30:00Z"
+            "readonly": {
+              "timestamp": "2026-11-13T17:30:00Z",
+              "final_tree_head": {
+                "sha256_root_hash": "X5UqMJVBWmftbNrjJR5B8fTQdsVUUWra4fepY7mufWQ=",
+                "tree_size": 1003958630
+              }
             }
           },
           "temporal_interval": {
@@ -47,8 +55,12 @@
           "url": "https://ct.googleapis.com/logs/eu1/xenon2026h2/",
           "mmd": 86400,
           "state": {
-            "usable": {
-              "timestamp": "2024-09-30T22:19:27Z"
+            "readonly": {
+              "timestamp": "2026-11-13T17:30:00Z",
+              "final_tree_head": {
+                "sha256_root_hash": "zWDZb2hACBCOUQKsQ9lmrhA1/71XWyFWNR4F2bH+s9A=",
+                "tree_size": 3037394949
+              }
             }
           },
           "temporal_interval": {
@@ -63,8 +75,12 @@
           "url": "https://ct.googleapis.com/logs/eu1/xenon2027h1/",
           "mmd": 86400,
           "state": {
-            "usable": {
-              "timestamp": "2025-12-28T00:30:00Z"
+            "readonly": {
+              "timestamp": "2026-11-13T17:30:00Z",
+              "final_tree_head": {
+                "sha256_root_hash": "mHWBORYgVpDCPUoNzH+wXh+YW8hgN5DnENseKxJdL9o=",
+                "tree_size": 844984485
+              }
             }
           },
           "temporal_interval": {
@@ -873,6 +889,74 @@
           "temporal_interval": {
             "start_inclusive": "2026-12-24T00:00:00Z",
             "end_exclusive": "2028-01-08T00:00:00Z"
+          }
+        },
+        {
+          "description": "TrustAsia Luoshu2028h1",
+          "log_id": "cd1QREFkibQDp3c0FPKGnt4CnXEI84DXfoJshKW/fls=",
+          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJkPBruid0R0HTLOABc0k17KKS1ZLZQVtlE7qsuauDs+khqu9M4BygSjziUlvQLdAonmbOr3wIDJK1JkBBRhGxA==",
+          "submission_url": "https://luoshu2028h1.trustasia.com/luoshu2028h1/",
+          "monitoring_url": "https://tile-luoshu2028h1.trustasia.com/luoshu2028h1/",
+          "mmd": 60,
+          "state": {
+            "qualified": {
+              "timestamp": "2026-11-03T13:40:00Z"
+            }
+          },
+          "temporal_interval": {
+            "start_inclusive": "2027-12-24T00:00:00Z",
+            "end_exclusive": "2028-07-08T00:00:00Z"
+          }
+        },
+        {
+          "description": "TrustAsia Luoshu2028h2",
+          "log_id": "jap0vUvSSHaUVxo2MsA8HZSVk3N5615qDROINcMzR8k=",
+          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEWRv8wFzS8rpjgT7uAby2nouThLq8QIPdtvY9E3BiJq0V8lmnB9QkoFrNYMssyvznPnfOkz76UNeYjKKszivytQ==",
+          "submission_url": "https://luoshu2028h2.trustasia.com/luoshu2028h2/",
+          "monitoring_url": "https://tile-luoshu2028h2.trustasia.com/luoshu2028h2/",
+          "mmd": 60,
+          "state": {
+            "qualified": {
+              "timestamp": "2026-11-03T13:40:00Z"
+            }
+          },
+          "temporal_interval": {
+            "start_inclusive": "2028-06-24T00:00:00Z",
+            "end_exclusive": "2029-01-08T00:00:00Z"
+          }
+        },
+        {
+          "description": "TrustAsia Taiji2028h1",
+          "log_id": "zVMsH8M+555WnWLXjKJmKkfeR5AsQ2zq+JS5GDG0BXw=",
+          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEGEE4GWDYuEedkPT1yrYUcEP3dxuABreEhr/OfwHDBO/V3l3fmzp139HwtwukZRWJUdxNBeUYJTEqHAsDGEvfFQ==",
+          "submission_url": "https://taiji2028h1.trustasia.com/taiji2028h1/",
+          "monitoring_url": "https://tile-taiji2028h1.trustasia.com/taiji2028h1/",
+          "mmd": 60,
+          "state": {
+            "qualified": {
+              "timestamp": "2026-11-03T13:40:00Z"
+            }
+          },
+          "temporal_interval": {
+            "start_inclusive": "2027-12-24T00:00:00Z",
+            "end_exclusive": "2028-07-08T00:00:00Z"
+          }
+        },
+        {
+          "description": "TrustAsia Taiji2028h2",
+          "log_id": "0J1XydPITy4G3x5te1QjepibtE1vlbKeTR/dmG3ySq4=",
+          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE/fyzIWC9TdHeK/NixOIGN+ZyNMk6dHqKqjlbaGnUztxlzYH0bbH5AtnbwTO77NSMpVBCt6rY8geRiCr1tp6yyQ==",
+          "submission_url": "https://taiji2028h2.trustasia.com/taiji2028h2/",
+          "monitoring_url": "https://tile-taiji2028h2.trustasia.com/taiji2028h2/",
+          "mmd": 60,
+          "state": {
+            "qualified": {
+              "timestamp": "2026-11-03T13:40:00Z"
+            }
+          },
+          "temporal_interval": {
+            "start_inclusive": "2028-06-24T00:00:00Z",
+            "end_exclusive": "2029-01-08T00:00:00Z"
           }
         }
       ]

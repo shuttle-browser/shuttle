@@ -49,8 +49,6 @@ const SettingsPrivacyPageElementBase =
     SettingsViewMixinLit(
         I18nMixinLit(PrefServiceObserverMixinLit(CrLitElement)));
 
-export type PrivacyPageElement = SettingsPrivacyPageElement;
-
 export class SettingsPrivacyPageElement extends SettingsPrivacyPageElementBase {
   static get is() {
     return 'settings-privacy-page';
@@ -247,8 +245,10 @@ export class SettingsPrivacyPageElement extends SettingsPrivacyPageElementBase {
       case 'siteSettingsSerialPorts':
       case 'siteSettingsSiteData':
       case 'siteSettingsSiteDetails':
-      // <if expr="is_chromeos">
+      // <if expr="enable_smart_card">
       case 'siteSettingsSmartCardReaders':
+      // </if>
+      // <if expr="is_chromeos">
       case 'siteSettingsWebPrinting':
       // </if>
       case 'siteSettingsSound':

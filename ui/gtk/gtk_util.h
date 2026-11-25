@@ -10,7 +10,9 @@
 #include <vector>
 
 #include "base/component_export.h"
+#include "base/files/file_path.h"
 #include "base/functional/callback_forward.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "ui/base/glib/scoped_gobject.h"
 #include "ui/color/color_id.h"
@@ -198,7 +200,17 @@ std::string GetGtkSettingsStringProperty(GtkSettings* settings,
 
 GtkIconTheme* GetDefaultIconTheme();
 
-void GtkWindowDestroy(GtkWidget* widget);
+// Prepends `path` to the default icon theme's search path on GTK3. Returns a
+// closure runner that restores the previous search path on destruction.
+[[nodiscard]] COMPONENT_EXPORT(GTK) base::ScopedClosureRunner
+    PrependIconThemeSearchPathForTesting(const base::FilePath& path);
+
+// Installs `css` as a user-priority global style provider. Returns a closure
+// runner that removes the provider on destruction.
+[[nodiscard]] COMPONENT_EXPORT(GTK) base::ScopedClosureRunner
+    AddGlobalCssForTesting(const std::string& css);
+
+COMPONENT_EXPORT(GTK) void GtkWindowDestroy(GtkWidget* widget);
 
 GtkWidget* GetDummyWindow();
 

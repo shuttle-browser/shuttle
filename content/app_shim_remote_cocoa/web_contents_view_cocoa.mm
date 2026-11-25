@@ -11,7 +11,7 @@
 #import "base/mac/mac_util.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/threading/thread_restrictions.h"
-#import "content/app_shim_remote_cocoa/web_contents_occlusion_checker_mac.h"
+#import "components/remote_cocoa/app_shim/window_occlusion_checker_mac.h"
 #import "content/app_shim_remote_cocoa/web_drag_source_mac.h"
 #import "content/browser/web_contents/web_contents_view_mac.h"
 #import "content/browser/web_contents/web_drag_dest_mac.h"
@@ -133,12 +133,16 @@ gfx::PointF GetSanitizedFlippedPoint(NSPoint point, CGFloat height) {
   WebDragSource* __strong _dragSource;
   NSDragOperation _dragOperation;
 
+  NSWindow* __weak _trackedWindow;
   BOOL _willSetWebContentsOccludedAfterDelay;
 }
 
 + (void)initialize {
-  // Create the WebContentsOcclusionCheckerMac shared instance.
-  [WebContentsOcclusionCheckerMac sharedInstance];
+  // Create the WindowOcclusionCheckerMac shared instance.
+  // TODO(crbug.com/505314004): Remove once
+  // `remote_cocoa::features::kTrackAllTopLevelWindowsForOcclusion` is enabled
+  // by default and cleaned up.
+  [WindowOcclusionCheckerMac sharedInstance];
 }
 
 - (instancetype)initWithViewsHostableView:(ui::ViewsHostableView*)v {
@@ -160,6 +164,10 @@ gfx::PointF GetSanitizedFlippedPoint(NSPoint point, CGFloat height) {
   // This probably isn't strictly necessary, but can't hurt.
   [self unregisterDraggedTypes];
 
+  if (_trackedWindow) {
+    [[WindowOcclusionCheckerMac sharedInstanceIfCreated]
+        removeTrackedWindow:_trackedWindow];
+  }
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   [self cancelDelayedSetWebContentsOccluded];
 }
@@ -509,7 +517,7 @@ gfx::PointF GetSanitizedFlippedPoint(NSPoint point, CGFloat height) {
   // occluded if our window switches back to visible or hidden in the meantime.
   if (visibility != Visibility::kOccluded) {
     [self cancelDelayedSetWebContentsOccluded];
-    _host->OnWindowVisibilityChanged(visibility);
+    [self setWebContentsVisibility:visibility];
     return;
   }
 
@@ -559,39 +567,42 @@ gfx::PointF GetSanitizedFlippedPoint(NSPoint point, CGFloat height) {
 }
 
 - (void)viewWillMoveToWindow:(NSWindow*)newWindow {
+  [super viewWillMoveToWindow:newWindow];
+  if (_trackedWindow == newWindow) {
+    return;
+  }
+
   NSNotificationCenter* notificationCenter =
       [NSNotificationCenter defaultCenter];
 
-  NSWindow* oldWindow = [self window];
-
-  if (oldWindow) {
+  if (_trackedWindow) {
     [notificationCenter
         removeObserver:self
                   name:NSWindowDidChangeOcclusionStateNotification
-                object:oldWindow];
-    if (oldWindow != newWindow && [oldWindow isOccluded]) {
-      // If removing this view leaves `oldWindow` without any web contents, an
-      // update pass will clear its occluded state (whereas a synchronous tab
-      // switch will attach the replacement before the pass runs).
-      [[WebContentsOcclusionCheckerMac sharedInstance]
-          scheduleOcclusionStateUpdates];
-    }
+                object:_trackedWindow];
+    [[WindowOcclusionCheckerMac sharedInstanceIfCreated]
+        removeTrackedWindow:_trackedWindow];
   }
 
-  if (newWindow) {
+  _trackedWindow = newWindow;
+
+  if (_trackedWindow) {
+    [[WindowOcclusionCheckerMac sharedInstance]
+        addTrackedWindow:_trackedWindow];
     [notificationCenter addObserver:self
                            selector:@selector(windowChangedOcclusionState:)
                                name:NSWindowDidChangeOcclusionStateNotification
-                             object:newWindow];
+                             object:_trackedWindow];
   }
 }
 
 - (void)windowChangedOcclusionState:(NSNotification*)aNotification {
   // Only respond to occlusion notifications sent by the occlusion checker.
   NSDictionary* userInfo = [aNotification userInfo];
-  NSString* occlusionCheckerKey = [WebContentsOcclusionCheckerMac className];
-  if (userInfo[occlusionCheckerKey] != nil)
+  if (userInfo[remote_cocoa::kWindowOcclusionCheckerNotificationUserInfoKey] !=
+      nil) {
     [self updateWebContentsVisibility];
+  }
 }
 
 - (void)viewDidMoveToWindow {
@@ -623,18 +634,12 @@ gfx::PointF GetSanitizedFlippedPoint(NSPoint point, CGFloat height) {
 - (void)_addWebContentsViewCocoasFromView:(NSView*)view
                                   toArray:
                                       (NSMutableArray<WebContentsViewCocoa*>*)
-                                          webContents
-                           haltAfterFirst:(BOOL)haltAfterFirst {
+                                          webContents {
   for (NSView* subview in [view subviews]) {
     if ([subview isKindOfClass:[WebContentsViewCocoa class]]) {
       [webContents addObject:(WebContentsViewCocoa*)subview];
-      if (haltAfterFirst) {
-        return;
-      }
     } else {
-      [self _addWebContentsViewCocoasFromView:subview
-                                      toArray:webContents
-                               haltAfterFirst:haltAfterFirst];
+      [self _addWebContentsViewCocoasFromView:subview toArray:webContents];
     }
   }
 }
@@ -643,20 +648,9 @@ gfx::PointF GetSanitizedFlippedPoint(NSPoint point, CGFloat height) {
   NSMutableArray<WebContentsViewCocoa*>* webContents = [NSMutableArray array];
 
   [self _addWebContentsViewCocoasFromView:[self contentView]
-                                  toArray:webContents
-                           haltAfterFirst:NO];
+                                  toArray:webContents];
 
   return webContents;
-}
-
-- (BOOL)containsWebContentsViewCocoa {
-  NSMutableArray<WebContentsViewCocoa*>* webContents = [NSMutableArray array];
-
-  [self _addWebContentsViewCocoasFromView:[self contentView]
-                                  toArray:webContents
-                           haltAfterFirst:YES];
-
-  return webContents.count > 0;
 }
 
 @end

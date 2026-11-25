@@ -8,7 +8,6 @@
 
 #include "base/check.h"
 #include "base/check_op.h"
-#include "base/feature_list.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "components/prefs/pref_service.h"
@@ -46,6 +45,7 @@ PrimaryAccountMutatorImpl::SetPrimaryAccount(
     ConsentLevel consent_level,
     signin_metrics::AccessPoint access_point,
     base::OnceClosure prefs_committed_callback) {
+  CHECK(!primary_account_manager_->IsCallingPrimaryAccountObservers());
   DCHECK(!account_id.empty());
   AccountInfo account_info = account_tracker_->GetAccountInfo(account_id);
   if (account_info.IsEmpty()) {
@@ -103,6 +103,7 @@ PrimaryAccountMutatorImpl::SetPrimaryAccount(
 // assume that an account will always be available at sync consent level in Ash.
 void PrimaryAccountMutatorImpl::RevokeSyncConsent(
     signin_metrics::ProfileSignout source_metric) {
+  CHECK(!primary_account_manager_->IsCallingPrimaryAccountObservers());
   // TODO(crbug.com/40066949): `RevokeSyncConsent` shouldn't be available on iOS
   //     when kSync is no longer used. See ConsentLevel::kSync documentation for
   //     details.
@@ -112,6 +113,7 @@ void PrimaryAccountMutatorImpl::RevokeSyncConsent(
 
 bool PrimaryAccountMutatorImpl::ClearPrimaryAccount(
     signin_metrics::ProfileSignout source_metric) {
+  CHECK(!primary_account_manager_->IsCallingPrimaryAccountObservers());
   if (!primary_account_manager_->HasPrimaryAccount(ConsentLevel::kSignin)) {
     return false;
   }
@@ -122,6 +124,7 @@ bool PrimaryAccountMutatorImpl::ClearPrimaryAccount(
 
 bool PrimaryAccountMutatorImpl::RemovePrimaryAccountButKeepTokens(
     signin_metrics::ProfileSignout source_metric) {
+  CHECK(!primary_account_manager_->IsCallingPrimaryAccountObservers());
   if (!primary_account_manager_->HasPrimaryAccount(ConsentLevel::kSignin)) {
     return false;
   }

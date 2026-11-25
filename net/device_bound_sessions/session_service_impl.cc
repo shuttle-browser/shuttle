@@ -40,6 +40,7 @@
 #include "net/device_bound_sessions/registration_request_param.h"
 #include "net/device_bound_sessions/session_binding_utils.h"
 #include "net/device_bound_sessions/session_display.h"
+#include "net/device_bound_sessions/session_error.h"
 #include "net/device_bound_sessions/session_store.h"
 #include "net/ssl/ssl_cert_request_info.h"
 #include "net/ssl/ssl_private_key.h"
@@ -53,8 +54,9 @@ namespace net::device_bound_sessions {
 
 namespace {
 
-// Parameters for the signing quota. We currently allow 6 signings in 9
-// minutes per site. Reasoning:
+// Parameters for the signing quota. We currently allow 6 units in 9 minutes
+// per site, where a unit is one hardware operation (see
+// `GetSigningQuotaCost()`). Reasoning:
 // 1. This allows sites to refresh on average every 5 minutes, accounting for
 //    proactive refreshes 2 minutes before expiry, and with some error tolerance
 //    (e.g. a failed refresh or user cookie clearing) and tolerance for new
@@ -63,8 +65,41 @@ namespace {
 //    registrations.
 // 3. The spec notes that user agents should include quotas on registration
 //    attempts to prevent identity linking for federated sessions.
+// An attested registration takes half the quota, which leaves little room:
+// after one, refreshes every ~3 minutes leave about one unit of headroom, and
+// two failed attested registrations block refreshes for every session on the
+// site for up to 9 minutes. We accept this until
+// `Net.DeviceBoundSessions.SigningQuotaUnitsNeeded.{Operation}` shows that
+// legitimate sites hit the limit.
+// If these values or `GetSigningQuotaCost()` change, rename
+// `Net.DeviceBoundSessions.SigningQuotaUnitsNeeded.{Operation}`, since its
+// buckets change meaning.
 constexpr size_t kSigningQuota = 6;
 constexpr base::TimeDelta kSigningQuotaInterval = base::Minutes(9);
+
+constexpr size_t GetSigningQuotaCost(SigningQuotaOperation operation) {
+  switch (operation) {
+    case SigningQuotaOperation::kRegistration:
+    case SigningQuotaOperation::kRefresh:
+      return 1;
+    case SigningQuotaOperation::kAttestedRegistration:
+      // Inner JWT sign, AIK certification, and outer JWT sign.
+      return 3;
+  }
+  NOTREACHED();
+}
+
+// The highest `GetSigningQuotaCost()` of any operation, which bounds
+// `Net.DeviceBoundSessions.SigningQuotaUnitsNeeded.{Operation}`. Keep it in
+// sync when costs change.
+constexpr size_t kMaxSigningQuotaCost =
+    GetSigningQuotaCost(SigningQuotaOperation::kAttestedRegistration);
+
+// Returns whether `operation` fits in the signing quota when `units_in_use`
+// units of it are already in use.
+bool FitsInSigningQuota(size_t units_in_use, SigningQuotaOperation operation) {
+  return units_in_use + GetSigningQuotaCost(operation) <= kSigningQuota;
+}
 
 constexpr base::TimeDelta kProactiveRefreshThreshold = base::Seconds(120);
 
@@ -297,11 +332,6 @@ void SessionServiceImpl::OnGetCookiesForPrewarm(
       continue;
     }
 
-    if (SigningQuotaExceeded(session_key.site)) {
-      barrier.Run({.result = RefreshResult::kSigningQuotaExceeded});
-      continue;
-    }
-
     if (std::optional<base::Time> refresh_time = GetFutureRefreshTime(
             session->MinimumBoundCookieLifetime(cookies))) {
       barrier.Run({.result = RefreshResult::kInScopeRefreshNotYetNeeded,
@@ -310,7 +340,20 @@ void SessionServiceImpl::OnGetCookiesForPrewarm(
     }
 
     // Refresh needed (either missing cookie or expiring cookie below
-    // threshold).
+    // threshold). If no refresh is in flight to join, don't start one when the
+    // site has no quota left: `RegistrationFetcher` would refuse to sign it,
+    // and the failed proactive refresh would block later proactive refreshes.
+    // A refresh that could reuse a cached signed challenge is rare enough to
+    // be refused conservatively here. This is best effort: nothing is
+    // reserved, so the quota can still run out before the refresh signs.
+    const bool refresh_in_flight = proactive_requests_.contains(session_key) ||
+                                   deferred_requests_.contains(session_key);
+    if (!refresh_in_flight &&
+        !HasSigningQuota(session_key.site, SigningQuotaOperation::kRefresh)) {
+      barrier.Run({.result = RefreshResult::kSigningQuotaExceeded});
+      continue;
+    }
+
     auto [it, inserted] = proactive_requests_.try_emplace(session_key);
     it->second.completion_callbacks.push_back(barrier);
     if (inserted && !deferred_requests_.contains(session_key)) {
@@ -633,12 +676,11 @@ void SessionServiceImpl::CheckFederatedProviderKey(
   }
 
   Session* provider_session = GetSession(provider_session_key);
-  if (!provider_session) {
-    // Provider session not found, fail the registration.
-    std::move(callback).Run(base::unexpected(
-        SessionError::kInvalidFederatedSessionProviderSessionMissing));
-    return;
-  }
+  // `provider_session` must exist because this is either called synchronously
+  // from `GetFederatedProviderSessionIfValid` (which checks it), or from
+  // `OnSessionKeyRestored`, which only passes a key if the session still
+  // exists (otherwise `provider_key` is `std::nullopt`, handled above).
+  CHECK(provider_session);
 
   std::optional<std::string> thumbprint =
       GetJwkThumbprint(*key_service_, *provider_key);
@@ -709,6 +751,10 @@ void SessionServiceImpl::OnRegistrationComplete(
 std::ranges::subrange<SessionServiceImpl::SessionsMap::iterator>
 SessionServiceImpl::GetSessionsForSite(const SchemefulSite& site) {
   const auto now = base::Time::Now();
+  // Deleting a session can synchronously re-enter this class and modify
+  // `unpartitioned_sessions_`, so expired sessions are extracted first and
+  // deleted only after the iteration below is done.
+  std::vector<SessionsMap::node_type> expired_sessions;
   // Session keys are sorted by site, then identifier. So the first
   // element not less than (`site`, "") is the first session for this
   // site.
@@ -718,20 +764,34 @@ SessionServiceImpl::GetSessionsForSite(const SchemefulSite& site) {
     auto curit = it;
     ++it;
 
-    const auto& [session_key, session] = *curit;
-    if (now >= session->expiry_date()) {
-      // Since this deletion is not due to a request, we do not need to
-      // provide a per-request callback here.
-      DeleteSessionAndNotifyInternal(DeletionReason::kExpired, curit,
-                                     base::NullCallback());
+    if (now >= curit->second->expiry_date()) {
+      expired_sessions.push_back(unpartitioned_sessions_.extract(curit));
     } else {
-      session->RecordAccess();
+      curit->second->RecordAccess();
     }
   }
 
-  return std::ranges::subrange<SessionsMap::iterator>(
-      unpartitioned_sessions_.lower_bound(SessionKey{site, Session::Id("")}),
-      it);
+  if (expired_sessions.empty()) {
+    return std::ranges::subrange<SessionsMap::iterator>(
+        unpartitioned_sessions_.lower_bound(SessionKey{site, Session::Id("")}),
+        it);
+  }
+
+  for (SessionsMap::node_type& node : expired_sessions) {
+    // Since this deletion is not due to a request, we do not need to
+    // provide a per-request callback here.
+    DeleteSessionAndNotifyInternal(DeletionReason::kExpired, std::move(node),
+                                   base::NullCallback());
+  }
+
+  // The map may have changed while deleting, so compute the range again.
+  auto begin =
+      unpartitioned_sessions_.lower_bound(SessionKey{site, Session::Id("")});
+  auto end = begin;
+  while (end != unpartitioned_sessions_.end() && end->first.site == site) {
+    ++end;
+  }
+  return std::ranges::subrange<SessionsMap::iterator>(begin, end);
 }
 
 std::optional<SessionService::DeferralParams> SessionServiceImpl::ShouldDefer(
@@ -752,7 +812,16 @@ std::optional<SessionService::DeferralParams> SessionServiceImpl::ShouldDefer(
   DebugHeaderBuilder debug_header_builder;
   const base::flat_map<SessionKey, RefreshResult>& previous_deferrals =
       request.device_bound_session_deferrals();
-  for (const auto& [session_key, session] : GetSessionsForSite(site)) {
+  // Iterate over a copy of the keys: starting a proactive refresh below can
+  // complete synchronously and delete sessions.
+  const std::vector<SessionKey> session_keys = base::ToVector(
+      GetSessionsForSite(site), [](const auto& entry) { return entry.first; });
+  for (const SessionKey& session_key : session_keys) {
+    Session* session = GetSession(session_key);
+    if (!session) {
+      continue;
+    }
+
     MaybeIncreaseSessionUsage(session_key, request,
                               SessionUsage::kNoSiteMatchNotInScope);
 
@@ -907,17 +976,21 @@ void SessionServiceImpl::UnblockWaitingRequests(
     std::optional<SessionDisplay> new_session_display,
     std::optional<bool> is_proactive_refresh_candidate,
     std::optional<base::TimeDelta> minimum_proactive_refresh_threshold) {
-  bool has_proactive_request = false;
-  if (auto node = proactive_requests_.extract(session_key)) {
-    has_proactive_request = true;
-    base::UmaHistogramTimes("Net.DeviceBoundSessions.ProactiveRefreshDuration",
-                            node.mapped().timer.Elapsed());
-    CompleteProactiveRefresh(session_key, result,
-                             std::move(node.mapped().completion_callbacks));
-  }
+  // Remove both entries before running any callbacks, since they can re-enter
+  // this class. Requests deferred re-entrantly then wait for a new refresh
+  // instead of completing with `result`.
+  auto proactive_node = proactive_requests_.extract(session_key);
+  auto deferred_node = deferred_requests_.extract(session_key);
+  const bool has_proactive_request = !proactive_node.empty();
+  const bool has_deferred_request = !deferred_node.empty();
 
-  auto it = deferred_requests_.find(session_key);
-  bool has_deferred_request = it != deferred_requests_.end();
+  if (has_proactive_request) {
+    base::UmaHistogramTimes("Net.DeviceBoundSessions.ProactiveRefreshDuration",
+                            proactive_node.mapped().timer.Elapsed());
+    CompleteProactiveRefresh(
+        session_key, result,
+        std::move(proactive_node.mapped().completion_callbacks));
+  }
 
   if (has_proactive_request || has_deferred_request) {
     NotifyIfEventCallbackListeners([&] {
@@ -933,8 +1006,7 @@ void SessionServiceImpl::UnblockWaitingRequests(
     return;
   }
 
-  auto requests = std::move(it->second);
-  deferred_requests_.erase(it);
+  auto requests = std::move(deferred_node.mapped());
 
   base::UmaHistogramCounts100("Net.DeviceBoundSessions.RequestDeferredCount",
                               requests.size());
@@ -1109,12 +1181,7 @@ void SessionServiceImpl::DeleteSessionAndNotify(
     return;
   }
 
-  auto it = unpartitioned_sessions_.find(session_key);
-  if (it == unpartitioned_sessions_.end()) {
-    return;
-  }
-
-  DeleteSessionAndNotifyInternal(reason, it, per_request_callback);
+  DeleteSessionAndNotifyInternal(reason, session_key, per_request_callback);
 }
 
 const Session* SessionServiceImpl::GetSession(
@@ -1212,8 +1279,7 @@ void SessionServiceImpl::AddSessionAndNotify(
     SessionStore::SaveSessionMode mode) {
   SessionKey session_key{site, session->id()};
   if (mode != SessionStore::SaveSessionMode::kRefresh) {
-    auto it = unpartitioned_sessions_.find(session_key);
-    if (it != unpartitioned_sessions_.end()) {
+    if (auto node = unpartitioned_sessions_.extract(session_key)) {
       LogSessionDeletionReason(DeletionReason::kReplaced);
 
       if (session_store_) {
@@ -1222,14 +1288,12 @@ void SessionServiceImpl::AddSessionAndNotify(
 
       NotifySessionAccess(base::NullCallback(),
                           SessionAccess::AccessType::kTermination, session_key,
-                          *it->second);
+                          *node.mapped());
       NotifyIfEventCallbackListeners([&] {
         return SessionEvent::MakeTerminationEvent(
             session_key.site, session_key.id.value(),
             /*succeeded=*/true, DeletionReason::kReplaced);
       });
-
-      unpartitioned_sessions_.erase(it);
     }
   }
 
@@ -1276,6 +1340,10 @@ void SessionServiceImpl::DeleteAllSessions(
     return;
   }
 
+  // Extract all matching sessions before deleting any of them. Deleting a
+  // session can synchronously re-enter this class and modify
+  // `unpartitioned_sessions_`, which would invalidate iterators held here.
+  std::vector<SessionsMap::node_type> sessions_to_delete;
   for (auto it = unpartitioned_sessions_.begin();
        it != unpartitioned_sessions_.end();) {
     auto curit = it;
@@ -1284,8 +1352,13 @@ void SessionServiceImpl::DeleteAllSessions(
     if (SessionMatchesFilter(curit->first.site, *curit->second,
                              created_after_time, created_before_time,
                              origin_and_site_matcher)) {
-      DeleteSessionAndNotifyInternal(reason, curit, base::NullCallback());
+      sessions_to_delete.push_back(unpartitioned_sessions_.extract(curit));
     }
+  }
+
+  for (SessionsMap::node_type& node : sessions_to_delete) {
+    DeleteSessionAndNotifyInternal(reason, std::move(node),
+                                   base::NullCallback());
   }
 
   std::move(completion_callback).Run();
@@ -1309,28 +1382,47 @@ base::CallbackListSubscription SessionServiceImpl::AddEventObserver(
 
 void SessionServiceImpl::DeleteSessionAndNotifyInternal(
     DeletionReason reason,
-    SessionServiceImpl::SessionsMap::iterator it,
-    SessionService::OnAccessCallback per_request_callback) {
+    SessionServiceImpl::SessionsMap::node_type node,
+    SessionService::OnAccessCallback per_request_callback,
+    std::optional<SessionError> fetch_error) {
+  CHECK(!node.empty());
   LogSessionDeletionReason(reason);
 
-  const auto& [session_key, session] = *it;
+  // `node` is owned here and is no longer in `unpartitioned_sessions_`, so
+  // these references stay valid even if the calls below re-enter this class.
+  const SessionKey& session_key = node.key();
+  const Session& session = *node.mapped();
 
-  UnblockWaitingRequests(session_key, RefreshResult::kFatalError);
-
+  // Delete the session from the store before unblocking the waiting requests,
+  // to keep the store in sync with `unpartitioned_sessions_` if they re-enter
+  // this class (e.g. to save a new session with the same key).
   if (session_store_) {
     session_store_->DeleteSession(session_key);
   }
 
+  UnblockWaitingRequests(session_key, RefreshResult::kFatalError,
+                         std::move(fetch_error));
+
   NotifySessionAccess(per_request_callback,
                       SessionAccess::AccessType::kTermination, session_key,
-                      *session);
+                      session);
   NotifyIfEventCallbackListeners([&] {
     return SessionEvent::MakeTerminationEvent(session_key.site,
                                               session_key.id.value(),
                                               /*succeeded=*/true, reason);
   });
+}
 
-  unpartitioned_sessions_.erase(it);
+void SessionServiceImpl::DeleteSessionAndNotifyInternal(
+    DeletionReason reason,
+    const SessionKey& session_key,
+    SessionService::OnAccessCallback per_request_callback,
+    std::optional<SessionError> fetch_error) {
+  if (auto node = unpartitioned_sessions_.extract(session_key)) {
+    DeleteSessionAndNotifyInternal(reason, std::move(node),
+                                   std::move(per_request_callback),
+                                   std::move(fetch_error));
+  }
 }
 
 void SessionServiceImpl::NotifySessionAccess(
@@ -1517,19 +1609,20 @@ SessionError::ErrorType SessionServiceImpl::OnRefreshRequestCompletionInternal(
               },
               [&](SessionError error) {
                 const SessionError::ErrorType error_type = error.type;
-                std::optional<DeletionReason> deletion_reason =
-                    error.GetDeletionReason();
-                RefreshResult refresh_result =
-                    error.GetRefreshResult().value_or(
-                        deletion_reason ? RefreshResult::kFatalError
-                                        : RefreshResult::kUnreachable);
-
-                UnblockWaitingRequests(session_key, refresh_result,
-                                       std::move(error));
-
-                if (deletion_reason) {
-                  DeleteSessionAndNotify(*deletion_reason, session_key,
-                                         on_access_callback);
+                if (std::optional<DeletionReason> deletion_reason =
+                        error.GetDeletionReason()) {
+                  // Deleting the session also unblocks its waiting requests.
+                  // If it was already deleted while the refresh was in
+                  // flight, they were unblocked then.
+                  DeleteSessionAndNotifyInternal(*deletion_reason, session_key,
+                                                 on_access_callback,
+                                                 std::move(error));
+                } else {
+                  const RefreshResult refresh_result =
+                      error.GetRefreshResult().value_or(
+                          RefreshResult::kUnreachable);
+                  UnblockWaitingRequests(session_key, refresh_result,
+                                         std::move(error));
                 }
                 return error_type;
               }));
@@ -1572,15 +1665,15 @@ void SessionServiceImpl::OnSessionKeyRestored(
         std::optional<unexportable_keys::UnexportableSigningKeyId>)> callback,
     Session::KeyIdOrError key_id_or_error) {
   if (!key_id_or_error.has_value()) {
-    const bool is_persistent_error =
-        unexportable_keys::IsPersistentError(key_id_or_error.error());
-    UnblockWaitingRequests(session_key,
-                           is_persistent_error
-                               ? RefreshResult::kFatalError
-                               : RefreshResult::kTransientSigningError);
-    if (is_persistent_error) {
+    if (unexportable_keys::IsPersistentError(key_id_or_error.error())) {
+      // Deleting the session also unblocks its waiting requests. If it was
+      // already deleted while the key was being restored, they were unblocked
+      // then.
       DeleteSessionAndNotify(DeletionReason::kFailedToUnwrapKey, session_key,
                              on_access_callback);
+    } else {
+      UnblockWaitingRequests(session_key,
+                             RefreshResult::kTransientSigningError);
     }
     std::move(callback).Run(std::nullopt);
     return;
@@ -1589,6 +1682,7 @@ void SessionServiceImpl::OnSessionKeyRestored(
   auto* session = GetSession(session_key);
   if (!session) {
     UnblockWaitingRequests(session_key, RefreshResult::kFatalError);
+    std::move(callback).Run(std::nullopt);
     return;
   }
 
@@ -1612,12 +1706,11 @@ void SessionServiceImpl::StartSessionRefresh(const SessionKey& session_key,
           params.priority;
       RestoreSessionKey(
           session_key, access_callback, priority,
-          base::BindOnce(&SessionServiceImpl::RefreshSessionInternal,
+          base::BindOnce(&SessionServiceImpl::OnSessionKeyRestoredForRefresh,
                          weak_factory_.GetWeakPtr(), std::move(params),
                          session_key));
       return;
     } else {
-      UnblockWaitingRequests(session_key, RefreshResult::kFatalError);
       DeleteSessionAndNotify(DeletionReason::kFailedToRestoreKey, session_key,
                              params.access_callback);
       return;
@@ -1627,20 +1720,29 @@ void SessionServiceImpl::StartSessionRefresh(const SessionKey& session_key,
   RefreshSessionInternal(std::move(params), session_key, *key_id);
 }
 
-void SessionServiceImpl::RefreshSessionInternal(
+void SessionServiceImpl::OnSessionKeyRestoredForRefresh(
     RefreshParams params,
     const SessionKey& session_key,
     std::optional<unexportable_keys::UnexportableSigningKeyId> key_id) {
   if (!key_id) {
-    UnblockWaitingRequests(session_key, RefreshResult::kFatalError);
+    // `OnSessionKeyRestored()` already unblocked the waiting requests.
+    // Unblocking again would fail requests that were deferred re-entrantly
+    // while it ran.
     return;
   }
 
+  RefreshSessionInternal(std::move(params), session_key, *key_id);
+}
+
+void SessionServiceImpl::RefreshSessionInternal(
+    RefreshParams params,
+    const SessionKey& session_key,
+    unexportable_keys::UnexportableSigningKeyId key_id) {
   Session* session = GetSession(session_key);
   // `session` must exist because this is either called synchronously from
-  // `StartSessionRefresh` (which checks `session`), or asynchronously after
-  // `OnSessionKeyRestored` which also checks `session` and returns early if
-  // null.
+  // `StartSessionRefresh` (which checks `session`), or from
+  // `OnSessionKeyRestoredForRefresh` with a key, which `OnSessionKeyRestored`
+  // only passes if `session` still exists.
   CHECK(session);
 
   if (params.trigger == RefreshTrigger::kMissingCookie) {
@@ -1704,45 +1806,77 @@ void SessionServiceImpl::RefreshSessionInternal(
           net_log_source_for_refresh, params.initiator, params.priority);
   RegistrationFetcher* fetcher_raw = fetcher.get();
   registration_fetchers_.insert(std::move(fetcher));
-  fetcher_raw->StartFetchWithExistingKey(registration_param, *key_id,
+  fetcher_raw->StartFetchWithExistingKey(registration_param, key_id,
                                          std::move(callback));
   // `fetcher_raw` may be deleted.
 }
 
-bool SessionServiceImpl::SigningQuotaExceeded(const SchemefulSite& site) {
+bool SessionServiceImpl::TryConsumeSigningQuota(
+    const SchemefulSite& site,
+    SigningQuotaOperation operation) {
   if (ignore_signing_quota_) {
+    return true;
+  }
+
+  const size_t units_in_use = PruneAndGetSigningCount(site);
+  const bool fits = FitsInSigningQuota(units_in_use, operation);
+  SiteSigningQuota& quota = signing_quota_[site];
+  // Record every allowed operation, but only the first refusal until one of
+  // the site's signings ages out, so refusals don't scale with the site's
+  // traffic.
+  const bool first_refusal =
+      !fits && !std::exchange(quota.refusal_recorded, true);
+  if (fits || first_refusal) {
+    base::UmaHistogramExactLinear(
+        absl::StrFormat("Net.DeviceBoundSessions.SigningQuotaUnitsNeeded.%v",
+                        operation),
+        units_in_use + GetSigningQuotaCost(operation),
+        kSigningQuota + kMaxSigningQuotaCost + 1);
+  }
+  if (first_refusal) {
+    if (const SessionError* last_result =
+            base::FindOrNull(refresh_last_result_, site)) {
+      base::UmaHistogramEnumeration(
+          "Net.DeviceBoundSessions.SigningQuotaExceededLastResult2",
+          last_result->type);
+    }
+  }
+  if (!fits) {
     return false;
   }
 
-  auto it = signing_times_.find(site);
-  if (it == signing_times_.end()) {
-    return false;
+  // Add one timestamp per unit, e.g. 3 for an attested registration.
+  quota.signing_times.append_range(
+      std::vector(GetSigningQuotaCost(operation), base::Time::Now()));
+  return true;
+}
+
+bool SessionServiceImpl::HasSigningQuota(const SchemefulSite& site,
+                                         SigningQuotaOperation operation) {
+  return ignore_signing_quota_ ||
+         FitsInSigningQuota(PruneAndGetSigningCount(site), operation);
+}
+
+size_t SessionServiceImpl::PruneAndGetSigningCount(const SchemefulSite& site) {
+  auto it = signing_quota_.find(site);
+  if (it == signing_quota_.end()) {
+    return 0;
   }
+  SiteSigningQuota& quota = it->second;
 
   // This also discards "future" signings since `base::Time` can decrease.
   const base::Time now = base::Time::Now();
-  std::erase_if(it->second, [now](base::Time time) {
-    return time > now || now - time >= kSigningQuotaInterval;
-  });
+  if (std::erase_if(quota.signing_times, [now](base::Time time) {
+        return time > now || now - time >= kSigningQuotaInterval;
+      }) > 0) {
+    quota.refusal_recorded = false;
+  }
 
-  size_t sign_count = it->second.size();
+  size_t sign_count = quota.signing_times.size();
   if (sign_count == 0) {
-    signing_times_.erase(it);
+    signing_quota_.erase(it);
   }
-
-  bool is_exceeded = sign_count >= kSigningQuota;
-  if (auto result_it = refresh_last_result_.find(site);
-      is_exceeded && result_it != refresh_last_result_.end()) {
-    base::UmaHistogramEnumeration(
-        "Net.DeviceBoundSessions.SigningQuotaExceededLastResult",
-        result_it->second.type);
-  }
-
-  return is_exceeded;
-}
-
-void SessionServiceImpl::AddSigningOccurrence(const SchemefulSite& site) {
-  signing_times_[site].push_back(base::Time::Now());
+  return sign_count;
 }
 
 void SessionServiceImpl::RemoveFetcher(RegistrationFetcher* fetcher) {

@@ -142,6 +142,7 @@ source_set("impl") {
 
   deps += [
     "//base",
+    "//base/version_info",
     "//chrome/browser:browser_process",
     "//chrome/browser/manta",
     "//chrome/browser/profiles:profile",
@@ -187,7 +188,6 @@ if (is_win) {
     public_deps = [
       "//base",
       "//chrome/browser/profiles:profile",
-      "//chrome/test:test_support_ui",
       "//chrome/test/accessibility/ax_client:launcher",
       "//chrome/test/accessibility/ax_client:mojom",
       "//mojo/public/cpp/bindings",

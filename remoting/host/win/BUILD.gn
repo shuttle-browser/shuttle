@@ -8,20 +8,19 @@ import("//build/win/message_compiler.gni")
 import("//media/media_options.gni")
 import("//remoting/build/config/remoting_build.gni")
 import("//remoting/host/installer/win/generate_clsids.gni")
+import("//remoting/host/installer/win/host_payload_files.gni")
 
 group("all") {
   testonly = true
 
-  deps = [
-    ":remoting_console",
-    ":remoting_curtain",
-    ":remoting_desktop",
-    ":remoting_me2me_host",
-    ":remoting_native_messaging_host",
-    ":remoting_network",
-    ":remoting_peer_connection",
-    "//remoting/host/security_key:remote_security_key",
-  ]
+  deps = [ "//remoting/host/installer/win/setup:remoting_setup" ] +
+         remoting_win_host_binary_deps
+
+  if (!is_component_build) {
+    deps += [
+      "//remoting/host/installer/win/mini_installer:remoting_mini_installer",
+    ]
+  }
 }
 
 # Reference this manifest to indicate that a process is per-monitor DPI aware.
@@ -244,11 +243,14 @@ source_set("unit_tests") {
     "chromoting_module_unittest.cc",
     "default_audio_device_change_detector_unittest.cc",
     "desktop_event_handler_unittest.cc",
+    "evaluate_d3d_unittest.cc",
     "event_trace_data.cc",
     "event_trace_data.h",
     "event_trace_data_unittest.cc",
+    "hang_watchdog_unittest.cc",
     "host_window_win_util_unittest.cc",
     "input_extra_info_unittest.cc",
+    "launch_process_with_token_unittest.cc",
     "mouse_cursor_monitor_win_unittest.cc",
     "rdp_client_unittest.cc",
     "unprivileged_process_delegate_unittest.cc",
@@ -275,6 +277,7 @@ source_set("unit_tests") {
     "//skia",
     "//testing/gmock",
     "//testing/gtest",
+    "//third_party/webrtc_overrides:webrtc_component",
   ]
 }
 
@@ -354,31 +357,6 @@ message_compiler("messages") {
   deps = [ ":messages_localizing" ]
 }
 
-executable("remoting_console") {
-  defines = host_predefines + [ "REMOTING_HOST_BINARY=BINARY_HOST_ME2ME" ]
-
-  deps = [
-    ":dpi_aware_exe_manifest",
-    ":remoting_core",
-    ":remoting_windows_resources",
-    "//base:clang_profiling_buildflags",
-    "//remoting/host:host_main_headers",
-  ]
-
-  sources = [
-    "$root_gen_dir/remoting/version.rc",
-    "entry_point.cc",
-  ]
-
-  if (!is_asan && !use_clang_profiling) {
-    no_default_deps = true
-    ldflags = [
-      "/ENTRY:HostEntryPoint",
-      # "/NODEFAULTLIB",
-    ]
-  }
-}
-
 template("remoting_me2me_host_executable") {
   executable(target_name) {
     forward_variables_from(invoker, [ "output_name" ])
@@ -441,6 +419,8 @@ source_set("chromoting_module") {
   sources = [
     "chromoting_module.cc",
     "chromoting_module.h",
+    "hang_watchdog.cc",
+    "hang_watchdog.h",
     "rdp_desktop_session.cc",
     "rdp_desktop_session.h",
     "rdp_desktop_session_class_factory.cc",

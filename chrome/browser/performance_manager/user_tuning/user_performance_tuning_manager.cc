@@ -120,12 +120,12 @@ bool UserPerformanceTuningManager::HasInstance() {
 
 // static
 UserPerformanceTuningManager* UserPerformanceTuningManager::GetInstance() {
-  DCHECK(g_user_performance_tuning_manager);
+  CHECK(g_user_performance_tuning_manager, base::NotFatalUntil::M163);
   return g_user_performance_tuning_manager;
 }
 
 UserPerformanceTuningManager::~UserPerformanceTuningManager() {
-  DCHECK_EQ(this, g_user_performance_tuning_manager);
+  CHECK_EQ(this, g_user_performance_tuning_manager, base::NotFatalUntil::M163);
   g_user_performance_tuning_manager = nullptr;
 }
 
@@ -220,7 +220,7 @@ UserPerformanceTuningManager::UserPerformanceTuningManager(
       tab_freezing_delegate_(
           tab_freezing_delegate ? std::move(tab_freezing_delegate)
                                 : std::make_unique<TabFreezingDelegateImpl>()) {
-  DCHECK(!g_user_performance_tuning_manager);
+  CHECK(!g_user_performance_tuning_manager, base::NotFatalUntil::M163);
   g_user_performance_tuning_manager = this;
 
   if (notifier) {

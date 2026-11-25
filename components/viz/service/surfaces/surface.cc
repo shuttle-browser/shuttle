@@ -625,6 +625,16 @@ void Surface::UpdateReferencedAllocationGroups(
   referenced_allocation_groups_ = std::move(new_set);
 }
 
+// static
+bool Surface::ReferencesStartAllocationGroup(const SurfaceRange& range,
+                                             const Surface* latest_in_flight) {
+  if (!range.HasDifferentEmbedTokens()) {
+    return false;
+  }
+  return !latest_in_flight ||
+         latest_in_flight->surface_id().HasSameEmbedTokenAs(*range.start());
+}
+
 void Surface::RecomputeActiveReferencedSurfaces() {
   // Extract the latest in flight surface from the ranges in the frame then
   // notify SurfaceManager of the new references.
@@ -652,9 +662,7 @@ void Surface::RecomputeActiveReferencedSurfaces() {
         surface_manager_->GetLatestInFlightSurface(surface_range);
     // Only reference the allocation group for the start of SurfaceRange if the
     // current referenced surface is a part of it.
-    if (surface_range.HasDifferentEmbedTokens() &&
-        (!surface ||
-         surface->surface_id().HasSameEmbedTokenAs(*surface_range.start()))) {
+    if (ReferencesStartAllocationGroup(surface_range, surface)) {
       SurfaceAllocationGroup* start_allocation_group =
           surface_manager_->GetOrCreateAllocationGroupForSurfaceId(
               *surface_range.start());
@@ -942,21 +950,6 @@ void Surface::UpdateActivationDependencies(
   }
   activation_dependencies_ = std::move(new_activation_dependencies);
   blocking_allocation_groups_ = std::move(new_blocking_allocation_groups);
-}
-
-void Surface::TakeCopyOutputRequests(Surface::CopyRequestsMap* copy_requests) {
-  DCHECK(copy_requests->empty());
-  if (!active_frame_data_)
-    return;
-
-  for (const auto& render_pass : GetActiveFrame().render_pass_list) {
-    for (auto& request : render_pass->copy_requests) {
-      copy_requests->insert(
-          std::make_pair(render_pass->id, std::move(request)));
-    }
-    render_pass->copy_requests.clear();
-  }
-  MarkAsDrawn();
 }
 
 void Surface::TakeCopyOutputRequestsFromClient() {

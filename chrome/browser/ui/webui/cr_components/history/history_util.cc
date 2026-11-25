@@ -50,6 +50,7 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       {"goToGeminiChatError", IDS_HISTORY_GO_TO_GEMINI_CHAT_ERROR},
       {"historyMenuButton", IDS_HISTORY_HISTORY_MENU_DESCRIPTION},
       {"historyMenuItem", IDS_HISTORY_HISTORY_MENU_ITEM},
+      {"historyPromoClose", IDS_HISTORY_PROMO_CLOSE},
       {"itemsSelected", IDS_HISTORY_ITEMS_SELECTED},
       {"itemsUnselected", IDS_HISTORY_ITEMS_UNSELECTED},
       {"loading", IDS_HISTORY_LOADING},
@@ -75,6 +76,10 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       {"sourceFilterChipsAriaLabel",
        IDS_HISTORY_SOURCE_FILTER_CHIPS_ARIA_LABEL},
       {"sourceFilterChipUser", IDS_HISTORY_SOURCE_FILTER_CHIP_USER},
+      {"syncedTabsWindowHeaderPlural",
+       IDS_HISTORY_OTHER_SESSIONS_WINDOW_HEADER_PLURAL},
+      {"syncedTabsWindowHeaderSingular",
+       IDS_HISTORY_OTHER_SESSIONS_WINDOW_HEADER_SINGULAR},
       {"title", IDS_HISTORY_TITLE},
   };
   source->AddLocalizedStrings(kStrings);

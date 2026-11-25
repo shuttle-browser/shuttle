@@ -16,13 +16,14 @@
 
 #include "mediapipe/framework/calculator_runner.h"
 
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
-#include "absl/strings/str_cat.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/memory/memory.h"         // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 
 namespace mediapipe {
 
@@ -96,7 +97,7 @@ REGISTER_CALCULATOR(CalculatorRunnerSinkCalculator);
 
 CalculatorRunner::CalculatorRunner(
     const CalculatorGraphConfig::Node& node_config) {
-  MEDIAPIPE_CHECK_OK(InitializeFromNodeConfig(node_config));
+  ABSL_CHECK_OK(InitializeFromNodeConfig(node_config));
 }
 
 absl::Status CalculatorRunner::InitializeFromNodeConfig(
@@ -111,21 +112,22 @@ absl::Status CalculatorRunner::InitializeFromNodeConfig(
         node_config_.mutable_input_side_packet());
   }
 
-  MP_ASSIGN_OR_RETURN(auto input_map,
-                      tool::TagMap::Create(node_config_.input_stream()));
-  inputs_ = absl::make_unique<StreamContentsSet>(input_map);
+  ABSL_ASSIGN_OR_RETURN(auto input_map,
+                        tool::TagMap::Create(node_config_.input_stream()));
+  inputs_ = std::make_unique<StreamContentsSet>(input_map);
 
-  MP_ASSIGN_OR_RETURN(auto output_map,
-                      tool::TagMap::Create(node_config_.output_stream()));
-  outputs_ = absl::make_unique<StreamContentsSet>(output_map);
+  ABSL_ASSIGN_OR_RETURN(auto output_map,
+                        tool::TagMap::Create(node_config_.output_stream()));
+  outputs_ = std::make_unique<StreamContentsSet>(output_map);
 
-  MP_ASSIGN_OR_RETURN(auto input_side_map,
-                      tool::TagMap::Create(node_config_.input_side_packet()));
-  input_side_packets_ = absl::make_unique<PacketSet>(input_side_map);
+  ABSL_ASSIGN_OR_RETURN(auto input_side_map,
+                        tool::TagMap::Create(node_config_.input_side_packet()));
+  input_side_packets_ = std::make_unique<PacketSet>(input_side_map);
 
-  MP_ASSIGN_OR_RETURN(auto output_side_map,
-                      tool::TagMap::Create(node_config_.output_side_packet()));
-  output_side_packets_ = absl::make_unique<PacketSet>(output_side_map);
+  ABSL_ASSIGN_OR_RETURN(
+      auto output_side_map,
+      tool::TagMap::Create(node_config_.output_side_packet()));
+  output_side_packets_ = std::make_unique<PacketSet>(output_side_map);
 
   return absl::OkStatus();
 }
@@ -142,7 +144,7 @@ CalculatorRunner::CalculatorRunner(const std::string& node_config_string) {
   CalculatorGraphConfig::Node node_config;
   ABSL_CHECK(
       proto_ns::TextFormat::ParseFromString(node_config_string, &node_config));
-  MEDIAPIPE_CHECK_OK(InitializeFromNodeConfig(node_config));
+  ABSL_CHECK_OK(InitializeFromNodeConfig(node_config));
 }
 
 CalculatorRunner::CalculatorRunner(const std::string& calculator_type,
@@ -162,7 +164,7 @@ CalculatorRunner::CalculatorRunner(const std::string& calculator_type,
 }
 #endif
 
-CalculatorRunner::~CalculatorRunner() {}
+CalculatorRunner::~CalculatorRunner() = default;
 
 void CalculatorRunner::SetNumInputs(int n) {
   tool::TagAndNameInfo info;
@@ -190,7 +192,7 @@ void CalculatorRunner::SetNumInputSidePackets(int n) {
 
 void CalculatorRunner::InitializeInputs(const tool::TagAndNameInfo& info) {
   ABSL_CHECK(graph_ == nullptr);
-  MEDIAPIPE_CHECK_OK(
+  ABSL_CHECK_OK(
       tool::SetFromTagAndNameInfo(info, node_config_.mutable_input_stream()));
   inputs_.reset(new StreamContentsSet(info));
   log_calculator_proto_ = true;
@@ -198,7 +200,7 @@ void CalculatorRunner::InitializeInputs(const tool::TagAndNameInfo& info) {
 
 void CalculatorRunner::InitializeOutputs(const tool::TagAndNameInfo& info) {
   ABSL_CHECK(graph_ == nullptr);
-  MEDIAPIPE_CHECK_OK(
+  ABSL_CHECK_OK(
       tool::SetFromTagAndNameInfo(info, node_config_.mutable_output_stream()));
   outputs_.reset(new StreamContentsSet(info));
   log_calculator_proto_ = true;
@@ -207,7 +209,7 @@ void CalculatorRunner::InitializeOutputs(const tool::TagAndNameInfo& info) {
 void CalculatorRunner::InitializeInputSidePackets(
     const tool::TagAndNameInfo& info) {
   ABSL_CHECK(graph_ == nullptr);
-  MEDIAPIPE_CHECK_OK(tool::SetFromTagAndNameInfo(
+  ABSL_CHECK_OK(tool::SetFromTagAndNameInfo(
       info, node_config_.mutable_input_side_packet()));
   input_side_packets_.reset(new PacketSet(info));
   log_calculator_proto_ = true;
@@ -239,8 +241,8 @@ absl::Status CalculatorRunner::BuildGraph() {
     std::string name;
     std::string tag;
     int index;
-    MP_RETURN_IF_ERROR(tool::ParseTagIndexName(node_config_.input_stream(i),
-                                               &tag, &index, &name));
+    ABSL_RETURN_IF_ERROR(tool::ParseTagIndexName(node_config_.input_stream(i),
+                                                 &tag, &index, &name));
     // Add a source for each input stream.
     auto* node = config.add_node();
     node->set_calculator("CalculatorRunnerSourceCalculator");
@@ -251,8 +253,8 @@ absl::Status CalculatorRunner::BuildGraph() {
     std::string name;
     std::string tag;
     int index;
-    MP_RETURN_IF_ERROR(tool::ParseTagIndexName(node_config_.output_stream(i),
-                                               &tag, &index, &name));
+    ABSL_RETURN_IF_ERROR(tool::ParseTagIndexName(node_config_.output_stream(i),
+                                                 &tag, &index, &name));
     // Add a sink for each output stream.
     auto* node = config.add_node();
     node->set_calculator("CalculatorRunnerSinkCalculator");
@@ -278,13 +280,13 @@ absl::Status CalculatorRunner::BuildGraph() {
 #endif
   }
 
-  graph_ = absl::make_unique<CalculatorGraph>();
-  MP_RETURN_IF_ERROR(graph_->Initialize(config));
+  graph_ = std::make_unique<CalculatorGraph>();
+  ABSL_RETURN_IF_ERROR(graph_->Initialize(config));
   return absl::OkStatus();
 }
 
 absl::Status CalculatorRunner::Run() {
-  MP_RETURN_IF_ERROR(BuildGraph());
+  ABSL_RETURN_IF_ERROR(BuildGraph());
   // Set the input side packets for the sources.
   std::map<std::string, Packet> input_side_packets;
   int positional_index = -1;
@@ -292,8 +294,8 @@ absl::Status CalculatorRunner::Run() {
     std::string name;
     std::string tag;
     int index;
-    MP_RETURN_IF_ERROR(tool::ParseTagIndexName(node_config_.input_stream(i),
-                                               &tag, &index, &name));
+    ABSL_RETURN_IF_ERROR(tool::ParseTagIndexName(node_config_.input_stream(i),
+                                                 &tag, &index, &name));
     const CalculatorRunner::StreamContents* contents;
     if (index == -1) {
       // positional_index considers the case when the tag is empty, which is
@@ -313,7 +315,7 @@ absl::Status CalculatorRunner::Run() {
     std::string name;
     std::string tag;
     int index;
-    MP_RETURN_IF_ERROR(tool::ParseTagIndexName(
+    ABSL_RETURN_IF_ERROR(tool::ParseTagIndexName(
         node_config_.input_side_packet(i), &tag, &index, &name));
     const Packet* packet;
     if (index == -1) {
@@ -329,8 +331,8 @@ absl::Status CalculatorRunner::Run() {
     std::string name;
     std::string tag;
     int index;
-    MP_RETURN_IF_ERROR(tool::ParseTagIndexName(node_config_.output_stream(i),
-                                               &tag, &index, &name));
+    ABSL_RETURN_IF_ERROR(tool::ParseTagIndexName(node_config_.output_stream(i),
+                                                 &tag, &index, &name));
     CalculatorRunner::StreamContents* contents;
     if (index == -1) {
       contents = &outputs_->Get(tag, ++positional_index);
@@ -342,18 +344,18 @@ absl::Status CalculatorRunner::Run() {
     input_side_packets.emplace(absl::StrCat(kSinkPrefix, name),
                                Adopt(new auto(contents)));
   }
-  MP_RETURN_IF_ERROR(graph_->Run(input_side_packets));
+  ABSL_RETURN_IF_ERROR(graph_->Run(input_side_packets));
 
   positional_index = -1;
   for (int i = 0; i < node_config_.output_side_packet_size(); ++i) {
     std::string name;
     std::string tag;
     int index;
-    MP_RETURN_IF_ERROR(tool::ParseTagIndexName(
+    ABSL_RETURN_IF_ERROR(tool::ParseTagIndexName(
         node_config_.output_side_packet(i), &tag, &index, &name));
     Packet& contents = output_side_packets_->Get(
         tag, (index == -1) ? ++positional_index : index);
-    MP_ASSIGN_OR_RETURN(contents, graph_->GetOutputSidePacket(name));
+    ABSL_ASSIGN_OR_RETURN(contents, graph_->GetOutputSidePacket(name));
   }
   return absl::OkStatus();
 }

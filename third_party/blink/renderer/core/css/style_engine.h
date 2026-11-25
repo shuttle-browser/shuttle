@@ -412,8 +412,6 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
                                const ComputedStyle* new_root_style);
   void SetUsesTreeCountingFunctions() { uses_tree_counting_functions_ = true; }
 
-  void ResetCSSFeatureFlags(const RuleFeatureSet&);
-
   bool CountersChanged() const { return counters_changed_; }
   void MarkCountersDirty() { counters_changed_ = true; }
   void MarkCountersClean() { counters_changed_ = false; }
@@ -452,6 +450,19 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
   void InvalidateStyle();
   bool MayHaveViewportDependentMediaQueries();
   bool HasViewportDependentPropertyRegistrations();
+
+  class InApplyAnimatedStyleScope {
+    STACK_ALLOCATED();
+
+   public:
+    explicit InApplyAnimatedStyleScope(StyleEngine& engine)
+        : auto_reset_(&engine.in_apply_animated_style_, true) {}
+
+   private:
+    base::AutoReset<bool> auto_reset_;
+  };
+
+  bool InApplyAnimatedStyle() const { return in_apply_animated_style_; }
 
   class InApplyAnimationUpdateScope {
     STACK_ALLOCATED();
@@ -734,10 +745,6 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
   bool InInterleavedStyleRecalc() const {
     return InContainerQueryStyleRecalc() || InPositionTryStyleRecalc();
   }
-  void SetInScrollMarkersAttachment(bool in_scroll_markers_attachment) {
-    DCHECK(!in_scroll_markers_attachment_ || !in_scroll_markers_attachment);
-    in_scroll_markers_attachment_ = in_scroll_markers_attachment;
-  }
   bool InScrollMarkersAttachment() const {
     return in_scroll_markers_attachment_;
   }
@@ -936,7 +943,8 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
       const ActiveStyleSheetVector& user_sheets);
 
   void ClearKeyframeRules();
-  void ClearPropertyRules();
+  void UpdatePropertyRules(const ActiveStyleSheetVector& user_style_sheets,
+                           const ActiveStyleSheetVector& author_style_sheets);
 
   class AtRuleCascadeMap;
 
@@ -1096,6 +1104,7 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
   bool in_scroll_markers_attachment_{false};
   bool in_dom_removal_{false};
   bool in_detach_scope_{false};
+  bool in_apply_animated_style_{false};
   bool in_apply_animation_update_{false};
   bool in_ensure_computed_style_{false};
   bool viewport_style_dirty_{false};

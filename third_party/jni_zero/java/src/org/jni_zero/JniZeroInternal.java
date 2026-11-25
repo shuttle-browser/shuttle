@@ -4,6 +4,8 @@
 
 package org.jni_zero;
 
+import org.jni_zero.internal.Nullable;
+
 /**
  * Internal helpers for JNI Zero generated code and C++ glue.
  *
@@ -17,6 +19,14 @@ public final class JniZeroInternal {
      * and C++ entrypoints.
      */
     public static long getNativePtr(JniPtr<?> ptr) {
-        return ptr == null ? 0 : ((JniPtrInner<?>) ptr).getNativePtr();
+        return ptr == null ? 0 : ((JniPtrImplBase<?>) ptr).getNativePtr();
+    }
+
+    /**
+     * Wraps a raw native pointer value in a {@link JniRawPtr}, or returns {@code null} for {@code
+     * 0}. Used by generated JNI glue code.
+     */
+    public static @Nullable JniRawPtr<?> createRawPtr(long ptr) {
+        return ptr == 0 ? null : new JniRawPtrImpl<>(ptr);
     }
 }

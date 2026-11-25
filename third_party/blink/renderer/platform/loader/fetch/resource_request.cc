@@ -337,10 +337,6 @@ void ResourceRequestHead::ClearHTTPOrigin() {
   http_header_fields_.Remove(http_names::kOrigin);
 }
 
-void ResourceRequestHead::ClearHTTPUserAgent() {
-  http_header_fields_.Remove(http_names::kUserAgent);
-}
-
 void ResourceRequestBody::SetFormBody(
     scoped_refptr<EncodedFormData> form_body) {
   form_body_ = std::move(form_body);
@@ -443,14 +439,11 @@ const CacheControlHeader& ResourceRequestHead::GetCacheControlHeader() const {
   return cache_control_header_cache_;
 }
 
-void ResourceRequestHead::SetFetchIntegrity(
-    const String& integrity,
-    const FeatureContext* feature_context) {
+void ResourceRequestHead::SetFetchIntegrity(const String& integrity) {
   fetch_integrity_ = integrity;
 
   IntegrityMetadataSet metadata;
-  SubresourceIntegrity::ParseIntegrityAttribute(integrity, metadata,
-                                                feature_context);
+  SubresourceIntegrity::ParseIntegrityAttribute(integrity, metadata);
   SetExpectedPublicKeys(metadata);
 }
 

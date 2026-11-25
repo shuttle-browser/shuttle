@@ -57,6 +57,11 @@ struct BLINK_COMMON_EXPORT
     return r.has_image_contents;
   }
 
+  static const gfx::Rect& node_bounds(
+      const blink::UntrustworthyContextMenuParams& r) {
+    return r.node_bounds;
+  }
+
   static const std::optional<blink::FrameToken>& image_replacement_frame_token(
       const blink::UntrustworthyContextMenuParams& r) {
     return r.image_replacement_frame_token;

@@ -5,7 +5,12 @@
 """Tests for compile_java.py"""
 
 import collections
+import os
+import sys
+import tempfile
+import types
 import unittest
+from unittest import mock
 
 import compile_java
 
@@ -96,6 +101,205 @@ class CompileJavaTests(unittest.TestCase):
             )
 
         self.assertRaises(Exception, inner)
+
+    def testFilteredJarExcludesRClasses(self):
+        base_filter = compile_java._CreateGlobFilter(
+            exclude_globs=['*/R.class', '*/R$*.class', '*/Excluded.class'],
+            include_globs=[],
+        )
+        filtered_jar_filter = compile_java._CreateFilteredJarFilter(base_filter)
+        self.assertFalse(filtered_jar_filter('org/chromium/Included.class'))
+        self.assertTrue(filtered_jar_filter('org/chromium/Excluded.class'))
+        self.assertFalse(filtered_jar_filter('org/chromium/R.class'))
+        self.assertFalse(filtered_jar_filter('org/chromium/R$string.class'))
+
+
+class ShardingTests(unittest.TestCase):
+    def setUp(self):
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self._num_files = 0
+
+    def tearDown(self):
+        self._temp_dir.cleanup()
+
+    def _CreateFiles(self, sizes):
+        paths = []
+        for size in sizes:
+            path = os.path.join(
+                self._temp_dir.name, f'F{self._num_files:02}.java'
+            )
+            self._num_files += 1
+            with open(path, 'w') as f:
+                f.write('x' * size)
+            paths.append(path)
+        return paths
+
+    def testComputeNumShards(self):
+        target = compile_java._JAVAC_SHARD_TARGET_SIZE
+        self.assertEqual(1, compile_java._ComputeNumShards([], False))
+        with mock.patch.object(compile_java, '_MIN_FILES_TO_SHARD', 0):
+            files = self._CreateFiles([target // 2])
+            self.assertEqual(1, compile_java._ComputeNumShards(files, False))
+            files = self._CreateFiles([target] * 3)
+            self.assertEqual(3, compile_java._ComputeNumShards(files, False))
+
+    def testComputeNumShards_TooFewFiles(self):
+        num_files = compile_java._MIN_FILES_TO_SHARD
+        size = compile_java._JAVAC_SHARD_TARGET_SIZE * 4 // num_files
+        files = self._CreateFiles([size] * num_files)
+        self.assertEqual(1, compile_java._ComputeNumShards(files[1:], False))
+        self.assertEqual(4, compile_java._ComputeNumShards(files, False))
+
+    def testComputeNumShards_Max(self):
+        files = self._CreateFiles([10] * 100)
+        with mock.patch.object(compile_java, '_JAVAC_SHARD_TARGET_SIZE', 10):
+            self.assertEqual(
+                compile_java._MAX_JAVAC_SHARDS,
+                compile_java._ComputeNumShards(files, False),
+            )
+
+    def testComputeNumShards_ErrorProne(self):
+        files = self._CreateFiles([10] * 20)
+
+        def num_shards(usable_cpus, files):
+            with (
+                mock.patch.object(
+                    compile_java, '_GetUsableCpuCount', return_value=usable_cpus
+                ),
+                mock.patch.object(
+                    compile_java, '_ERRORPRONE_MIN_SHARD_SIZE', 10
+                ),
+            ):
+                return compile_java._ComputeNumShards(files, True)
+
+        # Capped by half the number of usable CPUs.
+        self.assertEqual(4, num_shards(8, files))
+        self.assertEqual(4, num_shards(9, files))
+        self.assertEqual(1, num_shards(1, files))
+        # Capped by _MAX_ERRORPRONE_SHARDS.
+        self.assertEqual(
+            compile_java._MAX_ERRORPRONE_SHARDS, num_shards(96, files)
+        )
+        # Capped by the amount of source.
+        with mock.patch.object(compile_java, '_MIN_FILES_TO_SHARD', 0):
+            self.assertEqual(3, num_shards(96, files[:3]))
+        # Too few files.
+        self.assertEqual(1, num_shards(96, files[:3]))
+
+    def testGetUsableCpuCount(self):
+        with mock.patch(
+            'os.sched_getaffinity', return_value={0, 1, 2}, create=True
+        ):
+            self.assertEqual(3, compile_java._GetUsableCpuCount())
+        for error in (AttributeError, OSError):
+            with (
+                mock.patch(
+                    'os.sched_getaffinity', side_effect=error, create=True
+                ),
+                mock.patch('os.cpu_count', return_value=5),
+            ):
+                self.assertEqual(5, compile_java._GetUsableCpuCount())
+
+    def testShardJavaFiles(self):
+        files = self._CreateFiles([10, 10, 10, 10, 40, 10, 10])
+        shards = compile_java._ShardJavaFiles(list(reversed(files)), 3)
+        # Files stay in sorted order, and are balanced by size.
+        self.assertEqual(
+            [files[0:3], files[3:5], files[5:7]],
+            shards,
+        )
+        self.assertEqual(sorted(files), sorted(sum(shards, [])))
+
+    def testShardJavaFiles_OmitsEmptyShards(self):
+        files = self._CreateFiles([100, 1])
+        shards = compile_java._ShardJavaFiles(files, 4)
+        self.assertEqual([[files[0]], [files[1]]], shards)
+
+    def testAllowSharding(self):
+        def allow(classpath, processorpath, javac, use_errorprone):
+            options = types.SimpleNamespace(
+                header_jar='header.jar',
+                classpath=classpath,
+                processorpath=processorpath,
+            )
+            return compile_java._AllowSharding(options, [javac], use_errorprone)
+
+        graalvm = compile_java._JAVAC_GRAALVM_PATH
+        self.assertTrue(allow(['header.jar'], [], graalvm, False))
+        # Needs the header jar to find classes from other shards.
+        self.assertFalse(allow([], [], graalvm, False))
+        self.assertFalse(allow([], ['ep.jar'], 'errorprone', True))
+        # Not worthwhile for the JVM javac, nor with annotation processors.
+        self.assertFalse(allow(['header.jar'], [], 'javac', False))
+        self.assertFalse(allow(['header.jar'], ['ap.jar'], graalvm, False))
+        # Error Prone's processorpath has only Error Prone plugins.
+        self.assertTrue(allow(['header.jar'], ['ep.jar'], 'errorprone', True))
+        self.assertTrue(allow(['header.jar'], ['ep.jar'], 'javac', True))
+
+    def _RunShardedJavac(
+        self, sizes, chromium_code=True, warnings_as_errors=False
+    ):
+        files = self._CreateFiles(sizes)
+        rsp_path = os.path.join(self._temp_dir.name, 'files.txt')
+        # Prints the files it is given, and fails if F02.java is one of them.
+        script = (
+            'import sys; files = open(sys.argv[1][1:]).read().split(); '
+            'names = [f.rsplit("/", 1)[1] for f in files]; '
+            'print("out", *names); print("err", *names, file=sys.stderr); '
+            'sys.exit("F02.java" in names)'
+        )
+        options = types.SimpleNamespace(
+            chromium_code=chromium_code, warnings_as_errors=warnings_as_errors
+        )
+        callback = mock.Mock()
+        output_filter = mock.Mock(side_effect=lambda x: x)
+        try:
+            compile_java._RunShardedJavac(
+                [sys.executable, '-c', script, '@' + rsp_path],
+                files,
+                len(sizes),
+                rsp_path,
+                options,
+                output_filter,
+                callback,
+            )
+        finally:
+            callback.assert_called_once_with()
+            # Called once for stdout and once for stderr (not per-shard).
+            self.assertEqual(2, output_filter.call_count)
+
+    def testRunShardedJavac(self):
+        with mock.patch('sys.stdout.write') as stdout:
+            with mock.patch('sys.stderr.write') as stderr:
+                self._RunShardedJavac([10, 10], chromium_code=True)
+        # Output is combined in shard order.
+        self.assertEqual(
+            mock.call('out F00.java\nout F01.java\n'), stdout.call_args_list[0]
+        )
+        self.assertEqual(
+            mock.call('err F00.java\nerr F01.java\n'), stderr.call_args_list[0]
+        )
+
+    def testRunShardedJavac_Failure(self):
+        with self.assertRaises(
+            compile_java.build_utils.CalledProcessError
+        ) as cm:
+            self._RunShardedJavac([10, 10, 10])
+        # Contains output from all shards.
+        self.assertIn(
+            'err F00.java\nerr F01.java\nerr F02.java', str(cm.exception)
+        )
+
+    def testRunShardedJavac_WarningsAsErrors(self):
+        with mock.patch('sys.stdout.write'), mock.patch('sys.stderr.write'):
+            with self.assertRaises(compile_java.build_utils.CalledProcessError):
+                self._RunShardedJavac([10, 10], warnings_as_errors=True)
+
+    def testRunShardedJavac_NotChromiumCode(self):
+        with mock.patch('sys.stdout.write') as stdout:
+            with mock.patch('sys.stderr.write'):
+                self._RunShardedJavac([10, 10], chromium_code=False)
+        stdout.assert_not_called()
 
 
 if __name__ == '__main__':

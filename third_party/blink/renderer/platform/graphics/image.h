@@ -62,10 +62,9 @@ class RectF;
 
 namespace blink {
 
+enum class C2PAManifestStatus;
 class GraphicsContext;
 class Image;
-class WebGraphicsContext3DProvider;
-class WebGraphicsContext3DProviderWrapper;
 class DarkModeImageCache;
 
 struct ImageTilingInfo;
@@ -215,6 +214,9 @@ class PLATFORM_EXPORT Image : public ThreadSafeRefCounted<Image> {
   // Returns g_null_atom if unknown.
   virtual const AtomicString& MimeType() const;
 
+  // Returns whether the image contains an embedded C2PA manifest.
+  virtual C2PAManifestStatus GetC2PAManifestStatus() const;
+
   virtual void DestroyDecodedData() = 0;
 
   // In some overrides, |Data()| can be somewhat expensive (e.g. in BitmapImage,
@@ -335,17 +337,6 @@ class PLATFORM_EXPORT Image : public ThreadSafeRefCounted<Image> {
                            const gfx::RectF& src_rect,
                            const ImageDrawOptions& draw_options);
 
-  // Use ContextProvider() for immediate use only, use
-  // ContextProviderWrapper() to obtain a retainable reference. Note:
-  // Implemented only in sub-classes that use the GPU.
-  virtual WebGraphicsContext3DProvider* ContextProvider() const {
-    return nullptr;
-  }
-  virtual base::WeakPtr<WebGraphicsContext3DProviderWrapper>
-  ContextProviderWrapper() const {
-    return nullptr;
-  }
-
   PaintImage::Id paint_image_id() const { return stable_image_id_; }
 
   // Returns an SkBitmap that is a copy of the image's current frame.
@@ -354,7 +345,9 @@ class PLATFORM_EXPORT Image : public ThreadSafeRefCounted<Image> {
   DarkModeImageCache* GetDarkModeImageCache();
 
  protected:
-  Image(ImageObserver* = nullptr, bool is_multipart = false);
+  Image(ImageObserver* observer, bool is_multipart, bool is_cors_same_origin);
+
+  bool IsCorsSameOrigin() const { return is_cors_same_origin_; }
 
   virtual void DrawPattern(GraphicsContext&,
                            const cc::PaintFlags&,
@@ -383,6 +376,7 @@ class PLATFORM_EXPORT Image : public ThreadSafeRefCounted<Image> {
   WeakPersistent<ImageObserver> image_observer_;
   PaintImage::Id stable_image_id_;
   const bool is_multipart_;
+  const bool is_cors_same_origin_;
   std::unique_ptr<DarkModeImageCache> dark_mode_image_cache_;
 };
 

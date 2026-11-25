@@ -85,6 +85,7 @@ source_set("internal") {
       "//chrome/browser/ui/browser_active_state_manager",
       "//chrome/browser/ui/browser_ui_controller",
       "//chrome/browser/ui/browser_web_contents_delegate",
+      "//chrome/browser/ui/browser_window_theme_observer",
       "//chrome/browser/ui/call_to_action",
       "//chrome/browser/ui/context_highlight",
       "//chrome/browser/ui/exclusive_access",
@@ -186,6 +187,7 @@ source_set("internal") {
       "//chrome/browser/ui:browser_location_bar_model_delegate",
       "//chrome/browser/ui:browser_select_file_dialog_controller",
       "//chrome/browser/ui:browser_window_header",
+      "//chrome/browser/ui/search",
       "//chrome/browser/ui/views/frame:browser_view_header",
     ]
   }

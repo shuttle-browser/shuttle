@@ -21,11 +21,6 @@ class KURL;
 class ResourceResponse;
 class SecurityOrigin;
 
-enum class CorsFlag : uint8_t {
-  Unset,
-  Set,
-};
-
 // CORS related utility functions.
 namespace cors {
 
@@ -42,8 +37,6 @@ PLATFORM_EXPORT Vector<String> PrivilegedNoCorsHeaderNames();
 PLATFORM_EXPORT bool IsForbiddenRequestHeader(const String& name,
                                               const String& value);
 PLATFORM_EXPORT bool ContainsOnlyCorsSafelistedHeaders(const HTTPHeaderMap&);
-
-PLATFORM_EXPORT bool IsOkStatus(int status);
 
 // Calculates and returns the CORS flag used in several "fetch" algorithms in
 // https://fetch.spec.whatwg.org/. This function is corresponding to the CORS

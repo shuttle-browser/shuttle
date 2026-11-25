@@ -74,7 +74,7 @@
 #include "components/prefs/pref_member.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/buildflags.h"
-#include "components/safe_browsing/content/browser/safe_browsing_navigation_observer_manager.h"
+#include "components/safe_browsing/content/browser/navigation_observer/safe_browsing_navigation_observer_manager.h"
 #include "components/safe_browsing/content/browser/web_ui/web_ui_content_info_singleton.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/safe_search_api/safe_search_util.h"
@@ -95,8 +95,8 @@
 #include "net/base/mime_util.h"
 #include "net/base/network_change_notifier.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/display/types/display_constants.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -124,6 +124,7 @@
 #include "net/http/http_content_disposition.h"
 #include "third_party/blink/public/common/mime_util/mime_util.h"
 #include "ui/android/window_android.h"
+#include "url/url_constants.h"
 #else
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
@@ -151,7 +152,7 @@
 #include "chrome/browser/safe_browsing/download_protection/download_protection_util.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #include "components/safe_browsing/content/browser/download/download_stats.h"
-#include "components/safe_browsing/content/common/file_type_policies.h"
+#include "components/safe_browsing/content/common/file_type_policies/file_type_policies.h"
 #endif
 
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
@@ -213,7 +214,7 @@ constexpr char kDownloadContentUri[] =
 
 bool IsDownloadSaveAsContextMenuEnabled() {
   return base::FeatureList::IsEnabled(
-             download::features::kEnableDownloadSaveAsContextMenu) &&
+             download::features::kEnableDownloadSaveAsContextMenu) ||
          base::android::device_info::is_desktop();
 }
 
@@ -1001,17 +1002,17 @@ bool ChromeDownloadManagerDelegate::InterceptDownloadIfApplicable(
     if (!blink::IsSupportedMimeType(mime_type) &&
         !IsPdfAndSupported(mime_type, web_contents)) {
       download_message_bridge_->ShowUnsupportedDownloadMessage(web_contents);
-      base::UmaHistogramEnumeration(
-          "Download.Blocked.ContentType.Automotive",
-          download::DownloadContentFromMimeType(mime_type, false));
       return true;
     }
   }
 
-  if (ShouldOpenPdfInlineInternal(/*incognito=*/false) &&
+  // Drop transient downloads triggered by navigating to a local PDF, since the
+  // PDF viewer reads the local file:// or content:// URI directly. Allow
+  // explicit (non-transient) downloads of local PDFs (e.g. saving an edited
+  // PDF) to proceed.
+  if (is_transient && ShouldOpenPdfInline() &&
       mime_type == pdf::kPDFMimeType) {
-    // If this is already a file, there is no need to download.
-    if (url.SchemeIsFile() || url.SchemeIs("content")) {
+    if (url.SchemeIsFile() || url.SchemeIs(url::kContentScheme)) {
       return true;
     }
   }
@@ -1175,7 +1176,8 @@ void ChromeDownloadManagerDelegate::OpenDownload(DownloadItem* download) {
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
           net::FilePathToFileURL(download->GetTargetFilePath()),
-          WindowOpenDisposition::kNewForegroundTab, ui::PAGE_TRANSITION_LINK);
+          ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+          ui::PAGE_TRANSITION_LINK);
 
   if (download->GetMimeType() == "application/x-x509-user-cert") {
     chrome::ShowSettingsSubPage(browser, "certificates");

@@ -1,0 +1,21 @@
+upstream {
+  commit: "e81ce950f875ad183b92fff5d35efa35fb9cd9aa"
+  artifacts {
+    git {
+      repository: "https://github.com/google/shell-encryption"
+      commit: "e81ce950f875ad183b92fff5d35efa35fb9cd9aa"
+    }
+  }
+}
+stages {
+  input {
+    patch { copybara {} }
+  }
+  publish { git {} }
+}
+latest {
+  git {
+    repository: "https://github.com/google/shell-encryption"
+    branch: "HEAD"
+  }
+}

@@ -15,6 +15,7 @@
 #include "chrome/browser/ui/content_settings/content_setting_image_view_delegate.h"
 #include "chrome/browser/ui/views/location_bar/icon_label_bubble_view.h"
 #include "ui/base/metadata/metadata_header_macros.h"
+#include "ui/color/color_variant.h"
 #include "ui/gfx/animation/animation_delegate.h"
 #include "ui/views/view.h"
 #include "ui/views/widget/widget.h"
@@ -56,14 +57,9 @@ class ContentSettingImageView : public IconLabelBubbleView,
   void Update();
 
   // Set the color of the button icon. Based on the text color by default.
-  void SetIconColor(std::optional<SkColor> color);
-  std::optional<SkColor> GetIconColor() const;
+  void SetIconColor(std::optional<ui::ColorVariant> color);
+  std::optional<ui::ColorVariant> GetIconColor() const;
 
-  // Disables transient in-out label animations. Does not affect labels that
-  // stay expanded until the bubble is closed (see
-  // ContentSettingImageModel::should_keep_label_expanded).
-  // TODO(https://crbug.com/575951625): Clean up how PWA titlebar content
-  // setting animations and quiet notification UI interact.
   void disable_animation() { can_animate_ = false; }
 
   bool ShowBubbleImpl();
@@ -131,13 +127,16 @@ class ContentSettingImageView : public IconLabelBubbleView,
 
   void UpdateElementIdentifier();
 
+  // Shows the in-product help promo associated with this icon, if any.
+  void MaybeShowPromo(content::WebContents* web_contents);
+
   // Stops keeping the label expanded and collapses it, optionally animated.
   void CollapseKeptExpandedLabel(bool animate);
 
   raw_ptr<ContentSettingImageViewDelegate> delegate_ = nullptr;  // Weak.
   std::unique_ptr<ContentSettingImageModel> content_setting_image_model_;
   raw_ptr<views::BubbleDialogDelegateView> bubble_view_ = nullptr;
-  std::optional<SkColor> icon_color_;
+  std::optional<ui::ColorVariant> icon_color_;
   raw_ptr<BrowserWindowInterface> browser_;
 
   // Observes destruction of bubble's Widgets spawned by this ImageView.

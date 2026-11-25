@@ -3,8 +3,8 @@ Short Name: Error Prone
 Version: N/A
 Revision: DEPS
 Update Mechanism: Autoroll
-License: Apache-2.0
-License File: LICENSE
+License: Apache-2.0, MIT
+License File: LICENSE, LICENSE.nullaway
 Security Critical: No
 Shipped: no
 URL: https://errorprone.info/
@@ -12,11 +12,25 @@ URL: https://errorprone.info/
 Description:
 Java static analysis tool.
 
+The CIPD package contains:
+ * error_prone_core.jar: Error Prone and its dependencies.
+ * nullaway.jar: NullAway (https://github.com/uber/NullAway/), an Error Prone
+   plugin for checking @Nullable annotations (MIT license). Classes that already
+   exist in error_prone_core.jar are removed.
+ * NULLAWAY_VERSION: The version of NullAway within nullaway.jar.
+ * error_prone: A GraalVM native-image (linux-x64 only) of javac with Error
+   Prone, NullAway, and //tools/android/errorprone_plugin compiled in. Built
+   with Oracle GraalVM, which is licensed under the GraalVM Free Terms and
+   Conditions.
+
 Local Modifications:
-None
+FieldCanBeFinalFast.java is a faster version of FieldCanBeFinal. It should be
+deleted once Error Prone's upstream check picks up the fixes it introduces.
 
 What version is this:
   * Run print_version.sh to find out the version.
+  * The NullAway version is in cipd/NULLAWAY_VERSION. NullAway is updated
+    whenever a new Error Prone package is built.
   * New instances are uploaded by the packager bot:
     https://ci.chromium.org/p/chromium/builders/ci/3pp-linux-amd64-packager
   * The bot autoruns every 6 hours. Ping a trooper or a clank-build-core@ dev to
@@ -24,3 +38,20 @@ What version is this:
     https://luci-scheduler.appspot.com/jobs/chromium/3pp-linux-amd64-packager
   * New versions are rolled automatically by:
     TODO(agrieve): Add auto-roller.
+
+Tips on Rolling:
+NullAway is rolled along with Error Prone. If there are a lot of new NullAway
+warnings, suppress them by:
+
+1) Create a copy / paste of NullAway.assumeNonNull() (e.g. "suppressNullAway")
+2) Update errorprone.py:
+   -ERRORPRONE_CHECKS_TO_APPLY = []
+   +ERRORPRONE_CHECKS_TO_APPLY = ['NullAway']
+   ...
+   +    errorprone_flags += ['-XepOpt:NullAway:SuggestSuppressions=true']
+   ..
+   -                          'org.chromium.build.NullUtil.assumeNonNull')]
+   +                          'org.chromium.build.NullUtil.suppressNullAway')]
+3) Update build/config/siso/android.star (for "android/errorprone" block):
+   +            "remote": False,
+4) Build all targets: cd out/Debug && ../../tools/android/build_all_errorprone.sh

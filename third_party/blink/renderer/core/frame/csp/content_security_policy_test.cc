@@ -1949,7 +1949,7 @@ TEST_F(ContentSecurityPolicyTest, AddHashReportSanitization) {
       ContentSecurityPolicySource::kHTTP, *secure_origin));
 
   HashMap<HashAlgorithm, String> hashes;
-  hashes.insert(kHashAlgorithmSha256, "some-hash");
+  hashes.insert(HashAlgorithm::kSha256, "some-hash");
 
   // An extension URL should be sanitized in the report.
   KURL extension_url("chrome-extension://abcdefghijklmnop/script.js");
@@ -1996,9 +1996,9 @@ TEST_F(ContentSecurityPolicyTest, ReportViolationBypassingScheme) {
   // example.test. The report should be dropped.
   execution_context->SetURL(KURL("https://example.test"));
   policy->ReportViolation(
-      "script-src 'none'", CSPDirectiveName::ScriptSrc, "Blocked", KURL(),
-      Vector<String>(), false, "script-src 'none'",
-      ContentSecurityPolicyType::kEnforce,
+      CSPDirectiveName::ScriptSrc, /*blocked_url=*/KURL(),
+      /*report_endpoints=*/Vector<String>(), /*use_reporting_api=*/false,
+      /*header=*/"script-src 'none'", ContentSecurityPolicyType::kEnforce,
       ContentSecurityPolicyViolationType::kInlineViolation, source_location);
 
   EXPECT_EQ(0u, policy->violation_reports_sent_.size());
@@ -2007,15 +2007,37 @@ TEST_F(ContentSecurityPolicyTest, ReportViolationBypassingScheme) {
   // chrome-extension itself. Now the report should be sent.
   execution_context->SetURL(KURL("chrome-extension://abcdefg"));
   policy->ReportViolation(
-      "script-src 'none'", CSPDirectiveName::ScriptSrc, "Blocked", KURL(),
-      Vector<String>(), false, "script-src 'none'",
-      ContentSecurityPolicyType::kEnforce,
+      CSPDirectiveName::ScriptSrc, /*blocked_url=*/KURL(),
+      /*report_endpoints=*/Vector<String>(), /*use_reporting_api=*/false,
+      /*header=*/"script-src 'none'", ContentSecurityPolicyType::kEnforce,
       ContentSecurityPolicyViolationType::kInlineViolation, source_location);
   EXPECT_EQ(1u, policy->violation_reports_sent_.size());
 
   SchemeRegistry::
       RemoveURLSchemeRegisteredAsBypassingContentSecurityPolicyForTest(
           "chrome-extension");
+}
+
+TEST_F(ContentSecurityPolicyTest, HashesToReport) {
+  static_assert(sizeof(HashAlgorithmSet) == 1);
+  EXPECT_TRUE(csp->HashesToReport().empty());
+
+  csp->AddPolicies(ParseContentSecurityPolicies(
+      "script-src 'self'", ContentSecurityPolicyType::kEnforce,
+      ContentSecurityPolicySource::kHTTP, *secure_origin));
+  EXPECT_TRUE(csp->HashesToReport().empty());
+
+  csp->AddPolicies(ParseContentSecurityPolicies(
+      "script-src 'report-sha256'", ContentSecurityPolicyType::kEnforce,
+      ContentSecurityPolicySource::kHTTP, *secure_origin));
+  EXPECT_EQ(HashAlgorithmSet({HashAlgorithm::kSha256}), csp->HashesToReport());
+
+  csp->AddPolicies(ParseContentSecurityPolicies(
+      "default-src 'report-sha384'; script-src 'report-sha512'",
+      ContentSecurityPolicyType::kReport, ContentSecurityPolicySource::kHTTP,
+      *secure_origin));
+  EXPECT_EQ(HashAlgorithmSet({HashAlgorithm::kSha256, HashAlgorithm::kSha512}),
+            csp->HashesToReport());
 }
 
 }  // namespace blink

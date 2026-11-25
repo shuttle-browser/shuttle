@@ -946,7 +946,7 @@
       'model_validation-linux': {
         'mixins': [
           'chrome-intelligence-swarming-pool',
-          'linux-jammy',
+          'linux-ubuntu',
           'x86-64',
         ],
         'test_suites': {
@@ -1144,7 +1144,7 @@
         'mixins': [
           'chrome-intelligence-swarming-pool',
           'nvidia_geforce_gtx_1660',
-          'linux-jammy',
+          'linux-ubuntu',
         ],
         'test_suites': {
            'gtest_tests': 'optimization_guide_gpu_gtests',

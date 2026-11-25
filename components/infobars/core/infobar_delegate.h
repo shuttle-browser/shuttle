@@ -10,7 +10,7 @@
 
 #include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 #include "url/gurl.h"
 
 class ConfirmInfoBarDelegate;
@@ -64,6 +64,11 @@ class InfoBarDelegate {
     PAGE_ACTION_TYPE,
   };
 
+  // NOTE FOR DESKTOP INFOBARS:
+  // All new desktop infobars MUST use the centralized BrowserInfoBarManager
+  // framework (via InfoBarSpec) rather than directly subclassing
+  // ConfirmInfoBarDelegate or calling CreateConfirmInfoBar().
+  //
   // Unique identifier for every InfoBarDelegate subclass.  Use suffixes to mark
   // infobars specific to particular OSes/platforms.
   // NEW VALUES MUST BE APPENDED AND AVOID CHANGING ANY PRE-EXISTING VALUES.
@@ -209,7 +214,7 @@ class InfoBarDelegate {
     WEB_APP_BLOCKED_MIGRATION_INFOBAR_DELEGATE = 134,
     OSCRYPTASYNC_AVAILABILITY_INFOBAR_DELEGATE = 135,
     AUTOFILL_AI_PRE_FETCH_FAILURE_INFOBAR_DELEGATE_IOS = 136,
-    SIGNIN_QRCODE_INFOBAR_DELEGATE = 137,
+    // Removed: SIGNIN_QRCODE_INFOBAR_DELEGATE = 137,
     FORMS_AI_PRIVATE_INFERENCE_INFOBAR_DELEGATE_IOS = 138,
     PASSWORD_SAVED_INFOBAR_DELEGATE_IOS = 139,
     CONTEXTUAL_CUE_INFOBAR_DELEGATE_IOS = 140,
@@ -304,7 +309,7 @@ class InfoBarDelegate {
   //
   // The |disposition| specifies how the resulting document should be loaded
   // (based on the event flags present when the link was clicked).
-  virtual bool LinkClicked(WindowOpenDisposition disposition);
+  virtual bool LinkClicked(ui::mojom::WindowOpenDisposition disposition);
 
   // Called when the user clicks on the close button to dismiss the infobar.
   virtual void InfoBarDismissed();

@@ -129,7 +129,7 @@
 #import "ui/base/cocoa/nsmenuitem_additions.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/l10n/l10n_util_mac.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/color/color_provider.h"
 #include "ui/color/color_provider_manager.h"
 #include "ui/color/color_provider_source.h"
@@ -346,7 +346,7 @@ void FocusWindowSetOnCurrentSpace(NSSet<NSWindow*>* windows) {
     }
   }
   if (all_miniaturized && frontmost_miniaturized_window) {
-    DCHECK(!frontmost_window);
+    CHECK(!frontmost_window, base::NotFatalUntil::M163);
     // Note the call to makeKeyAndOrderFront: will deminiaturize the window.
     frontmost_window = frontmost_miniaturized_window;
   }
@@ -369,7 +369,8 @@ base::FilePath GetStartupProfilePathMac() {
   // This profile path is used to open URLs passed in application:openURLs:.
   StartupProfilePathInfo profile_path_info = GetStartupProfilePath(
       /*cur_dir=*/base::FilePath(), *base::CommandLine::ForCurrentProcess());
-  DCHECK_EQ(profile_path_info.mode, StartupProfileMode::kBrowserWindow);
+  CHECK_EQ(profile_path_info.mode, StartupProfileMode::kBrowserWindow,
+           base::NotFatalUntil::M163);
   return profile_path_info.path;
 }
 
@@ -534,8 +535,8 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
       ProfileManager* profile_manager, AppController* app_controller)
       : profile_manager_(profile_manager),
         app_controller_(app_controller) {
-    DCHECK(profile_manager_);
-    DCHECK(app_controller_);
+    CHECK(profile_manager_, base::NotFatalUntil::M163);
+    CHECK(app_controller_, base::NotFatalUntil::M163);
     // Listen to ProfileObserver and ProfileManagerObserver.
     profile_manager_observer_.Observe(profile_manager_.get());
     for (Profile* profile : profile_manager_->GetLoadedProfiles()) {
@@ -964,7 +965,8 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   }
   auto* browser_collection =
       ProfileBrowserCollection::GetForProfile(_lastProfile);
-  DCHECK_EQ(0u, browser_collection ? browser_collection->GetSize() : 0u);
+  CHECK_EQ(0u, browser_collection ? browser_collection->GetSize() : 0u,
+           base::NotFatalUntil::M163);
   if (!browser_collection || !browser_collection->GetSize()) {
     // As we're shutting down, we need to nuke the TabRestoreService, which
     // will start the shutdown of the NavigationControllers and allow for
@@ -978,7 +980,7 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 // See if the focused window window has tabs, and adjust the key equivalents for
 // Close Tab/Close Window accordingly.
 - (void)menuNeedsUpdate:(NSMenu*)menu {
-  DCHECK(menu == [self fileMenu]);
+  CHECK(menu == [self fileMenu], base::NotFatalUntil::M163);
   [self updateMenuItemKeyEquivalents];
 }
 
@@ -1569,7 +1571,7 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 // a button in a background browser window whose action is
 // |-commandDispatchUsingKeyModifiers:|
 - (void)commandDispatchUsingKeyModifiers:(id)sender {
-  DCHECK(sender);
+  CHECK(sender, base::NotFatalUntil::M163);
   if ([sender respondsToSelector:@selector(window)]) {
     id delegate = [[sender window] windowController];
     if ([delegate respondsToSelector:
@@ -2250,7 +2252,7 @@ bool IsOpeningNewWindow() {
 void RunInLastProfileSafely(
     base::OnceCallback<void(Profile*)> callback,
     app_controller_mac::ProfileLoadFailureBehavior on_failure) {
-  DCHECK(callback);
+  CHECK(callback, base::NotFatalUntil::M163);
   if (Profile* profile = [AppController.sharedController lastProfileIfLoaded]) {
     OnProfileLoaded(std::move(callback), on_failure, profile);
     return;
@@ -2265,7 +2267,7 @@ void RunInProfileSafely(
     const base::FilePath& profile_dir,
     base::OnceCallback<void(Profile*)> callback,
     app_controller_mac::ProfileLoadFailureBehavior on_failure) {
-  DCHECK(callback);
+  CHECK(callback, base::NotFatalUntil::M163);
   ProfileManager* profile_manager = g_browser_process->profile_manager();
   // `profile_manager` can be null in tests.
   if (!profile_manager) {
@@ -2298,7 +2300,7 @@ void TabRestorer::RestoreMostRecent(Profile* profile) {
 
 // static
 void TabRestorer::RestoreByID(Profile* profile, SessionID session_id) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M163);
   auto* service = TabRestoreServiceFactory::GetForProfile(profile);
   if (!service)
     return;
@@ -2314,7 +2316,7 @@ void TabRestorer::RestoreByID(Profile* profile, SessionID session_id) {
 
 // static
 void TabRestorer::DoRestoreTab(Profile* profile, SessionID session_id) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M163);
   auto* service = TabRestoreServiceFactory::GetForProfile(profile);
   if (!service)
     return;
@@ -2324,7 +2326,7 @@ void TabRestorer::DoRestoreTab(Profile* profile, SessionID session_id) {
       browser ? BrowserLiveTabContext::From(browser) : nullptr;
   if (session_id.is_valid()) {
     service->RestoreEntryById(context, session_id,
-                              WindowOpenDisposition::kUnknown);
+                              ui::mojom::WindowOpenDisposition::kUnknown);
   } else {
     service->RestoreMostRecentEntry(context);
   }
@@ -2333,7 +2335,7 @@ void TabRestorer::DoRestoreTab(Profile* profile, SessionID session_id) {
 TabRestorer::TabRestorer(Profile* profile, SessionID session_id)
     : profile_(profile), session_id_(session_id) {
   auto* service = TabRestoreServiceFactory::GetForProfile(profile);
-  DCHECK(service);
+  CHECK(service, base::NotFatalUntil::M163);
   observation_.Observe(service);
 }
 

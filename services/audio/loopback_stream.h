@@ -77,11 +77,6 @@ class LoopbackStream final : public media::mojom::AudioInputStream {
 
   ~LoopbackStream() final;
 
-  bool is_recording() const {
-    return loopback_signal_forwarder_ &&
-           loopback_signal_forwarder_->is_started();
-  }
-
   // media::mojom::AudioInputStream implementation.
   void Record() final;
   void SetVolume(double volume) final;
@@ -101,9 +96,6 @@ class LoopbackStream final : public media::mojom::AudioInputStream {
   static constexpr double kMaxVolume = 2.0;
 
  private:
-  void AddLoopbackSource(LoopbackSource* source);
-  void RemoveLoopbackSource(LoopbackSource* source);
-
   // Drives all audio flows, pulling audio from the LoopbackSignalProvider and
   // pushing it into the InputSyncWriter. This class mainly operates on a
   // separate task runner from LoopbackStream and can only be destroyed by
@@ -129,10 +121,6 @@ class LoopbackStream final : public media::mojom::AudioInputStream {
     bool is_started() const {
       DCHECK_CALLED_ON_VALID_SEQUENCE(control_sequence_);
       return !!timer_;
-    }
-
-    const media::AudioParameters& output_params() const {
-      return output_params_;
     }
 
     // This may be called at any time, before or after Start(), to change the

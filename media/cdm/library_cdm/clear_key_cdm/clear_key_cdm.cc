@@ -21,6 +21,7 @@
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/notreached.h"
+#include "base/process/process.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
@@ -41,15 +42,12 @@
 #include "media/media_buildflags.h"
 
 #if defined(CLEAR_KEY_CDM_USE_FFMPEG_DECODER)
-#include "base/at_exit.h"
-#include "base/files/file_path.h"
-#include "base/path_service.h"
 #include "media/cdm/library_cdm/clear_key_cdm/ffmpeg_cdm_audio_decoder.h"
-
-#if !defined COMPONENT_BUILD
-static base::AtExitManager g_at_exit_manager;
-#endif
-#endif  // CLEAR_KEY_CDM_USE_FFMPEG_DECODER
+#if !defined(COMPONENT_BUILD)
+#include "base/at_exit.h"
+#include "base/no_destructor.h"
+#endif  // !defined(COMPONENT_BUILD)
+#endif  // defined(CLEAR_KEY_CDM_USE_FFMPEG_DECODER)
 
 constexpr char kClearKeyCdmVersion[] = "0.1.0.1";
 
@@ -145,6 +143,12 @@ void ConvertCdmKeysInfo(const media::CdmKeysInfo& keys_info,
 
 void INITIALIZE_CDM_MODULE() {
   DVLOG(1) << __func__;
+#if defined(CLEAR_KEY_CDM_USE_FFMPEG_DECODER) && !defined(COMPONENT_BUILD)
+  // Non-component builds link a private copy of //base into this loadable
+  // module, requiring a module-lifetime AtExitManager for base singletons.
+  static base::NoDestructor<base::AtExitManager> exit_manager;
+#endif  // defined(CLEAR_KEY_CDM_USE_FFMPEG_DECODER) &&
+        // !defined(COMPONENT_BUILD)
   media::InitializeMediaLibrary();
   g_is_cdm_module_initialized = true;
 }
@@ -720,10 +724,14 @@ cdm::Status ClearKeyCdm::DecryptAndDecodeSamples(
 
   // Trigger a crash on purpose for testing purpose.
   // Only do this after a session has been created since the test also checks
-  // that the session is properly closed.
+  // that the session is properly closed. Use
+  // TerminateCurrentProcessImmediately() to avoid Crashpad dump stalls and
+  // Windows fatal error dialogs.
   if (!last_session_id_.empty() &&
       key_system_ == kExternalClearKeyCrashKeySystem) {
-    NOTREACHED() << "Crash in decrypt-and-decode with crash key system.";
+    DVLOG(1) << "Terminating process in decrypt-and-decode with crash key "
+                "system.";
+    base::Process::TerminateCurrentProcessImmediately(1);
   }
 
   scoped_refptr<DecoderBuffer> buffer;
@@ -910,12 +918,14 @@ void ClearKeyCdm::OnSessionKeysChange(const std::string& session_id,
                                       CdmKeysInfo keys_info) {
   DVLOG(1) << __func__ << ": size = " << keys_info.size();
 
-  // Crash if the special key ID "crash" is present.
+  // Crash if the special key ID "crash" is present. Use
+  // TerminateCurrentProcessImmediately() to avoid Crashpad dump stalls and
+  // Windows fatal error dialogs.
   const std::vector<uint8_t> kCrashKeyId{'c', 'r', 'a', 's', 'h'};
   for (const auto& key_info : keys_info) {
     if (key_info->key_id == kCrashKeyId) {
-      DVLOG(1) << __func__ << "Crash on special crash key ID.";
-      base::ImmediateCrash();
+      DVLOG(1) << __func__ << ": Terminating process on special crash key ID.";
+      base::Process::TerminateCurrentProcessImmediately(1);
     }
   }
 

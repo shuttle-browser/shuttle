@@ -26,6 +26,7 @@
 #include "net/device_bound_sessions/registration_fetcher_param.h"
 #include "net/device_bound_sessions/registration_request_param.h"
 #include "net/device_bound_sessions/session.h"
+#include "net/device_bound_sessions/session_error.h"
 #include "net/device_bound_sessions/session_key.h"
 #include "net/device_bound_sessions/session_service.h"
 #include "net/device_bound_sessions/session_store.h"
@@ -152,8 +153,8 @@ class NET_EXPORT SessionServiceImpl : public SessionService {
   void SetLatestSignedRefreshChallenge(
       SessionKey session_key,
       SignedRefreshChallenge signed_refresh_challenge) override;
-  bool SigningQuotaExceeded(const SchemefulSite& site) override;
-  void AddSigningOccurrence(const SchemefulSite& site) override;
+  bool TryConsumeSigningQuota(const SchemefulSite& site,
+                              SigningQuotaOperation operation) override;
   void HandleResponseHeaders(DbscRequest& request,
                              HttpResponseHeaders* headers) override;
   void SelectClientCertificate(
@@ -206,6 +207,18 @@ class NET_EXPORT SessionServiceImpl : public SessionService {
     // Measures end-to-end refresh latency for histograms, starting from struct
     // construction, which matches the refresh start.
     base::ElapsedTimer timer_since_start;
+  };
+
+  // Per-site signing quota usage.
+  // TODO(crbug.com/576136417): Move signing quota tracking into a helper
+  // class.
+  struct SiteSigningQuota {
+    // One timestamp per unit charged, so an attested registration adds 3.
+    std::vector<base::Time> signing_times;
+    // Whether a refusal was recorded since a signing last aged out of the
+    // quota window, so that only the first refusal of an out-of-quota episode
+    // is recorded.
+    bool refusal_recorded = false;
   };
 
   // The key is the site (eTLD+1) of the session's origin and the
@@ -303,13 +316,30 @@ class NET_EXPORT SessionServiceImpl : public SessionService {
   std::ranges::subrange<SessionsMap::iterator> GetSessionsForSite(
       const SchemefulSite& site);
 
-  // Remove a session from the session map. It also clears the session
-  // from `session_store_` and notifies any observers (including
-  // `per_request_callback`) about the termination.
+  // Deletes a session that was already extracted from
+  // `unpartitioned_sessions_`. It also clears the session from
+  // `session_store_`, unblocks the requests waiting on the session with
+  // `RefreshResult::kFatalError`, and notifies any observers (including
+  // `per_request_callback`) about the termination. If set, `fetch_error` is
+  // reported in the refresh event for the unblocked requests.
+  //
+  // Callers must extract the node before calling this, because unblocking
+  // deferred requests can synchronously re-enter this class and modify
+  // `unpartitioned_sessions_`.
   void DeleteSessionAndNotifyInternal(
       DeletionReason reason,
-      SessionsMap::iterator it,
-      SessionService::OnAccessCallback per_request_callback);
+      SessionsMap::node_type node,
+      SessionService::OnAccessCallback per_request_callback,
+      std::optional<SessionError> fetch_error = std::nullopt);
+
+  // If the session identified by `session_key` exists, extracts it from
+  // `unpartitioned_sessions_` and deletes it with the overload above. Unlike
+  // `DeleteSessionAndNotify()`, this doesn't wait for sessions to load.
+  void DeleteSessionAndNotifyInternal(
+      DeletionReason reason,
+      const SessionKey& session_key,
+      SessionService::OnAccessCallback per_request_callback,
+      std::optional<SessionError> fetch_error = std::nullopt);
 
   // Notify all observers about an access to a session. Will update
   // `per_request_callback` unconditionally, and any observers in
@@ -338,10 +368,11 @@ class NET_EXPORT SessionServiceImpl : public SessionService {
       RegistrationResult result);
 
   // Helper for restoring the key for the session identified by
-  // `session_key`. If restoring the key succeeds, calls `callback` with
-  // the key. If restoring the key fails, deletes the session and calls
-  // `callback` with `std::nullopt`. The key is unwrapped at `priority`, but
-  // never below `kUserVisible`.
+  // `session_key`. Always runs `callback`: with the key if it was restored
+  // and the session still exists, or with `std::nullopt` otherwise. Before
+  // running `callback` with `std::nullopt`, deletes the session if the unwrap
+  // error is persistent and unblocks the requests waiting on the session. The
+  // key is unwrapped at `priority`, but never below `kUserVisible`.
   void RestoreSessionKey(
       const SessionKey& session_key,
       OnAccessCallback on_access_callback,
@@ -352,9 +383,10 @@ class NET_EXPORT SessionServiceImpl : public SessionService {
 
   // Callback after unwrapping a session key. `on_access_callback` is
   // used to notify the browser that this request led to usage of a
-  // session. If restoring the key succeeds, calls `callback` with
-  // the key. If restoring the key fails, deletes the session and calls
-  // `callback` with `std::nullopt`.
+  // session. Always runs `callback`: with the key if it was restored and the
+  // session still exists, or with `std::nullopt` otherwise. Before running
+  // `callback` with `std::nullopt`, deletes the session if the unwrap error is
+  // persistent and unblocks the requests waiting on the session.
   void OnSessionKeyRestored(
       const SessionKey& session_key,
       OnAccessCallback on_access_callback,
@@ -365,10 +397,18 @@ class NET_EXPORT SessionServiceImpl : public SessionService {
   // Helper function for starting a refresh.
   void StartSessionRefresh(const SessionKey& session_key, RefreshParams params);
 
-  void RefreshSessionInternal(
+  // Continues the refresh started by `StartSessionRefresh` after restoring the
+  // session key. Does nothing if the key wasn't restored, because
+  // `OnSessionKeyRestored` already unblocked the waiting requests.
+  void OnSessionKeyRestoredForRefresh(
       RefreshParams params,
       const SessionKey& session_key,
       std::optional<unexportable_keys::UnexportableSigningKeyId> key_id);
+
+  void RefreshSessionInternal(
+      RefreshParams params,
+      const SessionKey& session_key,
+      unexportable_keys::UnexportableSigningKeyId key_id);
 
   // Add a header to `request` indicating which sessions should have
   // applied, but did not due to error conditions.
@@ -470,6 +510,16 @@ class NET_EXPORT SessionServiceImpl : public SessionService {
   void NotifyIfEventCallbackListeners(
       base::FunctionRef<SessionEvent()> event_creator);
 
+  // Returns whether `operation` currently fits in `site`'s signing quota,
+  // without consuming anything. Always true when the quota is disabled.
+  bool HasSigningQuota(const SchemefulSite& site,
+                       SigningQuotaOperation operation);
+
+  // Prunes expired or future signing timestamps for `site` (erasing its map
+  // entry if empty) and returns the remaining active signing count. Pruning
+  // any timestamp ends `site`'s out-of-quota episode.
+  size_t PruneAndGetSigningCount(const SchemefulSite& site);
+
   // Whether we are waiting on the initial load of saved sessions to
   // complete.
   bool pending_initialization_ = false;
@@ -487,8 +537,8 @@ class NET_EXPORT SessionServiceImpl : public SessionService {
   std::vector<SchemefulSite> restricted_sites_;
   const SelectClientCertificateHandler client_cert_handler_;
 
-  // When true, the signing quota is not enforced. This is only ever set to
-  // true for testing purposes.
+  // When true, the signing quota is not enforced. Set in the constructor from
+  // the `RefreshQuota` feature param (`kDeviceBoundSessionsSigningQuota`).
   bool ignore_signing_quota_ = false;
 
   // Deferred requests are stored by session key.
@@ -519,8 +569,7 @@ class NET_EXPORT SessionServiceImpl : public SessionService {
   // `base::TimeTicks` pauses during system sleep on macOS
   // (crbug.com/489704854), which would prevent the quota from decaying
   // overnight.
-  absl::flat_hash_map<net::SchemefulSite, std::vector<base::Time>>
-      signing_times_;
+  absl::flat_hash_map<net::SchemefulSite, SiteSigningQuota> signing_quota_;
 
   // The latest signed challenges per session.
   LatestSignedRefreshChallengesMap latest_signed_refresh_challenges_;

@@ -189,9 +189,6 @@
   E_CPONLY(kColorExtensionsMenuSecondaryText) \
   /* Extension manager WebUI colors. */ \
   E_CPONLY(kColorExtensionManagerHighlightText) \
-  /* Feature first run dialog colors. */ \
-  E_CPONLY(kColorFeatureFirstRunInfoContainerBackground) \
-  E_CPONLY(kColorFeatureFirstRunIconColor) \
   /* Feature Promo bubble colors. */ \
   /* Feature Showcase colors. */ \
   E_CPONLY(kColorFeatureShowcaseStepperCheck) \
@@ -298,8 +295,6 @@
   E_CPONLY(kColorTabStripControlButtonInkDropFrameInactive) \
   E_CPONLY(kColorTabStripControlButtonInkDropRipple) \
   E_CPONLY(kColorTabStripControlButtonInkDropRippleFrameInactive) \
-  E_CPONLY(kColorTabStripScrollButtonBackground) \
-  E_CPONLY(kColorTabStripScrollButtonIcon) \
   /* New tab button colors for ChromeRefresh.*/ \
   /* TODO (crbug.com/40883407) remove when theming works */ \
   E_CPONLY(kColorNewTabButtonCRForegroundFrameActive) \
@@ -458,6 +453,7 @@
   /* Omnibox colors. */ \
   E_CPONLY(kColorOmniboxActionIcon) \
   E_CPONLY(kColorOmniboxActionIconHover) \
+  E_CPONLY(kColorOmniboxActionIconInactive) \
   E_CPONLY(kColorOmniboxAnswerIconGM3Background) \
   E_CPONLY(kColorOmniboxAnswerIconGM3Foreground) \
   E_CPONLY(kColorOmniboxBubbleOutline) \
@@ -489,6 +485,7 @@
   E_CPONLY(kColorOmniboxIconBackgroundTonal) \
   E_CPONLY(kColorOmniboxIconForeground) \
   E_CPONLY(kColorOmniboxIconForegroundTonal) \
+  E_CPONLY(kColorOmniboxIconForegroundTonalInactive) \
   E_CPONLY(kColorOmniboxIconHover) \
   E_CPONLY(kColorOmniboxIconPressed) \
   E_CPONLY(kColorOmniboxIntentChipBackground) \
@@ -691,6 +688,7 @@
   E_CPONLY(kColorScreenshotCapturedImageBackground) \
   E_CPONLY(kColorScreenshotCapturedImageBorder) \
   /* Settings columned section colors. */ \
+  E_CPONLY(kColorSettingsColumnedSectionBackground) \
   E_CPONLY(kColorSettingsColumnedSectionDescriptionHeader) \
   /* Settings info card colors. */ \
   E_CPONLY(kColorSettingsInfoCardBackground) \
@@ -826,6 +824,10 @@
   E_CPONLY(kColorTabGroupTabStripFrameInactivePurple) \
   E_CPONLY(kColorTabGroupTabStripFrameInactiveCyan) \
   E_CPONLY(kColorTabGroupTabStripFrameInactiveOrange) \
+  E_CPONLY(kColorTabGroupEphemeralHeaderBackgroundFrameActive) \
+  E_CPONLY(kColorTabGroupEphemeralHeaderBackgroundFrameInactive) \
+  E_CPONLY(kColorTabGroupEphemeralHeaderForegroundFrameActive) \
+  E_CPONLY(kColorTabGroupEphemeralHeaderForegroundFrameInactive) \
   E_CPONLY(kColorTabStrokeFrameActive) \
   E_CPONLY(kColorTabStrokeFrameInactive) \
   E_CPONLY(kColorTabstripScrollContainerShadow) \

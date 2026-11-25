@@ -14,16 +14,16 @@
 
 #include <memory>
 
-#include "absl/log/absl_log.h"
-#include "absl/status/status.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/log/absl_log.h"           // from @com_google_absl
+#include "absl/status/status.h"          // from @com_google_absl
+#include "absl/status/status_macros.h"   // from @com_google_absl
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "mediapipe/framework/api2/node.h"
 #include "mediapipe/framework/api2/packet.h"
 #include "mediapipe/framework/api2/port.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/gpu/egl_surface_holder.h"
 #include "mediapipe/gpu/gl_base.h"
 #include "mediapipe/gpu/gl_calculator_helper.h"
@@ -81,7 +81,7 @@ class GlSurfaceSinkCalculator : public Node {
 
   MEDIAPIPE_NODE_INTERFACE(GlSurfaceSinkCalculator, kInVideo, kIn, kSurface);
 
-  ~GlSurfaceSinkCalculator();
+  ~GlSurfaceSinkCalculator() override;
 
   static absl::Status UpdateContract(CalculatorContract* cc);
 
@@ -122,7 +122,7 @@ absl::Status GlSurfaceSinkCalculator::Open(CalculatorContext* cc) {
 
 absl::Status GlSurfaceSinkCalculator::Process(CalculatorContext* cc) {
   return helper_.RunInGlContext([this, &cc]() -> absl::Status {
-    absl::MutexLock lock(&surface_holder_->mutex);
+    absl::MutexLock lock(surface_holder_->mutex);
     EGLSurface surface = surface_holder_->surface;
     if (surface == EGL_NO_SURFACE) {
       ABSL_LOG_EVERY_N(INFO, 300) << "GlSurfaceSinkCalculator: no surface";
@@ -143,7 +143,7 @@ absl::Status GlSurfaceSinkCalculator::Process(CalculatorContext* cc) {
 
     if (!initialized_) {
       renderer_ = std::make_unique<mediapipe::QuadRenderer>();
-      MP_RETURN_IF_ERROR(renderer_->GlSetup());
+      ABSL_RETURN_IF_ERROR(renderer_->GlSetup());
       initialized_ = true;
     }
 
@@ -173,7 +173,7 @@ absl::Status GlSurfaceSinkCalculator::Process(CalculatorContext* cc) {
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(src.target(), src.name());
 
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         renderer_->GlRender(src.width(), src.height(), dst_width, dst_height,
                             scale_mode_, mediapipe::FrameRotation::kNone,
                             /*flip_horizontal=*/false, /*flip_vertical=*/false,

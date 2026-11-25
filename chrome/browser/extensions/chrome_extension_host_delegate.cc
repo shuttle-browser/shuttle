@@ -8,6 +8,7 @@
 #include <string>
 
 #include "base/functional/bind.h"
+#include "base/time/time.h"
 #include "chrome/browser/extensions/browser_window_util.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/profiles/profile.h"
@@ -19,8 +20,8 @@
 #include "extensions/browser/extensions_browser_client.h"
 #include "extensions/buildflags/buildflags.h"
 #include "ui/base/base_window.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/content_settings/page_specific_content_settings_delegate.h"
@@ -32,6 +33,8 @@
 #include "components/content_settings/browser/page_specific_content_settings.h"
 #include "extensions/browser/view_type_utils.h"
 #include "extensions/common/mojom/view_type.mojom.h"
+#else
+#include "chrome/browser/ui/waap/window_creation.h"
 #endif
 
 // This file contains code shared between Android and non-Android platforms.
@@ -52,7 +55,7 @@ void ChromeExtensionHostDelegate::CreateTab(
     std::unique_ptr<content::WebContents> web_contents,
     const GURL& target_url,
     const ExtensionId& extension_id,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture) {
   // Verify that the browser is not shutting down. It can be the case if the
@@ -119,7 +122,8 @@ void ChromeExtensionHostDelegate::CreateTab(
   return;
 #else
   // Other platforms create windows synchronously.
-  browser = CreateBrowserWindow(std::move(params));
+  browser = waap::CreateBrowserWindowAndRecordCreationSource(
+      std::move(params), waap::NewWindowCreationSource::kExtension);
   CHECK(browser);
   NavigateBrowser(/*browser_created=*/true, std::move(web_contents), target_url,
                   extension_id, disposition, window_features, user_gesture,
@@ -132,7 +136,7 @@ void ChromeExtensionHostDelegate::NavigateBrowser(
     std::unique_ptr<content::WebContents> web_contents,
     GURL target_url,
     ExtensionId extension_id,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     blink::mojom::WindowFeatures window_features,
     bool user_gesture,
     BrowserWindowInterface* browser) {
@@ -145,8 +149,8 @@ void ChromeExtensionHostDelegate::NavigateBrowser(
   // supported. See browser_navigator_android.cc or http://crbug.com/441594986.
   auto params =
       std::make_unique<NavigateParams>(browser, /*contents_to_insert=*/nullptr);
-  if (disposition == WindowOpenDisposition::kNewForegroundTab ||
-      disposition == WindowOpenDisposition::kNewBackgroundTab) {
+  if (disposition == ui::mojom::WindowOpenDisposition::kNewForegroundTab ||
+      disposition == ui::mojom::WindowOpenDisposition::kNewBackgroundTab) {
     params->contents_to_insert = std::move(web_contents);
   } else {
     params->url = std::move(target_url);
@@ -161,7 +165,7 @@ void ChromeExtensionHostDelegate::NavigateBrowser(
   // among other things, whether the location bar gets displayed.
   // TODO(mpcomplete): This seems wrong. What if the extension content is
   // hosted in a tab?
-  if (disposition == WindowOpenDisposition::kNewPopup) {
+  if (disposition == ui::mojom::WindowOpenDisposition::kNewPopup) {
     params->app_id = extension_id;
   }
 

@@ -289,6 +289,11 @@ config("default_sanitizer_ldflags") {
         # need to use this symbol to report control flow coverage
         # to the main binary
         ldflags += [ "-Wl,-undefined,dynamic_lookup" ]
+
+        # Centipede's pc-table and control-flow coverage can push the __DATA
+        # segment of large binaries such as unit_tests past the 65,536-page
+        # limit of Mach-O chained fixups.
+        ldflags += [ "-Wl,-no_fixup_chains" ]
       }
     }
 
@@ -365,6 +370,19 @@ config("common_sanitizer_flags") {
       # attribution of reports to CLs, so turn it on there.
       "-gcolumn-info",
     ]
+
+    if (current_cpu == "x64" && !is_win && !is_apple && !is_ubsan_security &&
+        !is_cfi && !use_cfi_diag) {
+      # Sanitizer instrumentation inflates data sections enough that large
+      # binaries can exceed the 2GiB limit of the default small code model and
+      # fail to link with `relocation R_X86_64_PC32 out of range`.
+      # `-fsanitize=function` (enabled by `is_ubsan_security`) only supports
+      # `-mcmodel=small`.
+      # TODO(https://github.com/llvm/llvm-project/issues/236952): CFI builds are
+      # excluded because `-mcmodel=medium` triggers O(N^2) work over vtables in
+      # lld during ThinLTO linking, causing large test binaries to time out.
+      cflags += [ "-mcmodel=medium" ]
+    }
 
     # Frame pointers are controlled in
     # //build/config/compiler:default_stack_frames
@@ -753,7 +771,11 @@ config("not_fuzzed") {
 # See: https://clang.llvm.org/docs/AllocToken.html
 config("alloc_token") {
   if (use_alloc_token) {
-    cflags = [ "-fsanitize=alloc-token" ]
+    cflags = [
+      "-fsanitize=alloc-token",
+      "-Xclang",
+      "-falloc-token-mode=typefunchashpointersplit",
+    ]
     if (is_linux || is_chromeos) {
       ldflags = [
         # go/keep-sorted start
@@ -780,11 +802,11 @@ config("alloc_token") {
   }
 }
 
-# Weak fallbacks of the __alloc_token_* functions, linked into every binary via
-# //build/config:common_deps. These are source_sets so that the fallbacks are
+# Weak fallbacks of the __alloc_token_* functions, linked into binaries that
+# use the alloc_token config. These are source_sets so that the fallbacks are
 # linked, and exported, even if the binary itself doesn't reference them.
 source_set("alloc_token_aliases") {
-  visibility = [ "//build/config:common_deps_without_libcxx" ]
+  visibility = [ "//build/config:alloc_token_aliases" ]
   if (use_alloc_token) {
     sources = [ "//build/sanitizers/alloc_token_aliases.c" ]
   }
@@ -792,7 +814,7 @@ source_set("alloc_token_aliases") {
 }
 
 source_set("alloc_token_aliases_cxx") {
-  visibility = [ "//build/config:common_deps" ]
+  visibility = [ "//build/config:alloc_token_aliases" ]
   if (use_alloc_token) {
     sources = [ "//build/sanitizers/alloc_token_aliases_cxx.cc" ]
   }

@@ -11,6 +11,7 @@
 #include "base/check_deref.h"
 #include "base/containers/flat_map.h"
 #include "base/containers/flat_set.h"
+#include "chrome/browser/ui/views/tabs/common/tab_strip_utils.h"
 #include "third_party/abseil-cpp/absl/container/inlined_vector.h"
 #include "ui/base/class_property.h"
 #include "ui/compositor/layer.h"
@@ -48,6 +49,37 @@ DEFINE_OWNED_UI_CLASS_PROPERTY_KEY(
     TabCollectionAnimatingLayoutManager::SourceLayoutInfo,
     kSourceLayoutInfo)
 
+// Set while a layout manager holds a layer reference on the associated View
+// for an add, remove, or collection move animation. See AcquireViewLayer().
+DEFINE_UI_CLASS_PROPERTY_KEY(bool, kHoldsLayoutAnimationLayer, false)
+
+// Acquires a layer reference for `view` on behalf of layout animations, if one
+// is not already held. A view may be prepared for more than one animation
+// before the first one completes (e.g. added and then removed), but layout
+// animations only ever hold a single reference per view.
+void AcquireLayoutAnimationLayer(views::View* view) {
+  if (!view->GetProperty(kHoldsLayoutAnimationLayer)) {
+    view->SetProperty(kHoldsLayoutAnimationLayer, true);
+    AcquireViewLayer(view);
+  }
+}
+
+// Releases the layer reference taken by AcquireLayoutAnimationLayer(), if any.
+void ReleaseLayoutAnimationLayer(views::View* view) {
+  if (view->GetProperty(kHoldsLayoutAnimationLayer)) {
+    view->ClearProperty(kHoldsLayoutAnimationLayer);
+    ReleaseViewLayer(view);
+  }
+}
+
+// `view`'s layer if a layout animation holds it, else null. Opacity is only
+// written to such layers so another holder's fade (e.g. a focus transition)
+// is not overwritten when `view` moves or snaps.
+ui::Layer* GetLayoutAnimationLayer(views::View* view) {
+  return view->GetProperty(kHoldsLayoutAnimationLayer) ? view->layer()
+                                                       : nullptr;
+}
+
 TabCollectionAnimatingLayoutManager* GetParentAnimatingLayoutManager(
     const views::View* view) {
   if (!view || !view->parent() ||
@@ -65,6 +97,16 @@ TabCollectionAnimatingLayoutManager* GetTopLevelAnimatingLayoutManager(
     manager = parent_layout_manager;
   }
   return manager;
+}
+
+void RemoveViewFromChildLayouts(
+    const views::View* view,
+    views::ProposedLayout::ChildLayoutList& child_layouts) {
+  auto to_erase = std::ranges::remove_if(
+      child_layouts, [view](const views::ChildLayout& layout) {
+        return layout.child_view == view;
+      });
+  child_layouts.erase(to_erase.begin(), to_erase.end());
 }
 
 }  // namespace
@@ -260,8 +302,7 @@ bool TabCollectionAnimatingLayoutManager::OnViewAdded(views::View* host,
       !delegate_->IsViewDragging(*view) &&
       delegate_->ShouldAnimateOpacityForAddAndRemove(*view)) {
     // Added views should animate opacity from invisible to fully opaque.
-    view->SetPaintToLayer();
-    view->layer()->SetFillsBoundsOpaquely(false);
+    AcquireLayoutAnimationLayer(view);
     view->layer()->SetOpacity(0.0f);
   }
   return LayoutManagerBase::OnViewAdded(host, view);
@@ -270,6 +311,18 @@ bool TabCollectionAnimatingLayoutManager::OnViewAdded(views::View* host,
 bool TabCollectionAnimatingLayoutManager::OnViewRemoved(views::View* host,
                                                         views::View* view) {
   ClearViewAnimationMetadataForView(view);
+  // Prune removed views immediately from cached layouts, lookup maps, and
+  // horizontal X-offset caches so reparented or destroyed views cannot dangle
+  // before the next layout pass.
+  start_view_layout_map_.erase(view);
+  target_view_layout_map_.erase(view);
+  RemoveViewFromChildLayouts(view, starting_layout_.child_layouts);
+  RemoveViewFromChildLayouts(view, target_layout_.child_layouts);
+  RemoveViewFromChildLayouts(view, current_layout_.child_layouts);
+  if (animation_axis_ == AnimationAxis::kHorizontal) {
+    adding_views_start_x_ = std::nullopt;
+    closing_views_target_x_ = std::nullopt;
+  }
   return LayoutManagerBase::OnViewRemoved(host, view);
 }
 
@@ -324,6 +377,14 @@ bool TabCollectionAnimatingLayoutManager::IsViewAnimating(views::View* view) {
          static_cast<TabCollectionAnimatingLayoutManager*>(
              view->GetLayoutManager())
              ->is_animating();
+}
+
+// static
+void TabCollectionAnimatingLayoutManager::HoldLayerWhileParentAnimates(
+    views::View* view) {
+  if (IsViewAnimating(view->parent())) {
+    AcquireLayoutAnimationLayer(view);
+  }
 }
 
 gfx::Size TabCollectionAnimatingLayoutManager::GetMinimumSize(
@@ -424,9 +485,9 @@ void TabCollectionAnimatingLayoutManager::OnInstalled(views::View* host) {
 
 void TabCollectionAnimatingLayoutManager::SetStartingLayout(
     const views::ProposedLayout& starting_layout) {
-  // Create a set of current child views for fast lookup. This is necessary
-  // as `starting_layout` may contain Views already removed from the View tree
-  // and destroyed.
+  // Create a set of current child views for fast lookup so `starting_layout_`
+  // and `start_view_layout_map_` never retain Views already removed from the
+  // View tree.
   std::vector<const views::View*> child_views;
   child_views.reserve(host_view()->children().size());
   std::ranges::transform(
@@ -434,17 +495,24 @@ void TabCollectionAnimatingLayoutManager::SetStartingLayout(
       [](const auto& child_view) { return child_view.get(); });
   base::flat_set<const views::View*> child_view_set(std::move(child_views));
 
+  if (&starting_layout_ != &starting_layout) {
+    starting_layout_ = starting_layout;
+  }
+  // Drop views no longer parented to `host_view()` so both the layout and
+  // lookup map stay valid.
+  auto to_erase = std::ranges::remove_if(
+      starting_layout_.child_layouts, [&child_view_set](const auto& layout) {
+        return !child_view_set.contains(layout.child_view.get());
+      });
+  starting_layout_.child_layouts.erase(to_erase.begin(), to_erase.end());
+
   // Map view pointers to their starting layouts.
   std::vector<ChildViewLayoutMap::value_type> start_bounds_pairs;
-  start_bounds_pairs.reserve(starting_layout.child_layouts.size());
-  for (const views::ChildLayout& layout : starting_layout.child_layouts) {
-    if (child_view_set.contains(layout.child_view.get())) {
-      start_bounds_pairs.emplace_back(layout.child_view.get(), layout);
-    }
+  start_bounds_pairs.reserve(starting_layout_.child_layouts.size());
+  for (const views::ChildLayout& layout : starting_layout_.child_layouts) {
+    start_bounds_pairs.emplace_back(layout.child_view.get(), layout);
   }
   start_view_layout_map_ = ChildViewLayoutMap(std::move(start_bounds_pairs));
-
-  starting_layout_ = starting_layout;
 
   if (animation_axis_ == AnimationAxis::kHorizontal) {
     adding_views_start_x_ = std::nullopt;
@@ -454,16 +522,33 @@ void TabCollectionAnimatingLayoutManager::SetStartingLayout(
 
 void TabCollectionAnimatingLayoutManager::SetTargetLayout(
     const views::ProposedLayout& target_layout) {
+  // Create a set of current child views for fast lookup so `target_layout_`
+  // and `target_view_layout_map_` never retain removed or destroyed Views.
+  std::vector<const views::View*> child_views;
+  child_views.reserve(host_view()->children().size());
+  std::ranges::transform(
+      host_view()->children(), std::back_inserter(child_views),
+      [](const auto& child_view) { return child_view.get(); });
+  base::flat_set<const views::View*> child_view_set(std::move(child_views));
+
+  if (&target_layout_ != &target_layout) {
+    target_layout_ = target_layout;
+  }
+  // Drop views no longer parented to `host_view()` so both the layout and
+  // lookup map stay valid.
+  auto to_erase = std::ranges::remove_if(
+      target_layout_.child_layouts, [&child_view_set](const auto& layout) {
+        return !child_view_set.contains(layout.child_view.get());
+      });
+  target_layout_.child_layouts.erase(to_erase.begin(), to_erase.end());
+
   // Map view pointers to their target layouts.
   std::vector<ChildViewLayoutMap::value_type> target_bounds_pairs;
-  target_bounds_pairs.reserve(target_layout.child_layouts.size());
-  for (const views::ChildLayout& layout : target_layout.child_layouts) {
-    views::View* child_view = layout.child_view.get();
-    target_bounds_pairs.emplace_back(child_view, layout);
+  target_bounds_pairs.reserve(target_layout_.child_layouts.size());
+  for (const views::ChildLayout& layout : target_layout_.child_layouts) {
+    target_bounds_pairs.emplace_back(layout.child_view.get(), layout);
   }
   target_view_layout_map_ = ChildViewLayoutMap(std::move(target_bounds_pairs));
-
-  target_layout_ = target_layout;
 
   if (animation_axis_ == AnimationAxis::kHorizontal) {
     adding_views_start_x_ = std::nullopt;
@@ -613,7 +698,7 @@ bool TabCollectionAnimatingLayoutManager::RecalculateTarget() {
   return true;
 }
 
-void TabCollectionAnimatingLayoutManager::ResetViewsToTargetLayout(
+void TabCollectionAnimatingLayoutManager::SnapViewsToTargetLayout(
     const std::vector<const views::View*>& views_to_snap) {
   InvalidateHost(/*mark_layouts_changed=*/true);
   for (const auto* view : views_to_snap) {
@@ -624,6 +709,8 @@ void TabCollectionAnimatingLayoutManager::ResetViewsToTargetLayout(
     auto* starting_child_layout = starting_layout_.GetLayoutFor(view);
     if (starting_child_layout) {
       starting_child_layout->bounds = target_child_layout->bounds;
+    } else {
+      starting_layout_.child_layouts.push_back(*target_child_layout);
     }
   }
   SetStartingLayout(starting_layout_);
@@ -641,8 +728,7 @@ void TabCollectionAnimatingLayoutManager::AnimateAndDestroyChildView(
 
   if (delegate_->ShouldAnimateOpacityForAddAndRemove(*child_view)) {
     // Removed views should animate opacity from fully opaque to invisible.
-    child_view->SetPaintToLayer();
-    child_view->layer()->SetFillsBoundsOpaquely(false);
+    AcquireLayoutAnimationLayer(child_view);
     child_view->layer()->SetOpacity(1.0f);
   }
 
@@ -657,8 +743,7 @@ void TabCollectionAnimatingLayoutManager::AnimateAndReparentView(
   // information to determine whether the view was reparented or newly-added.
   if (!delegate_->IsViewDragging(*view_to_reparent) &&
       !previous_bounds_in_screen.IsEmpty()) {
-    view_to_reparent->SetPaintToLayer();
-    view_to_reparent->layer()->SetFillsBoundsOpaquely(false);
+    AcquireLayoutAnimationLayer(view_to_reparent.get());
     view_to_reparent->SetProperty(kPreviousCollectionBounds,
                                   previous_bounds_in_screen);
   }
@@ -767,8 +852,9 @@ views::ProposedLayout TabCollectionAnimatingLayoutManager::InterpolateLayout(
         // should handle layout and animations as needed.
         // In the case a drag starts on a view mid-animation ensure it snaps to
         // being opaque.
-        if (child_view->layer() && (child_view->layer()->opacity() != 1.0f)) {
-          child_view->layer()->SetOpacity(1.0f);
+        if (ui::Layer* const layer = GetLayoutAnimationLayer(child_view);
+            layer && layer->opacity() != 1.0f) {
+          layer->SetOpacity(1.0f);
         }
       } else if (auto start_it = start_view_layout_map_.find(child_view);
                  start_it != start_view_layout_map_.end()) {
@@ -781,8 +867,9 @@ views::ProposedLayout TabCollectionAnimatingLayoutManager::InterpolateLayout(
         // In the case layouts are updated mid-animation, ensure any previously
         // added views that are now treated as moved views are snapped to being
         // opaque.
-        if (child_view->layer() && (child_view->layer()->opacity() != 1.0f)) {
-          child_view->layer()->SetOpacity(1.0f);
+        if (ui::Layer* const layer = GetLayoutAnimationLayer(child_view);
+            layer && layer->opacity() != 1.0f) {
+          layer->SetOpacity(1.0f);
         }
       } else if (!delegate_->ShouldSnapToTarget(*child_view)) {
         // Added child.
@@ -810,8 +897,8 @@ views::ProposedLayout TabCollectionAnimatingLayoutManager::InterpolateLayout(
           }
           interpolated_child.bounds = host_offsets.InterpolateChildBounds(
               value, initial_bounds, target_it->second.bounds);
-          if (child_view->layer()) {
-            child_view->layer()->SetOpacity(static_cast<float>(value));
+          if (ui::Layer* const layer = GetLayoutAnimationLayer(child_view)) {
+            layer->SetOpacity(static_cast<float>(value));
           }
         }
       } else {
@@ -828,9 +915,6 @@ views::ProposedLayout TabCollectionAnimatingLayoutManager::InterpolateLayout(
       continue;
     }
 
-    // Note: `start_view_layout_map_` will only contain start ChildLayouts for
-    // the views that are still parented to `host_view()`. This is not the case
-    // for `start_layout_`.
     // Animate-out only pending delete views that were present in the previous
     // layout.
     auto start_it = start_view_layout_map_.find(child_view);
@@ -856,8 +940,8 @@ views::ProposedLayout TabCollectionAnimatingLayoutManager::InterpolateLayout(
       }
       interpolated_child.bounds = host_offsets.InterpolateChildBounds(
           value, start_it->second.bounds, target_bounds);
-      if (child_view->layer()) {
-        child_view->layer()->SetOpacity(static_cast<float>(1.0 - value));
+      if (ui::Layer* const layer = GetLayoutAnimationLayer(child_view)) {
+        layer->SetOpacity(static_cast<float>(1.0 - value));
       }
 
       if (!interpolated_child.bounds.IsEmpty()) {
@@ -1089,9 +1173,7 @@ void TabCollectionAnimatingLayoutManager::ClearViewAnimationMetadata() {
 
 void TabCollectionAnimatingLayoutManager::ClearViewAnimationMetadataForView(
     views::View* view) {
-  if (!delegate_->IsViewDragging(*view)) {
-    view->DestroyLayer();
-  }
+  ReleaseLayoutAnimationLayer(view);
   view->ClearProperty(kPreviousCollectionBounds);
   view->ClearProperty(kSourceLayoutInfo);
 }

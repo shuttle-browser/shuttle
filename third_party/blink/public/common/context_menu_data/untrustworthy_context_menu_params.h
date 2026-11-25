@@ -66,6 +66,11 @@ struct BLINK_COMMON_EXPORT UntrustworthyContextMenuParams {
   // non-empty contents.
   bool has_image_contents;
 
+  // For the outermost main frame's widget, this will be the bounds of the
+  // node in viewport space (in DIPs). For a local root, this is in the DIP
+  // coordinates of the local frame root.
+  gfx::Rect node_bounds;
+
   // The frame token of the replacement subframe if the context menu was invoked
   // on an image which has an active user agent replacement.
   std::optional<blink::FrameToken> image_replacement_frame_token;
@@ -147,7 +152,9 @@ struct BLINK_COMMON_EXPORT UntrustworthyContextMenuParams {
   // `interestfor` attribute.
   bool opened_from_interest_for = false;
   // If opened_from_interest_for is true, this will contain the DOMNodeID of the
-  // link that generated the context menu.
+  // link that generated the context menu. Strongly prefer to use the
+  // interest_for_dom_node_id member of ContextMenuParams which carries this
+  // same ID but scoped to the document it came from.
   int interest_for_node_id = 0;
 
   // The type of the form control element on which the context menu is invoked,

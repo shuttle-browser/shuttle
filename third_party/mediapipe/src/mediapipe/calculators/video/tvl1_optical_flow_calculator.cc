@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/base/macros.h"
-#include "absl/log/absl_check.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/base/macros.h"            // from @com_google_absl
+#include "absl/log/absl_check.h"         // from @com_google_absl
+#include "absl/status/status.h"          // from @com_google_absl
+#include "absl/status/status_macros.h"   // from @com_google_absl
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/formats/image_frame_opencv.h"
@@ -138,17 +140,17 @@ absl::Status Tvl1OpticalFlowCalculator::Process(CalculatorContext* cc) {
   const ImageFrame& second_frame =
       cc->Inputs().Tag(kSecondFrameTag).Value().Get<ImageFrame>();
   if (forward_requested_) {
-    auto forward_optical_flow_field = absl::make_unique<OpticalFlowField>();
-    MP_RETURN_IF_ERROR(CalculateOpticalFlow(first_frame, second_frame,
-                                            forward_optical_flow_field.get()));
+    auto forward_optical_flow_field = std::make_unique<OpticalFlowField>();
+    ABSL_RETURN_IF_ERROR(CalculateOpticalFlow(
+        first_frame, second_frame, forward_optical_flow_field.get()));
     cc->Outputs()
         .Tag(kForwardFlowTag)
         .Add(forward_optical_flow_field.release(), cc->InputTimestamp());
   }
   if (backward_requested_) {
-    auto backward_optical_flow_field = absl::make_unique<OpticalFlowField>();
-    MP_RETURN_IF_ERROR(CalculateOpticalFlow(second_frame, first_frame,
-                                            backward_optical_flow_field.get()));
+    auto backward_optical_flow_field = std::make_unique<OpticalFlowField>();
+    ABSL_RETURN_IF_ERROR(CalculateOpticalFlow(
+        second_frame, first_frame, backward_optical_flow_field.get()));
     cc->Outputs()
         .Tag(kBackwardFlowTag)
         .Add(backward_optical_flow_field.release(), cc->InputTimestamp());

@@ -26,7 +26,6 @@
 
 #include <algorithm>
 
-#include "base/compiler_specific.h"
 #include "base/numerics/safe_conversions.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/task_type.h"
@@ -704,8 +703,7 @@ UChar32 LayoutText::FirstCharacterAfterWhitespaceCollapsing() const {
     cursor.MoveTo(*this);
     if (cursor) {
       const StringView text = cursor.Current().Text(cursor);
-      // SAFETY: Non-zero text length test.
-      return text.length() ? UNSAFE_BUFFERS(text.CodePointAt(0)) : 0;
+      return text.length() ? text.CodePointAt(0) : 0;
     }
   }
   return 0;
@@ -718,9 +716,7 @@ UChar32 LayoutText::LastCharacterAfterWhitespaceCollapsing() const {
     cursor.MoveTo(*this);
     if (cursor) {
       const StringView text = cursor.Current().Text(cursor);
-      // SAFETY: Non-zero text length test.
-      return text.length() ? UNSAFE_BUFFERS(text.CodePointAt(text.length() - 1))
-                           : 0;
+      return text.length() ? text.CodePointAt(text.length() - 1) : 0;
     }
   }
   return 0;
@@ -760,7 +756,7 @@ void LayoutText::LogicalStartingPointAndHeight(
       logical_starting_point = {physical_offset.left, physical_offset.top};
       return;
     }
-    PhysicalSize outer_size = ContainingBlock()->StitchedSize();
+    PhysicalSize outer_size = ContainingBox()->StitchedSize();
     logical_starting_point =
         WritingModeConverter(Style().GetWritingDirection(), outer_size)
             .ToLogical(physical_offset, cursor.Current().Size());
@@ -1453,15 +1449,12 @@ const InlineItemSpan& LayoutText::InlineItems() const {
 
 #if DCHECK_IS_ON()
 void LayoutText::RecalcVisualOverflow() {
+  NOT_DESTROYED();
   // We should never reach here, because |PaintLayer| calls
   // |RecalcVisualOverflow| for each layer, and the containing |LayoutObject|
   // should recalculate its |FragmentItem|s without traversing descendant
   // |LayoutObject|s.
-  if (IsInline() && IsInLayoutNGInlineFormattingContext()) {
-    NOTREACHED();
-  }
-
-  LayoutObject::RecalcVisualOverflow();
+  NOTREACHED();
 }
 #endif
 

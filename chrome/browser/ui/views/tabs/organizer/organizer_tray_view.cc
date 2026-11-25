@@ -19,21 +19,17 @@
 #include "chrome/browser/ui/views/frame/custom_corners_background.h"
 #include "chrome/browser/ui/views/frame/shadow_frame_view.h"
 #include "chrome/browser/ui/views/tabs/organizer/layout_constants.h"
-#include "chrome/browser/ui/views/tabs/organizer/organizer_panel_controls_view.h"
+#include "chrome/browser/ui/views/tabs/organizer/organizer_panel_view.h"
 #include "ui/base/interaction/element_tracker.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/compositor/layer.h"
 #include "ui/events/event_observer.h"
 #include "ui/events/types/event_type.h"
-#include "ui/gfx/animation/animation_delegate.h"
 #include "ui/views/event_monitor.h"
 #include "ui/views/focus/focus_manager.h"
 #include "ui/views/interaction/element_tracker_views.h"
-#include "ui/views/layout/delegating_layout_manager.h"
 #include "ui/views/layout/layout_types.h"
-#include "ui/views/layout/proposed_layout.h"
 #include "ui/views/view_class_properties.h"
-#include "ui/views/view_utils.h"
 
 namespace {
 
@@ -117,10 +113,6 @@ OrganizerTrayView::OrganizerTrayView(BrowserWindowInterface& browser,
   SetPaintToLayer();
   layer()->SetFillsBoundsOpaquely(false);
 
-  SetOrientation(views::LayoutOrientation::kVertical);
-  SetCrossAxisAlignment(views::LayoutAlignment::kStretch);
-  SetMainAxisAlignment(views::LayoutAlignment::kStart);
-
   // Set up the default background.
   if (browser_view) {
     SetBackground(std::make_unique<CustomCornersBackground>(
@@ -134,12 +126,6 @@ OrganizerTrayView::OrganizerTrayView(BrowserWindowInterface& browser,
       kPanelShadowElevation, kPanelShadowAlpha));
   shadow_frame_->SetProperty(views::kViewIgnoredByLayoutKey, true);
 
-  controls_view_ = AddChildView(std::make_unique<OrganizerPanelControlsView>(
-      BrowserActions::From(&*browser_)->root_action_item()));
-  controls_view_->SetProperty(views::kMarginsKey,
-                              organizer_panel::kOrganizerPanelControlsMargins);
-
-  AddAccelerator(ui::Accelerator(ui::VKEY_ESCAPE, ui::EF_NONE));
   SetVisible(false);
 }
 
@@ -164,17 +150,6 @@ void OrganizerTrayView::UpdatePanelClipAndShadow() {
 
 bool OrganizerTrayView::IsPositionInWindowCaption(const gfx::Point&) {
   return false;
-}
-
-void OrganizerTrayView::SetTopLeadingExclusion(
-    const gfx::Size& top_leading_exclusion) {
-  if (top_leading_exclusion == top_leading_exclusion_) {
-    return;
-  }
-  top_leading_exclusion_ = top_leading_exclusion;
-  controls_view_->SetMinimumCrossAxisSize(std::max(
-      0, top_leading_exclusion_.height() -
-             controls_view_->GetProperty(views::kMarginsKey)->height()));
 }
 
 void OrganizerTrayView::SetTargetWidth(int target_width) {
@@ -205,14 +180,6 @@ bool OrganizerTrayView::HasOrganizerPanelView() const {
   return panel_view_;
 }
 
-bool OrganizerTrayView::AcceleratorPressed(const ui::Accelerator& accelerator) {
-  if (accelerator.key_code() == ui::VKEY_ESCAPE) {
-    ClosePanel();
-    return true;
-  }
-  return false;
-}
-
 void OrganizerTrayView::AddedToWidget() {
   // This has to be done after there is a color provider, which happens after
   // attaching to a widget.
@@ -225,11 +192,14 @@ void OrganizerTrayView::AddedToWidget() {
   shadow_frame_->SetShadowVisible(true);
 }
 
+void OrganizerTrayView::RemovedFromWidget() {
+  // This makes sure the event observer is cleaned up during browser teardown.
+  event_observer_.reset();
+}
+
 void OrganizerTrayView::VisibilityChanged(views::View* from, bool visible) {
   if (visible) {
     event_observer_ = std::make_unique<EventObserver>(*this);
-    controls_view_->UpdateTooltipText();
-    TooltipTextChanged();
   } else {
     event_observer_.reset();
   }
@@ -254,44 +224,16 @@ views::View* OrganizerTrayView::GetFocusTraversableParentView() {
 void OrganizerTrayView::Layout(PassKey) {
   LayoutSuperclass<views::View>(this);
 
-  const gfx::Insets controls_margins =
-      *controls_view_->GetProperty(views::kMarginsKey);
-
   // Shadow frame does not participate in normal layout.
   shadow_frame_->SetBoundsRect(GetLocalBounds());
 
-  // Panel view (if present) is laid out below controls, filling remaining
-  // space.
+  // Panel view (if present) is rendered at the top of the tray, filling the
+  // tray.
   if (panel_view_) {
-    const int panel_top =
-        controls_view_->bounds().bottom() + controls_margins.bottom();
-    panel_view_->SetBounds(std::min(0, width() - target_width_), panel_top,
-                           target_width_, height() - panel_top);
+    panel_view_->SetBounds(std::min(0, width() - target_width_), 0,
+                           target_width_, height());
     panel_view_->SetVisible(panel_view_->bounds().Intersects(GetLocalBounds()));
   }
-
-  // If there's an exclusion for caption buttons and the panel is not at its
-  // target open width, may need to fade out the controls to avoid overlapping
-  // the caption buttons.
-  double opacity = 1.0;
-  const int exclusion_width = top_leading_exclusion_.width();
-  const int actual_width = width();
-  if (actual_width < target_width_) {
-    const int controls_preferred_width =
-        controls_view_->GetPreferredSize().width();
-    const int required_width =
-        exclusion_width + controls_preferred_width + controls_margins.right();
-    if (actual_width <= required_width) {
-      // Not enough space to show the controls without overlapping buttons.
-      opacity = 0.0;
-    } else {
-      // As the width goes from the required width to full width, scale opacity
-      // from 0 to 1.
-      opacity = (actual_width - required_width) /
-                static_cast<double>(target_width_ - required_width);
-    }
-  }
-  controls_view_->SetButtonOpacity(opacity);
 }
 
 void OrganizerTrayView::ClosePanel() {

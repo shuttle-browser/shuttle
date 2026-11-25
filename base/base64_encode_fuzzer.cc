@@ -35,8 +35,8 @@ DEFINE_LLVM_FUZZER_TEST_ONE_INPUT_SPAN(const base::span<const uint8_t> data) {
   EncodeDecode(data);
 
   {
-    base::test::ScopedFeatureList enable_simdutf(
-        base::features::kSimdutfBase64Encode);
+    base::test::ScopedFeatureList enable_base64_simd(
+        base::features::kBase64SimdBase64Encode);
     EncodeDecode(data);
   }
   return 0;

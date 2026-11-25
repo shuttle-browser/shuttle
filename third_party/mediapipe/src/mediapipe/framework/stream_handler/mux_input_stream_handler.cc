@@ -15,9 +15,9 @@
 
 #include <utility>
 
-#include "absl/log/absl_check.h"
-#include "absl/strings/substitute.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/log/absl_check.h"         // from @com_google_absl
+#include "absl/strings/substitute.h"     // from @com_google_absl
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/collection_item_id.h"
 #include "mediapipe/framework/input_stream_handler.h"
@@ -42,7 +42,7 @@ void MuxInputStreamHandler::RemoveOutdatedDataPackets(Timestamp timestamp) {
 NodeReadiness MuxInputStreamHandler::GetNodeReadiness(
     Timestamp* min_stream_timestamp) {
   ABSL_DCHECK(min_stream_timestamp);
-  absl::MutexLock lock(&input_streams_mutex_);
+  absl::MutexLock lock(input_streams_mutex_);
 
   const auto& control_stream = input_stream_managers_.Get(GetControlStreamId());
   bool empty;
@@ -96,7 +96,7 @@ void MuxInputStreamHandler::FillInputSet(Timestamp input_timestamp,
                                          InputStreamShardSet* input_set) {
   ABSL_CHECK(input_timestamp.IsAllowedInStream());
   ABSL_CHECK(input_set);
-  absl::MutexLock lock(&input_streams_mutex_);
+  absl::MutexLock lock(input_streams_mutex_);
 
   const CollectionItemId control_stream_id = GetControlStreamId();
   auto& control_stream = input_stream_managers_.Get(control_stream_id);

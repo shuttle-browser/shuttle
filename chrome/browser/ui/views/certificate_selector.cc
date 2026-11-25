@@ -181,7 +181,7 @@ CertificateSelector::CertificateSelector(net::ClientCertIdentityList identities,
 }
 
 CertificateSelector::~CertificateSelector() {
-  table_->SetModel(nullptr);
+  table_->ClearModel();
 }
 
 // static

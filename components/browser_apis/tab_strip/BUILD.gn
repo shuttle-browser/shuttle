@@ -96,6 +96,10 @@ mojom("mojom") {
           mojom = "tabs_api.mojom.SplitTabVisualData"
           cpp = "::split_tabs::SplitTabVisualData"
         },
+        {
+          mojom = "tabs_api.mojom.Tab"
+          cpp = "::tabs_api::Tab"
+        },
       ]
       traits_headers = [
         "types/image_mojom_traits.h",
@@ -105,6 +109,8 @@ mojom("mojom") {
         "types/path_mojom_traits.h",
         "types/position.h",
         "types/position_mojom_traits.h",
+        "types/tab.h",
+        "types/tab_mojom_traits.h",
         "types/tab_group_visual_data_mojom_traits.h",
         "types/split_tab_visual_data_mojom_traits.h",
         "//components/tab_groups/tab_group_visual_data.h",
@@ -118,12 +124,16 @@ mojom("mojom") {
         "types/position_mojom_traits.cc",
         "types/split_tab_visual_data_mojom_traits.cc",
         "types/tab_group_visual_data_mojom_traits.cc",
+        "types/tab_mojom_traits.cc",
       ]
       traits_public_deps = [
         "types",
         "//base",
+        "//components/tabs/public/mojom",
+        "//mojo/public/cpp/base:shared_typemap_traits",
         "//net",
         "//ui/gfx",
+        "//url/mojom:url_mojom_gurl",
       ]
     },
   ]
@@ -149,15 +159,22 @@ source_set("service") {
     "tab_strip_service.h",
     "tab_strip_service_impl.cc",
     "tab_strip_service_impl.h",
+    "tab_strip_service_view.cc",
+    "tab_strip_service_view.h",
   ]
 
-  public_deps = [ ":mojom" ]
+  public_deps = [
+    ":mojom",
+    "observation",
+    "types",
+    "//base",
+    "//components/tabs:public",
+    "//third_party/abseil-cpp:absl",
+  ]
 
   deps = [
     "adapters",
     "events",
-    "observation",
-    "types",
     "utilities",
   ]
 

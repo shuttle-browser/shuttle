@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/log/absl_check.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/tflite/tflite_tensors_to_landmarks_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter.h"  // from @litert
 
 namespace mediapipe {
 
@@ -144,7 +146,7 @@ absl::Status TfLiteTensorsToLandmarksCalculator::GetContract(
 absl::Status TfLiteTensorsToLandmarksCalculator::Open(CalculatorContext* cc) {
   cc->SetOffset(TimestampDiff(0));
 
-  MP_RETURN_IF_ERROR(LoadOptions(cc));
+  ABSL_RETURN_IF_ERROR(LoadOptions(cc));
 
   if (cc->Outputs().HasTag("NORM_LANDMARKS")) {
     RET_CHECK(options_.has_input_image_height() &&

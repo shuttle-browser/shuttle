@@ -14,13 +14,13 @@
 
 #include "mediapipe/gpu/image_frame_to_gpu_buffer_calculator.h"
 
-#include "absl/status/status.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/api3/calculator.h"
 #include "mediapipe/framework/api3/calculator_context.h"
 #include "mediapipe/framework/api3/calculator_contract.h"
 #include "mediapipe/framework/api3/contract.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/gpu/gl_calculator_helper.h"
 #include "mediapipe/gpu/gpu_buffer.h"
 
@@ -58,7 +58,7 @@ absl::Status ImageFrameToGpuBufferCalculator::UpdateContract(
 absl::Status ImageFrameToGpuBufferCalculator::Open(
     CalculatorContext<ImageFrameToGpuBufferNode>& cc) {
 #if !MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER
-  MP_RETURN_IF_ERROR(helper_.Open(&cc.GetGenericContext()));
+  ABSL_RETURN_IF_ERROR(helper_.Open(&cc.GetGenericContext()));
 #endif  // !MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER
   return absl::OkStatus();
 }
@@ -69,7 +69,7 @@ absl::Status ImageFrameToGpuBufferCalculator::Process(
 
 #if MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER
   CFHolder<CVPixelBufferRef> buffer;
-  MP_RETURN_IF_ERROR(CreateCVPixelBufferForImageFramePacket(
+  ABSL_RETURN_IF_ERROR(CreateCVPixelBufferForImageFramePacket(
       cc.image_frame.Packet().AsLegacyPacket(), &buffer));
   cc.gpu_buffer.Send(GpuBuffer(buffer));
 #else

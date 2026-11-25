@@ -5,6 +5,8 @@
 #include "chrome/browser/ui/views/tabs/shared/new_tab_button.h"
 
 #include "base/feature_list.h"
+#include "base/metrics/user_metrics.h"
+#include "base/metrics/user_metrics_action.h"
 #include "build/build_config.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_actions.h"
@@ -116,10 +118,12 @@ void NewTabButton::SetMiddleClickCallbackForTesting(
 }
 
 void NewTabButton::NotifyClick(const ui::Event& event) {
+  base::RecordAction(base::UserMetricsAction("NewTab_Button"));
 #if BUILDFLAG(IS_LINUX)
   if (event.IsMouseEvent()) {
     const ui::MouseEvent& mouse = static_cast<const ui::MouseEvent&>(event);
     if (mouse.IsOnlyMiddleMouseButton()) {
+      NotifyWillInvokeAction();
       views::InkDrop::Get(this)->AnimateToState(
           views::InkDropState::ACTION_TRIGGERED,
           ui::LocatedEvent::FromIfValid(&event));

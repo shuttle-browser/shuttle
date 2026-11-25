@@ -5,7 +5,7 @@
 import {assert, assertNonNull} from '//resources/js/assert.js';
 import type {DictionaryValue} from '//resources/mojo/mojo/public/mojom/base/values.mojom-webui.js';
 
-import {BrowserProxyImpl} from './slim_webview_browser_proxy.js';
+import {browserProxyFactory} from './slim_web_view.mojom-webui.js';
 
 export class EventDict {
   constructor(private data: DictionaryValue) {}
@@ -28,6 +28,14 @@ export class EventDict {
   getDouble(key: string): number {
     assertNonNull(this.data.storage[key]?.doubleValue);
     return this.data.storage[key].doubleValue;
+  }
+
+  // Returns the value whether it was sent as an int or a double.
+  getNumber(key: string): number {
+    const value =
+        this.data.storage[key]?.intValue ?? this.data.storage[key]?.doubleValue;
+    assertNonNull(value);
+    return value;
   }
 
   getDict(key: string): EventDict {
@@ -97,14 +105,14 @@ export class EventDispatcher {
 
   connect() {
     assert(this.listenerId === null);
-    const proxy = BrowserProxyImpl.getInstance();
+    const proxy = browserProxyFactory.getInstance();
     this.listenerId = proxy.callbackRouter.dispatchEvent.addListener(
         this.dispatch.bind(this));
   }
 
   disconnect() {
     assert(this.listenerId !== null);
-    const proxy = BrowserProxyImpl.getInstance();
+    const proxy = browserProxyFactory.getInstance();
     proxy.callbackRouter.removeListener(this.listenerId);
     this.listenerId = null;
   }

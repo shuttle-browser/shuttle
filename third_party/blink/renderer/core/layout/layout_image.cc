@@ -237,11 +237,13 @@ bool LayoutImage::NeedsLayoutOnNaturalSizeChange() const {
   }
 
   const auto& style = Style();
-  // TODO(https://crbug.com/313072): Should this test min/max-height as well?
   bool is_fixed_sized =
       style.LogicalWidth().IsFixed() && style.LogicalHeight().IsFixed() &&
       (style.LogicalMinWidth().IsFixed() || style.LogicalMinWidth().IsAuto()) &&
-      (style.LogicalMaxWidth().IsFixed() || style.LogicalMaxWidth().IsNone());
+      (style.LogicalMaxWidth().IsFixed() || style.LogicalMaxWidth().IsNone()) &&
+      (style.LogicalMinHeight().IsFixed() ||
+       style.LogicalMinHeight().IsAuto()) &&
+      (style.LogicalMaxHeight().IsFixed() || style.LogicalMaxHeight().IsNone());
   return !is_fixed_sized;
 }
 
@@ -411,8 +413,7 @@ bool LayoutImage::IsUnsizedImage() const {
   const ComputedStyle& style = this->Style();
   const auto explicit_width = style.LogicalWidth().HasOnlyFixedAndPercent();
   const auto explicit_height = style.LogicalHeight().HasOnlyFixedAndPercent();
-  bool has_aspect_ratio =
-      style.AspectRatio().GetType() == EAspectRatioType::kRatio;
+  bool has_aspect_ratio = !style.AspectRatio().IsAuto();
   const bool is_fixed_size =
       (explicit_width && explicit_height) ||
       (has_aspect_ratio && (explicit_width || explicit_height));

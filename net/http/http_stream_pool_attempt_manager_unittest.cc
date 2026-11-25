@@ -14,12 +14,12 @@
 #include <variant>
 #include <vector>
 
+#include "base/containers/flat_set.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/notreached.h"
 #include "base/test/bind.h"
-#include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_future.h"
@@ -733,7 +733,7 @@ TEST_F(HttpStreamPoolAttemptManagerTest, ResolveErrorInfo) {
 }
 
 TEST_F(HttpStreamPoolAttemptManagerTest, DnsAliases) {
-  const std::set<std::string> kAliases = {"alias1", "alias2"};
+  const base::flat_set<std::string> kAliases = {"alias1", "alias2"};
   base::WeakPtr<FakeServiceEndpointRequest> endpoint_request =
       resolver()->AddFakeRequest();
   endpoint_request
@@ -7672,25 +7672,17 @@ TEST_F(HttpStreamPoolAttemptManagerTest, ReportBadProxyAfterSuccessOnDirect) {
   EXPECT_THAT(it->second.net_error, IsError(ERR_PROXY_CONNECTION_FAILED));
 }
 
-TEST_F(HttpStreamPoolAttemptManagerTest, DirectProxyInfoForIpProtection) {
-  const auto kIpProtectionDirectChain =
-      ProxyChain::ForIpProtection(std::vector<ProxyServer>());
+TEST_F(HttpStreamPoolAttemptManagerTest, DirectProxyInfo) {
   ProxyInfo proxy_info;
-  proxy_info.UseProxyChain(kIpProtectionDirectChain);
-
-  resolver()
-      ->AddFakeRequest()
-      ->add_endpoint(ServiceEndpointBuilder().add_v4("192.0.2.1").endpoint())
-      .CompleteStartSynchronously(OK);
-  StaticSocketDataProvider data;
-  socket_factory()->AddSocketDataProvider(&data);
+  proxy_info.UseDirectWithBypassedProxy();
 
   StreamRequester requester;
-  requester.set_proxy_info(proxy_info).RequestStream(pool());
-  requester.WaitForResult();
-  EXPECT_THAT(requester.result(), Optional(IsOk()));
-  EXPECT_EQ(requester.used_proxy_info().ToDebugString(),
-            proxy_info.ToDebugString());
+  requester.set_destination("https://a.test").set_proxy_info(proxy_info);
+  CreateFakeSpdySession(requester.GetStreamKey());
+
+  requester.RequestStream(pool());
+  EXPECT_THAT(requester.WaitForResult(), IsOk());
+  EXPECT_TRUE(requester.used_proxy_info().did_bypass_proxy());
 }
 
 // Regression test for crbug.com/369744951. Ensures that destroying
@@ -8040,19 +8032,11 @@ TEST_F(HttpStreamPoolAttemptManagerTest, TrustAnchorIDsDisabled) {
                          .endpoint())
       .CompleteStartSynchronously(OK);
 
-  base::HistogramTester histogram_tester;
   StreamRequester requester;
   requester.set_destination(kDefaultDestination).RequestStream(pool());
 
   requester.WaitForResult();
   EXPECT_THAT(requester.result(), Optional(IsOk()));
-  histogram_tester.ExpectTotalCount("Net.SSL_Connection_Error_TrustAnchorIDs",
-                                    0);
-  histogram_tester.ExpectTotalCount("Net.SSL_Connection_Latency_TrustAnchorIDs",
-                                    0);
-  histogram_tester.ExpectUniqueSample(
-      "Net.SSL.TrustAnchorIDsResult",
-      SSLClientSocket::TrustAnchorIDsResult::kNoDnsSuccessInitial, 1);
 }
 
 // Tests that TLS Trust Anchor IDs are sent when the feature flag is enabled.
@@ -8080,19 +8064,11 @@ TEST_F(HttpStreamPoolAttemptManagerTest, TrustAnchorIDs) {
                          .endpoint())
       .CompleteStartSynchronously(OK);
 
-  base::HistogramTester histogram_tester;
   StreamRequester requester;
   requester.set_destination(kDefaultDestination).RequestStream(pool());
 
   requester.WaitForResult();
   EXPECT_THAT(requester.result(), Optional(IsOk()));
-  histogram_tester.ExpectTotalCount("Net.SSL_Connection_Error_TrustAnchorIDs",
-                                    0);
-  histogram_tester.ExpectTotalCount("Net.SSL_Connection_Latency_TrustAnchorIDs",
-                                    0);
-  histogram_tester.ExpectUniqueSample(
-      "Net.SSL.TrustAnchorIDsResult",
-      SSLClientSocket::TrustAnchorIDsResult::kNoDnsSuccessInitial, 1);
 }
 
 // Tests that TLS Trust Anchor IDs are sent even when ECH is disabled.

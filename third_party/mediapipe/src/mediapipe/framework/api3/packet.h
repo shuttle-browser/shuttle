@@ -19,11 +19,12 @@
 #include <string>
 #include <utility>
 
-#include "absl/functional/any_invocable.h"
-#include "absl/status/statusor.h"
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
+#include "absl/status/status.h"             // from @com_google_absl
+#include "absl/status/status_macros.h"      // from @com_google_absl
+#include "absl/status/statusor.h"           // from @com_google_absl
 #include "mediapipe/framework/api3/any.h"
 #include "mediapipe/framework/packet.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/framework/timestamp.h"
 
 namespace mediapipe::api3 {
@@ -112,7 +113,7 @@ template <typename T>
 absl::StatusOr<Packet<T>> WrapLegacyPacket(mediapipe::Packet packet) {
   if constexpr (!std::is_same_v<T, Any>) {
     if (!packet.IsEmpty()) {
-      MP_RETURN_IF_ERROR(packet.ValidateAsType<T>());
+      ABSL_RETURN_IF_ERROR(packet.ValidateAsType<T>());
     }
   }
   return Packet<T>(std::move(packet));

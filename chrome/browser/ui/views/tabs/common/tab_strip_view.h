@@ -9,11 +9,13 @@
 #include "base/scoped_observation.h"
 #include "chrome/browser/ui/views/tabs/shared/tab_strip_types.h"
 #include "components/prefs/pref_change_registrar.h"
+#include "components/tabs/public/tab_collection.h"
 #include "components/tabs/public/tab_interface.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/views/view.h"
 #include "ui/views/widget/widget_observer.h"
 
+class HorizontalTabStripOverflowIndicatorView;
 class PrefService;
 class TabCollectionNode;
 class PinnedTabContainerView;
@@ -54,6 +56,9 @@ class TabStripView final : public views::View,
   int leading_overlap() const { return leading_overlap_; }
   void SetLeadingOverlap(int leading_overlap);
 
+  int trailing_overlap() const { return trailing_overlap_; }
+  void SetTrailingOverlap(int trailing_overlap);
+
   views::ScrollView* pinned_tabs_scroll_view() const {
     return pinned_tabs_scroll_view_;
   }
@@ -61,9 +66,16 @@ class TabStripView final : public views::View,
     return unpinned_tabs_scroll_view_;
   }
 
+  // Returns `scroll_view`'s local bounds (mirrored for RTL) inset by any
+  // active horizontal overflow indicator opaque regions or seam padding.
+  gfx::Rect GetScrollViewUnmaskedBounds(
+      const views::ScrollView* scroll_view) const;
+
   bool IsPositionInWindowCaption(const gfx::Point& point);
 
   // views::View:
+  void Layout(PassKey) override;
+  views::View::Views GetChildrenInZOrder() override;
   void AddedToWidget() override;
   void RemovedFromWidget() override;
   void OnMouseEntered(const ui::MouseEvent& event) override;
@@ -71,9 +83,49 @@ class TabStripView final : public views::View,
 
   // views::WidgetObserver:
   void OnWidgetActivationChanged(views::Widget* widget, bool active) override;
+  void OnWidgetVisibilityChanged(views::Widget* widget, bool visible) override;
 
+  void OnChildrenAdded(const tabs::TabCollectionNodes& handles);
+  void OnChildrenRemoved();
   void OnChildMoved(TabCollectionNode* moved_node);
-  void OnTabChanged(const tabs::TabInterface* active_tab);
+  void OnActiveTabChanged(const tabs::TabInterface* active_tab);
+
+  void RecordMousePressedInTab();
+  bool IsFocusInTabStrip();
+
+  views::ScrollView* GetUnpinnedTabsScrollViewForTesting() {
+    return unpinned_tabs_scroll_view_;
+  }
+  views::ScrollView* GetPinnedTabsScrollViewForTesting() {
+    return pinned_tabs_scroll_view_;
+  }
+  HorizontalTabStripOverflowIndicatorView*
+  GetPinnedLeftOverflowIndicatorForTesting() {
+    return pinned_left_overflow_indicator_;
+  }
+  HorizontalTabStripOverflowIndicatorView*
+  GetPinnedRightOverflowIndicatorForTesting() {
+    return pinned_right_overflow_indicator_;
+  }
+  HorizontalTabStripOverflowIndicatorView*
+  GetUnpinnedLeftOverflowIndicatorForTesting() {
+    return unpinned_left_overflow_indicator_;
+  }
+  views::View* GetPrimaryScrollTargetForTesting() const;
+  views::View* GetSecondaryScrollTargetForTesting() const;
+  tabs::UnpinnedTabScrollableStateRecorder*
+  unpinned_tab_scrollable_state_recorder_for_testing() {
+    return unpinned_tab_scrollable_state_recorder_.get();
+  }
+
+ private:
+  class ScrollViewTargeter;
+  class TargetViewsTracker;
+
+  views::View* AddScrollViewContents(std::unique_ptr<views::View> view);
+  void RemoveScrollViewContents(views::View* view);
+  void SetScrollViewProperties(views::ScrollView* scroll_view);
+  void ResetCollectionNode();
 
   // Scrolls the scroll view(s) to ensure that the specified target tabs/views
   // are visible within the viewport.
@@ -92,30 +144,6 @@ class TabStripView final : public views::View,
                        const tabs::TabInterface* new_tab);
   void ScrollToFitViews(views::View* view1, views::View* view2);
 
-  void RecordMousePressedInTab();
-  bool IsFocusInTabStrip();
-
-  views::ScrollView* GetUnpinnedTabsScrollViewForTesting() {
-    return unpinned_tabs_scroll_view_;
-  }
-  views::ScrollView* GetPinnedTabsScrollViewForTesting() {
-    return pinned_tabs_scroll_view_;
-  }
-  views::View* GetPrimaryScrollTargetForTesting() const;
-  views::View* GetSecondaryScrollTargetForTesting() const;
-  tabs::UnpinnedTabScrollableStateRecorder*
-  unpinned_tab_scrollable_state_recorder_for_testing() {
-    return unpinned_tab_scrollable_state_recorder_.get();
-  }
-
- private:
-  class TargetViewsTracker;
-
-  views::View* AddScrollViewContents(std::unique_ptr<views::View> view);
-  void RemoveScrollViewContents(views::View* view);
-  void SetScrollViewProperties(views::ScrollView* scroll_view);
-  void ResetCollectionNode();
-
   // Invoked after layout has been invoked for target views' associated
   // ScrollView. Performs a best-effort attempt to ensure target views are
   // visible in the viewport (prioritizing the active tab view if not all fit).
@@ -129,9 +157,20 @@ class TabStripView final : public views::View,
 
   gfx::Rect GetBoundsInScrollViewContents(views::View* view,
                                           views::ScrollView* scroll_view);
+  gfx::Rect GetOpaqueVisibleRectForScrollTarget(
+      views::ScrollView* scroll_view,
+      const gfx::Rect& target_bounds) const;
 
+  bool ShouldDrawPinnedAboveUnpinned() const;
+
+  // Updates overflow indicator opaque widths and layer z-order for the pinned
+  // and unpinned scroll views.
+  void UpdateScrollViewLayers();
+  void OnContentsScrolled();
   void HideHoverCardOnScroll();
   void OnScrollButtonsVisibilityChanged();
+  bool ShouldHideSeparators() const;
+  void UpdateSeparatorVisibility();
 
   PrefService* GetPrefs() const;
 
@@ -142,11 +181,23 @@ class TabStripView final : public views::View,
   raw_ptr<TabCollectionNode> collection_node_ = nullptr;
   raw_ptr<views::ScrollView> pinned_tabs_scroll_view_ = nullptr;
   raw_ptr<PinnedTabContainerView> pinned_tabs_container_view_ = nullptr;
+  raw_ptr<HorizontalTabStripOverflowIndicatorView>
+      pinned_left_overflow_indicator_ = nullptr;
+  raw_ptr<HorizontalTabStripOverflowIndicatorView>
+      pinned_right_overflow_indicator_ = nullptr;
   raw_ptr<views::Separator> tabs_separator_ = nullptr;
   raw_ptr<views::ScrollView> unpinned_tabs_scroll_view_ = nullptr;
   raw_ptr<UnpinnedTabContainerView> unpinned_tabs_container_view_ = nullptr;
+  raw_ptr<HorizontalTabStripOverflowIndicatorView>
+      unpinned_left_overflow_indicator_ = nullptr;
+  raw_ptr<HorizontalTabStripOverflowIndicatorView>
+      unpinned_right_overflow_indicator_ = nullptr;
   raw_ptr<TabScrollButtonContainer> tab_scroll_button_container_ = nullptr;
+
+  bool is_first_window_presentation_ = true;
+  bool are_separators_hidden_ = false;
   int leading_overlap_ = 0;
+  int trailing_overlap_ = 0;
 
   // Used for seek time metrics from the time the mouse enters the tabstrip.
   std::optional<base::TimeTicks> mouse_entered_tabstrip_time_;

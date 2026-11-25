@@ -335,6 +335,20 @@ targets.variant(
 )
 
 targets.variant(
+    name = "SIM_IPAD_A16_27_3",
+    identifier = "iPad (A16) 27.3",
+    mixins = [
+        "ios_runtime_cache_27_3",
+    ],
+    args = [
+        "--platform",
+        "iPad (A16)",
+        "--version",
+        "27.3",
+    ],
+)
+
+targets.variant(
     name = "SIM_IPAD_PRO_7TH_GEN_18_5",
     identifier = "iPad Pro 13-inch (M4) 18.5",
     mixins = [
@@ -513,16 +527,44 @@ targets.variant(
 )
 
 targets.variant(
-    name = "SIM_IPHONE_DUO_27_1",
-    identifier = "iPhone Duo 27.1",
+    name = "SIM_IPHONE_16_27_3",
+    identifier = "iPhone 16 27.3",
     mixins = [
-        "ios_runtime_cache_27_1",
+        "ios_runtime_cache_27_3",
+    ],
+    args = [
+        "--platform",
+        "iPhone 16",
+        "--version",
+        "27.3",
+    ],
+)
+
+targets.variant(
+    name = "SIM_IPHONE_DUO_27_2",
+    identifier = "iPhone Duo 27.2",
+    mixins = [
+        "ios_runtime_cache_27_2_iphone19_4",
     ],
     args = [
         "--platform",
         "iPhone Duo",
         "--version",
-        "27.1",
+        "27.2-iphone19-4",
+    ],
+)
+
+targets.variant(
+    name = "SIM_IPHONE_DUO_27_3",
+    identifier = "iPhone Duo 27.3",
+    mixins = [
+        "ios_runtime_cache_27_3",
+    ],
+    args = [
+        "--platform",
+        "iPhone Duo",
+        "--version",
+        "27.3",
     ],
 )
 
@@ -660,20 +702,16 @@ targets.variant(
 )
 
 targets.variant(
-    name = "WEBVIEW_FULL_CTS_TESTS",
-    identifier = "full_mode",
-    swarming = targets.swarming(
-        shards = 2,
-    ),
-)
-
-targets.variant(
-    name = "WEBVIEW_INSTANT_CTS_TESTS",
-    identifier = "instant_mode",
+    name = "SIM_IPHONE_SE_3RD_GEN_27_3",
+    identifier = "iPhone SE (3rd generation) 27.3",
+    mixins = [
+        "ios_runtime_cache_27_3",
+    ],
     args = [
-        "--exclude-annotation",
-        "AppModeFull",
-        "--test-apk-as-instant",
+        "--platform",
+        "iPhone SE (3rd generation)",
+        "--version",
+        "27.3",
     ],
 )
 

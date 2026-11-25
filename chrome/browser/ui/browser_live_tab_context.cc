@@ -51,7 +51,6 @@
 #include "content/public/browser/session_storage_namespace_handle.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
-#include "ui/base/window_open_disposition.h"
 
 using content::NavigationController;
 using content::SessionStorageNamespaceHandle;
@@ -165,8 +164,7 @@ BrowserLiveTabContext::GetExtraDataForWindow() const {
 
   if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
     if (std::optional<tab_groups::TabGroupId> focused_group =
-            tab_strip_model_->GetFocusedGroup();
-        focused_group.has_value() && !IsEphemeralTabGroup(*focused_group)) {
+            tab_strip_model_->GetPersistableFocusedGroup()) {
       data[tabs::TabStripModelSelectionState::kFocusedTabGroupIdKey] =
           focused_group->ToString();
     }
@@ -289,10 +287,11 @@ sessions::LiveTab* BrowserLiveTabContext::AddRestoredTab(
   // normal tab instead. See crbug.com/368139715.
   std::optional<tab_groups::TabGroupId> group_id =
       tab_strip_model_->SupportsTabGroups() ? tab.group : std::nullopt;
-  if (tab.is_group_ephemeral && group_id.has_value() &&
-      (!tab_strip_model_->group_model() ||
-       !tab_strip_model_->group_model()->ContainsTabGroup(group_id.value()))) {
-    group_id = std::nullopt;
+  if (!group_id.has_value() && tab.ephemeral_group.has_value() &&
+      tab_strip_model_->SupportsTabGroups() &&
+      tab_strip_model_->group_model() &&
+      tab_strip_model_->group_model()->ContainsTabGroup(*tab.ephemeral_group)) {
+    group_id = tab.ephemeral_group;
   }
   content::WebContents* web_contents = nullptr;
 

@@ -206,6 +206,7 @@ template("chrome_extra_paks") {
       sources += [
         "$root_gen_dir/chrome/agents_resources.pak",
         "$root_gen_dir/chrome/certificate_manager_resources.pak",
+        "$root_gen_dir/chrome/craft_resources.pak",
         "$root_gen_dir/chrome/dev_ui_resources.pak",
         "$root_gen_dir/chrome/downloads_resources.pak",
         "$root_gen_dir/chrome/inspect_resources.pak",

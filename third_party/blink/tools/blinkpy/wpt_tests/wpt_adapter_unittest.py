@@ -11,6 +11,7 @@ import unittest
 from datetime import datetime
 from unittest import mock
 
+from blinkpy.common import exit_codes
 from blinkpy.common.host_mock import MockHost
 from blinkpy.common.path_finder import PathFinder
 from blinkpy.web_tests.builder_list import BuilderList
@@ -74,6 +75,10 @@ class WPTAdapterTest(unittest.TestCase):
                 not/a/wpt.html
                 wpt_internal/variant.html
                 """),
+        )
+        self.fs.write_text_file(
+            self.finder.path_from_wpt_tests('config.tmpl.json'),
+            json.dumps({'aliases': []}),
         )
         self.fs.write_text_file(
             self.finder.path_from_wpt_tests('MANIFEST.json'),
@@ -157,6 +162,131 @@ class WPTAdapterTest(unittest.TestCase):
     def _read_run_info(self, options):
         run_info_path = self.fs.join(options.run_info, 'mozinfo.json')
         return json.loads(self.fs.read_text_file(run_info_path))
+
+    def _make_port_test_adapter(self):
+        adapter = WPTAdapter.from_args(
+            self.host, ['--no-manifest-update'], 'test-linux-trusty'
+        )
+        calls = mock.Mock()
+        calls.setup.return_value = None
+        calls.run.return_value = False
+        calls.load_runner.return_value = calls.run
+        for target, name, replacement in [
+            (adapter.port, 'setup_test_run', calls.setup),
+            (adapter.port, 'clean_up_test_run', calls.cleanup),
+            (adapter.processor, 'copy_results_viewer', calls.copy_viewer),
+            (adapter.processor, 'process_results_json', calls.process_results),
+        ]:
+            self._mocks.enter_context(
+                mock.patch.object(target, name, replacement)
+            )
+        calls.process_results.return_value = {'num_regressions': 0}
+        self._mocks.enter_context(
+            mock.patch(
+                'blinkpy.wpt_tests.wpt_adapter._load_entry_point',
+                calls.load_runner,
+            )
+        )
+        return adapter, calls
+
+    def test_port_setup_failure_stops_runner(self):
+        adapter, calls = self._make_port_test_adapter()
+        calls.setup.return_value = exit_codes.SYS_DEPS_EXIT_STATUS
+
+        self.assertEqual(adapter.run_tests(), exit_codes.SYS_DEPS_EXIT_STATUS)
+        calls.load_runner.assert_not_called()
+        calls.run.assert_not_called()
+        calls.cleanup.assert_called_once_with()
+
+    def test_port_setup_exception_cleans_up(self):
+        adapter, calls = self._make_port_test_adapter()
+        calls.setup.side_effect = RuntimeError('setup failed')
+
+        with self.assertRaisesRegex(RuntimeError, 'setup failed'):
+            adapter.run_tests()
+        calls.cleanup.assert_called_once_with()
+        calls.load_runner.assert_not_called()
+
+    def test_port_setup_interrupt_cleans_up(self):
+        adapter, calls = self._make_port_test_adapter()
+        calls.setup.side_effect = KeyboardInterrupt
+
+        self.assertEqual(
+            adapter.run_tests(), exit_codes.INTERRUPTED_EXIT_STATUS
+        )
+        calls.cleanup.assert_called_once_with()
+        calls.load_runner.assert_not_called()
+
+    def test_simultaneous_run_fails_clearly(self):
+        adapter, calls = self._make_port_test_adapter()
+
+        with self.fs.lock_file('/tmp/WebKit/web_tests.lock'):
+            with self.assertLogs('run_wpt_tests', level='ERROR') as log_ctx:
+                exit_code = adapter.run_tests()
+
+        self.assertEqual(exit_code, exit_codes.UNEXPECTED_ERROR_EXIT_STATUS)
+        self.assertIn(
+            'ERROR:run_wpt_tests:'
+            'Another instance of run_web_tests.py or run_wpt_tests.py is '
+            'holding the OS lock (/tmp/WebKit/web_tests.lock). Simultaneous '
+            'runs are not supported due to shared server ports; wait for the '
+            'other run to finish and try again.',
+            log_ctx.output,
+        )
+        calls.setup.assert_not_called()
+        calls.load_runner.assert_not_called()
+        calls.run.assert_not_called()
+        calls.copy_viewer.assert_not_called()
+        calls.process_results.assert_not_called()
+
+        # Once the other run releases the lock, running tests succeeds.
+        self.assertEqual(adapter.run_tests(), exit_codes.OK_EXIT_STATUS)
+        calls.setup.assert_called_once_with()
+        calls.load_runner.assert_called_once()
+        calls.run.assert_called_once()
+
+    def test_simultaneous_run_on_linux_suggests_and_supports_namespace(self):
+        self.host.platform.os_name = 'linux'
+        self.host.platform.os_version = 'linux'
+        adapter, calls = self._make_port_test_adapter()
+
+        with self.fs.lock_file('/tmp/WebKit/web_tests.lock'):
+            with self.assertLogs('run_wpt_tests', level='ERROR') as log_ctx:
+                exit_code = adapter.run_tests()
+
+            self.assertEqual(exit_code, exit_codes.UNEXPECTED_ERROR_EXIT_STATUS)
+            self.assertIn(
+                'ERROR:run_wpt_tests:'
+                'Another instance of run_web_tests.py or run_wpt_tests.py is '
+                'holding the OS lock (/tmp/WebKit/web_tests.lock). Pass '
+                '--namespace to run tests from separate checkouts '
+                'simultaneously, or wait for the other run to finish and try '
+                'again.',
+                log_ctx.output,
+            )
+            calls.setup.assert_not_called()
+
+            # With --namespace, a separate checkout runs even while the shared
+            # /tmp/WebKit lock is held.
+            adapter.options.namespace = True
+            self.assertEqual(adapter.run_tests(), exit_codes.OK_EXIT_STATUS)
+            self.assertTrue(self.host.in_namespace)
+            calls.setup.assert_called_once_with()
+
+    def test_namespace_rejected_on_unsupported_platform(self):
+        # Default MockHost uses os_name='mac'.
+        adapter, calls = self._make_port_test_adapter()
+        adapter.options.namespace = True
+        with self.assertLogs('run_wpt_tests', level='ERROR') as log_ctx:
+            exit_code = adapter.run_tests()
+        self.assertEqual(exit_code, exit_codes.UNEXPECTED_ERROR_EXIT_STATUS)
+        self.assertIn(
+            'ERROR:run_wpt_tests:'
+            '--namespace is only supported on Linux with unprivileged user '
+            'namespaces enabled.',
+            log_ctx.output,
+        )
+        calls.setup.assert_not_called()
 
     def test_basic_passthrough(self):
         mock_datetime = self._mocks.enter_context(

@@ -33,6 +33,7 @@
 #include <unicode/unistr.h>
 
 #include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "base/logging.h"
 #include "build/build_config.h"
 #include "third_party/blink/renderer/platform/graphics/skia/skia_utils.h"
@@ -226,15 +227,16 @@ std::unique_ptr<JSONObject> ObjectForSkImage(const SkImage* image) {
   image_item->SetInteger("width", image->width());
   image_item->SetInteger("height", image->height());
   image_item->SetBoolean("opaque", image->isOpaque());
-  image_item->SetInteger("uniqueID", image->uniqueID());
+  image_item->SetDouble("uniqueID", static_cast<double>(image->uniqueID()));
   return image_item;
 }
 
-std::unique_ptr<JSONArray> ArrayForSkScalars(size_t count,
-                                             const SkScalar array[]) {
+std::unique_ptr<JSONArray> ArrayForSkScalars(
+    base::span<const SkScalar, 16> array) {
   auto points_array_item = std::make_unique<JSONArray>();
-  for (size_t i = 0; i < count; ++i)
-    points_array_item->PushDouble(UNSAFE_TODO(array[i]));
+  for (SkScalar value : array) {
+    points_array_item->PushDouble(value);
+  }
   return points_array_item;
 }
 
@@ -263,7 +265,7 @@ String StringForSkPaintFlags(const SkPaint& paint) {
   StringBuilder flags_string;
   AppendFlagToString(&flags_string, paint.isAntiAlias(), "AntiAlias");
   AppendFlagToString(&flags_string, paint.isDither(), "Dither");
-  return flags_string.ToString();
+  return flags_string.ReleaseString();
 }
 
 String StrokeCapName(SkPaint::Cap cap) {
@@ -574,7 +576,7 @@ void LoggingCanvas::didSetM44(const SkM44& matrix) {
   matrix.getColMajor(m);
   AutoLogger logger(this);
   JSONObject* params = logger.LogItemWithParams("setMatrix");
-  params->SetArray("matrix44", ArrayForSkScalars(16, m));
+  params->SetArray("matrix44", ArrayForSkScalars(m));
 }
 
 void LoggingCanvas::didConcat44(const SkM44& matrix) {
@@ -582,7 +584,7 @@ void LoggingCanvas::didConcat44(const SkM44& matrix) {
   matrix.getColMajor(m);
   AutoLogger logger(this);
   JSONObject* params = logger.LogItemWithParams("concat44");
-  params->SetArray("matrix44", ArrayForSkScalars(16, m));
+  params->SetArray("matrix44", ArrayForSkScalars(m));
 }
 
 void LoggingCanvas::didScale(SkScalar x, SkScalar y) {

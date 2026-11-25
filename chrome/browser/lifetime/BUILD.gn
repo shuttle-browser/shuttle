@@ -83,6 +83,7 @@ source_set("impl") {
     "//chrome/browser:browser_process_platform_part",
     "//chrome/browser:buildflags",
     "//chrome/browser/profiles:profile",
+    "//chrome/browser/profiles:profile_manager",
     "//chrome/browser/profiles:profile_util",
     "//chrome/common:buildflags",
     "//chrome/common:chrome_features",
@@ -98,6 +99,7 @@ source_set("impl") {
     "//content/public/common",
     "//printing/buildflags",
     "//rlz/buildflags",
+    "//services/network/public/mojom",
   ]
 
   if (is_android) {
@@ -165,7 +167,6 @@ source_set("impl") {
       "//chrome/browser/metrics",
       "//chrome/browser/metrics/desktop_session_duration",
       "//chrome/browser/notifications",
-      "//chrome/browser/profiles:profile_manager",
       "//chrome/browser/sessions",
       "//chrome/browser/ui:browser_init_state",
       "//chrome/browser/ui:browser_manager_service",
@@ -196,7 +197,6 @@ source_set("impl") {
   if (is_linux && use_dbus) {
     sources += [ "session_end_listener_linux.cc" ]
     deps += [
-      "//chrome/common:chrome_features",
       "//components/dbus",
       "//components/version_info",
     ]

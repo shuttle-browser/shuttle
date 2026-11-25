@@ -4,8 +4,10 @@
 
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 
+#include "base/check.h"
 #include "base/no_destructor.h"
 #include "base/trace_event/trace_event.h"
+#include "components/keyed_service/core/keyed_service_base_factory.h"
 #include "content/public/browser/browser_context.h"
 
 void BrowserContextDependencyManager::RegisterProfilePrefsForServices(
@@ -36,6 +38,20 @@ void BrowserContextDependencyManager::DoCreateBrowserContextServices(
   DependencyManager::CreateContextServices(context, is_testing_context);
 }
 
+void BrowserContextDependencyManager::CreateBrowserContextServicesAfterStartup(
+    content::BrowserContext* context) {
+  TRACE_EVENT0("browser",
+               "BrowserContextDependencyManager::"
+               "CreateBrowserContextServicesAfterStartup");
+  AssertBrowserContextWasntDestroyed(context);
+  for (KeyedServiceBaseFactory* factory : GetConstructionOrder()) {
+    if (factory->ServiceIsCreatedAfterStartup()) {
+      DCHECK(!factory->ServiceIsCreatedWithContext());
+      factory->CreateServiceNow(context);
+    }
+  }
+}
+
 void BrowserContextDependencyManager::DestroyBrowserContextServices(
     content::BrowserContext* context) {
   DependencyManager::DestroyContextServices(context);
@@ -60,6 +76,12 @@ void BrowserContextDependencyManager::MarkBrowserContextLive(
 void BrowserContextDependencyManager::DisableBrowserContextServicesByDefault(
     content::BrowserContext* context) {
   DependencyManager::DisableContextServicesByDefault(context);
+}
+
+bool BrowserContextDependencyManager::
+    AreBrowserContextServicesDisabledByDefault(
+        content::BrowserContext* context) const {
+  return DependencyManager::AreContextServicesDisabledByDefault(context);
 }
 
 // static

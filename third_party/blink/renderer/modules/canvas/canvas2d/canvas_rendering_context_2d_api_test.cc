@@ -10,6 +10,7 @@
 
 #include "base/memory/scoped_refptr.h"
 #include "build/build_config.h"
+#include "cc/paint/paint_op_buffer.h"
 #include "cc/paint/refcounted_buffer.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -18,6 +19,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_blob_callback.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_image_bitmap_options.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_image_data_settings.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_union_element_elementimage.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_union_float16array_float32array_uint8clampedarray.h"  // IWYU pragma: keep
 #include "third_party/blink/renderer/bindings/modules/v8/v8_begin_layer_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_typedefs.h"
@@ -31,7 +33,12 @@
 #include "third_party/blink/renderer/core/html/canvas/canvas_rendering_context.h"
 #include "third_party/blink/renderer/core/html/canvas/html_canvas_element.h"
 #include "third_party/blink/renderer/core/html/canvas/image_data.h"
+#include "third_party/blink/renderer/core/html/html_image_element.h"
+#include "third_party/blink/renderer/core/layout/layout_object.h"
+#include "third_party/blink/renderer/core/loader/resource/image_resource_content.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
+#include "third_party/blink/renderer/core/testing/sim/sim_request.h"
+#include "third_party/blink/renderer/core/testing/sim/sim_test.h"
 #include "third_party/blink/renderer/core/typed_arrays/array_buffer_view_helpers.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_typed_array.h"
 #include "third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.h"
@@ -43,7 +50,9 @@
 #include "third_party/blink/renderer/platform/bindings/exception_code.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
-#include "third_party/blink/renderer/platform/graphics/opacity_mode.h"
+#include "third_party/blink/renderer/platform/graphics/paint/drawing_recorder.h"
+#include "third_party/blink/renderer/platform/graphics/paint/paint_record_builder.h"
+#include "third_party/blink/renderer/platform/graphics/unaccelerated_static_bitmap_image.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/persistent.h"
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
@@ -51,6 +60,9 @@
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/core/SkCanvas.h"
+#include "third_party/skia/include/core/SkImage.h"
 #include "third_party/skia/include/core/SkPoint.h"
 #include "v8/include/v8-context.h"
 #include "v8/include/v8-local-handle.h"
@@ -81,7 +93,7 @@ class CanvasRenderingContext2DAPITest : public PageTestBase {
 
   HTMLCanvasElement& CanvasElement() const { return *canvas_element_; }
 
-  void CreateContext(OpacityMode);
+  void CreateContext();
 
  private:
   Persistent<HTMLCanvasElement> canvas_element_;
@@ -98,10 +110,10 @@ CanvasRenderingContext2D* CanvasRenderingContext2DAPITest::Context2D() const {
       CanvasElement().RenderingContext());
 }
 
-void CanvasRenderingContext2DAPITest::CreateContext(OpacityMode opacity_mode) {
+void CanvasRenderingContext2DAPITest::CreateContext() {
   String canvas_type("2d");
   CanvasContextCreationAttributesCore attributes;
-  attributes.alpha = opacity_mode == kNonOpaque;
+  attributes.alpha = true;
   canvas_element_->GetCanvasRenderingContext(
       ExecutionContext::From(GetScriptState()), canvas_type, attributes);
   Context2D();  // Calling this for the checks
@@ -112,8 +124,7 @@ void CanvasRenderingContext2DAPITest::SetUp() {
   GetDocument().documentElement()->SetInnerHTMLWithoutTrustedTypes(
       "<body><canvas id='c'></canvas></body>");
   UpdateAllLifecyclePhasesForTest();
-  canvas_element_ =
-      To<HTMLCanvasElement>(GetDocument().getElementById(AtomicString("c")));
+  canvas_element_ = To<HTMLCanvasElement>(GetElementById("c"));
 }
 
 void CanvasRenderingContext2DAPITest::TearDown() {
@@ -122,7 +133,7 @@ void CanvasRenderingContext2DAPITest::TearDown() {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, SetShadowColor_Clamping) {
-  CreateContext(kNonOpaque);
+  CreateContext();
 
   Context2D()->setShadowColor("rgba(0,0,0,0)");
   EXPECT_EQ(String("rgba(0, 0, 0, 0)"), Context2D()->shadowColor());
@@ -218,7 +229,7 @@ void TrySettingColor(CanvasRenderingContext2DAPITest* test,
 TEST_F(CanvasRenderingContext2DAPITest, ColorSerialization) {
   v8::HandleScope handle_scope(GetIsolate());
 
-  CreateContext(kNonOpaque);
+  CreateContext();
   // Check round trips
   TrySettingColor(this, "transparent", "rgba(0, 0, 0, 0)");
   TrySettingColor(this, "red", "#ff0000");
@@ -234,7 +245,7 @@ TEST_F(CanvasRenderingContext2DAPITest, ColorSerialization) {
 TEST_F(CanvasRenderingContext2DAPITest, DefaultAttributeValues) {
   v8::HandleScope handle_scope(GetIsolate());
 
-  CreateContext(kNonOpaque);
+  CreateContext();
 
   EXPECT_EQ(String("#000000"),
             GetStrokeStyleAsString(Context2D(), GetScriptState()));
@@ -246,7 +257,7 @@ TEST_F(CanvasRenderingContext2DAPITest, DefaultAttributeValues) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, LineDashStateSave) {
-  CreateContext(kNonOpaque);
+  CreateContext();
 
   Vector<double> simple_dash;
   simple_dash.push_back(4);
@@ -264,7 +275,7 @@ TEST_F(CanvasRenderingContext2DAPITest, LineDashStateSave) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, CreateImageData) {
-  CreateContext(kNonOpaque);
+  CreateContext();
 
   NonThrowableExceptionState exception_state;
 
@@ -315,7 +326,7 @@ TEST_F(CanvasRenderingContext2DAPITest, CreateImageData) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, CreateImageDataTooBig) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   DummyExceptionStateForTesting exception_state;
   ImageDataSettings* settings = ImageDataSettings::Create();
   ImageData* too_big_image_data =
@@ -326,7 +337,7 @@ TEST_F(CanvasRenderingContext2DAPITest, CreateImageDataTooBig) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, GetImageDataTooBig) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   DummyExceptionStateForTesting exception_state;
   ImageDataSettings* settings = ImageDataSettings::Create();
   ImageData* image_data = Context2D()->getImageData(0, 0, 1000000, 1000000,
@@ -338,7 +349,7 @@ TEST_F(CanvasRenderingContext2DAPITest, GetImageDataTooBig) {
 
 TEST_F(CanvasRenderingContext2DAPITest,
        GetImageDataIntegerOverflowNegativeParams) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   ImageDataSettings* settings = ImageDataSettings::Create();
   {
     DummyExceptionStateForTesting exception_state;
@@ -363,7 +374,7 @@ TEST_F(CanvasRenderingContext2DAPITest,
 TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerCreateImageBitmap) {
   V8TestingScope scope;
   ScopedCanvas2dLayersForTest layer_feature(/*enabled=*/true);
-  CreateContext(kNonOpaque);
+  CreateContext();
 
   NonThrowableExceptionState no_exception;
   auto* image = MakeGarbageCollected<V8ImageBitmapSource>(&CanvasElement());
@@ -390,7 +401,7 @@ TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerCreateImageBitmap) {
 TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerCreatePattern) {
   V8TestingScope scope;
   ScopedCanvas2dLayersForTest layer_feature(/*enabled=*/true);
-  CreateContext(kNonOpaque);
+  CreateContext();
 
   NonThrowableExceptionState no_exception;
   auto* image = MakeGarbageCollected<V8CanvasImageSource>(&CanvasElement());
@@ -413,7 +424,7 @@ TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerCreatePattern) {
 // Checks `drawImage` throws an exception the source has unclosed layers.
 TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerDrawImage) {
   ScopedCanvas2dLayersForTest layer_feature(/*enabled=*/true);
-  CreateContext(kNonOpaque);
+  CreateContext();
 
   NonThrowableExceptionState no_exception;
   auto* image = MakeGarbageCollected<V8CanvasImageSource>(&CanvasElement());
@@ -436,7 +447,7 @@ TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerDrawImage) {
 // Checks `getImageData` throws an exception if called inside a layer.
 TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerGetImageData) {
   ScopedCanvas2dLayersForTest layer_feature(/*enabled=*/true);
-  CreateContext(kNonOpaque);
+  CreateContext();
   NonThrowableExceptionState no_exception;
 
   Context2D()->beginLayer(GetScriptState(), BeginLayerOptions::Create(),
@@ -459,7 +470,7 @@ TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerGetImageData) {
 // Checks `putImageData` throws an exception if called inside a layer.
 TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerPutImageData) {
   ScopedCanvas2dLayersForTest layer_feature(/*enabled=*/true);
-  CreateContext(kNonOpaque);
+  CreateContext();
 
   NonThrowableExceptionState no_exception;
   ImageData* image_data = ImageData::Create(
@@ -484,7 +495,7 @@ TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerPutImageData) {
 TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerToBlob) {
   V8TestingScope scope;
   ScopedCanvas2dLayersForTest layer_feature(/*enabled=*/true);
-  CreateContext(kNonOpaque);
+  CreateContext();
 
   NonThrowableExceptionState no_exception;
   auto* callback = V8BlobCallback::Create(scope.GetContext()->Global());
@@ -507,7 +518,7 @@ TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerToBlob) {
 // Checks `toDataURL` throws an exception if called inside a layer.
 TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerToDataUrl) {
   ScopedCanvas2dLayersForTest layer_feature(/*enabled=*/true);
-  CreateContext(kNonOpaque);
+  CreateContext();
   NonThrowableExceptionState no_exception;
 
   Context2D()->beginLayer(GetScriptState(), BeginLayerOptions::Create(),
@@ -528,7 +539,7 @@ TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerToDataUrl) {
 // Checks `drawMesh` throws an exception if called inside a layer.
 TEST_F(CanvasRenderingContext2DAPITest, UnclosedLayerDrawMesh) {
   ScopedCanvas2dLayersForTest layer_feature(/*enabled=*/true);
-  CreateContext(kNonOpaque);
+  CreateContext();
 
   NonThrowableExceptionState no_exception;
   auto* image = MakeGarbageCollected<V8CanvasImageSource>(&CanvasElement());
@@ -594,7 +605,7 @@ NotShared<DOMUint16Array> CreateUint16Array(std::vector<uint16_t> array) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DVertexBuffer0Floats) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   DummyExceptionStateForTesting exception_state;
   EXPECT_THAT(Context2D()->createMesh2DVertexBuffer(CreateFloat32Array({}),
                                                     exception_state),
@@ -603,7 +614,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DVertexBuffer0Floats) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DVertexBuffer1Float) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   DummyExceptionStateForTesting exception_state;
   EXPECT_THAT(Context2D()->createMesh2DVertexBuffer(CreateFloat32Array({101}),
                                                     exception_state),
@@ -612,7 +623,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DVertexBuffer1Float) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DVertexBuffer2Floats) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   NonThrowableExceptionState exception_state;
   EXPECT_THAT(Context2D()->createMesh2DVertexBuffer(
                   CreateFloat32Array({101, 102}), exception_state),
@@ -620,7 +631,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DVertexBuffer2Floats) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DVertexBuffer3Floats) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   DummyExceptionStateForTesting exception_state;
   EXPECT_THAT(Context2D()->createMesh2DVertexBuffer(
                   CreateFloat32Array({101, 102, 103}), exception_state),
@@ -629,7 +640,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DVertexBuffer3Floats) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DVertexBuffer4Floats) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   NonThrowableExceptionState exception_state;
   EXPECT_THAT(Context2D()->createMesh2DVertexBuffer(
                   CreateFloat32Array({101, 102, 103, 104}), exception_state),
@@ -638,7 +649,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DVertexBuffer4Floats) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DUVBuffer0Floats) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   DummyExceptionStateForTesting exception_state;
   EXPECT_THAT(Context2D()->createMesh2DUVBuffer(CreateFloat32Array({}),
                                                 exception_state),
@@ -647,7 +658,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DUVBuffer0Floats) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DUVBuffer1Float) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   DummyExceptionStateForTesting exception_state;
   EXPECT_THAT(Context2D()->createMesh2DUVBuffer(CreateFloat32Array({101}),
                                                 exception_state),
@@ -656,7 +667,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DUVBuffer1Float) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DUVBuffer2Floats) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   NonThrowableExceptionState exception_state;
   EXPECT_THAT(Context2D()->createMesh2DUVBuffer(CreateFloat32Array({101, 102}),
                                                 exception_state),
@@ -664,7 +675,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DUVBuffer2Floats) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DUVBuffer3Floats) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   DummyExceptionStateForTesting exception_state;
   EXPECT_THAT(Context2D()->createMesh2DUVBuffer(
                   CreateFloat32Array({101, 102, 103}), exception_state),
@@ -673,7 +684,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DUVBuffer3Floats) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DUVBuffer4Floats) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   NonThrowableExceptionState exception_state;
   EXPECT_THAT(Context2D()->createMesh2DUVBuffer(
                   CreateFloat32Array({101, 102, 103, 104}), exception_state),
@@ -682,7 +693,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DUVBuffer4Floats) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DIndexBuffer0Uints) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   DummyExceptionStateForTesting exception_state;
   EXPECT_THAT(Context2D()->createMesh2DIndexBuffer(CreateUint16Array({}),
                                                    exception_state),
@@ -691,7 +702,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DIndexBuffer0Uints) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DIndexBuffer1Uint) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   DummyExceptionStateForTesting exception_state;
   EXPECT_THAT(Context2D()->createMesh2DIndexBuffer(CreateUint16Array({1}),
                                                    exception_state),
@@ -700,7 +711,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DIndexBuffer1Uint) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DIndexBuffer2Uints) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   DummyExceptionStateForTesting exception_state;
   EXPECT_THAT(Context2D()->createMesh2DIndexBuffer(CreateUint16Array({1, 2}),
                                                    exception_state),
@@ -709,7 +720,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DIndexBuffer2Uints) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DUVBuffer3Uints) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   NonThrowableExceptionState exception_state;
   EXPECT_THAT(Context2D()->createMesh2DIndexBuffer(CreateUint16Array({1, 2, 3}),
                                                    exception_state),
@@ -717,7 +728,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DUVBuffer3Uints) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DIndexBuffer4Uints) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   DummyExceptionStateForTesting exception_state;
   EXPECT_THAT(Context2D()->createMesh2DIndexBuffer(
                   CreateUint16Array({1, 2, 3, 4}), exception_state),
@@ -726,7 +737,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DIndexBuffer4Uints) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DIndexBuffer5Uints) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   DummyExceptionStateForTesting exception_state;
   EXPECT_THAT(Context2D()->createMesh2DIndexBuffer(
                   CreateUint16Array({1, 2, 3, 4, 5}), exception_state),
@@ -735,7 +746,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DIndexBuffer5Uints) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, Mesh2DUVBuffer6Uints) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   NonThrowableExceptionState exception_state;
   EXPECT_THAT(Context2D()->createMesh2DIndexBuffer(
                   CreateUint16Array({1, 2, 3, 4, 5, 6}), exception_state),
@@ -743,7 +754,7 @@ TEST_F(CanvasRenderingContext2DAPITest, Mesh2DUVBuffer6Uints) {
 }
 
 TEST_F(CanvasRenderingContext2DAPITest, DrawMesh) {
-  CreateContext(kNonOpaque);
+  CreateContext();
   CanvasRenderingContext2D* ctx = Context2D();
   V8CanvasImageSource* image_source =
       MakeGarbageCollected<V8CanvasImageSource>(&CanvasElement());
@@ -767,6 +778,128 @@ TEST_F(CanvasRenderingContext2DAPITest, DrawMesh) {
   ctx->drawMesh(vert_buffer, uv_buffer, index_buffer, image_source,
                 exception_state);
   EXPECT_FALSE(exception_state.HadException());
+}
+
+class CanvasRenderingContext2DSimTest : public SimTest {
+ protected:
+  void TearDown() override {
+    CanvasRenderingContext::GetCanvasPerformanceMonitor().ResetForTesting();
+    SimTest::TearDown();
+  }
+};
+
+TEST_F(CanvasRenderingContext2DSimTest,
+       DrawElementImageOmitsReadBackDisallowedOps) {
+  ScopedCanvasDrawElementForTest forced_canvas_draw_element_feature(true);
+  SimRequest main_resource("https://example.com/test.html", "text/html");
+  LoadURL("https://example.com/test.html");
+  main_resource.Complete(R"HTML(
+    <!DOCTYPE html>
+    <canvas id="c" width="100" height="100" content="drawable">
+      <div id="target" drawable
+           style="width: 20px; height: 20px; background: rgb(0, 255, 0);">
+        <img id="disallowed_img" width="20" height="20">
+      </div>
+    </canvas>
+  )HTML");
+  Compositor().BeginFrame();
+
+  ScriptState* script_state =
+      ToScriptStateForMainWorld(GetDocument().GetFrame());
+  ScriptState::Scope scope(script_state);
+  auto* canvas =
+      To<HTMLCanvasElement>(GetDocument().getElementById(AtomicString("c")));
+  CanvasContextCreationAttributesCore attributes;
+  attributes.alpha = true;
+  auto* context =
+      static_cast<CanvasRenderingContext2D*>(canvas->GetCanvasRenderingContext(
+          ExecutionContext::From(script_state), "2d", attributes));
+  ASSERT_NE(context, nullptr);
+
+  // Attach an origin-tainted StaticBitmapImage through ImageResourceContent::
+  // CreateLoaded() so ImageResourceContent::IsCorsSameOrigin() stays true
+  // (simulating a front-end invalidation bug that paints a cross-origin image)
+  // while the underlying cc::PaintImage has is_read_back_disallowed() == true.
+  SkBitmap red_bitmap;
+  red_bitmap.allocN32Pixels(20, 20);
+  red_bitmap.eraseColor(SK_ColorRED);
+  scoped_refptr<UnacceleratedStaticBitmapImage> tainted_image =
+      UnacceleratedStaticBitmapImage::Create(
+          SkImages::RasterFromBitmap(red_bitmap));
+  tainted_image->SetOriginClean(false);
+  ASSERT_TRUE(
+      tainted_image->PaintImageForCurrentFrame().is_read_back_disallowed());
+
+  auto* img = To<HTMLImageElement>(
+      GetDocument().getElementById(AtomicString("disallowed_img")));
+  img->SetImageForTest(ImageResourceContent::CreateLoaded(tainted_image.get()));
+  Compositor().BeginFrame();
+
+  Element* target = GetDocument().getElementById(AtomicString("target"));
+  auto* element_source =
+      MakeGarbageCollected<V8UnionElementOrElementImage>(target);
+
+  // 2D drawElementImage(Element) omits the disallowed red image op and draws
+  // the allowed green background without throwing.
+  DummyExceptionStateForTesting exception_state;
+  context->drawElementImage(element_source, 0, 0, nullptr, exception_state);
+  EXPECT_FALSE(exception_state.HadException());
+  ImageData* data = context->getImageData(5, 5, 1, 1, exception_state);
+  ASSERT_NE(data, nullptr);
+  EXPECT_FALSE(exception_state.HadException());
+  DOMUint8ClampedArray* bytes = data->data()->GetAsUint8ClampedArray().Get();
+  ASSERT_NE(bytes, nullptr);
+  EXPECT_EQ(bytes->Item(0), 0u);
+  EXPECT_EQ(bytes->Item(1), 255u);
+  EXPECT_EQ(bytes->Item(2), 0u);
+  EXPECT_EQ(bytes->Item(3), 255u);
+}
+
+TEST_F(CanvasRenderingContext2DAPITest,
+       TaintedCanvasPaintMarksReadBackDisallowed) {
+  ScriptState::Scope scope(GetScriptState());
+  CreateContext();
+  SetFillStyleString(Context2D(), GetScriptState(), "rgb(255, 0, 0)");
+  Context2D()->fillRect(0, 0, 10, 10);
+  UpdateAllLifecyclePhasesForTest();
+
+  auto record_canvas_paint = [&]() {
+    PaintRecordBuilder builder;
+    {
+      DrawingRecorder recorder(
+          builder.Context(), *CanvasElement().GetLayoutObject(),
+          DisplayItem::kDocumentBackground, gfx::Rect(300, 150));
+      CanvasElement().Paint(builder.Context(),
+                            PhysicalRect(gfx::Rect(0, 0, 300, 150)),
+                            /*flatten_composited_layers=*/true);
+    }
+    return builder.EndRecording();
+  };
+
+  auto raster_filtered_pixel = [](const cc::PaintRecord& record) {
+    cc::PaintRecord filtered = record.buffer().DeepCopyAsRecord(
+        /*strip_read_back_disallowed_ops=*/true);
+    EXPECT_FALSE(filtered.has_read_back_disallowed_content());
+    SkBitmap out;
+    out.allocN32Pixels(20, 20);
+    out.eraseColor(SK_ColorTRANSPARENT);
+    SkCanvas canvas(out);
+    filtered.Playback(&canvas);
+    return out.getColor(5, 5);
+  };
+
+  EXPECT_TRUE(CanvasElement().OriginClean());
+  cc::PaintRecord clean_record = record_canvas_paint();
+  EXPECT_FALSE(clean_record.has_read_back_disallowed_content());
+  EXPECT_EQ(raster_filtered_pixel(clean_record), SK_ColorRED);
+
+  CanvasElement().SetOriginTainted();
+  EXPECT_FALSE(CanvasElement().OriginClean());
+  cc::PaintRecord tainted_record = record_canvas_paint();
+  EXPECT_TRUE(tainted_record.has_read_back_disallowed_content());
+  // Filtering with strip_read_back_disallowed_ops=true omits the tainted
+  // canvas's DrawImageRectOp rather than leaving the snapshot pixels behind.
+  EXPECT_EQ(raster_filtered_pixel(tainted_record), SK_ColorTRANSPARENT);
 }
 
 }  // namespace blink

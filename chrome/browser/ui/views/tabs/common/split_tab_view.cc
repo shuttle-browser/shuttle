@@ -10,6 +10,7 @@
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
+#include "chrome/browser/ui/views/tabs/common/child_view_targeter_delegate.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_animating_layout_manager.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_node.h"
 #include "chrome/browser/ui/views/tabs/common/tab_drag_handler.h"
@@ -29,6 +30,7 @@
 #include "ui/views/layout/proposed_layout.h"
 #include "ui/views/view.h"
 #include "ui/views/view_class_properties.h"
+#include "ui/views/view_targeter.h"
 #include "ui/views/view_utils.h"
 #include "ui/views/widget/widget.h"
 
@@ -41,6 +43,10 @@ SplitTabView::SplitTabView(TabCollectionNode* collection_node)
                                   TabView::kGlowHoverAnimationDuration)
                             : nullptr) {
   SetLayoutManager(std::make_unique<views::DelegatingLayoutManager>(this));
+  if (orientation_ == TabStripOrientation::kHorizontal) {
+    SetEventTargeter(std::make_unique<views::ViewTargeter>(
+        std::make_unique<ChildViewTargeterDelegate>()));
+  }
 
   collection_node->set_detach_child_from_node(base::BindRepeating(
       &SplitTabView::RemoveChildViewForReparenting, base::Unretained(this)));
@@ -65,7 +71,9 @@ void SplitTabView::AddedToWidget() {
       GetWidget()->RegisterPaintAsActiveChangedCallback(base::BindRepeating(
           &SplitTabView::UpdateBorder, base::Unretained(this)));
 
-  OnDataChanged();
+  if (collection_node_) {
+    OnDataChanged();
+  }
   UpdateHovered(IsMouseHovered());
 }
 
@@ -88,7 +96,7 @@ void SplitTabView::OnMouseMoved(const ui::MouseEvent& event) {
 }
 
 void SplitTabView::OnPaint(gfx::Canvas* canvas) {
-  if (pinned_) {
+  if (orientation_ == TabStripOrientation::kVertical && pinned_) {
     const auto children = collection_node_
                               ? collection_node_->GetDirectChildren()
                               : TabCollectionNode::ChildViews();
@@ -164,6 +172,45 @@ std::optional<BrowserRootView::DropIndex> SplitTabView::GetLinkDropIndex(
   }
 }
 
+void SplitTabView::ShowHover(TabStyle::ShowHoverStyle style) {
+  hovered_ = true;
+
+  float radial_highlight_opacity = 1.0f;
+  for (views::View* child : children()) {
+    if (auto* tab_view = views::AsViewClass<TabView>(child)) {
+      tab_view->UpdateHovered(true);
+      tab_view->SchedulePaint();
+      radial_highlight_opacity = tab_view->radial_highlight_opacity();
+    }
+  }
+
+  if (hover_controller_) {
+    if (style == TabStyle::ShowHoverStyle::kSubtle) {
+      hover_controller_->SetSubtleOpacityScale(radial_highlight_opacity);
+    }
+    hover_controller_->Show(style);
+  }
+
+  SchedulePaint();
+}
+
+void SplitTabView::HideHover(TabStyle::HideHoverStyle style) {
+  hovered_ = false;
+
+  for (views::View* child : children()) {
+    if (auto* tab_view = views::AsViewClass<TabView>(child)) {
+      tab_view->UpdateHovered(false);
+      tab_view->SchedulePaint();
+    }
+  }
+
+  if (hover_controller_) {
+    hover_controller_->Hide(style);
+  }
+
+  SchedulePaint();
+}
+
 double SplitTabView::GetHoverAnimationValue() const {
   if (!hover_controller_) {
     return hovered_ ? 1.0 : 0.0;
@@ -176,8 +223,8 @@ void SplitTabView::ResetCollectionNode() {
   TabHoverCardController* hover_card_controller =
       collection_node_->GetController()->GetHoverCardController();
   if (hover_card_controller) {
-    hover_card_controller->UpdateHoverCard(
-        nullptr, TabSlotController::HoverCardUpdateType::kTabRemoved);
+    hover_card_controller->UpdateHoverCard(nullptr,
+                                           HoverCardUpdateType::kTabRemoved);
   }
 
   node_destroyed_subscription_ = {};
@@ -185,6 +232,7 @@ void SplitTabView::ResetCollectionNode() {
 }
 
 void SplitTabView::OnDataChanged() {
+  CHECK(collection_node_);
   const tabs::TabCollection* tab_collection =
       std::get<tabs::ConstDanglingUntriagedTabCollection>(
           collection_node_->GetNodeData());
@@ -196,7 +244,7 @@ void SplitTabView::OnDataChanged() {
 }
 
 void SplitTabView::UpdateBorder() {
-  if (pinned_) {
+  if (orientation_ == TabStripOrientation::kVertical && pinned_) {
     const bool is_frame_active =
         GetWidget() ? GetWidget()->ShouldPaintAsActive() : true;
     SetBorder(views::CreateRoundedRectBorder(
@@ -214,26 +262,11 @@ void SplitTabView::UpdateHovered(bool hovered) {
     return;
   }
 
-  hovered_ = hovered;
-
-  float radial_highlight_opacity = 1.0f;
-  for (views::View* child : children()) {
-    if (auto* tab_view = views::AsViewClass<TabView>(child)) {
-      tab_view->UpdateHovered(hovered_);
-      radial_highlight_opacity = tab_view->radial_highlight_opacity();
-    }
+  if (hovered) {
+    ShowHover(TabStyle::ShowHoverStyle::kSubtle);
+  } else {
+    HideHover(TabStyle::HideHoverStyle::kGradual);
   }
-
-  if (hover_controller_) {
-    if (hovered_) {
-      hover_controller_->SetSubtleOpacityScale(radial_highlight_opacity);
-      hover_controller_->Show(TabStyle::ShowHoverStyle::kSubtle);
-    } else {
-      hover_controller_->Hide(TabStyle::HideHoverStyle::kGradual);
-    }
-  }
-
-  SchedulePaint();
 }
 
 int SplitTabView::ComputeHorizontalWidth(

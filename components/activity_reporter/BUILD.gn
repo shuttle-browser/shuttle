@@ -36,6 +36,7 @@ source_set("activity_reporter") {
 
   if (report_activity) {
     sources += [
+      "activity_reporter_for_testing.h",
       "activity_reporter_impl.cc",
       "configurator.cc",
       "configurator.h",
@@ -44,7 +45,6 @@ source_set("activity_reporter") {
     deps += [
       "//base/version_info",
       "//components/policy/core/common",
-      "//components/prefs",
       "//ui/base",
       "//url",
     ]

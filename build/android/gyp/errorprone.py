@@ -6,10 +6,29 @@
 """Run Error Prone."""
 
 import argparse
+import os
 import sys
 
 import compile_java
+from util import build_utils
 from util import server_utils
+
+# A GraalVM native-image of javac with Error Prone, NullAway, and
+# //tools/android/errorprone_plugin compiled in. Exists only for linux-x64
+# hosts.
+_NATIVE_IMAGE_PATH = os.path.join(
+    build_utils.DIR_SOURCE_ROOT,
+    'third_party',
+    'android_build_tools',
+    'error_prone',
+    'cipd',
+    'error_prone',
+)
+
+# The native-image's copy of //tools/android/errorprone_plugin is updated only
+# when the error_prone CIPD package is rolled. Set DISABLE_NATIVE_IMAGE=1 to
+# test local changes to the plugin.
+_DISABLE_NATIVE_IMAGE = os.environ.get('DISABLE_NATIVE_IMAGE')
 
 # Add a check here to cause the suggested fix to be applied while compiling.
 ERRORPRONE_CHECKS_TO_APPLY = [
@@ -32,6 +51,64 @@ TESTONLY_ERRORPRONE_WARNINGS_TO_DISABLE = [
 CHROMIUM_PLUGIN_TESTONLY_WARNINGS_TO_DISABLE = [
     # These are allowed in tests.
     'NoStreams',
+]
+
+# Checks that apply only to test code. Disabled for non-testonly targets.
+TESTONLY_ERRORPRONE_WARNINGS = [
+    # Checks for JUnit and Truth usage (test runners and assertions).
+    'AssertEqualsArgumentOrderChecker',
+    'AssertSameIncompatible',
+    'AssertThrowsMinimizer',
+    'AssertThrowsMultipleStatements',
+    'AssertionFailureIgnored',
+    'CatchFail',
+    'ChainedAssertionLosesContext',
+    'ExtendingJUnitAssert',
+    'FloatingPointAssertionWithinEpsilon',
+    'JUnit3FloatingPointComparisonWithoutDelta',
+    'JUnit3TestNotRun',
+    'JUnit4ClassAnnotationNonStatic',
+    'JUnit4ClassUsedInJUnit3',
+    'JUnit4EmptyMethods',
+    'JUnit4SetUpNotRun',
+    'JUnit4TearDownNotRun',
+    'JUnit4TestNotRun',
+    'JUnit4TestsNotRunWithinEnclosed',
+    'JUnitAmbiguousTestClass',
+    'JUnitAssertSameCheck',
+    'JUnitIncompatibleType',
+    'JUnitMethodInvoked',
+    'JUnitParameterMethodNotFound',
+    'MissingFail',
+    'ParametersButNotParameterized',
+    'RuleNotRun',
+    'SelfAssertion',
+    'ShouldHaveEvenArgs',
+    'TheoryButNoTheories',
+    'TruthAssertExpected',
+    'TruthConstantAsserts',
+    'TruthGetOrDefault',
+    'TruthIncompatibleType',
+    'TryFailThrowable',
+    # Checks for Mockito usage.
+    'DirectInvocationOnMock',
+    'DoNotMock',
+    'MisleadingEmptyVarargs',
+    'MockIllegalThrows',
+    'MockNotUsedInProduction',
+    'MockitoUsage',
+    # Checks for other test libraries (Robolectric, Guava testlib, Error Prone
+    # test helpers).
+    'MisformattedTestData',
+    'MissingTestCall',
+    'RobolectricShadowDirectlyOn',
+    # Checks for Streams (banned in non-test code by NoStreams).
+    'CollectorShouldNotUseState',
+    'ModifySourceCollectionInStream',
+    'MultipleParallelOrSequentialCalls',
+    'StreamResourceLeak',
+    'StreamToIterable',
+    'StreamToString',
 ]
 
 # Full list of checks: https://errorprone.info/bugpatterns
@@ -145,8 +222,6 @@ ERRORPRONE_WARNINGS_TO_DISABLE = [
     'DefaultCharset',
     # If google-java-format is not going to do this, it's not worth our time.
     'StringConcatToTextBlock',
-    # We don't use Dagger.
-    'RefersToDaggerCodegen',
     # Only has false positives (would not want to enable this).
     'UnicodeEscape',
     # Does not apply to Android because it assumes no desugaring.
@@ -195,6 +270,79 @@ ERRORPRONE_WARNINGS_TO_DISABLE = [
     'NotJavadoc',
     'UnescapedEntity',
     'UnrecognisedJavadocTag',
+    # Checks for libraries that Chromium does not use (AutoValue, Dagger,
+    # Flogger, Guice, GWT, javax.inject, Joda-Time, RxJava, SWIG,
+    # TestParameterInjector, full-runtime protobuf), or for JDK APIs that
+    # Chromium does not use (Optional) or that are not available on Android.
+    'AndroidInjectionBeforeSuper',
+    'AssistedInjectAndInjectOnSameConstructor',
+    'AutoValueBoxedValues',
+    'AutoValueBuilderDefaultsInConstructor',
+    'AutoValueConstructorOrderChecker',
+    'AutoValueFinalMethods',
+    'AutoValueImmutableFields',
+    'AutoValueSubclassLeaked',
+    'BanJNDI',
+    'CloseableProvides',
+    'DaggerProvidesNull',
+    'DoNotMockAutoValue',
+    'EmptySetMultibindingContributions',
+    'FloggerArgumentToString',
+    'FloggerFormatString',
+    'FloggerLogString',
+    'FloggerLogVarargs',
+    'FloggerPerWithoutRateLimit',
+    'FloggerSplitLogStatement',
+    'FloggerStringConcatenation',
+    'GuiceAssistedInjectScoping',
+    'GuiceAssistedParameters',
+    'GuiceInjectOnFinalField',
+    'GuiceNestedCombine',
+    'ICCProfileGetInstance',
+    'InjectInvalidTargetingOnScopingAnnotation',
+    'InjectMoreThanOneScopeAnnotationOnClass',
+    'InjectOnConstructorOfAbstractClass',
+    'InjectOnMemberAndConstructor',
+    'InjectScopeAnnotationOnInterfaceOrAbstractClass',
+    'InjectedConstructorAnnotations',
+    'JavaxInjectOnAbstractMethod',
+    'JavaxInjectOnFinalField',
+    'JodaConstructors',
+    'JodaDateTimeConstants',
+    'JodaDurationWithMillis',
+    'JodaInstantWithMillis',
+    'JodaNewPeriod',
+    'JodaPlusMinusLong',
+    'JodaTimeConverterManager',
+    'JodaToSelf',
+    'JodaWithDurationAddedLong',
+    'MemorySegmentReferenceEquality',
+    'MisplacedScopeAnnotations',
+    'MixedDescriptors',
+    'MoreThanOneInjectableConstructor',
+    'NewFileSystem',
+    'NullOptional',
+    'NullableOptional',
+    'OptionalEquality',
+    'OptionalMapToOptional',
+    'OptionalMapUnusedValue',
+    'OptionalNotPresent',
+    'OptionalOfRedundantMethod',
+    'OutlineNone',
+    'OverlappingQualifierAndScopeAnnotation',
+    'OverridesGuiceInjectableMethod',
+    'OverridesJavaxInjectableMethod',
+    'PrivateSecurityContractProtoAccess',
+    'ProtoTruthMixedDescriptors',
+    'ProvidesMethodOutsideOfModule',
+    'QualifierOrScopeOnInjectMethod',
+    'RefersToDaggerCodegen',
+    'RxReturnValueIgnored',
+    'SwigMemoryLeak',
+    'SystemConsoleNull',
+    'TestParametersNotInitialized',
+    'ThreadBuilderNameWithPlaceholder',
+    'UnnecessaryQualifier',
 ]
 
 # Full list of checks: https://errorprone.info/bugpatterns
@@ -204,7 +352,6 @@ ERRORPRONE_WARNINGS_TO_ENABLE = [
     'BinderIdentityRestoredDangerously',
     'EmptyIf',
     'EqualsBrokenForNull',
-    'FieldCanBeFinal',
     'FieldCanBeLocal',
     'FieldCanBeStatic',
     'InvalidThrows',
@@ -213,7 +360,6 @@ ERRORPRONE_WARNINGS_TO_ENABLE = [
     'RedundantOverride',
     'StaticQualifiedUsingExpression',
     'UnnecessaryStaticImport',
-    'UseBinds',
     'WildcardImport',
 ]
 
@@ -338,6 +484,14 @@ def main():
     errorprone_flags.extend(
         '-Xep:{}:WARN'.format(x) for x in ERRORPRONE_WARNINGS_TO_ENABLE
     )
+    if options.has_chromium_plugin:
+        # A faster copy of FieldCanBeFinal (which is off by default, since it is
+        # experimental). It does nothing without this flag.
+        # Do not pass FieldCanBeFinal via -Xep (to enable or disable). Enabling
+        # it turns on the slow built-in check, and since Error Prone applies
+        # -Xep flags to every check whose name or altNames match, disabling it
+        # also disables FieldCanBeFinalFast.
+        errorprone_flags += ['-XepOpt:FieldCanBeFinalFast:Enabled=true']
     if options.testonly:
         errorprone_flags.extend(
             '-Xep:{}:OFF'.format(x)
@@ -349,6 +503,10 @@ def main():
                 for x in CHROMIUM_PLUGIN_TESTONLY_WARNINGS_TO_DISABLE
             )
         errorprone_flags += ['-XepCompilingTestOnlyCode']
+    else:
+        errorprone_flags.extend(
+            '-Xep:{}:OFF'.format(x) for x in TESTONLY_ERRORPRONE_WARNINGS
+        )
 
     # To enable CheckReturnValue to be opt-out rather than opt-in:
     # packages = 'org.chromium,com.google,java.util.regex'
@@ -372,21 +530,40 @@ def main():
 
     errorprone_flags.extend(options.xep_arg)
 
-    # These are required to use JDK 16, and are taken directly from
-    # https://errorprone.info/docs/installation
-    javac_args = [
-        '-J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED',
-        '-J--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED',
-        '-J--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED',
-        '-J--add-exports=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED',
-        '-J--add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED',
-        '-J--add-exports=jdk.compiler/com.sun.tools.javac.processing='
-        'ALL-UNNAMED',
-        '-J--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED',
-        '-J--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED',
-        '-J--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED',
-        '-J--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED',
-    ]
+    # The native-image always runs Chromium's plugin checks, so use it only when
+    # the plugin would otherwise be loaded.
+    if (
+        not _DISABLE_NATIVE_IMAGE
+        and options.has_chromium_plugin
+        and compile_java.IS_LINUX_X64
+    ):
+        javac_cmd = [
+            _NATIVE_IMAGE_PATH,
+            # Native images have no java.home, which javac needs in order to
+            # find the JDK's modules (for --release).
+            f'-Djava.home={build_utils.JAVA_HOME}',
+        ]
+        # The --add-exports / --add-opens flags are compiled in.
+        javac_args = []
+    else:
+        javac_cmd = None
+        # These are required to use JDK 16, and are taken directly from
+        # https://errorprone.info/docs/installation
+        javac_args = [
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.model='
+            'ALL-UNNAMED',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.parser='
+            'ALL-UNNAMED',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.processing='
+            'ALL-UNNAMED',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED',
+            '-J--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED',
+            '-J--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED',
+        ]
 
     javac_args += ['-XDcompilePolicy=simple', ' '.join(errorprone_flags)]
 
@@ -398,7 +575,10 @@ def main():
         javac_args += ['-XDshould-stop.ifNoError=FLOW']
 
     compile_java.main(
-        compile_java_argv, extra_javac_args=javac_args, use_errorprone=True
+        compile_java_argv,
+        extra_javac_args=javac_args,
+        use_errorprone=True,
+        javac_cmd=javac_cmd,
     )
 
 

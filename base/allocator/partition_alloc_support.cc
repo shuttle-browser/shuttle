@@ -97,6 +97,10 @@
 #include "base/system/sys_info.h"
 #endif
 
+#if BUILDFLAG(IS_IOS)
+#include "base/ios/ios_util.h"
+#endif
+
 #if PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
 #include "partition_alloc/memory_reclaimer.h"
 #include "partition_alloc/shim/allocator_shim_default_dispatch_to_partition_alloc.h"
@@ -658,9 +662,6 @@ void DanglingRawPtrReleased(uintptr_t id) {
     }
   }
 
-  std::string dangling_signature = ExtractDanglingPtrSignature(
-      free_info, stack_trace_release, task_trace_release);
-
   {
     // Log the full error in a single LogMessage. Printing StackTrace is
     // expensive, so we want to avoid interleaving the output with other logs.
@@ -998,6 +999,18 @@ PartitionAllocSupport::GetBrpConfiguration(std::string_view process_type) {
 #if PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC) && \
     PA_BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT) && \
     !PA_BUILDFLAG(FORCE_DISABLE_BACKUP_REF_PTR_FEATURE)
+#if BUILDFLAG(IS_IOS)
+  // Disable BackupRefPtr on iOS < 26.5 due to a XNU memory corruption
+  // bug (crbug.com/416518940).
+  if (!base::ios::IsRunningOnOrLater(26, 5, 0)) {
+    return {
+        .enable_brp = false,
+        .extra_extras_size = 0,
+        .suppress_double_free_detected_crash = false,
+        .suppress_corruption_detected_crash = false,
+    };
+  }
+#endif  // BUILDFLAG(IS_IOS)
 
   if (base::FeatureList::IsEnabled(
           base::features::kPartitionAllocBackupRefPtr) &&
@@ -1378,6 +1391,12 @@ void PartitionAllocSupport::ReconfigureAfterFeatureListInit(
       allocator_shim::internal::PartitionAllocMalloc::Allocator(partition_index)
           ->AdjustSlotSpanRing(size, kDefaultMaxEmptySlotSpansDirtyBytesShift);
     }
+  }
+
+  if (base::FeatureList::IsEnabled(
+          base::features::kPartitionAllocMinProvisioningSize)) {
+    partition_alloc::PartitionRoot::SetMinProvisioningSize(
+        features::kPartitionAllocMinProvisioningSizeInBytes.Get());
   }
 
   // `ReconfigureAfterTaskRunnerInit()` is called on the Main thread, however

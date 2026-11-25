@@ -4,7 +4,6 @@
 
 package org.jni_zero;
 
-import org.jni_zero.JniZero.SafePointersTracker;
 import org.jni_zero.internal.Nullable;
 
 /**
@@ -12,9 +11,8 @@ import org.jni_zero.internal.Nullable;
  *
  * <p>Enforces explicit lifecycle tracking and safe pointer invalidation.
  */
-class JniRawPtrImpl<T extends JniTypeToken> implements JniRawPtr<T>, JniPtrInner<T> {
-    final @Nullable SafePointersTracker mTracker;
-    long mNativePointer;
+class JniRawPtrImpl<T extends JniTypeToken> extends JniPtrImplBase<T> implements JniRawPtr<T> {
+    final @Nullable Tracker mTracker;
 
     JniRawPtrImpl(long nativePointer) {
         this(nativePointer, null);
@@ -22,31 +20,33 @@ class JniRawPtrImpl<T extends JniTypeToken> implements JniRawPtr<T>, JniPtrInner
 
     @CalledByNative
     JniRawPtrImpl(long nativePointer, @Nullable String creationContext) {
+        super(nativePointer);
         assert nativePointer != 0;
-        mNativePointer = nativePointer;
-        mTracker = JniZero.createSafePointersTracker(this, creationContext);
+        TrackerFactory factory = sTrackerFactory;
+        mTracker = factory == null ? null : factory.create(this, creationContext);
     }
 
     @Override
     public long getNativePtr() {
-        if (mNativePointer == 0) {
+        if (mNativePtr == 0) {
             throw new IllegalStateException(
                     "Safe JNI Pointer violation: Attempted to use a JniRawPtr after it has"
                             + " already been released.");
         }
-        return mNativePointer;
+        return mNativePtr;
     }
 
     @Override
     public void release() {
-        if (mNativePointer != 0) {
+        if (mNativePtr != 0) {
             if (mTracker != null) {
                 mTracker.destroy();
             }
-            long ptr = mNativePointer;
-            mNativePointer = 0;
-            if (JniZero.isRawPtrHooksEnabled()) {
-                CommonApisJni.get().releaseRawPtr(ptr);
+            long ptr = mNativePtr;
+            mNativePtr = 0;
+            RawPtrReleaser releaser = sRawPtrReleaser;
+            if (releaser != null) {
+                releaser.release(ptr);
             }
         }
     }

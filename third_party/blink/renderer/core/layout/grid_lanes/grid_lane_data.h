@@ -7,6 +7,7 @@
 
 #include "third_party/blink/renderer/core/layout/grid/grid_break_token_data.h"
 #include "third_party/blink/renderer/core/layout/grid/grid_item.h"
+#include "third_party/blink/renderer/core/layout/grid_lanes/track_opening.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/member.h"
@@ -30,10 +31,9 @@ struct GridLanesItemPlacementData
   LayoutUnit margin_block_start;
   LayoutUnit margin_block_end;
 
-  // Originally set to the item's total border-box block size before
-  // fragmentation, then reduced by each fragment as the item is fragmented. A
-  // negative value means the item expanded as a result of fragmentation.
-  LayoutUnit total_remaining_block_size;
+  // Total border-box block size before fragmentation. Compare this with the
+  // child's consumed block size to detect expansion without mutating placement.
+  LayoutUnit total_block_size;
 
   // Total border-box size for stacking-axis stretch during fragmentation.
   // This size may expand as a result of fragmentation break rules. An unset
@@ -96,27 +96,26 @@ struct GridLanesItemData : public GarbageCollected<GridLanesItemData> {
 };
 
 // Stores items placed in a single grid lane.
-struct GridLaneData : public GarbageCollected<GridLaneData> {
+struct GridLaneData {
+  DISALLOW_NEW();
+
   void AddItem(GridLanesItemData* item) {
     item_data.push_back(std::move(item));
   }
 
   void Trace(Visitor* visitor) const { visitor->Trace(item_data); }
 
-  // Whether any item that starts in this lane still needs to finish layout.
+  // Whether any unfinished item starts in this lane.
   // Non-start spanner entries are owned by their start lane and do not affect
   // this state.
   bool has_unfinished_items = false;
-
-  // How far unstarted items in this lane are pushed down because earlier items
-  // in the lane expanded as a result of fragmentation. Only used by column
-  // grid-lanes containers.
+  // How far unstarted column items are pushed down by fragmentation.
   LayoutUnit item_offset_adjustment;
 
   HeapVector<Member<GridLanesItemData>> item_data;
 };
 
-using GridLanesDataVector = HeapVector<Member<GridLaneData>, 1>;
+using GridLanesDataVector = HeapVector<GridLaneData, 1>;
 
 // Returns the item at `index_path` in `lane_data`'s item tree. The first index
 // selects an item from `GridLaneData::item_data`. Each subsequent index selects
@@ -157,5 +156,7 @@ void AdjustGridLanesItemPlacementOffsets(LayoutUnit offset_adjustment,
 void ReverseGridLanesItemOrder(GridLanesDataVector& grid_lanes);
 
 }  // namespace blink
+
+WTF_ALLOW_CLEAR_UNUSED_SLOTS_WITH_MEM_FUNCTIONS(blink::GridLaneData)
 
 #endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_GRID_LANES_GRID_LANE_DATA_H_

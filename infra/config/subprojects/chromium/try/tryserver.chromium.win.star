@@ -27,6 +27,8 @@ try_.defaults.set(
     execution_timeout = try_constants.DEFAULT_EXECUTION_TIMEOUT,
     experiments = {
         "chromium_tests.resultdb_module": 100,
+        "luci.buildbucket.run_in_turboci": 100,
+        "luci.buildbucket.run_in_turboci.grpc_client": 100,
     },
     orchestrator_cores = "2|4",
     orchestrator_siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
@@ -246,6 +248,21 @@ try_.compilator_builder(
     contact_team_email = "chrome-desktop-engprod@google.com",
     # TODO (crbug.com/1245171): Revert when root issue is fixed
     grace_period = 4 * time.minute,
+    main_list_view = "try",
+)
+
+try_.builder(
+    name = "win-devtools-frontend-rel",
+    description_html = "Runs DevTools Frontend tests exactly like win-rel",
+    mirrors = [
+        "ci/win-devtools-frontend-rel",
+    ],
+    gn_args = "ci/win-devtools-frontend-rel",
+    ssd = None,
+    contact_team_email = "chrome-devtools@google.com",
+    cq_settings = try_.cq_settings(
+        includable_only = True,
+    ),
     main_list_view = "try",
 )
 
@@ -596,7 +613,7 @@ shared_gpu.try_.win_optional_builder(
     # default is 6 for GPU optional builders.
     execution_timeout = 5 * time.hour,
     experiments = {
-        "luci.buildbucket.run_in_turboci": 25,
+        "luci.buildbucket.run_in_turboci": 100,
         "luci.buildbucket.run_in_turboci.grpc_client": 100,
     },
     main_list_view = "try",
@@ -630,7 +647,7 @@ shared_gpu.try_.win_optional_builder(
     # default is 6 for GPU optional builders.
     execution_timeout = 5 * time.hour,
     experiments = {
-        "luci.buildbucket.run_in_turboci": 5,
+        "luci.buildbucket.run_in_turboci": 100,
         "luci.buildbucket.run_in_turboci.grpc_client": 100,
     },
     main_list_view = "try",

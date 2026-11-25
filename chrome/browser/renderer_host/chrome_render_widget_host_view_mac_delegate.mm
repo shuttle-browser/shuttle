@@ -12,7 +12,6 @@
 #include "chrome/browser/renderer_host/chrome_render_widget_host_view_mac_history_swiping_control.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/tabs/inactive_window_mouse_event_controller.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/common/webui_url_utils.h"
 #include "components/prefs/pref_service.h"
@@ -28,16 +27,17 @@
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/render_widget_host_view.h"
+#include "content/public/browser/user_browser_context.h"
 #include "content/public/browser/web_contents.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/service_manager/public/cpp/interface_provider.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 
 @interface ChromeRenderWidgetHostViewMacDelegate () <HistorySwiperDelegate>
 
 @property(readonly) content::WebContents* webContents;
 @property(readonly) NSView* nsView;
-@property(readonly) PrefService* prefService;
+@property(readonly) PrefService* spellCheckPrefService;
 
 @end
 
@@ -110,15 +110,17 @@
   return renderWidgetHostView->GetNativeView().GetNativeNSView();
 }
 
-- (PrefService*)prefService {
-  content::RenderWidgetHost* renderWidgetHost =
-      content::RenderWidgetHost::FromID(_widgetProcessId, _widgetRoutingId);
-  if (!renderWidgetHost) {
+- (PrefService*)spellCheckPrefService {
+  content::WebContents* webContents = self.webContents;
+  if (!webContents) {
     return nullptr;
   }
 
+  // Spellcheck settings belong to the user. For Top Chrome WebUIs in
+  // TopChromeWebUIProfile, the user BrowserContext differs from the
+  // BrowserContext of the WebContents.
   return Profile::FromBrowserContext(
-             renderWidgetHost->GetProcess()->GetBrowserContext())
+             content::GetUserBrowserContext(*webContents))
       ->GetPrefs();
 }
 
@@ -202,12 +204,12 @@
 
   webContents->BackNavigationLikely(
       content::preloading_predictor::kBackGestureNavigation,
-      WindowOpenDisposition::kCurrentTab);
+      ui::mojom::WindowOpenDisposition::kCurrentTab);
 }
 
 - (BOOL)validateUserInterfaceItem:(id<NSValidatedUserInterfaceItem>)item
                       isValidItem:(BOOL*)valid {
-  PrefService* pref = self.prefService;
+  PrefService* pref = self.spellCheckPrefService;
   if (!pref) {
     return NO;
   }
@@ -331,7 +333,7 @@
 }
 
 - (void)toggleContinuousSpellChecking:(id)sender {
-  PrefService* pref = self.prefService;
+  PrefService* pref = self.spellCheckPrefService;
   if (!pref) {
     return;
   }
@@ -397,13 +399,11 @@
   // while the window is inactive.
   if (tabs::TabInterface* tab =
           tabs::TabInterface::MaybeGetFromContents(webContents)) {
-    if (tabs::TabFeatures* features = tab->GetTabFeatures()) {
-      if (tabs::InactiveWindowMouseEventController* inactive_event_controller =
-              features->inactive_window_mouse_event_controller()) {
-        if (inactive_event_controller
-                ->ShouldAcceptMouseEventsWhileWindowInactive()) {
-          return AcceptMouseEvents::kWhenInActiveApp;
-        }
+    if (tabs::InactiveWindowMouseEventController* inactive_event_controller =
+            tabs::InactiveWindowMouseEventController::From(tab)) {
+      if (inactive_event_controller
+              ->ShouldAcceptMouseEventsWhileWindowInactive()) {
+        return AcceptMouseEvents::kWhenInActiveApp;
       }
     }
   }

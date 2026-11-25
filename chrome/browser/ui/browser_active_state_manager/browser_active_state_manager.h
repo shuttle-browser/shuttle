@@ -6,11 +6,9 @@
 #define CHROME_BROWSER_UI_BROWSER_ACTIVE_STATE_MANAGER_BROWSER_ACTIVE_STATE_MANAGER_H_
 
 #include "base/callback_list.h"
-#include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
-
 
 // Feature controller responsible for managing the active state of a browser
 // window and notifying registered observers when active state changes.

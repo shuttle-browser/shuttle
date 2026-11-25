@@ -35,11 +35,6 @@ if (is_ios) {
     filelist_name = "data/history/unit_tests_bundle_data.filelist"
   }
 
-  bundle_data_from_filelist("history_embeddings_test_bundle_data") {
-    testonly = true
-    filelist_name = "data/history_embeddings/unit_tests_bundle_data.filelist"
-  }
-
   bundle_data_from_filelist("language_test_bundle_data") {
     testonly = true
     filelist_name = "data/language/unit_tests_bundle_data.filelist"
@@ -118,6 +113,11 @@ if (is_ios) {
   bundle_data_from_filelist("web_database_test_bundle_data") {
     testonly = true
     filelist_name = "data/web_database/unit_tests_bundle_data.filelist"
+  }
+
+  bundle_data_from_filelist("web_distiller_test_bundle_data") {
+    testonly = true
+    filelist_name = "data/web_distiller/unit_tests_bundle_data.filelist"
   }
 
   bundle_data_from_filelist("webcrypto_test_bundle_data") {

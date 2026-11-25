@@ -35,5 +35,9 @@ source_set("sanitized_image_source") {
     "//ui/gfx/geometry",
     "//url",
   ]
+
+  if (!is_android) {
+    deps += [ "//chrome/browser/ui/webui/top_chrome" ]
+  }
 }
 

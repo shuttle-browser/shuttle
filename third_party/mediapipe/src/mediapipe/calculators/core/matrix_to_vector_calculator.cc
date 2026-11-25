@@ -19,8 +19,9 @@
 #include <memory>
 #include <string>
 
-#include "Eigen/Core"
-#include "absl/memory/memory.h"
+#include "Eigen/Core"            // from @eigen
+#include "absl/memory/memory.h"  // from @com_google_absl
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/framework/api2/node.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/matrix.h"
@@ -57,12 +58,12 @@ MEDIAPIPE_REGISTER_NODE(MatrixToVectorCalculator);
 
 absl::Status MatrixToVectorCalculator::Open(CalculatorContext* cc) {
   cc->SetOffset(0);
-  return mediapipe::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status MatrixToVectorCalculator::Process(CalculatorContext* cc) {
   const Matrix& input = *kIn(cc);
-  auto output = absl::make_unique<std::vector<float>>();
+  auto output = std::make_unique<std::vector<float>>();
 
   // The following lines work to convert the Matrix to a vector because Matrix
   // is an Eigen::MatrixXf and Eigen uses column-major layout by default.

@@ -183,6 +183,7 @@ void AlertIndicatorButton::TransitionToAlertState(
     delegate_->AlertStateChanged();
   }
 
+  UpdateAlertIndicatorAnimation();
   UpdateEnabledForMuteToggle();
 }
 

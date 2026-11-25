@@ -110,6 +110,15 @@ class PLATFORM_EXPORT ImagePlanes final {
       HighBitDepthOutputType::kScaledTo16Bits;
 };
 
+// Indicates whether an image contains an embedded C2PA manifest.
+enum class C2PAManifestStatus {
+  // C2PA manifest detection is unsupported for this image format, or the image
+  // metadata has not been decoded yet.
+  kUnknown,
+  kNotDetected,
+  kDetected,
+};
+
 // ImageDecoder is a base for all format-specific decoders
 // (e.g. JPEGImageDecoder). This base manages the ImageFrame cache.
 //
@@ -293,7 +302,7 @@ class PLATFORM_EXPORT ImageDecoder {
   virtual uint8_t GetYUVBitDepth() const;
 
   // Image decoders that support C2PA manifest embedding can override this.
-  virtual bool HasC2PAManifest() const;
+  virtual C2PAManifestStatus GetC2PAManifestStatus() const;
 
   // Returns the information required to decide whether or not hardware
   // acceleration can be used to decode this image. Callers of this function
@@ -325,9 +334,6 @@ class PLATFORM_EXPORT ImageDecoder {
   // Decodes as much of the requested frame as possible, and returns an
   // ImageDecoder-owned pointer.
   ImageFrame* DecodeFrameBufferAtIndex(wtf_size_t);
-
-  // Whether the requested frame has alpha.
-  virtual bool FrameHasAlphaAtIndex(wtf_size_t) const;
 
   // Whether or not the frame is fully received.
   virtual bool FrameIsReceivedAtIndex(wtf_size_t) const;
@@ -517,18 +523,6 @@ class PLATFORM_EXPORT ImageDecoder {
   // @return true  if the frame was fully decoded,
   //         false otherwise.
   bool PostDecodeProcessing(wtf_size_t);
-
-  // The GIF and PNG decoders set the default alpha setting of the ImageFrame to
-  // true. When the frame rect does not contain any (semi-) transparent pixels,
-  // this may need to be changed to false. This depends on whether the required
-  // previous frame adds transparency to the image, outside of the frame rect.
-  // This methods corrects the alpha setting of the frame buffer to false when
-  // the whole frame is opaque.
-  //
-  // This method should be called by the GIF and PNG decoder when the pixels in
-  // the frame rect do *not* contain any transparent pixels. Before calling
-  // this method, the caller must verify that the frame exists.
-  void CorrectAlphaWhenFrameBufferSawNoAlpha(wtf_size_t);
 
   scoped_refptr<SegmentReader> data_;  // The encoded data.
   Vector<ImageFrame, 1> frame_buffer_cache_;

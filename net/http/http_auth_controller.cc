@@ -233,6 +233,7 @@ int HttpAuthController::HandleAuthChallenge(
   DCHECK(auth_scheme_host_port_.IsValid());
   DCHECK(!auth_info_);
 
+  has_handled_challenge_ = true;
   BindToCallingNetLog(caller_net_log);
   net_log_.BeginEventReferencingSource(NetLogEventType::AUTH_HANDLE_CHALLENGE,
                                        caller_net_log.source());
@@ -667,7 +668,7 @@ void HttpAuthController::TakeAuthInfo(std::optional<AuthChallengeInfo>* other) {
 
 bool HttpAuthController::IsAuthSchemeDisabled(HttpAuth::Scheme scheme) const {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  return disabled_schemes_.find(scheme) != disabled_schemes_.end();
+  return disabled_schemes_.contains(scheme);
 }
 
 void HttpAuthController::DisableAuthScheme(HttpAuth::Scheme scheme) {

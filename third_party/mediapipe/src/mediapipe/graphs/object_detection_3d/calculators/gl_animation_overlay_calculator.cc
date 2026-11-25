@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #if defined(__ANDROID__)
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/util/android/asset_manager_util.h"
 #else
 #include <fstream>
@@ -21,11 +23,10 @@
 
 #include <cstdint>
 
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
+#include "absl/log/absl_check.h"  // from @com_google_absl
+#include "absl/log/absl_log.h"    // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/gpu/gl_calculator_helper.h"
 #include "mediapipe/gpu/shader_util.h"
 #include "mediapipe/graphs/object_detection_3d/calculators/gl_animation_overlay_calculator.pb.h"
@@ -203,7 +204,7 @@ REGISTER_CALCULATOR(GlAnimationOverlayCalculator);
 
 // static
 absl::Status GlAnimationOverlayCalculator::GetContract(CalculatorContract* cc) {
-  MP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       GlCalculatorHelper::SetupInputSidePackets(&(cc->InputSidePackets())));
   if (cc->Inputs().HasTag("VIDEO")) {
     // Currently used only for size and timestamp.
@@ -523,7 +524,7 @@ void GlAnimationOverlayCalculator::ComputeAspectRatioAndFovFromCameraParameters(
 
 absl::Status GlAnimationOverlayCalculator::Open(CalculatorContext* cc) {
   cc->SetOffset(TimestampDiff(0));
-  MP_RETURN_IF_ERROR(helper_.Open(cc));
+  ABSL_RETURN_IF_ERROR(helper_.Open(cc));
 
   const auto& options = cc->Options<GlAnimationOverlayCalculatorOptions>();
 
@@ -633,7 +634,7 @@ void GlAnimationOverlayCalculator::LoadModelMatrices(
 absl::Status GlAnimationOverlayCalculator::Process(CalculatorContext* cc) {
   return helper_.RunInGlContext([this, &cc]() -> absl::Status {
     if (!initialized_) {
-      MP_RETURN_IF_ERROR(GlSetup());
+      ABSL_RETURN_IF_ERROR(GlSetup());
       initialized_ = true;
       animation_start_time_ = cc->InputTimestamp();
     }
@@ -713,10 +714,10 @@ absl::Status GlAnimationOverlayCalculator::Process(CalculatorContext* cc) {
     if (has_occlusion_mask_) {
       glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
       const TriangleMesh& mask_frame = mask_meshes_.front();
-      MP_RETURN_IF_ERROR(GlBind(mask_frame, mask_texture_));
+      ABSL_RETURN_IF_ERROR(GlBind(mask_frame, mask_texture_));
       // Draw objects using our latest model matrix stream packet.
       for (const ModelMatrix& model_matrix : current_mask_model_matrices_) {
-        MP_RETURN_IF_ERROR(GlRender(mask_frame, model_matrix.get()));
+        ABSL_RETURN_IF_ERROR(GlRender(mask_frame, model_matrix.get()));
       }
     }
 
@@ -731,15 +732,15 @@ absl::Status GlAnimationOverlayCalculator::Process(CalculatorContext* cc) {
       texture_ = helper_.CreateSourceTexture(input_texture);
     }
 
-    MP_RETURN_IF_ERROR(GlBind(current_frame, texture_));
+    ABSL_RETURN_IF_ERROR(GlBind(current_frame, texture_));
     if (has_model_matrix_stream_) {
       // Draw objects using our latest model matrix stream packet.
       for (const ModelMatrix& model_matrix : current_model_matrices_) {
-        MP_RETURN_IF_ERROR(GlRender(current_frame, model_matrix.get()));
+        ABSL_RETURN_IF_ERROR(GlRender(current_frame, model_matrix.get()));
       }
     } else {
       // Just draw one object to a static model matrix.
-      MP_RETURN_IF_ERROR(GlRender(current_frame, kModelMatrix));
+      ABSL_RETURN_IF_ERROR(GlRender(current_frame, kModelMatrix));
     }
 
     // Disable vertex attributes

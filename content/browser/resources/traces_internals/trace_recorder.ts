@@ -28,8 +28,8 @@ import type {EtwConfig} from './perfetto_config.js';
 import {getCss} from './trace_recorder.css.js';
 import {getHtml} from './trace_recorder.html.js';
 import {downloadTraceData} from './trace_util.js';
-import {TracesBrowserProxy} from './traces_browser_proxy.js';
-import type {TraceCategory} from './traces_internals.mojom-webui.js';
+import {browserProxyFactory} from './traces_internals.mojom-webui.js';
+import type {BrowserProxy, TraceCategory} from './traces_internals.mojom-webui.js';
 
 enum TracingState {
   IDLE = 'Idle',
@@ -112,6 +112,7 @@ export class TraceRecorderElement extends CrLitElement {
       // <if expr="is_win">
       etwEvents: {type: Array},
       enabledEtwEvents: {type: Object},
+      etwCallStacksEnabled: {type: Boolean},
       etwExpanded_: {type: Boolean},
       // </if>
       disabledTags: {type: Object},
@@ -136,7 +137,7 @@ export class TraceRecorderElement extends CrLitElement {
     };
   }
 
-  private browserProxy_: TracesBrowserProxy = TracesBrowserProxy.getInstance();
+  private browserProxy_: BrowserProxy = browserProxyFactory.getInstance();
 
   // Bound method for router events
   private boundLoadConfigFromUrl_ = this.loadConfigFromUrl_.bind(this);
@@ -166,14 +167,14 @@ export class TraceRecorderElement extends CrLitElement {
   protected accessor bufferFillPolicy: TraceConfig_BufferConfig_FillPolicy =
       TraceConfig_BufferConfig_FillPolicy.RING_BUFFER;
 
-  protected traceConfig: TraceConfig|undefined;
-  protected trackEventConfig: TrackEventConfig|undefined;
-  protected accessor enabledCategories: Set<string> = new Set();
-  protected accessor enabledTags: Set<string> = new Set();
-  protected accessor disabledTags: Set<string> = new Set();
+  private traceConfig: TraceConfig|undefined;
+  private trackEventConfig: TrackEventConfig|undefined;
+  private accessor enabledCategories: Set<string> = new Set();
+  private accessor enabledTags: Set<string> = new Set();
+  private accessor disabledTags: Set<string> = new Set();
 
   // <if expr="is_win">
-  protected etwConfig: EtwConfig|undefined;
+  private etwConfig: EtwConfig|undefined;
 
   protected accessor etwEvents: Array<{
     name: string,
@@ -181,12 +182,13 @@ export class TraceRecorderElement extends CrLitElement {
     provider: EtwProviderType,
     description: string,
   }> = [];
-  protected accessor enabledEtwEvents:
+  private accessor enabledEtwEvents:
       {[provider in EtwProviderType]: Set<string>} = {
         'memory': new Set(),
         'scheduler': new Set(),
         'system_io': new Set(),
       };
+  protected accessor etwCallStacksEnabled: boolean = false;
   protected accessor etwExpanded_: boolean = false;
   // </if>
 
@@ -194,12 +196,12 @@ export class TraceRecorderElement extends CrLitElement {
   protected accessor categoriesExpanded_: boolean = false;
   protected accessor tagsExpanded_: boolean = false;
 
-  protected stackSamplingConfig: ChromiumStackSamplingProfilerConfig|undefined;
+  private stackSamplingConfig: ChromiumStackSamplingProfilerConfig|undefined;
   protected accessor stackSamplingExpanded_: boolean = false;
   protected accessor stackSamplingEnabled: boolean = false;
   protected accessor stackSamplingIntervalMs: number = 50;
 
-  protected heapProfilingConfig: ChromiumSamplingHeapProfilerConfig|undefined;
+  private heapProfilingConfig: ChromiumSamplingHeapProfilerConfig|undefined;
   protected accessor heapProfilingExpanded_: boolean = false;
   protected accessor heapProfilingEnabled: boolean = false;
   protected accessor heapSamplingIntervalKb: number = 128;
@@ -218,7 +220,7 @@ export class TraceRecorderElement extends CrLitElement {
   }
 
   protected accessor bufferUsage: number = 0;
-  protected accessor hadDataLoss: boolean = false;
+  private accessor hadDataLoss: boolean = false;
 
   override connectedCallback() {
     super.connectedCallback();
@@ -478,9 +480,31 @@ export class TraceRecorderElement extends CrLitElement {
           [...this.enabledEtwEvents['memory']];
       this.etwConfig.systemIoProviderEvents =
           [...this.enabledEtwEvents['system_io']];
+      this.etwConfig.stackSamplingEvents = this.getEtwStackSamplingEvents_();
     }
 
     this.updateUrlFromConfig_();
+  }
+
+  protected onEtwCallStacksChange_(event: CustomEvent<boolean>) {
+    this.etwCallStacksEnabled = event.detail;
+    if (!this.etwConfig) {
+      return;
+    }
+    this.etwConfig.stackSamplingEvents = this.getEtwStackSamplingEvents_();
+    this.updateUrlFromConfig_();
+  }
+
+  private getEtwStackSamplingEvents_() {
+    if (!this.etwCallStacksEnabled) {
+      return [];
+    }
+    // Return events for which ETW call stacks are currently supported.
+    const events: string[] = [];
+    if (this.isEtwEventEnabled('scheduler', 'CONTEXT_SWITCH')) {
+      events.push('CONTEXT_SWITCH');
+    }
+    return events;
   }
   // </if>
 
@@ -940,6 +964,8 @@ export class TraceRecorderElement extends CrLitElement {
           new Set(this.etwConfig.memoryProviderEvents);
       this.enabledEtwEvents['system_io'] =
           new Set(this.etwConfig.systemIoProviderEvents);
+      this.etwCallStacksEnabled =
+          (this.etwConfig.stackSamplingEvents?.length ?? 0) > 0;
     }
     // </if>
   }

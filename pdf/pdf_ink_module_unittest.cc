@@ -319,13 +319,6 @@ class FakeClient : public PdfInkModuleClient {
 
   MOCK_METHOD(SelectionRectMap, GetSelectionRectMap, (), (override));
 
-  gfx::Size GetThumbnailSize(int page_index) override {
-    CHECK_GE(page_index, 0);
-    CHECK_LT(static_cast<size_t>(page_index), page_layouts_.size());
-    return Thumbnail::CalculateImageSize(page_layouts_[page_index].size(),
-                                         /*device_pixel_ratio=*/1);
-  }
-
   gfx::Vector2dF GetViewportOriginOffset() override {
     return viewport_origin_offset_;
   }
@@ -350,10 +343,6 @@ class FakeClient : public PdfInkModuleClient {
     invalidations_.push_back(rect);
   }
 
-  bool IsPageVisible(int page_index) override {
-    return visible_page_indices_.contains(page_index);
-  }
-
   MOCK_METHOD(bool,
               IsSelectableTextOrLinkArea,
               (const gfx::PointF& point),
@@ -373,8 +362,6 @@ class FakeClient : public PdfInkModuleClient {
               OnTextOrLinkAreaClick,
               (const gfx::PointF& point, int click_count),
               (override));
-
-  MOCK_METHOD(int, PageIndexFromPoint, (const gfx::PointF& point), (override));
 
   MOCK_METHOD(void, PostMessage, (base::DictValue message), (override));
 
@@ -417,7 +404,8 @@ class FakeClient : public PdfInkModuleClient {
 
   int VisiblePageIndexFromPoint(const gfx::PointF& point) override {
     for (size_t i = 0; i < page_layouts_.size(); ++i) {
-      if (IsPageVisible(i) && page_layouts_[i].Contains(point)) {
+      if (visible_page_indices_.contains(i) &&
+          page_layouts_[i].Contains(point)) {
         return i;
       }
     }
@@ -5915,12 +5903,6 @@ TEST_P(PdfInkModuleTextHighlightTest, MultiplePages) {
   constexpr gfx::Rect kHorizontalSelectionInPage1{10, 75, 15, 14};
   SetSelectionRectMap(
       {{0, {kHorizontalSelection}}, {1, {kHorizontalSelectionInPage1}}});
-  EXPECT_CALL(client(),
-              PageIndexFromPoint(gfx::PointF(kHorizontalSelection.origin())))
-      .WillRepeatedly(Return(0));
-  EXPECT_CALL(client(), PageIndexFromPoint(
-                            gfx::PointF(kHorizontalSelectionInPage1.origin())))
-      .WillRepeatedly(Return(1));
 
   EXPECT_CALL(client(),
               ExtendSelectionByPoint(kTwoPageVerticalLayoutPoint1InsidePage1));

@@ -7,6 +7,7 @@
 #include <string_view>
 #include <utility>
 
+#include "base/memory_coordinator/memory_coordinator_features.h"
 #include "base/memory_coordinator/memory_limit.h"
 #include "content/common/memory_coordinator/memory_coordinator_policy_manager.h"
 #include "content/public/common/memory_coordinator/memory_coordinator_policy.h"
@@ -83,11 +84,12 @@ void PredicateMemoryCoordinatorPolicy::TriggerRepeatedRelease() {
         }
 
         // Don't repeat the signal for stateful consumers. They are trusted to
-        // self-regulate once they receive the limit. However, if the
-        // kStatefulMemoryPressure feature is disabled, consumers operate in
-        // stateless mode regardless of their declared traits, so they still
-        // require repeated signals.
-        return !IsEffectivelyStateful(traits);
+        // self-regulate once they receive the limit. However, consumers that
+        // don't use stateful memory pressure (see
+        // base::ShouldUseStatefulMemoryPressure()) operate in stateless mode
+        // regardless of their declared traits, so they still require repeated
+        // signals.
+        return !base::IsEffectivelyStateful(consumer_name, traits);
       },
       std::nullopt, true);
 }

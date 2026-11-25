@@ -58,11 +58,16 @@ CrxInstaller::InstallParams::InstallParams(
 CrxUpdateItem::CrxUpdateItem() : state(ComponentState::kNew) {}
 CrxUpdateItem::CrxUpdateItem(const CrxUpdateItem& other) = default;
 CrxUpdateItem& CrxUpdateItem::operator=(const CrxUpdateItem& other) = default;
+CrxUpdateItem::CrxUpdateItem(CrxUpdateItem&& other) noexcept = default;
+CrxUpdateItem& CrxUpdateItem::operator=(CrxUpdateItem&& other) noexcept =
+    default;
 CrxUpdateItem::~CrxUpdateItem() = default;
 
 CrxComponent::CrxComponent() = default;
 CrxComponent::CrxComponent(const CrxComponent& other) = default;
 CrxComponent& CrxComponent::operator=(const CrxComponent& other) = default;
+CrxComponent::CrxComponent(CrxComponent&& other) noexcept = default;
+CrxComponent& CrxComponent::operator=(CrxComponent&& other) noexcept = default;
 CrxComponent::~CrxComponent() = default;
 
 // It is important that an instance of the UpdateClient binds an unretained

@@ -69,6 +69,7 @@ chromium-metrics-reviews@google.com.
   <variant name="OnContextUploadCompleted"/>
   <variant name="OnContextUploadStarted"/>
   <variant name="OnExperimentalTriggeringUpdate"/>
+  <variant name="OnInputFocused"/>
   <variant name="OnMicrophoneStatusChange"/>
   <variant name="OnModeChange"/>
   <variant name="OnOptinImpression"/>
@@ -77,6 +78,8 @@ chromium-metrics-reviews@google.com.
   <variant name="OnResponseStarted"/>
   <variant name="OnResponseStopped"/>
   <variant name="OnSessionTerminated"/>
+  <variant name="OnTooltipHidden"/>
+  <variant name="OnTooltipImpression"/>
   <variant name="OnTurnCompleted"/>
   <variant name="OnUserInputSubmitted"/>
   <variant name="OpenContactInfoSettingsPage"/>
@@ -168,6 +171,7 @@ chromium-metrics-reviews@google.com.
 <!-- LINT.IfChange(GlicInvocationSource) -->
 
 <variants name="GlicInvocationSource">
+  <variant name="ActivityListBubble"/>
   <variant name="ActorTaskIcon"/>
   <variant name="ActorTool"/>
   <variant name="AfterSignIn"/>
@@ -228,12 +232,30 @@ chromium-metrics-reviews@google.com.
   <variant name=".Enterprise" summary="Gemini Enterprise in Chrome only"/>
 </variants>
 
+<variants name="GlicTurnMode">
+  <variant name="" summary="all turns (default and actor combined)"/>
+  <variant name=".Actor"
+      summary="actor turns following an action result submission (excludes
+               the initial prompt/plan-card turn before action execution,
+               which is recorded under Default)"/>
+  <variant name=".Default"
+      summary="standard chat turns, as well as the initial turn of an actor
+               task before action execution begins"/>
+</variants>
+
 <variants name="MemoryTriggerEvent">
   <variant name="CriticalPressure"
       summary="recorded upon critical memory pressure"/>
   <variant name="ModeratePressure"
       summary="recorded upon moderate memory pressure"/>
   <variant name="Periodic" summary="recorded periodically (every 30 minutes)"/>
+</variants>
+
+<variants name="OnboardingState">
+  <variant name="" summary="all users"/>
+  <variant name=".NonOnboarded"
+      summary="non-onboarded users (e.g., Message-First FRE or Just-In-Time
+               consent)"/>
 </variants>
 
 <!-- LINT.IfChange(PDFExtractionMode) -->
@@ -652,9 +674,6 @@ ApiRequestType variants; see go/geic-metrics-split. -->
         summary="when the interaction was abandoned by the user closing or
                  hiding the UI before the FRE impression was shown"/>
     <variant name=".Failed" summary="when the interaction failed"/>
-    <variant name=".FailedLatency"
-        summary="when the FRE impression was shown but exceeded the latency
-                 threshold"/>
     <variant name=".Success" summary="when the FRE impression was shown"/>
   </token>
 </histogram>
@@ -673,7 +692,9 @@ ApiRequestType variants; see go/geic-metrics-split. -->
     location-mismatch, or ineligible-account state before the impression is
     shown; UnknownCancel when a deferred FRE flow focuses or submits the prompt
     input before showing the opt-in impression; and Superseded if a new open
-    starts while a previous tracker is still active.
+    starts while a previous tracker is still active. Before M159, a success that
+    took longer than 60 s was recorded as Failed Latency; from M159 a slow
+    success is Success (its duration is in the Latency histograms).
   </summary>
 </histogram>
 
@@ -691,9 +712,6 @@ ApiRequestType variants; see go/geic-metrics-split. -->
         summary="when the response was abandoned by the user stopping the
                  response or closing/hiding the UI"/>
     <variant name=".Failed" summary="when the response failed"/>
-    <variant name=".FailedLatency"
-        summary="when the response completed but exceeded the latency
-                 threshold"/>
     <variant name=".Success" summary="when the response completed"/>
   </token>
 </histogram>
@@ -703,7 +721,9 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   <owner>dewittj@chromium.org</owner>
   <owner>glic@google.com</owner>
   <summary>
-    Records the outcome of full turn response completion in Glic.
+    Records the outcome of full turn response completion in Glic. Before M159, a
+    success that took longer than 60 s was recorded as Failed Latency; from M159
+    a slow success is Success (its duration is in the Latency histograms).
   </summary>
 </histogram>
 
@@ -720,9 +740,6 @@ ApiRequestType variants; see go/geic-metrics-split. -->
         summary="when the interaction was abandoned by the user closing or
                  hiding the UI before the response started"/>
     <variant name=".Failed" summary="when the interaction failed"/>
-    <variant name=".FailedLatency"
-        summary="when the interaction succeeded but exceeded the latency
-                 threshold"/>
     <variant name=".Success" summary="when the interaction succeeded"/>
   </token>
 </histogram>
@@ -731,7 +748,11 @@ ApiRequestType variants; see go/geic-metrics-split. -->
     expires_after="2027-06-15">
   <owner>dewittj@chromium.org</owner>
   <owner>glic@google.com</owner>
-  <summary>Records the outcome of submitting a query in Glic.</summary>
+  <summary>
+    Records the outcome of submitting a query in Glic. Before M159, a success
+    that took longer than 60 s was recorded as Failed Latency; from M159 a slow
+    success is Success (its duration is in the Latency histograms).
+  </summary>
 </histogram>
 
 <histogram name="Glic.CUI.WindowEntryPointInvocation.Latency{Outcome}"
@@ -747,9 +768,6 @@ ApiRequestType variants; see go/geic-metrics-split. -->
         summary="when the invocation was abandoned by the user explicitly
                  closing the UI before it loaded"/>
     <variant name=".Failed" summary="when the invocation failed"/>
-    <variant name=".FailedLatency"
-        summary="when the invocation succeeded but exceeded the latency
-                 threshold"/>
     <variant name=".Success" summary="when the invocation succeeded"/>
   </token>
 </histogram>
@@ -759,39 +777,10 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   <owner>dewittj@chromium.org</owner>
   <owner>glic@google.com</owner>
   <summary>
-    Records the outcome of invoking the Glic window entry point.
-  </summary>
-</histogram>
-
-<histogram name="Glic.EntryPoint.Click.{TabContext}"
-    enum="GlicInvocationSource" expires_after="2027-05-30">
-  <owner>haileywang@google.com</owner>
-  <owner>wenyufu@google.com</owner>
-  <summary>
-    Recorded on Android when a user clicks on a Glic entry point (e.g., toolbar
-    button or 3-dot menu). The recorded sample represents the source of the
-    invocation. This metric is split by {TabContext} to distinguish whether the
-    user was on the New Tab Page or another tab when they clicked the entry
-    point.
-  </summary>
-  <token key="TabContext">
-    <variant name="Ntp" summary="the New Tab Page"/>
-    <variant name="Other" summary="any tab other than the New Tab Page"/>
-  </token>
-</histogram>
-
-<histogram name="Glic.EntryPoint.SendSelectedTextSucceeded" enum="Boolean"
-    expires_after="2027-05-30">
-  <owner>alexiswu@google.com</owner>
-  <owner>ssid@google.com</owner>
-  <summary>
-    Recorded on Android when the user taps the 'Ask Gemini' item in the text
-    selection menu and Chrome attempts to send the selected text to Glic.
-    Records true if Glic was successfully invoked with the selected text, and
-    false if the target tab or the Glic service was unavailable, or if Glic
-    could not be opened. Pairs with Glic.EntryPoint.Click.{TabContext}
-    (WebContentsContextMenu bucket) to form a click to successful-send funnel
-    for the text selection entry point.
+    Records the outcome of invoking the Glic window entry point. Before M159, a
+    success that took longer than 60 s was recorded as Failed Latency; from M159
+    a slow success is Success (its duration is in the Latency histograms) and an
+    invocation that timed out is Failed.
   </summary>
 </histogram>
 
@@ -807,6 +796,30 @@ ApiRequestType variants; see go/geic-metrics-split. -->
     glic. The Three-Dot menu entry is always shown but the Tabstrip and OS
     entrypoints can be removed based on user configuration.
   </summary>
+</histogram>
+
+<histogram
+    name="Glic.ExperimentalTriggering.Android.BackgroundSetupLatency.{Outcome}"
+    units="ms" expires_after="2027-10-26">
+<!-- Allowed unsplittable: Android background tab setup is not provider specific -->
+
+  <owner>meiliang@google.com</owner>
+  <owner>chrome-intelligence-core@google.com</owner>
+  <summary>
+    Records the latency between an experimental triggering request being queued
+    in Chrome Android and the background tab setup {Outcome}. Recorded once per
+    incoming request when background tab setup finishes (succeeds, fails, is
+    cancelled by a stop actuation request, or is terminated by profile
+    shutdown).
+  </summary>
+  <token key="Outcome">
+    <variant name="Cancelled"
+        summary="being cancelled (e.g. StopActuationRequest)"/>
+    <variant name="Failed" summary="failing (e.g. FGS or Tab start failure)"/>
+    <variant name="Shutdown"
+        summary="browser/profile shutting down before setup finishes"/>
+    <variant name="Success" summary="succeeding"/>
+  </token>
 </histogram>
 
 <histogram name="Glic.ExperimentalTriggering.OptIn.Accepted.Version"
@@ -899,14 +912,16 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   </summary>
 </histogram>
 
-<histogram name="Glic.Fre.Accept.InvocationSource" enum="GlicInvocationSource"
-    expires_after="2027-04-11">
-  <owner>erikchen@chromium.org</owner>
-  <owner>wry@chromium.org</owner>
+<histogram name="Glic.Fre.AcceptToChatActionable" units="ms"
+    expires_after="2027-04-01">
+<!-- Allowed unsplittable: Cross-arm post-FRE metric; provider has not been selected yet. -->
+
+  <owner>alexiswu@google.com</owner>
+  <owner>ritikagup@google.com</owner>
+  <owner>glic+metrics@google.com</owner>
   <summary>
-    Records the invocation source used to trigger the opening of the glic panel
-    that led to the user accepting the Trust-First Onboarding. Recorded when the
-    user accepts the Trust-First Onboarding.
+    Records the latency from when the user accepts the FRE (native or WebUI)
+    until the chat UI becomes actionable for the user.
   </summary>
 </histogram>
 
@@ -916,17 +931,6 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   <owner>perrier@chromium.org</owner>
   <summary>
     Records the onboarding flow source where the user dismissed Glic opt-in.
-  </summary>
-</histogram>
-
-<histogram name="Glic.Fre.Dismissed.InvocationSource"
-    enum="GlicInvocationSource" expires_after="2027-04-11">
-  <owner>erikchen@chromium.org</owner>
-  <owner>wry@chromium.org</owner>
-  <summary>
-    Records the invocation source used to trigger the opening of the glic panel
-    that led to the user dismissing the Trust-First Onboarding. Recorded when
-    the user dismisses the Trust-First Onboarding.
   </summary>
 </histogram>
 
@@ -990,38 +994,6 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   </summary>
 </histogram>
 
-<histogram name="Glic.Fre.Shown.InvocationSource" enum="GlicInvocationSource"
-    expires_after="2027-04-11">
-  <owner>erikchen@chromium.org</owner>
-  <owner>wry@chromium.org</owner>
-  <summary>
-    Records the invocation source used to trigger the opening of the glic panel
-    when the Trust-First Onboarding is shown. Recorded when the Trust-First
-    Onboarding is shown.
-  </summary>
-</histogram>
-
-<histogram name="Glic.Fre.TotalTime.Accepted.Onboarding" units="ms"
-    expires_after="2027-04-11">
-  <owner>tommasin@chromium.org</owner>
-  <owner>zalmashni@google.com</owner>
-  <summary>
-    Records the time elapsed from when the Trust-First Onboarding flow (side
-    panel) is first shown until the user accepts it (starts chat).
-  </summary>
-</histogram>
-
-<histogram name="Glic.Fre.TotalTime.Dismissed.Onboarding" units="ms"
-    expires_after="2027-04-11">
-  <owner>tommasin@chromium.org</owner>
-  <owner>zalmashni@google.com</owner>
-  <summary>
-    Records the time elapsed from when the Trust-First Onboarding flow (side
-    panel) is first shown until it is dismissed by the user (e.g. closing the
-    side panel).
-  </summary>
-</histogram>
-
 <histogram name="Glic.Fre.UserInput.InvocationSource"
     enum="GlicInvocationSource" expires_after="2027-03-21">
   <owner>erikchen@google.com</owner>
@@ -1058,19 +1030,6 @@ ApiRequestType variants; see go/geic-metrics-split. -->
     Glic.FreToFirstQueryTime but here we have a max time bucket of 24 hours
     instead of 1 hour.
   </summary>
-</histogram>
-
-<histogram name="Glic.GlobalEnabling.FeatureDisabledReason.{Suffix}"
-    enum="GlicFeatureDisabledReason" expires_after="2027-04-11">
-  <owner>cuianthony@chromium.org</owner>
-  <owner>glic@chromium.org</owner>
-  <summary>
-    Records specific reasons why the Glic feature is considered disabled. This
-    provides a granular breakdown for clients that would otherwise simply report
-    'Feature disabled' in Glic.ProfileEnablement.DisabledReason metrics.
-    Multiple reasons may be recorded per client. This is {Suffix}.
-  </summary>
-  <token key="Suffix" variants="ProfileEnablementSuffix"/>
 </histogram>
 
 <histogram name="Glic.Host.AwakeDuration" units="ms" expires_after="2027-04-01">
@@ -1155,16 +1114,6 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   </summary>
 </histogram>
 
-<histogram name="Glic.Instance.MemoryUsageAtThreshold" units="MB"
-    expires_after="2026-12-16">
-  <owner>birnie@google.com</owner>
-  <owner>bryantchandler@google.com</owner>
-  <summary>
-    Records the private memory footprint of the Glic instance (sum of WebUI +
-    WebClient) when the hibernation memory threshold is exceeded.
-  </summary>
-</histogram>
-
 <histogram name="Glic.Instance.Session.UninterruptedActiveDuration" units="ms"
     expires_after="2026-12-27">
   <owner>birnie@google.com</owner>
@@ -1212,7 +1161,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic.Instance.UninterruptedVisibleDuration" units="ms"
-    expires_after="2026-12-06">
+    expires_after="2027-12-06">
   <owner>birnie@google.com</owner>
   <owner>perrier@google.com</owner>
   <summary>
@@ -1232,6 +1181,9 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 
 <histogram name="Glic.Invoke.Duration.{InvocationSource}" units="ms"
     expires_after="2027-06-01">
+<!-- Allowed unsplittable: TODO(b/581415303): Split GlicInvokeMetrics
+(glic_invoke_metrics.cc) by GlicProvider; see go/geic-metrics-split. -->
+
   <owner>wry@chromium.org</owner>
   <owner>glic-dev@google.com</owner>
   <summary>
@@ -1264,6 +1216,9 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 
 <histogram name="Glic.Invoke.TimeoutStage.{InvocationSource}"
     enum="GlicInvokeTimeoutStage" expires_after="2027-06-01">
+<!-- Allowed unsplittable: TODO(b/581415303): Split GlicInvokeMetrics
+(glic_invoke_metrics.cc) by GlicProvider; see go/geic-metrics-split. -->
+
   <owner>csharrison@chromium.org</owner>
   <owner>glic-dev@google.com</owner>
   <summary>
@@ -1288,6 +1243,9 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 
 <histogram name="Glic.InvokeResult2.{InvocationSource}" enum="GlicInvokeResult"
     expires_after="2027-06-01">
+<!-- Allowed unsplittable: TODO(b/581415303): Split GlicInvokeMetrics
+(glic_invoke_metrics.cc) by GlicProvider; see go/geic-metrics-split. -->
+
   <owner>vollick@chromium.org</owner>
   <owner>glic-dev@google.com</owner>
   <summary>
@@ -1430,42 +1388,6 @@ ApiRequestType variants; see go/geic-metrics-split. -->
     Rough estimate of whether a user has a shortcut set. Recorded every 15
     minutes, but only if the glic feature flag is enabled.
   </summary>
-</histogram>
-
-<histogram name="Glic.Overlay.DisplayDuration" units="ms"
-    expires_after="2027-04-01">
-  <owner>harringtond@chromium.org</owner>
-  <owner>glic@google.com</owner>
-  <summary>
-    Measures the duration for which the Glic loading or error overlay was
-    displayed to the user.
-  </summary>
-</histogram>
-
-<histogram name="Glic.Overlay.DisplayDuration.{OverlayState}" units="ms"
-    expires_after="2027-04-01">
-  <owner>harringtond@chromium.org</owner>
-  <owner>glic@google.com</owner>
-  <summary>
-    Measures the duration for which the Glic {OverlayState} overlay was
-    displayed to the user.
-  </summary>
-  <token key="OverlayState">
-    <variant name="DisabledByAdmin"
-        summary="disabled by administrator error panel"/>
-    <variant name="Error" summary="generic or timeout error panel"/>
-    <variant name="IneligibleAccount" summary="ineligible account error panel"/>
-    <variant name="Loading"
-        summary="loading skeleton that did not finish (e.g. was closed,
-                 hidden, or timed out)"/>
-    <variant name="LoadingAndCompleted"
-        summary="loading skeleton that finished and swapped into the ready
-                 guest"/>
-    <variant name="LocationMismatch" summary="location mismatch error panel"/>
-    <variant name="Offline" summary="offline error panel"/>
-    <variant name="SignIn" summary="sign-in error panel"/>
-    <variant name="Unavailable" summary="unavailable error panel"/>
-  </token>
 </histogram>
 
 <histogram name="Glic.PageContextFetcher.GetAnnotatedPageContent" units="ms"
@@ -1661,7 +1583,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic.PanelWebUiState.Error" enum="PanelWebUiStateErrorReason"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>birnie@google.com</owner>
   <owner>perrier@google.com</owner>
   <summary>
@@ -1707,7 +1629,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic.Preferences.HotkeyCleared" enum="GlicHotkeyCleared"
-    expires_after="2027-02-01">
+    expires_after="2027-04-25">
   <owner>perrier@chromium.org</owner>
   <owner>chrome-glic@google.com</owner>
   <summary>
@@ -1754,22 +1676,6 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   </token>
 </histogram>
 
-<histogram name="Glic.Prewarming.ChecksResult.{Trigger}"
-    enum="GlicPrewarmingChecksResult" expires_after="2027-01-31">
-  <owner>bryantchandler@chromium.org</owner>
-  <owner>chrome-glic@google.com</owner>
-  <summary>
-    Records the reason why Glic preloading was or was not attempted for trigger
-    {Trigger}. Recorded each time we try to preload.
-  </summary>
-  <token key="Trigger">
-    <variant name="Iph" summary="iph"/>
-    <variant name="Nudge" summary="contextual nudge"/>
-    <variant name="SelectionOverlay" summary="selection overlay"/>
-    <variant name="Startup" summary="startup"/>
-  </token>
-</histogram>
-
 <histogram name="Glic.PrewarmingFre.{PrewarmDisposition}PreloadFreForSource"
     enum="GlicPrewarmingFreSource" expires_after="2026-07-26">
   <owner>dewittj@chromium.org</owner>
@@ -1797,88 +1703,6 @@ ApiRequestType variants; see go/geic-metrics-split. -->
     API. This tracks both successful and unsuccessful retrieval attempts,
     differentiating between local validation failures, HTTP/parsing errors, and
     server-reported statuses. Recorded once per API invocation.
-  </summary>
-</histogram>
-
-<histogram
-    name="Glic.ProfileEnablement.AnchoredDespiteEligibilityReason.{Suffix}"
-    enum="GlicAnchoredDespiteEligibilityReason" expires_after="2027-06-30">
-  <owner>birnie@google.com</owner>
-  <owner>glic@google.com</owner>
-  <summary>
-    Logged when the Glic entry point remains anchored for an onboarded user
-    despite the profile currently failing eligibility criteria. Records the
-    specific reasons (global or profile-level) the button is in an error or
-    disabled state. Multiple reasons may be recorded per client. This is
-    {Suffix}.
-  </summary>
-  <token key="Suffix" variants="ProfileEnablementSuffix"/>
-</histogram>
-
-<histogram name="Glic.ProfileEnablement.DisabledReason.{Suffix}"
-    enum="GlicProfileEnablementReason" expires_after="2027-04-11">
-  <owner>dewittj@chromium.org</owner>
-  <owner>glic@chromium.org</owner>
-  <summary>
-    Records reasons why glic might be disabled for the profile. Multiple reasons
-    may be recorded if multiple conditions apply. This is {Suffix}.
-  </summary>
-  <token key="Suffix" variants="ProfileEnablementSuffix"/>
-</histogram>
-
-<histogram name="Glic.ProfileEnablement.EligibleForLive.{Suffix}"
-    enum="Boolean" expires_after="2027-04-11">
-  <owner>dewittj@chromium.org</owner>
-  <owner>glic@chromium.org</owner>
-  <summary>
-    Records whether the profile is eligible for live features. This is {Suffix}.
-  </summary>
-  <token key="Suffix" variants="ProfileEnablementSuffix"/>
-</histogram>
-
-<histogram name="Glic.ProfileEnablement.IsConsented.{Suffix}" enum="Boolean"
-    expires_after="2027-04-11">
-  <owner>dewittj@chromium.org</owner>
-  <owner>glic@chromium.org</owner>
-  <summary>
-    Records whether an eligible user has consented to use glic (accepted the
-    FRE) for the profile. Excludes users that are ineligible for glic. This is
-    {Suffix}.
-  </summary>
-  <token key="Suffix" variants="ProfileEnablementSuffix"/>
-</histogram>
-
-<histogram name="Glic.ProfileEnablement.IsEnabled.{Suffix}" enum="Boolean"
-    expires_after="2027-04-11">
-  <owner>dewittj@chromium.org</owner>
-  <owner>glic@chromium.org</owner>
-  <summary>
-    Records whether glic is enabled for the profile. This is {Suffix}.
-  </summary>
-  <token key="Suffix" variants="ProfileEnablementSuffix"/>
-</histogram>
-
-<histogram name="Glic.ProfileEnablement.IsPrimaryAccountFullySignedIn.{Suffix}"
-    enum="Boolean" expires_after="2027-04-11">
-  <owner>dewittj@chromium.org</owner>
-  <owner>glic@chromium.org</owner>
-  <summary>
-    Records whether the primary account is fully signed in (not paused). This is
-    {Suffix}.
-  </summary>
-  <token key="Suffix" variants="ProfileEnablementSuffix"/>
-</histogram>
-
-<histogram name="Glic.ProfileEnablement.RecoveredFromState"
-    enum="GlicProfileReadyState" expires_after="2027-06-30">
-  <owner>birnie@google.com</owner>
-  <owner>chrome-glic@google.com</owner>
-  <summary>
-    Logged when a user actively attempts to interact with Glic (e.g. by clicking
-    the toolbar button, pressing the keyboard shortcut, or invoking via context
-    menu) and the interaction succeeds because Glic has successfully recovered
-    to kReady from a previously unhealthy/disabled state. Records the specific
-    unhealthy state the user's profile recovered from.
   </summary>
 </histogram>
 
@@ -1935,7 +1759,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic.ScrollTo.ScrollDistance" units="dip"
-    expires_after="2027-01-15">
+    expires_after="2027-04-25">
   <owner>liuwilliam@google.com</owner>
   <owner>adithyas@google.com</owner>
   <summary>
@@ -2058,26 +1882,6 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   </summary>
 </histogram>
 
-<histogram name="Glic.TabContextMenu.PinnedTabsToExistingConversation"
-    units="tabs" expires_after="2027-04-11">
-  <owner>sanaakbani@google.com</owner>
-  <owner>birnie@google.com</owner>
-  <summary>
-    Records the number of tabs selected when pinning to an existing conversation
-    from the tab context menu.
-  </summary>
-</histogram>
-
-<histogram name="Glic.TabContextMenu.PinnedTabsToNewConversation" units="tabs"
-    expires_after="2027-04-11">
-  <owner>sanaakbani@google.com</owner>
-  <owner>birnie@google.com</owner>
-  <summary>
-    Records the number of tabs selected when pinning to a new conversation from
-    the tab context menu.
-  </summary>
-</histogram>
-
 <histogram name="Glic.TabContextMenu.UnpinnedTabs" units="tabs"
     expires_after="2027-04-18">
   <owner>sanaakbani@google.com</owner>
@@ -2134,42 +1938,6 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   </summary>
 </histogram>
 
-<histogram name="Glic.WebContentContextMenu.Enabled" enum="Boolean"
-    expires_after="2026-09-01">
-  <owner>basiaz@google.com</owner>
-  <owner>birnie@chromium.org</owner>
-  <summary>
-    Recorded when the Glic WebContent context menu item is evaluated for
-    display. Records true if menu item will be shown, false otherwise.
-  </summary>
-</histogram>
-
-<histogram name="Glic.WebContentsContextMenu.{GlicContextType}"
-    enum="GlicWebContentsContextMenuResult" expires_after="2027-04-11">
-  <owner>basiaz@google.com</owner>
-  <owner>birnie@chromium.org</owner>
-  <owner>alexiswu@google.com</owner>
-  <summary>
-    Logs when the Glic context menu item was shown and ignored, or executed when
-    the user opened the context menu on {GlicContextType}. Recorded when the
-    menu closes, once for each Glic item shown in it. Recorded on desktop for
-    all variants except Link, and on Android for Image, Link, Page and
-    TextSelection. On Android, Ask Gemini counts as shown even when the text
-    selection toolbar moves it into the overflow menu.
-  </summary>
-  <token key="GlicContextType">
-    <variant name="Image"
-        summary="an image (recorded for the Glic share image item)"/>
-    <variant name="Link"
-        summary="a link with no selection (on Android, this includes a link
-                 that wraps an image)"/>
-    <variant name="Page" summary="a page with no selection"/>
-    <variant name="TextSelection" summary="a text selection"/>
-    <variant name="TextSelectionWithLink"
-        summary="a text selection with click target that is a link"/>
-  </token>
-</histogram>
-
 <histogram name="Glic.YoutubeSummarizeVideoZSS.Events"
     enum="GlicYoutubeSummarizeVideoZSSResult" expires_after="2027-03-28">
   <owner>basiaz@google.com</owner>
@@ -2213,6 +1981,23 @@ ApiRequestType variants; see go/geic-metrics-split. -->
     Records whether uploading an RFC 8188 encrypted viewport screenshot from the
     Glic Web Client during actor actuation succeeded (valid file token returned)
     or failed (null or oversized token returned). Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.Actor.TaskOsNotification.Event"
+    enum="GlicActorTaskNotificationEvent" expires_after="2027-05-04">
+  <owner>romanarora@chromium.org</owner>
+  <owner>carlosk@chromium.org</owner>
+  <summary>
+    Records lifecycle events for the desktop OS-level task-start notification
+    for an experimental triggering actor task: whether display was requested
+    (&quot;Shown&quot;, recorded when handed to the platform bridge or display
+    queue, even if queued behind a blocker or disabled at the OS level), skipped
+    because a browser window was active, clicked, or closed by the user or OS
+    (e.g. dismissal, expiry, or notification center cleanup; excludes
+    programmatic closes by Chrome when clicked or when the task ends). Scope:
+    {GlicProvider}.
   </summary>
   <token key="GlicProvider" variants="GlicProvider"/>
 </histogram>
@@ -2340,6 +2125,45 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   <token key="GlicProvider" variants="GlicProvider"/>
 </histogram>
 
+<histogram name="Glic{GlicProvider}.EntryPoint.Click.{TabContext}"
+    enum="GlicInvocationSource" expires_after="2027-05-30">
+  <owner>haileywang@google.com</owner>
+  <owner>wenyufu@google.com</owner>
+  <summary>
+    Recorded on Android when a user clicks on a Glic entry point (e.g., toolbar
+    button or 3-dot menu). The recorded sample represents the source of the
+    invocation. This metric is split by {TabContext} to distinguish whether the
+    user was on the New Tab Page or another tab when they clicked the entry
+    point. Scope: {GlicProvider}.
+
+    From M158, the text selection menu records Context menu text selection
+    instead of Context menu, and the context menu's Ask Gemini items are also
+    recorded (Context menu link, Context menu page and User shared an image).
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+  <token key="TabContext">
+    <variant name="Ntp" summary="the New Tab Page"/>
+    <variant name="Other" summary="any tab other than the New Tab Page"/>
+  </token>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.EntryPoint.SendSelectedTextSucceeded"
+    enum="Boolean" expires_after="2027-05-30">
+  <owner>alexiswu@google.com</owner>
+  <owner>ssid@google.com</owner>
+  <summary>
+    Recorded on Android when the user taps the 'Ask Gemini' item in the text
+    selection menu and Chrome attempts to send the selected text to Glic.
+    Records true if Glic was successfully invoked with the selected text, and
+    false if the target tab or the Glic service was unavailable, or if Glic
+    could not be opened. Pairs with
+    Glic{GlicProvider}.EntryPoint.Click.{{TabContext}} (Context menu text
+    selection bucket) to form a click to successful-send funnel for the text
+    selection entry point. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
 <histogram name="Glic{GlicProvider}.ExperimentalTriggering.ClientConnected"
     enum="Boolean" expires_after="2027-08-01">
   <owner>qinmin@chromium.org</owner>
@@ -2442,6 +2266,86 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   <token key="GlicProvider" variants="GlicProvider"/>
 </histogram>
 
+<histogram name="Glic{GlicProvider}.Fre.Accept.InvocationSource"
+    enum="GlicInvocationSource" expires_after="2027-04-11">
+  <owner>erikchen@chromium.org</owner>
+  <owner>wry@chromium.org</owner>
+  <summary>
+    Records the invocation source used to trigger the opening of the glic panel
+    that led to the user accepting the Trust-First Onboarding. Recorded when the
+    user accepts the Trust-First Onboarding. For Gemini Enterprise, this is the
+    Gemini Enterprise FRE. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.Fre.Dismissed.InvocationSource"
+    enum="GlicInvocationSource" expires_after="2027-04-11">
+  <owner>erikchen@chromium.org</owner>
+  <owner>wry@chromium.org</owner>
+  <summary>
+    Records the invocation source used to trigger the opening of the glic panel
+    that led to the user dismissing the Trust-First Onboarding. Recorded when
+    the user dismisses the Trust-First Onboarding. For Gemini Enterprise, this
+    is the Gemini Enterprise FRE. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.Fre.Shown.InvocationSource"
+    enum="GlicInvocationSource" expires_after="2027-04-11">
+  <owner>erikchen@chromium.org</owner>
+  <owner>wry@chromium.org</owner>
+  <summary>
+    Records the invocation source used to trigger the opening of the glic panel
+    when the Trust-First Onboarding is shown. Recorded when the Trust-First
+    Onboarding is shown. For Gemini Enterprise, this is the Gemini Enterprise
+    FRE. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.Fre.TotalTime.Accepted.Onboarding"
+    units="ms" expires_after="2027-04-11">
+  <owner>tommasin@chromium.org</owner>
+  <owner>zalmashni@google.com</owner>
+  <summary>
+    Records the time elapsed from when the Trust-First Onboarding flow (side
+    panel) is first shown until the user accepts it (starts chat). For Gemini
+    Enterprise, this is the Gemini Enterprise FRE. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.Fre.TotalTime.Dismissed.Onboarding"
+    units="ms" expires_after="2027-04-11">
+  <owner>tommasin@chromium.org</owner>
+  <owner>zalmashni@google.com</owner>
+  <summary>
+    Records the time elapsed from when the Trust-First Onboarding flow (side
+    panel) is first shown until it is dismissed by the user (e.g. closing the
+    side panel). For Gemini Enterprise, this is the Gemini Enterprise FRE.
+    Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram
+    name="Glic{GlicProvider}.GlobalEnabling.FeatureDisabledReason.{Suffix}"
+    enum="GlicFeatureDisabledReason" expires_after="2027-04-11">
+  <owner>cuianthony@chromium.org</owner>
+  <owner>glic@chromium.org</owner>
+  <summary>
+    Records specific reasons why the Glic feature is considered disabled. This
+    provides a granular breakdown for clients that would otherwise simply report
+    'Feature disabled' in Glic.ProfileEnablement.DisabledReason metrics.
+    Multiple reasons may be recorded per client. This is {Suffix}. Scope:
+    {GlicProvider}.
+  </summary>
+  <token key="Suffix" variants="ProfileEnablementSuffix"/>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
 <histogram name="Glic{GlicProvider}.Host.OpenedInRegularTab" enum="Boolean"
     expires_after="2026-11-29">
   <owner>carlosk@chromium.org</owner>
@@ -2532,6 +2436,20 @@ ApiRequestType variants; see go/geic-metrics-split. -->
     unhibernated Glic instances, {TriggerEvent}. Scope: {GlicProvider}.
   </summary>
   <token key="TriggerEvent" variants="MemoryTriggerEvent"/>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram
+    name="Glic{GlicProvider}.Instance.ClientReadyToInputFocus{OnboardingState}"
+    units="ms" expires_after="2027-06-15">
+  <owner>dewittj@chromium.org</owner>
+  <owner>glic-dev@google.com</owner>
+  <summary>
+    Records the time elapsed from when the Glic web client signals ready until
+    the main prompt input field receives focus for the first time in that cycle,
+    for {OnboardingState}. Scope: {GlicProvider}.
+  </summary>
+  <token key="OnboardingState" variants="OnboardingState"/>
   <token key="GlicProvider" variants="GlicProvider"/>
 </histogram>
 
@@ -2754,6 +2672,21 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   <token key="GlicProvider" variants="GlicProvider"/>
 </histogram>
 
+<histogram name="Glic{GlicProvider}.Instance.ReturnSource"
+    enum="GlicInvocationSource" expires_after="2027-06-01">
+  <owner>bryantchandler@chromium.org</owner>
+  <owner>birnie@google.com</owner>
+  <summary>
+    Records the invocation source when an existing Glic conversation is reopened
+    or revealed (e.g. switching back to a tab with an open panel, reopening a
+    closed panel on a bound tab, clicking a conversation in the Activity Hub
+    bubble, or tab restore). Also recorded when switching to an existing
+    conversation from the web client's conversation selector, including when
+    reusing a visible blank panel in-place. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
 <histogram name="Glic{GlicProvider}.Instance.Session.CreateTabCount"
     units="count" expires_after="2026-12-27">
   <owner>birnie@google.com</owner>
@@ -2766,7 +2699,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.Instance.Session.Duration" units="ms"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>birnie@google.com</owner>
   <owner>carlosk@chromium.org</owner>
   <summary>
@@ -2782,7 +2715,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.Instance.Session.EndReason"
-    enum="GlicMultiInstanceSessionEndReason" expires_after="2027-02-28">
+    enum="GlicMultiInstanceSessionEndReason" expires_after="2027-05-02">
   <owner>birnie@google.com</owner>
   <owner>carlosk@chromium.org</owner>
   <summary>
@@ -2806,7 +2739,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.Instance.Session.InputModesUsed"
-    enum="GlicInputModesUsed" expires_after="2027-02-28">
+    enum="GlicInputModesUsed" expires_after="2027-05-02">
   <owner>birnie@google.com</owner>
   <owner>perrier@chromium.org</owner>
   <summary>
@@ -2842,7 +2775,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.Instance.Session.ToggleCount" units="count"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>birnie@google.com</owner>
   <owner>perrier@google.com</owner>
   <summary>
@@ -2853,7 +2786,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.Instance.Session.TotalActiveDuration"
-    units="ms" expires_after="2027-02-28">
+    units="ms" expires_after="2027-05-02">
   <owner>birnie@google.com</owner>
   <owner>perrier@google.com</owner>
   <summary>
@@ -2865,7 +2798,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.Instance.Session.TotalHiddenDuration"
-    units="ms" expires_after="2027-02-28">
+    units="ms" expires_after="2027-05-02">
   <owner>birnie@google.com</owner>
   <owner>perrier@google.com</owner>
   <summary>
@@ -2889,7 +2822,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.Instance.Session.TotalVisibleDuration"
-    units="ms" expires_after="2027-02-28">
+    units="ms" expires_after="2027-05-02">
   <owner>birnie@google.com</owner>
   <owner>perrier@google.com</owner>
   <summary>
@@ -2901,7 +2834,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.Instance.Session.TurnCount" units="count"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>birnie@google.com</owner>
   <owner>carlosk@chromium.org</owner>
   <summary>
@@ -2930,7 +2863,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.Instance.SessionCount" units="count"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>birnie@google.com</owner>
   <owner>carlosk@chromium.org</owner>
   <summary>
@@ -3097,6 +3030,38 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   <token key="GlicProvider" variants="GlicProvider"/>
 </histogram>
 
+<histogram
+    name="Glic{GlicProvider}.Instance.TimeToInputFocus.{WarmState}{OnboardingState}"
+    units="ms" expires_after="2027-06-15">
+  <owner>dewittj@chromium.org</owner>
+  <owner>glic-dev@google.com</owner>
+  <summary>
+    Records the time elapsed from when a Glic panel open starts until the main
+    prompt input field receives focus for the first time in that open, sliced by
+    whether the web client was {WarmState} when the open began, for
+    {OnboardingState}. Scope: {GlicProvider}.
+  </summary>
+  <token key="WarmState">
+    <variant name="Cold" summary="not yet ready (cold start)"/>
+    <variant name="Warm" summary="already ready (warm reopen)"/>
+  </token>
+  <token key="OnboardingState" variants="OnboardingState"/>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.Instance.TimeToInputFocus{OnboardingState}"
+    units="ms" expires_after="2027-06-15">
+  <owner>dewittj@chromium.org</owner>
+  <owner>glic-dev@google.com</owner>
+  <summary>
+    Records the time elapsed from when a Glic invocation or panel open starts
+    until the main prompt input field receives focus for the first time in that
+    open, for {OnboardingState}. Scope: {GlicProvider}.
+  </summary>
+  <token key="OnboardingState" variants="OnboardingState"/>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
 <histogram name="Glic{GlicProvider}.Instance.TotalActiveDuration" units="ms"
     expires_after="2027-03-07">
   <owner>birnie@google.com</owner>
@@ -3206,6 +3171,29 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   <token key="GlicProvider" variants="GlicProvider"/>
 </histogram>
 
+<histogram name="Glic{GlicProvider}.Instances.Count.Periodic" units="instances"
+    expires_after="2027-11-01">
+  <owner>bryantchandler@google.com</owner>
+  <owner>glic-dev@google.com</owner>
+  <summary>
+    The total number of Glic instances (including hibernated instances, and
+    excluding pre-warmed WebContents not yet attached to an instance) in a
+    profile. Recorded periodically (every 10 minutes) while the profile's
+    GlicInstanceCoordinator is alive, but ONLY when at least one instance exists
+    (0 is never recorded).
+
+    Analysis Note: Because this is emitted on a timer, raw total counts are
+    time-weighted and heavily biased toward long-running sessions (uptime bias)
+    and users who leave instances open in the background. To analyze the typical
+    concurrency per user without uptime skew, use per-client aggregation (e.g.,
+    Count Unique Clients or Client Proportion in the UMA dashboard, or
+    per-client mean/max in SQL). For session-level high water marks without
+    periodic bias, prefer Glic{GlicProvider}.Instances.PeakCount.OnShutdown.
+    Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
 <histogram name="Glic{GlicProvider}.Instances.CountActuating.OnTaskCreation"
     units="instances" expires_after="2027-06-01">
   <owner>bryantchandler@google.com</owner>
@@ -3225,6 +3213,22 @@ ApiRequestType variants; see go/geic-metrics-split. -->
     The number of awake Glic instances (with WebUI contents loaded). Recorded
     every time a GlicInstance has its WebUI contents created (either on initial
     creation or when waking up from hibernation). Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.Instances.PeakCount.OnShutdown"
+    units="instances" expires_after="2027-11-01">
+  <owner>bryantchandler@google.com</owner>
+  <owner>glic-dev@google.com</owner>
+  <summary>
+    The peak total number of Glic instances (including hibernated instances, and
+    excluding pre-warmed WebContents not yet attached to an instance) that
+    existed concurrently in a profile during the lifetime of its
+    GlicInstanceCoordinator. Recorded when the coordinator shuts down, only if
+    at least one instance existed. Metrics recorded on shutdown may not be
+    recorded on unclean Chrome exits or on Android where backgrounded processes
+    are terminated without a clean shutdown path. Scope: {GlicProvider}.
   </summary>
   <token key="GlicProvider" variants="GlicProvider"/>
 </histogram>
@@ -3311,7 +3315,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 
 <histogram
     name="Glic{GlicProvider}.InvocationSource.{InvocationSource}.SidePanelFirstOpenDuration.{PromptStatus}"
-    units="ms" expires_after="2027-02-28">
+    units="ms" expires_after="2027-05-02">
   <owner>sanaakbani@google.com</owner>
   <owner>basiaz@google.com</owner>
   <summary>
@@ -3332,7 +3336,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 
 <histogram
     name="Glic{GlicProvider}.InvocationSource.{InvocationSource}.SidePanelFirstOpenPromptCount"
-    units="prompts" expires_after="2027-02-28">
+    units="prompts" expires_after="2027-05-02">
   <owner>sanaakbani@google.com</owner>
   <owner>basiaz@google.com</owner>
   <summary>
@@ -3401,13 +3405,178 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   <token key="GlicProvider" variants="GlicProvider"/>
 </histogram>
 
+<histogram name="Glic{GlicProvider}.Overlay.DisplayDuration" units="ms"
+    expires_after="2027-04-01">
+  <owner>harringtond@chromium.org</owner>
+  <owner>glic@google.com</owner>
+  <summary>
+    Measures the duration for which the Glic loading or error overlay was
+    displayed to the user. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.Overlay.DisplayDuration.{OverlayState}"
+    units="ms" expires_after="2027-04-01">
+  <owner>harringtond@chromium.org</owner>
+  <owner>glic@google.com</owner>
+  <summary>
+    Measures the duration for which the Glic {OverlayState} overlay was
+    displayed to the user. Scope: {GlicProvider}.
+  </summary>
+  <token key="OverlayState">
+    <variant name="DisabledByAdmin"
+        summary="disabled by administrator error panel"/>
+    <variant name="Error" summary="generic or timeout error panel"/>
+    <variant name="IneligibleAccount" summary="ineligible account error panel"/>
+    <variant name="Loading"
+        summary="loading skeleton that did not finish (e.g. was closed,
+                 hidden, or timed out)"/>
+    <variant name="LoadingAndCompleted"
+        summary="loading skeleton that finished and swapped into the ready
+                 guest"/>
+    <variant name="LocationMismatch" summary="location mismatch error panel"/>
+    <variant name="Offline" summary="offline error panel"/>
+    <variant name="PendingProviderChange"
+        summary="pending provider change (relaunch prompt) error panel"/>
+    <variant name="SignIn" summary="sign-in error panel"/>
+    <variant name="Unavailable" summary="unavailable error panel"/>
+  </token>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
 <histogram name="Glic{GlicProvider}.PanelWebUiState.FinishState3"
-    enum="WebUiState" expires_after="2027-02-28">
+    enum="WebUiState" expires_after="2027-05-02">
   <owner>birnie@google.com</owner>
   <owner>perrier@google.com</owner>
   <summary>
     Record the current state when the panel is closed for multi instance
     supported clients. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.Prewarming.ChecksResult.{Trigger}"
+    enum="GlicPrewarmingChecksResult" expires_after="2027-04-30">
+  <owner>bryantchandler@chromium.org</owner>
+  <owner>chrome-glic@google.com</owner>
+  <summary>
+    Records the reason why Glic preloading was or was not attempted for trigger
+    {Trigger}. Recorded each time we try to preload. Scope: {GlicProvider}.
+  </summary>
+  <token key="Trigger">
+    <variant name="GeminiWeb" summary="gemini web"/>
+    <variant name="Iph" summary="iph"/>
+    <variant name="Nudge" summary="contextual nudge"/>
+    <variant name="SelectionOverlay" summary="selection overlay"/>
+    <variant name="Startup" summary="startup"/>
+  </token>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram
+    name="Glic{GlicProvider}.ProfileEnablement.AnchoredDespiteEligibilityReason.{Suffix}"
+    enum="GlicAnchoredDespiteEligibilityReason" expires_after="2027-06-30">
+  <owner>birnie@google.com</owner>
+  <owner>glic@google.com</owner>
+  <summary>
+    Logged when the Glic entry point remains anchored for an onboarded user
+    despite the profile currently failing eligibility criteria. Records the
+    specific reasons (global or profile-level) the button is in an error or
+    disabled state. Multiple reasons may be recorded per client. This is
+    {Suffix}. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+  <token key="Suffix" variants="ProfileEnablementSuffix"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.ProfileEnablement.DisabledReason.{Suffix}"
+    enum="GlicProfileEnablementReason" expires_after="2027-04-11">
+  <owner>dewittj@chromium.org</owner>
+  <owner>glic@chromium.org</owner>
+  <summary>
+    Records reasons why glic might be disabled for the profile. Multiple reasons
+    may be recorded if multiple conditions apply. This is {Suffix}. Scope:
+    {GlicProvider}.
+  </summary>
+  <token key="Suffix" variants="ProfileEnablementSuffix"/>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.ProfileEnablement.EligibleForLive.{Suffix}"
+    enum="Boolean" expires_after="2027-04-11">
+  <owner>dewittj@chromium.org</owner>
+  <owner>glic@chromium.org</owner>
+  <summary>
+    Records whether the profile is eligible for live features. This is {Suffix}.
+    Scope: {GlicProvider}.
+  </summary>
+  <token key="Suffix" variants="ProfileEnablementSuffix"/>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.ProfileEnablement.IsConsented.{Suffix}"
+    enum="Boolean" expires_after="2027-04-11">
+  <owner>dewittj@chromium.org</owner>
+  <owner>glic@chromium.org</owner>
+  <summary>
+    Records whether an eligible user has consented to use glic (accepted the
+    FRE) for the profile. Excludes users that are ineligible for glic. This is
+    {Suffix}. Scope: {GlicProvider}.
+  </summary>
+  <token key="Suffix" variants="ProfileEnablementSuffix"/>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.ProfileEnablement.IsEnabled.{Suffix}"
+    enum="Boolean" expires_after="2027-04-11">
+  <owner>dewittj@chromium.org</owner>
+  <owner>glic@chromium.org</owner>
+  <summary>
+    Records whether glic is enabled for the profile. This is {Suffix}. Scope:
+    {GlicProvider}.
+  </summary>
+  <token key="Suffix" variants="ProfileEnablementSuffix"/>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram
+    name="Glic{GlicProvider}.ProfileEnablement.IsPrimaryAccountFullySignedIn.{Suffix}"
+    enum="Boolean" expires_after="2027-04-11">
+  <owner>dewittj@chromium.org</owner>
+  <owner>glic@chromium.org</owner>
+  <summary>
+    Records whether the primary account is fully signed in (not paused). This is
+    {Suffix}. Scope: {GlicProvider}.
+  </summary>
+  <token key="Suffix" variants="ProfileEnablementSuffix"/>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram
+    name="Glic{GlicProvider}.ProfileEnablement.IsPrimaryAccountNeedsSignedIn.{Suffix}"
+    enum="Boolean" expires_after="2027-04-11">
+  <owner>dewittj@chromium.org</owner>
+  <owner>glic@chromium.org</owner>
+  <summary>
+    Records whether the profile is signed out, but kGlicShowForSignedOut is
+    enabled, so the GiC panel can be shown to show the sign-in promotion. This
+    is {Suffix}. Scope: {GlicProvider}.
+  </summary>
+  <token key="Suffix" variants="ProfileEnablementSuffix"/>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.ProfileEnablement.RecoveredFromState"
+    enum="GlicProfileReadyState" expires_after="2027-06-30">
+  <owner>birnie@google.com</owner>
+  <owner>chrome-glic@google.com</owner>
+  <summary>
+    Logged when a user actively attempts to interact with Glic (e.g. by clicking
+    the toolbar button, pressing the keyboard shortcut, or invoking via context
+    menu) and the interaction succeeds because Glic has successfully recovered
+    to kReady from a previously unhealthy/disabled state. Records the specific
+    unhealthy state the user's profile recovered from. Scope: {GlicProvider}.
   </summary>
   <token key="GlicProvider" variants="GlicProvider"/>
 </histogram>
@@ -3622,6 +3791,88 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   <token key="GlicProvider" variants="GlicProvider"/>
 </histogram>
 
+<histogram
+    name="Glic{GlicProvider}.TabContextMenu.PinnedTabsToExistingConversation"
+    units="tabs" expires_after="2027-04-11">
+  <owner>sanaakbani@google.com</owner>
+  <owner>birnie@google.com</owner>
+  <summary>
+    Records the number of tabs selected when pinning to an existing conversation
+    from the tab context menu. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.TabContextMenu.PinnedTabsToNewConversation"
+    units="tabs" expires_after="2027-04-11">
+  <owner>sanaakbani@google.com</owner>
+  <owner>birnie@google.com</owner>
+  <summary>
+    Records the number of tabs selected when pinning to a new conversation from
+    the tab context menu. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.Tooltip.MultiTab.ClosedWhileShown"
+    enum="Boolean" expires_after="2027-10-01">
+  <owner>andreaxg@google.com</owner>
+  <owner>glic-dev@google.com</owner>
+  <summary>
+    Recorded as a boolean at most once per shown-tooltip episode (starting on a
+    valid multi-tab tooltip impression and resetting on close or web-client
+    reload). Recorded when: (1) the side panel closes (including when replaced
+    by another side panel entry, excluding tab switches), (2) the floating panel
+    closes, (3) an open embedder is unbound, (4) a bound tab with the active
+    open side panel is destroyed, or (5) the Glic instance is destroyed while
+    the panel is currently visible (destroying a hidden or switched-away
+    instance does not record). Emits true if the tooltip was still displayed at
+    close, or false if the user had already dismissed, timed out, or engaged
+    with the tooltip before closing. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.Tooltip.MultiTab.Impression"
+    enum="GlicTooltipMultiTabImpression" expires_after="2027-10-01">
+  <owner>andreaxg@google.com</owner>
+  <owner>glic-dev@google.com</owner>
+  <summary>
+    Recorded when a multi-tab sharing tooltip is shown to the user. Logs the
+    specific tooltip variant or step displayed. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.Tooltip.MultiTab.MultiTabPromptSubmitted"
+    enum="Boolean" expires_after="2027-10-01">
+  <owner>andreaxg@google.com</owner>
+  <owner>glic-dev@google.com</owner>
+  <summary>
+    Recorded at most once per tooltip showing in a session when the user first
+    submits a prompt with 2+ tabs attached (only true is recorded). Scope:
+    {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.Tooltip.MultiTab.PanelCloseWithin10s"
+    enum="Boolean" expires_after="2027-10-01">
+  <owner>andreaxg@google.com</owner>
+  <owner>glic-dev@google.com</owner>
+  <summary>
+    Recorded as a boolean at most once per shown-tooltip episode at the same
+    close triggers as Glic{GlicProvider}.Tooltip.MultiTab.ClosedWhileShown (side
+    panel close or replacement by another entry excluding tab switches, floating
+    panel close, unbinding an open embedder, destroying a bound tab with the
+    active open side panel, or destroying a visible Glic instance). Not emitted
+    if the web client reloads or hibernates before close. Emits true if closed
+    within 10 seconds of the latest multi-tab tooltip impression, or false
+    otherwise. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
 <histogram name="Glic{GlicProvider}.Turn.Actuation.IsRetry" enum="Boolean"
     expires_after="2027-02-14">
   <owner>qinmin@google.com</owner>
@@ -3676,6 +3927,50 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   <token key="GlicProvider" variants="GlicProvider"/>
 </histogram>
 
+<histogram
+    name="Glic{GlicProvider}.Turn.CompletedWhileHidden.ReturnSource{Mode}"
+    enum="GlicInvocationSource" expires_after="2027-06-01">
+  <owner>bryantchandler@chromium.org</owner>
+  <owner>birnie@google.com</owner>
+  <summary>
+    Records the invocation source that caused a Glic instance to be shown when
+    the user returns to a response that completed while the instance was hidden
+    (panel closed or on a backgrounded tab), for {Mode}. Logged only when the
+    instance is shown before destruction (kHiddenThenShowing). Scope:
+    {GlicProvider}.
+  </summary>
+  <token key="Mode" variants="GlicTurnMode"/>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.Turn.CompletedWhileHidden.TimeToShow{Mode}"
+    units="ms" expires_after="2027-06-01">
+  <owner>bryantchandler@chromium.org</owner>
+  <owner>birnie@google.com</owner>
+  <summary>
+    Records the duration from when a turn response completed while hidden until
+    the instance was shown again, for {Mode}. Logged only when the instance is
+    shown before destruction (kHiddenThenShowing). Scope: {GlicProvider}.
+  </summary>
+  <token key="Mode" variants="GlicTurnMode"/>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram
+    name="Glic{GlicProvider}.Turn.CompletedWhileHidden.TimeUntilDestroyed{Mode}"
+    units="ms" expires_after="2027-06-01">
+  <owner>bryantchandler@chromium.org</owner>
+  <owner>birnie@google.com</owner>
+  <summary>
+    Records the duration from when a turn response completed while hidden until
+    the instance was destroyed (or superseded by another completed response)
+    without ever being shown (kHiddenNeverShowing), for {Mode}. Scope:
+    {GlicProvider}.
+  </summary>
+  <token key="Mode" variants="GlicTurnMode"/>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
 <histogram name="Glic{GlicProvider}.Turn.Duration.{Model}" units="ms"
     expires_after="2027-04-18">
   <owner>birnie@google.com</owner>
@@ -3717,7 +4012,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.Turn.PromptType" enum="GlicPromptType"
-    expires_after="2027-03-01">
+    expires_after="2027-05-02">
   <owner>basiaz@google.com</owner>
   <owner>birnie@google.com</owner>
   <summary>
@@ -3807,6 +4102,26 @@ ApiRequestType variants; see go/geic-metrics-split. -->
   <token key="GlicProvider" variants="GlicProvider"/>
 </histogram>
 
+<histogram name="Glic{GlicProvider}.Turn.ShowingOutcome{Mode}"
+    enum="GlicTurnShowingOutcome" expires_after="2027-06-01">
+  <owner>bryantchandler@chromium.org</owner>
+  <owner>birnie@google.com</owner>
+  <summary>
+    Records the panel showing state and window activation outcome for a
+    completed turn response, for {Mode}. 'Showing' means the Glic side panel is
+    open on its browser window's active tab or the floating panel is open
+    (OS-level window occlusion by other windows is not tracked). 'Active' means
+    the browser window (for side panel) or floating widget (for floaty, or while
+    microphone is listening) has window focus. 'Hidden' means the panel is
+    explicitly closed or attached to a backgrounded tab. Recorded immediately at
+    response completion when both showing and active; otherwise recorded when
+    the missing state (active or showing) is later reached, or upon instance
+    destruction if never reached. Scope: {GlicProvider}.
+  </summary>
+  <token key="Mode" variants="GlicTurnMode"/>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
 <histogram name="Glic{GlicProvider}.Turn.Source" enum="GlicTurnSource"
     expires_after="2027-04-18">
   <owner>birnie@google.com</owner>
@@ -3820,7 +4135,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.WarmingPool.ContainerCreationReason"
-    enum="GlicContainerCreationReason" expires_after="2027-03-01">
+    enum="GlicContainerCreationReason" expires_after="2027-05-02">
   <owner>acondor@chromium.org</owner>
   <owner>bryantchandler@chromium.org</owner>
   <owner>glic-dev@google.com</owner>
@@ -3833,7 +4148,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.WarmingPool.HitStatus"
-    enum="GlicWarmingPoolStatus" expires_after="2027-03-01">
+    enum="GlicWarmingPoolStatus" expires_after="2027-05-02">
   <owner>harringtond@chromium.org</owner>
   <owner>glic-dev@google.com</owner>
   <summary>
@@ -3841,14 +4156,29 @@ ApiRequestType variants; see go/geic-metrics-split. -->
     pre-warmed WebContents. Reports whether the container was pre-warmed (hit),
     not pre-warmed (cold), pre-warmed but expired before use, pre-warmed but
     crashed before use, not pre-warmed because the pool was disabled by memory
-    pressure, or not pre-warmed because a backfill was still pending. Scope:
-    {GlicProvider}.
+    pressure, not pre-warmed because a backfill was still pending, pre-warmed
+    but failed to load or timed out before use, or not pre-warmed because the
+    memory pressure recovery limit was reached. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.WarmingPool.MemoryPressureRecovery"
+    enum="GlicMemoryPressureRecoveryStatus" expires_after="2027-03-01">
+  <owner>bryantchandler@chromium.org</owner>
+  <owner>dewittj@chromium.org</owner>
+  <owner>glic-dev@google.com</owner>
+  <summary>
+    Logged when the Glic WebContents warming pool attempts to recover after
+    critical memory pressure subsides. Reports whether a new container was
+    recovered or whether recovery was blocked because the recovery limit was
+    reached. Scope: {GlicProvider}.
   </summary>
   <token key="GlicProvider" variants="GlicProvider"/>
 </histogram>
 
 <histogram name="Glic{GlicProvider}.WarmingPool.ReloadAfterExpiry"
-    enum="GlicReloadAfterExpiryStatus" expires_after="2027-03-01">
+    enum="GlicReloadAfterExpiryStatus" expires_after="2027-05-02">
   <owner>harringtond@chromium.org</owner>
   <owner>glic-dev@google.com</owner>
   <summary>
@@ -3859,7 +4189,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.WarmingPool.TimeSinceCreatedAtHit"
-    units="ms" expires_after="2027-03-01">
+    units="ms" expires_after="2027-05-02">
   <owner>harringtond@chromium.org</owner>
   <owner>glic-dev@google.com</owner>
   <summary>
@@ -3871,7 +4201,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.WarmingPool.TimeSinceCreatedAtMiss"
-    units="ms" expires_after="2027-03-01">
+    units="ms" expires_after="2027-05-02">
   <owner>harringtond@chromium.org</owner>
   <owner>glic-dev@google.com</owner>
   <summary>
@@ -3884,7 +4214,7 @@ ApiRequestType variants; see go/geic-metrics-split. -->
 </histogram>
 
 <histogram name="Glic{GlicProvider}.WarmingPool.WarmedContainerFate"
-    enum="GlicWarmedContainerFate" expires_after="2027-03-01">
+    enum="GlicWarmedContainerFate" expires_after="2027-05-02">
   <owner>harringtond@chromium.org</owner>
   <owner>glic-dev@google.com</owner>
   <summary>
@@ -3895,6 +4225,45 @@ ApiRequestType variants; see go/geic-metrics-split. -->
     before being taken. Scope: {GlicProvider}.
   </summary>
   <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.WebContentContextMenu.Enabled"
+    enum="Boolean" expires_after="2027-04-11">
+  <owner>basiaz@google.com</owner>
+  <owner>birnie@chromium.org</owner>
+  <summary>
+    Recorded when the Glic WebContent context menu item is evaluated for
+    display. Records true if menu item will be shown, false otherwise. Scope:
+    {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+</histogram>
+
+<histogram name="Glic{GlicProvider}.WebContentsContextMenu.{GlicContextType}"
+    enum="GlicWebContentsContextMenuResult" expires_after="2027-04-11">
+  <owner>basiaz@google.com</owner>
+  <owner>birnie@chromium.org</owner>
+  <owner>alexiswu@google.com</owner>
+  <summary>
+    Logs when the Glic context menu item was shown and ignored, or executed when
+    the user opened the context menu on {GlicContextType}. Recorded when the
+    menu closes, once for each Glic item shown in it. Recorded on desktop for
+    all variants except Link, and on Android for Image, Link, Page and
+    TextSelection. On Android, Ask Gemini counts as shown even when the text
+    selection toolbar moves it into the overflow menu. Scope: {GlicProvider}.
+  </summary>
+  <token key="GlicProvider" variants="GlicProvider"/>
+  <token key="GlicContextType">
+    <variant name="Image"
+        summary="an image (recorded for the Glic share image item)"/>
+    <variant name="Link"
+        summary="a link with no selection (on Android, this includes a link
+                 that wraps an image)"/>
+    <variant name="Page" summary="a page with no selection"/>
+    <variant name="TextSelection" summary="a text selection"/>
+    <variant name="TextSelectionWithLink"
+        summary="a text selection with click target that is a link"/>
+  </token>
 </histogram>
 
 <histogram name="Glic{GlicProvider}.ZoomAction" enum="GlicZoomAction"

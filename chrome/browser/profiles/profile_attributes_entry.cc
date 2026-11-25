@@ -189,7 +189,7 @@ void ProfileAttributesEntry::Initialize(ProfileAttributesStorage* storage,
   }
 
   if (signin_util::IsForceSigninEnabled()) {
-    if (GetSigninState() == SigninState::kNotSignedIn && !CanBeManaged()) {
+    if (GetSigninState() == SigninState::kNotSignedIn) {
       SetBool(kForceSigninProfileLockedKey, true);
     }
   } else {

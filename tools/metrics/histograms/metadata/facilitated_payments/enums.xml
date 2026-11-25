@@ -46,13 +46,15 @@ reviewer.
   <int value="1" label="Screen was closed not by the user"/>
   <int value="2" label="Screen was closed by the user"/>
   <int value="3" label="User clicked the No Thanks button"/>
-  <int value="4" label="Wallet is not installed"/>
-  <int value="5" label="Wallet version is not supported"/>
+  <int value="4" label="(Obsolete) Wallet is not installed. Removed in M152."/>
+  <int value="5"
+      label="(Obsolete) Wallet version is not supported. Removed in M152."/>
   <int value="6"
       label="User opted out of the flow using the Settings page pref"/>
   <int value="7" label="No screen lock or biometric setup"/>
   <int value="8"
-      label="User's account was determined to be ineligible by the server"/>
+      label="(Obsolete) User's account was determined to be ineligible by the
+             server. Replaced by values 15 and 16. Removed in M153."/>
   <int value="9" label="User switched to a different tab"/>
   <int value="10" label="User navigated to a different website"/>
   <int value="11" label="Max strikes reached"/>
@@ -219,6 +221,43 @@ reviewer.
 </enum>
 
 <!-- LINT.ThenChange(/components/facilitated_payments/core/metrics/facilitated_payments_metrics.h:PixFlowExitedReason) -->
+
+<!-- LINT.IfChange(FacilitatedPayments.QrCode.DetectionResult) -->
+
+<enum name="FacilitatedPayments.QrCode.DetectionResult">
+  <int value="0" label="Images not found"/>
+  <int value="1" label="Detector unavailable"/>
+  <int value="2" label="QR code not found"/>
+  <int value="3" label="Single QR code found"/>
+  <int value="4" label="Multiple QR codes found"/>
+</enum>
+
+<!-- LINT.ThenChange(/components/facilitated_payments/core/metrics/facilitated_payments_metrics.h:QrCodeDetectionResult) -->
+
+<!-- LINT.IfChange(FacilitatedPayments.QrCode.HeuristicSignals) -->
+
+<enum name="FacilitatedPayments.QrCode.HeuristicSignals">
+  <int value="0" label="No signals"/>
+  <int value="1" label="facilitated payment link"/>
+  <int value="2" label="square image"/>
+  <int value="3" label="facilitated payment link, square image"/>
+  <int value="4" label="URL keyword"/>
+  <int value="5" label="facilitated payment link, URL keyword"/>
+  <int value="6" label="square image, URL keyword"/>
+  <int value="7" label="facilitated payment link, square image, URL keyword"/>
+  <int value="8" label="text keyword"/>
+  <int value="9" label="facilitated payment link, text keyword"/>
+  <int value="10" label="square image, text keyword"/>
+  <int value="11" label="facilitated payment link, square image, text keyword"/>
+  <int value="12" label="URL keyword, text keyword"/>
+  <int value="13" label="facilitated payment link, URL keyword, text keyword"/>
+  <int value="14" label="square image, URL keyword, text keyword"/>
+  <int value="15"
+      label="facilitated payment link, square image, URL keyword, text
+             keyword"/>
+</enum>
+
+<!-- LINT.ThenChange(/components/facilitated_payments/core/metrics/facilitated_payments_metrics.h:QrCodeHeuristicSignal) -->
 
 <!-- LINT.IfChange(FacilitatedPayments.UiScreen) -->
 

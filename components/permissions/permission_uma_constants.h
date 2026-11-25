@@ -9,7 +9,9 @@
 
 namespace permissions {
 
-// This enum backs a UMA histogram, so it must be treated as append-only.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// LINT.IfChange(PermissionAction)
 enum class PermissionAction {
   GRANTED = 0,
   DENIED = 1,
@@ -18,9 +20,9 @@ enum class PermissionAction {
   REVOKED = 4,
   GRANTED_ONCE = 5,
 
-  // Always keep this at the end.
-  NUM,
+  kMaxValue = GRANTED_ONCE,
 };
+// LINT.ThenChange(//tools/metrics/histograms/metadata/permissions/enums.xml:PermissionAction)
 
 enum class ActivityIndicatorState {
   kInUse = 0,
@@ -76,7 +78,7 @@ enum class RequestTypeForUma {
   PERMISSION_IDLE_DETECTION = 27,
   // PERMISSION_FILE_HANDLING = 28,
   // PERMISSION_U2F_API_REQUEST = 29,
-  PERMISSION_TOP_LEVEL_STORAGE_ACCESS = 30,
+  // PERMISSION_TOP_LEVEL_STORAGE_ACCESS = 30, // Removed in M159.
   // PERMISSION_MIDI = 31,
   PERMISSION_FILE_SYSTEM_ACCESS = 32,
   CAPTURED_SURFACE_CONTROL = 33,
@@ -265,7 +267,8 @@ enum class PermissionPromptDisposition {
   ELEMENT_ANCHORED_BUBBLE = 13,
 
   // Only used on macOS, a native OS provided permission prompt.
-  MAC_OS_PROMPT = 14,
+  // DEPRECATED: This disposition is no longer existent.
+  // MAC_OS_PROMPT = 14,
 
   // Only used on Android, a message bubble near top of the screen and below the
   // location bar. This is a flavor of MESSAGE_UI that is used for loud prompts.
@@ -305,6 +308,9 @@ enum class PermissionPromptDispositionReason {
 
   // Disposition was chosen because the request lacked a user gesture.
   LACK_OF_GESTURE = 5,
+
+  // Always keep this at the end.
+  kMaxValue = LACK_OF_GESTURE,
 };
 // LINT.ThenChange(//tools/metrics/histograms/enums.xml:PermissionPromptDispositionReason)
 
@@ -605,8 +611,23 @@ enum class DismissalType {
 enum class UkmPermissionPromptOptions {
   APPROXIMATE_LOCATION = 1,
   PRECISE_LOCATION = 2,
+
+  // Always keep this at the end.
+  kMaxValue = PRECISE_LOCATION,
 };
 // LINT.ThenChange(//tools/metrics/ukm/ukm.xml:UkmPermissionPromptOptions)
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// LINT.IfChange(GeolocationPromptType)
+// GENERATED_JAVA_ENUM_PACKAGE: org.chromium.components.permissions
+enum class GeolocationPromptType {
+  kApproximateOrPrecise = 0,
+  kApproximateOnly = 1,
+  kUpgradeToPrecise = 2,
+  kMaxValue = kUpgradeToPrecise,
+};
+// LINT.ThenChange(//tools/metrics/histograms/enums.xml:GeolocationPromptType)
 
 // LINT.IfChange(PromptDispositionSets)
 inline constexpr auto kQuietPromptDispositions =
@@ -626,7 +647,6 @@ inline constexpr auto kLoudPromptDispositions =
         PermissionPromptDisposition::ELEMENT_ANCHORED_BUBBLE,
         PermissionPromptDisposition::CUSTOM_MODAL_DIALOG,
         PermissionPromptDisposition::MODAL_DIALOG,
-        PermissionPromptDisposition::MAC_OS_PROMPT,
         PermissionPromptDisposition::LOCATION_BAR_LEFT_CHIP,
         PermissionPromptDisposition::LOCATION_BAR_LEFT_CHIP_AUTO_BUBBLE,
         PermissionPromptDisposition::MESSAGE_UI_LOUD,
@@ -637,9 +657,10 @@ inline constexpr auto kLoudPromptDispositions =
 // prompts set. Left out:
 //  - NOT_APPLICABLE (0 anyways)
 //  - NONE_VISIBLE
+//  - MAC_OS_PROMPT (deprecated)
 static_assert(kLoudPromptDispositions.size() +
                   kQuietPromptDispositions.size() ==
-              static_cast<size_t>(PermissionPromptDisposition::kMaxValue) - 1);
+              static_cast<size_t>(PermissionPromptDisposition::kMaxValue) - 2);
 
 }  // namespace permissions
 

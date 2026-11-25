@@ -22,6 +22,7 @@ cc_library(
     name = "running_mode",
     hdrs = ["running_mode.h"],
     deps = [
+        "//mediapipe/tasks/cc/core:running_mode",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -38,6 +39,7 @@ cc_library(
         "//mediapipe/tasks/cc/core:base_task_api",
         "//mediapipe/tasks/cc/core:task_runner",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
@@ -55,8 +57,9 @@ cc_library(
         "//mediapipe/tasks/cc/core:task_api_factory",
         "//mediapipe/tasks/cc/core:task_runner",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@org_tensorflow//tensorflow/lite/core/api:op_resolver",
+        "@litert//tflite/core/api:op_resolver",
     ],
 )

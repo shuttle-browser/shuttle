@@ -472,13 +472,11 @@ class PartitionAllocTest
         .branch_capacity_in_bytes = std::numeric_limits<size_t>::max(),
         .leak_on_destruction = true,
         .enable_quarantine = true,
-        .enable_zapping = true,
     };
     opts.scheduler_loop_quarantine_thread_local_config = {
         .branch_capacity_in_bytes = std::numeric_limits<size_t>::max(),
         .leak_on_destruction = false,
         .enable_quarantine = true,
-        .enable_zapping = true,
     };
     return opts;
   }
@@ -715,6 +713,41 @@ class PartitionAllocTest
 
 #if PA_BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT)
   void RunRefCountReallocSubtest(size_t orig_size, size_t new_size);
+
+  static void SetRefCountForTesting(InSlotMetadata* in_slot_metadata,
+                                    InSlotMetadata::CountType ptr_count) {
+    InSlotMetadata::CountType old_count =
+        in_slot_metadata->count_.load(std::memory_order_relaxed);
+    in_slot_metadata->count_.store(
+        (old_count & ~InSlotMetadata::kPtrCountMask) |
+            (ptr_count & InSlotMetadata::kPtrCountMask),
+        std::memory_order_relaxed);
+  }
+
+  static InSlotMetadata::CountType GetRefCountForTesting(
+      const InSlotMetadata* in_slot_metadata) {
+    return in_slot_metadata->count_.load(std::memory_order_relaxed) &
+           InSlotMetadata::kPtrCountMask;
+  }
+
+#if PA_BUILDFLAG(ENABLE_DANGLING_RAW_PTR_CHECKS)
+  static void SetUnprotectedRefCountForTesting(
+      InSlotMetadata* in_slot_metadata,
+      InSlotMetadata::CountType unprotected_ptr_count) {
+    InSlotMetadata::CountType old_count =
+        in_slot_metadata->count_.load(std::memory_order_relaxed);
+    in_slot_metadata->count_.store(
+        (old_count & ~InSlotMetadata::kUnprotectedPtrCountMask) |
+            (unprotected_ptr_count & InSlotMetadata::kUnprotectedPtrCountMask),
+        std::memory_order_relaxed);
+  }
+
+  static InSlotMetadata::CountType GetUnprotectedRefCountForTesting(
+      const InSlotMetadata* in_slot_metadata) {
+    return in_slot_metadata->count_.load(std::memory_order_relaxed) &
+           InSlotMetadata::kUnprotectedPtrCountMask;
+  }
+#endif  // PA_BUILDFLAG(ENABLE_DANGLING_RAW_PTR_CHECKS)
 #endif
 
   PA_NOINLINE PA_MALLOC_FN void* Alloc(size_t size) {
@@ -2596,6 +2629,58 @@ TEST_P(PartitionAllocTest, PartialPageFreelists) {
   allocator.root()->Free(ptr);
 }
 
+// Checks that with a min provisioning size, enough slots are provisioned at
+// once to cover it, and that the slot span can still be fully used.
+TEST_P(PartitionAllocTest, MinProvisioningSize) {
+  constexpr size_t kMinProvisioningSize = 64 * 1024;
+  PartitionRoot::SetMinProvisioningSize(kMinProvisioningSize);
+  struct ResetMinProvisioningSize {
+    ~ResetMinProvisioningSize() { PartitionRoot::SetMinProvisioningSize(0); }
+  } reset_min_provisioning_size;
+
+  for (size_t raw_size :
+       {size_t{16}, size_t{100}, size_t{1000}, SystemPageSize() / 2 + 1,
+        SystemPageSize() + 16, size_t{9000}}) {
+    const size_t size = raw_size > ExtraAllocSize(allocator)
+                            ? raw_size - ExtraAllocSize(allocator)
+                            : 1;
+    void* ptr = allocator.root()->Alloc(size, type_name);
+    ASSERT_TRUE(ptr);
+    auto* slot_span = SlotSpan::FromSlotStart(SlotStart::Unchecked(ptr).Untag(),
+                                              allocator.root());
+    const size_t slot_size = slot_span->bucket->slot_size;
+    const size_t span_size =
+        slot_span->bucket->num_system_pages_per_slot_span * SystemPageSize();
+    const size_t total_slots = span_size / slot_size;
+    // Whole slots covering `kMinProvisioningSize`, rounded up to a system page
+    // (any other slot that fits in the committed pages is provisioned too).
+    const size_t expected_provisioned_bytes = std::min(
+        span_size,
+        base::bits::AlignUp(
+            std::max<size_t>(kMinProvisioningSize / slot_size, 1) * slot_size,
+            SystemPageSize()));
+    const size_t expected_provisioned_slots =
+        std::min(total_slots, expected_provisioned_bytes / slot_size);
+    EXPECT_EQ(1u, slot_span->num_allocated_slots);
+    EXPECT_EQ(total_slots - expected_provisioned_slots,
+              slot_span->num_unprovisioned_slots)
+        << "slot_size=" << slot_size;
+
+    // Use the whole slot span (and then some), touching all the memory.
+    std::vector<void*> ptrs = {ptr};
+    for (size_t i = 0; i < total_slots + 1; ++i) {
+      void* p = allocator.root()->Alloc(size, type_name);
+      ASSERT_TRUE(p);
+      std::fill_n(static_cast<uint8_t*>(p), size, 0x42);
+      ptrs.push_back(p);
+    }
+    EXPECT_EQ(0u, slot_span->num_unprovisioned_slots);
+    for (void* p : ptrs) {
+      allocator.root()->Free(p);
+    }
+  }
+}
+
 // Test some of the fragmentation-resistant properties of the allocator.
 TEST_P(PartitionAllocTest, SlotSpanRefilling) {
   PartitionRoot::Bucket* bucket =
@@ -2936,6 +3021,14 @@ TEST_P(PartitionAllocTest, LostFreeSlotSpansBug) {
 // memset() many GiB of data (see crbug.com/1168168).
 // TODO(lizeb): make these tests faster.
 TEST_P(PartitionAllocDeathTest, MAYBE_RepeatedAllocReturnNullDirect) {
+#if defined(UNDEFINED_SANITIZER)
+  // TODO(crbug.com/581064697): Re-enable once PartitionDirectMap() honors
+  // AllocFlags::kReturnNull when committing metadata/BRP pages.
+  if (GetBucketDistribution() == BucketDistribution::kNeutral &&
+      !UseThreadIsolatedPool()) {
+    GTEST_SKIP() << "crbug.com/581064697";
+  }
+#endif
   // A direct-mapped allocation size.
   size_t direct_map_size = 32 * 1024 * 1024;
   ASSERT_GT(direct_map_size, BucketIndexLookup::kMaxBucketSize);
@@ -5652,7 +5745,76 @@ TEST_P(PartitionAllocDeathTest, AcquireAfterQuarantined) {
   // supported.
   EXPECT_DEATH(in_slot_metadata->Acquire(), "");
 }
+
+TEST_P(PartitionAllocDeathTest, AcquireRefCountOverflow) {
+  if (!UseBRPPool()) {
+    return;
+  }
+
+  uint64_t* ptr = static_cast<uint64_t*>(
+      allocator.root()->Alloc(64 - ExtraAllocSize(allocator), type_name));
+  ASSERT_TRUE(ptr);
+  auto* in_slot_metadata =
+      allocator.root()->InSlotMetadataPointerFromObjectForTesting(ptr);
+
+  // Acquiring when the reference count is at `kMaxPtrCount` or anywhere in the
+  // reserved upper half (where the most significant bit of `kPtrCountMask` is
+  // set) must fail with a fatal check.
+  SetRefCountForTesting(in_slot_metadata, InSlotMetadata::kMaxPtrCount);
+  EXPECT_DEATH(in_slot_metadata->Acquire(), "");
+
+  SetRefCountForTesting(in_slot_metadata,
+                        InSlotMetadata::kMaxPtrCount + InSlotMetadata::kPtrInc);
+  EXPECT_DEATH(in_slot_metadata->Acquire(), "");
+
+  SetRefCountForTesting(in_slot_metadata, InSlotMetadata::kPtrCountMask);
+  EXPECT_DEATH(in_slot_metadata->Acquire(), "");
+
+  SetRefCountForTesting(in_slot_metadata, 0);
+  allocator.root()->Free(ptr);
+}
 #endif  // PA_USE_DEATH_TESTS()
+
+TEST_P(PartitionAllocTest, RefCountMaxBoundary) {
+  if (!UseBRPPool()) {
+    return;
+  }
+
+  uint64_t* ptr = static_cast<uint64_t*>(
+      allocator.root()->Alloc(64 - ExtraAllocSize(allocator), type_name));
+  ASSERT_TRUE(ptr);
+  auto* in_slot_metadata =
+      allocator.root()->InSlotMetadataPointerFromObjectForTesting(ptr);
+
+  // Acquiring one step below `kMaxPtrCount` is valid and reaches
+  // `kMaxPtrCount`.
+  constexpr auto kPreMaxPtrCount =
+      InSlotMetadata::kMaxPtrCount - InSlotMetadata::kPtrInc;
+  SetRefCountForTesting(in_slot_metadata, kPreMaxPtrCount);
+  in_slot_metadata->Acquire();
+  EXPECT_EQ(GetRefCountForTesting(in_slot_metadata),
+            InSlotMetadata::kMaxPtrCount);
+  EXPECT_FALSE(in_slot_metadata->Release());
+  EXPECT_EQ(GetRefCountForTesting(in_slot_metadata), kPreMaxPtrCount);
+  SetRefCountForTesting(in_slot_metadata, 0);
+
+#if PA_BUILDFLAG(ENABLE_DANGLING_RAW_PTR_CHECKS)
+  constexpr auto kPreMaxUnprotectedPtrCount =
+      InSlotMetadata::kMaxUnprotectedPtrCount -
+      InSlotMetadata::kUnprotectedPtrInc;
+  SetUnprotectedRefCountForTesting(in_slot_metadata,
+                                   kPreMaxUnprotectedPtrCount);
+  in_slot_metadata->AcquireFromUnprotectedPtr();
+  EXPECT_EQ(GetUnprotectedRefCountForTesting(in_slot_metadata),
+            InSlotMetadata::kMaxUnprotectedPtrCount);
+  EXPECT_FALSE(in_slot_metadata->ReleaseFromUnprotectedPtr());
+  EXPECT_EQ(GetUnprotectedRefCountForTesting(in_slot_metadata),
+            kPreMaxUnprotectedPtrCount);
+  SetUnprotectedRefCountForTesting(in_slot_metadata, 0);
+#endif  // PA_BUILDFLAG(ENABLE_DANGLING_RAW_PTR_CHECKS)
+
+  allocator.root()->Free(ptr);
+}
 
 #endif  // PA_BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT)
 
@@ -6084,6 +6246,37 @@ TEST_P(PartitionAllocDeathTest, AcquireUnprotectedAfterQuarantined) {
   // Because of PA_CHECK, expect AcquireFromProtectedPtr() always crash
   // if death test is supported.
   EXPECT_DEATH(in_slot_metadata->AcquireFromUnprotectedPtr(), "");
+}
+
+TEST_P(PartitionAllocDeathTest, AcquireUnprotectedRefCountOverflow) {
+  if (!UseBRPPool()) {
+    return;
+  }
+
+  uint64_t* ptr = static_cast<uint64_t*>(
+      allocator.root()->Alloc(64 - ExtraAllocSize(allocator), type_name));
+  ASSERT_TRUE(ptr);
+  auto* in_slot_metadata =
+      allocator.root()->InSlotMetadataPointerFromObjectForTesting(ptr);
+
+  // Acquiring when the unprotected reference count is at
+  // `kMaxUnprotectedPtrCount` or anywhere in the reserved upper half must fail
+  // with a fatal check.
+  SetUnprotectedRefCountForTesting(in_slot_metadata,
+                                   InSlotMetadata::kMaxUnprotectedPtrCount);
+  EXPECT_DEATH(in_slot_metadata->AcquireFromUnprotectedPtr(), "");
+
+  SetUnprotectedRefCountForTesting(in_slot_metadata,
+                                   InSlotMetadata::kMaxUnprotectedPtrCount +
+                                       InSlotMetadata::kUnprotectedPtrInc);
+  EXPECT_DEATH(in_slot_metadata->AcquireFromUnprotectedPtr(), "");
+
+  SetUnprotectedRefCountForTesting(in_slot_metadata,
+                                   InSlotMetadata::kUnprotectedPtrCountMask);
+  EXPECT_DEATH(in_slot_metadata->AcquireFromUnprotectedPtr(), "");
+
+  SetUnprotectedRefCountForTesting(in_slot_metadata, 0);
+  allocator.root()->Free(ptr);
 }
 #endif  // PA_USE_DEATH_TESTS()
 #endif  // PA_BUILDFLAG(ENABLE_DANGLING_RAW_PTR_CHECKS)

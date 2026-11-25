@@ -20,6 +20,13 @@
 
 namespace omnibox {
 
+bool ShouldUseAskPlaceholderText(
+    Profile* profile,
+    const TemplateURLService* template_url_service) {
+  // Shuttle: the AI mode popup is removed, so the "Ask" placeholder is unused.
+  return false;
+}
+
 void ComputePlaceholderText(
     LocationBar* location_bar,
     std::u16string& out_placeholder_text,

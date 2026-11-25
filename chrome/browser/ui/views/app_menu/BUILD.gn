@@ -54,6 +54,8 @@ source_set("impl") {
     "app_menu_block_button.cc",
     "app_menu_block_view.cc",
     "app_menu_chip_view.cc",
+    "app_menu_focus_controller.cc",
+    "app_menu_focus_controller.h",
     "app_menu_footer_button.cc",
     "app_menu_footer_view.cc",
     "app_menu_item_view.cc",
@@ -111,6 +113,7 @@ source_set("impl") {
     "//components/signin/public/identity_manager",
     "//components/strings:components_strings",
     "//components/strings:components_strings_grit",
+    "//components/subscription_eligibility:tier_names",
     "//components/tab_groups",
     "//components/tabs:public",
     "//components/vector_icons",
@@ -123,6 +126,7 @@ source_set("impl") {
     "//ui/display",
     "//ui/gfx",
     "//ui/views",
+    "//ui/views/controls/webview",
   ]
 
   if (use_aura) {
@@ -130,11 +134,21 @@ source_set("impl") {
   }
 
   if (enable_extensions) {
-    deps += [ "//chrome/browser/extensions" ]
+    deps += [
+      "//chrome/browser/extensions",
+      "//chrome/browser/ui/extensions",
+    ]
   }
 
   if (!is_chromeos) {
     deps += [
+    ]
+  }
+
+  if (is_chromeos) {
+    deps += [
+      "//chromeos/strings",
+      "//chromeos/ui/frame",
     ]
   }
 

@@ -84,7 +84,7 @@ bool X11WholeScreenMoveLoop::CanDispatchEvent(const ui::PlatformEvent& event) {
 }
 
 uint32_t X11WholeScreenMoveLoop::DispatchEvent(const ui::PlatformEvent& event) {
-  DCHECK(base::CurrentUIThread::IsSet());
+  CHECK(base::CurrentUIThread::IsSet(), base::NotFatalUntil::M163);
 
   // This method processes all events while the move loop is active.
   if (!in_move_loop_) {
@@ -137,13 +137,7 @@ uint32_t X11WholeScreenMoveLoop::DispatchEvent(const ui::PlatformEvent& event) {
     case ui::EventType::kTouchCancelled: {
       // The touch sequence ends here without reaching its window. Remember it
       // so the owner can end it once the loop returns.
-      const auto* touch_event = event->AsTouchEvent();
-      const auto* xev = x11::Connection::Get()->dispatching_event();
-      const auto* device_event =
-          xev ? xev->As<x11::Input::DeviceEvent>() : nullptr;
-      consumed_touches_.push_back(
-          {device_event ? device_event->event : x11::Window::None,
-           touch_event->pointer_details().id, touch_event->location_f()});
+      consumed_touches_.push_back(event->AsTouchEvent()->pointer_details().id);
       delegate_->OnMouseReleased();
       return ui::POST_DISPATCH_NONE;
     }
@@ -165,7 +159,9 @@ bool X11WholeScreenMoveLoop::RunMoveLoop(
     scoped_refptr<ui::X11Cursor> old_cursor,
     scoped_refptr<ui::X11Cursor> new_cursor,
     base::OnceClosure started_callback) {
-  DCHECK(!in_move_loop_);  // Can only handle one nested loop at a time.
+  CHECK(
+      !in_move_loop_,
+      base::NotFatalUntil::M163);  // Can only handle one nested loop at a time.
 
   // Query the mouse cursor prior to the move loop starting so that it can be
   // restored when the move loop finishes.
@@ -223,8 +219,7 @@ void X11WholeScreenMoveLoop::UpdateCursor(scoped_refptr<ui::X11Cursor> cursor) {
   }
 }
 
-std::vector<X11WholeScreenMoveLoop::ConsumedTouch>
-X11WholeScreenMoveLoop::TakeConsumedTouches() {
+std::vector<PointerId> X11WholeScreenMoveLoop::TakeConsumedTouches() {
   return std::exchange(consumed_touches_, {});
 }
 

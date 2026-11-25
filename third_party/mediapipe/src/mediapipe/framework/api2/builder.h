@@ -7,8 +7,8 @@
 #include <utility>
 #include <vector>
 
-#include "absl/log/absl_check.h"
-#include "absl/strings/string_view.h"
+#include "absl/log/absl_check.h"       // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "google/protobuf/message_lite.h"
 #include "mediapipe/framework/api2/packet.h"
 #include "mediapipe/framework/api2/port.h"
@@ -450,6 +450,8 @@ class NodeBase {
   void SetSourceLayer(int source_layer) {
     node_builder_.SetSourceLayer(source_layer);
   }
+
+  void SetName(absl::string_view name) { node_builder_.SetName(name); }
 
  protected:
   api3::builder::NodeBuilder& node_builder_;

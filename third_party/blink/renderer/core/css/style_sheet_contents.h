@@ -84,6 +84,9 @@ class CORE_EXPORT StyleSheetContents final
                                CSSDeferPropertyParsing defer_property_parsing =
                                    CSSDeferPropertyParsing::kNo);
   PropertyRegistry& EnsurePrivatePropertyRegistry();
+  PropertyRegistry* GetPrivatePropertyRegistry() {
+    return private_property_registry_.Get();
+  }
   const PropertyRegistry* GetPrivatePropertyRegistry() const {
     return private_property_registry_.Get();
   }
@@ -101,7 +104,6 @@ class CORE_EXPORT StyleSheetContents final
 
   StyleSheetContents* RootStyleSheet() const;
   bool HasSingleOwnerNode() const;
-  Node* SingleOwnerNode() const;
   Document* SingleOwnerDocument() const;
   bool HasSingleOwnerDocument() const { return has_single_owner_document_; }
 

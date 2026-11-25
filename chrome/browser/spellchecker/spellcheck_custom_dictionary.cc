@@ -73,7 +73,7 @@ enum ChangeSanitationResult {
 // invalid checksum, then returns ChecksumStatus::INVALID and clears |words|.
 ChecksumStatus LoadFile(const base::FilePath& file_path,
                         std::set<std::string>* words) {
-  DCHECK(words);
+  CHECK(words, base::NotFatalUntil::M163);
   words->clear();
   std::string contents;
   {
@@ -113,7 +113,7 @@ bool IsValidWord(const std::string& word) {
 // |ChangeSanitationResult| values.
 int SanitizeWordsToAdd(const std::set<std::string>& existing,
                        std::set<std::string>* to_add) {
-  DCHECK(to_add);
+  CHECK(to_add, base::NotFatalUntil::M163);
   // Do not add duplicate words.
   std::vector<std::string> new_words =
       base::STLSetDifference<std::vector<std::string>>(*to_add, existing);
@@ -184,7 +184,7 @@ void SavePassedWordsToDictionaryFileReliably(
     const base::FilePath& path,
     std::unique_ptr<SpellcheckCustomDictionary::LoadFileResult>
         load_file_result) {
-  DCHECK(load_file_result);
+  CHECK(load_file_result, base::NotFatalUntil::M163);
   SaveDictionaryFileReliably(path, load_file_result->words);
 }
 
@@ -192,7 +192,7 @@ void SavePassedWordsToDictionaryFileReliably(
 // sorts |to_remove|. Returns a bitmap of |ChangeSanitationResult| values.
 int SanitizeWordsToRemove(const std::set<std::string>& existing,
                           std::set<std::string>* to_remove) {
-  DCHECK(to_remove);
+  CHECK(to_remove, base::NotFatalUntil::M163);
   // Do not remove words that are missing from the dictionary.
   std::set<std::string> found_words =
       base::STLSetIntersection<std::set<std::string>>(existing, *to_remove);
@@ -248,12 +248,12 @@ SpellcheckCustomDictionary::SpellcheckCustomDictionary(
 SpellcheckCustomDictionary::~SpellcheckCustomDictionary() = default;
 
 std::set<std::string> SpellcheckCustomDictionary::GetWords() const {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   return words_;
 }
 
 bool SpellcheckCustomDictionary::AddWord(const std::string& word) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   std::unique_ptr<Change> dictionary_change(new Change);
   dictionary_change->AddWord(word);
   int result = dictionary_change->Sanitize(GetWords());
@@ -264,7 +264,7 @@ bool SpellcheckCustomDictionary::AddWord(const std::string& word) {
 }
 
 bool SpellcheckCustomDictionary::RemoveWord(const std::string& word) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   std::unique_ptr<Change> dictionary_change(new Change);
   dictionary_change->RemoveWord(word);
   int result = dictionary_change->Sanitize(GetWords());
@@ -287,24 +287,24 @@ void SpellcheckCustomDictionary::Clear() {
 }
 
 void SpellcheckCustomDictionary::AddObserver(Observer* observer) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  DCHECK(observer);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
+  CHECK(observer, base::NotFatalUntil::M163);
   observers_.AddObserver(observer);
 }
 
 void SpellcheckCustomDictionary::RemoveObserver(Observer* observer) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  DCHECK(observer);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
+  CHECK(observer, base::NotFatalUntil::M163);
   observers_.RemoveObserver(observer);
 }
 
 bool SpellcheckCustomDictionary::IsLoaded() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   return is_loaded_;
 }
 
 void SpellcheckCustomDictionary::Load() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   task_runner_->PostTaskAndReplyWithResult(
       FROM_HERE,
       base::BindOnce(&SpellcheckCustomDictionary::LoadDictionaryFile,
@@ -329,7 +329,7 @@ SpellcheckCustomDictionary::LoadDictionaryFile(const base::FilePath& path) {
 void SpellcheckCustomDictionary::UpdateDictionaryFile(
     std::unique_ptr<Change> dictionary_change,
     const base::FilePath& path) {
-  DCHECK(dictionary_change);
+  CHECK(dictionary_change, base::NotFatalUntil::M163);
 
   if (dictionary_change->empty())
     return;
@@ -352,8 +352,8 @@ void SpellcheckCustomDictionary::UpdateDictionaryFile(
 
 void SpellcheckCustomDictionary::OnLoaded(
     std::unique_ptr<LoadFileResult> result) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  DCHECK(result);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
+  CHECK(result, base::NotFatalUntil::M163);
   Change dictionary_change;
   dictionary_change.AddWords(result->words);
   dictionary_change.Sanitize(words_);
@@ -373,7 +373,7 @@ void SpellcheckCustomDictionary::OnLoaded(
 
 void SpellcheckCustomDictionary::ApplyToSet(const Change& dictionary_change,
                                             std::set<std::string>* words) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   if (dictionary_change.clear()) {
     words->clear();
   }
@@ -392,7 +392,7 @@ void SpellcheckCustomDictionary::Apply(const Change& dictionary_change) {
 
 void SpellcheckCustomDictionary::FixInvalidFile(
     std::unique_ptr<LoadFileResult> load_file_result) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   task_runner_->PostTask(
       FROM_HERE,
       base::BindOnce(&SavePassedWordsToDictionaryFileReliably,
@@ -401,7 +401,7 @@ void SpellcheckCustomDictionary::FixInvalidFile(
 
 void SpellcheckCustomDictionary::Save(
     std::unique_ptr<Change> dictionary_change) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   fix_invalid_file_.Cancel();
   task_runner_->PostTask(
       FROM_HERE,
@@ -410,7 +410,7 @@ void SpellcheckCustomDictionary::Save(
 }
 
 void SpellcheckCustomDictionary::Notify(const Change& dictionary_change) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   if (!IsLoaded() || dictionary_change.empty())
     return;
   for (Observer& observer : observers_)

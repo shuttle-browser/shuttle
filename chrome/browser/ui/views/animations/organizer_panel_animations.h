@@ -22,8 +22,12 @@ class OrganizerPanelAnimations : public CachingBrowserAnimationProvider {
   DECLARE_CLASS_BROWSER_ANIMATION_GROUP(kOrganizerPanel);
 
   // Panel can show and hide.
-  DECLARE_CLASS_BROWSER_ANIMATION_MOTION(kShow);
-  DECLARE_CLASS_BROWSER_ANIMATION_MOTION(kHide);
+  DECLARE_CLASS_BROWSER_ANIMATION_MOTION(kShowInTray);
+  DECLARE_CLASS_BROWSER_ANIMATION_MOTION(kHideInTray);
+  DECLARE_CLASS_BROWSER_ANIMATION_MOTION(kShowExpandFromVerticalTabs);
+  DECLARE_CLASS_BROWSER_ANIMATION_MOTION(kHideExpandFromVerticalTabs);
+  DECLARE_CLASS_BROWSER_ANIMATION_MOTION(kShowInVerticalTabs);
+  DECLARE_CLASS_BROWSER_ANIMATION_MOTION(kHideInVerticalTabs);
 
   // The percentage of the panel that should be visible.
   DECLARE_CLASS_BROWSER_ANIMATION_SEQUENCE(kVisibleWidth);
@@ -31,6 +35,8 @@ class OrganizerPanelAnimations : public CachingBrowserAnimationProvider {
   // How opaque the background of the panel is when flying out for
   // expand-on-hover. This may not apply in all browser modes.
   DECLARE_CLASS_BROWSER_ANIMATION_SEQUENCE(kBackgroundOpacity);
+
+  static bool IsShow(BrowserAnimationMotion motion);
 
   // CachingBrowserAnimationProvider:
   GroupInfos GenerateAnimations() const override;

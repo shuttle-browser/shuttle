@@ -49,8 +49,8 @@ export function getHtml(this: SettingsClearBrowsingDataDialogElement) {
     </cr-button>
   </div>
   <div slot="button-container" class="row-aligned">
-    <div id="spinner" class="spinner"
-        ?hidden="${!this.isDeletionInProgress_}"></div>
+    <div id="spinner" class="spinner" ?hidden="${!this.isDeletionInProgress_}">
+    </div>
     <cr-button id="cancelButton" class="cancel-button"
         @click="${this.onCancelClick_}"
         ?disabled="${this.isDeletionInProgress_}" autofocus>

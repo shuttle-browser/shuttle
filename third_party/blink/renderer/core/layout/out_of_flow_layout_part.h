@@ -16,6 +16,7 @@
 #include "third_party/blink/renderer/core/layout/geometry/physical_rect.h"
 #include "third_party/blink/renderer/core/layout/geometry/static_position.h"
 #include "third_party/blink/renderer/core/layout/inline/inline_containing_block_utils.h"
+#include "third_party/blink/renderer/core/layout/layout_result.h"
 #include "third_party/blink/renderer/core/layout/non_overflowing_scroll_range.h"
 #include "third_party/blink/renderer/core/layout/oof_positioned_node.h"
 #include "third_party/blink/renderer/core/style/computed_style_base_constants.h"
@@ -42,7 +43,14 @@ class CORE_EXPORT OutOfFlowLayoutPart {
   STACK_ALLOCATED();
 
  public:
-  static void Run(BoxFragmentBuilder* builder) {
+  static LayoutResult::EStatus Run(BoxFragmentBuilder* builder) {
+    if (builder->GetFragmentedOofContainer()) {
+      // No OOFs (apart from those which are being resumed from a previous
+      // break) are discovered during child walking, since we're managed by
+      // FragmentedOofContainer. Add all relevant unstarted OOFs now.
+      builder->AddPendingUnstartedOofs();
+    }
+
     // If there are no OOFs inside, we can skip OOF layout, except if this is
     // the root. There may be top-layer nodes still to be added. Additionally,
     // for pagination, we might not have hauled any OOFs inside the
@@ -50,14 +58,14 @@ class CORE_EXPORT OutOfFlowLayoutPart {
     if (!builder->HasOutOfFlowPositionedCandidates() &&
         !builder->HasOutOfFlowFragmentainerDescendants() &&
         !builder->HasMulticolsWithPendingOOFs() && !builder->IsRoot()) {
-      return;
+      return LayoutResult::kSuccess;
     }
 
-    OutOfFlowLayoutPart(builder).Run();
+    return OutOfFlowLayoutPart(builder).Run();
   }
 
   explicit OutOfFlowLayoutPart(BoxFragmentBuilder* container_builder);
-  void Run();
+  LayoutResult::EStatus Run();
 
   struct ColumnBalancingInfo {
     DISALLOW_NEW();
@@ -170,9 +178,9 @@ class CORE_EXPORT OutOfFlowLayoutPart {
     // Used to determine the scroll direction for:
     // https://drafts.csswg.org/css-align-3/#auto-safety-position
     LogicalBoxSides scroll_direction = LogicalBoxSides(false);
-    // The relative positioned offset to be applied after fragmentation is
-    // completed.
-    LogicalOffset relative_offset;
+    // Offset to apply after layout. This is so that relative positioning
+    // doesn't affect fragmentation.
+    LogicalOffset post_layout_offset;
   };
 
   // This stores the information needed to update a multicol child inside an
@@ -240,7 +248,7 @@ class CORE_EXPORT OutOfFlowLayoutPart {
 
    public:
     // Absolutized inset property values. Not necessarily the insets of the box.
-    BoxStrut insets_for_get_computed_style;
+    PhysicalBoxStrut insets_for_get_computed_style;
     // Offset to container's border box.
     LogicalOffset offset;
     // Inset-modified containing block relative to containing block's border
@@ -359,6 +367,9 @@ class CORE_EXPORT OutOfFlowLayoutPart {
 
   void LayoutCandidates(const HeapVector<LogicalOofPositionedNode>&);
 
+  void EstablishFragmentedOofPath(const LogicalOofPositionedNode&,
+                                  const OffsetInfo&);
+
   void HandleMulticolsWithPendingOOFs(BoxFragmentBuilder* container_builder);
   void LayoutOOFsInMulticol(
       const BlockNode& multicol,
@@ -451,6 +462,19 @@ class CORE_EXPORT OutOfFlowLayoutPart {
   // paint-layer.
   void SaveStaticPositionOnPaintLayer(LayoutBox* layout_box,
                                       LogicalStaticPosition position) const;
+
+  LogicalOffset PostLayoutOffsetForBreakToken(const NodeToLayout& node) const {
+    // Once a node breaks and is resumed, all inline-offset is treated as
+    // post-layout offset. It doesn't really matter for the result when it's
+    // applied, since the inline axis doesn't interact with fragmentation. We
+    // need to carry this additional inline-offset, since the inline start
+    // offset may be based on auto ("static") positioning, which cannot be
+    // recomputed in a subsequent fragmentainer.
+    LogicalOffset offset =
+        node.node_info.base_container_info.post_layout_offset;
+    offset.inline_offset += node.offset_info.offset.inline_offset;
+    return offset;
+  }
 
   const FragmentBuilder::ChildrenVector& FragmentationContextChildren() const {
     DCHECK(!RuntimeEnabledFeatures::FragmentedOofInCbEnabled());

@@ -4,11 +4,11 @@
 
 #include "chrome/browser/ui/color/chrome_color_provider_utils.h"
 
+#include <array>
 #include <string>
 #include <string_view>
 
-#include "base/containers/fixed_flat_map.h"
-#include "base/notreached.h"
+#include "base/check.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
 #include "chrome/browser/themes/theme_properties.h"
@@ -16,34 +16,30 @@
 #include "ui/base/buildflags.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/color/color_provider_utils.h"
+#include "ui/color/color_provider_utils_internal.h"
 
 std::string ChromeColorIdName(ui::ColorId color_id) {
-#include "ui/color/color_id_map_macros.inc"  // NOLINT(build/include)
-  static constexpr const auto color_id_map =
-      base::MakeFixedFlatMap<ui::ColorId, const char*>({CHROME_COLOR_IDS});
-#include "ui/color/color_id_map_macros.inc"  // NOLINT(build/include)
-  auto i = color_id_map.find(color_id);
-  CHECK(i != color_id_map.cend(), base::NotFatalUntil::M162);
-  return {i->second};
+  std::string_view css_name = ChromeColorIdToCSSColorId(color_id);
+  // TODO(crbug.com/583315848): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(!css_name.empty());
+  return ui::ConvertCSSColorIdToColorIdName(css_name);
 }
 
 // Converts a ChromeColorId to its CSS variable name format "--color-..." with
-// zero runtime allocations. Uses a compile-time fixed flat map populated via
-// macro expansion, mapping ChromeColorIds to persistent `std::string_view`s
-// stored in `ui::internal::CssNameHolder`.
+// zero runtime allocations. Uses a compile-time
+// `ui::color_internal::CssColorIdTable` in `.rodata` for O(1) offset lookup.
 std::string_view ChromeColorIdToCSSColorId(ui::ColorId color_id) {
-#define COLOR_ID_MAP_ENTRY(enum_name, string_name)                       \
-  {                                                                      \
-    enum_name,                                                           \
-        ui::internal::CssNameHolder<ui::internal::ConstexprCssColorName( \
-            string_name)>::kName.view()                                  \
-  }
+  constexpr const auto& kChromeColorIdToCssTable =
+      ui::color_internal::MakeCssColorIdTable<[] {
 #include "ui/color/color_id_map_macros.inc"  // NOLINT(build/include)
-  static constexpr auto kChromeColorIdToCssMap =
-      base::MakeFixedFlatMap<ui::ColorId, std::string_view>({CHROME_COLOR_IDS});
+        return std::to_array<ui::color_internal::ColorIdEntry>(
+            {CHROME_COLOR_IDS});
+// Note that this second include is not redundant. The second inclusion of the
+// .inc file serves to undefine the macros the first inclusion defined.
 #include "ui/color/color_id_map_macros.inc"  // NOLINT(build/include)
-  auto i = kChromeColorIdToCssMap.find(color_id);
-  return (i != kChromeColorIdToCssMap.cend()) ? i->second : std::string_view();
+      }>();
+  return kChromeColorIdToCssTable.Lookup(color_id);
 }
 
 color_utils::HSL GetThemeTint(int id, const ui::ColorProviderKey& key) {
@@ -65,10 +61,6 @@ color_utils::HSL GetThemeTint(int id, const ui::ColorProviderKey& key) {
   return {-1, -1, -1};
 #endif  // !BUILDFLAG(IS_ANDROID)
 }
-
-// Note that this second include is not redundant. The second inclusion of the
-// .inc file serves to undefine the macros the first inclusion defined.
-#include "ui/color/color_id_map_macros.inc"
 
 SkColor GetToolbarTopSeparatorColor(SkColor toolbar_color,
                                     SkColor frame_color) {
@@ -118,6 +110,26 @@ SkColor GetToolbarTopSeparatorColor(SkColor toolbar_color,
 
 ui::ColorTransform AdjustHighlightColorForContrast(ui::ColorTransform fg,
                                                    ui::ColorTransform bg) {
+  if (features::IsThemeChangeOptimizationV2Enabled()) {
+    // Evaluate `fg` and `bg` once per invocation rather than re-evaluating them
+    // across nested `PickGoogleColor()` and `AlphaBlend()` `ColorTransform`
+    // steps.
+    auto generator = [](const ui::ColorTransform& fg,
+                        const ui::ColorTransform& bg, SkColor input_color,
+                        const ui::ColorMixer& mixer) {
+      const SkColor fg_color = fg.Run(input_color, mixer);
+      const SkColor bg_color = bg.Run(input_color, mixer);
+      const SkColor candidate_fg = color_utils::PickGoogleColor(
+          fg_color, bg_color, color_utils::kMinimumReadableContrastRatio);
+      const SkColor candidate_bg = color_utils::AlphaBlend(
+          candidate_fg, bg_color, kToolbarInkDropHighlightVisibleAlpha);
+      return color_utils::PickGoogleColor(
+          candidate_fg, candidate_bg,
+          color_utils::kMinimumReadableContrastRatio * 1.05f);
+    };
+    return base::BindRepeating(generator, std::move(fg), std::move(bg));
+  }
+
   auto candidate_fg =
       ui::PickGoogleColor(fg, bg, color_utils::kMinimumReadableContrastRatio);
   // Setting highlight color will set the text to the highlight color, and the

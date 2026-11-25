@@ -16,7 +16,6 @@ import sys
 import threading
 import time
 from devil import base_error
-from devil.android import crash_handler
 from devil.android import device_errors
 from devil.android import device_temp_file
 from devil.android import logcat_monitor
@@ -345,6 +344,7 @@ class _ApkDelegate:
             logging.warning('*' * 80)
 
         with command_line_file, test_list_file, stdout_file:
+            timed_out_error = None
             try:
                 device.StartInstrumentation(
                     self._component, extras=extras, raw=False, **kwargs
@@ -359,6 +359,7 @@ class _ApkDelegate:
                 exception_recorder.register(
                     test_exception.StartInstrumentationTimeoutError(e)
                 )
+                timed_out_error = e
             except device_errors.DeviceUnreachableError as e:
                 exception_recorder.register(e)
                 logging.exception('gtest shard device unreachable.')
@@ -392,10 +393,28 @@ class _ApkDelegate:
                     stdout_file_path, as_root=self._env.force_main_user
                 )
             except device_errors.AdbCommandFailedError as e:
-                exception_recorder.register(
-                    test_exception.StartInstrumentationStdoutError(e)
+                if timed_out_error is not None:
+                    raise timed_out_error from e
+                logging.warning(
+                    'Failed to read gtest stdout file %s; waiting for device '
+                    'readiness and retrying once: %s',
+                    stdout_file_path,
+                    e,
                 )
-                raise
+                local_device_test_run.WaitUntilDeviceReady(
+                    device,
+                    force_main_user=self._env.force_main_user,
+                    packages=[self._package] if self._package else None,
+                )
+                try:
+                    stdout_file_content = device.ReadFile(
+                        stdout_file_path, as_root=self._env.force_main_user
+                    )
+                except base_error.BaseError:
+                    exception_recorder.register(
+                        test_exception.StartInstrumentationStdoutError(e)
+                    )
+                    raise e
 
             return stdout_file_content.splitlines()
 
@@ -652,7 +671,7 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
                 commit_sync()
 
             def bind_crash_handler(step, dev):
-                return lambda: crash_handler.RetryOnSystemCrash(step, dev)
+                return lambda: self._RetryOnSystemCrash(step, dev)
 
             steps = [install_apk, disable_system_animations]
             if not self._test_instance.use_existing_test_data:
@@ -838,11 +857,11 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
                     logging.info('  %s', f)
 
                 with self._ArchiveLogcat(dev, 'list_tests'):
-                    raw_test_list = crash_handler.RetryOnSystemCrash(
+                    raw_test_list = self._RetryOnSystemCrash(
                         lambda d: self._delegate.Run(
                             None, d, flags=flags, timeout=timeout
                         ),
-                        device=dev,
+                        dev,
                     )
 
                 tests = gtest_test_instance.ParseGTestListTests(raw_test_list)

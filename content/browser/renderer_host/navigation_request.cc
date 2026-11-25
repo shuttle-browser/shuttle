@@ -40,6 +40,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/system/sys_info.h"
+#include "base/task/deferred_sequenced_task_runner.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "base/timer/elapsed_timer.h"
@@ -140,8 +141,6 @@
 #include "content/public/browser/network_service_util.h"
 #include "content/public/browser/origin_trials_controller_delegate.h"
 #include "content/public/browser/peak_gpu_memory_tracker_factory.h"
-#include "content/public/browser/reduce_accept_language_controller_delegate.h"
-#include "content/public/browser/reduce_accept_language_utils.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/runtime_feature_state/runtime_feature_state_document_data.h"
 #include "content/public/browser/security_principal.h"
@@ -307,41 +306,43 @@ enum class UserAgentStringType {
   kMaxValue = kOverriden
 };
 
+// Load flags that may be present in BeginNavigationParams. These are all
+// cache-related flags, which Blink derives from the request's FetchCacheMode.
+// For renderer-initiated navigations, BeginNavigationParams come from the
+// renderer, so can't be trusted, and other load flags may have security
+// implications (e.g., net::LOAD_BYPASS_PROXY), so are cleared.
+constexpr int kAllowedBeginParamsLoadFlags =
+    net::LOAD_VALIDATE_CACHE | net::LOAD_BYPASS_CACHE |
+    net::LOAD_SKIP_CACHE_VALIDATION | net::LOAD_ONLY_FROM_CACHE |
+    net::LOAD_DISABLE_CACHE;
+
 // Returns the net load flags to use based on the navigation type.
-// TODO(clamy): Remove the blink code that sets the caching flags.
-void UpdateLoadFlagsWithCacheFlags(int* load_flags,
-                                   blink::mojom::NavigationType navigation_type,
-                                   bool is_post) {
+// TODO(crbug.com/578128190): Remove the blink code that sets the caching flags.
+int CalculateCacheLoadFlags(blink::mojom::NavigationType navigation_type,
+                            bool is_post) {
   switch (navigation_type) {
     case blink::mojom::NavigationType::RELOAD:
-      *load_flags |= net::LOAD_VALIDATE_CACHE;
-      break;
+      return net::LOAD_VALIDATE_CACHE;
     case blink::mojom::NavigationType::RELOAD_BYPASSING_CACHE:
-      *load_flags |= net::LOAD_BYPASS_CACHE;
-      break;
+      return net::LOAD_BYPASS_CACHE;
     case blink::mojom::NavigationType::RESTORE:
-      *load_flags |= net::LOAD_SKIP_CACHE_VALIDATION;
-      break;
+      return net::LOAD_SKIP_CACHE_VALIDATION;
     case blink::mojom::NavigationType::RESTORE_WITH_POST:
-      *load_flags |=
-          net::LOAD_ONLY_FROM_CACHE | net::LOAD_SKIP_CACHE_VALIDATION;
-      break;
+      return net::LOAD_ONLY_FROM_CACHE | net::LOAD_SKIP_CACHE_VALIDATION;
     case blink::mojom::NavigationType::SAME_DOCUMENT:
     case blink::mojom::NavigationType::DIFFERENT_DOCUMENT:
       if (is_post) {
-        *load_flags |= net::LOAD_VALIDATE_CACHE;
+        return net::LOAD_VALIDATE_CACHE;
       }
-      break;
+      return net::LOAD_NORMAL;
     case blink::mojom::NavigationType::HISTORY_SAME_DOCUMENT:
     case blink::mojom::NavigationType::HISTORY_DIFFERENT_DOCUMENT:
       if (is_post) {
-        *load_flags |=
-            net::LOAD_ONLY_FROM_CACHE | net::LOAD_SKIP_CACHE_VALIDATION;
-      } else {
-        *load_flags |= net::LOAD_SKIP_CACHE_VALIDATION;
+        return net::LOAD_ONLY_FROM_CACHE | net::LOAD_SKIP_CACHE_VALIDATION;
       }
-      break;
+      return net::LOAD_SKIP_CACHE_VALIDATION;
   }
+  NOTREACHED();
 }
 
 // This should match blink::ResourceRequest::needsHTTPOrigin.
@@ -413,7 +414,7 @@ void AddAdditionalRequestHeaders(
       render_view_host->GetDelegate()->GetRendererPrefs(render_view_host);
   UpdateAdditionalHeadersForBrowserInitiatedRequest(
       headers, browser_context, is_reload, render_prefs,
-      /*is_for_worker_script*=*/false);
+      BrowserInitiatedRequestSource::kNavigation);
 
   // Tack an 'Upgrade-Insecure-Requests' header to outgoing navigational
   // requests, as described in
@@ -1291,10 +1292,11 @@ std::unique_ptr<NavigationRequest> NavigationRequest::Create(
       has_rel_opener, std::nullopt /* script_tool_invocation_id */,
       /*script_injector_host=*/"");
 
-  // Shift-Reload forces bypassing caches and service workers.
+  // Shift-Reload forces bypassing caches and service workers. Note that
+  // UpdateLoadFlagsWithCacheFlags() will set net::LOAD_BYPASS_CACHE in this
+  // case, when called from the constructor.
   if (common_params->navigation_type ==
       blink::mojom::NavigationType::RELOAD_BYPASSING_CACHE) {
-    navigation_params->load_flags |= net::LOAD_BYPASS_CACHE;
     navigation_params->skip_service_worker = true;
   }
 
@@ -1438,7 +1440,6 @@ std::unique_ptr<NavigationRequest> NavigationRequest::CreateRendererInitiated(
           /*should_load_data_url=*/false,
           /*ancestor_or_self_has_cspee=*/
           frame_tree_node->AncestorOrSelfHasCSPEE(),
-          /*reduced_accept_language=*/std::string(),
           /*navigation_delivery_type=*/
           network::mojom::NavigationDeliveryType::kDefault,
           /*view_transition_state=*/std::nullopt,
@@ -1613,7 +1614,6 @@ NavigationRequest::CreateForSynchronousRendererCommit(
           /*should_load_data_url=*/false,
           /*ancestor_or_self_has_cspee=*/
           frame_tree_node->AncestorOrSelfHasCSPEE(),
-          /*reduced_accept_language=*/std::string(),
           /*navigation_delivery_type=*/
           network::mojom::NavigationDeliveryType::kDefault,
           /*view_transition_state=*/std::nullopt,
@@ -2087,10 +2087,29 @@ NavigationRequest::NavigationRequest(
   }
   commit_params_->is_browser_initiated = browser_initiated;
 
-  // Update the load flags with cache information.
-  UpdateLoadFlagsWithCacheFlags(&begin_params_->load_flags,
-                                common_params_->navigation_type,
-                                common_params_->method == "POST");
+  // Calculate load flags based on the navigation type. For renderer-initiated
+  // navigations, `begin_params_->load_flags` come from the renderer, so can't
+  // be trusted.
+  int load_flags = CalculateCacheLoadFlags(common_params_->navigation_type,
+                                           common_params_->method == "POST");
+  // The flags in `begin_params_` are expected to be a subset of those
+  // calculated above. Report any cases where that's not true, to make sure it's
+  // safe to stop relying on them.
+  // TODO(crbug.com/578128190): Remove load flags from BeginNavigationParams,
+  // and only use the flags calculated here.
+  if (begin_params_->load_flags & ~load_flags) {
+    SCOPED_CRASH_KEY_NUMBER("NavReq", "begin_params_load_flags",
+                            begin_params_->load_flags);
+    SCOPED_CRASH_KEY_NUMBER("NavReq", "calculated_load_flags", load_flags);
+    SCOPED_CRASH_KEY_NUMBER("NavReq", "navigation_type",
+                            static_cast<int>(common_params_->navigation_type));
+    SCOPED_CRASH_KEY_STRING32("NavReq", "method", common_params_->method);
+    SCOPED_CRASH_KEY_BOOL("NavReq", "from_begin_navigation",
+                          from_begin_navigation_);
+    base::debug::DumpWithoutCrashing();
+  }
+  begin_params_->load_flags =
+      load_flags | (begin_params_->load_flags & kAllowedBeginParamsLoadFlags);
 
   // Add necessary headers that may not be present in the
   // blink::mojom::BeginNavigationParams.
@@ -2133,24 +2152,6 @@ NavigationRequest::NavigationRequest(
           frame_tree_node_, commit_params_->frame_policy.container_policy,
           common_params_->url);
       headers.MergeFrom(client_hints_headers);
-    }
-
-    // Add reduced accept language header.
-    if (auto reduce_accept_lang_utils =
-            ReduceAcceptLanguageUtils::Create(browser_context);
-        reduce_accept_lang_utils && !devtools_accept_language_override_) {
-      // Add the Accept-Language header with the reduce accept language value.
-      // Chromium network stack won't overwrite the value if Accept-Language
-      // header was already added in the request header.
-      net::HttpRequestHeaders accept_language_headers;
-      std::optional<std::string> reduced_accept_language =
-          reduce_accept_lang_utils.value()
-              .AddNavigationRequestAcceptLanguageHeaders(
-                  url::Origin::Create(common_params_->url), frame_tree_node_,
-                  &accept_language_headers);
-      commit_params_->reduced_accept_language =
-          reduced_accept_language.value_or("");
-      headers.MergeFrom(accept_language_headers);
     }
 
     headers.AddHeadersFromString(begin_params_->headers);
@@ -2452,6 +2453,9 @@ NavigationRequest::~NavigationRequest() {
 
   if (IsNavigationStarted()) {
     GetDelegate()->DidFinishNavigation(this);
+    if (subresource_loader_proxy_task_runner_) {
+      subresource_loader_proxy_task_runner_->Start();
+    }
     ProcessOriginAgentClusterEndResult();
     if (IsInMainFrame()) {
       MaybeRecordTraceEventsAndHistograms();
@@ -2499,6 +2503,9 @@ NavigationRequest::~NavigationRequest() {
     }
   } else {
     GetDelegate()->DidCancelNavigationBeforeStart(this);
+    if (subresource_loader_proxy_task_runner_) {
+      subresource_loader_proxy_task_runner_->Start();
+    }
   }
 
   if (!navigation_start_to_commit_ended_) {
@@ -3253,10 +3260,6 @@ void NavigationRequest::
             &NavigationRequest::
                 SelectFrameHostForCrossDocumentNavigationWithNoUrlLoader,
             weak_factory_.GetWeakPtr());
-        frame_tree_node_->render_manager()
-            ->speculative_frame_host()
-            ->RecordMetricsForBlockedGetFrameHostAttempt(
-                /* commit_attempt=*/true);
         return;
     }
   }
@@ -3544,6 +3547,10 @@ void NavigationRequest::ResetForCrossDocumentRestart() {
                     common_params_->url.spec(), "Net Error Code",
                     net_error_);  // Navigation StartToCommit
     navigation_start_to_commit_ended_ = true;
+  }
+  if (subresource_loader_proxy_task_runner_) {
+    subresource_loader_proxy_task_runner_->Start();
+    subresource_loader_proxy_task_runner_.reset();
   }
 
   // Reset the state of the NavigationRequest, and the navigation_handle_id.
@@ -4351,7 +4358,7 @@ void NavigationRequest::MaybeRegisterExistingOriginAsHavingDefaultIsolation(
   // origin. Since this is different than the default origin-keyed state, it
   // also needs the global walk. Without it, one BrowsingInstance can have two
   // keys for one origin, and a commit to the origin-keyed process fails the
-  // CanAccessOrigin() check.
+  // CanCommitNewOrigin() check.
   if (!IsOriginAgentClusterOptInRequested() &&
       !IsOriginAgentClusterOptOutRequested() &&
       exclude_ad_from_origin_keyed_process_.value() == false) {
@@ -4933,6 +4940,16 @@ UrlInfo NavigationRequest::GetUrlInfo() {
     // about:blank and about:srcdoc inherit the origin per spec
     // (https://html.spec.whatwg.org/multipage/document-sequences.html#determining-the-origin).
     url_info_init.WithOrigin(*GetInitiatorOrigin());
+    // about:blank also takes the unique-instance isolation of the initiator's
+    // SiteInstance. Without it, about:blank can be placed in a process that is
+    // not allowed to commit the inherited origin.
+    if (source_site_instance_) {
+      const EmbedderIsolationInfo& source_info =
+          source_site_instance_->GetSiteInfo().embedder_isolation_info();
+      if (source_info.is_unique_instance()) {
+        url_info_init.WithEmbedderIsolationInfo(source_info);
+      }
+    }
   } else {
     // Overriding the origin for a URL is dangerous and only allowed in very
     // narrow cases which are handled explicitly above.  Please think very
@@ -5610,10 +5627,6 @@ void NavigationRequest::SelectFrameHostForOnResponseStarted(
               weak_factory_.GetWeakPtr(),
               std::move(url_loader_client_endpoints), is_download,
               std::move(subresource_loader_params));
-          frame_tree_node_->render_manager()
-              ->speculative_frame_host()
-              ->RecordMetricsForBlockedGetFrameHostAttempt(
-                  /* commit_attempt=*/true);
           return;
       }
     }
@@ -6047,6 +6060,10 @@ void NavigationRequest::OnRequestFailedInternal(
   // requests.
   pending_entry_ref_.reset();
 
+  // An error page is never a secure-context root, even when the answer was
+  // already computed for the document that failed to commit.
+  commit_params_->is_secure_context_root = false;
+
   net_error_ = static_cast<net::Error>(status.error_code);
   extended_error_code_ = status.extended_error_code;
   resolve_error_info_ = status.resolve_error_info;
@@ -6143,10 +6160,6 @@ void NavigationRequest::SelectFrameHostForOnRequestFailedInternal(
             &NavigationRequest::SelectFrameHostForOnRequestFailedInternal,
             weak_factory_.GetWeakPtr(), exists_in_cache, skip_throttles,
             error_page_content);
-        frame_tree_node_->render_manager()
-            ->speculative_frame_host()
-            ->RecordMetricsForBlockedGetFrameHostAttempt(
-                /* commit_attempt=*/true);
         return;
     }
   }
@@ -6784,9 +6797,9 @@ void NavigationRequest::OnRedirectChecksComplete(
 
   // Removes all Client Hints from the request, that were passed on from the
   // previous one.
-  for (const auto& elem : network::GetClientHintToNameMap()) {
+  for (const auto& elem : network::kClientHintToNameMap) {
     const auto& header = elem.second;
-    headers_update_params.removed_headers.push_back(header);
+    headers_update_params.removed_headers.emplace_back(header);
   }
 
   // Add any required Client Hints to the current request.
@@ -6819,23 +6832,6 @@ void NavigationRequest::OnRedirectChecksComplete(
           net::HttpRequestHeaders::kUserAgent,
           ComputeUserAgentValue(GetUserAgentOverride()));
     }
-  }
-
-  // Add reduced accept language header to the current request.
-  // If devtools has overridden the Accept-Language header, skip reduce
-  // Accept-Language header.
-  if (auto reduce_accept_lang_utils =
-          ReduceAcceptLanguageUtils::Create(browser_context);
-      reduce_accept_lang_utils && !devtools_accept_language_override_) {
-    net::HttpRequestHeaders accept_language_headers;
-    std::optional<std::string> reduced_accept_language =
-        reduce_accept_lang_utils.value()
-            .AddNavigationRequestAcceptLanguageHeaders(
-                url::Origin::Create(common_params_->url), frame_tree_node_,
-                &accept_language_headers);
-    commit_params_->reduced_accept_language =
-        reduced_accept_language.value_or("");
-    headers_update_params.modified_headers.MergeFrom(accept_language_headers);
   }
 
   loader_->FollowRedirect(std::move(headers_update_params));
@@ -8971,6 +8967,11 @@ void NavigationRequest::SanitizeRedirectsForCommit(
 
   if (should_sanitize_final_url_for_error_page) {
     common_params->url = common_params->url.DeprecatedGetOriginAsURL();
+    // Nonstandard URLs sanitize to an empty URL, but failed navigations require
+    // a nonempty URL. Do not expose the original redirect target as a fallback.
+    if (common_params->url.is_empty()) {
+      common_params->url = GURL(kBlockedURL);
+    }
   }
 
   // It is safe to convert GURL to an Origin and back in the code below because
@@ -9876,24 +9877,6 @@ void NavigationRequest::DidCommitNavigation(
         is_for_mhtml ? "Navigation.PendingCommit.Duration.MHTML"
                      : "Navigation.PendingCommit.Duration.Regular",
         base::TimeTicks::Now() - pending_commit_metrics_.start_time);
-    const bool did_block_get_frame_host_for_navigation =
-        pending_commit_metrics_.blocked_count > 0;
-    base::UmaHistogramBoolean(
-        is_for_mhtml
-            ? "Navigation.PendingCommit.DidBlockGetFrameHostForNavigation.MHTML"
-            : "Navigation.PendingCommit.DidBlockGetFrameHostForNavigation."
-              "Regular",
-        did_block_get_frame_host_for_navigation);
-    if (did_block_get_frame_host_for_navigation) {
-      base::UmaHistogramCounts100(
-          is_for_mhtml ? "Navigation.PendingCommit.BlockedCount.MHTML"
-                       : "Navigation.PendingCommit.BlockedCount.Regular",
-          pending_commit_metrics_.blocked_count);
-      base::UmaHistogramCounts100(
-          is_for_mhtml ? "Navigation.PendingCommit.BlockedCommitCount.MHTML"
-                       : "Navigation.PendingCommit.BlockedCommitCount.Regular",
-          pending_commit_metrics_.blocked_commit_count);
-    }
   }
   if (ignored_duplicate_navigation_count_ > 0) {
     base::UmaHistogramCounts100(
@@ -10139,6 +10122,16 @@ void NavigationRequest::SetFetchLaterLoaderFactoryContextForTesting(
   CHECK(fetch_later_loader_factory_context_);
 }
 
+scoped_refptr<base::DeferredSequencedTaskRunner>
+NavigationRequest::GetOrCreateSubresourceLoaderProxyTaskRunner() {
+  if (!subresource_loader_proxy_task_runner_) {
+    subresource_loader_proxy_task_runner_ =
+        base::MakeRefCounted<base::DeferredSequencedTaskRunner>(
+            GetUIThreadTaskRunner({BrowserTaskType::kSubresourceLoaderProxy}));
+  }
+  return subresource_loader_proxy_task_runner_;
+}
+
 void NavigationRequest::ReadyToCommitNavigation(bool is_error) {
   TRACE_EVENT("navigation", "NavigationRequest::ReadyToCommitNavigation",
               perfetto::Flow::FromPointer(this));
@@ -10220,6 +10213,12 @@ void NavigationRequest::ReadyToCommitNavigation(bool is_error) {
   commit_params_->is_load_data_with_base_url = IsLoadDataWithBaseURL();
   commit_params_->origin_to_commit = origin_to_commit.value();
 
+  if (frame_tree_node_->frame_tree()
+          .delegate()
+          ->DoesWebContentsDisallowSharedWorkers()) {
+    GetMutableRuntimeFeatureStateContext().SetSharedWorkerEnabled(false);
+  }
+
   if (!IsSameDocument()) {
     // TODO(crbug.com/504574017): Remove the WeakPtr check once Android
     // WebView can avoid the synchronous deletion case.
@@ -10239,7 +10238,11 @@ void NavigationRequest::ReadyToCommitNavigation(bool is_error) {
   }
 
 #if !BUILDFLAG(IS_ANDROID)
-  if (IsIsolatedContext(GetRenderFrameHost()->GetProcess()) ||
+  // Documents with an opaque origin (e.g. sandboxed iframes that weren't moved
+  // to their own process) can share an isolated process, but are not isolated
+  // contexts. See `blink::LocalDOMWindow::IsIsolatedContext()`.
+  if ((IsIsolatedContext(GetRenderFrameHost()->GetProcess()) &&
+       origin_to_commit && !origin_to_commit->opaque()) ||
       (origin_to_commit &&
        GetContentClient()->browser()->GetDirectSocketsDelegate() &&
        GetContentClient()
@@ -10344,6 +10347,32 @@ url::Origin NavigationRequest::GetOriginForURLLoaderFactoryBeforeResponse(
   bool use_opaque_origin =
       (sandbox_flags & network::mojom::WebSandboxFlags::kOrigin) ==
       network::mojom::WebSandboxFlags::kOrigin;
+
+  // Documents in PDF processes are given an opaque origin with a precursor as
+  // well, since they should not need any access to data from the origin the PDF
+  // was served from. This makes origin-based security checks (e.g., for
+  // storage) deny such access by default, without having to consult the
+  // is_pdf() bit on SiteInfo/ProcessLock in each individual check. See
+  // https://crbug.com/559567801.
+  //
+  // Note that this only affects the document's origin. SiteInfo and ProcessLock
+  // don't support opaque origins yet, so they still use the PDF's real site
+  // along with the is_pdf() bit, and the process model is unchanged. Checks
+  // that are based on the ProcessLock rather than the document's origin (e.g.,
+  // CanAccessDataForOrigin in ChildProcessSecurityPolicyImpl) still need to
+  // check is_pdf(), similarly to is_sandboxed() for isolated sandboxed frames.
+  // TODO(crbug.com/579049925): Consider supporting opaque origins with
+  // precursors in SiteInfo/ProcessLock, so that such checks no longer need the
+  // is_pdf()/is_sandboxed() bits.
+  //
+  // TODO(crbug.com/559567801): As with sandboxed documents, a new nonce is
+  // derived on every call, so different callers within the same navigation may
+  // see different opaque origins (all with the same precursor). Consider
+  // computing the opaque origin once per response for both cases.
+  if (IsPdf() && base::FeatureList::IsEnabled(features::kPdfOpaqueOrigin)) {
+    use_opaque_origin = true;
+  }
+
   if (use_opaque_origin) {
     origin = origin.DeriveNewOpaqueOrigin();
   }
@@ -10467,11 +10496,9 @@ NavigationRequest::GetOriginForURLLoaderFactoryAfterResponse() {
   if (HasRenderFrameHost() &&
       !GetRenderFrameHost()->ShouldBypassSecurityChecksForErrorPage(this) &&
       !IsForMhtmlSubframe()) {
-    int process_id = GetRenderFrameHost()->GetProcess()->GetDeprecatedID();
     auto* policy = ChildProcessSecurityPolicyImpl::GetInstance();
-    CHECK(policy->CanAccessOrigin(
-        process_id, origin,
-        ChildProcessSecurityPolicyImpl::AccessType::kCanCommitNewOrigin));
+    CHECK(policy->CanCommitNewOrigin(
+        GetRenderFrameHost()->GetProcess()->GetID(), origin));
   }
 
   return origin;
@@ -12949,15 +12976,6 @@ bool NavigationRequest::ShouldQueueDueToExistingPendingCommitRFH() const {
     return speculative_rfh->HasPendingCommitForCrossDocumentNavigation();
   }
   return false;
-}
-
-void NavigationRequest::RecordMetricsForBlockedGetFrameHostAttempt(
-    bool commit_attempt) {
-  CHECK(!pending_commit_metrics_.start_time.is_null());
-  ++pending_commit_metrics_.blocked_count;
-  if (commit_attempt) {
-    ++pending_commit_metrics_.blocked_commit_count;
-  }
 }
 
 void NavigationRequest::PostResumeCommitTask() {

@@ -523,7 +523,7 @@ void Message::Reset() {
   heap_profiler_tag_ = nullptr;
 }
 
-const uint8_t* Message::payload() const {
+NOINLINE const uint8_t* Message::payload() const {
   if (version() < 2) {
     return UNSAFE_TODO(data() + header())->num_bytes;
   }
@@ -765,10 +765,7 @@ int64_t Message::creation_timeticks_us() const {
   return header_v3()->creation_timeticks_us;
 }
 
-PassThroughFilter::PassThroughFilter() {}
-
-PassThroughFilter::~PassThroughFilter() {}
-
+// static
 bool PassThroughFilter::Accept(Message* message) {
   TRACE_EVENT(TRACE_DISABLED_BY_DEFAULT("mojom"), "PassThroughFilter::Accept");
   return true;

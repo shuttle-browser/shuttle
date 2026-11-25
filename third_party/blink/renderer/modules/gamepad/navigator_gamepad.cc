@@ -36,6 +36,7 @@
 #include "third_party/blink/renderer/core/frame/navigator.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
 #include "third_party/blink/renderer/core/loader/document_loader.h"
+#include "third_party/blink/renderer/core/page/focus_controller.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/modules/gamepad/gamepad.h"
 #include "third_party/blink/renderer/modules/gamepad/gamepad_comparisons.h"
@@ -117,15 +118,19 @@ HeapVector<Member<Gamepad>> NavigatorGamepad::getGamepads(
 }
 
 HeapVector<Member<Gamepad>> NavigatorGamepad::Gamepads() {
-  SampleAndCompareGamepadState();
+  if (DomWindow()) {
+    SampleAndCompareGamepadState();
+  }
 
   // Ensure |gamepads_| is not null.
   if (gamepads_.size() == 0)
     gamepads_.resize(device::Gamepads::kItemsLengthCap);
 
   // Allow gamepad button presses to qualify as user activations if the page is
-  // visible.
+  // visible and focused.
   if (DomWindow() && DomWindow()->GetFrame()->GetPage()->IsPageVisible() &&
+      (!RuntimeEnabledFeatures::GamepadUserActivationFocusEnabled() ||
+       DomWindow()->GetFrame()->GetPage()->GetFocusController().IsFocused()) &&
       GamepadComparisons::HasUserActivation(gamepads_)) {
     LocalFrame::NotifyUserActivation(
         DomWindow()->GetFrame(),
@@ -233,15 +238,6 @@ void NavigatorGamepad::Trace(Visitor* visitor) const {
   Gamepad::Client::Trace(visitor);
 }
 
-bool NavigatorGamepad::StartUpdatingIfAttached() {
-  // The frame must be attached to start updating.
-  if (DomWindow()) {
-    StartUpdating();
-    return true;
-  }
-  return false;
-}
-
 void NavigatorGamepad::DidUpdateData() {
   // We should stop listening once we detached.
   DCHECK(DomWindow());
@@ -312,8 +308,8 @@ void NavigatorGamepad::DidAddEventListener(LocalDOMWindow*,
     bool first_event_listener = !has_event_listener_;
     has_event_listener_ = true;
 
-    if (GetPage() && GetPage()->IsPageVisible()) {
-      StartUpdatingIfAttached();
+    if (DomWindow() && GetPage()->IsPageVisible()) {
+      StartUpdating();
       if (first_event_listener)
         SampleAndCompareGamepadState();
     }
@@ -349,12 +345,22 @@ void NavigatorGamepad::DidRemoveGamepadEventListeners() {
 void NavigatorGamepad::SampleAndCompareGamepadState() {
   // Avoid re-entry. Do not fetch a new sample until we are finished dispatching
   // events from the previous sample.
-  if (processing_events_)
+  if (processing_events_ || should_skip_sample_for_testing_) {
     return;
+  }
+
+  Page* page = GetPage();
+  CHECK(DomWindow());
+  CHECK(page);
 
   base::AutoReset<bool> processing_events_reset(&processing_events_, true);
-  if (StartUpdatingIfAttached()) {
-    if (GetPage()->IsPageVisible()) {
+  const bool is_visible = page->IsPageVisible();
+  // Prerendered pages report hidden visibility, so still call StartUpdating()
+  // to bind GamepadMonitor and trigger MojoBinderPolicyMap cancellation
+  // (https://crbug.com/581016068).
+  if (is_visible || page->IsPrerendering()) {
+    StartUpdating();
+    if (is_visible) {
       // Allocate a buffer to hold the new gamepad state, if needed.
       if (gamepads_back_.size() == 0)
         gamepads_back_.resize(device::Gamepads::kItemsLengthCap);
@@ -481,10 +487,15 @@ void NavigatorGamepad::DispatchGamepadRawInputChangedEvent(
 }
 
 void NavigatorGamepad::PageVisibilityChanged() {
+  if (!DomWindow()) {
+    StopUpdating();
+    return;
+  }
+
   // Inform the embedder whether it needs to provide gamepad data for us.
   bool visible = GetPage()->IsPageVisible();
   if (visible && (has_event_listener_ || gamepads_.size())) {
-    StartUpdatingIfAttached();
+    StartUpdating();
   } else {
     StopUpdating();
   }

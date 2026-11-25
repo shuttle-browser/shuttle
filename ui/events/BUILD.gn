@@ -453,10 +453,7 @@ component("events") {
       "fuchsia/pointer_events_handler.h",
     ]
     sources += [ "fuchsia/pointer_events_handler.cc" ]
-    public_deps += [
-      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.input:fuchsia.ui.input_hlcpp",
-      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.pointer:fuchsia.ui.pointer_cpp",
-    ]
+    public_deps += [ "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.pointer:fuchsia.ui.pointer_cpp" ]
   }
 }
 

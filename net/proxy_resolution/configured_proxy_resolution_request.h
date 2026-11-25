@@ -5,7 +5,10 @@
 #ifndef NET_PROXY_RESOLUTION_CONFIGURED_PROXY_RESOLUTION_REQUEST_H_
 #define NET_PROXY_RESOLUTION_CONFIGURED_PROXY_RESOLUTION_REQUEST_H_
 
+#include <stdint.h>
+
 #include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 
@@ -17,6 +20,7 @@
 #include "net/base/network_anonymization_key.h"
 #include "net/base/network_handle.h"
 #include "net/base/request_priority.h"
+#include "net/log/net_log_event_type.h"
 #include "net/log/net_log_with_source.h"
 #include "net/proxy_resolution/proxy_config.h"
 #include "net/proxy_resolution/proxy_resolution_request.h"
@@ -80,6 +84,17 @@ class ConfiguredProxyResolutionRequest final : public ProxyResolutionRequest {
   // `ResumeOrCompleteSynchronously()`.
   void CancelActiveJob();
 
+  // Cancels an in-flight per-request PAC evaluation (`GetProxyForURL` /
+  // `resolve_job_`), if any, while marking `ProxyOverrideRules` (POR) as
+  // already evaluated (`override_rules_evaluated_ = true`) and leaving any
+  // in-flight POR DNS probes untouched. Returns true if an active
+  // `resolve_job_` was cancelled.
+  bool CancelResolveJob();
+
+  // Resets cached `ProxyOverrideRules` (POR) evaluation state when the
+  // underlying ProxyConfig is reset while the request is paused.
+  void ResetOverrideRulesEvaluated() { override_rules_evaluated_ = false; }
+
   // Returns true if the request has been completed.
   bool was_completed() const { return user_callback_.is_null(); }
 
@@ -102,6 +117,20 @@ class ConfiguredProxyResolutionRequest final : public ProxyResolutionRequest {
                          const ResolveHostResult& result);
 
   handles::NetworkHandle target_network() const { return target_network_; }
+
+  // Begins a NetLog wait event (`event_type`) if not already active, closing
+  // any previously active wait event first so wait events remain balanced.
+  void BeginWaitEvent(NetLogEventType event_type);
+
+  // Ends the currently active NetLog wait event, if any.
+  void EndWaitEvent();
+
+  uint64_t last_counted_dynamic_pause_episode_id() const {
+    return last_counted_dynamic_pause_episode_id_;
+  }
+  void set_last_counted_dynamic_pause_episode_id(uint64_t episode_id) {
+    last_counted_dynamic_pause_episode_id_ = episode_id;
+  }
 
   NetLogWithSource* net_log() { return &net_log_; }
 
@@ -133,6 +162,8 @@ class ConfiguredProxyResolutionRequest final : public ProxyResolutionRequest {
   const std::string method_;
   const NetworkAnonymizationKey network_anonymization_key_;
   const handles::NetworkHandle target_network_;
+  // Active per-request PAC script evaluation (`ProxyResolver::GetProxyForURL`)
+  // for this URL, after the service has already initialized the PAC resolver.
   std::unique_ptr<ProxyResolver::Request> resolve_job_;
   MutableNetworkTrafficAnnotationTag traffic_annotation_;
   NetLogWithSource net_log_;
@@ -141,7 +172,21 @@ class ConfiguredProxyResolutionRequest final : public ProxyResolutionRequest {
   // because the time in |results_| will be cleared.
   base::TimeTicks creation_time_;
 
+  // Queue of `ProxyOverrideRules` (POR) matching `url_` whose DNS conditions
+  // are still being evaluated.
   base::queue<ProxyConfig::ProxyOverrideRule> applicable_override_rules_;
+  // True once `ProxyOverrideRules` (POR, including any POR DNS probes) have
+  // finished evaluating for this request without matching, so resuming after a
+  // dynamic routing update can skip re-evaluating POR.
+  bool override_rules_evaluated_ = false;
+  // Currently open NetLog wait event (`WAITING_FOR_INIT_PAC` or
+  // `WAITING_FOR_DYNAMIC_PROXY_CONFIGS`), if the request is paused waiting for
+  // service readiness.
+  std::optional<NetLogEventType> current_wait_event_;
+  // Identifier of the most recent dynamic-routing pause episode in `service_`
+  // that already counted this request, preventing duplicate counts across
+  // intermediate config updates within the same pause episode.
+  uint64_t last_counted_dynamic_pause_episode_id_ = 0;
 
   // Map containing DNS resolution results, issued for proxy override rules'
   // conditions. The key is the host that is being resolved. The value is result

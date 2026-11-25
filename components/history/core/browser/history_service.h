@@ -1088,7 +1088,7 @@ class HistoryService : public KeyedService {
 
   // Whether the given `url` should be added to history. See
   // HistoryClient::GetCanAddURLCallback().
-  bool CanAddURL(const GURL& url);
+  bool CanAddURL(const GURL& url) const;
 
   // A helper function that records UMA metrics on the PageTransition type of
   // each visit added to the VisitedLinks hashtable.

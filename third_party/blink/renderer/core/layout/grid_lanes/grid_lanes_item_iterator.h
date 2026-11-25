@@ -33,8 +33,8 @@ class BlockBreakToken;
 // processes each lane fully before moving to the next, without deferring
 // spanners.
 //
-// This class does not handle modifications to its arguments after it has been
-// constructed.
+// The placement tree is not modified during iteration. Fragmentation state may
+// mark lanes as finished while their child break tokens are being processed.
 class CORE_EXPORT GridLanesItemIterator {
   STACK_ALLOCATED();
 
@@ -61,7 +61,7 @@ class CORE_EXPORT GridLanesItemIterator {
   // TODO(almaher): Similar to flex, we will likely need the break before row
   // state here for row containers.
   struct Entry;
-  Entry NextItem();
+  Entry NextEntry();
 
   bool HasMoreBreakTokens() const { return break_token_; }
 
@@ -84,8 +84,8 @@ class CORE_EXPORT GridLanesItemIterator {
   void AdjustItemIndexForNewLane();
 
   // Selects the first and successor index paths in `traversal_order_`.
-  ItemIndexPath FirstItemPath(const GridLaneData* lane_data) const;
-  ItemIndexPath NextItemPath(const GridLaneData* lane_data,
+  ItemIndexPath FirstItemPath(const GridLaneData& lane_data) const;
+  ItemIndexPath NextItemPath(const GridLaneData& lane_data,
                              const ItemIndexPath& item_index_path) const;
 
   // A spanner has one entry in every lane it occupies, but only the entry in
@@ -126,7 +126,7 @@ class CORE_EXPORT GridLanesItemIterator {
 
   GridLanesItemData* next_unstarted_item_ = nullptr;
   const GridLanesDataVector& grid_lanes_;
-  const BlockBreakToken* break_token_;
+  const BlockBreakToken* break_token_ = nullptr;
   bool is_column_ = false;
   TraversalOrder traversal_order_ = kPostorder;
   IterationMode iteration_mode_ = kFragmentation;
@@ -134,8 +134,7 @@ class CORE_EXPORT GridLanesItemIterator {
   // An index into `break_token_`'s `ChildBreakTokens()` vector. Used for
   // keeping track of the next child break token to inspect.
   wtf_size_t child_token_idx_ = 0;
-  // An index into the `grid_lanes_` vector. Used for keeping track of the next
-  // grid lane to inspect.
+  // An index into the active lane collection.
   wtf_size_t grid_lane_idx_ = 0;
   // A lane-local path to the next item in the current lane.
   ItemIndexPath grid_lanes_item_index_path_;
@@ -162,12 +161,15 @@ struct GridLanesItemIterator::Entry {
         grid_lane_idx(grid_lane_idx),
         is_last_item_in_lane(is_last_item_in_lane),
         token(token) {}
+  // Constructor for resumed OOF.
+  explicit Entry(const BlockBreakToken* token) : token(token) {}
 
   GridLanesItemData* grid_lanes_item = nullptr;
   wtf_size_t grid_lane_idx = kNotFound;
   bool is_last_item_in_lane = false;
   const BlockBreakToken* token = nullptr;
 
+  bool IsNull() const { return !grid_lanes_item && !token; }
   bool operator==(const GridLanesItemIterator::Entry& other) const {
     return grid_lanes_item == other.grid_lanes_item &&
            grid_lane_idx == other.grid_lane_idx &&

@@ -11,7 +11,9 @@
 #include <utility>
 
 #include "base/base64.h"
+#include "base/check.h"
 #include "base/command_line.h"
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/json/json_reader.h"
 #include "base/memory/raw_ptr.h"
@@ -24,6 +26,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
+#include "base/unguessable_token.h"
 #include "base/values.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/certificate_viewer.h"
@@ -38,7 +41,6 @@
 #include "chrome/browser/infobars/confirm_infobar_creator.h"
 #include "chrome/browser/infobars/infobar_features.h"
 #include "chrome/browser/infobars/infobar_spec.h"
-#include "chrome/browser/policy/chrome_policy_blocklist_service_factory.h"
 #include "chrome/browser/policy/developer_tools_policy_checker.h"
 #include "chrome/browser/policy/developer_tools_policy_checker_factory.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
@@ -47,7 +49,7 @@
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "components/sessions/core/session_id.h"
 #include "extensions/buildflags/buildflags.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #if BUILDFLAG(IS_MAC)
 #include "chrome/browser/renderer_host/chrome_render_widget_host_view_mac_history_swiping_control.h"
 #endif
@@ -60,6 +62,9 @@
 #include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
 #include "chrome/browser/ui/webui/devtools/devtools_ui.h"
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_user_profile.h"
+#endif  // !BUILDFLAG(IS_ANDROID)
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
@@ -76,6 +81,7 @@
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "components/zoom/page_zoom.h"
 #include "components/zoom/zoom_controller.h"
+#include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/child_process_security_policy.h"
 #include "content/public/browser/color_chooser.h"
@@ -180,6 +186,47 @@ void SetPreferencesFromJson(Profile* profile, const std::string& json) {
     update->Set(dict_value.first, std::move(dict_value.second));
   }
 }
+
+#if !BUILDFLAG(IS_ANDROID)
+// Returns true if `reason` comes from an enterprise policy check rather than a
+// non-policy UI restriction (like kiosk mode or a captive portal sign-in
+// window).
+bool IsPolicyBlockReason(DevToolsBlockReason reason) {
+  switch (reason) {
+    case DevToolsBlockReason::kUrlAllowlistOrBlocklist:
+    case DevToolsBlockReason::kPolicyDisallowed:
+    case DevToolsBlockReason::kForceInstalledExtension:
+    case DevToolsBlockReason::kComponentExtensionInManagedProfile:
+    case DevToolsBlockReason::kKioskWebApp:
+    case DevToolsBlockReason::kPolicyInstalledIsolatedWebApp:
+    case DevToolsBlockReason::kDevToolsUrlBlocklisted:
+      return true;
+    case DevToolsBlockReason::kKioskMode:
+    case DevToolsBlockReason::kCaptivePortalSignin:
+      return false;
+    case DevToolsBlockReason::kNotBlocked:
+      NOTREACHED();
+  }
+  NOTREACHED();
+}
+
+// Records whether an attempt to open a new DevTools window for a tab was
+// allowed by enterprise policy checks.
+// "DevTools.OpenAttempt.AllowedByPolicy" counts every policy-evaluated attempt
+// across all profiles. The ".OnProfileWithPolicyCheck" variant is emitted when
+// at least one policy check can affect DevTools on `profile` (see
+// `HasDevToolsPolicyCheck()`), providing a non-diluted rate denominator to
+// detect spikes or drops in blocks.
+void RecordDevToolsOpenAttemptAllowedByPolicy(Profile* profile, bool allowed) {
+  CHECK(profile);
+  base::UmaHistogramBoolean("DevTools.OpenAttempt.AllowedByPolicy", allowed);
+  if (HasDevToolsPolicyCheck(profile)) {
+    base::UmaHistogramBoolean(
+        "DevTools.OpenAttempt.AllowedByPolicy.OnProfileWithPolicyCheck",
+        allowed);
+  }
+}
+#endif  // !BUILDFLAG(IS_ANDROID)
 
 // DevToolsToolboxDelegate ----------------------------------------------------
 
@@ -903,15 +950,31 @@ void DevToolsWindow::ToggleDevToolsWindow(
       case DevToolsToggleAction::kNoOp:
         break;
     }
+#if !BUILDFLAG(IS_ANDROID)
+    const DevToolsBlockReason block_reason =
+        GetBlockReasonFor(profile, inspected_web_contents);
+    if (block_reason != DevToolsBlockReason::kNotBlocked) {
+      // `Show()` is a no-op (and returns false) while a dialog is already open
+      // for this tab, so repeated attempts are not counted twice. Non-policy UI
+      // restrictions (e.g. kiosk mode) still show the dialog, but are excluded
+      // from `AllowedByPolicy` so they are not misattributed to policy.
+      if (DevToolsPolicyDialog::Show(inspected_web_contents) &&
+          IsPolicyBlockReason(block_reason)) {
+        RecordDevToolsOpenAttemptAllowedByPolicy(profile, /*allowed=*/false);
+      }
+      return;
+    }
+#endif
     window = Create(profile, inspected_web_contents, kFrontendDefault,
                     std::string(), true, settings, panel, agent->IsAttached(),
                     /* browser_connection */ false, toggled_by);
     if (!window) {
-#if !BUILDFLAG(IS_ANDROID)
-      DevToolsPolicyDialog::Show(inspected_web_contents);
-#endif
+      // Not policy related: no `DevToolsUIBindings` for the frontend.
       return;
     }
+#if !BUILDFLAG(IS_ANDROID)
+    RecordDevToolsOpenAttemptAllowedByPolicy(profile, /*allowed=*/true);
+#endif
     window->bindings_->AttachTo(agent.get());
     do_open = true;
     if (toggled_by != DevToolsOpenedByAction::kUnknown) {
@@ -1342,12 +1405,7 @@ DevToolsBlockReason GetProfileBlockReason(Profile* profile) {
     return DevToolsBlockReason::kKioskMode;
   }
 
-  PolicyBlocklistService* blocklist_service =
-      ChromePolicyBlocklistServiceFactory::GetForProfile(profile);
-  if (blocklist_service &&
-      blocklist_service->GetURLBlocklistState(
-          GURL(chrome::kChromeUIDevToolsURL)) ==
-          policy::URLBlocklist::URLBlocklistState::URL_IN_BLOCKLIST) {
+  if (IsDevToolsUrlBlockedByPolicy(profile)) {
     return DevToolsBlockReason::kDevToolsUrlBlocklisted;
   }
 
@@ -1591,7 +1649,7 @@ WebContents* DevToolsWindow::AddNewContents(
     WebContents* source,
     std::unique_ptr<WebContents> new_contents,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {
@@ -1790,7 +1848,9 @@ void DevToolsWindow::SetIsDocked(bool dock_requested) {
     return;
   }
 
-  CHECK(can_dock_ || !dock_requested, base::NotFatalUntil::M161);
+  // TODO(crbug.com/579584319): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(can_dock_ || !dock_requested);
   if (!can_dock_) {
     dock_requested = false;
   }
@@ -1870,15 +1930,98 @@ int DevToolsWindow::GetClosedByForLogging() {
   return static_cast<int>(closed_by_);
 }
 
-void DevToolsWindow::OpenInNewTab(const GURL& url) {
+namespace {
+
+// Returns the frame of `web_contents`' primary page (including any inner
+// frame trees) whose DevTools frame token is `token`, if any. The token is
+// what the DevTools frontend knows a frame by: it is the frame's id in the
+// DevTools protocol, and also the id of the frame's DevTools target if the
+// frame has one of its own (main frames and out-of-process iframes do).
+content::RenderFrameHost* FindFrameByDevToolsFrameToken(
+    WebContents* web_contents,
+    const std::string& token) {
+  std::optional<base::UnguessableToken> parsed_token =
+      base::UnguessableToken::DeserializeFromString(token);
+  if (!parsed_token) {
+    return nullptr;
+  }
+  content::RenderFrameHost* result = nullptr;
+  web_contents->GetPrimaryMainFrame()->ForEachRenderFrameHostWithAction(
+      [&](content::RenderFrameHost* frame) {
+        if (frame->GetDevToolsFrameToken() != *parsed_token) {
+          return content::RenderFrameHost::FrameIterationAction::kContinue;
+        }
+        result = frame;
+        return content::RenderFrameHost::FrameIterationAction::kStop;
+      });
+  return result;
+}
+
+// Returns the worker (or worklet) with the DevTools target id `target_id`
+// that lives in `browser_context`, if any.
+scoped_refptr<DevToolsAgentHost> FindWorkerByDevToolsTargetId(
+    const std::string& target_id,
+    content::BrowserContext* browser_context) {
+  scoped_refptr<DevToolsAgentHost> agent_host =
+      DevToolsAgentHost::GetForId(target_id);
+  if (!agent_host || agent_host->GetBrowserContext() != browser_context) {
+    return nullptr;
+  }
+  const std::string type = agent_host->GetType();
+  if (type != DevToolsAgentHost::kTypeDedicatedWorker &&
+      type != DevToolsAgentHost::kTypeSharedWorker &&
+      type != DevToolsAgentHost::kTypeServiceWorker &&
+      type != DevToolsAgentHost::kTypeWorklet) {
+    return nullptr;
+  }
+  return agent_host;
+}
+
+}  // namespace
+
+void DevToolsWindow::OpenInNewTab(
+    const GURL& url,
+    const std::optional<std::string>& initiator_id) {
   GURL fixed_url = url;
   WebContents* inspected_web_contents = GetInspectedWebContents();
-  content::RenderFrameHost* inspected_frame =
-      inspected_web_contents ? inspected_web_contents->GetPrimaryMainFrame()
-                             : nullptr;
+
+  // The URL typically originates from content that is controlled by the
+  // inspected target (e.g. a linkified URL in the Console, or a request in the
+  // Network panel), so attribute the navigation to the frame or worker that
+  // produced it, like the context menu does for "Open link in new tab" (see
+  // RenderViewContextMenuBase::GetOpenURLParamsWithExtraHeaders()). Without an
+  // initiator, the navigation would be indistinguishable from one typed into
+  // the omnibox: the request would carry SameSite=Strict cookies and
+  // `Sec-Fetch-Site: none`, which would allow the inspected target to bypass
+  // the CSRF defenses of the destination. Attributing it to the inspected
+  // page's main frame regardless of where the URL came from would be wrong as
+  // well: an embedded cross-site frame could then have the user issue a
+  // same-site request to its embedder.
+  //
+  // `initiator_id` is the DevTools target id or frame id of the frame or
+  // worker that the frontend got the URL from. The frame must belong to the
+  // inspected page (not to some other tab) and the worker to this profile.
+  // Whatever cannot be resolved that way -- the frontend did not say, e.g.
+  // because DevTools itself chose the URL; the frame or worker is gone; the id
+  // belongs to something else -- is attributed to an opaque origin, which is
+  // never same-site with the destination, so the navigation is treated as
+  // cross-site. See https://crbug.com/554558674 and
+  // https://crbug.com/576204004.
+  content::RenderFrameHost* initiator_frame = nullptr;
+  scoped_refptr<DevToolsAgentHost> initiator_worker;
+  if (initiator_id && !initiator_id->empty()) {
+    if (inspected_web_contents) {
+      initiator_frame =
+          FindFrameByDevToolsFrameToken(inspected_web_contents, *initiator_id);
+    }
+    if (!initiator_frame) {
+      initiator_worker = FindWorkerByDevToolsTargetId(*initiator_id, profile_);
+    }
+  }
+
   int child_id = content::ChildProcessHost::kInvalidUniqueID;
-  if (inspected_frame) {
-    child_id = inspected_frame->GetProcess()->GetDeprecatedID();
+  if (initiator_frame) {
+    child_id = initiator_frame->GetProcess()->GetDeprecatedID();
   }
   // Use about:blank instead of an empty GURL. The browser treats an empty GURL
   // as navigating to the home page, which may be privileged (chrome://newtab/).
@@ -1888,26 +2031,18 @@ void DevToolsWindow::OpenInNewTab(const GURL& url) {
   }
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
-          fixed_url, WindowOpenDisposition::kNewForegroundTab,
+          fixed_url, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
           ui::PAGE_TRANSITION_LINK);
-  // The URL typically originates from content that is controlled by the
-  // inspected target (e.g. a linkified URL in the Console, or a request in the
-  // Network panel), so attribute the navigation to it, like the context menu
-  // does for "Open link in new tab" (see
-  // RenderViewContextMenuBase::GetOpenURLParamsWithExtraHeaders()). Without an
-  // initiator, the navigation would be indistinguishable from one typed into
-  // the omnibox: the request would carry SameSite=Strict cookies and
-  // `Sec-Fetch-Site: none`, which would allow the inspected target to bypass
-  // the CSRF defenses of the destination.
-  if (inspected_frame) {
-    params.initiator_origin = inspected_frame->GetLastCommittedOrigin();
-    params.initiator_frame_token = inspected_frame->GetFrameToken();
+  if (initiator_frame) {
+    params.initiator_origin = initiator_frame->GetLastCommittedOrigin();
+    params.initiator_frame_token = initiator_frame->GetFrameToken();
     params.initiator_process_id = child_id;
-    params.source_site_instance = inspected_frame->GetSiteInstance();
+    params.source_site_instance = initiator_frame->GetSiteInstance();
+  } else if (initiator_worker) {
+    // A worker has an origin but no frame, like a service worker that calls
+    // `clients.openWindow()` (see service_worker_client_utils.cc).
+    params.initiator_origin = url::Origin::Create(initiator_worker->GetURL());
   } else {
-    // There is no inspected frame to attribute the navigation to (e.g. when
-    // inspecting a worker). An opaque origin is never same-site with the
-    // destination, so the navigation is treated as cross-site.
     params.initiator_origin = url::Origin();
   }
   if (!inspected_web_contents ||
@@ -1929,8 +2064,10 @@ void DevToolsWindow::OpenInNewTab(const GURL& url) {
   }
 }
 
-void DevToolsWindow::OpenInNewTab(const std::string& url) {
-  OpenInNewTab(GURL(url));
+void DevToolsWindow::OpenInNewTab(
+    const std::string& url,
+    const std::optional<std::string>& initiator_id) {
+  OpenInNewTab(GURL(url), initiator_id);
 }
 
 void DevToolsWindow::OpenSearchResultsInNewTab(const std::string& query) {
@@ -1939,7 +2076,8 @@ void DevToolsWindow::OpenSearchResultsInNewTab(const std::string& query) {
   CHECK(url_service, base::NotFatalUntil::M161);
   GURL url =
       GetDefaultSearchURLForSearchTerms(url_service, base::UTF8ToUTF16(query));
-  OpenInNewTab(url);
+  // DevTools chose the URL, so there is nothing to attribute the navigation to.
+  OpenInNewTab(url, /*initiator_id=*/std::nullopt);
 }
 
 void DevToolsWindow::SetWhitelistedShortcuts(const std::string& message) {
@@ -2290,8 +2428,9 @@ void DevToolsWindow::MaybeShowSharedProcessInfobar() {
           std::move(params));
     } else if (auto* infobar_manager = GetInfoBarManager()) {
       sharing_infobar_ = infobar_manager->AddInfoBar(
-          CreateConfirmInfoBar(std::make_unique<ProcessSharingInfobarDelegate>(
-              inspected_web_contents)));
+          CreateConfirmInfoBar(ConfirmInfoBarCreationAllowlist::GetPassKey(),
+                               std::make_unique<ProcessSharingInfobarDelegate>(
+                                   inspected_web_contents)));
     }
     if (sharing_infobar_) {
       sharing_infobar_->owner()->AddObserver(this);

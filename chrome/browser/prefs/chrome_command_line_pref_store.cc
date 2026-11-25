@@ -86,8 +86,9 @@ const CommandLinePrefStore::BooleanSwitchToPreferenceMapEntry
         {ash::switches::kEnableTouchpadThreeFingerClick,
          ash::prefs::kEnableTouchpadThreeFingerClick, true},
         {switches::kEnableUnifiedDesktop,
-         prefs::kUnifiedDesktopEnabledByDefault, true},
-        {ash::switches::kEnableCastReceiver, prefs::kCastReceiverEnabled, true},
+         ash::prefs::kUnifiedDesktopEnabledByDefault, true},
+        {ash::switches::kEnableCastReceiver, ash::prefs::kCastReceiverEnabled,
+         true},
 #endif
 #if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
         {switches::kUseSystemDefaultPrinter,

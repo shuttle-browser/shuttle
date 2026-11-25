@@ -47,6 +47,7 @@
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/identifier/typed_identifier.h"
 #include "ui/base/metadata/metadata_header_macros.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 #include "ui/base/mojom/window_show_state.mojom-forward.h"
 #include "ui/base/pointer/touch_ui_controller.h"
 #include "ui/gfx/native_ui_types.h"
@@ -353,7 +354,7 @@ class BrowserView : public BrowserWindow,
   // Callback for listening for link-opening-from-gesture events (i.e. only
   // those resulting from direct user action).
   using OnLinkOpeningFromGestureCallback =
-      base::RepeatingCallback<void(WindowOpenDisposition)>;
+      base::RepeatingCallback<void(ui::mojom::WindowOpenDisposition)>;
   using OnLinkOpeningFromGestureCallbackList =
       base::RepeatingCallbackList<OnLinkOpeningFromGestureCallback::RunType>;
 
@@ -443,7 +444,8 @@ class BrowserView : public BrowserWindow,
   void FocusToolbar() override;
   void ToolbarSizeChanged(bool is_animating) override;
   void TabDraggingStatusChanged(bool is_dragging) override;
-  void LinkOpeningFromGesture(WindowOpenDisposition disposition) override;
+  void LinkOpeningFromGesture(
+      ui::mojom::WindowOpenDisposition disposition) override;
   void FocusAppMenu() override;
   bool IsTabStripEditable() const override;
   void DisableTabStripEditingForTesting() override;
@@ -667,6 +669,7 @@ class BrowserView : public BrowserWindow,
   friend class TopControlsSlideControllerTest;
   FRIEND_TEST_ALL_PREFIXES(BrowserViewTest, BrowserView);
   FRIEND_TEST_ALL_PREFIXES(BrowserViewTest, AccessibleWindowTitle);
+  FRIEND_TEST_ALL_PREFIXES(BrowserViewTest, FullscreenControlHostLeakOnMac);
   FRIEND_TEST_ALL_PREFIXES(PermissionChipUnitTest, AccessibleName);
 
   // Modes that require reparenting of views. For example, tab strip and web app

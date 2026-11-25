@@ -259,6 +259,7 @@ void FullscreenController::EnterFullscreenModeForTab(
                                   requesting_frame, fullscreen_tab_params);
     }
 #endif
+    exclusive_access_manager()->UpdateBubble(base::NullCallback());
   } else {
     ExclusiveAccessContext* exclusive_access_context =
         exclusive_access_manager()->context();
@@ -730,9 +731,7 @@ bool FullscreenController::IsFullscreenWithinTab(
       web_contents ? FullscreenWithinTabHelper::FromWebContents(web_contents)
                    : nullptr;
   if (helper && helper->is_fullscreen_within_tab()) {
-    // TODO(crbug.com/581005180): CHECK-exclusion: Convert to a CHECK once we
-    // are confident it won't be triggered.
-    DCHECK_NE(exclusive_access_tab(), web_contents);
+    CHECK_NE(exclusive_access_tab(), web_contents, base::NotFatalUntil::M162);
     return true;
   }
   return false;

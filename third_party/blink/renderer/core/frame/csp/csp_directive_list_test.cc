@@ -421,8 +421,7 @@ TEST_F(CSPDirectiveListTest, AllowScriptFromSourceWithHash) {
 
     IntegrityMetadataSet integrity_metadata;
     SubresourceIntegrity::ParseIntegrityAttribute(test.integrity,
-                                                  integrity_metadata,
-                                                  /*feature_context=*/nullptr);
+                                                  integrity_metadata);
 
     // Report-only 'script-src'
     network::mojom::blink::ContentSecurityPolicyPtr directive_list = CreateList(
@@ -1274,6 +1273,30 @@ TEST_F(CSPDirectiveListTest, StrictDynamicIgnoresAllowlistWarning) {
                       HasConsole(message, ConsoleMessage::Level::kError))));
     }
   }
+}
+
+TEST_F(CSPDirectiveListTest, FillInCSPHashValues) {
+  static_assert(sizeof(IntegrityAlgorithmSet) == 1);
+  Vector<network::IntegrityMetadata> hashes;
+  FillInCSPHashValues("alert(1);", IntegrityAlgorithmSet(), hashes);
+  EXPECT_TRUE(hashes.empty());
+
+  FillInCSPHashValues("alert(1);",
+                      IntegrityAlgorithmSet({IntegrityAlgorithm::kSha256,
+                                             IntegrityAlgorithm::kSha512}),
+                      hashes);
+  ASSERT_EQ(2u, hashes.size());
+  EXPECT_EQ(IntegrityAlgorithm::kSha256, hashes[0].algorithm);
+  EXPECT_FALSE(hashes[0].value.empty());
+  EXPECT_EQ(IntegrityAlgorithm::kSha512, hashes[1].algorithm);
+  EXPECT_FALSE(hashes[1].value.empty());
+
+  hashes.clear();
+  FillInCSPHashValues("alert(1);", IntegrityAlgorithmSet::All(), hashes);
+  ASSERT_EQ(3u, hashes.size());
+  EXPECT_EQ(IntegrityAlgorithm::kSha256, hashes[0].algorithm);
+  EXPECT_EQ(IntegrityAlgorithm::kSha384, hashes[1].algorithm);
+  EXPECT_EQ(IntegrityAlgorithm::kSha512, hashes[2].algorithm);
 }
 
 }  // namespace blink

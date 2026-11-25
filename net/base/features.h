@@ -23,15 +23,17 @@
 
 namespace net::features {
 
-// Enables ALPS extension of TLS 1.3 for HTTP/2, see
-// https://vasilvv.github.io/tls-alps/draft-vvv-tls-alps.html and
-// https://vasilvv.github.io/httpbis-alps/draft-vvv-httpbis-alps.html.
-NET_EXPORT BASE_DECLARE_FEATURE(kAlpsForHttp2);
-
 // If enabled, HttpNetworkTransaction will use a hybrid retry strategy for
 // connection errors: retrying synchronously initially, and switching to
 // asynchronous (yielding to the message loop) after many attempts.
 NET_EXPORT BASE_DECLARE_FEATURE(kAsyncRetryOnTooManyConnectionErrors);
+
+// If enabled, when an HttpNetworkTransaction retries a request and the new
+// attempt uses a different proxy chain, the proxy auth controller is discarded,
+// as is server auth state for non-cryptographic schemes. Requests fail if this
+// discards auth state too many times. Also, 407 responses are rejected when not
+// talking to a proxy using GET.
+NET_EXPORT BASE_DECLARE_FEATURE(kClearAuthControllersOnProxyChange);
 
 // Derives Android connection type from NetworkCapabilities inside
 // NetworkCallbacks instead of calling synchronous ConnectivityManager methods.
@@ -73,6 +75,12 @@ NET_EXPORT extern const base::FeatureParam<base::TimeDelta>
 NET_EXPORT BASE_DECLARE_FEATURE(kDnsPlatformFailFastAndRetry);
 NET_EXPORT extern const base::FeatureParam<bool>
     kDnsPlatformCancelPreviousAttemptOnRetry;
+
+// If enabled, HostResolverDnsTask ignores errors from an address (A/AAAA) DNS
+// transaction if the sibling address transaction succeeds with usable
+// addresses, rather than failing the entire DnsTask and falling back to the
+// system resolver.
+NET_EXPORT BASE_DECLARE_FEATURE(kDnsTaskAllowPartialAddressResults);
 
 // Enables querying HTTPS DNS records that will affect results from HostResolver
 // and may be used to affect connection behavior. Whether or not those results
@@ -158,6 +166,20 @@ NET_EXPORT BASE_DECLARE_FEATURE(kEnableIntermediateDnsResults);
 NET_EXPORT BASE_DECLARE_FEATURE_PARAM(
     bool,
     kEnableIntermediateDnsResultsSortTransactionsIndividually);
+
+// When the last request detaches from a HostResolverManager::Job while its
+// DnsTask has already received some results and is only waiting for
+// already-started transactions, keeps the Job running (up to
+// `kKeepHostResolverJobAliveForCacheTimeout`) so that the final results are
+// stored in the HostCache. Also enabled by
+// `kAsyncDnsQuicJobKeepHostResolverJobAliveForCache`, so disabling this feature
+// alone doesn't disable the keep-alive while `kAsyncDnsQuicJob` is enabled.
+// `kKeepHostResolverJobAliveForCacheTimeout` returns its default while this
+// feature is disabled, including when only `kAsyncDnsQuicJob` enables the
+// keep-alive.
+NET_EXPORT BASE_DECLARE_FEATURE(kKeepHostResolverJobAliveForCache);
+NET_EXPORT BASE_DECLARE_FEATURE_PARAM(base::TimeDelta,
+                                      kKeepHostResolverJobAliveForCacheTimeout);
 
 // Feature to control the Happy Eyeballs slow timer (IPv6 fallback time).
 NET_EXPORT BASE_DECLARE_FEATURE(kAdjustIPv6FallbackTime);
@@ -378,13 +400,15 @@ NET_EXPORT BASE_DECLARE_FEATURE(kStaticKeyPinningEnforcement);
 // When enabled, cookies with a non-ASCII domain attribute will be rejected.
 NET_EXPORT BASE_DECLARE_FEATURE(kCookieDomainRejectNonASCII);
 
+// When enabled, HTTP/HTTPS/WS/WSS URLs with non-IP hosts must have a
+// DNS-compliant canonicalized host (via net::IsCanonicalizedHostCompliant())
+// to set or retrieve cookies.
+NET_EXPORT BASE_DECLARE_FEATURE(kCookieRequireCompliantHost);
+
 NET_EXPORT BASE_DECLARE_FEATURE(kThirdPartyStoragePartitioning);
 
 // Whether ALPS parsing is on for any type of frame.
 NET_EXPORT BASE_DECLARE_FEATURE(kAlpsParsing);
-
-// Whether ALPS parsing is on for client hint parsing specifically.
-NET_EXPORT BASE_DECLARE_FEATURE(kAlpsClientHintParsing);
 
 NET_EXPORT BASE_DECLARE_FEATURE(kEnableWebsocketsOverHttp3);
 
@@ -448,6 +472,15 @@ NET_EXPORT BASE_DECLARE_FEATURE_PARAM(bool, kAsyncDnsQuicJobFastFail);
 NET_EXPORT BASE_DECLARE_FEATURE_PARAM(
     bool,
     kAsyncDnsQuicJobSortTransactionsIndividually);
+// Whether to keep HostResolverManager::Jobs alive to cache DNS results, as
+// `kKeepHostResolverJobAliveForCache` does, when `kAsyncDnsQuicJob` is enabled.
+// AsyncDnsJob often cancels its request while DNS responses are in flight.
+// This is a param rather than a requirement to also enable
+// `kKeepHostResolverJobAliveForCache` so that other studies can control that
+// feature independently.
+NET_EXPORT BASE_DECLARE_FEATURE_PARAM(
+    bool,
+    kAsyncDnsQuicJobKeepHostResolverJobAliveForCache);
 
 // Makes the QUIC slow timer delay configurable.
 // How long to wait before starting a second connection attempt
@@ -627,6 +660,10 @@ NET_EXPORT BASE_DECLARE_FEATURE(kNoVarySearchIgnoreUnrecognizedKeys);
 // disabled, Chrome does not distinguish between SCTs based on log type.
 NET_EXPORT BASE_DECLARE_FEATURE(kEnforceOneRfc6962CtPolicy);
 
+// When enabled, CRLSet stores blocked serials in a compact representation
+// instead of std::vector<std::vector<uint8_t>> per issuer.
+NET_EXPORT BASE_DECLARE_FEATURE(kCRLSetCompactSerials);
+
 // Finch experiment to select a disk cache backend.
 enum class DiskCacheBackend {
   kDefault,
@@ -714,6 +751,12 @@ NET_EXPORT BASE_DECLARE_FEATURE_PARAM(int,
 // If enabled, ignore Strict-Transport-Security for [*.]localhost hosts.
 NET_EXPORT BASE_DECLARE_FEATURE(kIgnoreHSTSForLocalhost);
 
+// If enabled, URLRequests for http, https, ws, and wss URLs whose hostnames are
+// not valid DNS names (per IsCanonicalizedHostCompliant()) fail with
+// ERR_INVALID_URL. Without this, such requests may still be sent through a
+// proxy, bypassing HSTS, which can't be applied to such hosts.
+NET_EXPORT BASE_DECLARE_FEATURE(kRejectNonCompliantHttpHosts);
+
 // If enabled, main frame navigation resources will be prioritized in Simple
 // Cache and SQL Cache. So they will be less likely to be evicted.
 NET_EXPORT BASE_DECLARE_FEATURE(kSimpleCachePrioritizedCaching);
@@ -751,10 +794,6 @@ NET_EXPORT BASE_DECLARE_FEATURE_PARAM(size_t,
 // Whether persistence is enabled in on-the-record profiles. True by default.
 NET_EXPORT BASE_DECLARE_FEATURE_PARAM(bool,
                                       kHttpCacheNoVarySearchPersistenceEnabled);
-
-// Whether to use the new implementation of
-// HttpNoVarySearchData::AreEquivalent().
-NET_EXPORT BASE_DECLARE_FEATURE(kHttpNoVarySearchDataUseNewAreEquivalent);
 
 // Whether to skip opening the http cache entry which was marked as "unusable"
 // from the "Cache-Control" header point of view.
@@ -890,6 +929,10 @@ NET_EXPORT BASE_DECLARE_FEATURE(kQuicLongerIdleConnectionTimeout);
 // committing a migration.
 NET_EXPORT BASE_DECLARE_FEATURE(
     kQuicAlwaysCancelPreExistingProbingOnMigration);
+
+// If enabled, allows QUIC sessions to migrate to a different port when the
+// current path is degrading.
+NET_EXPORT BASE_DECLARE_FEATURE(kQuicEnablePortMigration);
 
 // Controls the timeout for waiting for a new network to connect before giving
 // up on connection migration.
@@ -1110,8 +1153,25 @@ NET_EXPORT BASE_DECLARE_FEATURE_PARAM(DiskCacheBackend,
 // the full SQLite cookie store load.
 NET_EXPORT BASE_DECLARE_FEATURE(kCookieMonsterPerKeyDelete);
 
+// When enabled, CanonicalCookie only encrypts cookie values in memory (via
+// crypto::ProcessBoundString) for important cookies. Cookies marked Secure are
+// always important. Cookies marked HttpOnly are considered important if the
+// kCookieProcessBoundEncryptHttpOnly param is true.
+NET_EXPORT BASE_DECLARE_FEATURE(kCookieProcessBoundEncryptOnlyImportant);
+NET_EXPORT BASE_DECLARE_FEATURE_PARAM(bool, kCookieProcessBoundEncryptHttpOnly);
+
 // Enables the Rust implementation of the HTTP chunked decoder, called via FFI.
 NET_EXPORT BASE_DECLARE_FEATURE(kHttpChunkedDecoderInRust);
+
+// Enables checking all resolved IP endpoints (and preserving DNS aliases) for
+// post-handshake cross-origin IP pooling in QUIC and HTTP/2 when concurrent
+// connection attempts complete.
+NET_EXPORT BASE_DECLARE_FEATURE(kPostHandshakeIpPoolingAllEndpoints);
+
+// Enables proactively pooling and cancelling in-flight HTTP/2 and QUIC
+// connection attempts when a concurrent session activates on one of their
+// resolved IP endpoints.
+NET_EXPORT BASE_DECLARE_FEATURE(kProactiveIpPoolingForInFlightJobs);
 
 }  // namespace net::features
 

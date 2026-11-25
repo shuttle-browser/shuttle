@@ -22,8 +22,8 @@ framework via `infobars::InfoBarSpec` and `infobars::BrowserInfoBarManager`.
   appearance and behavior, including its `InfoBarIdentifier`, message text or
   template (`SetMessageText()` / `SetMessageTextTemplate()`), icon
   (`SetIcon()`), buttons (`AddOkButton()` / `AddCancelButton()`), links,
-  priority (`SetPriority()`), and lifecycle scope (`InfoBarScope::kTab` or
-  `InfoBarScope::kGlobal`).
+  priority (`SetPriority()`), promotional policy gating (`SetIsPromotional()`),
+  and lifecycle scope (`InfoBarScope::kTab` or `InfoBarScope::kGlobal`).
 * **`infobars::BrowserInfoBarManager`**
   ([`browser_infobar_manager.h`](browser_infobar_manager.h)): A browser-process
   global feature (`BrowserInfoBarManager::From(g_browser_process)`) that stores
@@ -117,17 +117,41 @@ calling `ContentInfoBarManager::AddInfoBar()`:
   manager->Hide(infobars::InfoBarDelegate::MY_FEATURE_INFOBAR_DELEGATE);
   ```
 
+### 4. Promotional InfoBars and Enterprise Policy (`PromotionsEnabled`)
+
+For infobars that are promotional in nature (e.g., prompting to set Chrome as
+default, pin to taskbar, or explore promotional features), mark the spec with
+`.SetIsPromotional(true)` in `InfoBarSpec::Builder`.
+
+`BrowserInfoBarManager` centrally checks promotional specs against the
+`PromotionsEnabled` enterprise policy (`prefs::kPromotionsEnabled` in
+`local_state`). When disabled, promotional infobars are automatically
+suppressed across `Show()`, `Replace()`, and `ShowGlobally()`, and the
+`InfoBar.Centralized.SuppressedByPolicy` histogram is recorded.
+
+> **Note on Policy Dynamic Refresh:**
+> Policy suppression is checked at show time (`Show()`, `Replace()`,
+> `ShowGlobally()`). Dynamic refreshes of the promotional policy do not
+> auto-close already-visible infobars mid-session to avoid abruptly dismissing
+> a prompt the user may actively be reading. Dynamic refreshes apply to any
+> newly triggered infobars and take full effect for existing sessions on next
+> browser restart.
+
 ---
 
 ## Legacy Utilities (Do Not Use in New Code)
 
-<!-- TODO(https://crbug.com/567121669): Update this section and remove the
+<!-- TODO(https://crbug.com/512837934): Update this section and remove the
 IsInfoBarMigrated() note above once all desktop infobar migrations complete and
-the base::PassKey compile-time gate lands on CreateConfirmInfoBar(),
-CreateSimpleAlertInfoBar(), and ConfirmInfoBar::Create(). -->
+the burndown list in ConfirmInfoBarCreationAllowlist is removed. -->
 
-* `confirm_infobar_creator.h` (`CreateConfirmInfoBar`) and
-  `simple_alert_infobar_creator.h` (`CreateSimpleAlertInfoBar`) are legacy
-  helpers retained only for unmigrated infobars and internal use by
-  `BrowserInfoBarManager`. Do not add new callers.
+* `confirm_infobar_creator.h` (`CreateConfirmInfoBar`),
+  `simple_alert_infobar_creator.h` (`CreateSimpleAlertInfoBar`), and
+  `ConfirmInfoBar::Create()` are legacy creation entry points gated at compile
+  time by `base::PassKey<ConfirmInfoBarCreationAllowlist>`
+  ([`confirm_infobar_creation_allowlist.h`](confirm_infobar_creation_allowlist.h)).
+  They are retained only for internal use by `BrowserInfoBarManager`, permanent
+  architectural exceptions (`GetPassKey()`), and the burndown list of
+  unmigrated infobars (`GetPassKeyForMigration()`). Do not add new callers or
+  allowlist entries.
 

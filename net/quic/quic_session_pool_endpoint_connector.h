@@ -7,8 +7,11 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <vector>
 
+#include "base/containers/flat_set.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
@@ -96,13 +99,19 @@ class QuicSessionPool::EndpointConnector : public QuicSessionAttempt::Delegate {
   void PopulateNetErrorDetails(NetErrorDetails* details) const;
 
   // Cancels the attempt in flight, if any, because another connector settled
-  // the job.
+  // the job (other than via cross-origin IP pooling).
   void OnSuperseded();
+
+  // Cancels the attempt in flight, if any, because the job pooled to an
+  // existing session with a matching IP.
+  void CancelForPooling();
 
   // QuicSessionAttempt::Delegate implementation.
   QuicSessionPool* GetQuicSessionPool() override;
   const QuicSessionAliasKey& GetKey() override;
   const NetLogWithSource& GetNetLog() override;
+  std::vector<IPEndPoint> GetResolvedIpEndpoints() const override;
+  const base::flat_set<std::string>* GetDnsAliases() const override;
   void OnConnectionFailedOnDefaultNetwork() override;
   void OnQuicSessionCreationComplete(int rv) override;
 

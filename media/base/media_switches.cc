@@ -301,6 +301,21 @@ const char kAlsaOutputDevice[] = "alsa-output-device";
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) ||
         // BUILDFLAG(IS_FREEBSD) || BUILDFLAG(IS_SOLARIS)
 
+#if BUILDFLAG(IS_MAC)
+// Test-only. Replaces the native screen capture picker (SCContentSharingPicker)
+// with a fake picker that selects a source automatically, without showing any
+// UI. The fake picker can only capture the browser's own windows, which
+// doesn't require screen recording permission.
+// The optional value filters the browser windows by title (substring match).
+// The largest matching window is used for both window and screen selection:
+// window capture captures that window, and screen capture captures the display
+// that overlaps it the most. Without a value, the largest browser window is
+// used. Only has an effect if the UseSCContentSharingPicker feature is enabled.
+// Example: --use-fake-native-screen-capture-picker="Page title"
+const char kUseFakeNativeScreenCapturePicker[] =
+    "use-fake-native-screen-capture-picker";
+#endif  // BUILDFLAG(IS_MAC)
+
 #if BUILDFLAG(IS_WIN)
 // Use exclusive mode audio streaming for Windows Vista and higher.
 // Leads to lower latencies for audio streams which uses the
@@ -422,31 +437,6 @@ BASE_FEATURE(kBrowserInitiatedAutomaticPictureInPictureDryRun,
 // TODO(crbug.com/40246079): hardware AV1 encoding should be added.
 BASE_FEATURE(kCastStreamingAv1, base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Controls whether the new exponential bitrate calculate logic is used, or
-// the legacy linear algorithm.
-// TODO(crbug.com/302584587): This is the V2 implementation of this experiment,
-// following the failure of the initial experiment.
-BASE_FEATURE(kCastStreamingExponentialVideoBitrateAlgorithm,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-const base::FeatureParam<int>
-    kCastStreamingExponentialVideoBitrateAlgorithmWindowSize{
-        &kCastStreamingExponentialVideoBitrateAlgorithm, "window_size", 30};
-const base::FeatureParam<int>
-    kCastStreamingExponentialVideoBitrateAlgorithmDropThreshold{
-        &kCastStreamingExponentialVideoBitrateAlgorithm, "drop_threshold", 1};
-const base::FeatureParam<double>
-    kCastStreamingExponentialVideoBitrateAlgorithmIncreaseFactor{
-        &kCastStreamingExponentialVideoBitrateAlgorithm, "increase_factor",
-        1.05};
-const base::FeatureParam<double>
-    kCastStreamingExponentialVideoBitrateAlgorithmDecreaseFactor{
-        &kCastStreamingExponentialVideoBitrateAlgorithm, "decrease_factor",
-        0.9};
-const base::FeatureParam<double>
-    kCastStreamingExponentialVideoBitrateAlgorithmDynamicWindowMultiplier{
-        &kCastStreamingExponentialVideoBitrateAlgorithm,
-        "dynamic_window_multiplier", 0.0};
-
 BASE_FEATURE(kCastStreamingHardwareHevc, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Controls the maximum video bitrate for Cast Streaming mirroring sessions.
@@ -532,11 +522,14 @@ BASE_FEATURE(kDeferAudioFocusUntilAudible,
 // (instead of the FFmpegAudioDecoder).
 BASE_FEATURE(kDirectOpusAudioDecoding, base::FEATURE_ENABLED_BY_DEFAULT);
 
-// Killswitch for disallowing mixing opaque and non-opaque responses in
+// Killswitch for disallowing mixing opaque and non-opaque responses and
+// skipping Service Workers after network redirects in
 // ResourceMultiBufferDataProvider (crbug.com/572363265).
-// TODO(crbug.com/572363265): Remove after M158 reaches stable.
+// TODO(crbug.com/572363265): Remove killswitch (keeping mixed-opacity responses
+// disallowed and post-redirect Service Worker skipping enabled) after M159
+// reaches stable.
 BASE_FEATURE(kDisallowMixedOpaqueMediaResponses,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Adds an animation to document picture-in-picture resizes.
 BASE_FEATURE(kDocumentPictureInPictureAnimateResize,
@@ -785,6 +778,11 @@ BASE_FEATURE(kLogSodaLoadFailures,
              "kLogSodaLoadFailures",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+// Killswitch for applying leading empty edit list entries in MP4 MSE streams
+// (crbug.com/537235698).
+// TODO(crbug.com/537235698): Remove after M159 reaches stable.
+BASE_FEATURE(kMP4ApplyEmptyEditList, base::FEATURE_ENABLED_BY_DEFAULT);
+
 BASE_FEATURE(kMP4TimedMetadataTrack, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Allows Chrome to reconfigure the sink to match the channel count of the
@@ -826,9 +824,6 @@ BASE_FEATURE(kMediaEngagementBypassAutoplayPolicies,
 );
 
 BASE_FEATURE(kMediaEngagementHTTPSOnly, base::FEATURE_DISABLED_BY_DEFAULT);
-
-// Allows per-site special processing for media links.
-BASE_FEATURE(kMediaLinkHelpers, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables sending MediaLog to the log stream, which is useful for easier
 // development by ensuring logs can be seen without a remote desktop session.
@@ -1030,13 +1025,6 @@ BASE_FEATURE(kUseSequencedTaskRunnerForMojoVEAProvider,
 BASE_FEATURE(kUseTaskRunnerForMojoAudioDecoderService,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-// When enabled, determines whether a VideoFrame requires copying before display
-// based on whether the SharedImage usage includes
-// SHARED_IMAGE_USAGE_DISPLAY_READ, rather than using
-// VideoFrameMetadata::copy_required.
-BASE_FEATURE(kUseSharedImageUsageForVideoFrameCopy,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 // Safety switch to allow us to revert to the previous behavior of using the
 // restored bounds for PiP windows, rather than the window bounds.  If this
 // feature is enabled (the default), then we'll use the window bounds.
@@ -1082,11 +1070,6 @@ BASE_FEATURE(kVaapiVideoMinResolutionForPerformance,
 // Validates that the EncryptionPattern parameters are within the bounds
 // specified by ISO/IEC 23001-7:2016.
 BASE_FEATURE(kValidateEncryptionPatternSize, base::FEATURE_ENABLED_BY_DEFAULT);
-
-// Inform video blitter of video color space.
-BASE_FEATURE(kVideoBlitColorAccuracy,
-             "video-blit-color-accuracy",
-             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Controls whether to pre-dispatch more decode tasks when pending decodes is
 // smaller than maximum supported decodes as advertiszed by decoder.
@@ -1155,6 +1138,11 @@ BASE_FEATURE(kMediaRemotingWithoutFullscreen,
 BASE_FEATURE(kPictureInPictureOcclusionTracking,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+// Enables rendering WebVTT captions into a dedicated video
+// Picture-in-Picture surface.
+BASE_FEATURE(kPictureInPictureWebVttCaptionSurface,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 // Enables video Picture-in-Picture display smoothness optimization.
 //
 // Ensures that the video PiP window title view is properly sized to only fit
@@ -1186,6 +1174,13 @@ const base::FeatureParam<int> kWebRtcVoiceIsolationProcessingFifoSize{
     &kWebRtcVoiceIsolationProcessingFifo, "fifo_size", 10};
 
 #endif  // BUILDFLAG(CHROME_WIDE_ECHO_CANCELLATION)
+
+#if BUILDFLAG(ENABLE_DAV2D_DECODER)
+// Controls whether the Dav2dVideoDecoder is used for AV2 video decoding.
+// Owner: tmathmeyer@chromium.org
+// Expiry: When enabled by default (crbug.com/576731818).
+BASE_FEATURE(kDav2dVideoDecoder, base::FEATURE_DISABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(ENABLE_DAV2D_DECODER)
 
 #if BUILDFLAG(ENABLE_HEVC_PARSER_AND_HW_DECODER)
 // Enables HEVC MediaRecorder muxer support.
@@ -1418,10 +1413,6 @@ BASE_FEATURE(kUseMediaFormatCodedSize, base::FEATURE_DISABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_APPLE)
-// Enables VideoToolbox Quality Metrics (MSE / PSNR) generation.
-BASE_FEATURE(kVTVideoEncodeAcceleratorCalculatePSNR,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
 // Enables VideoToolbox zero-copy encode of opaque SharedImage-backed
 // VideoFrames.
 BASE_FEATURE(kVTVideoEncodeAcceleratorOpaqueSharedImageEncode,
@@ -1453,8 +1444,6 @@ BASE_FEATURE(kCrOSDspBasedAgcDeactivatedGroups,
 
 BASE_FEATURE(kCrOSDspBasedNsDeactivatedGroups,
              base::FEATURE_ENABLED_BY_DEFAULT);
-
-BASE_FEATURE(kCrOSEnforceMonoAudioCapture, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kCrOSEnforceSystemAec, base::FEATURE_ENABLED_BY_DEFAULT);
 
@@ -1707,7 +1696,7 @@ BASE_FEATURE(kMediaFoundationVideoEncodeAccelerator,
 BASE_FEATURE(kProtectedMediaIdentifierIndicator,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-BASE_FEATURE(kWasapiImproveGlitchDetection, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kWasapiImproveGlitchDetection, base::FEATURE_ENABLED_BY_DEFAULT);
 
 #endif  // BUILDFLAG(IS_WIN)
 

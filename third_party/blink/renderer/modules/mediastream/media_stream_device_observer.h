@@ -9,7 +9,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/threading/thread_checker.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
-#include "mojo/public/cpp/bindings/receiver.h"
+#include "mojo/public/cpp/bindings/receiver_set.h"
 #include "third_party/blink/public/common/mediastream/media_stream_request.h"
 #include "third_party/blink/public/mojom/mediastream/media_stream.mojom-blink.h"
 #include "third_party/blink/public/web/modules/mediastream/web_media_stream_device_observer.h"
@@ -17,7 +17,6 @@
 
 namespace blink {
 class LocalFrame;
-class UserMediaProcessor;
 
 // This class implements a Mojo object that receives device stopped
 // notifications and forwards them to UserMediaProcessor.
@@ -41,18 +40,7 @@ class MODULES_EXPORT MediaStreamDeviceObserver
       const String& label,
       const mojom::blink::StreamDevicesSet& stream_devices_set,
       const WebMediaStreamDeviceObserver::StreamCallbacks& stream_callbacks);
-  void AddStream(const String& label, const blink::MediaStreamDevice& device);
-  bool RemoveStreams(const String& label);
   void RemoveStreamDevice(const blink::MediaStreamDevice& device);
-
-  // Get the video session_id given a label. The label identifies a stream.
-  // If the label does not designate a valid video session, an empty token
-  // will be returned.
-  base::UnguessableToken GetVideoSessionId(const String& label);
-  // Returns an audio session_id given a label.
-  // If the label does not designate a valid video session, an empty token
-  // will be returned.
-  base::UnguessableToken GetAudioSessionId(const String& label);
 
  private:
   friend class MediaStreamDeviceObserverTest;
@@ -66,8 +54,6 @@ class MODULES_EXPORT MediaStreamDeviceObserver
                            OnDeviceRequestStateChange);
   FRIEND_TEST_ALL_PREFIXES(MediaStreamDeviceObserverTest,
                            MultiCaptureAddAndRemoveStreams);
-  FRIEND_TEST_ALL_PREFIXES(MediaStreamDeviceObserverTest,
-                           MultiCaptureChangeDevices);
   FRIEND_TEST_ALL_PREFIXES(MediaStreamDeviceObserverTest,
                            MultiCaptureChangeDeviceRequestState);
   FRIEND_TEST_ALL_PREFIXES(MediaStreamDeviceObserverTest,
@@ -115,7 +101,7 @@ class MODULES_EXPORT MediaStreamDeviceObserver
   void BindMediaStreamDeviceObserverReceiver(
       mojo::PendingReceiver<mojom::blink::MediaStreamDeviceObserver> receiver);
 
-  mojo::Receiver<mojom::blink::MediaStreamDeviceObserver> receiver_{this};
+  mojo::ReceiverSet<mojom::blink::MediaStreamDeviceObserver> receivers_;
 
   // Used for DCHECKs so methods calls won't execute in the wrong thread.
   THREAD_CHECKER(thread_checker_);

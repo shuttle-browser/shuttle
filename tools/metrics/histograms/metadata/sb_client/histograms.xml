@@ -115,8 +115,8 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SBClientDownload.AutoOpen{State}FileType"
-    enum="SBClientDownloadExtensions" expires_after="2026-11-03">
-  <owner>drubery@chromium.org</owner>
+    enum="SBClientDownloadExtensions" expires_after="2027-05-03">
+  <owner>yawfrempong@google.com</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
     Records the extension of files downloaded with auto-open {State}. This can
@@ -673,7 +673,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SBClientPhishing.ClipboardCopyApi.PayloadLength"
-    units="characters" expires_after="2027-02-28">
+    units="characters" expires_after="2027-05-02">
   <owner>liu@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -816,7 +816,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 
 <histogram
     name="SBClientPhishing.HistoryServiceDuration.GetDailyVisitsToOrigin"
-    units="ms" expires_after="2027-02-28">
+    units="ms" expires_after="2027-05-02">
   <owner>nwokedi@chromium.org</owner>
   <owner>bcb@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
@@ -893,6 +893,35 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram
+    name="SBClientPhishing.IntelligentScanEmptyMainFrameWithLoadingIframes"
+    enum="Boolean" expires_after="2027-11-04">
+  <owner>bcl@google.com</owner>
+  <owner>xinghuilu@chromium.org</owner>
+  <owner>chrome-counter-abuse-alerts@google.com</owner>
+  <summary>
+    Records whether the main frame had empty inner text when at least one non-ad
+    HTTP(S) subframe had not yet finished loading its DOM (or timed out
+    responding to innerText extraction) during an intelligent scan. Logged once
+    per completed inner text extraction on Desktop and Android when iframe inner
+    text extraction is enabled, the primary document is still valid, and at
+    least one eligible subframe was still loading or timed out.
+  </summary>
+</histogram>
+
+<histogram name="SBClientPhishing.IntelligentScanGetInnerTextDuration"
+    units="ms" expires_after="2027-11-04">
+  <owner>bcl@google.com</owner>
+  <owner>xinghuilu@chromium.org</owner>
+  <owner>chrome-counter-abuse-alerts@google.com</owner>
+  <summary>
+    Records the wall-clock duration required to extract inner text from the main
+    frame and eligible subframes. Logged once per completed inner text
+    extraction on Desktop and Android when iframe inner text extraction is
+    enabled and the primary document is still valid.
+  </summary>
+</histogram>
+
+<histogram
     name="SBClientPhishing.IntelligentScanHasSuccessfulResponse{IntelligentScanRequestType}"
     enum="BooleanSuccess" expires_after="2027-04-11">
   <owner>nwokedi@chromium.org</owner>
@@ -904,6 +933,34 @@ useful for Chirp alerts (go/crca-alerts). -->
   </summary>
   <token key="IntelligentScanRequestType"
       variants="ClientSideDetectionIntelligentScanRequestType"/>
+</histogram>
+
+<histogram name="SBClientPhishing.IntelligentScanIframeCount" units="iframes"
+    expires_after="2027-11-04">
+  <owner>bcl@google.com</owner>
+  <owner>xinghuilu@chromium.org</owner>
+  <owner>chrome-counter-abuse-alerts@google.com</owner>
+  <summary>
+    Records the number of live non-ad HTTP(S) cross-origin or out-of-process
+    iframes queried for inner text extraction on the page during an intelligent
+    scan (0 if the page had none, capped at MaxIframesToExtract). Logged once
+    per completed inner text extraction on Desktop and Android when iframe inner
+    text extraction is enabled and the primary document is still valid.
+  </summary>
+</histogram>
+
+<histogram name="SBClientPhishing.IntelligentScanIframeInnerTextSize"
+    units="bytes" expires_after="2027-11-04">
+  <owner>bcl@google.com</owner>
+  <owner>xinghuilu@chromium.org</owner>
+  <owner>chrome-counter-abuse-alerts@google.com</owner>
+  <summary>
+    Records the total size (in bytes) of inner text extracted from non-empty
+    cross-origin or out-of-process iframes during an intelligent scan. Logged
+    once per completed inner text extraction on Desktop and Android when iframe
+    inner text extraction is enabled, at least one cross-origin or
+    out-of-process iframe was queried, and the primary document is still valid.
+  </summary>
 </histogram>
 
 <histogram
@@ -938,6 +995,19 @@ useful for Chirp alerts (go/crca-alerts). -->
   <token key="RequestType" variants="ClientSideDetectionRequestType"/>
 </histogram>
 
+<histogram name="SBClientPhishing.IntelligentScanPageTitleSize" units="bytes"
+    expires_after="2027-11-04">
+  <owner>bcl@google.com</owner>
+  <owner>xinghuilu@chromium.org</owner>
+  <owner>chrome-counter-abuse-alerts@google.com</owner>
+  <summary>
+    Records the UTF-8 size (in bytes) of the page's explicit title (0 if the
+    page has no title) when inner text extraction completes with body text above
+    the minimum threshold for an intelligent scan and
+    ClientSideDetectionIncludeTitleInInnerText is enabled.
+  </summary>
+</histogram>
+
 <histogram name="SBClientPhishing.IntelligentScanVerdict{RequestType}"
     enum="IntelligentScanVerdict" expires_after="2027-03-07">
   <owner>nwokedi@chromium.org</owner>
@@ -949,6 +1019,27 @@ useful for Chirp alerts (go/crca-alerts). -->
     IntelligentScanVerdict is populated.
   </summary>
   <token key="RequestType" variants="ClientSideDetectionRequestType"/>
+</histogram>
+
+<histogram
+    name="SBClientPhishing.iOS.PageContextCaptureLatency.{ScreenshotMode}"
+    units="ms" expires_after="2027-05-05">
+  <owner>skrakowi@chromium.org</owner>
+  <owner>chrome-counter-abuse-alerts@google.com</owner>
+  <summary>
+    Records the end-to-end duration of ClientSideDetectionHostIOS::GetInnerText
+    on iOS when extracting page context via PageContextWrapper for a Client Side
+    Detection intelligent scan, {ScreenshotMode}. Logged in
+    ClientSideDetectionHostIOS::OnInnerTextExtracted whenever PageContextWrapper
+    completes (including inner text extraction and, when enabled, viewport
+    snapshot capture and Base64 decoding).
+  </summary>
+  <token key="ScreenshotMode">
+    <variant name="WithoutScreenshot"
+        summary="without capturing a tab screenshot (inner text only)"/>
+    <variant name="WithScreenshot"
+        summary="with tab screenshot capture enabled"/>
+  </token>
 </histogram>
 
 <histogram name="SBClientPhishing.iOS.VisualClassificationEarlyReturnReason"
@@ -1123,6 +1214,47 @@ useful for Chirp alerts (go/crca-alerts). -->
   </summary>
 </histogram>
 
+<histogram name="SBClientPhishing.Multimodal.ScreenshotCaptureLatency"
+    units="ms" expires_after="2027-05-05">
+  <owner>skrakowi@chromium.org</owner>
+  <owner>chrome-counter-abuse-alerts@google.com</owner>
+  <summary>
+    Records the duration of RenderWidgetHostView::CopyFromSurface when capturing
+    the active tab viewport screenshot for a multimodal intelligent scan. Logged
+    in ClientSideDetectionHost::OnScreenshotTaken on Desktop and Android
+    whenever CopyFromSurface completes while multimodal screenshot capture is
+    enabled. Not logged on iOS, where screenshots are captured alongside inner
+    text via PageContextWrapper (see
+    SBClientPhishing.iOS.PageContextCaptureLatency.*).
+  </summary>
+</histogram>
+
+<histogram name="SBClientPhishing.Multimodal.ScreenshotCaptureSize"
+    units="bytes" expires_after="2027-05-05">
+  <owner>skrakowi@chromium.org</owner>
+  <owner>chrome-counter-abuse-alerts@google.com</owner>
+  <summary>
+    Records the size in bytes of the raw PNG viewport screenshot attached to a
+    multimodal intelligent scan request. Logged in
+    ClientSideDetectionHostBase::StartIntelligentScan across all platforms
+    (Desktop, Android, and iOS) whenever a non-empty screenshot is captured.
+  </summary>
+</histogram>
+
+<histogram name="SBClientPhishing.Multimodal.ScreenshotCaptureStatus"
+    enum="SBClientPhishingMultimodalScreenshotCaptureStatus"
+    expires_after="2027-05-05">
+  <owner>skrakowi@chromium.org</owner>
+  <owner>chrome-counter-abuse-alerts@google.com</owner>
+  <summary>
+    Records the outcome of capturing a viewport screenshot for a multimodal
+    intelligent scan across all platforms (Desktop, Android, and iOS). Logged
+    once per intelligent scan attempt when
+    ClientSideDetectionHostBase::ShouldCaptureScreenshotForIntelligentScan() is
+    true.
+  </summary>
+</histogram>
+
 <histogram name="SBClientPhishing.NetworkRequestDuration" units="ms"
     expires_after="2027-04-18">
   <owner>nwokedi@chromium.org</owner>
@@ -1238,7 +1370,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SBClientPhishing.OnDeviceModelSessionCreationSuccess"
-    enum="BooleanSuccess" expires_after="2027-02-21">
+    enum="BooleanSuccess" expires_after="2027-04-25">
   <owner>nwokedi@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -1551,7 +1683,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SBClientPhishing.SingleObserverCalledOnNewPage"
-    enum="CSDObserverCalled" expires_after="2027-03-02">
+    enum="CSDObserverCalled" expires_after="2027-05-02">
   <owner>nwokedi@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -1559,6 +1691,21 @@ useful for Chirp alerts (go/crca-alerts). -->
     and the other observer CSD listens to has not been called. This is only
     called when one of the observers is fired and not the other.
   </summary>
+</histogram>
+
+<histogram name="SBClientPhishing.SurfaceAvailableForCopy{RequestType}"
+    enum="BooleanAvailable" expires_after="2027-04-15">
+  <owner>richche@google.com</owner>
+  <owner>chrome-counter-abuse-alerts@google.com</owner>
+  <summary>
+    Records whether the primary page's compositing surface could be copied via
+    RenderWidgetHostView::CopyFromSurface at the moment a client-side phishing
+    classification is dispatched for a {RequestType} request, i.e. after
+    pre-classification checks pass and before the renderer is asked to classify.
+    Used to estimate the coverage of capturing page pixels in the browser
+    process instead of the renderer. Not recorded on iOS.
+  </summary>
+  <token key="RequestType" variants="ClientSideDetectionRequestType"/>
 </histogram>
 
 <histogram name="SBClientPhishing.TimeSinceLastReportAtLimit" units="ms"
@@ -1617,7 +1764,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SBClientPhishing.Viewport.EncodedResolution" units="encoded"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>nwokedi@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -1629,7 +1776,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SBClientPhishing.Viewport.Height" units="pixels"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>nwokedi@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -1649,12 +1796,39 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SBClientPhishing.Viewport.Width" units="pixels"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>nwokedi@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
     The width of the viewport. It is recorded whenever CSD checks if visual
     features can be extracted.
+  </summary>
+</histogram>
+
+<histogram name="SBClientPhishing.VisibilityAtClassification{RequestType}"
+    enum="SBClientPhishingClassificationVisibility" expires_after="2027-04-15">
+  <owner>richche@google.com</owner>
+  <owner>chrome-counter-abuse-alerts@google.com</owner>
+  <summary>
+    Records the visibility of the WebContents at the moment a client-side
+    phishing classification is dispatched for a {RequestType} request, i.e.
+    after pre-classification checks pass and before the renderer is asked to
+    classify. Logged alongside SBClientPhishing.SurfaceAvailableForCopy to
+    explain why a compositing surface was unavailable. Not recorded on iOS.
+  </summary>
+  <token key="RequestType" variants="ClientSideDetectionRequestType"/>
+</histogram>
+
+<histogram name="SBClientPhishing.VisualClassificationEarlyReturnReason"
+    enum="SBClientPhishingVisualClassificationEarlyReturnReason"
+    expires_after="2027-04-15">
+  <owner>richche@google.com</owner>
+  <owner>nwokedi@chromium.org</owner>
+  <owner>chrome-counter-abuse-alerts@google.com</owner>
+  <summary>
+    Records the reason why browser-side visual phishing classification stopped
+    before the classifier ran, such as a missing scorer or snapshot generation
+    failure.
   </summary>
 </histogram>
 

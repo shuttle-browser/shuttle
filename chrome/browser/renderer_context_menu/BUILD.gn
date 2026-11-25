@@ -122,6 +122,7 @@ source_set("impl") {
       "//chrome/browser/profiles:misc",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/profiles:profile_io_data",
+      "//chrome/browser/search",
       "//chrome/browser/search_engines",
       "//chrome/browser/spellchecker",
       "//chrome/browser/ui:browser_commands",
@@ -138,6 +139,7 @@ source_set("impl") {
       "//chrome/browser/ui/webui:webui_util",
       "//chrome/browser/ui/webui/history",
       "//chrome/common:mojo_bindings",
+      "//components/feature_engagement/public",
       "//components/guest_view/browser",
       "//components/live_caption:constants",
       "//components/live_caption:utils",
@@ -159,7 +161,7 @@ source_set("impl") {
       "//url",
     ]
 
-    if (enable_print_preview) {
+    if (enable_printing) {
       deps += [ "//chrome/browser/printing" ]
     }
   }

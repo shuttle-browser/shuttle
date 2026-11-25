@@ -18,7 +18,6 @@
 #include "ui/events/platform/x11/x11_hotplug_event_handler.h"
 #include "ui/events/x/events_x_utils.h"
 #include "ui/events/x/x11_event_translation.h"
-#include "ui/gfx/x/atom_cache.h"
 #include "ui/gfx/x/connection.h"
 #include "ui/gfx/x/extension_manager.h"
 #include "ui/gfx/x/future.h"
@@ -152,7 +151,7 @@ X11EventSource::X11EventSource(x11::Connection* connection)
     : watcher_(std::make_unique<X11EventWatcherImpl>(this)),
       connection_(connection),
       dummy_initialized_(false) {
-  DCHECK(connection_);
+  CHECK(connection_, base::NotFatalUntil::M163);
   connection_->AddEventObserver(this);
 
   DeviceDataManagerX11::CreateInstance();
@@ -182,7 +181,7 @@ X11EventSource* X11EventSource::GetInstance() {
 // X11EventSource, public
 
 x11::Time X11EventSource::GetCurrentServerTime() {
-  DCHECK(connection_);
+  CHECK(connection_, base::NotFatalUntil::M163);
 
   if (!dummy_initialized_) {
     // Create a new Window and Atom that will be used for the property change.
@@ -194,7 +193,7 @@ x11::Time X11EventSource::GetCurrentServerTime() {
         .height = 1,
         .override_redirect = x11::Bool32(true),
     });
-    dummy_atom_ = x11::GetAtom("CHROMIUM_TIMESTAMP");
+    dummy_atom_ = connection_->GetAtom("CHROMIUM_TIMESTAMP");
     dummy_window_events_ = connection_->ScopedSelectEvent(
         dummy_window_, x11::EventMask::PropertyChange);
     dummy_initialized_ = true;

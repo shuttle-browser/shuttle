@@ -348,6 +348,7 @@ nightly_coverage_builder(
                 targets = [
                     "android_10_emulator_gtests",
                     "android_10_isolated_scripts",
+                    "android_isolated_scripts_once",
                 ],
             ),
             "chromium_android_scripts",
@@ -891,7 +892,7 @@ nightly_coverage_builder(
             "fuchsia-code-coverage",
             "fuchsia-large-device-spec",
             "isolate_profile_data",
-            "linux-jammy",
+            "linux-ubuntu",
         ],
         per_test_modifications = {
             "base_unittests": targets.mixin(
@@ -1570,6 +1571,7 @@ continuous_fuzz_coverage_builder(
     target_arch = builder_config.target_arch.INTEL,
     target_platform = builder_config.target_platform.MAC,
     category = "mac-fuzz",
+    execution_timeout = 72 * time.hour,
     fuzz_engine = "libfuzzer",
     gn_extra_configs = [
         "chrome_with_codecs",
@@ -1721,7 +1723,10 @@ nightly_coverage_builder(
 continuous_fuzz_coverage_builder(
     name = "win-libfuzzer-coverage",
     description_html = "This builder collects code coverage for fuzz targets on Windows.",
+    cores = 64,
     os = os.WINDOWS_10,
+    ssd = None,
+    free_space = builders.free_space.high,
     target_platform = builder_config.target_platform.WIN,
     category = "win-fuzz",
     fuzz_engine = "libfuzzer",

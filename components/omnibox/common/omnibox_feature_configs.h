@@ -302,22 +302,21 @@ struct Toolbelt : Config<Toolbelt> {
   bool select_toolbelt_before_opening;
 };
 
-// If enabled, adjusts the indentation of the omnibox input and matches to fix
-// the visual shift in omnibox input text when the omnibox popup opens.
-struct AdjustOmniboxIndent : Config<AdjustOmniboxIndent> {
-  DECLARE_FEATURE(kAdjustOmniboxIndent);
-
-  AdjustOmniboxIndent();
-  // Whether to indent the omnibox input text and icon when the popup is closed.
-  bool indent_input_when_popup_closed;
-  // Amount by which the indentation of the omnibox input icon is offset.
-  int input_icon_indent_offset;
-  // Amount by which the indentation of the omnibox input text is offset.
-  int input_text_indent_offset;
-  // Amount by which the indentation of the omnibox match icon is offset.
-  int match_icon_indent_offset;
-  // Amount by which the indentation of the omnibox match text is offset.
-  int match_text_indent_offset;
+// If enabled, what a match's suggest template says it does on click, e.g. its
+// `udm` or the tool its fusebox action preselects, is part of the dedupe key
+// (see `AutocompleteMatch::GetSuggestTemplateBehaviorKey()`). So e.g. an AI
+// Mode or tool suggestion doesn't dedupe with a plain search for the same
+// query. Kill switch, enabled by default.
+BASE_DECLARE_FEATURE(kOmniboxDedupeBySuggestTemplateBehavior);
+struct DedupeBySuggestTemplateBehavior
+    : Config<DedupeBySuggestTemplateBehavior> {
+  DedupeBySuggestTemplateBehavior();
+  DedupeBySuggestTemplateBehavior(const DedupeBySuggestTemplateBehavior&);
+  DedupeBySuggestTemplateBehavior& operator=(
+      const DedupeBySuggestTemplateBehavior&);
+  ~DedupeBySuggestTemplateBehavior();
+  // Whether `kOmniboxDedupeBySuggestTemplateBehavior` is enabled.
+  bool enabled;
 };
 
 // If enabled, allow document provider requests when all other conditions are

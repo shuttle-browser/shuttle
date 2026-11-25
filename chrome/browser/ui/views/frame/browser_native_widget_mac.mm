@@ -41,8 +41,6 @@
 #include "chrome/browser/ui/views/frame/glass_frame_service.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/dom_distiller/content/browser/distillable_page_utils.h"
-#include "components/dom_distiller/core/url_utils.h"
 #include "components/input/native_web_keyboard_event.h"
 #include "components/omnibox/browser/omnibox_prefs.h"
 #import "components/omnibox/common/omnibox_feature_configs.h"
@@ -54,15 +52,17 @@
 #include "components/remote_cocoa/common/native_widget_ns_window.mojom.h"
 #include "components/remote_cocoa/common/native_widget_ns_window_host.mojom.h"
 #include "components/viz/common/frame_timing_details.h"
+#include "components/web_distiller/content/browser/distillable_page_utils.h"
+#include "components/web_distiller/core/url_utils.h"
 #include "components/web_modal/web_contents_modal_dialog_host.h"
 #include "ui/accessibility/platform/ax_platform_node.h"
 #include "ui/actions/actions.h"
 #include "ui/base/accelerators/global_accelerator_listener/global_accelerator_listener.h"
 #import "ui/base/cocoa/window_size_constants.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/compositor/compositor.h"
 #include "ui/gfx/color_utils.h"
 #include "ui/native_theme/native_theme.h"
@@ -428,21 +428,31 @@ void BrowserNativeWidgetMac::ValidateUserInterfaceItem(
       // Menu items may be validated during browser startup, before the
       // TabStripModel has been populated. Short-circuit to false in that case.
       result->new_toggle_state =
-          !model->empty() && model->active_index() != TabStripModel::kNoTab &&
-          !model->WillContextMenuMuteSites(model->active_index());
+          !model->empty() && model->GetActiveTab() &&
+          !model->WillContextMenuMuteSites(model->GetActiveTab()->GetHandle());
       break;
     }
     case IDC_WINDOW_PIN_TAB: {
       TabStripModel* model = browser->tab_strip_model();
       result->new_toggle_state =
-          !model->empty() && !model->WillContextMenuPin(model->active_index());
+          !model->empty() && model->GetActiveTab() &&
+          !model->WillContextMenuPin(model->GetActiveTab()->GetHandle());
       break;
     }
     case IDC_WINDOW_GROUP_TAB: {
       TabStripModel* model = browser->tab_strip_model();
       result->new_toggle_state =
-          !model->empty() &&
-          !model->WillContextMenuGroup(model->active_index());
+          !model->empty() && model->GetActiveTab() &&
+          !model->WillContextMenuGroup(model->GetActiveTab()->GetHandle());
+      break;
+    }
+    case IDC_GROUP_TARGET_TAB: {
+      TabStripModel* model = browser->tab_strip_model();
+      std::optional<int> index = chrome::GetKeyboardFocusedTabIndex(browser);
+      result->new_toggle_state =
+          index.has_value() &&
+          !model->WillContextMenuGroup(
+              model->GetTabAtIndex(index.value())->GetHandle());
       break;
     }
   }
@@ -450,7 +460,7 @@ void BrowserNativeWidgetMac::ValidateUserInterfaceItem(
 
 bool BrowserNativeWidgetMac::WillExecuteCommand(
     int32_t command,
-    WindowOpenDisposition window_open_disposition,
+    ui::mojom::WindowOpenDisposition window_open_disposition,
     bool is_before_first_responder) {
   if (!browser_view_) {
     return false;
@@ -487,7 +497,7 @@ bool BrowserNativeWidgetMac::WillExecuteCommand(
 
 bool BrowserNativeWidgetMac::ExecuteCommand(
     int32_t command,
-    WindowOpenDisposition window_open_disposition,
+    ui::mojom::WindowOpenDisposition window_open_disposition,
     bool is_before_first_responder) {
   if (!WillExecuteCommand(command, window_open_disposition,
                           is_before_first_responder)) {

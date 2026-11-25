@@ -82,12 +82,6 @@ class CORE_EXPORT LayoutReplaced : public LayoutBox {
 
   PhysicalRect LocalSelectionVisualRect() const final;
 
-  bool HasObjectFit() const {
-    NOT_DESTROYED();
-    return Style().GetObjectFit() !=
-           ComputedStyleInitialValues::InitialObjectFit();
-  }
-
   bool NodeAtPoint(HitTestResult&,
                    const HitTestLocation&,
                    const PhysicalOffset& accumulated_offset,
@@ -121,6 +115,8 @@ class CORE_EXPORT LayoutReplaced : public LayoutBox {
   // Returns true if the content is guarenteed to be clipped to the element's
   // content box.
   bool ClipsToContentBox() const;
+
+  virtual PhysicalRect ComputeContentsVisualOverflow() const;
 
  protected:
   virtual bool ShouldApplyObjectViewBox() const {
@@ -179,11 +175,7 @@ class CORE_EXPORT LayoutReplaced : public LayoutBox {
   // ImageResourceObserver
   gfx::Size ComputeSpeculativeDecodeSize() const override;
 
-  virtual PhysicalRect ComputeContentsVisualOverflow() const;
-
  private:
-  PhysicalRect ComputeSelfVisualOverflow() const;
-
   // Computes a rect, relative to the element's content's natural size, that
   // should be used as the content source when rendering this element. This
   // value is used as the input for object-fit/object-position during painting.

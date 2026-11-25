@@ -3393,7 +3393,7 @@ class CheckerImagingTileManagerTest : public TestLayerTreeHostBase {
 
     MOCK_METHOD4(
         GetPixels,
-        bool(SkPixmap, size_t, PaintImage::GeneratorClientId, uint32_t));
+        bool(SkPixmap, size_t, PaintImage::GeneratorClientId, uint64_t));
   };
 
   void TearDown() override {
@@ -4213,15 +4213,21 @@ class HdrImageTileManagerTest : public CheckerImagingTileManagerTest {
     host_impl()->tile_manager()->PrepareTiles(host_impl()->global_tile_state());
     ASSERT_TRUE(host_impl()->tile_manager()->HasScheduledTileTasksForTesting());
 
-    auto pending_tiles = pending_tiling->AllTilesForTesting();
-    ASSERT_FALSE(pending_tiles.empty());
+    Tile* image_tile = pending_tiling->TileAt(0, 0);
+    ASSERT_TRUE(image_tile);
+    Tile* other_tile = pending_tiling->TileAt(1, 0);
+    ASSERT_TRUE(other_tile);
 
     const auto raster_cs = gfx::ColorSpace::CreateDisplayP3D65().GetAsHDR();
     if (output_cs.IsHDR()) {
-      // Only the last tile will have any pending tasks.
+      // Only the tile covering the image at (0, 0) will have pending tasks.
+      EXPECT_TRUE(host_impl()
+                      ->tile_manager()
+                      ->decode_tasks_for_testing(other_tile->id())
+                      .empty());
       const auto& pending_tasks =
           host_impl()->tile_manager()->decode_tasks_for_testing(
-              pending_tiles.back()->id());
+              image_tile->id());
       EXPECT_FALSE(pending_tasks.empty());
       for (const auto& draw_info : pending_tasks) {
         EXPECT_EQ(draw_info.target_color_space(), raster_cs);

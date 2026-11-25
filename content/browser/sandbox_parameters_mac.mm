@@ -37,25 +37,9 @@
 
 namespace content {
 
-// If enabled, restricts the GPU process's access to the Darwin user cache
-// directory (/var/folders/.../C/) to a set of known file names used by Metal
-// ([functions|libraries].[data|list]) as well as providing limited permissions
-// to the Darwin user temp directory (/var/.../T/) to support WebNN's use of
-// CoreML.
-//
-// A sample Metal cache directory tree:
-//   /var/folders/.../C/[bundle_id|helper_bundle_id]
-//   ├── com.apple.metal
-//   │   ├── 16777235_355 (matches regex \d+_\d+)
-//   │   │   ├── functions.data
-//   │   │   └── functions.list
-//   │   └── 32024 (matches regex \d+)
-//   │       ├── libraries.data
-//   │       └── libraries.list
-//   └── com.apple.metalfe
-//       └── modules.timestamp
-BASE_FEATURE(kMacSandboxRestrictGpuDarwinUserDirs,
-             base::FEATURE_ENABLED_BY_DEFAULT);
+// If enabled, allows the network process to create symlinks.
+BASE_FEATURE(kMacSandboxAllowNetworkSymlinkCreation,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 // If enabled, allows the renderer process to query `process-info-pidinfo` for
 // any process rather than only itself.
@@ -168,19 +152,37 @@ void SetupCommonSandboxParameters(
 
 void SetupNetworkSandboxParameters(sandbox::SandboxSerializer* serializer,
                                    const base::CommandLine& command_line) {
-  std::vector<base::FilePath> storage_paths =
-      GetContentClient()->browser()->GetNetworkContextsParentDirectory();
-
   AddDarwinDirs(serializer);
 
-  CHECK(serializer->SetParameter(
-      sandbox::policy::kParamNetworkServiceStoragePathsCount,
-      base::NumberToString(storage_paths.size())));
-  for (size_t i = 0; i < storage_paths.size(); ++i) {
-    base::FilePath path = sandbox::policy::GetCanonicalPath(storage_paths[i]);
-    std::string param_name = base::StringPrintf(
-        "%s%zu", sandbox::policy::kParamNetworkServiceStoragePathN, i);
-    CHECK(serializer->SetParameter(param_name, path.value())) << param_name;
+  std::optional<base::FilePath> data_dir =
+      GetContentClient()->browser()->GetNetworkContextsDataDirectory();
+  std::optional<base::FilePath> cache_dir =
+      GetContentClient()->browser()->GetNetworkContextsCacheDirectory();
+
+  if (base::FeatureList::IsEnabled(features::kTriggerNetworkDataMigration) &&
+      data_dir.has_value()) {
+    CHECK(serializer->SetParameter(
+        sandbox::policy::kParamUserDataDir,
+        sandbox::policy::GetCanonicalPath(*data_dir).value()));
+
+    if (cache_dir.has_value()) {
+      CHECK(serializer->SetParameter(
+          sandbox::policy::kParamUserCacheDir,
+          sandbox::policy::GetCanonicalPath(*cache_dir).value()));
+    }
+  } else {
+    std::vector<base::FilePath> storage_paths =
+        GetContentClient()->browser()->GetNetworkContextsParentDirectory();
+
+    CHECK(serializer->SetParameter(
+        sandbox::policy::kParamNetworkServiceStoragePathsCount,
+        base::NumberToString(storage_paths.size())));
+    for (size_t i = 0; i < storage_paths.size(); ++i) {
+      base::FilePath path = sandbox::policy::GetCanonicalPath(storage_paths[i]);
+      std::string param_name = base::StringPrintf(
+          "%s%zu", sandbox::policy::kParamNetworkServiceStoragePathN, i);
+      CHECK(serializer->SetParameter(param_name, path.value())) << param_name;
+    }
   }
 
   if (GetNetworkTestCertsDirectory().has_value()) {
@@ -189,6 +191,10 @@ void SetupNetworkSandboxParameters(sandbox::SandboxSerializer* serializer,
         sandbox::policy::GetCanonicalPath(*GetNetworkTestCertsDirectory())
             .value()));
   }
+
+  CHECK(serializer->SetBooleanParameter(
+      sandbox::policy::kParamAllowNetworkSymlinkCreation,
+      base::FeatureList::IsEnabled(kMacSandboxAllowNetworkSymlinkCreation)));
 }
 
 bool SetupGpuSandboxParameters(sandbox::SandboxSerializer* serializer,
@@ -201,10 +207,6 @@ bool SetupGpuSandboxParameters(sandbox::SandboxSerializer* serializer,
 
   base::FilePath helper_bundle_path =
       base::apple::GetInnermostAppBundlePath(command_line.GetProgram());
-
-  CHECK(serializer->SetBooleanParameter(
-      sandbox::policy::kParamRestrictGpuDarwinUserDirs,
-      base::FeatureList::IsEnabled(kMacSandboxRestrictGpuDarwinUserDirs)));
 
   CHECK(serializer->SetBooleanParameter(
       sandbox::policy::kParamWebnnCompilerProcess,

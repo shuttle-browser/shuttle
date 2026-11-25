@@ -1,7 +1,7 @@
 Name: googleapis
 URL: https://github.com/googleapis/googleapis
 Version: N/A
-Revision: f5cb7afc40b63d52f43bc306cb9b64a87b681aea
+Revision: 9fccd59571a6e436c9d36d3803b4006b02554561
 Update Mechanism: Manual
 License: Apache-2.0
 License File: src/LICENSE
@@ -20,3 +20,8 @@ Local Modifications:
   Removes RPC-related definitions that cause build issues in Chrome.  The
   patch can be removed when Chrome builds without it. (Note: be mindful of
   compile time, it might increase it.)
+
+Update instructions:
+Update commit hashes in crowbar.txtpb, then run from
+this directory:
+crowbar build --no-dry-run ./

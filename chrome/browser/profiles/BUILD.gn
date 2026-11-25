@@ -11,6 +11,7 @@ import("//components/on_device_translation/buildflags/features.gni")
 import("//components/signin/features.gni")
 import("//components/spellcheck/spellcheck_build_features.gni")
 import("//extensions/buildflags/buildflags.gni")
+import("//third_party/blink/public/public_features.gni")
 
 # This target should be the default place for adding public interface things
 # (ie, non-factory, non-impl). There will likely need to be a :factory or :impl
@@ -70,7 +71,6 @@ source_set("misc") {
     "//chrome/browser:startup_data",
     "//chrome/browser/accessibility",
     "//chrome/browser/app_mode",
-    "//chrome/browser/autocomplete",
     "//chrome/browser/background",
     "//chrome/browser/background_fetch",
     "//chrome/browser/background_sync",
@@ -80,7 +80,6 @@ source_set("misc") {
     "//chrome/browser/content_index",
     "//chrome/browser/content_settings",
     "//chrome/browser/content_settings:content_settings_factory",
-    "//chrome/browser/dom_distiller",
     "//chrome/browser/download",
     "//chrome/browser/file_system_access",
     "//chrome/browser/first_run",
@@ -98,6 +97,7 @@ source_set("misc") {
     "//chrome/browser/profiles/keep_alive",
     "//chrome/browser/push_messaging",
     "//chrome/browser/push_messaging:service_impl_public",
+    "//chrome/browser/reader_mode",
     "//chrome/browser/reduce_accept_language",
     "//chrome/browser/safe_browsing",
     "//chrome/browser/sessions",
@@ -227,9 +227,6 @@ source_set("misc") {
     deps += [ "//chrome/browser/extensions" ]
   }
 
-  if (enable_extensions) {
-  }
-
   if (enable_bound_session_credentials) {
     deps += [ "//components/unexportable_keys/mojom:mojo_service" ]
   }
@@ -342,6 +339,7 @@ source_set("profile") {
   # Cannot depend on //chrome/browser:browser.
   deps = [
     "//build:chromeos_buildflags",
+    "//chrome/browser:after_startup_task_utils",
     "//chrome/browser/browsing_data:constants",
     "//chrome/common:buildflags",
     "//chrome/common:constants",
@@ -419,6 +417,7 @@ source_set("profile_manager_impl") {
     "//chrome/browser:browser_process_platform_part",
     "//chrome/browser:buildflags",
     "//chrome/browser:flags",
+    "//chrome/browser:startup_data",
     "//chrome/browser/accessibility",
     "//chrome/browser/browsing_data",
     "//chrome/browser/download",
@@ -484,7 +483,7 @@ source_set("profile_io_data") {
     "//base",
     "//chrome/common",
     "//chrome/common:buildflags",
-    "//components/dom_distiller/core",
+    "//components/web_distiller/core",
     "//extensions/buildflags",
     "//net:buildflags",
     "//url",
@@ -633,7 +632,6 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/custom_handlers",
     "//chrome/browser/digital_credentials",
-    "//chrome/browser/dom_distiller",
     "//chrome/browser/domain_reliability",
     "//chrome/browser/engagement",
     "//chrome/browser/favicon",
@@ -669,6 +667,7 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/private_insights",
     "//chrome/browser/private_verification_tokens",
     "//chrome/browser/push_messaging",
+    "//chrome/browser/reader_mode",
     "//chrome/browser/reduce_accept_language",
     "//chrome/browser/regional_capabilities",
     "//chrome/browser/safe_browsing",
@@ -715,6 +714,7 @@ source_set("profiles_extra_parts_impl") {
     "//components/spellcheck:buildflags",
     "//media",
     "//services/network/public/cpp",
+    "//third_party/blink/public:buildflags",
     "//ui/webui:buildflags",
   ]
 
@@ -732,6 +732,7 @@ source_set("profiles_extra_parts_impl") {
       "//chrome/browser/search_engine_choice",
       "//chrome/browser/ui:browser_manager_service",
       "//chrome/browser/ui/global_error",
+      "//chrome/browser/ui/views/omnibox",
       "//chrome/browser/ui/webui:theme_colors_source_manager",
       "//chrome/browser/ui/webui:theme_source",
       "//chrome/browser/ui/webui/ntp:ntp_resource_cache",
@@ -759,8 +760,11 @@ source_set("profiles_extra_parts_impl") {
       "//chrome/browser/chromeos/policy/dlp",
       "//chrome/browser/media_galleries",
       "//chrome/browser/policy:onc",
-      "//chrome/browser/smart_card",
     ]
+  }
+
+  if (enable_smart_card) {
+    deps += [ "//chrome/browser/smart_card" ]
   }
 
   if (!is_chromeos && !is_android) {
@@ -820,7 +824,12 @@ if (is_android) {
 
     deps = [
       ":profile_manager",
+      ":profile_test_util",
+      ":profiles",
       "//base",
+      "//base/test:test_support",
+      "//chrome/browser:browser_process",
+      "//chrome/common:chrome_features",
       "//chrome/test:test_support",
       "//content/test:test_support",
       "//testing/gtest",

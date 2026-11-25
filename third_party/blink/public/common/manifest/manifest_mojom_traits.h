@@ -10,22 +10,45 @@
 #include <variant>
 #include <vector>
 
+#include "base/containers/flat_map.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/types/expected.h"
+#include "mojo/public/cpp/bindings/deserialization_error.h"
 #include "mojo/public/cpp/bindings/map_traits_absl.h"
+#include "mojo/public/cpp/bindings/map_traits_flat_map.h"
 #include "mojo/public/cpp/bindings/struct_traits.h"
+#include "skia/public/mojom/skcolor_mojom_traits.h"
 #include "third_party/blink/public/common/common_export.h"
 #include "third_party/blink/public/common/manifest/manifest.h"
 #include "third_party/blink/public/common/safe_url_pattern.h"
 #include "third_party/blink/public/mojom/manifest/display_mode.mojom.h"
 #include "third_party/blink/public/mojom/manifest/manifest.mojom.h"
+#include "third_party/skia/include/core/SkColor.h"
 
 namespace mojo {
 namespace internal {
 
 inline std::u16string_view TruncateString16(const std::u16string& string) {
-  // We restrict the maximum length for all the strings inside the Manifest
-  // when it is sent over Mojo. The renderer process truncates the strings
-  // before sending the Manifest and the browser process validates that.
+  // Legacy 4 KiB string limit used by older nested Manifest `StructTraits`.
+  //
+  // NOTE: Do NOT use `TruncateString16` or `TruncatedString16` in newly
+  // typemapped Manifest structs (or `blink::Manifest` itself). These
+  // `StructTraits` are only registered in `cpp_typemaps` (browser / non-Blink),
+  // NOT `blink_cpp_typemaps`. In the Blink renderer, `blink::ManifestParser`
+  // populates `mojom::blink::Manifest` directly using `blink::String` without
+  // truncating strings to 4 KiB, so `TruncateString16` is never called during
+  // renderer-to-browser IPC serialization. Enforcing `TruncatedString16` on
+  // deserialization causes valid manifests from the renderer with strings
+  // exceeding 4 KiB to fail Mojo deserialization in the browser.
+  //
+  // By contrast, for URLs, Mojo enforces a 2 MiB size limit
+  // (`url::kMaxURLChars`) in both `kurl_mojom_traits.h` (Blink) and
+  // `url_gurl_mojom_traits.cc` (non-Blink), which silently serializes any
+  // `KURL` or `GURL` exceeding `url::kMaxURLChars` as an empty/invalid URL. To
+  // prevent silent URL truncation from breaking manifest invariants,
+  // `blink::ManifestManager::ResolveCallbacks` explicitly checks for URLs
+  // exceeding `url::kMaxURLChars` in Blink before sending the manifest over
+  // Mojo.
   return std::u16string_view(string).substr(0, 4 * 1024);
 }
 
@@ -37,12 +60,14 @@ inline std::optional<std::u16string_view> TruncateOptionalString16(
   return TruncateString16(*string);
 }
 
-inline std::optional<std::u16string_view> ConvertAndTruncateOptionalString(
+// Returns `std::optional<std::u16string>` by value to avoid a dangling
+// `std::u16string_view` into the temporary returned by `base::UTF8ToUTF16`.
+inline std::optional<std::u16string> ConvertAndTruncateOptionalString(
     const std::optional<std::string>& string) {
   if (!string)
     return std::nullopt;
 
-  return TruncateOptionalString16(base::UTF8ToUTF16(string.value()));
+  return base::UTF8ToUTF16(*string).substr(0, 4 * 1024);
 }
 
 }  // namespace internal
@@ -265,17 +290,17 @@ template <>
 struct BLINK_COMMON_EXPORT
     StructTraits<blink::mojom::ManifestTranslationItemDataView,
                  ::blink::Manifest::TranslationItem> {
-  static std::optional<std::u16string_view> name(
+  static std::optional<std::u16string> name(
       const ::blink::Manifest::TranslationItem& translation) {
     return internal::ConvertAndTruncateOptionalString(translation.name);
   }
 
-  static std::optional<std::u16string_view> short_name(
+  static std::optional<std::u16string> short_name(
       const ::blink::Manifest::TranslationItem& translation) {
     return internal::ConvertAndTruncateOptionalString(translation.short_name);
   }
 
-  static std::optional<std::u16string_view> description(
+  static std::optional<std::u16string> description(
       const ::blink::Manifest::TranslationItem& translation) {
     return internal::ConvertAndTruncateOptionalString(translation.description);
   }
@@ -367,6 +392,311 @@ struct BLINK_COMMON_EXPORT StructTraits<
 
   static bool Read(blink::mojom::DisplayOverrideItemDataView data,
                    ::blink::Manifest::DisplayOverride* out);
+};
+
+template <>
+struct BLINK_COMMON_EXPORT
+    StructTraits<blink::mojom::ManifestScreenshotDataView,
+                 ::blink::Manifest::Screenshot> {
+  static const ::blink::Manifest::ImageResource& image(
+      const ::blink::Manifest::Screenshot& screenshot) {
+    return screenshot.image;
+  }
+  static ::blink::mojom::ManifestScreenshot_FormFactor form_factor(
+      const ::blink::Manifest::Screenshot& screenshot) {
+    return screenshot.form_factor;
+  }
+  static const std::optional<std::u16string>& label(
+      const ::blink::Manifest::Screenshot& screenshot) {
+    return screenshot.label;
+  }
+  static bool Read(blink::mojom::ManifestScreenshotDataView data,
+                   ::blink::Manifest::Screenshot* out);
+};
+
+template <>
+struct BLINK_COMMON_EXPORT
+    StructTraits<blink::mojom::ManifestFileHandlerDataView,
+                 ::blink::Manifest::FileHandler> {
+  static const GURL& action(const ::blink::Manifest::FileHandler& handler) {
+    return handler.action;
+  }
+  static const std::u16string& name(
+      const ::blink::Manifest::FileHandler& handler) {
+    return handler.name;
+  }
+  static const base::flat_map<std::u16string, std::vector<std::u16string>>&
+  accept(const ::blink::Manifest::FileHandler& handler) {
+    return handler.accept;
+  }
+  static ::blink::mojom::ManifestFileHandler_LaunchType launch_type(
+      const ::blink::Manifest::FileHandler& handler) {
+    return handler.launch_type;
+  }
+  static bool Read(blink::mojom::ManifestFileHandlerDataView data,
+                   ::blink::Manifest::FileHandler* out);
+};
+
+template <>
+struct BLINK_COMMON_EXPORT
+    StructTraits<blink::mojom::ManifestProtocolHandlerDataView,
+                 ::blink::Manifest::ProtocolHandler> {
+  static const std::u16string& protocol(
+      const ::blink::Manifest::ProtocolHandler& handler) {
+    return handler.protocol;
+  }
+  static const GURL& url(const ::blink::Manifest::ProtocolHandler& handler) {
+    return handler.url;
+  }
+  static bool Read(blink::mojom::ManifestProtocolHandlerDataView data,
+                   ::blink::Manifest::ProtocolHandler* out);
+};
+
+template <>
+struct BLINK_COMMON_EXPORT
+    StructTraits<blink::mojom::ManifestScopeExtensionDataView,
+                 ::blink::Manifest::ScopeExtension> {
+  static const url::Origin& origin(
+      const ::blink::Manifest::ScopeExtension& ext) {
+    return ext.origin;
+  }
+  static bool has_origin_wildcard(
+      const ::blink::Manifest::ScopeExtension& ext) {
+    return ext.has_origin_wildcard;
+  }
+  static bool Read(blink::mojom::ManifestScopeExtensionDataView data,
+                   ::blink::Manifest::ScopeExtension* out);
+};
+
+template <>
+struct BLINK_COMMON_EXPORT
+    StructTraits<blink::mojom::ManifestLockScreenDataView,
+                 ::blink::Manifest::LockScreen> {
+  static const GURL& start_url(
+      const ::blink::Manifest::LockScreen& lock_screen) {
+    return lock_screen.start_url;
+  }
+  static bool Read(blink::mojom::ManifestLockScreenDataView data,
+                   ::blink::Manifest::LockScreen* out);
+};
+
+template <>
+struct BLINK_COMMON_EXPORT
+    StructTraits<blink::mojom::ManifestNoteTakingDataView,
+                 ::blink::Manifest::NoteTaking> {
+  static const GURL& new_note_url(
+      const ::blink::Manifest::NoteTaking& note_taking) {
+    return note_taking.new_note_url;
+  }
+  static bool Read(blink::mojom::ManifestNoteTakingDataView data,
+                   ::blink::Manifest::NoteTaking* out);
+};
+
+template <>
+struct BLINK_COMMON_EXPORT
+    StructTraits<blink::mojom::ManifestMigrateFromDataView,
+                 ::blink::Manifest::MigrateFrom> {
+  static const GURL& id(const ::blink::Manifest::MigrateFrom& migrate_from) {
+    return migrate_from.id;
+  }
+  static const std::optional<GURL>& install_url(
+      const ::blink::Manifest::MigrateFrom& migrate_from) {
+    return migrate_from.install_url;
+  }
+  static ::blink::mojom::ManifestMigrationBehavior behavior(
+      const ::blink::Manifest::MigrateFrom& migrate_from) {
+    return migrate_from.behavior;
+  }
+  static bool Read(blink::mojom::ManifestMigrateFromDataView data,
+                   ::blink::Manifest::MigrateFrom* out);
+};
+
+template <>
+struct BLINK_COMMON_EXPORT StructTraits<blink::mojom::ManifestMigrateToDataView,
+                                        ::blink::Manifest::MigrateTo> {
+  static const GURL& id(const ::blink::Manifest::MigrateTo& migrate_to) {
+    return migrate_to.id;
+  }
+  static const GURL& install_url(
+      const ::blink::Manifest::MigrateTo& migrate_to) {
+    return migrate_to.install_url;
+  }
+  static bool Read(blink::mojom::ManifestMigrateToDataView data,
+                   ::blink::Manifest::MigrateTo* out);
+};
+
+// Deserializes `blink.mojom.Manifest` into `::blink::Manifest` and enforces
+// intrinsic invariants via `Manifest::ValidateInvariants()`. On violation,
+// records `WebApp.Manifest.InvariantViolation` and returns the
+// `ManifestInvariantError` in `mojo::DeserializationError::CustomCode`.
+template <>
+struct BLINK_COMMON_EXPORT
+    StructTraits<blink::mojom::ManifestDataView, ::blink::Manifest> {
+  static const GURL& manifest_url(const ::blink::Manifest& manifest) {
+    return manifest.manifest_url();
+  }
+  static ::blink::mojom::Manifest_TextDirection dir(
+      const ::blink::Manifest& manifest) {
+    return manifest.dir();
+  }
+  static const std::optional<std::u16string>& name(
+      const ::blink::Manifest& manifest) {
+    return manifest.name();
+  }
+  static const std::optional<std::u16string>& short_name(
+      const ::blink::Manifest& manifest) {
+    return manifest.short_name();
+  }
+  static const std::optional<std::u16string>& description(
+      const ::blink::Manifest& manifest) {
+    return manifest.description();
+  }
+  static const GURL& id(const ::blink::Manifest& manifest) {
+    return manifest.id();
+  }
+  static bool has_custom_id(const ::blink::Manifest& manifest) {
+    return manifest.has_custom_id();
+  }
+  static const GURL& start_url(const ::blink::Manifest& manifest) {
+    return manifest.start_url();
+  }
+  static bool has_valid_specified_start_url(const ::blink::Manifest& manifest) {
+    return manifest.has_valid_specified_start_url();
+  }
+  static ::blink::mojom::DisplayMode display(
+      const ::blink::Manifest& manifest) {
+    return manifest.display();
+  }
+  static const std::vector<::blink::Manifest::DisplayOverride>&
+  display_override(const ::blink::Manifest& manifest) {
+    return manifest.display_override();
+  }
+  static ::device::mojom::ScreenOrientationLockType orientation(
+      const ::blink::Manifest& manifest) {
+    return manifest.orientation();
+  }
+  static const std::vector<::blink::Manifest::ImageResource>& icons(
+      const ::blink::Manifest& manifest) {
+    return manifest.icons();
+  }
+  static const std::vector<::blink::Manifest::Screenshot>& screenshots(
+      const ::blink::Manifest& manifest) {
+    return manifest.screenshots();
+  }
+  static const std::vector<::blink::Manifest::ShortcutItem>& shortcuts(
+      const ::blink::Manifest& manifest) {
+    return manifest.shortcuts();
+  }
+  static const std::optional<::blink::Manifest::ShareTarget>& share_target(
+      const ::blink::Manifest& manifest) {
+    return manifest.share_target();
+  }
+  static const std::vector<::blink::Manifest::FileHandler>& file_handlers(
+      const ::blink::Manifest& manifest) {
+    return manifest.file_handlers();
+  }
+  static const std::vector<::blink::Manifest::ProtocolHandler>&
+  protocol_handlers(const ::blink::Manifest& manifest) {
+    return manifest.protocol_handlers();
+  }
+  static const std::vector<::blink::Manifest::ScopeExtension>& scope_extensions(
+      const ::blink::Manifest& manifest) {
+    return manifest.scope_extensions();
+  }
+  static const std::optional<::blink::Manifest::LockScreen>& lock_screen(
+      const ::blink::Manifest& manifest) {
+    return manifest.lock_screen();
+  }
+  static const std::optional<::blink::Manifest::NoteTaking>& note_taking(
+      const ::blink::Manifest& manifest) {
+    return manifest.note_taking();
+  }
+  static const std::vector<::blink::Manifest::RelatedApplication>&
+  related_applications(const ::blink::Manifest& manifest) {
+    return manifest.related_applications();
+  }
+  static bool prefer_related_applications(const ::blink::Manifest& manifest) {
+    return manifest.prefer_related_applications();
+  }
+  static const std::vector<::blink::Manifest::MigrateFrom>& migrate_from(
+      const ::blink::Manifest& manifest) {
+    return manifest.migrate_from();
+  }
+  static const std::optional<::blink::Manifest::MigrateTo>& migrate_to(
+      const ::blink::Manifest& manifest) {
+    return manifest.migrate_to();
+  }
+  static std::optional<SkColor> theme_color(const ::blink::Manifest& manifest) {
+    return manifest.theme_color();
+  }
+  static std::optional<SkColor> background_color(
+      const ::blink::Manifest& manifest) {
+    return manifest.background_color();
+  }
+  static const std::optional<std::u16string>& gcm_sender_id(
+      const ::blink::Manifest& manifest) {
+    return manifest.gcm_sender_id();
+  }
+  static const GURL& scope(const ::blink::Manifest& manifest) {
+    return manifest.scope();
+  }
+  static const std::optional<GURL>& update_manifest_url(
+      const ::blink::Manifest& manifest) {
+    return manifest.update_manifest_url();
+  }
+  static const std::optional<::blink::Manifest::LaunchHandler>& launch_handler(
+      const ::blink::Manifest& manifest) {
+    return manifest.launch_handler();
+  }
+  static const base::flat_map<std::u16string,
+                              ::blink::Manifest::TranslationItem>&
+  translations(const ::blink::Manifest& manifest) {
+    return manifest.translations();
+  }
+  static std::optional<SkColor> dark_theme_color(
+      const ::blink::Manifest& manifest) {
+    return manifest.dark_theme_color();
+  }
+  static std::optional<SkColor> dark_background_color(
+      const ::blink::Manifest& manifest) {
+    return manifest.dark_background_color();
+  }
+  static const std::optional<::blink::Manifest::TabStrip>& tab_strip(
+      const ::blink::Manifest& manifest) {
+    return manifest.tab_strip();
+  }
+  static const std::optional<std::u16string>& version(
+      const ::blink::Manifest& manifest) {
+    return manifest.version();
+  }
+  static const std::optional<
+      absl::flat_hash_map<base::i18n::LanguageTag,
+                          ::blink::Manifest::ManifestLocalizedTextObject>>&
+  name_localized(const ::blink::Manifest& manifest) {
+    return manifest.name_localized();
+  }
+  static const std::optional<
+      absl::flat_hash_map<base::i18n::LanguageTag,
+                          ::blink::Manifest::ManifestLocalizedTextObject>>&
+  short_name_localized(const ::blink::Manifest& manifest) {
+    return manifest.short_name_localized();
+  }
+  static const std::optional<
+      absl::flat_hash_map<base::i18n::LanguageTag,
+                          ::blink::Manifest::ManifestLocalizedTextObject>>&
+  description_localized(const ::blink::Manifest& manifest) {
+    return manifest.description_localized();
+  }
+  static const std::optional<
+      absl::flat_hash_map<base::i18n::LanguageTag,
+                          std::vector<::blink::Manifest::ImageResource>>>&
+  icons_localized(const ::blink::Manifest& manifest) {
+    return manifest.icons_localized();
+  }
+
+  static base::expected<void, mojo::DeserializationError> Read(
+      blink::mojom::ManifestDataView data,
+      ::blink::Manifest* out);
 };
 
 }  // namespace mojo

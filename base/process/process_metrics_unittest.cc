@@ -17,7 +17,6 @@
 
 #include "base/byte_size.h"
 #include "base/command_line.h"
-#include "base/compiler_specific.h"
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
@@ -865,6 +864,18 @@ TEST(SystemMetrics2Test, GetSystemMemoryInfo) {
   // No positivity checks: the compressor is legitimately empty on an idle
   // machine.
   EXPECT_LE(info.compressor_swapped, info.compressor_uncompressed);
+
+  EXPECT_GT(info.pageins, ByteSize(0));
+  SystemMemoryInfo later_info;
+  ASSERT_TRUE(GetSystemMemoryInfo(&later_info));
+  EXPECT_GE(later_info.reactivations, info.reactivations);
+  EXPECT_GE(later_info.pageins, info.pageins);
+  EXPECT_GE(later_info.pageouts, info.pageouts);
+  EXPECT_GE(later_info.purges, info.purges);
+  EXPECT_GE(later_info.compressions, info.compressions);
+  EXPECT_GE(later_info.decompressions, info.decompressions);
+  EXPECT_GE(later_info.swapins, info.swapins);
+  EXPECT_GE(later_info.swapouts, info.swapouts);
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -1076,7 +1087,7 @@ TEST(ProcessMetricsTestLinux, GetPageFaultCounts) {
     WritableSharedMemoryMapping mapping = region.Map();
     ASSERT_TRUE(mapping.IsValid());
 
-    UNSAFE_TODO(memset(mapping.memory(), 42, kMappedSize));
+    std::ranges::fill(mapping, 42);
   }
 
   PageFaultCounts counts_after;

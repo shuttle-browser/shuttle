@@ -76,7 +76,7 @@ class DigitalIdentityMultiStepDialog {
       std::unique_ptr<views::View> custom_body_field,
       bool show_progress_bar);
 
-  ui::ColorVariant GetBackgroundColor();
+  ui::ColorVariant GetBackgroundColor() const;
 
  private:
   DigitalIdentityMultiStepDialogDelegate* GetWidgetDelegate();

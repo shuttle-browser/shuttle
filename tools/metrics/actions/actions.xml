@@ -266,12 +266,6 @@ should be able to be added at any place in this file.
                bottom bar."/>
   <variant name="_AndroidBottomBarEducationTooltips"
       summary="For the education tooltips for the Android bottom bar."/>
-  <variant name="_AndroidBottomBarGlic"
-      summary="Describes the GLIC button added in the bottom bar."/>
-  <variant name="_AndroidBottomBarNewTab"
-      summary="Describes the new tab button moved down in the bottom bar."/>
-  <variant name="_AndroidBottomBarPromoDialog"
-      summary="For the promo dialog shown to introduce the bottom bar."/>
   <variant name="_AndroidTabDeclutter" summary="For archived tabs on android."/>
   <variant name="_AndroidTipsOptInPromo"
       summary="For the Android Tips Notifications opt-in bottom sheet promo."/>
@@ -565,6 +559,11 @@ should be able to be added at any place in this file.
   <variant name="_IncognitoIndicatorCloseAllWindows"
       summary="For the Incognito indicator close all windows IPH."/>
   <variant name="_IncognitoWindow" summary="For IncognitoWindow feature."/>
+  <variant name="_IndigoContextMenuSnooze"
+      summary="For Indigo context menu discovery snooze promo on eligible
+               product pages."/>
+  <variant name="_IndigoContextMenuToast"
+      summary="For Indigo context menu discovery toast after transformation."/>
   <variant name="_InstanceSwitcher" summary="For Instance switcher feature."/>
   <variant name="_IntentChip"
       summary="In product help for opening a webpage in an app using the
@@ -581,8 +580,6 @@ should be able to be added at any place in this file.
   <variant name="_IOSBWGPromoFeature" summary="For IOSBWGPromoFeature feature"/>
   <variant name="_iOSChoiceScreen"
       summary="(obsolete) For iOSChoiceScreen feature"/>
-  <variant name="_iOSContextualPanelPriceInsights"
-      summary="For iOSContextualPanelPriceInsights feature"/>
   <variant name="_iOSContextualPanelSampleModel"
       summary="For iOSContextualPanelSampleModel feature"/>
   <variant name="_iOSDefaultBrowserBadgeEligibility"
@@ -739,7 +736,6 @@ should be able to be added at any place in this file.
       summary="For iOSTabGridSwipeRightForIncognito feature"/>
   <variant name="_iOSTabGroupsDesktop"
       summary="For iOSTabGroupsDesktopFeature"/>
-  <variant name="_iOSWelcomeBack" summary="For iOSWelcomeBack feature"/>
   <variant name="_KeyboardAccessoryPaymentOffer"
       summary="For KeyboardAccessoryPaymentOffer feature."/>
   <variant name="_LensOverlay" summary="For Lens Overlay IPH feature."/>
@@ -764,6 +760,9 @@ should be able to be added at any place in this file.
       summary="For NewTabPageHomeButton feature. (obsolete)"/>
   <variant name="_NewTabPageThemeCustomization"
       summary="In product help for NewTabPage theme customization feature."/>
+  <variant name="_NewTabPageThemeCustomizationMagicStack"
+      summary="For NewTabPage theme customization promo card in the Magic
+               Stack."/>
   <variant name="_NewTabTip" summary="For NewTabTip feature."/>
   <variant name="_NotificationPermissionPromo"
       summary="For the OS notification permission prompt on Android."/>
@@ -878,8 +877,6 @@ should be able to be added at any place in this file.
       summary="For the RequestDesktopSiteWindowSetting feature."/>
   <variant name="_RestoreTabsOnFRE"
       summary="For the RestoreTabsOnFRE feature."/>
-  <variant name="_ResumptionRail"
-      summary="For Resumption Rail feature entrypoint."/>
   <variant name="_RtlGestureNavigation"
       summary="For the gesture navigation in RTL mode."/>
   <variant name="_SearchEngineChoicePromo"
@@ -919,9 +916,6 @@ should be able to be added at any place in this file.
       summary="For side search feature automatic triggering."/>
   <variant name="_SideSearchPageActionLabel"
       summary="For side search feature page action label triggering."/>
-  <variant name="_SignInBenefits" summary="For sign-in benefits IPH feature."/>
-  <variant name="_SignInBenefitsNewSignin"
-      summary="For sign-in benefits IPH feature."/>
   <variant name="_SiteControls" summary="For SiteControls IPH feature."/>
   <variant name="_SmartTabSharingDefaultOnFeature"
       summary="For Smart Tab Sharing Default On custom UI feature."/>
@@ -952,6 +946,8 @@ should be able to be added at any place in this file.
   <variant name="_TabGroupShareVersionUpdate"
       summary="For notifying users that updating Chrome regains access to
                shared tab groups."/>
+  <variant name="_TabGroupsNonGroupFocusingFeature"
+      summary="For the tab groups non-group focusing IPH feature."/>
   <variant name="_TabGroupsQuicklyComparePages"
       summary="For long press links to create tab groups."/>
   <variant name="_TabGroupsRemoteGroup" summary="For a synced tab group."/>
@@ -1014,6 +1010,9 @@ should be able to be added at any place in this file.
   <variant name="_VerticalTabsExpandOnHoverFeature"
       summary="For showing the vertical tabs expand on hover feature when in
                vertical tabs mode."/>
+  <variant name="_VerticalTabsTabGroupsInOrganizerFeature"
+      summary="For showing the tab groups moved to organizer IPH feature when
+               in vertical tabs mode."/>
   <variant name="_VerticalTabstripTutorialFeature"
       summary="For showing the vertical tabs feature when the horizontal
                tabstrip is crowded."/>
@@ -1104,6 +1103,7 @@ should be able to be added at any place in this file.
   <variant name=".DiceUserMigrated" summary="DICe user migrated"/>
   <variant name=".EnhancedBundledSecuritySettings"
       summary="Enhanced protection user migrated"/>
+  <variant name=".Glic" summary="Glic toast"/>
   <variant name=".GlicSelectionHiddenForSite"
       summary="Glic selection hidden for site"/>
   <variant name=".MultistepFilterSuggestion" summary="Filter suggested"/>
@@ -1115,6 +1115,7 @@ should be able to be added at any place in this file.
       summary="Enhanced Protection setting has been synced to On"/>
   <variant name=".Translate" summary="Translate"/>
   <variant name=".TtcGenericError" summary="TTC generic error"/>
+  <variant name=".TtcInactivityTimeout" summary="TTC inactivity timeout"/>
   <variant name=".TtcNoMicrophoneError" summary="TTC no microphone error"/>
 </variants>
 
@@ -9557,6 +9558,16 @@ should be able to be added at any place in this file.
   </description>
 </action>
 
+<action name="ContentSettings.NotificationsDialog.AllowClicked">
+  <owner>mek@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <description>
+    The user clicked 'Allow' from the content settings notifications bubble to
+    request macOS system notification permission for the web app (which triggers
+    the OS permission prompt and opens macOS System Settings).
+  </description>
+</action>
+
 <action name="ContentSettings.NotificationsDialog.Closed">
   <owner>mek@chromium.org</owner>
   <owner>pwa-team@google.com</owner>
@@ -10446,6 +10457,28 @@ should be able to be added at any place in this file.
   </description>
 </action>
 
+<action name="ContextualTasks.OnboardingTooltip.Accepted">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded when the user clicks the accept button of the contextual tasks
+    onboarding tooltip, which explains that the active tab is auto-suggested as
+    context. This is the only way to explicitly dismiss the tooltip.
+  </description>
+</action>
+
+<action name="ContextualTasks.OnboardingTooltip.Shown"
+    not_user_triggered="true">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded when the contextual tasks onboarding tooltip, which explains that
+    the active tab is auto-suggested as context, has been shown for at least the
+    impression delay, or when the user accepts it before the delay elapses.
+    Recorded at most once per time the tooltip is shown.
+  </description>
+</action>
+
 <action
     name="ContextualTasks.PermanentToolbarButton.UserAction.OpenSidePanel.ContinueThread">
   <owner>dianaou@chromium.org</owner>
@@ -10463,6 +10496,131 @@ should be able to be added at any place in this file.
   <description>
     Recorded when the user clicks the permanently pinned contextual tasks
     toolbar button to start a new thread under Pinning v2.
+  </description>
+</action>
+
+<action
+    name="ContextualTasks.PermanentToolbarButton.UserAction.RemoveByContextMenu">
+  <owner>dianaou@chromium.org</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded when the user removes the current task via the
+    &quot;Close/Remove&quot; item in the permanently pinned contextual tasks
+    toolbar button's context menu.
+  </description>
+</action>
+
+<action name="ContextualTasks.SearchJourney.Armed">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded when an ABA search journey is armed because a Google search
+    committed in the search tab after the user left an eligible source tab.
+  </description>
+</action>
+
+<action name="ContextualTasks.SearchJourney.Cue.ChipClicked">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded when the user clicks the collapsed chip of the ABA search journey
+    contextual cue on the source tab, which re-shows its anchored message.
+  </description>
+</action>
+
+<action name="ContextualTasks.SearchJourney.Cue.Clicked">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded when the user clicks the ABA search journey contextual cue on the
+    source tab to restore the journey in the Contextual Tasks side panel.
+  </description>
+</action>
+
+<action name="ContextualTasks.SearchJourney.Cue.Shown"
+    not_user_triggered="true">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded when the ABA search journey contextual cue is shown on the source
+    tab.
+  </description>
+</action>
+
+<action name="ContextualTasks.SearchJourney.Cue.Shown.AnchoredMessage"
+    not_user_triggered="true">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded when the ABA search journey contextual cue is first shown on the
+    source tab as the expanded anchored message.
+  </description>
+</action>
+
+<action name="ContextualTasks.SearchJourney.Cue.Shown.Chip"
+    not_user_triggered="true">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded when the ABA search journey contextual cue is first shown on the
+    source tab as the collapsed omnibox chip.
+  </description>
+</action>
+
+<action name="ContextualTasks.SearchJourney.Eligible" not_user_triggered="true">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded once per ABA search journey on the first return to the source tab
+    when the journey has a restorable AI Overview and passes eligibility gates.
+  </description>
+</action>
+
+<action name="ContextualTasks.SearchJourney.PromoParamsReceived"
+    not_user_triggered="true">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded when the search results page registers AI Overview restore
+    parameters for an active ABA search journey.
+  </description>
+</action>
+
+<action name="ContextualTasks.SearchJourney.QuerySubmitted">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded when the user submits a query from the composebox of a Contextual
+    Tasks side panel session opened via the ABA search journey contextual cue.
+    The restored AI Overview turn isn't a submitted query, so this is recorded
+    for follow-up queries.
+  </description>
+</action>
+
+<action name="ContextualTasks.SearchJourney.Restored">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded when an ABA search journey's AI Overview is restored in the
+    Contextual Tasks side panel.
+  </description>
+</action>
+
+<action name="ContextualTasks.SearchJourney.ReturnedToSourceTab">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded when the user returns to the source tab of an active ABA search
+    journey while the tab is still on the navigation entry they left.
+  </description>
+</action>
+
+<action name="ContextualTasks.SidePanel.UserAction.Close.AbaOnRamp">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <description>
+    Recorded when the user closes the side panel for a session entered via the
+    ABA search journey contextual cue.
   </description>
 </action>
 
@@ -10597,6 +10755,9 @@ should be able to be added at any place in this file.
     <variant name=".OpenNewThread" summary="The user opened a new thread."/>
     <variant name=".OpenOverflowMenu"
         summary="The user opened the overflow menu."/>
+    <variant name=".OpenPageInfo"
+        summary="The user clicked the logo button to open the page info
+                 bubble."/>
     <variant name=".OpenSourcesMenu"
         summary="The user opened the sources menu."/>
     <variant name=".OpenThreadHistory"
@@ -12078,25 +12239,6 @@ should be able to be added at any place in this file.
   <description>
     Action indicating that the user navigated to the search engines settings
     page.
-  </description>
-</action>
-
-<action name="EnhancedAutofillSettingsBack">
-  <owner>sugoi@google.com</owner>
-  <owner>leozhao@google.com</owner>
-  <owner>bling-transactions@google.com</owner>
-  <description>
-    Reported when user goes back from Enhanced Autofill Settings UI to root
-    Settings screen. iOS only.
-  </description>
-</action>
-
-<action name="EnhancedAutofillSettingsClose">
-  <owner>sugoi@google.com</owner>
-  <owner>leozhao@google.com</owner>
-  <owner>bling-transactions@google.com</owner>
-  <description>
-    Reported when Enhanced Autofill Settings UI was dismissed. iOS only.
   </description>
 </action>
 
@@ -13901,6 +14043,15 @@ should be able to be added at any place in this file.
   </description>
 </action>
 
+<action name="Glic.Instance.InputFocused">
+  <owner>dewittj@chromium.org</owner>
+  <owner>glic-dev@google.com</owner>
+  <description>
+    Logged when the Glic web client reports that its main prompt input field
+    received focus.
+  </description>
+</action>
+
 <action name="Glic.Instance.InterruptActorTask">
   <owner>birnie@google.com</owner>
   <owner>perrier@google.com</owner>
@@ -14154,6 +14305,16 @@ should be able to be added at any place in this file.
   <description>The Glic instance WebUI is offline.</description>
 </action>
 
+<action
+    name="Glic.Instance.WebUiStateChanged.PendingProviderChangeGeminiToGeic">
+  <owner>alexwchen@google.com</owner>
+  <owner>glic+metrics@google.com</owner>
+  <description>
+    The Glic instance WebUI is showing the pending Gemini to GEiC provider
+    change panel.
+  </description>
+</action>
+
 <action name="Glic.Instance.WebUiStateChanged.Ready">
   <owner>birnie@google.com</owner>
   <owner>perrier@google.com</owner>
@@ -14327,6 +14488,15 @@ should be able to be added at any place in this file.
   <description>
     Logged any time a pinned tab is navigated to a new origin and the tab is
     unpinned as a result.
+  </description>
+</action>
+
+<action name="Glic.ProviderChange.RelaunchClicked">
+  <owner>alexwchen@google.com</owner>
+  <owner>glic+metrics@google.com</owner>
+  <description>
+    Recorded when the user clicks the relaunch button on the Glic
+    relaunch-required panel to apply a pending provider change.
   </description>
 </action>
 
@@ -16878,28 +17048,6 @@ should be able to be added at any place in this file.
     unit conversion view controller) the user changes the unit type (title
     button) of a unit conversion view controller. iOS only.
   </description>
-</action>
-
-<action name="IOS.WelcomeBack.Dismissed">
-  <owner>cheickcisse@google.com</owner>
-  <owner>bling-mony-pod@google.com</owner>
-  <description>
-    Recorded when the user dismisses the Welcome Back screen. iOS only.
-  </description>
-</action>
-
-<action name="IOS.WelcomeBack.Impression">
-  <owner>cheickcisse@google.com</owner>
-  <owner>bling-mony-pod@google.com</owner>
-  <description>
-    Recorded when the Welcome Back screen is presented to the user. iOS only.
-  </description>
-</action>
-
-<action name="IOS.WelcomeBack.Stopped">
-  <owner>cheickcisse@google.com</owner>
-  <owner>bling-mony-pod@google.com</owner>
-  <description>TODO(crbug.com/483957938): Write the description.</description>
 </action>
 
 <action name="IOSAccountsSettingsCloseWithSwipe">
@@ -20586,29 +20734,12 @@ should be able to be added at any place in this file.
   </description>
 </action>
 
-<action name="MobileGeminiCameraSettingsBack">
-  <owner>joepeplowski@google.com</owner>
-  <owner>bling-alchemy-eng@google.com</owner>
-  <description>
-    Reported when user goes back from Gemini Camera Settings UI to Gemini
-    Settings screen. iOS only.
-  </description>
-</action>
-
-<action name="MobileGeminiCameraSettingsClose">
-  <owner>joepeplowski@google.com</owner>
-  <owner>bling-alchemy-eng@google.com</owner>
-  <description>
-    Reported when Gemini Camera Settings UI was dismissed. iOS only.
-  </description>
-</action>
-
 <action name="MobileGeminiCameraSettingsGeminiCameraPermissionToggledOff">
   <owner>joepeplowski@google.com</owner>
   <owner>bling-alchemy-eng@google.com</owner>
   <description>
     Reported when the user toggles the Gemini camera permission setting off from
-    the Gemini Camera Settings UI.
+    the Gemini Settings UI.
   </description>
 </action>
 
@@ -20617,7 +20748,7 @@ should be able to be added at any place in this file.
   <owner>bling-alchemy-eng@google.com</owner>
   <description>
     Reported when the user toggles the Gemini camera permission setting on from
-    the Gemini Camera Settings UI.
+    the Gemini Settings UI.
   </description>
 </action>
 
@@ -22051,6 +22182,14 @@ should be able to be added at any place in this file.
   </description>
 </action>
 
+<action name="MobileMenuDeleteGroup">
+  <owner>mfiaz@google.com</owner>
+  <owner>clank-tabs-dev@google.com</owner>
+  <description>
+    User pressed 'Delete group' in the tab group submenu.
+  </description>
+</action>
+
 <action name="MobileMenuDevTools">
   <owner>massan@google.com</owner>
   <description>User pressed 'Developer tools' in the app menu.</description>
@@ -22285,6 +22424,20 @@ should be able to be added at any place in this file.
 <action name="MobileMenuOpenBookmark">
   <owner>massan@google.com</owner>
   <description>User pressed a bookmark in the app menu to open it.</description>
+</action>
+
+<action name="MobileMenuOpenGroup">
+  <owner>mfiaz@google.com</owner>
+  <owner>clank-tabs-dev@google.com</owner>
+  <description>User pressed 'Open group' in the tab group submenu.</description>
+</action>
+
+<action name="MobileMenuOpenGroupInNewWindow">
+  <owner>mfiaz@google.com</owner>
+  <owner>clank-tabs-dev@google.com</owner>
+  <description>
+    User pressed 'Open group in new window' in the tab group submenu.
+  </description>
 </action>
 
 <action name="MobileMenuOpenWebApk">
@@ -27058,6 +27211,36 @@ should be able to be added at any place in this file.
   </description>
 </action>
 
+<action name="Notifications.NonPersistent.Clicked">
+  <owner>mek@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <description>
+    Logged when a non-persistent notification is clicked.
+  </description>
+</action>
+
+<action name="Notifications.NonPersistent.ClosedByUser">
+  <owner>mek@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <description>
+    Logged when a non-persistent notification is closed by the user.
+  </description>
+</action>
+
+<action name="Notifications.NonPersistent.ClosedProgrammatically">
+  <owner>mek@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <description>
+    Logged when a non-persistent notification is closed not by the user.
+  </description>
+</action>
+
+<action name="Notifications.NonPersistent.Shown">
+  <owner>mek@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <description>Logged when a non-persistent notification is shown.</description>
+</action>
+
 <action name="Notifications.Persistent.Clicked">
   <owner>peter@chromium.org</owner>
   <description>
@@ -29360,11 +29543,107 @@ should be able to be added at any place in this file.
   <description>Settings: Users: Remove a whitelisted user</description>
 </action>
 
+<action name="OrganizerPanel.Close">
+  <owner>agale@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>Recorded when the organizer panel is closed.</description>
+</action>
+
+<action name="OrganizerPanel.CloseTab">
+  <owner>agale@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    Recorded when clicking the close button on an open tab row in
+    OpenTabsDelegate.
+  </description>
+</action>
+
+<action name="OrganizerPanel.CollapseSection">
+  <owner>agale@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    Recorded when a section in the organizer panel is manually collapsed by the
+    user.
+  </description>
+</action>
+
+<action name="OrganizerPanel.CreateTabGroup">
+  <owner>agale@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    Recorded when clicking &quot;+ Create tab group&quot; zero state in
+    TabGroupsDelegate.
+  </description>
+</action>
+
+<action name="OrganizerPanel.ExpandSection">
+  <owner>agale@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    Recorded when a section in the organizer panel is manually expanded by the
+    user.
+  </description>
+</action>
+
+<action name="OrganizerPanel.Open">
+  <owner>agale@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>Recorded when the organizer panel is opened.</description>
+</action>
+
 <action name="OrganizerPanel.OpenButtonPressed">
-  <owner>kunaldaftari@google.com</owner>
+  <owner>agale@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
   <description>
     The user opened the organizer panel via the tab strip entrypoint.
+  </description>
+</action>
+
+<action name="OrganizerPanel.OpenCrossDeviceTab">
+  <owner>agale@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    Recorded when clicking a foreign tab in ForeignTabsDelegate.
+  </description>
+</action>
+
+<action name="OrganizerPanel.OpenRecentlyClosedSplitView">
+  <owner>agale@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    Recorded when clicking a recent split view in RecentTabsDelegate.
+  </description>
+</action>
+
+<action name="OrganizerPanel.OpenRecentlyClosedTab">
+  <owner>agale@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    Recorded when clicking a recent tab in RecentTabsDelegate.
+  </description>
+</action>
+
+<action name="OrganizerPanel.OpenRecentlyClosedTabGroup">
+  <owner>agale@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    Recorded when clicking a recent tab group in RecentTabsDelegate.
+  </description>
+</action>
+
+<action name="OrganizerPanel.OpenTabGroup">
+  <owner>agale@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    Recorded when clicking an existing group in TabGroupsDelegate.
+  </description>
+</action>
+
+<action name="OrganizerPanel.SwitchToTab">
+  <owner>agale@chromium.org</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    Recorded when user clicks an open tab row in OpenTabsDelegate.
   </description>
 </action>
 
@@ -33211,6 +33490,24 @@ should be able to be added at any place in this file.
   </description>
 </action>
 
+<action name="Settings.Appearance.TabSearch.Pinned">
+  <owner>agale@google.com</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    Recorded when the user pins the Tab Search button to the tabstrip from the
+    Settings appearance page.
+  </description>
+</action>
+
+<action name="Settings.Appearance.TabSearch.Unpinned">
+  <owner>agale@google.com</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    Recorded when the user unpins the Tab Search button from the tabstrip from
+    the Settings appearance page.
+  </description>
+</action>
+
 <action name="Settings.ArticlesForYouToggled">
   <owner>gambard@chromium.org</owner>
   <owner>treib@chromium.org</owner>
@@ -33354,15 +33651,6 @@ should be able to be added at any place in this file.
   <owner>olivierrobin@chromium.org</owner>
   <description>
     Reported when user navigates to Downloads Settings. iOS only.
-  </description>
-</action>
-
-<action name="Settings.EnhancedAutofill">
-  <owner>sugoi@google.com</owner>
-  <owner>leozhao@google.com</owner>
-  <owner>bling-transactions@google.com</owner>
-  <description>
-    Reported when user navigates to Enhanced Autofill Settings. iOS only.
   </description>
 </action>
 
@@ -34407,6 +34695,20 @@ should be able to be added at any place in this file.
   <description>
     The user clicked the &quot;Extensions&quot; external link in the settings
     menu (drawer).
+  </description>
+</action>
+
+<action name="SettingsMenu_GeneralClicked">
+  <owner>mickeyburks@google.com</owner>
+  <description>
+    The user clicked the &quot;General&quot; item in the settings menu.
+  </description>
+</action>
+
+<action name="SettingsMenu_HomeClicked">
+  <owner>mickeyburks@google.com</owner>
+  <description>
+    The user clicked the &quot;Home&quot; item in the settings menu.
   </description>
 </action>
 
@@ -35478,14 +35780,6 @@ should be able to be added at any place in this file.
   <description>
     Recorded when the bookmarks context menu is used in the SidePanel for
     &quot;open split view&quot;
-  </description>
-</action>
-
-<action name="Signin_Abort_Signin">
-  <owner>mahmadi@chromium.org</owner>
-  <description>
-    Recorded when the user closes the tab or exits the browser without choosing
-    any of the other options on the sync confirmation modal.
   </description>
 </action>
 
@@ -37210,14 +37504,6 @@ should be able to be added at any place in this file.
   </description>
 </action>
 
-<action name="Signin_Signin_WithAdvancedSyncSettings">
-  <owner>gogerald@chromium.org</owner>
-  <description>
-    Recorded when the user chooses advanced sync settings in the sign in succeed
-    confirmation dialog.
-  </description>
-</action>
-
 <action name="Signin_Signin_WithDefaultSyncSettings">
   <owner>gogerald@chromium.org</owner>
   <description>
@@ -38508,8 +38794,10 @@ should be able to be added at any place in this file.
 <action name="Suggestions.AIM.UndoUnpin">
   <owner>ericekey@google.com</owner>
   <owner>bling-pandamonium@google.com</owner>
+  <owner>yanlinghu@google.com</owner>
+  <owner>hanxi@chromium.org</owner>
   <description>
-    iOS: User tapped Undo on the snackbar to revert unpinning the AIM tile in
+    Mobile: User tapped Undo on the snackbar to revert unpinning the AIM tile in
     Most Visited Tiles.
   </description>
 </action>
@@ -38517,8 +38805,10 @@ should be able to be added at any place in this file.
 <action name="Suggestions.AIM.Unpinned">
   <owner>ericekey@google.com</owner>
   <owner>bling-pandamonium@google.com</owner>
+  <owner>yanlinghu@google.com</owner>
+  <owner>hanxi@chromium.org</owner>
   <description>
-    iOS: User unpinned the AIM tile in Most Visited Tiles.
+    Mobile: User unpinned the AIM tile in Most Visited Tiles.
   </description>
 </action>
 
@@ -40154,6 +40444,44 @@ should be able to be added at any place in this file.
   </description>
 </action>
 
+<action name="TabGroups_SavedTabGroups_AppMenu_FocusGroup">
+  <owner>kunaldaftari@google.com</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    User focused a tab group by choosing 'Focus group' from the tab group
+    submenu in the app menu.
+  </description>
+</action>
+
+<action name="TabGroups_SavedTabGroups_AppMenu_UnfocusGroup">
+  <owner>kunaldaftari@google.com</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    User unfocused the focused tab group by choosing 'Unfocus group' from the
+    tab group submenu in the app menu.
+  </description>
+</action>
+
+<action name="TabGroups_SavedTabGroups_BookmarksBar_FocusGroup">
+  <owner>kunaldaftari@google.com</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    User focused a tab group by choosing 'Focus group' from a saved tab group
+    context menu on the bookmarks bar (either the group button's context menu or
+    the Everything menu).
+  </description>
+</action>
+
+<action name="TabGroups_SavedTabGroups_BookmarksBar_UnfocusGroup">
+  <owner>kunaldaftari@google.com</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    User unfocused the focused tab group by choosing 'Unfocus group' from a
+    saved tab group context menu on the bookmarks bar (either the group button's
+    context menu or the Everything menu).
+  </description>
+</action>
+
 <action name="TabGroups_SavedTabGroups_Closed">
   <owner>dljames@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
@@ -40293,6 +40621,24 @@ should be able to be added at any place in this file.
   </description>
 </action>
 
+<action name="TabGroups_SavedTabGroups_OrganizerPanel_FocusGroup">
+  <owner>kunaldaftari@google.com</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    User focused a tab group by choosing 'Focus group' from a tab group context
+    menu in the organizer panel.
+  </description>
+</action>
+
+<action name="TabGroups_SavedTabGroups_OrganizerPanel_UnfocusGroup">
+  <owner>kunaldaftari@google.com</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    User unfocused the focused tab group by choosing 'Unfocus group' from a tab
+    group context menu in the organizer panel.
+  </description>
+</action>
+
 <action name="TabGroups_SavedTabGroups_Pinned">
   <owner>dljames@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
@@ -40392,6 +40738,15 @@ should be able to be added at any place in this file.
   </description>
 </action>
 
+<action name="TabGroups_TabGroupBubble_FocusGroup">
+  <owner>kunaldaftari@google.com</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    User focused a tab group by choosing 'Focus group' from the tab group editor
+    bubble (tab group header context menu).
+  </description>
+</action>
+
 <action name="TabGroups_TabGroupBubble_GroupSaved">
   <owner>dpenning@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
@@ -40436,6 +40791,15 @@ should be able to be added at any place in this file.
   </description>
 </action>
 
+<action name="TabGroups_TabGroupBubble_UnfocusGroup">
+  <owner>kunaldaftari@google.com</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    User unfocused the focused tab group by choosing 'Unfocus group' from the
+    tab group editor bubble (tab group header context menu).
+  </description>
+</action>
+
 <action name="TabGroups_TabGroupBubble_Ungroup">
   <owner>dpenning@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
@@ -40460,6 +40824,24 @@ should be able to be added at any place in this file.
   <description>
     User clicked on the tab group header of a collapsed tab group to expand the
     group.
+  </description>
+</action>
+
+<action name="TabGroups_TabGroupHeader_UnfocusGroupButton">
+  <owner>kunaldaftari@google.com</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    User clicked the unfocus button on the header of a focused tab group to exit
+    focus mode.
+  </description>
+</action>
+
+<action name="TabGroups_TabGroupHeader_UnfocusNonGroupTabsButton">
+  <owner>kunaldaftari@google.com</owner>
+  <owner>top-chrome-desktop-ui@google.com</owner>
+  <description>
+    User clicked the unfocus button on the header of a focused non-group
+    (ephemeral) tab group to exit focus mode and restore the loose tabs.
   </description>
 </action>
 
@@ -40970,14 +41352,18 @@ should be able to be added at any place in this file.
 <action name="TabStripComboButton.TabSearch.Pinned">
   <owner>emshack@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
-  <description>User pinned the Tab Search button to the tabstrip.</description>
+  <description>
+    User pinned the Tab Search button to the tabstrip from the tab strip combo
+    button context menu.
+  </description>
 </action>
 
 <action name="TabStripComboButton.TabSearch.Unpinned">
   <owner>emshack@chromium.org</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
   <description>
-    User unpinned the Tab Search button from the tabstrip.
+    User unpinned the Tab Search button from the tabstrip from the tab strip
+    combo button context menu.
   </description>
 </action>
 

@@ -157,6 +157,7 @@ if (enable_printing) {
       ]
       deps += [
         "//chrome/browser:primitives",
+        "//chrome/browser/pdf:pdf_pref_names",
         "//ui/views",
       ]
     }
@@ -226,6 +227,7 @@ if (enable_printing) {
           "//chrome/browser/ash/arc/print_spooler",
           "//chrome/browser/ash/printing",
           "//chrome/browser/chromeos/policy/dlp",
+          "//chromeos/ash/components/browser_context_helper",
         ]
         if (use_cups) {
           sources += [
@@ -237,9 +239,8 @@ if (enable_printing) {
           ]
           deps += [
             "//chrome/browser/ash/printing/print_management",
-            "//chrome/browser/chromeos/printing",
             "//chrome/common/printing",
-            "//chromeos/ash/components/browser_context_helper",
+            "//chromeos/printing",
             "//components/content_settings/browser",
             "//components/content_settings/core/browser",
             "//components/content_settings/core/common",

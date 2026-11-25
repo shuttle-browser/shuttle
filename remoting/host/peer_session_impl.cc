@@ -23,16 +23,14 @@
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
-#include "base/notreached.h"
 #include "base/sequence_checker.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/task/bind_post_task.h"
-#include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
-#include "base/types/expected.h"
 #include "build/build_config.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "remoting/base/capabilities.h"
@@ -71,14 +69,13 @@
 #include "remoting/host/remote_open_url/url_forwarder_control_message_handler.h"
 #include "remoting/host/security_key/security_key_auth_handler.h"
 #include "remoting/host/security_key/security_key_data_channel_handler.h"
-#include "remoting/host/terminal_error.h"
 #include "remoting/host/terminal_session.h"
-#include "remoting/host/terminal_session_manager.h"
 #include "remoting/host/webauthn/remote_webauthn_constants.h"
 #include "remoting/host/webauthn/remote_webauthn_message_handler.h"
 #include "remoting/host/webauthn/remote_webauthn_state_change_notifier.h"
 #include "remoting/proto/control.pb.h"
 #include "remoting/proto/event.pb.h"
+#include "remoting/proto/terminal.pb.h"
 #include "remoting/protocol/audio_sample_info.h"
 #include "remoting/protocol/audio_stream.h"
 #include "remoting/protocol/authenticator.h"
@@ -136,42 +133,6 @@ void LogVideoTrack(int index,
            << track.x_dpi() << "," << track.y_dpi() << "]";
 }
 
-remoting::protocol::TerminalControl::CreateTerminalResponse::Error::Reason
-ToProtoReason(remoting::TerminalError::Reason reason) {
-  using ProtoError =
-      remoting::protocol::TerminalControl::CreateTerminalResponse::Error;
-  switch (reason) {
-    case remoting::TerminalError::Reason::kInternalError:
-      return ProtoError::INTERNAL_ERROR;
-    case remoting::TerminalError::Reason::kBusy:
-      return ProtoError::BUSY;
-    case remoting::TerminalError::Reason::kPtyError:
-      return ProtoError::PTY_ERROR;
-    case remoting::TerminalError::Reason::kTmuxMissing:
-      return ProtoError::TMUX_MISSING;
-    case remoting::TerminalError::Reason::kLaunchFailed:
-      return ProtoError::LAUNCH_FAILED;
-  }
-  NOTREACHED();
-}
-
-void SetCreateTerminalError(
-    const remoting::TerminalError& error,
-    remoting::protocol::TerminalControl::CreateTerminalResponse::Error*
-        proto_error) {
-  proto_error->set_reason(ToProtoReason(error.reason));
-  if (error.system_error_code.has_value()) {
-    proto_error->set_code(*error.system_error_code);
-  }
-  // A default-constructed base::Location has no file name (and an invalid line
-  // number), so only report the location if it is valid.
-  if (const char* file_name = error.location.file_name()) {
-    proto_error->set_file_name(file_name);
-    proto_error->set_line_number(error.location.line_number());
-  }
-  proto_error->set_error_message(error.message);
-}
-
 }  // namespace
 
 namespace remoting {
@@ -221,6 +182,7 @@ void PeerSessionImpl::Start(
   client_jid_ = std::string(client_jid);
   desktop_environment_options_ = desktop_environment_options;
   effective_policies_ = session_policies;
+  desktop_environment_options_.ApplySessionPolicies(effective_policies_);
 
   connection_->ApplySessionOptions(session_options);
   connection_->ApplyNetworkSettings(
@@ -229,8 +191,8 @@ void PeerSessionImpl::Start(
 
   DesktopEnvironmentOptions options = desktop_environment_options_;
 
-  bool allow_gnubby = desktop_environment_options_.enable_security_key();
-  if (allow_gnubby) {
+  bool allow_security_key = desktop_environment_options_.enable_security_key();
+  if (allow_security_key) {
     security_key_auth_handler_ = SecurityKeyAuthHandler::Create();
   }
 
@@ -378,12 +340,21 @@ void PeerSessionImpl::ControlAudio(
     const protocol::AudioControl& audio_control) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  if (audio_control.has_enable()) {
-    VLOG(1) << "Received AudioControl (enable=" << audio_control.enable()
-            << ")";
-    if (audio_stream_) {
-      audio_stream_->Pause(!audio_control.enable());
-    }
+  if (!audio_control.has_enable()) {
+    return;
+  }
+
+  VLOG(1) << "Received AudioControl (enable=" << audio_control.enable() << ")";
+  // Block attempts to enable audio if host-to-client audio is disallowed by
+  // policy, but allow the client to disable audio since it is a no-op.
+  if (audio_control.enable() &&
+      !effective_policies_.is_host_to_client_audio_allowed()) {
+    LOG(WARNING) << "Enabling audio disallowed by policy.";
+    return;
+  }
+
+  if (audio_stream_) {
+    audio_stream_->Pause(!audio_control.enable());
   }
 }
 
@@ -412,7 +383,8 @@ void PeerSessionImpl::SetCapabilities(
   capabilities_ =
       IntersectCapabilities(*client_capabilities_, host_capabilities_);
 
-  if (HasCapability(capabilities_, protocol::kMicrophoneRemotingCapability) &&
+  if (effective_policies_.is_client_to_host_audio_allowed() &&
+      HasCapability(capabilities_, protocol::kMicrophoneRemotingCapability) &&
       !audio_injector_) {
     CreateAudioInjectorAndBuffer();
   }
@@ -434,14 +406,17 @@ void PeerSessionImpl::SetCapabilities(
 
   if (effective_policies_.allow_terminal_mode.value_or(true) &&
       HasCapability(capabilities_, protocol::kTerminalModeCapability)) {
-    terminal_session_manager_ = std::make_unique<TerminalSessionManager>();
-    terminal_session_manager_->Start(
-        base::BindRepeating(&PeerSessionImpl::SendTerminalOutput,
-                            weak_factory_.GetWeakPtr()),
-        base::BindRepeating(&PeerSessionImpl::OnTerminalExited,
-                            weak_factory_.GetWeakPtr()),
-        base::BindRepeating(&PeerSessionImpl::SendTerminalProcessInfo,
-                            weak_factory_.GetWeakPtr()));
+    // `terminal_data_channel_manager_` is owned by this object, so the
+    // callback cannot outlive it.
+    terminal_data_channel_manager_ =
+        std::make_unique<TerminalDataChannelManager>(
+            base::BindRepeating(&PeerSessionImpl::CreateOutgoingTerminalChannel,
+                                base::Unretained(this)));
+    data_channel_manager_.RegisterCreateHandlerCallback(
+        TerminalDataChannelManager::kChannelPrefix,
+        base::BindRepeating(&TerminalDataChannelManager::OnIncomingChannel,
+                            terminal_data_channel_manager_->GetWeakPtr()));
+    terminal_data_channel_manager_->Start();
   }
 
   if (HasCapability(capabilities_, protocol::kRemoteOpenUrlCapability)) {
@@ -653,117 +628,25 @@ void PeerSessionImpl::SetVideoLayout(
   screen_controls_->SetVideoLayout(video_layout);
 }
 
-void PeerSessionImpl::ControlTerminal(
-    const protocol::TerminalControl& terminal_control) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  if (!terminal_session_manager_) {
-    return;
-  }
-
-  if (terminal_control.has_create_request()) {
-    // Create a new terminal session. The response, containing either the ID
-    // that identifies the session in subsequent messages or an error, is sent
-    // once the session has started. Bind the callback to the weak factory to
-    // ensure that it is not called after the client session is disconnected.
-    terminal_session_manager_->CreateTerminal(base::BindOnce(
-        &PeerSessionImpl::OnTerminalCreated, weak_factory_.GetWeakPtr()));
-
-  } else if (terminal_control.has_terminal_input()) {
-    const auto& input = terminal_control.terminal_input();
-    terminal_session_manager_->WriteTerminal(input.terminal_id(),
-                                             input.input());
-
-  } else if (terminal_control.has_resize_terminal()) {
-    const auto& resize = terminal_control.resize_terminal();
-    terminal_session_manager_->ResizeTerminal(resize.terminal_id(),
-                                              resize.width(), resize.height());
-
-  } else if (terminal_control.has_remove_request()) {
-    int32_t terminal_id = terminal_control.remove_request().terminal_id();
-    terminal_session_manager_->CloseTerminal(terminal_id);
-  }
-}
-
 void PeerSessionImpl::SetAgentStatus(
+    int32_t terminal_id,
     const protocol::TerminalControl::AgentInfo& agent_status,
     SetAgentStatusCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   std::move(callback).Run();
-  if (!channels_connected_ || !terminal_session_manager_ ||
-      !agent_status.has_terminal_id()) {
+  if (!channels_connected_ || !terminal_data_channel_manager_) {
     return;
   }
-
-  bool has_valid_agent_state =
-      agent_status.has_agent_state() &&
-      agent_status.agent_state() !=
-          protocol::TerminalControl::AgentInfo::UNSPECIFIED;
-  if (!has_valid_agent_state && !agent_status.has_conversation_title()) {
-    return;
-  }
-
-  int32_t terminal_id = agent_status.terminal_id();
-  if (!terminal_session_manager_->GetTerminalSession(terminal_id)) {
-    LOG(WARNING) << "Dropping SetAgentStatus for unknown terminal ID: "
-                 << terminal_id;
-    return;
-  }
-
-  protocol::TerminalControl response;
-  auto* agent_info = response.mutable_agent_info();
-  agent_info->set_terminal_id(terminal_id);
-  if (has_valid_agent_state) {
-    agent_info->set_agent_state(agent_status.agent_state());
-  }
-  if (agent_status.has_conversation_title()) {
-    agent_info->set_conversation_title(agent_status.conversation_title());
-  }
-  connection_->client_stub()->DeliverTerminalControl(response);
+  terminal_data_channel_manager_->SetAgentStatus(terminal_id, agent_status);
 }
 
-void PeerSessionImpl::OnTerminalCreated(
-    base::expected<int32_t, TerminalError> result) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  protocol::TerminalControl response;
-  auto* create_response = response.mutable_create_response();
-  if (result.has_value()) {
-    create_response->set_terminal_id(*result);
-  } else {
-    SetCreateTerminalError(result.error(), create_response->mutable_error());
-  }
-  connection_->client_stub()->DeliverTerminalControl(response);
-}
-
-void PeerSessionImpl::SendTerminalOutput(int32_t terminal_id,
-                                         const std::string& data) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  protocol::TerminalControl response;
-  auto* output = response.mutable_terminal_output();
-  output->set_terminal_id(terminal_id);
-  output->set_output(data);
-  connection_->client_stub()->DeliverTerminalControl(response);
-}
-
-void PeerSessionImpl::OnTerminalExited(int32_t terminal_id) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  protocol::TerminalControl response;
-  response.mutable_close_terminal()->set_terminal_id(terminal_id);
-  connection_->client_stub()->DeliverTerminalControl(response);
-}
-
-void PeerSessionImpl::SendTerminalProcessInfo(int32_t terminal_id,
-                                              bool is_active,
-                                              std::string_view process_name) {
+std::unique_ptr<protocol::MessagePipe>
+PeerSessionImpl::CreateOutgoingTerminalChannel(const std::string& name) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (!channels_connected_) {
-    return;
+    return nullptr;
   }
-  protocol::TerminalControl response;
-  auto* process_info = response.mutable_process_info();
-  process_info->set_terminal_id(terminal_id);
-  process_info->set_is_active(is_active);
-  process_info->set_process_name(process_name);
-  connection_->client_stub()->DeliverTerminalControl(response);
+  return connection_->CreateOutgoingDataChannel(name);
 }
 
 void PeerSessionImpl::CreateMediaStreams() {
@@ -779,8 +662,9 @@ void PeerSessionImpl::CreateMediaStreams() {
 
   AudioPlaybackMode audio_playback_mode =
       desktop_environment_options_.audio_playback_mode();
-  if (audio_playback_mode == AudioPlaybackMode::kRemoteAndLocal ||
-      audio_playback_mode == AudioPlaybackMode::kRemoteOnly) {
+  if (effective_policies_.is_host_to_client_audio_allowed() &&
+      (audio_playback_mode == AudioPlaybackMode::kRemoteAndLocal ||
+       audio_playback_mode == AudioPlaybackMode::kRemoteOnly)) {
     // Create an AudioStream to pump audio from the capturer to the client.
     std::unique_ptr<AudioCapturer> audio_capturer =
         desktop_environment_->CreateAudioCapturer();
@@ -958,7 +842,7 @@ void PeerSessionImpl::OnConnectionClosed(protocol::ErrorCode error,
   input_injector_.reset();
   screen_controls_.reset();
   desktop_environment_.reset();
-  terminal_session_manager_.reset();
+  terminal_data_channel_manager_.reset();
 
   // Notify the ClientSession that this client is disconnected.
   if (event_handler_) {
@@ -993,6 +877,13 @@ void PeerSessionImpl::OnIncomingAudioFormatChanged(
     const protocol::AudioSampleInfo& info,
     base::OnceCallback<void(bool)> done) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (!effective_policies_.is_client_to_host_audio_allowed()) {
+    LOG(WARNING) << "Client-to-host audio is disallowed by policy.";
+    if (done) {
+      std::move(done).Run(false);
+    }
+    return;
+  }
   if (audio_injector_) {
     audio_injector_->SetSampleInfo(info, std::move(done));
   } else {
@@ -1161,6 +1052,13 @@ void PeerSessionImpl::OnAgentIntegrationSupportDetermined(
 
   // Collate the set of capabilities to offer the client, if it supports them.
   host_capabilities_ = desktop_environment_->GetCapabilities();
+  if (!effective_policies_.is_client_to_host_audio_allowed()) {
+    std::vector<std::string> caps =
+        base::SplitString(host_capabilities_, " ", base::KEEP_WHITESPACE,
+                          base::SPLIT_WANT_NONEMPTY);
+    std::erase(caps, protocol::kMicrophoneRemotingCapability);
+    host_capabilities_ = base::JoinString(caps, " ");
+  }
 
   if (!host_capabilities_.empty()) {
     host_capabilities_.append(" ");
@@ -1231,6 +1129,9 @@ void PeerSessionImpl::OnAgentIntegrationSupportDetermined(
 
 void PeerSessionImpl::CreateAudioInjectorAndBuffer() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (!effective_policies_.is_client_to_host_audio_allowed()) {
+    return;
+  }
   std::unique_ptr<IpcFifoBufferWriter> writer;
   std::unique_ptr<IpcFifoBufferReader> reader;
 
@@ -1400,7 +1301,8 @@ void PeerSessionImpl::OnDesktopAttached() {
     remote_webauthn_message_handler_->NotifyWebAuthnStateChange();
   }
 
-  if (HasCapability(capabilities_, protocol::kMicrophoneRemotingCapability) &&
+  if (effective_policies_.is_client_to_host_audio_allowed() &&
+      HasCapability(capabilities_, protocol::kMicrophoneRemotingCapability) &&
       !audio_injector_) {
     CreateAudioInjectorAndBuffer();
   }
@@ -1429,14 +1331,14 @@ void PeerSessionImpl::OnSecurityKeyConnection(
     mojo::PendingReceiver<mojom::SecurityKeyForwarder> receiver) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  bool allow_gnubby = desktop_environment_options_.enable_security_key();
+  bool allow_security_key = desktop_environment_options_.enable_security_key();
 
   if (!security_key_auth_handler_) {
     LOG(WARNING) << "Security key forwarding is not supported. Binding request "
                     "rejected.";
     return;
   }
-  if (!allow_gnubby) {
+  if (!allow_security_key) {
     LOG(WARNING) << "Security key forwarding is disabled by policy or option. "
                  << "Binding request rejected.";
     return;

@@ -4,6 +4,7 @@
 
 import("//build/buildflag_header.gni")
 import("//build/config/chrome_build.gni")
+import("//build/config/ozone.gni")
 import("//build/config/ui.gni")
 import("//components/signin/features.gni")
 import("//extensions/buildflags/buildflags.gni")

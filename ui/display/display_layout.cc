@@ -14,6 +14,7 @@
 
 #include "base/check.h"
 #include "base/check_op.h"
+#include "base/containers/linear_find.h"
 #include "base/logging.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/values.h"
@@ -53,8 +54,7 @@ DisplayIdList DisplayListToDisplayIdList(const Displays& displays) {
 
 // Returns nullptr if display with |id| is not found.
 Display* FindDisplayById(Displays* display_list, int64_t id) {
-  auto iter = std::ranges::find(*display_list, id, &Display::id);
-  return iter == display_list->end() ? nullptr : &(*iter);
+  return base::LinearFind(*display_list, id, &Display::id);
 }
 
 // Returns the tree depth of the display with ID |display_id| from the tree root
@@ -154,12 +154,11 @@ void MaybeReparentTargetDisplay(
     }
 
     Display* parent_display = FindDisplayById(display_list, parent_display_id);
-    DCHECK(parent_display);
+    CHECK(parent_display, base::NotFatalUntil::M163);
 
-    auto target_display_placement_itr = std::ranges::find(
+    target_display_placement = base::LinearFind(
         *placement_list, target_display->id(), &DisplayPlacement::display_id);
-    CHECK(target_display_placement_itr != placement_list->end());
-    target_display_placement = &(*target_display_placement_itr);
+    CHECK(target_display_placement);
     if (AreDisplaysTouching(*target_display, *parent_display,
                             target_display_placement->position)) {
       return;
@@ -172,7 +171,7 @@ void MaybeReparentTargetDisplay(
     target_display_placement = &placement_list->back();
   }
 
-  DCHECK(target_display_placement);
+  CHECK(target_display_placement, base::NotFatalUntil::M163);
 
   // Reparent the target to source and update the position. No need to
   // update the offset here as it will be done later when UpdateOffsets()
@@ -264,7 +263,8 @@ void DeIntersectDisplays(int64_t primary_id,
     return d1->id() < d2->id();
   });
   // This must result in the primary display being at the front of the list.
-  DCHECK_EQ(sorted_displays.front()->id(), primary_id);
+  CHECK_EQ(sorted_displays.front()->id(), primary_id,
+           base::NotFatalUntil::M163);
 
   for (size_t i = 1; i < sorted_displays.size(); ++i) {
     Display* target_display = sorted_displays[i];
@@ -379,14 +379,14 @@ DisplayPlacement::DisplayPlacement(int64_t display_id,
       position(position),
       offset(offset),
       offset_reference(offset_reference) {
-  DCHECK_LE(TOP, position);
-  DCHECK_GE(LEFT, position);
+  CHECK_LE(TOP, position, base::NotFatalUntil::M163);
+  CHECK_GE(LEFT, position, base::NotFatalUntil::M163);
   // Set the default value to |position| in case position is invalid.  DCHECKs
   // above doesn't stop in Release builds.
   if (TOP > position || LEFT < position)
     this->position = RIGHT;
 
-  DCHECK_GE(kMaxValidOffset, abs(offset));
+  CHECK_GE(kMaxValidOffset, abs(offset), base::NotFatalUntil::M163);
 }
 
 DisplayPlacement::DisplayPlacement(const DisplayPlacement&) = default;
@@ -744,10 +744,10 @@ bool DisplayLayout::ApplyDisplayPlacement(const DisplayPlacement& placement,
                                           int minimum_offset_overlap) {
   const Display& parent_display =
       *FindDisplayById(display_list, placement.parent_display_id);
-  DCHECK(parent_display.is_valid());
+  CHECK(parent_display.is_valid(), base::NotFatalUntil::M163);
   Display* target_display = FindDisplayById(display_list, placement.display_id);
   gfx::Rect old_bounds(target_display->bounds());
-  DCHECK(target_display);
+  CHECK(target_display, base::NotFatalUntil::M163);
 
   const gfx::Rect& parent_bounds = parent_display.bounds();
   const gfx::Rect& target_bounds = target_display->bounds();

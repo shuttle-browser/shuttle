@@ -24,7 +24,7 @@ ChromeCookiesApiDelegate::GetCookieStoreContexts(
     bool include_incognito) {
   Profile* original_profile =
       Profile::FromBrowserContext(&context)->GetOriginalProfile();
-  DCHECK(original_profile);
+  CHECK(original_profile, base::NotFatalUntil::M163);
   // Shuttle: no incognito profiles, so there is only the original store.
 
   // Iterate through all browser instances, and for each browser, add its tab

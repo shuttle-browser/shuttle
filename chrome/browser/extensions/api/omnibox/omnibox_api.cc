@@ -15,6 +15,7 @@
 
 #include "base/functional/bind.h"
 #include "base/lazy_instance.h"
+#include "base/memory/weak_ptr.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
@@ -39,7 +40,7 @@
 #include "extensions/common/extension_id.h"
 #include "extensions/common/mojom/api_permission_id.mojom.h"
 #include "extensions/common/permissions/permissions_data.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/image/image_skia.h"
 
@@ -152,7 +153,7 @@ void ExtensionOmniboxEventRouter::OnInputEntered(
     content::WebContents* web_contents,
     const ExtensionId& extension_id,
     const std::string& input,
-    WindowOpenDisposition disposition) {
+    ui::mojom::WindowOpenDisposition disposition) {
   Profile* profile =
       Profile::FromBrowserContext(web_contents->GetBrowserContext());
 
@@ -160,14 +161,13 @@ void ExtensionOmniboxEventRouter::OnInputEntered(
       ExtensionRegistry::Get(profile)->enabled_extensions().GetByID(
           extension_id);
   CHECK(extension);
-  extensions::ActiveTabPermissionGranter::FromWebContents(web_contents)
-      ->GrantIfRequested(extension);
 
   auto args = base::MakeRefCounted<EventArgs>();
   args->data.Append(input);
-  if (disposition == WindowOpenDisposition::kNewForegroundTab) {
+  if (disposition == ui::mojom::WindowOpenDisposition::kNewForegroundTab) {
     args->data.Append(kForegroundTabDisposition);
-  } else if (disposition == WindowOpenDisposition::kNewBackgroundTab) {
+  } else if (disposition ==
+             ui::mojom::WindowOpenDisposition::kNewBackgroundTab) {
     args->data.Append(kBackgroundTabDisposition);
   } else {
     args->data.Append(kCurrentTabDisposition);
@@ -177,8 +177,23 @@ void ExtensionOmniboxEventRouter::OnInputEntered(
                                        omnibox::OnInputEntered::kEventName,
                                        std::move(args), profile);
   event->user_gesture = EventRouter::UserGestureState::kEnabled;
-  EventRouter::Get(profile)
-      ->DispatchEventToExtension(extension_id, std::move(event));
+
+  // Dispatch the event only after the activeTab grant takes effect, so that the
+  // extension can use the grant right away.
+  extensions::ActiveTabPermissionGranter::FromWebContents(web_contents)
+      ->GrantIfRequested(
+          extension,
+          base::BindOnce(
+              [](base::WeakPtr<content::WebContents> web_contents,
+                 const ExtensionId& extension_id,
+                 std::unique_ptr<Event> event) {
+                if (!web_contents) {
+                  return;
+                }
+                EventRouter::Get(web_contents->GetBrowserContext())
+                    ->DispatchEventToExtension(extension_id, std::move(event));
+              },
+              web_contents->GetWeakPtr(), extension_id, std::move(event)));
 
   OmniboxInputWatcherFactory::GetForBrowserContext(profile)
       ->NotifyInputEntered();

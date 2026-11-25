@@ -123,10 +123,6 @@ class CORE_EXPORT InvalidationSet
   void AddCustomPseudoName(const AtomicString& custom_pseudo_name);
   void AddAttribute(const AtomicString& attribute_local_name);
 
-  void SetInvalidationFlags(InvalidationFlags flags) {
-    invalidation_flags_ = flags;
-  }
-
   void SetWholeSubtreeInvalid();
   bool WholeSubtreeInvalid() const {
     return invalidation_flags_.WholeSubtreeInvalid();
@@ -178,12 +174,16 @@ class CORE_EXPORT InvalidationSet
     return invalidation_flags_.InvalidatesTreeCounting();
   }
 
+  void SetInvalidatesFocused() { invalidates_focused_ = true; }
+  bool InvalidatesFocused() const { return invalidates_focused_; }
+
   bool IsEmpty() const {
     return HasEmptyBackings() &&
            !invalidation_flags_.InsertionPointCrossing() &&
            !invalidation_flags_.InvalidatesSlotted() &&
            !invalidation_flags_.InvalidatesParts() &&
-           !invalidation_flags_.InvalidatesTreeCounting();
+           !invalidation_flags_.InvalidatesTreeCounting() &&
+           !invalidates_focused_;
   }
 
   void WriteIntoTrace(perfetto::TracedValue context) const;
@@ -214,6 +214,7 @@ class CORE_EXPORT InvalidationSet
   //  I - Insertion point crossing.
   //  S - Invalidates slotted.
   //  P - Invalidates parts.
+  //  F - Invalidates the focused element.
   //  ~ - Max direct siblings is kDirectAdjacentMax.
   //  <integer> - Max direct siblings is specified number (omitted if 1).
   String ToString() const;
@@ -459,6 +460,9 @@ class CORE_EXPORT InvalidationSet
   // (unless we know for sure no child can be affected by a
   // selector of the :nth-child type).
   unsigned invalidates_nth_ : 1;
+
+  // If true, the focused element needs to be invalidated.
+  unsigned invalidates_focused_ : 1;
 };
 
 class CORE_EXPORT DescendantInvalidationSet final : public InvalidationSet {

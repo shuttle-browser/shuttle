@@ -31,20 +31,54 @@ BASE_FEATURE(kAllowEyeDropperWGCScreenCapture,
 #endif  // BUILDFLAG(IS_WIN)
 );
 
+// Controls the rollout of window-scoped, listener-style observation for
+// browser window UI. When enabled, consumers subscribe to window-scoped
+// features such as BrowserWindowThemeObserver and BrowserWindowZoomObserver
+// via Register*Callback() methods (returning base::CallbackListSubscription)
+// instead of inheriting legacy observer interfaces like ThemeServiceObserver,
+// ui::NativeThemeObserver and zoom::ZoomObserver directly.
+BASE_FEATURE(kBrowserWindowListenerObservation,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+bool IsBrowserWindowListenerObservationEnabled() {
+  return base::FeatureList::IsEnabled(kBrowserWindowListenerObservation);
+}
+
+#if !BUILDFLAG(IS_ANDROID)
+// Splits the bookmark bar into three keyboard navigation areas. Tab stops only
+// at the first button of each area; Left/Right arrows move within the area. No
+// effect on macOS.
+BASE_FEATURE(kBookmarkBarAreaKeyboardNavigation,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif  // !BUILDFLAG(IS_ANDROID)
 BASE_FEATURE(kCtrlTabMru, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Skip the UI update coalescing delay when the favicon arrives after a
 // navigation. Kill switch for crbug.com/554464784.
 BASE_FEATURE(kFastFaviconDisplay, base::FEATURE_ENABLED_BY_DEFAULT);
 
+// Enables showing the identity provider's account management page, privacy
+// policy and terms of service links in the FedCM modal permission dialog on
+// desktop. The links are shown in the disclosure container, so this also
+// enables the container UI, as if `kFedCmPermissionUiWithContainer` were
+// enabled.
+BASE_FEATURE(kFedCmIdpLinks, base::FEATURE_DISABLED_BY_DEFAULT);
+
 // Enables the request permission UI with a container for the disclosure text
 // in the FedCM active mode modal dialog on desktop.
 BASE_FEATURE(kFedCmPermissionUiWithContainer,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+// Enables the Match Case (Aa) toggle button in the Find-in-Page bar.
+BASE_FEATURE(kFindInPageMatchCase, base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kImportExportFlags, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kInfoBarQueuedCountPill, base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enables jumping to the next/previous Find-in-Page match outside the current
+// visible viewport via dedicated Find bar buttons or Alt+Enter.
+BASE_FEATURE(kFindInPageSkipViewport, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Kill switch for crbug.com/559656985. When enabled, the press-and-hold Esc
 // timer also exits tab fullscreen (unless browser fullscreen is underneath)
@@ -96,7 +130,7 @@ BASE_FEATURE_PARAM(bool,
                    "bookmark",
                    true);
 BASE_FEATURE(kMenuSimplification, base::FEATURE_DISABLED_BY_DEFAULT);
-BASE_FEATURE(kTabGroupColorRefresh, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kTabGroupColorRefresh, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kWebuiRefresh2026, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kAppMenuGlowUp, base::FEATURE_DISABLED_BY_DEFAULT);
 // Enables the redesigned Settings 2026 refresh features and search UX.
@@ -105,13 +139,17 @@ BASE_FEATURE(kSettingsRefresh2026, base::FEATURE_DISABLED_BY_DEFAULT);
 // and the search WebUI that consumes it. Only takes effect when
 // kSettingsRefresh2026 is also enabled.
 BASE_FEATURE(kSettingsSearch2026, base::FEATURE_DISABLED_BY_DEFAULT);
-// Enables search in the app Chrome menu.
+// Enables search in the app Chrome menu. Only takes effect when
+// kAppMenuGlowUp is also enabled, since the search bar is part of the
+// action-based app menu.
 BASE_FEATURE(kChroMenuSearch, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE_PARAM(std::string,
                    kChroMenuSearchQuery,
                    &kChroMenuSearch,
                    "query",
                    "");
+// Enables the redesigned History page refresh features.
+BASE_FEATURE(kHistoryPageRefresh, base::FEATURE_DISABLED_BY_DEFAULT);
 
 bool IsTabStripDeclutterEnabled() {
   return base::FeatureList::IsEnabled(kDesktopGlowUp) ||
@@ -159,6 +197,12 @@ bool IsSettingsRefresh2026Enabled() {
 bool IsSettingsSearch2026Enabled() {
   return IsSettingsRefresh2026Enabled() &&
          base::FeatureList::IsEnabled(kSettingsSearch2026);
+}
+
+bool IsHistoryPageRefreshEnabled() {
+  return (base::FeatureList::IsEnabled(kDesktopGlowUp) ||
+          base::FeatureList::IsEnabled(kWebuiRefresh2026)) &&
+         base::FeatureList::IsEnabled(kHistoryPageRefresh);
 }
 
 bool ShouldUseActionsForBrowserCommands() {
@@ -255,6 +299,9 @@ BASE_FEATURE(kProcessIsolationSettings, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kLensOverlayVirtualFocusNavigation,
              base::FEATURE_DISABLED_BY_DEFAULT);
+// If enabled, use desktop widget to show the omnibox popup.
+BASE_FEATURE(kOmniboxPopupDesktopWidget, base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kWebuiBrowserVirtualFocusNavigation,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -330,8 +377,6 @@ BASE_FEATURE(kNTPFooterBadgingPolicies, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kEnterpriseManagementDisclaimerUsesCustomLabel,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kEnterpriseReleaseNotes, base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kManagedProfileRequiredInterstitial,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
@@ -350,9 +395,6 @@ BASE_FEATURE(kMacDeferInputContextUntilFirstPaint,
 BASE_FEATURE(kPageSpecificDataDialogRelatedInstalledAppsSection,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-BASE_FEATURE(kEnableManagementPromotionBanner,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kLensOverlayHomeworkPageActionFocusOptimization,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -364,7 +406,7 @@ BASE_FEATURE(kPageActionAnchoredMessageActiveTabOnly,
 
 BASE_FEATURE(kAiModePageActionOptimization, base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kPageActionsPrioritySelector, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kPageActionsPrioritySelector, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kPageActionsPrioritySelectorProductMessagingController,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -457,6 +499,8 @@ bool IsTabGroupRibbonEnabled() {
 }
 
 BASE_FEATURE(kNonGroupFocus, base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE_PARAM(int, kNonGroupFocusIphMinTabs, &kNonGroupFocus, 3);
 
 BASE_FEATURE(kOmniboxResizingPrioritization, base::FEATURE_ENABLED_BY_DEFAULT);
 

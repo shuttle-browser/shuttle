@@ -354,6 +354,43 @@ class LocalDeviceGtestRunTest(unittest.TestCase):
                     expected_cmd, shell=True, check_return=True
                 )
 
+    def test_SetUp_emulatorUnreachable_noRetries(self):
+        mock_env = mock.MagicMock(
+            spec=local_device_environment.LocalDeviceEnvironment
+        )
+        mock_env.concurrent_adb = False
+        mock_env.force_main_user = False
+        mock_ti = mock.MagicMock(spec=gtest_test_instance.GtestTestInstance)
+        mock_ti.use_existing_test_data = True
+        mock_ti.deploy_mock_openxr_runtime = False
+        mock_ti.GetDataDependencies.return_value = [[]]
+
+        device = mock.MagicMock()
+        device.serial = 'emulator-5554'
+        device.adb = (
+            local_device_gtest_run.local_device_test_run.adb_wrapper.AdbWrapper(
+                'emulator-5554'
+            )
+        )
+        device.RunShellCommand.side_effect = (
+            local_device_gtest_run.device_errors.DeviceUnreachableError(
+                'device offline'
+            )
+        )
+        mock_env.parallel_devices.pMap.side_effect = lambda f, args: [
+            f(device, args[0])
+        ]
+
+        run = local_device_gtest_run.LocalDeviceGtestRun(mock_env, mock_ti)
+        run._delegate = mock.MagicMock()
+        run.SetUp()
+
+        device.RunShellCommand.assert_called_once()
+        device.WaitUntilFullyBooted.assert_not_called()
+        mock_env.DenylistDevice.assert_called_once_with(
+            device, 'individual_device_set_up'
+        )
+
     def test_SetUp_push_test_data_drops_caches_in_force_main_user(self):
         device = mock.MagicMock()
         device.ResolveSpecialPath.return_value = (
@@ -441,6 +478,159 @@ class LocalDeviceGtestRunTest(unittest.TestCase):
                 mock_env.DenylistDevice.assert_called_once_with(
                     device, 'individual_device_set_up'
                 )
+
+    @mock.patch('pylib.local.device.local_device_test_run.WaitUntilDeviceReady')
+    def test_ApkDelegate_Run_recoversStdoutAfterSoftReboot(
+        self, mock_wait_ready
+    ):
+        mock_env = mock.MagicMock(
+            spec=local_device_environment.LocalDeviceEnvironment
+        )
+        mock_env.force_main_user = False
+        mock_ti = mock.MagicMock(spec=gtest_test_instance.GtestTestInstance)
+        mock_ti.coverage_dir = None
+        mock_ti.suite = 'content_browsertests'
+        mock_ti.extras = {}
+        mock_ti.wait_for_java_debugger = False
+        mock_ti.package = 'org.chromium.content_browsertests_apk'
+        mock_ti.runner = (
+            'org.chromium.native_test.NativeTestInstrumentationTestRunner'
+        )
+        mock_ti.permissions = []
+        mock_ti.use_existing_test_data = False
+        mock_ti.additional_apks = []
+        mock_ti.apk_helper = None
+
+        delegate = local_device_gtest_run._ApkDelegate(mock_ti, mock_env)
+
+        device = mock.MagicMock()
+        device.GetAppWritablePath.return_value = '/sdcard/Download'
+        device.ReadFile.side_effect = [
+            local_device_gtest_run.device_errors.AdbCommandFailedError(
+                ['pull', '/sdcard/Download/out.gtest_out'],
+                'Input/output error',
+                1,
+                'device_1',
+            ),
+            (
+                '[ RUN      ] Suite.Test1\n'
+                '[       OK ] Suite.Test1 (10 ms)\n'
+                '[ RUN      ] Suite.CrashTest\n'
+            ),
+        ]
+
+        lines = delegate.Run(['Suite.Test1', 'Suite.CrashTest'], device)
+
+        mock_wait_ready.assert_called_once_with(
+            device,
+            force_main_user=False,
+            packages=['org.chromium.content_browsertests_apk'],
+        )
+        self.assertEqual(device.ReadFile.call_count, 2)
+        self.assertEqual(
+            lines,
+            [
+                '[ RUN      ] Suite.Test1',
+                '[       OK ] Suite.Test1 (10 ms)',
+                '[ RUN      ] Suite.CrashTest',
+            ],
+        )
+
+    @mock.patch('lib.proto.exception_recorder.register')
+    @mock.patch('pylib.local.device.local_device_test_run.WaitUntilDeviceReady')
+    def test_ApkDelegate_Run_reraisesTimeoutWhenStdoutMissing(
+        self, mock_wait_ready, _mock_register
+    ):
+        mock_env = mock.MagicMock(
+            spec=local_device_environment.LocalDeviceEnvironment
+        )
+        mock_env.force_main_user = False
+        mock_ti = mock.MagicMock(spec=gtest_test_instance.GtestTestInstance)
+        mock_ti.coverage_dir = None
+        mock_ti.suite = 'content_browsertests'
+        mock_ti.extras = {}
+        mock_ti.wait_for_java_debugger = False
+        mock_ti.package = 'org.chromium.content_browsertests_apk'
+        mock_ti.runner = (
+            'org.chromium.native_test.NativeTestInstrumentationTestRunner'
+        )
+        mock_ti.permissions = []
+        mock_ti.use_existing_test_data = False
+        mock_ti.additional_apks = []
+        mock_ti.apk_helper = None
+
+        delegate = local_device_gtest_run._ApkDelegate(mock_ti, mock_env)
+
+        device = mock.MagicMock()
+        device.GetAppWritablePath.return_value = '/sdcard/Download'
+        device.StartInstrumentation.side_effect = (
+            local_device_gtest_run.device_errors.CommandTimeoutError(
+                'shard timed out'
+            )
+        )
+        device.ReadFile.side_effect = (
+            local_device_gtest_run.device_errors.AdbCommandFailedError(
+                ['pull', '/sdcard/Download/out.gtest_out'],
+                'No such file or directory',
+                1,
+                'device_1',
+            )
+        )
+
+        with self.assertRaises(
+            local_device_gtest_run.device_errors.CommandTimeoutError
+        ):
+            delegate.Run(['Suite.Test1'], device)
+
+        mock_wait_ready.assert_not_called()
+
+    @mock.patch('lib.proto.exception_recorder.register')
+    @mock.patch('pylib.local.device.local_device_test_run.WaitUntilDeviceReady')
+    def test_ApkDelegate_Run_propagatesWaitUntilDeviceReadyErrorsUnchanged(
+        self, mock_wait_ready, mock_register
+    ):
+        mock_env = mock.MagicMock(
+            spec=local_device_environment.LocalDeviceEnvironment
+        )
+        mock_env.force_main_user = False
+        mock_ti = mock.MagicMock(spec=gtest_test_instance.GtestTestInstance)
+        mock_ti.coverage_dir = None
+        mock_ti.suite = 'content_browsertests'
+        mock_ti.extras = {}
+        mock_ti.wait_for_java_debugger = False
+        mock_ti.package = 'org.chromium.content_browsertests_apk'
+        mock_ti.runner = (
+            'org.chromium.native_test.NativeTestInstrumentationTestRunner'
+        )
+        mock_ti.permissions = []
+        mock_ti.use_existing_test_data = False
+        mock_ti.additional_apks = []
+        mock_ti.apk_helper = None
+
+        delegate = local_device_gtest_run._ApkDelegate(mock_ti, mock_env)
+        device = mock.MagicMock()
+        device.GetAppWritablePath.return_value = '/sdcard/Download'
+        device.ReadFile.side_effect = (
+            local_device_gtest_run.device_errors.AdbCommandFailedError(
+                ['pull', '/sdcard/Download/out.gtest_out'],
+                'device offline',
+                1,
+                'device_1',
+            )
+        )
+        mock_wait_ready.side_effect = (
+            local_device_gtest_run.device_errors.DeviceUnreachableError(
+                'device_1'
+            )
+        )
+
+        with self.assertRaises(
+            local_device_gtest_run.device_errors.DeviceUnreachableError
+        ):
+            delegate.Run(['Suite.Test1'], device)
+
+        mock_register.assert_not_called()
+        self.assertEqual(device.ReadFile.call_count, 1)
 
 
 if __name__ == '__main__':

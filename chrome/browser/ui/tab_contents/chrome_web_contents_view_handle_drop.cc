@@ -17,9 +17,8 @@ void HandleOnPerformingDrop(
     content::WebContentsViewDelegate::DropCompletionCallback callback) {
   CHECK(callback);
 
-  // Shuttle: no content analysis. Make sure that the renderer never forces a
-  // default action, then let the drop proceed.
-  drop_data.document_is_handling_drag = true;
+  // Shuttle: no content analysis, so there is nothing to scan: forward the drop
+  // unchanged (as upstream does without content analysis).
   if (web_contents->GetDelegate()) {
     web_contents->GetDelegate()->HandleDragEnded();
   }

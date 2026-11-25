@@ -452,7 +452,6 @@ source_set("extensions") {
     "//chrome/browser:chrome_content_browser_client_parts",
     "//chrome/browser:defaults",
     "//chrome/browser:file_select_helper",
-    "//chrome/browser:file_util_service",
     "//chrome/browser:icon_loader",
     "//chrome/browser:icon_manager",
     "//chrome/browser:shell_integration",
@@ -513,6 +512,7 @@ source_set("extensions") {
     "//chrome/browser/ui/webui:webui_util",
     "//chrome/browser/update_client",
     "//chrome/common",
+    "//chrome/common/extensions/api:extensions_features",
     "//components/content_settings/core/browser",
     "//components/content_settings/core/browser:cookie_settings",
     "//components/cookie_config",
@@ -570,6 +570,7 @@ source_set("extensions") {
     "//google_apis/common:request_util",
     "//net",
     "//net:extras",
+    "//services/device/public/mojom",
     "//services/metrics/public/cpp:ukm_builders",
     "//storage/browser",
     "//third_party/zlib/google:zip",
@@ -588,6 +589,7 @@ source_set("extensions") {
     "//components/safe_browsing/core/browser/db:util",
     "//components/signin/core/browser",
     "//extensions/buildflags",
+    "//mojo/public/cpp/bindings",
   ]
   defines = []
 
@@ -701,34 +703,6 @@ source_set("extensions") {
       "api/automation_internal/chrome_automation_internal_api_delegate.cc",
       "api/automation_internal/chrome_automation_internal_api_delegate.h",
       "api/chrome_device_permissions_prompt.h",
-      "api/image_writer_private/destroy_partitions_operation.cc",
-      "api/image_writer_private/destroy_partitions_operation.h",
-      "api/image_writer_private/error_constants.cc",
-      "api/image_writer_private/error_constants.h",
-      "api/image_writer_private/extraction_properties.cc",
-      "api/image_writer_private/extraction_properties.h",
-      "api/image_writer_private/image_writer_private_api.cc",
-      "api/image_writer_private/image_writer_private_api.h",
-      "api/image_writer_private/image_writer_utility_client.cc",
-      "api/image_writer_private/image_writer_utility_client.h",
-      "api/image_writer_private/operation.cc",
-      "api/image_writer_private/operation.h",
-      "api/image_writer_private/operation_manager.cc",
-      "api/image_writer_private/operation_manager.h",
-      "api/image_writer_private/removable_storage_provider.cc",
-      "api/image_writer_private/removable_storage_provider.h",
-      "api/image_writer_private/tar_extractor.cc",
-      "api/image_writer_private/tar_extractor.h",
-      "api/image_writer_private/write_from_file_operation.cc",
-      "api/image_writer_private/write_from_file_operation.h",
-      "api/image_writer_private/write_from_url_operation.cc",
-      "api/image_writer_private/write_from_url_operation.h",
-      "api/image_writer_private/xz_extractor.cc",
-      "api/image_writer_private/xz_extractor.h",
-      "api/image_writer_private/zip_extractor.cc",
-      "api/image_writer_private/zip_extractor.h",
-      "api/image_writer_private/zstd_extractor.cc",
-      "api/image_writer_private/zstd_extractor.h",
       "api/language_settings_private/language_settings_private_api.cc",
       "api/language_settings_private/language_settings_private_api.h",
       "api/language_settings_private/language_settings_private_delegate.cc",
@@ -824,7 +798,6 @@ source_set("extensions") {
       "//components/safe_browsing/core/common/proto:csd_proto",
       "//components/safe_browsing/core/common/proto:realtimeapi_proto",
       "//content/public/browser",
-      "//mojo/public/cpp/bindings",
       "//ui/base/unowned_user_data",
     ]
     deps += [
@@ -879,14 +852,10 @@ source_set("extensions") {
       "//components/webauthn/json",
 
       # TODO(crbug.com/346472679): Remove this dependency:
-      "//chrome/common/extensions/api:extensions_features",
-      "//chrome/services/file_util/public/mojom",
-      "//chrome/services/removable_storage_writer/public/mojom",
       "//components/app_constants",
       "//components/back_forward_cache",
       "//components/browsing_data/content",
       "//components/browsing_data/core",
-      "//components/dom_distiller/core",
       "//components/download/public/common:public",
       "//components/drive",
       "//components/embedder_support:user_agent",
@@ -923,6 +892,7 @@ source_set("extensions") {
       "//components/unified_consent",
       "//components/url_formatter",
       "//components/url_matcher",
+      "//components/web_distiller/core",
       "//components/web_modal",
       "//components/zoom",
       "//content/public/common",
@@ -941,7 +911,6 @@ source_set("extensions") {
       "//rlz/buildflags",
       "//services/audio/public/cpp",
       "//services/data_decoder/public/cpp",
-      "//services/device/public/mojom",
       "//services/network/public/mojom",
       "//services/service_manager/public/cpp",
       "//services/service_manager/public/mojom",
@@ -977,7 +946,6 @@ source_set("extensions") {
 
     if (!is_chromeos) {
       sources += [
-        "api/image_writer_private/operation_nonchromeos.cc",
       ]
       deps += [
         "//components/enterprise/common/proto:connectors_proto",
@@ -990,15 +958,9 @@ source_set("extensions") {
 
     if (is_mac) {
       sources += [
-        "api/image_writer_private/removable_storage_provider_mac.cc",
         "system_display/display_info_provider_mac.cc",
         "system_display/display_info_provider_mac.h",
       ]
-    }
-
-    if (is_linux) {
-      sources +=
-          [ "api/image_writer_private/removable_storage_provider_linux.cc" ]
     }
 
     if (is_linux || is_chromeos) {
@@ -1007,14 +969,10 @@ source_set("extensions") {
       if (use_dbus) {
         deps += [ "//dbus" ]
       }
-      if (use_udev) {
-        deps += [ "//device/udev_linux" ]
-      }
     }
 
     if (is_win) {
       sources += [
-        "api/image_writer_private/removable_storage_provider_win.cc",
         "external_registry_loader_win.cc",
         "external_registry_loader_win.h",
         "system_display/display_info_provider_win.cc",
@@ -1025,10 +983,7 @@ source_set("extensions") {
         "//third_party/iaccessible2",
         "//third_party/isimpledom",
       ]
-      libs = [
-        "setupapi.lib",
-        "propsys.lib",
-      ]
+      libs = [ "propsys.lib" ]
     } else if (use_aura && !is_chromeos) {
       sources += [
         "system_display/display_info_provider_aura.cc",
@@ -1093,8 +1048,6 @@ source_set("extensions") {
       "api/certificate_provider/certificate_provider_api.h",
       "api/file_system/consent_provider_impl.cc",
       "api/file_system/consent_provider_impl.h",
-      "api/file_system/request_file_system_notification.cc",
-      "api/file_system/request_file_system_notification.h",
       "api/platform_keys_core/platform_keys_utils.cc",
       "api/platform_keys_core/platform_keys_utils.h",
 
@@ -1107,8 +1060,6 @@ source_set("extensions") {
       "api/file_system/chrome_file_system_delegate_ash.h",
       "api/identity/launch_web_auth_flow_delegate_ash.cc",
       "api/identity/launch_web_auth_flow_delegate_ash.h",
-      "api/image_writer_private/operation_chromeos.cc",
-      "api/image_writer_private/removable_storage_provider_chromeos.cc",
       "api/media_perception_private/media_perception_api_delegate_chromeos.cc",
       "api/media_perception_private/media_perception_api_delegate_chromeos.h",
       "api/networking_private/networking_private_ui_delegate_chromeos.cc",
@@ -1237,7 +1188,6 @@ source_set("extensions") {
       "//chromeos/ash/components/dbus/constants",
       "//chromeos/ash/components/dbus/cros_disks",
       "//chromeos/ash/components/dbus/cryptohome",
-      "//chromeos/ash/components/dbus/image_burner",
       "//chromeos/ash/components/dbus/update_engine",
       "//chromeos/ash/components/disks",
       "//chromeos/ash/components/enhanced_network_tts",
@@ -1318,7 +1268,6 @@ source_set("extensions") {
         "//chrome/browser/ash/base",
         "//chrome/browser/ash/printing/print_management",
         "//chrome/browser/chromeos/extensions/printing_metrics",
-        "//chrome/browser/chromeos/printing",
         "//chrome/browser/pdf:pdf_pref_names",
         "//chrome/browser/ui/views/extensions/dialogs:print_job_confirmation_dialog",
         "//chromeos/printing",
@@ -1405,6 +1354,7 @@ source_set("chrome_extensions_browser_client") {
     "//chrome/browser/app_mode",
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/download",
+    "//chrome/browser/enterprise/isolated_mode",
     "//chrome/browser/extensions",
     "//chrome/browser/extensions/api/runtime",
     "//chrome/browser/external_protocol",

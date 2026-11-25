@@ -32,6 +32,7 @@ CONTENT_EXPORT BASE_DECLARE_FEATURE(kArabicIndicDigitInput);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kAsyncBeforeUnload);
 CONTENT_EXPORT BASE_DECLARE_FEATURE_PARAM(base::TimeDelta,
                                           kAsyncBeforeUnloadTimeout);
+CONTENT_EXPORT BASE_DECLARE_FEATURE(kAuraDragDropSessionId);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kAvoidUnnecessaryBeforeUnloadCheckSync);
 // Please check the code comment on
 // ContentBrowserClient::SupportsAvoidUnnecessaryBeforeUnloadCheckSync() in the
@@ -154,7 +155,6 @@ CONTENT_EXPORT BASE_DECLARE_FEATURE(kKeepChildProcessAfterIPCReset);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(
     kKeepUnassignedSiteInstanceInOriginalBrowsingInstance);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kKillOnInvalidNavigationHeaders);
-CONTENT_EXPORT BASE_DECLARE_FEATURE(kLimitPopupWidgetHostPosition);
 
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kLocalNetworkAccessForWorkers);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kLocalNetworkAccessForWorkersWarningOnly);
@@ -192,6 +192,7 @@ CONTENT_EXPORT BASE_DECLARE_FEATURE(kPrefetchDevtoolsUserAgentOverride);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(
     kPreloadActivationReportWithExtensionInterception);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kPreloadingConfig);
+CONTENT_EXPORT BASE_DECLARE_FEATURE(kPrioritizeCompositorTaskRunnerOnStartup);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kPrioritizeResizeTaskRunnerOnStartup);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(
     kPrerenderMoreCorrectSpeculativeRFHCreation);
@@ -256,9 +257,18 @@ CONTENT_EXPORT BASE_DECLARE_FEATURE(
     kSharedWorkerSecureContextDerivationFromBrowser);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kSkipEarlyCommitPendingForCrashedFrame);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kSkipRendererCancellationThrottle);
+CONTENT_EXPORT BASE_DECLARE_FEATURE(
+    kSkipUrlInvalidationForUnchangedSameDocumentReplacement);
 #if BUILDFLAG(IS_ANDROID)
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kStrictHighRankProcessLRU);
 #endif
+CONTENT_EXPORT BASE_DECLARE_FEATURE(kSubresourceLoaderProxyTaskQueue);
+CONTENT_EXPORT BASE_DECLARE_FEATURE_PARAM(
+    bool,
+    kSubresourceLoaderProxyTaskQueueVisibleOnly);
+CONTENT_EXPORT BASE_DECLARE_FEATURE_PARAM(
+    bool,
+    kSubresourceLoaderProxyTaskQueueIncludePrerendering);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kTouchpadOverscrollHistoryNavigation);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kTrustedTypesFromLiteral);
 #if BUILDFLAG(IS_WIN)
@@ -274,6 +284,7 @@ CONTENT_EXPORT BASE_DECLARE_FEATURE(kWarmUpNetworkProcess);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kWebAssemblyDynamicTiering);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kWebOTPAssertionFeaturePolicy);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kWebUIInProcessResourceLoading);
+CONTENT_EXPORT BASE_DECLARE_FEATURE(kWebUIOptimizeLocalResourceLoaderConfig);
 
 // Please keep features in alphabetical order.
 

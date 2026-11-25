@@ -21,13 +21,11 @@ constexpr char kValidTestingConfigJSON[] = R"({
   "*": {
     "global": {
       "enable-quarantine": true,
-      "enable-zapping": true,
       "leak-on-destruction": true,
       "branch-capacity-in-bytes": 100
     },
     "main": {
       "enable-quarantine": true,
-      "enable-zapping": true,
       "leak-on-destruction": false,
       "branch-capacity-in-bytes": 200
     },
@@ -36,13 +34,11 @@ constexpr char kValidTestingConfigJSON[] = R"({
   "browser": {
     "*": {
       "enable-quarantine": true,
-      "enable-zapping": true,
       "leak-on-destruction": false,
       "branch-capacity-in-bytes": 300
     },
     "main": {
       "enable-quarantine": true,
-      "enable-zapping": true,
       "leak-on-destruction": false,
       "enable-task-controlled-purge": true,
       "pause-in-between-tasks": true,
@@ -54,7 +50,6 @@ constexpr char kValidTestingConfigJSON[] = R"({
   "renderer": {
     "global": {
       "enable-quarantine": true,
-      "enable-zapping": true,
       "leak-on-destruction": true,
       "branch-capacity-in-bytes": 500
     },
@@ -63,7 +58,6 @@ constexpr char kValidTestingConfigJSON[] = R"({
   "utility.network.mojom.NetworkService": {
     "global": {
       "enable-quarantine": true,
-      "enable-zapping": true,
       "leak-on-destruction": true,
       "branch-capacity-in-bytes": 600
     },
@@ -72,19 +66,16 @@ constexpr char kValidTestingConfigJSON[] = R"({
   "gpu-process": {
     "*": {
       "enable-quarantine": true,
-      "enable-zapping": true,
       "leak-on-destruction": false,
       "branch-capacity-in-bytes": 900
     },
     "viz-compositor": {
       "enable-quarantine": true,
-      "enable-zapping": true,
       "leak-on-destruction": false,
       "branch-capacity-in-bytes": 700
     },
     "compositor-gpu": {
       "enable-quarantine": true,
-      "enable-zapping": true,
       "leak-on-destruction": false,
       "branch-capacity-in-bytes": 800
     },
@@ -103,7 +94,6 @@ TEST(SchedulerLoopQuarantineConfigTest, ValidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "browser", SchedulerLoopQuarantineBranchType::kGlobal);
   EXPECT_TRUE(config.enable_quarantine);
-  EXPECT_TRUE(config.enable_zapping);
   EXPECT_TRUE(config.leak_on_destruction);
   EXPECT_FALSE(config.enable_task_controlled_purge);
   EXPECT_FALSE(config.pause_in_between_tasks);
@@ -114,7 +104,6 @@ TEST(SchedulerLoopQuarantineConfigTest, ValidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "browser", SchedulerLoopQuarantineBranchType::kThreadLocalDefault);
   EXPECT_TRUE(config.enable_quarantine);
-  EXPECT_TRUE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_FALSE(config.enable_task_controlled_purge);
   EXPECT_FALSE(config.pause_in_between_tasks);
@@ -125,7 +114,6 @@ TEST(SchedulerLoopQuarantineConfigTest, ValidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "browser", SchedulerLoopQuarantineBranchType::kMain);
   EXPECT_TRUE(config.enable_quarantine);
-  EXPECT_TRUE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_TRUE(config.enable_task_controlled_purge);
   EXPECT_TRUE(config.pause_in_between_tasks);
@@ -136,7 +124,6 @@ TEST(SchedulerLoopQuarantineConfigTest, ValidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "renderer", SchedulerLoopQuarantineBranchType::kGlobal);
   EXPECT_TRUE(config.enable_quarantine);
-  EXPECT_TRUE(config.enable_zapping);
   EXPECT_TRUE(config.leak_on_destruction);
   EXPECT_EQ(500, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "renderer/global");
@@ -144,7 +131,6 @@ TEST(SchedulerLoopQuarantineConfigTest, ValidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "renderer", SchedulerLoopQuarantineBranchType::kThreadLocalDefault);
   EXPECT_FALSE(config.enable_quarantine);
-  EXPECT_FALSE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_EQ(0, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "renderer/*");
@@ -152,7 +138,6 @@ TEST(SchedulerLoopQuarantineConfigTest, ValidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "renderer", SchedulerLoopQuarantineBranchType::kMain);
   EXPECT_TRUE(config.enable_quarantine);
-  EXPECT_TRUE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_EQ(200, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "renderer/main");
@@ -161,7 +146,6 @@ TEST(SchedulerLoopQuarantineConfigTest, ValidConfig) {
       "utility.network.mojom.NetworkService",
       SchedulerLoopQuarantineBranchType::kGlobal);
   EXPECT_TRUE(config.enable_quarantine);
-  EXPECT_TRUE(config.enable_zapping);
   EXPECT_TRUE(config.leak_on_destruction);
   EXPECT_EQ(600, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "utility.net..workService/global");
@@ -169,7 +153,6 @@ TEST(SchedulerLoopQuarantineConfigTest, ValidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "gpu-process", SchedulerLoopQuarantineBranchType::kVizCompositor);
   EXPECT_TRUE(config.enable_quarantine);
-  EXPECT_TRUE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_EQ(700, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "gpu-process/viz-compositor");
@@ -177,7 +160,6 @@ TEST(SchedulerLoopQuarantineConfigTest, ValidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "gpu-process", SchedulerLoopQuarantineBranchType::kCompositorGpu);
   EXPECT_TRUE(config.enable_quarantine);
-  EXPECT_TRUE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_EQ(800, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "gpu-process/compositor-gpu");
@@ -186,7 +168,6 @@ TEST(SchedulerLoopQuarantineConfigTest, ValidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "gpu-process", SchedulerLoopQuarantineBranchType::kThreadLocalDefault);
   EXPECT_TRUE(config.enable_quarantine);
-  EXPECT_TRUE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_EQ(900, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "gpu-process/*");
@@ -195,7 +176,6 @@ TEST(SchedulerLoopQuarantineConfigTest, ValidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "gpu-process", SchedulerLoopQuarantineBranchType::kMain);
   EXPECT_TRUE(config.enable_quarantine);
-  EXPECT_TRUE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_EQ(900, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "gpu-process/main");
@@ -204,7 +184,6 @@ TEST(SchedulerLoopQuarantineConfigTest, ValidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "gpu-process", SchedulerLoopQuarantineBranchType::kIO);
   EXPECT_TRUE(config.enable_quarantine);
-  EXPECT_TRUE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_EQ(900, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "gpu-process/io");
@@ -214,7 +193,6 @@ TEST(SchedulerLoopQuarantineConfigTest, ValidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "gpu-process", SchedulerLoopQuarantineBranchType::kGlobal);
   EXPECT_TRUE(config.enable_quarantine);
-  EXPECT_TRUE(config.enable_zapping);
   EXPECT_TRUE(config.leak_on_destruction);
   EXPECT_EQ(100, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "gpu-process/global");
@@ -341,6 +319,51 @@ TEST(SchedulerLoopQuarantineConfigTest, PurgeHeadroomPercent) {
   EXPECT_EQ(0u, config.purge_headroom_percent);
 }
 
+constexpr char kZapMaxConfigJSON[] = R"({
+  "browser": {
+    "main": {
+      "enable-quarantine": true,
+      "zap-max": 64
+    },
+    "io": {
+      "enable-quarantine": true,
+      "zap-max": 0
+    },
+    "*": {
+      "enable-quarantine": true,
+      "zap-max": -1
+    },
+  },
+})";
+
+TEST(SchedulerLoopQuarantineConfigTest, ZapMax) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      base::features::kPartitionAllocSchedulerLoopQuarantine,
+      {{base::features::kPartitionAllocSchedulerLoopQuarantineConfig.name,
+        kZapMaxConfigJSON}});
+
+  partition_alloc::internal::SchedulerLoopQuarantineConfig config;
+
+  config = GetSchedulerLoopQuarantineConfiguration(
+      "browser", SchedulerLoopQuarantineBranchType::kMain);
+  EXPECT_EQ(64u, config.zap_max);
+
+  // Zero and negative values are ignored.
+  config = GetSchedulerLoopQuarantineConfiguration(
+      "browser", SchedulerLoopQuarantineBranchType::kIO);
+  EXPECT_EQ(partition_alloc::BucketIndexLookup::kMaxBucketSize, config.zap_max);
+
+  config = GetSchedulerLoopQuarantineConfiguration(
+      "browser", SchedulerLoopQuarantineBranchType::kThreadLocalDefault);
+  EXPECT_EQ(partition_alloc::BucketIndexLookup::kMaxBucketSize, config.zap_max);
+
+  // Defaults to `BucketIndexLookup::kMaxBucketSize`.
+  config = GetSchedulerLoopQuarantineConfiguration(
+      "browser", SchedulerLoopQuarantineBranchType::kGlobal);
+  EXPECT_EQ(partition_alloc::BucketIndexLookup::kMaxBucketSize, config.zap_max);
+}
+
 constexpr char kCapacityUnlimitedConfigJSON[] = R"({
   "browser": {
     "main": {
@@ -417,7 +440,6 @@ TEST(SchedulerLoopQuarantineConfigTest, InvalidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "browser", SchedulerLoopQuarantineBranchType::kGlobal);
   EXPECT_FALSE(config.enable_quarantine);
-  EXPECT_FALSE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_EQ(0, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "browser/global");
@@ -425,7 +447,6 @@ TEST(SchedulerLoopQuarantineConfigTest, InvalidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "browser", SchedulerLoopQuarantineBranchType::kThreadLocalDefault);
   EXPECT_FALSE(config.enable_quarantine);
-  EXPECT_FALSE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_EQ(0, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "browser/*");
@@ -433,7 +454,6 @@ TEST(SchedulerLoopQuarantineConfigTest, InvalidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "browser", SchedulerLoopQuarantineBranchType::kMain);
   EXPECT_FALSE(config.enable_quarantine);
-  EXPECT_FALSE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_EQ(0, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "browser/main");
@@ -441,7 +461,6 @@ TEST(SchedulerLoopQuarantineConfigTest, InvalidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "renderer", SchedulerLoopQuarantineBranchType::kGlobal);
   EXPECT_FALSE(config.enable_quarantine);
-  EXPECT_FALSE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_EQ(0, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "renderer/global");
@@ -449,7 +468,6 @@ TEST(SchedulerLoopQuarantineConfigTest, InvalidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "renderer", SchedulerLoopQuarantineBranchType::kThreadLocalDefault);
   EXPECT_FALSE(config.enable_quarantine);
-  EXPECT_FALSE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_EQ(0, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "renderer/*");
@@ -457,7 +475,6 @@ TEST(SchedulerLoopQuarantineConfigTest, InvalidConfig) {
   config = GetSchedulerLoopQuarantineConfiguration(
       "renderer", SchedulerLoopQuarantineBranchType::kMain);
   EXPECT_FALSE(config.enable_quarantine);
-  EXPECT_FALSE(config.enable_zapping);
   EXPECT_FALSE(config.leak_on_destruction);
   EXPECT_EQ(0, config.branch_capacity_in_bytes);
   EXPECT_STREQ(config.branch_name, "renderer/main");

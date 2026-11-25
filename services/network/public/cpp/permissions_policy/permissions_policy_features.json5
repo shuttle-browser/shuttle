@@ -141,18 +141,6 @@
       privacy_sensitive: true,
     },
     {
-      name: "BrowsingTopics",
-      permissions_policy_name: "browsing-topics",
-      feature_default: "EnableForAll",
-      depends_on: ["TopicsAPI"],
-    },
-    {
-      name: "BrowsingTopicsBackwardCompatible",
-      permissions_policy_name: "interest-cohort",
-      feature_default: "EnableForAll",
-      depends_on: ["TopicsAPI"],
-    },
-    {
       name: "Camera",
       permissions_policy_name: "camera",
       privacy_sensitive: true,
@@ -511,6 +499,11 @@
       name: "ScreenWakeLock",
       permissions_policy_name: "screen-wake-lock",
       depends_on: ["WakeLock"],
+    },
+    {
+      name: "SemanticEmbedder",
+      permissions_policy_name: "semantic-embedder",
+      depends_on: ["AIEmbeddingsAPI"],
     },
     {
       name: "Serial",

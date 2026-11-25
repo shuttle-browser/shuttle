@@ -13,14 +13,18 @@ See //build/android/docs/build_config.md for more information.
 """
 
 import argparse
+import gc
 import itertools
+import json
 import os
 import sys
-import xml.dom.minidom
 
-from util import build_utils
 from util import params_json_util
-import action_helpers
+
+# Not using build_utils since it is slow to import, and this script runs for
+# every java target.
+sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+import action_helpers  # noqa: E402
 
 
 class OrderedSet(dict):
@@ -58,6 +62,9 @@ class AndroidManifest:
     """Helper class to inspect properties of an AndroidManifest.xml file."""
 
     def __init__(self, path):
+        # Imported lazily since most targets do not have a manifest.
+        import xml.dom.minidom
+
         self.path = path
         dom = xml.dom.minidom.parse(path)
         manifests = dom.getElementsByTagName('manifest')
@@ -683,7 +690,26 @@ def _CreateLintConfig(params, javac_config, manifest_config):
     return config
 
 
+def _WriteJsonIfChanged(obj, path):
+    """Writes |obj| as JSON to |path| if its contents changed."""
+    new_dump = json.dumps(
+        obj, sort_keys=True, indent=2, separators=(',', ': ')
+    ).encode('utf-8')
+    # Binary I/O avoids decoding the old file just to compare it.
+    try:
+        with open(path, 'rb', buffering=0) as f:
+            if f.readall() == new_dump:
+                return
+    except FileNotFoundError:
+        pass
+    with open(path, 'wb') as f:
+        f.write(new_dump)
+
+
 def main():
+    # Short-lived process that creates many objects but little cyclic garbage,
+    # so GC passes are wasted work.
+    gc.disable()
     parser = argparse.ArgumentParser(
         description='Writes a .build_config.json file.'
     )
@@ -789,6 +815,9 @@ def main():
         if params.needs_full_javac_classpath():
             main_config['javac_full_classpath'] = javac_full_classpath
             main_config['sdk_jars'] = sdk_deps.collect('unprocessed_jar_path')
+            sdk_api_databases = sdk_deps.collect('api_database_path')
+            assert len(sdk_api_databases) <= 1, sdk_api_databases
+            main_config['sdk_api_databases'] = sdk_api_databases
 
         if params.collects_processed_classpath():
             main_config['processed_classpath'] = list(tv.all_processed_jars)
@@ -915,6 +944,7 @@ def main():
             union_fields['proguard_classpath_jars'] = 'proguard_classpath_jars'
             union_fields['proguard_all_configs'] = 'proguard_all_configs'
             union_fields['sdk_jars'] = 'sdk_jars'
+            union_fields['sdk_api_databases'] = 'sdk_api_databases'
 
         unioned_values = {k: OrderedSet() for k in union_fields}
         for n, c in module_configs_by_name.items():
@@ -942,6 +972,9 @@ def main():
 
         for dst_key in union_fields:
             main_config[dst_key] = list(unioned_values[dst_key])
+        if proguard_enabled:
+            sdk_api_databases = main_config['sdk_api_databases']
+            assert len(sdk_api_databases) <= 1, sdk_api_databases
 
         # Promote duplicates from siblings/cousins.
         for f in per_module_fields:
@@ -959,9 +992,7 @@ def main():
             main_config['version_code'] = params['version_code']
             main_config['version_name'] = params['version_name']
 
-        # TrichromeLibrary has no dex.
-        if final_dex_path := params.get('final_dex_path'):
-            main_config['final_dex_path'] = final_dex_path
+        main_config['final_dex_path'] = params['final_dex_path']
 
         library_paths = params.native_libraries()
         secondary_abi_libraries = params.secondary_abi_native_libraries()
@@ -1067,7 +1098,7 @@ def main():
         if config:
             path = build_config_path.replace('.build_config.json', extension)
             first_output = first_output or path
-            build_utils.WriteJson(config, path, only_if_changed=True)
+            _WriteJsonIfChanged(config, path)
 
     if options.depfile:
         all_inputs = params_json_util.all_read_file_paths()

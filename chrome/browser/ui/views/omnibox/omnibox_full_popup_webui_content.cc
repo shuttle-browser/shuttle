@@ -12,10 +12,13 @@
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
+#include "chrome/browser/ui/omnibox/ai_mode_page_action_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter_base.h"
+#include "chrome/browser/ui/views/omnibox/omnibox_popup_content_delegate.h"
+#include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter_delegate.h"
+#include "chrome/browser/ui/webui/cr_components/searchbox/contextual_searchbox_handler.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_handler.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
 #include "chrome/browser/ui/webui/top_chrome/webui_contents_wrapper.h"
@@ -34,15 +37,34 @@
 #include "ui/views/widget/widget.h"
 
 OmniboxFullPopupWebUIContent::OmniboxFullPopupWebUIContent(
-    OmniboxPopupPresenterBase* presenter,
+    OmniboxPopupContentDelegate* content_delegate,
+    OmniboxPopupContentSizer* sizer,
+    OmniboxPopupContentConfig config,
     LocationBar* location_bar,
     OmniboxController* controller)
-    : OmniboxPopupWebUIContent(presenter,
+    : OmniboxFullPopupWebUIContent(content_delegate,
+                                   sizer,
+                                   config,
+                                   location_bar,
+                                   controller,
+                                   /*contents=*/nullptr) {}
+
+OmniboxFullPopupWebUIContent::OmniboxFullPopupWebUIContent(
+    OmniboxPopupContentDelegate* content_delegate,
+    OmniboxPopupContentSizer* sizer,
+    OmniboxPopupContentConfig config,
+    LocationBar* location_bar,
+    OmniboxController* controller,
+    std::unique_ptr<ContentsWrapper> contents)
+    : OmniboxPopupWebUIContent(content_delegate,
+                               sizer,
+                               config,
                                location_bar,
                                controller,
                                /*include_location_bar_cutout=*/false,
                                /*wants_focus=*/true,
-                               /*set_content_url=*/false),
+                               /*set_content_url=*/false,
+                               std::move(contents)),
       OmniboxContextMenuMixin<ui::SimpleMenuModel::Delegate>(location_bar,
                                                              controller) {
   SetContentURL(chrome::kChromeUIOmniboxPopupURL);
@@ -123,6 +145,28 @@ void OmniboxFullPopupWebUIContent::OnFocusChangedInPage(
   if (pending_context_menu_request_ &&
       details.editable_level != content::EditableLevel::kNotEditable) {
     ShowPendingContextMenuIfReady();
+  }
+}
+
+void OmniboxFullPopupWebUIContent::UpdateAimButtonVisibility() {
+  auto* controller = contents_wrapper()->GetWebUIController();
+  if (auto* handler = controller ? controller->omnibox_handler() : nullptr) {
+    // Compute visibility from the omnibox state rather than reading the Views
+    // AIM chip. During a tab change, the popup is shown before the location
+    // bar's page action container is rebound to the new tab, so the chip still
+    // reflects the deactivated previous tab and would report hidden, briefly
+    // hiding the AIM button on new tab creation.
+    handler->SetAimButtonVisible(
+        omnibox::AiModePageActionController::ShouldShowPageAction(
+            location_bar()->GetProfile(), *location_bar()));
+  }
+}
+
+void OmniboxFullPopupWebUIContent::DidFirstVisuallyNonEmptyPaint() {
+  // The host's `CompletedFirstVisuallyNonEmptyPaint()` turns true with this
+  // paint, so let `LocationBarView` drop its native focus ring.
+  if (auto* delegate = presenter_delegate()) {
+    delegate->OnPopupFirstVisuallyNonEmptyPaint();
   }
 }
 
@@ -251,13 +295,9 @@ views::Widget* OmniboxFullPopupWebUIContent::GetWidgetForTextServices() {
 
 const OmniboxPopupHandler* OmniboxFullPopupWebUIContent::GetPopupHandler()
     const {
-  if (!popup_presenter() || !popup_presenter()->GetWebUIContent()) {
-    return nullptr;
-  }
-  const auto* contents_wrapper =
-      popup_presenter()->GetWebUIContent()->contents_wrapper();
+  const auto* wrapper = contents_wrapper();
   const auto* webui_controller =
-      contents_wrapper ? contents_wrapper->GetWebUIController() : nullptr;
+      wrapper ? wrapper->GetWebUIController() : nullptr;
   const auto* popup_ui = static_cast<const OmniboxPopupUI*>(webui_controller);
   return popup_ui ? popup_ui->popup_handler() : nullptr;
 }

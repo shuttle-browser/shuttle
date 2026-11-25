@@ -157,6 +157,7 @@ ColorThemeInfo StyleResolverState::GetColorThemeInfo() const {
   return {
       .color_provider = GetDocument().GetColorProviderForPainting(color_scheme),
       .color_scheme = color_scheme,
+      .accent_color = StyleBuilder().ResolveMirroredAccentColor(color_scheme),
       .can_expose_system_accent_color = CanExposeSystemAccentColor()};
 }
 
@@ -323,8 +324,7 @@ void StyleResolverState::LoadPendingResources() {
       // A default-styled <area> has no box, but its cursor applies while
       // hovering the region of the <img> that uses its <map>. Its other
       // resources are never rendered.
-      if (IsA<HTMLAreaElement>(GetStyledElement()) &&
-          RuntimeEnabledFeatures::HTMLAreaElementDisplayNoneEnabled()) {
+      if (IsA<HTMLAreaElement>(GetStyledElement())) {
         element_style_resources_.LoadPendingCursorImages(
             StyleBuilder(), CssToLengthConversionData());
       }

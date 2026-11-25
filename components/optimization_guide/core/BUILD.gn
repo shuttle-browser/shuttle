@@ -7,12 +7,12 @@
 
 component("features") {
   sources = [
-    "optimization_guide_enums.h",
     "optimization_guide_features.cc",
     "optimization_guide_features.h",
   ]
   public_deps = [
     "//base",
+    "//url",
     "//components/optimization_guide/proto:optimization_guide_proto",
   ]
   defines = [ "IS_OPTIMIZATION_GUIDE_FEATURES_IMPL" ]

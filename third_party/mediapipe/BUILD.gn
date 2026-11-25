@@ -98,6 +98,7 @@ proto_library("mediapipe_proto") {
     "src/mediapipe/calculators/tensor/image_to_tensor_calculator.proto",
     "src/mediapipe/calculators/tensor/inference_calculator.proto",
     "src/mediapipe/calculators/tensor/regex_preprocessor_calculator.proto",
+    "src/mediapipe/calculators/tensor/sentencepiece_preprocessor_calculator.proto",
     "src/mediapipe/calculators/tensor/tensors_to_classification_calculator.proto",
     "src/mediapipe/calculators/tensor/tensors_to_detections_calculator.proto",
     "src/mediapipe/calculators/tflite/ssd_anchors_calculator.proto",
@@ -144,6 +145,7 @@ proto_library("mediapipe_proto") {
     "src/mediapipe/tasks/cc/core/proto/inference_subgraph.proto",
     "src/mediapipe/tasks/cc/core/proto/model_resources_calculator.proto",
     "src/mediapipe/tasks/cc/text/text_classifier/proto/text_classifier_graph_options.proto",
+    "src/mediapipe/tasks/metadata/bundle_manifest.proto",
     "src/mediapipe/util/label_map.proto",
   ]
 
@@ -199,6 +201,7 @@ source_set("com_google_audio_tools") {
   deps = [
     ":com_google_audio_tools_portable",
     ":mediapipe_shims",
+    "//third_party/pffft",
   ]
 
   if (is_win) {
@@ -373,7 +376,6 @@ tflite_static_library("mediapipe_core") {
     "src/mediapipe/framework/delegating_executor.cc",
     "src/mediapipe/framework/delegating_executor.h",
     "src/mediapipe/framework/demangle.h",
-    "src/mediapipe/framework/deps/canonical_errors.h",
     "src/mediapipe/framework/deps/clock.cc",
     "src/mediapipe/framework/deps/clock.h",
     "src/mediapipe/framework/deps/file_helpers.cc",
@@ -398,10 +400,6 @@ tflite_static_library("mediapipe_core") {
     "src/mediapipe/framework/deps/ret_check.h",
     "src/mediapipe/framework/deps/safe_int.h",
     "src/mediapipe/framework/deps/source_location.h",
-    "src/mediapipe/framework/deps/status.cc",
-    "src/mediapipe/framework/deps/status.h",
-    "src/mediapipe/framework/deps/status_builder.cc",
-    "src/mediapipe/framework/deps/status_builder.h",
     "src/mediapipe/framework/deps/status_macros.h",
     "src/mediapipe/framework/deps/strong_int.h",
     "src/mediapipe/framework/deps/threadpool.h",

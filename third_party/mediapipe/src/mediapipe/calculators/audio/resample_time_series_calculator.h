@@ -18,7 +18,8 @@
 #include <cstdint>
 #include <memory>
 
-#include "absl/status/status.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "audio/dsp/resampler_q.h"
 #include "mediapipe/calculators/audio/resample_time_series_calculator.pb.h"
 #include "mediapipe/framework/api2/contract.h"
@@ -26,7 +27,6 @@
 #include "mediapipe/framework/api2/port.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/matrix.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/util/time_series_util.h"
 
 namespace mediapipe {

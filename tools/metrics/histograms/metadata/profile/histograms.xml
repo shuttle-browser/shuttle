@@ -200,7 +200,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Profile.DeleteProfileContext" enum="ProfileDeleteContext"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>alexilin@chromium.org</owner>
   <owner>droger@chromium.org</owner>
   <owner>msalama@chromium.org</owner>
@@ -237,7 +237,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Profile.Guest.ForcedByPolicy" enum="BooleanForced"
-    expires_after="2027-01-03">
+    expires_after="2027-04-25">
   <owner>duellweber@chromium.org</owner>
   <owner>arabm@google.com</owner>
   <owner>chrome-incognito@google.com</owner>
@@ -349,7 +349,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Profile.LiveProfileCount" units="profiles"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>nicolaso@chromium.org</owner>
   <owner>cbe-eng@google.com</owner>
   <summary>
@@ -625,7 +625,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Profile.PercentageOfManagedProfiles{ProfileActivityThreshold}"
-    units="units" expires_after="2027-02-28">
+    units="units" expires_after="2027-05-02">
   <owner>longbowei@google.com</owner>
   <owner>zhangwenyu@google.com</owner>
   <owner>cros-families-eng@google.com</owner>
@@ -671,13 +671,13 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="Profile.ProfilesOrderChanged" enum="BooleanHit"
-    expires_after="2026-07-29">
+<histogram name="Profile.ProfilesOrderChanged" enum="ProfileOrderUpdateType"
+    expires_after="2027-04-29">
   <owner>rsult@google.com</owner>
-  <owner>chrome-signin-team@google.com</owner>
+  <owner>chrome-signin-desktop-team@google.com</owner>
   <summary>
-    Counts the number of times the user reorders profiles by drag and drop in
-    the profile picker. Recorded every time the profile ordering changes.
+    Records the action type that triggered a profile order change. Recorded
+    every time the profile ordering changes.
   </summary>
 </histogram>
 
@@ -916,17 +916,6 @@ chromium-metrics-reviews@google.com.
   </token>
 </histogram>
 
-<histogram name="ProfilePicker.AskOnStartup" enum="BooleanEnabled"
-    expires_after="2024-02-25">
-  <owner>msalama@chromium.org</owner>
-  <owner>chrome-signin-team@google.com</owner>
-  <summary>
-    Records the state of the &quot;Ask on startup&quot; user preference that
-    controls whether the profile picker should be shown on startup. Recorded on
-    startup of Chrome.
-  </summary>
-</histogram>
-
 <histogram name="ProfilePicker.AskOnStartupChanged" enum="BooleanEnabled"
     expires_after="2023-04-23">
   <owner>msalama@chromium.org</owner>
@@ -971,7 +960,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="ProfilePicker.FirstProfileTime.FirstWebContentsNonEmptyPaint.AutoLaunchByOs"
-    units="ms" expires_after="2027-02-28">
+    units="ms" expires_after="2027-05-02">
   <owner>atharvmaan@google.com</owner>
   <owner>chrome-desktop-ui-waterloo@google.com</owner>
   <summary>
@@ -1010,6 +999,19 @@ chromium-metrics-reviews@google.com.
     aims at tracking how often policies or some pre-existing state suppresses
     the first run experience. It is tracked by the first run service itself,
     when the flow completes (or is suppressed).
+  </summary>
+</histogram>
+
+<histogram name="ProfilePicker.FirstRun.FinishWithoutResumeTaskPickerOpen"
+    enum="Boolean" expires_after="2027-03-28">
+  <owner>rsult@google.com</owner>
+  <owner>ydago@chromium.org</owner>
+  <owner>chrome-signin-desktop-team@google.com</owner>
+  <summary>
+    Recorded on macOS when FinishFirstRunWithoutResumeTask is called. Records
+    true if the profile picker was open at the time, and false if it was not
+    open (e.g., during early termination before the window is displayed or after
+    the window has already begun closing).
   </summary>
 </histogram>
 
@@ -1161,7 +1163,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ProfilePicker.SignInProviderStep"
-    enum="ProfilePickerSignInProviderStep" expires_after="2027-01-14">
+    enum="ProfilePickerSignInProviderStep" expires_after="2027-04-25">
   <owner>droger@google.com</owner>
   <owner>ernn@google.com</owner>
   <owner>chrome-signin-team@google.com</owner>

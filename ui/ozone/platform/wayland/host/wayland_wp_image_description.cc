@@ -4,6 +4,7 @@
 
 #include "ui/ozone/platform/wayland/host/wayland_wp_image_description.h"
 
+#include "base/feature_list.h"
 #include "base/logging.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/notimplemented.h"
@@ -16,6 +17,12 @@
 namespace ui {
 
 namespace {
+
+// Wayland compositors decode the sRGB transfer function with a pure gamma 2.2
+// curve. When enabled, Chromium's sRGB content is displayed that way too
+// instead of being decoded with the piece-wise sRGB curve and re-encoded for
+// the compositor's preferred transfer function.
+BASE_FEATURE(kWaylandSrgbAsGamma22, base::FEATURE_ENABLED_BY_DEFAULT);
 
 gfx::ColorSpace::PrimaryID ToGfxPrimaryID(
     wp_color_manager_v1_primaries primaries) {
@@ -131,7 +138,7 @@ WaylandWpImageDescription::WaylandWpImageDescription(
     : image_description_(std::move(image_description)),
       connection_(connection),
       creation_callback_(std::move(callback)) {
-  DCHECK(image_description_);
+  CHECK(image_description_, base::NotFatalUntil::M163);
   if (color_space.has_value()) {
     color_space_ = *color_space;
   }
@@ -160,6 +167,10 @@ WaylandWpImageDescription::AsDisplayColorSpaces(
   gfx::DisplayColorSpaces display_color_spaces(color_space_);
   display_color_spaces.SetSDRMaxLuminanceNits(sdr_max_luminance_nits_);
   display_color_spaces.SetHDRMaxLuminanceRelative(hdr_max_luminance_relative_);
+  // Compositors display sRGB as gamma 2.2, so sRGB content must look that way
+  // on HDR outputs too, where viz converts it to the output color space.
+  display_color_spaces.set_srgb_is_gamma22(
+      base::FeatureList::IsEnabled(kWaylandSrgbAsGamma22));
   if (display_color_spaces.SupportsHDR() && hdr_output_format) {
     // SDR content is also composed into the preferred HDR target space, so all
     // usages need a high-bit-depth output format to avoid banding.
@@ -177,7 +188,7 @@ void WaylandWpImageDescription::HandleReady() {
 }
 
 gfx::ColorSpace WaylandWpImageDescription::CreateColorSpaceFromPendingInfo(
-    bool is_hdr) const {
+    bool is_hdr) {
   std::optional<gfx::ColorSpace::PrimaryID> primaries;
   std::optional<gfx::ColorSpace::TransferID> transfer;
   const skcms_Matrix3x3* custom_primaries = nullptr;
@@ -200,6 +211,19 @@ gfx::ColorSpace WaylandWpImageDescription::CreateColorSpaceFromPendingInfo(
   if (!primaries || !transfer) {
     LOG(ERROR) << "Incomplete image description info from compositor.";
     return gfx::ColorSpace::CreateSRGB();
+  }
+
+  if (!is_hdr && transfer == gfx::ColorSpace::TransferID::GAMMA22 &&
+      base::FeatureList::IsEnabled(kWaylandSrgbAsGamma22)) {
+    // Wayland compositors decode sRGB with a pure gamma 2.2 curve, so pass
+    // sRGB content through unchanged instead of decoding it with the
+    // piece-wise sRGB curve and re-encoding it as gamma 2.2, which lifts dark
+    // tones (https://crbug.com/449423580, https://crbug.com/475549558).
+    // WaylandWpColorManagementSurface describes sRGB buffers on such surfaces
+    // as gamma 2.2 so compositors whose sRGB transfer function is piece-wise
+    // (e.g. Hyprland v1, Mutter 48-49) don't lift dark tones either.
+    transfer = gfx::ColorSpace::TransferID::SRGB;
+    srgb_is_gamma22_ = true;
   }
 
   gfx::ColorSpace color_space(
@@ -256,7 +280,7 @@ void WaylandWpImageDescription::OnFailed(
     uint32_t cause,
     const char* msg) {
   auto* self = static_cast<WaylandWpImageDescription*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
   LOG(ERROR) << "Failed to create image description: " << msg;
   if (self->creation_callback_) {
     std::move(self->creation_callback_).Run(nullptr);
@@ -269,7 +293,7 @@ void WaylandWpImageDescription::OnReady(
     wp_image_description_v1* image_description,
     uint32_t identity) {
   auto* self = static_cast<WaylandWpImageDescription*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
 
   // If this description was created from a gfx::ColorSpace, it's ready.
   if (self->color_space_.IsValid()) {
@@ -302,7 +326,7 @@ void WaylandWpImageDescription::OnInfoDone(
     void* data,
     wp_image_description_info_v1* image_info) {
   auto* self = static_cast<WaylandWpImageDescription*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
 
   self->sdr_max_luminance_nits_ = self->pending_reference_lum_.value_or(
       gfx::ColorSpace::kDefaultSDRWhiteLevel);
@@ -349,7 +373,7 @@ void WaylandWpImageDescription::OnInfoPrimaries(
     int32_t w_x,
     int32_t w_y) {
   auto* self = static_cast<WaylandWpImageDescription*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
   SkColorSpacePrimaries primaries = {
       r_x / 1000000.f, r_y / 1000000.f, g_x / 1000000.f, g_y / 1000000.f,
       b_x / 1000000.f, b_y / 1000000.f, w_x / 1000000.f, w_y / 1000000.f};
@@ -365,7 +389,7 @@ void WaylandWpImageDescription::OnInfoTfNamed(
     wp_image_description_info_v1* image_info,
     uint32_t tf) {
   auto* self = static_cast<WaylandWpImageDescription*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
   self->pending_transfer_id_ =
       ToGfxTransferID(static_cast<wp_color_manager_v1_transfer_function>(tf));
 }
@@ -376,7 +400,7 @@ void WaylandWpImageDescription::OnInfoTfPower(
     wp_image_description_info_v1* info,
     uint32_t eexp) {
   auto* self = static_cast<WaylandWpImageDescription*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
   self->pending_custom_transfer_fn_ = skcms_TransferFunction{
       .g = eexp / 10000.f, .a = 1.0f, .b = 0, .c = 0, .d = 0, .e = 0, .f = 0};
 }
@@ -389,7 +413,7 @@ void WaylandWpImageDescription::OnInfoLuminances(
     uint32_t max_lum,
     uint32_t reference_lum) {
   auto* self = static_cast<WaylandWpImageDescription*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
   if (reference_lum) {
     self->pending_reference_lum_ = reference_lum;
   }
@@ -415,7 +439,7 @@ void WaylandWpImageDescription::OnInfoTargetLuminance(
     uint32_t min_lum,
     uint32_t max_lum) {
   auto* self = static_cast<WaylandWpImageDescription*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
   if (max_lum) {
     self->pending_target_max_lum_ = max_lum;
   }
@@ -439,7 +463,7 @@ void WaylandWpImageDescription::OnInfoPrimariesNamed(
     wp_image_description_info_v1* image_info,
     uint32_t primaries) {
   auto* self = static_cast<WaylandWpImageDescription*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
   self->pending_primary_id_ =
       ToGfxPrimaryID(static_cast<wp_color_manager_v1_primaries>(primaries));
 }

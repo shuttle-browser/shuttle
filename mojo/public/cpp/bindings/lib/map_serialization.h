@@ -11,6 +11,7 @@
 #include "base/memory/raw_ptr_exclusion.h"
 #include "mojo/public/cpp/bindings/array_data_view.h"
 #include "mojo/public/cpp/bindings/lib/array_serialization.h"
+#include "mojo/public/cpp/bindings/lib/bindings_internal.h"
 #include "mojo/public/cpp/bindings/lib/map_data_internal.h"
 #include "mojo/public/cpp/bindings/lib/serialization_forward.h"
 #include "mojo/public/cpp/bindings/map_data_view.h"
@@ -97,9 +98,10 @@ struct Serializer<MapDataView<Key, Value>, MaybeConstUserType> {
                       std::vector<UserValue>,
                       MapValueReader<MaybeConstUserType>>;
 
-  static void Serialize(MaybeConstUserType& input,
-                        MessageFragment<Data>& fragment,
-                        const ContainerValidateParams* validate_params) {
+  MOJO_NOINLINE_UNLESS_OPTIMIZE_SIZE static void Serialize(
+      MaybeConstUserType& input,
+      MessageFragment<Data>& fragment,
+      const ContainerValidateParams* validate_params) {
     DCHECK(validate_params->key_validate_params);
     DCHECK(validate_params->element_validate_params);
     if (CallIsNullIfExists<Traits>(input)) {
@@ -107,25 +109,31 @@ struct Serializer<MapDataView<Key, Value>, MaybeConstUserType> {
     }
 
     fragment.Allocate();
-    MessageFragment<typename MojomTypeTraits<ArrayDataView<Key>>::Data>
-        keys_fragment(fragment.message());
-    keys_fragment.AllocateArrayData(Traits::GetSize(input));
-    MapKeyReader<MaybeConstUserType> key_reader(input);
-    KeyArraySerializer::SerializeElements(&key_reader, keys_fragment,
-                                          validate_params->key_validate_params);
-    fragment->keys.Set(keys_fragment.data());
-
-    MessageFragment<typename MojomTypeTraits<ArrayDataView<Value>>::Data>
-        values_fragment(fragment.message());
-    values_fragment.AllocateArrayData(Traits::GetSize(input));
-    MapValueReader<MaybeConstUserType> value_reader(input);
-    ValueArraySerializer::SerializeElements(
-        &value_reader, values_fragment,
-        validate_params->element_validate_params);
-    fragment->values.Set(values_fragment.data());
+    const size_t size = Traits::GetSize(input);
+    {
+      MessageFragment<typename MojomTypeTraits<ArrayDataView<Key>>::Data>
+          keys_fragment(fragment.message());
+      keys_fragment.AllocateArrayData(size);
+      MapKeyReader<MaybeConstUserType> key_reader(input);
+      KeyArraySerializer::SerializeElements(
+          &key_reader, keys_fragment, validate_params->key_validate_params);
+      fragment.SetPointer(offsetof(Data, keys), keys_fragment);
+    }
+    {
+      MessageFragment<typename MojomTypeTraits<ArrayDataView<Value>>::Data>
+          values_fragment(fragment.message());
+      values_fragment.AllocateArrayData(size);
+      MapValueReader<MaybeConstUserType> value_reader(input);
+      ValueArraySerializer::SerializeElements(
+          &value_reader, values_fragment,
+          validate_params->element_validate_params);
+      fragment.SetPointer(offsetof(Data, values), values_fragment);
+    }
   }
 
-  static bool Deserialize(Data* input, UserType* output, Message* message) {
+  MOJO_NOINLINE_UNLESS_OPTIMIZE_SIZE static bool Deserialize(Data* input,
+                                                             UserType* output,
+                                                             Message* message) {
     if (!input) {
       return CallSetToNullIfExists<Traits>(output);
     }

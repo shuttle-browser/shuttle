@@ -163,13 +163,8 @@ enum PermissionsPolicyFeature {
   // Client Hint for Sec-CH-UA-WoW64.
   kClientHintUAWoW64 = 95,
 
-  // "browsing-topics" permissions policy that controls the use of Topics API.
-  // https://github.com/jkarlin/topics
-  kBrowsingTopics = 97,
-
-  // "interest-cohort" permissions policy that controls the use of Topics API.
-  // https://github.com/jkarlin/topics
-  kBrowsingTopicsBackwardCompatible = 98,
+  // kBrowsingTopics = 97, Removed in M159.
+  // kBrowsingTopicsBackwardCompatible = 98, Removed in M159.
 
   // Client Hint for Save-Data.
   kClientHintSaveData = 99,
@@ -354,6 +349,10 @@ enum PermissionsPolicyFeature {
   // Controls whether an unbounded element inside an iframe is allowed to
   // escape the iframe's bounds.
   kUnboundedElement = 150,
+
+  // Allows sites to delegate Semantic Embedder API access to iframes.
+  // See https://github.com/explainers-by-googlers/semantic-embedder-api
+  kSemanticEmbedder = 151,
 
   // Don't change assigned numbers of any item, and don't reuse removed slots.
   // Add new features at the end of the enum.

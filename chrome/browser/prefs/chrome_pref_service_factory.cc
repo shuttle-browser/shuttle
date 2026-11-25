@@ -436,8 +436,9 @@ void HandlePersistentPrefStoreReadError(
   // The error callback is always invoked back on the main thread (which is
   // BrowserThread::UI unless called during early initialization before the main
   // thread is promoted to BrowserThread::UI).
-  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI) ||
-         !BrowserThread::IsThreadInitialized(BrowserThread::UI));
+  CHECK(BrowserThread::CurrentlyOn(BrowserThread::UI) ||
+            !BrowserThread::IsThreadInitialized(BrowserThread::UI),
+        base::NotFatalUntil::M163);
 
   if (error != PersistentPrefStore::PREF_READ_ERROR_NONE) {
 #if !BUILDFLAG(IS_CHROMEOS)

@@ -105,9 +105,10 @@ class PLATFORM_EXPORT AcceleratedStaticBitmapImage final
             const ImageDrawOptions&) override;
 
   bool IsValid() const final;
-  WebGraphicsContext3DProvider* ContextProvider() const final;
-  base::WeakPtr<WebGraphicsContext3DProviderWrapper> ContextProviderWrapper()
-      const final;
+
+  base::WeakPtr<WebGraphicsContext3DProviderWrapper>
+  SkiaContextProviderWrapper() const;
+
   scoped_refptr<StaticBitmapImage> MakeUnaccelerated() final;
 
   bool CopyToTexture(gpu::gles2::GLES2Interface* dest_gl,

@@ -320,9 +320,7 @@ SequenceManagerImpl::CreateTaskQueueImpl(const TaskQueue::Spec& spec) {
           spec.non_waking ? main_thread_only().non_waking_wake_up_queue.get()
                           : main_thread_only().wake_up_queue.get(),
           spec);
-  main_thread_only().active_queues.insert(task_queue.get());
-  main_thread_only().selector.AddQueue(
-      task_queue.get(), settings().priority_settings.default_priority());
+  RegisterTaskQueueImpl(task_queue.get());
   return task_queue;
 }
 
@@ -336,6 +334,14 @@ bool SequenceManagerImpl::GetAddQueueTimeToTasks() {
 
 void SequenceManagerImpl::SetObserver(Observer* observer) {
   main_thread_only().observer = observer;
+}
+
+void SequenceManagerImpl::RegisterTaskQueueImpl(
+    internal::TaskQueueImpl* task_queue) {
+  DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
+  main_thread_only().active_queues.insert(task_queue);
+  main_thread_only().selector.AddQueue(
+      task_queue, settings().priority_settings.default_priority());
 }
 
 void SequenceManagerImpl::UnregisterTaskQueueImpl(
@@ -391,6 +397,12 @@ void SequenceManagerImpl::MoveReadyDelayedTasksToWorkQueues(LazyNow* lazy_now) {
 }
 
 void SequenceManagerImpl::OnBeginNestedRunLoop() {
+  // See `Settings::can_run_tasks_synchronously`: a nested `RunLoop` must run
+  // inside a task. `OnIdle()` doesn't allow sync work while a task is on
+  // `task_execution_stack`, but a `MessagePump` work item suspended in a nested
+  // loop isn't tracked by `work_tracker_`.
+  CHECK(!settings().can_run_tasks_synchronously ||
+        !main_thread_only().task_execution_stack.empty());
   main_thread_only().nesting_depth++;
   if (main_thread_only().observer) {
     main_thread_only().observer->OnBeginNestedRunLoop();
@@ -457,7 +469,9 @@ void SequenceManagerImpl::MaybeEmitTaskDetails(
 
 void SequenceManagerImpl::SetRunTaskSynchronouslyAllowed(
     bool can_run_tasks_synchronously) {
-  work_tracker_.SetRunTaskSynchronouslyAllowed(can_run_tasks_synchronously);
+  if (settings().can_run_tasks_synchronously) {
+    work_tracker_.SetRunTaskSynchronouslyAllowed(can_run_tasks_synchronously);
+  }
 }
 
 std::optional<SequenceManagerImpl::SelectedTask>
@@ -686,8 +700,8 @@ bool SequenceManagerImpl::OnIdle() {
   return have_work_to_do;
 }
 
-void SequenceManagerImpl::WillRequestReloadImmediateWorkQueue() {
-  work_tracker_.WillRequestReloadImmediateWorkQueue();
+void SequenceManagerImpl::DidRequestReloadImmediateWorkQueue() {
+  work_tracker_.DidRequestReloadImmediateWorkQueue();
 }
 
 SyncWorkAuthorization SequenceManagerImpl::TryAcquireSyncWorkAuthorization() {

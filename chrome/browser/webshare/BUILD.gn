@@ -78,7 +78,7 @@ if (is_win || is_chromeos || is_mac) {
       sources += [ "safe_browsing_request.cc" ]
       deps += [
         "//chrome/browser/safe_browsing",
-        "//components/safe_browsing/content/common:file_type_policies",
+        "//components/safe_browsing/content/common/file_type_policies",
         "//components/safe_browsing/core/browser/db",
         "//components/safe_browsing/core/browser/db:database_manager",
         "//components/safe_browsing/core/browser/db:v5_get_hash_protocol_manager",
@@ -159,6 +159,7 @@ if (is_win) {
       "//base/test:test_support",
       "//testing/gtest",
     ]
+    libs = [ "runtimeobject.lib" ]
   }
 }
 

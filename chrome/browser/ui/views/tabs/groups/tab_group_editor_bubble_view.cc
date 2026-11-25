@@ -15,7 +15,6 @@
 #include "base/containers/span.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
-#include "base/i18n/rtl.h"
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/user_metrics.h"
@@ -68,7 +67,6 @@
 #include "ui/base/page_transition_types.h"
 #include "ui/base/pointer/touch_ui_controller.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/events/types/event_type.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/geometry/size.h"
@@ -103,10 +101,6 @@
 #include "ash/ash_element_identifiers.h"
 #include "ui/base/interaction/element_tracker.h"
 #include "ui/strings/grit/ui_strings.h"
-#endif
-
-#if BUILDFLAG(IS_OZONE)
-#include "ui/ozone/public/ozone_platform.h"
 #endif
 
 namespace {
@@ -197,54 +191,8 @@ std::unique_ptr<views::Widget> TabGroupEditorBubbleView::Show(
       new TabGroupEditorBubbleView(browser, group, anchor_view, anchor_rect,
                                    stop_context_menu_propagation);
 
-  // In ozone/wayland platforms, BubbleDialogDelegateView ignores calls to
-  // `set_adjust_if_offscreen()`. Instead calculate if there is not enough room
-  // below or to the trailing side of the bubble and adjust the arrow position
-  // instead.
-#if BUILDFLAG(IS_OZONE)
-  if (!ui::OzonePlatform::GetInstance()
-           ->GetPlatformProperties()
-           .supports_global_screen_coordinates) {
-    const gfx::Size bubble_size =
-        tab_group_editor_bubble_view->GetPreferredSize();
-    const BrowserView* const browser_view =
-        BrowserView::GetBrowserViewForBrowser(browser);
-    if (browser_view && browser_view->GetWidget()) {
-      const gfx::Rect window_bounds =
-          browser_view->GetWidget()->GetWindowBoundsInScreen();
-      const gfx::Rect bubble_anchor_rect =
-          tab_group_editor_bubble_view->GetAnchorRect();
-      const bool near_bottom =
-          window_bounds.height() > 2 * bubble_size.height() &&
-          window_bounds.bottom() - bubble_anchor_rect.bottom() <
-              bubble_size.height();
-      const bool near_trailing =
-          window_bounds.width() > 2 * bubble_size.width() &&
-          (base::i18n::IsRTL()
-               ? bubble_anchor_rect.x() - window_bounds.x() <
-                     bubble_size.width()
-               : window_bounds.right() - bubble_anchor_rect.right() <
-                     bubble_size.width());
-      if (near_bottom && near_trailing) {
-        tab_group_editor_bubble_view->SetArrow(
-            views::BubbleBorder::Arrow::BOTTOM_RIGHT);
-      } else if (near_bottom) {
-        tab_group_editor_bubble_view->SetArrow(
-            views::BubbleBorder::Arrow::BOTTOM_LEFT);
-      } else if (near_trailing) {
-        tab_group_editor_bubble_view->SetArrow(
-            views::BubbleBorder::Arrow::TOP_RIGHT);
-      }
-    }
-  }
-#endif
-
   std::unique_ptr<views::Widget> widget =
       BubbleDialogDelegate::CreateBubble(tab_group_editor_bubble_view);
-  tab_group_editor_bubble_view->set_adjust_if_offscreen(true);
-  tab_group_editor_bubble_view->GetBubbleFrameView()
-      ->SetPreferredArrowAdjustment(
-          views::BubbleFrameView::PreferredArrowAdjustment::kOffset);
   widget->Show();
   return widget;
 }
@@ -266,6 +214,9 @@ gfx::Rect TabGroupEditorBubbleView::GetAnchorRect() const {
 }
 
 void TabGroupEditorBubbleView::AddedToWidget() {
+  GetBubbleFrameView()->SetPreferredArrowAdjustment(
+      views::BubbleFrameView::PreferredArrowAdjustment::kOffset);
+
   const auto* const color_provider = GetColorProvider();
 
   for (views::LabelButton* menu_item : simple_menu_items_) {
@@ -343,6 +294,7 @@ TabGroupEditorBubbleView::TabGroupEditorBubbleView(
     SetAnchorRect(anchor_rect.value());
   }
   set_margins(gfx::Insets());
+  set_adjust_if_offscreen(true);
 
   SetModalType(ui::mojom::ModalType::kNone);
   SetButtons(static_cast<int>(ui::mojom::DialogButton::kNone));
@@ -424,6 +376,10 @@ void TabGroupEditorBubbleView::UpdateGroup() {
   if (IsEphemeralTabGroup()) {
     return;
   }
+  UpdateGroupVisuals();
+}
+
+void TabGroupEditorBubbleView::UpdateGroupVisuals() {
   const std::optional<int> selected_element =
       color_selector_->GetSelectedElement();
   TabGroup* const tab_group =
@@ -486,8 +442,8 @@ bool TabGroupEditorBubbleView::OwnsGroup() const {
 }
 
 void TabGroupEditorBubbleView::OnEphemeralGroupPromoted() {
+  UpdateGroupVisuals();
   browser_->GetTabStripModel()->PromoteEphemeralTabGroup(group_);
-  UpdateGroup();
   OnBubbleClose();
   if (GetWidget()) {
     GetWidget()->CloseWithReason(
@@ -613,11 +569,7 @@ TabGroupEditorBubbleView::BuildEphemeralGroupButtons() {
                                    views::MaximumFlexSizeRule::kUnbounded)
               .WithWeight(1));
 
-  const gfx::Insets control_insets = GetControlInsets();
-  button_row->SetProperty(
-      views::kMarginsKey,
-      gfx::Insets::TLBR(control_insets.top(), control_insets.left(), 0,
-                        control_insets.right()));
+  button_row->SetProperty(views::kMarginsKey, GetControlInsets());
 
   auto cancel_button = std::make_unique<views::MdTextButton>(
       base::BindRepeating(&TabGroupEditorBubbleView::CancelEphemeralGroup,
@@ -836,7 +788,6 @@ void TabGroupEditorBubbleView::CloseGroupPressed() {
   }
 }
 
-
 void TabGroupEditorBubbleView::DeleteGroupPressed() {
   base::RecordAction(
       base::UserMetricsAction("TabGroups_TabGroupBubble_DeleteGroup"));
@@ -859,6 +810,8 @@ void TabGroupEditorBubbleView::MoveGroupToNewWindowPressed() {
 }
 
 void TabGroupEditorBubbleView::FocusGroupPressed() {
+  base::RecordAction(
+      base::UserMetricsAction("TabGroups_TabGroupBubble_FocusGroup"));
   base::UmaHistogramEnumeration("TabGroups.Focus.EntryPoint",
                                 TabGroupFocusEntryPoint::kEditorBubble);
   TabStripModel* const model = browser_->GetTabStripModel();
@@ -867,6 +820,8 @@ void TabGroupEditorBubbleView::FocusGroupPressed() {
 }
 
 void TabGroupEditorBubbleView::UnfocusGroupPressed() {
+  base::RecordAction(
+      base::UserMetricsAction("TabGroups_TabGroupBubble_UnfocusGroup"));
   TabStripModel* const model = browser_->GetTabStripModel();
   model->ExitFocusMode(TabGroupFocusExitReason::kEditorBubble);
   GetWidget()->Close();

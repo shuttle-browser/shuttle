@@ -410,7 +410,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Startup.Android.Cold.TimeToStartupFcpOrPaintPreview"
-    units="ms" expires_after="2027-02-28">
+    units="ms" expires_after="2027-05-02">
   <owner>ckitagawa@chromium.org</owner>
   <owner>nafisabedin@google.com</owner>
   <improvement direction="LOWER_IS_BETTER"/>
@@ -1127,25 +1127,6 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="Startup.CreateProcessLauncher2.{Status}" units="ms"
-    expires_after="2025-02-05">
-  <owner>ganesh@chromium.org</owner>
-  <owner>grt@chromium.org</owner>
-  <summary>
-    Records the time it took for the creation attempt of the ProcessLauncher COM
-    class when {Status}. The `AtStartup` variants record the creation attempt
-    times for when Windows has just started up, and the non-`AtStartup` variants
-    record the creation attempt times for all the other cases. Only recorded on
-    Windows.
-  </summary>
-  <token key="Status">
-    <variant name="TimedWaitFailed"/>
-    <variant name="TimedWaitFailedAtStartup"/>
-    <variant name="TimedWaitSucceeded"/>
-    <variant name="TimedWaitSucceededAtStartup"/>
-  </token>
-</histogram>
-
 <histogram name="Startup.DirectLaunch.PayloadResult"
     enum="DirectLaunchPayloadResult" expires_after="2027-09-01">
   <owner>fdoray@chromium.org</owner>
@@ -1495,7 +1476,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Startup.FirstWebContents.NonEmptyPaint3.AutoLaunchByOs"
-    units="ms" expires_after="2027-02-28">
+    units="ms" expires_after="2027-05-02">
   <owner>atharvmaan@google.com</owner>
   <owner>chrome-desktop-ui-waterloo@google.com</owner>
   <summary>
@@ -1937,7 +1918,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Startup.Temperature" enum="StartupTemperature"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
 <!-- expires-after: Diagnosis metric for changes in StartupTemperature suffix.
      Shouldn't truly expire but kColdStartHardFaultCountThreshold should be
      surveyed yearly. -->

@@ -97,11 +97,6 @@ export abstract class PdfViewerBaseElement extends CrLitElement {
 
   protected abstract setPluginSrc(plugin: HTMLEmbedElement): void;
 
-  /** Whether to enable the new UI. */
-  protected isNewUiEnabled(): boolean {
-    return true;
-  }
-
   abstract getBackgroundColor(): number;
 
   /** Creates the plugin element. */
@@ -132,10 +127,6 @@ export abstract class PdfViewerBaseElement extends CrLitElement {
           'top-level-url', this.browserApi!.getStreamInfo().tabUrl!);
     } else {
       plugin.toggleAttribute('full-frame', true);
-    }
-
-    if (this.isNewUiEnabled()) {
-      plugin.toggleAttribute('pdf-viewer-update-enabled', true);
     }
 
     // Pass the attributes for loading PDF plugin through the `pdfViewerPrivate`
@@ -226,12 +217,6 @@ export abstract class PdfViewerBaseElement extends CrLitElement {
         pluginController.getEventTarget(),
         PluginControllerEventType.PLUGIN_MESSAGE,
         (e: Event) => this.handlePluginMessage(e as CustomEvent<MessageData>));
-
-    document.body.addEventListener('change-page-and-xy', e => {
-      const point =
-          this.viewport_!.convertPageToScreen(e.detail.page, e.detail);
-      this.viewport_!.goToPageAndXy(e.detail.page, point.x, point.y);
-    });
 
     // Setup the keyboard event listener.
     document.addEventListener('keydown', this.handleKeyEvent.bind(this));

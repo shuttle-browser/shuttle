@@ -26,7 +26,7 @@ class Base64Test : public testing::TestWithParam<bool> {
   ~Base64Test() override = default;
 
   void SetUp() override {
-    feature_list_.InitWithFeatureState(features::kSimdutfBase64Encode,
+    feature_list_.InitWithFeatureState(features::kBase64SimdBase64Encode,
                                        GetParam());
   }
 

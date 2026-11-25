@@ -5,6 +5,7 @@
 #ifndef EXTENSIONS_RENDERER_API_MESSAGING_NATIVE_RENDERER_MESSAGING_SERVICE_H_
 #define EXTENSIONS_RENDERER_API_MESSAGING_NATIVE_RENDERER_MESSAGING_SERVICE_H_
 
+#include <cstddef>
 #include <string>
 
 #include "base/memory/raw_ptr.h"
@@ -158,6 +159,12 @@ class NativeRendererMessagingService : public GinPort::Delegate {
       mojo::PendingAssociatedReceiver<mojom::MessagePortHost>&
           message_port_host_receiver);
 
+  // Returns the number of times a message was copied so it could be delivered
+  // to more than one script context.
+  size_t message_clone_count_for_testing() const {
+    return message_clone_count_;
+  }
+
   // Closes the message port with the given `port_id` in the given
   // `script_context`. If `close_channel` is true, the entire communication
   // channel is torn down, which also disconnects the port on the other side.
@@ -185,6 +192,12 @@ class NativeRendererMessagingService : public GinPort::Delegate {
   // Invalidates any ports associated with the given `context`.
   void InvalidatePorts(ScriptContext* context);
 
+  // Closes the Mojo endpoints of all worker message ports (matching what
+  // destroying `this` would do). Used when a worker context is torn down
+  // before `this` is destroyed; see
+  // `WorkerThreadDispatcher::RemoveWorkerData()`.
+  void ResetWorkerPorts();
+
  private:
   class MessagePortScope;
   class RenderFrameMessagePorts;
@@ -199,7 +212,9 @@ class NativeRendererMessagingService : public GinPort::Delegate {
                                         const ExternalConnectionInfo& info,
                                         bool* port_created,
                                         ScriptContext* script_context);
-  void DeliverMessageToScriptContext(const Message& message,
+  // Delivers `message` to `script_context`, which must have the
+  // `target_port_id` port.
+  void DeliverMessageToScriptContext(Message message,
                                      const PortId& target_port_id,
                                      ScriptContext* script_context);
   void DeliverMessageToWorker(Message message,
@@ -260,6 +275,11 @@ class NativeRendererMessagingService : public GinPort::Delegate {
 
   OneTimeMessageHandler one_time_message_handler_;
   std::unique_ptr<MessagePortScope> default_scope_;
+
+  // Number of times `DeliverMessage()` copied a message to deliver it to more
+  // than one script context. Only exposed for testing.
+  size_t message_clone_count_ = 0;
+
   base::WeakPtrFactory<NativeRendererMessagingService> weak_ptr_factory_{this};
 };
 

@@ -16,7 +16,6 @@
 #include "chrome/browser/ui/views/site_data/page_specific_site_data_dialog.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/infobars/content/content_infobar_manager.h"
-#include "components/tabs/public/tab_interface.h"
 #include "components/vector_icons/vector_icons.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "content/public/browser/navigation_controller.h"
@@ -93,16 +92,29 @@ views::View* PageSpecificSiteDataDialogController::GetDialogView() {
 }
 
 // static
-void PageSpecificSiteDataDialogController::ShowCollectedCookiesInfoBar(
+bool PageSpecificSiteDataDialogController::ShowInfoBar(
     content::WebContents* web_contents) {
-  auto* browser_infobar_manager =
-      infobars::BrowserInfoBarManager::From(g_browser_process);
-  CHECK(browser_infobar_manager);
-  auto* tab = tabs::TabInterface::MaybeGetFromContents(web_contents);
-  if (tab) {
-    browser_infobar_manager->Show(
-        tab, infobars::InfoBarDelegate::COLLECTED_COOKIES_INFOBAR_DELEGATE);
+  if (!web_contents) {
+    return false;
   }
+  if (infobars::IsInfoBarMigrated(
+          infobars::InfoBarDelegate::COLLECTED_COOKIES_INFOBAR_DELEGATE)) {
+    auto* browser_infobar_manager =
+        infobars::BrowserInfoBarManager::From(g_browser_process);
+    if (!browser_infobar_manager) {
+      return false;
+    }
+    return browser_infobar_manager->Show(
+               web_contents,
+               infobars::InfoBarDelegate::COLLECTED_COOKIES_INFOBAR_DELEGATE) !=
+           nullptr;
+  }
+  auto* infobar_manager =
+      infobars::ContentInfoBarManager::FromWebContents(web_contents);
+  if (!infobar_manager) {
+    return false;
+  }
+  return CollectedCookiesInfoBarDelegate::Create(infobar_manager) != nullptr;
 }
 
 WEB_CONTENTS_USER_DATA_KEY_IMPL(PageSpecificSiteDataDialogController);

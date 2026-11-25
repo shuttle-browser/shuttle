@@ -60,7 +60,6 @@ bool SubresourceIntegrity::CheckSubresourceIntegrity(
     const SegmentedBuffer* buffer,
     const KURL& resource_url,
     const Resource& resource,
-    const FeatureContext* feature_context,
     IntegrityReport& integrity_report,
     HashMap<HashAlgorithm, String>* computed_hashes) {
   // FetchResponseType::kError never arrives because it is a loading error.
@@ -82,8 +81,8 @@ bool SubresourceIntegrity::CheckSubresourceIntegrity(
   String raw_headers = response.HttpHeaderFields().GetAsRawString(
       response.HttpStatusCode(), response.HttpStatusText());
   return CheckSubresourceIntegrityImpl(metadata_set, buffer, resource_url,
-                                       raw_headers, feature_context,
-                                       integrity_report, computed_hashes);
+                                       raw_headers, integrity_report,
+                                       computed_hashes);
 }
 
 bool SubresourceIntegrity::CheckSubresourceIntegrity(
@@ -92,7 +91,6 @@ bool SubresourceIntegrity::CheckSubresourceIntegrity(
     const KURL& resource_url,
     FetchResponseType response_type,
     const String& raw_headers,
-    const FeatureContext* feature_context,
     IntegrityReport& integrity_report) {
   // We're only going to check the integrity of non-errors, and
   // non-opaque responses.
@@ -107,12 +105,10 @@ bool SubresourceIntegrity::CheckSubresourceIntegrity(
   }
 
   return CheckSubresourceIntegrityImpl(metadata_set, buffer, resource_url,
-                                       raw_headers, feature_context,
-                                       integrity_report, nullptr);
+                                       raw_headers, integrity_report, nullptr);
 }
 
-String IntegrityAlgorithmToString(IntegrityAlgorithm algorithm,
-                                  const FeatureContext* feature_context) {
+String IntegrityAlgorithmToString(IntegrityAlgorithm algorithm) {
   switch (algorithm) {
     case IntegrityAlgorithm::kSha256:
       return "SHA-256";
@@ -125,17 +121,17 @@ String IntegrityAlgorithmToString(IntegrityAlgorithm algorithm,
   }
 }
 
-String IntegrityAlgorithmsForConsole(const FeatureContext* feature_context) {
-  return "'sha256', 'sha384', 'sha512', or 'ed21159'";
+String IntegrityAlgorithmsForConsole() {
+  return "'sha256', 'sha384', 'sha512', or 'ed25519'";
 }
 
 String HashAlgorithmToString(HashAlgorithm algorithm) {
   switch (algorithm) {
-    case kHashAlgorithmSha256:
+    case HashAlgorithm::kSha256:
       return "sha256-";
-    case kHashAlgorithmSha384:
+    case HashAlgorithm::kSha384:
       return "sha384-";
-    case kHashAlgorithmSha512:
+    case HashAlgorithm::kSha512:
       return "sha512-";
   }
 }
@@ -144,11 +140,11 @@ HashAlgorithm SubresourceIntegrity::IntegrityAlgorithmToHashAlgorithm(
     IntegrityAlgorithm algorithm) {
   switch (algorithm) {
     case IntegrityAlgorithm::kSha256:
-      return kHashAlgorithmSha256;
+      return HashAlgorithm::kSha256;
     case IntegrityAlgorithm::kSha384:
-      return kHashAlgorithmSha384;
+      return HashAlgorithm::kSha384;
     case IntegrityAlgorithm::kSha512:
-      return kHashAlgorithmSha512;
+      return HashAlgorithm::kSha512;
 
     // We'll handle signature algorithms in a different flow, and shouldn't call
     // into this function at all for any non-hashing algorithms.
@@ -180,8 +176,8 @@ bool SubresourceIntegrity::CheckUnencodedDigests(
   for (const IntegrityMetadata& digest : digests) {
     HashAlgorithm algorithm =
         IntegrityAlgorithmToHashAlgorithm(digest.algorithm);
-    DCHECK(algorithm == blink::HashAlgorithm::kHashAlgorithmSha256 ||
-           algorithm == blink::HashAlgorithm::kHashAlgorithmSha512);
+    DCHECK(algorithm == blink::HashAlgorithm::kSha256 ||
+           algorithm == blink::HashAlgorithm::kSha512);
 
     DigestValue computed_digest;
     if (!ComputeDigest(algorithm, buffer, computed_digest)) {
@@ -206,7 +202,6 @@ bool SubresourceIntegrity::CheckSubresourceIntegrityImpl(
     const SegmentedBuffer* buffer,
     const KURL& resource_url,
     const String& raw_headers,
-    const FeatureContext* feature_context,
     IntegrityReport& integrity_report,
     HashMap<HashAlgorithm, String>* computed_hashes) {
   // Implements https://wicg.github.io/signature-based-sri/#matching.
@@ -228,7 +223,7 @@ bool SubresourceIntegrity::CheckSubresourceIntegrityImpl(
   //     (We're doing this in a slightly different order, breaking the hashing
   //      work into the `CheckHashesImpl()` block below.)
   if (!CheckHashesImpl(parsed_metadata.hashes, buffer, resource_url,
-                       feature_context, integrity_report, computed_hashes)) {
+                       integrity_report, computed_hashes)) {
     return false;
   }
 
@@ -255,7 +250,6 @@ bool SubresourceIntegrity::CheckHashesImpl(
     const Vector<IntegrityMetadata>& hashes,
     const SegmentedBuffer* buffer,
     const KURL& resource_url,
-    const FeatureContext* feature_context,
     IntegrityReport& integrity_report,
     HashMap<HashAlgorithm, String>* computed_hashes) {
   // This implements steps 3 and 5 of
@@ -318,13 +312,12 @@ bool SubresourceIntegrity::CheckHashesImpl(
   // need to be very careful not to expose this in exceptions or
   // JavaScript, otherwise it risks exposing information about the
   // resource cross-origin.
-  integrity_report.AddConsoleErrorMessage(
-      StrCat({"Failed to find a valid digest in the 'integrity' attribute for "
-              "resource '",
-              resource_url.ElidedString(), "' with computed ",
-              IntegrityAlgorithmToString(strongest_algorithm, feature_context),
-              " integrity '", Base64Encode(actual_value),
-              "'. The resource has been blocked."}));
+  integrity_report.AddConsoleErrorMessage(StrCat(
+      {"Failed to find a valid digest in the 'integrity' attribute for "
+       "resource '",
+       resource_url.ElidedString(), "' with computed ",
+       IntegrityAlgorithmToString(strongest_algorithm), " integrity '",
+       Base64Encode(actual_value), "'. The resource has been blocked."}));
   integrity_report.AddUseCount(
       WebFeature::kSRIElementWithNonMatchingIntegrityAttribute);
   return false;
@@ -430,8 +423,6 @@ IntegrityAlgorithm SubresourceIntegrity::FindBestAlgorithm(
 SubresourceIntegrity::AlgorithmParseResult
 SubresourceIntegrity::ParseAttributeAlgorithm(
     std::string_view token,
-
-    const FeatureContext* feature_context,
     IntegrityAlgorithm& algorithm) {
   static const AlgorithmPrefixPair kPrefixes[] = {
       {"sha256", IntegrityAlgorithm::kSha256},
@@ -471,16 +462,13 @@ bool SubresourceIntegrity::ParseDigest(std::string_view maybe_digest,
 
 void SubresourceIntegrity::ParseIntegrityAttribute(
     const String& attribute,
-    IntegrityMetadataSet& metadata_set,
-    const FeatureContext* feature_context) {
-  return ParseIntegrityAttribute(attribute, metadata_set, feature_context,
-                                 nullptr);
+    IntegrityMetadataSet& metadata_set) {
+  return ParseIntegrityAttribute(attribute, metadata_set, nullptr);
 }
 
 void SubresourceIntegrity::ParseIntegrityAttribute(
     const String& attribute,
     IntegrityMetadataSet& metadata_set,
-    const FeatureContext* feature_context,
     IntegrityReport* integrity_report) {
   // We expect a "clean" metadata_set, since metadata_set should only be filled
   // once.
@@ -503,7 +491,7 @@ void SubresourceIntegrity::ParseIntegrityAttribute(
     // them.
     IntegrityAlgorithm algorithm;
     AlgorithmParseResult parse_result =
-        ParseAttributeAlgorithm(token, feature_context, algorithm);
+        ParseAttributeAlgorithm(token, algorithm);
     if (!parse_result.has_value()) {
       // Unknown hash algorithms are treated as if they're not present, and
       // thus are not marked as an error, they're just skipped.
@@ -513,7 +501,7 @@ void SubresourceIntegrity::ParseIntegrityAttribute(
             integrity_report->AddConsoleErrorMessage(
                 StrCat({"Error parsing 'integrity' attribute ('", attribute,
                         "'). The specified hash algorithm must be one of ",
-                        IntegrityAlgorithmsForConsole(feature_context), "."}));
+                        IntegrityAlgorithmsForConsole(), "."}));
             integrity_report->AddUseCount(
                 WebFeature::kSRIElementWithUnparsableIntegrityAttribute);
             break;
@@ -521,7 +509,7 @@ void SubresourceIntegrity::ParseIntegrityAttribute(
             integrity_report->AddConsoleErrorMessage(
                 StrCat({"Error parsing 'integrity' attribute ('", attribute,
                         "'). The hash algorithm must be one of ",
-                        IntegrityAlgorithmsForConsole(feature_context),
+                        IntegrityAlgorithmsForConsole(),
                         ", followed by a '-' character."}));
             integrity_report->AddUseCount(
                 WebFeature::kSRIElementWithUnparsableIntegrityAttribute);
@@ -575,11 +563,9 @@ void SubresourceIntegrity::ParseIntegrityAttribute(
   }
 }
 
-bool SubresourceIntegrity::VerifyInlineIntegrity(
-    const String& integrity_attr,
-    const String& signature_attr,
-    const String& source_code,
-    const FeatureContext* feature_context) {
+bool SubresourceIntegrity::VerifyInlineIntegrity(const String& integrity_attr,
+                                                 const String& signature_attr,
+                                                 const String& source_code) {
   if (!RuntimeEnabledFeatures::SignatureBasedInlineIntegrityEnabled()) {
     return true;
   }
@@ -589,7 +575,7 @@ bool SubresourceIntegrity::VerifyInlineIntegrity(
   if (!integrity_attr.empty()) {
     IntegrityReport integrity_report;
     SubresourceIntegrity::ParseIntegrityAttribute(
-        integrity_attr, integrity_metadata, feature_context, &integrity_report);
+        integrity_attr, integrity_metadata, &integrity_report);
     // TODO(391907163): Log errors from |integrity_report|.
   }
 

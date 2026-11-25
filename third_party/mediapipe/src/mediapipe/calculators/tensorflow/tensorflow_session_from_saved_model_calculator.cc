@@ -15,19 +15,19 @@
 #include <algorithm>
 
 #if !defined(__ANDROID__)
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/framework/port/file_helpers.h"
 #endif
-#include "absl/log/absl_log.h"
-#include "absl/strings/str_replace.h"
+#include "absl/log/absl_log.h"         // from @com_google_absl
+#include "absl/strings/str_replace.h"  // from @com_google_absl
 #include "mediapipe/calculators/tensorflow/tensorflow_session.h"
 #include "mediapipe/calculators/tensorflow/tensorflow_session_from_saved_model_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "tensorflow/cc/saved_model/constants.h"
-#include "tensorflow/cc/saved_model/loader.h"
-#include "tensorflow/cc/saved_model/tag_constants.h"
+#include "tensorflow/cc/saved_model/constants.h"      // from @org_tensorflow
+#include "tensorflow/cc/saved_model/loader.h"         // from @org_tensorflow
+#include "tensorflow/cc/saved_model/tag_constants.h"  // from @org_tensorflow
 
 namespace mediapipe {
 
@@ -142,7 +142,7 @@ class TensorFlowSessionFromSavedModelCalculator : public CalculatorBase {
     tensorflow::RunOptions run_options;
     tensorflow::SessionOptions session_options;
     session_options.config = options.session_config();
-    auto saved_model = absl::make_unique<tensorflow::SavedModelBundle>();
+    auto saved_model = std::make_unique<tensorflow::SavedModelBundle>();
     absl::Status status = tensorflow::LoadSavedModel(
         session_options, run_options, path, tags_set, saved_model.get());
     if (!status.ok()) {
@@ -150,7 +150,7 @@ class TensorFlowSessionFromSavedModelCalculator : public CalculatorBase {
                           status.ToString());
     }
 
-    auto session = absl::make_unique<TensorFlowSession>();
+    auto session = std::make_unique<TensorFlowSession>();
     session->session = std::move(saved_model->session);
 
     RET_CHECK(!options.signature_name().empty());

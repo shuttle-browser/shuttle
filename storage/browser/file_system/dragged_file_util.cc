@@ -11,7 +11,6 @@
 #include <vector>
 
 #include "base/files/file_util.h"
-#include "storage/browser/blob/shareable_file_reference.h"
 #include "storage/browser/file_system/file_system_context.h"
 #include "storage/browser/file_system/file_system_operation_context.h"
 #include "storage/browser/file_system/file_system_url.h"
@@ -87,7 +86,6 @@ base::File::Error DraggedFileUtil::GetFileInfo(
     base::File::Info* file_info,
     base::FilePath* platform_path) {
   DCHECK(file_info);
-  std::string filesystem_id;
   DCHECK(url.is_valid());
   if (url.path().empty()) {
     // The root directory case.

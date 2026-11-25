@@ -30,7 +30,10 @@ TESTED_FILES = [
     'ffx_emulator.py',
     'modification_waiter.py',
     'monitors.py',
+    'orchestrate_runner.py',
+    'run_executable_test.py',
     'serial_boot_device.py',
+    'test_env_setup.py',
     'version.py',
 ]
 

@@ -4,6 +4,8 @@
 
 #include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
 
+#include <utility>
+
 #include "base/metrics/user_metrics.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 

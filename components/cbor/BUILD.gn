@@ -6,6 +6,10 @@ import("//build/buildflag_header.gni")
 import("//build/config/cronet/config.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
 
+if (is_ios) {
+  import("//build/config/ios/bundle_data_from_filelist.gni")
+}
+
 buildflag_header("buildflags") {
   header = "cbor_buildflags.h"
 

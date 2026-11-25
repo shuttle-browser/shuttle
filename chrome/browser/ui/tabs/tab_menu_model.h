@@ -6,9 +6,11 @@
 #define CHROME_BROWSER_UI_TABS_TAB_MENU_MODEL_H_
 
 #include <memory>
+#include <vector>
 
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "components/tabs/public/tab_interface.h"
 #include "extensions/buildflags/buildflags.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/menus/simple_menu_model.h"
@@ -18,10 +20,6 @@ namespace extensions {
 class ContextMenuMatcher;
 }
 #endif
-
-namespace tabs {
-class TabInterface;
-}
 
 class TabStripModel;
 class TabMenuModelDelegate;
@@ -52,6 +50,11 @@ class TabMenuModel : public ui::SimpleMenuModel {
   TabMenuModel(ui::SimpleMenuModel::Delegate* delegate,
                TabMenuModelDelegate* tab_menu_model_delegate,
                TabStripModel* tab_strip,
+               tabs::TabHandle context_tab);
+  // TODO(crbug.com/435178910): Temporary forwarding shim until callers migrate.
+  TabMenuModel(ui::SimpleMenuModel::Delegate* delegate,
+               TabMenuModelDelegate* tab_menu_model_delegate,
+               TabStripModel* tab_strip,
                int index);
   TabMenuModel(const TabMenuModel&) = delete;
   TabMenuModel& operator=(const TabMenuModel&) = delete;
@@ -76,7 +79,7 @@ class TabMenuModel : public ui::SimpleMenuModel {
 #endif
 
  private:
-  void Build(int index);
+  void Build(tabs::TabHandle context_tab);
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   // Support for appending and executing commands for extension items in the
@@ -91,7 +94,6 @@ class TabMenuModel : public ui::SimpleMenuModel {
   std::unique_ptr<ui::SimpleMenuModel>
       add_to_existing_comparison_table_submenu_;
   std::unique_ptr<ui::SimpleMenuModel> swap_with_split_submenu_;
-  std::unique_ptr<ui::SimpleMenuModel> split_layout_submenu_;
   std::unique_ptr<ui::SimpleMenuModel> arrange_split_view_submenu_;
   std::unique_ptr<ui::SimpleMenuModel> split_mute_submenu_;
 

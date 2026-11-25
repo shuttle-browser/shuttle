@@ -143,6 +143,9 @@ VIZ_COMMON_EXPORT extern const base::FeatureParam<base::TimeDelta>
     kAndroidCustomFrameDeadlineMaxInteractionIdleDuration;
 #endif
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kUseDisplaySDRMaxLuminanceNits);
+#if BUILDFLAG(IS_OZONE)
+VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kHdrVideoMetadataPassthrough);
+#endif
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kHideDelegatedFrameHostMac);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kEvictionUnlocksResources);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kSingleVideoFrameRateThrottling);
@@ -187,7 +190,6 @@ VIZ_COMMON_EXPORT extern const base::FeatureParam<int>
 // TODO(crbug.com/40893974): Remove once this has shipped to stable.
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(
     kNoUndrawnFrameThrottleWhileEmbedderWaits);
-VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kDisplaySchedulerAsClient);
 
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kRenderPassBackingLogicalBounds);
 

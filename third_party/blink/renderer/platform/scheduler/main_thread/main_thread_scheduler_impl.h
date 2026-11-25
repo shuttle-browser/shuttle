@@ -96,10 +96,7 @@ class AgentGroupSchedulerImpl;
 class CPUTimeBudgetPool;
 class FrameSchedulerImpl;
 class PageSchedulerImpl;
-class WebRenderWidgetSchedulingState;
 class WidgetSchedulerImpl;
-
-
 
 class PLATFORM_EXPORT MainThreadSchedulerImpl
     : public ThreadSchedulerBase,
@@ -298,8 +295,6 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
   scoped_refptr<MainThreadTaskQueue> NewThrottleableTaskQueueForTest(
       FrameSchedulerImpl* frame_scheduler);
 
-  scoped_refptr<base::sequence_manager::TaskQueue> NewTaskQueueForTest();
-
   void RemoveAgentGroupScheduler(AgentGroupSchedulerImpl*);
   void AddPageScheduler(PageSchedulerImpl*);
   void RemovePageScheduler(PageSchedulerImpl*);
@@ -336,7 +331,6 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
 
   // Test helpers.
   MainThreadSchedulerHelper* GetSchedulerHelperForTesting();
-  IdleTimeEstimator* GetIdleTimeEstimatorForTesting();
   base::TimeTicks CurrentIdleTaskDeadlineForTesting() const;
   void EndIdlePeriodForTesting(base::TimeTicks time_remaining);
   bool PolicyNeedsUpdateForTesting();
@@ -418,7 +412,6 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
   virtual void PerformMicrotaskCheckpoint();
 
  private:
-  friend class WebRenderWidgetSchedulingState;
   friend class MainThreadMetricsHelper;
 
   friend class MainThreadMetricsHelperTest;
@@ -440,11 +433,6 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
       main_thread_scheduler_impl_unittest::MainThreadSchedulerImplTest,
       CanExceedIdleDeadlineIfRequired);
 
-  enum class TimeDomainType {
-    kReal,
-    kVirtual,
-  };
-
   // WebThreadScheduler private implementation:
   WebThreadScheduler* ToWebMainThreadScheduler() override;
 
@@ -454,8 +442,6 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
   void OnVirtualTimeDisabled() override;
   void OnVirtualTimePaused() override;
   void OnVirtualTimeResumed() override;
-
-  static const char* TimeDomainTypeToString(TimeDomainType domain_type);
 
   void AddAgentGroupScheduler(AgentGroupSchedulerImpl*);
 
@@ -499,8 +485,6 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
     void WriteIntoTrace(perfetto::TracedValue context) const;
   };
 
-  class TaskDurationMetricTracker;
-
   class RendererPauseHandleImpl
       : public MainThreadScheduler::RendererPauseHandle {
    public:
@@ -527,11 +511,6 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
       scoped_refptr<WidgetSchedulerImpl>);
 
   void EndIdlePeriod();
-
-  // Update a policy which increases priority for the next beginMainFrame after
-  // an input event.
-  void UpdatePrioritizeCompositingAfterInputAfterTaskCompleted(
-      MainThreadTaskQueue* queue);
 
   // Returns the serialized scheduler state for tracing.
   void WriteIntoTraceLocked(perfetto::TracedValue context,
@@ -744,10 +723,9 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
   // We have decided to improve thread safety at the cost of some boilerplate
   // (the accessors) for the following data members.
   struct MainThreadOnly {
-    MainThreadOnly(
-        MainThreadSchedulerImpl* main_thread_scheduler_impl,
-        const base::TickClock* time_source,
-        base::TimeTicks now);
+    MainThreadOnly(MainThreadSchedulerImpl* main_thread_scheduler_impl,
+                   const base::TickClock* time_source,
+                   base::TimeTicks now);
     ~MainThreadOnly();
 
     IdleTimeEstimator idle_time_estimator;
@@ -879,8 +857,9 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
 #if DCHECK_IS_ON()
       // We don't actually care which thread this called from, just so long as
       // its consistent.
-      if (!compositor_thread_checker)
-        compositor_thread_checker.reset(new base::ThreadChecker());
+      if (!compositor_thread_checker) {
+        compositor_thread_checker = std::make_unique<base::ThreadChecker>();
+      }
       DCHECK(compositor_thread_checker->CalledOnValidThread());
 #endif
     }

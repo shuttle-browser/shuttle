@@ -33,6 +33,11 @@ are declared in tools/grit/grit_args.gni.
     <messages fallback_to_english="true">
       <!-- Access Code Cast specific strings -->
 
+      <!-- Action search synonym strings -->
+      <if expr="not is_android">
+        <part file="action_synonym_strings.grdp" />
+      </if>
+
       <!-- Actor specific strings -->
 
       <!-- App Management specific strings -->
@@ -49,8 +54,6 @@ are declared in tools/grit/grit_args.gni.
       <part file="media_live_preview_strings.grdp" />
 
       <!-- Media Router specific strings -->
-
-      <!-- Notebooks specific strings -->
 
       <!-- Profiles specific strings -->
       <part file="profiles_strings.grdp" />
@@ -289,7 +292,6 @@ are declared in tools/grit/grit_args.gni.
 
 
 
-
         <message name="IDS_FIND_AND_EDIT_MENU" desc="The text label of the Find and edit sub menu item">
           &amp;Find and edit
         </message>
@@ -408,7 +410,6 @@ are declared in tools/grit/grit_args.gni.
           <message name="IDS_CONTENT_CONTEXT_COPYLINKTOTEXT" desc="The name of the Copy Link to Highlight command in the content area context menu">
             Copy link to highlight
           </message>
-
 
 
           <message name="IDS_CONTENT_CONTEXT_REMOVELINKTOTEXT" desc="The name of the Remove Highlights command in the content area context menu">
@@ -646,7 +647,6 @@ are declared in tools/grit/grit_args.gni.
           </message>
 
 
-
           <message name="IDS_CONTENT_CONTEXT_REMOVELINKTOTEXT" desc="In TitleCase: The name of the Remove Highlights command in the content area context menu">
             Remove Highlight
           </message>
@@ -803,7 +803,6 @@ are declared in tools/grit/grit_args.gni.
             &amp;Go to <ph name="URL">$1<ex>http://www.google.com/</ex></ph>
           </message>
         </if>
-
       </if>
 
       <if expr="not use_titlecase">
@@ -862,6 +861,9 @@ are declared in tools/grit/grit_args.gni.
         </message>
         <message name="IDS_APP_MENU_SEARCH_TAB_GROUPS_HEADER" desc="Section header for tab group matches in the App Menu search results.">
           Tab groups
+        </message>
+        <message name="IDS_APP_MENU_SEARCH_SECONDARY_TEXT_WITH_VALUE" desc="Secondary line shown under an App Menu search result, combining the name of the submenu the item came from with a live value. For the zoom in/out results the value is the current page zoom level and updates as the user zooms. In English the two parts are separated by a hyphen with a space on either side; use whichever separator is customary in your language.">
+          <ph name="CONTEXT">$1<ex>Zoom</ex></ph> - <ph name="VALUE">$2<ex>110%</ex></ph>
         </message>
         <message name="IDS_APP_MENU_TOOLS_AND_ACTIONS_HEADER" desc="Header title for the Tools and actions section in the main App Menu">
           Tools and actions
@@ -946,8 +948,6 @@ are declared in tools/grit/grit_args.gni.
           <message name="IDS_SHOW_AS_TAB" desc="In Title Case: The text label for the Show As tab menu item">
             &amp;Show As Tab
           </message>
-
-
 
           <message name="IDS_EDIT2" desc="In Title Case: The text label before the cut/copy/paste buttons in the merged menu">
             Edit
@@ -1243,7 +1243,6 @@ are declared in tools/grit/grit_args.gni.
           &amp;Manage Search Engines and Shortcuts
         </message>
       </if>
-
 
       <message name="IDS_SEARCH_ENGINES_EDITOR_DEFAULT_ENGINE"
                desc="Engine name displayed for the engine in the list that is currently marked as default">
@@ -5021,8 +5020,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
 
 
 
-
-
       <message name="IDS_EXTENSIONS_SETTINGS_API_THIRD_LINE_CONFIRMATION" desc="Third line in the Settings API bubble, always appended after the first (and optional second) line to make one paragraph. See IDS_EXTENSIONS_SETTINGS_API_SECOND_LINE_SEARCH_ENGINE for reason for triple quotes.">
         ''' If you didn't want these changes, you can restore your previous settings.'''
       </message>
@@ -5251,7 +5248,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
         Chrome is loading flags from a command-line file. Stability and security may be affected.
       </message>
 
-
       <!-- Blocked Displaying/Running Insecure Content bubble -->
       <message name="IDS_BLOCKED_DISPLAYING_INSECURE_CONTENT_TITLE" desc="Title of the bubble shown when a message has asked Chrome to display mixed content.">
         Insecure content blocked
@@ -5269,7 +5265,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
           Load unsafe scripts
         </message>
       </if>
-
 
       <!-- about:system strings -->
 
@@ -5674,42 +5669,10 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_PINNED_ACTION_BUTTON_ACCESSIBLE_TITLE" is_accessibility_with_no_ui="true" desc="Used to indicate to a screen reader user that an action is pinned in the toolbar">
         <ph name="ACTION_NAME">$1<ex>Bookmarks</ex></ph> - pinned
       </message>
-      <message name="IDS_CONTEXTUAL_TASKS_ASK_ABOUT_THIS_PAGE" desc="Title for the zero state header in the Contextual Tasks side panel prompting the user to ask about the current page.">
-        Ask about this page
-      </message>
       <!-- TODO(crbug.com/576221905): Mark as translatable. -->
       <message name="IDS_LENS_SELECTION_SUGGESTION_DEFAULT_LABEL" desc="Default label for the Google Lens smart selection suggestion." translateable="false">
         Search with Google Lens
       </message>
-
-      <!-- Contextual Tasks side panel identity -->
-      <message name="IDS_CONTEXTUAL_TASKS_IDENTITY_TOOLTIP_BODY" desc="Body text of the identity tooltip in the Contextual Tasks side panel informing the user which Google Account they are signed in to Search with.">
-        You're signed in to Search with your <ph name="USER_EMAIL">$1<ex>account@gmail.com</ex></ph> account
-      </message>
-      <message name="IDS_CONTEXTUAL_TASKS_IDENTITY_TOOLTIP_SCREENREADER" is_accessibility_with_no_ui="true" desc="Screen reader announcement for the identity tooltip in the Contextual Tasks side panel informing the user which Google Account they are signed in to Search with.">
-        You're signed in to Search with your <ph name="USER_EMAIL">$1<ex>account@gmail.com</ex></ph> account
-      </message>
-      <message name="IDS_CONTEXTUAL_TASKS_IDENTITY_TOOLTIP_MANAGE_ACCOUNT_BUTTON" desc="Label for the button in the Contextual Tasks side panel identity tooltip that opens the user's Google Account page.">
-        Manage account
-      </message>
-      <message name="IDS_CONTEXTUAL_TASKS_IDENTITY_TOOLTIP_CLOSE_BUTTON" desc="Accessible label and tooltip for the close button on the Contextual Tasks side panel identity tooltip.">
-        Close
-      </message>
-      <message name="IDS_CONTEXTUAL_TASKS_ACCOUNT_BUTTON_TOOLTIP" desc="Tooltip and accessible label for the account avatar button in the Contextual Tasks side panel toolbar showing the signed-in user's name and email.">
-        Google Account: <ph name="USER_NAME">$1<ex>Jane Doe</ex></ph> (<ph name="USER_EMAIL">$2<ex>account@gmail.com</ex></ph>)
-      </message>
-      <message name="IDS_CONTEXTUAL_TASKS_ACCOUNT_BUTTON_EMAIL_ONLY_TOOLTIP" desc="Tooltip and accessible label for the account avatar button in the Contextual Tasks side panel toolbar showing the signed-in user's email.">
-        Google Account: <ph name="USER_EMAIL">$1<ex>account@gmail.com</ex></ph>
-      </message>
-      <message name="IDS_CONTEXTUAL_TASKS_ACCOUNT_BUTTON_SIGNED_OUT_TOOLTIP" desc="Tooltip and accessible label for the account avatar indicator in the Contextual Tasks side panel toolbar when the user is signed out of Search.">
-        Signed out
-      </message>
-      <message name="IDS_CONTEXTUAL_TASKS_MENU_SIGN_IN" desc="The 'Sign in' option in the Contextual Tasks 3-dot overflow menu shown when the user is signed out.">
-        Sign in
-      </message>
-
-
-
 
       <!--Tooltip strings -->
       <message name="IDS_TOOLTIP_BACK" desc="The tooltip for back button">
@@ -5987,7 +5950,7 @@ Keep your key file in a safe place. You will need it to create new versions of y
         Split view
       </message>
       <message name="IDS_ORGANIZER_PANEL_TAB_GROUPS" desc="The label on the organizer panel list section corresponding to tab groups.">
-        Tab Groups
+        Tab groups
       </message>
       <message name="IDS_ORGANIZER_PANEL_CREATE_TAB_GROUP" desc="The label on the organizer panel item to create a tab group.">
         Create tab group
@@ -5995,14 +5958,38 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_ORGANIZER_PANEL_CROSS_DEVICE_TABS" desc="The label on the organizer panel list section corresponding to tabs on other devices.">
         Tabs on other devices
       </message>
+      <message name="IDS_ORGANIZER_PANEL_RECENTLY_CLOSED" desc="The label on the organizer panel list section corresponding to recently closed tabs.">
+        Recently closed
+      </message>
       <message name="IDS_ORGANIZER_PANEL_RECENTLY_VISITED" desc="The label on the organizer panel list section corresponding to recently visited tabs.">
         Recently visited
       </message>
       <message name="IDS_ORGANIZER_PANEL_CURRENTLY_PLAYING" desc="The description text shown in the organizer panel for a tab or split view that is currently playing audio.">
         Currently playing
       </message>
-      <message name="IDS_TAB_STRIP_BUTTON_TOOLTIP" desc="The tooltip for the tab strip button.">
-        Tab strip
+      <message name="IDS_ORGANIZER_PANEL_AUDIO_MUTED" desc="The description text shown in the organizer panel for a tab or split view whose audio is muted.">
+        Audio muted
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_CLOSE_TAB" desc="Spoken by screen readers and not visually rendered: accessibility label for the close ('X') button on the right side of a hovered or focused tab item under 'Recently visited' in the organizer panel.">
+        Close <ph name="TAB_TITLE">$1<ex>Google</ex></ph>
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_CLOSE_SPLIT_VIEW" desc="Spoken by screen readers and not visually rendered: accessibility label for the close ('X') button on the right side of a hovered or focused 'Split view' item under 'Recently visited' in the organizer panel.">
+        Close split view: <ph name="FIRST_TAB_TITLE">$1<ex>Docs</ex></ph>, <ph name="SECOND_TAB_TITLE">$2<ex>Sheets</ex></ph>
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_SECTION_OPTIONS" desc="Spoken by screen readers and not visually rendered: accessibility label for the three-dot options icon button on the right side of an expanded section header (such as 'Recently visited' or 'Tab groups') next to the collapse arrow in the organizer panel.">
+        Options for <ph name="SECTION_NAME">$1<ex>Recently visited</ex></ph>
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_OPEN_TAB_GROUP" desc="Spoken by screen readers and not visually rendered: accessibility description for an open tab group row (indicated by a filled colored circle icon) under the 'Tab groups' section in the organizer panel.">
+        Open tab group
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_SAVED_TAB_GROUP" desc="Spoken by screen readers and not visually rendered: accessibility description for a closed/saved tab group row (indicated by an outlined colored circle icon) under the 'Tab groups' section in the organizer panel.">
+        Saved tab group
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_TAB_GROUP" desc="Spoken by screen readers and not visually rendered: accessibility label prefix announced before the group name or tab count for a recently closed tab group row under the 'Recently closed' section in the organizer panel.">
+        Tab group
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_TAB_GROUP_MORE_OPTIONS" desc="Spoken by screen readers and not visually rendered: accessibility label for the three-dot options button on the right side of a hovered or focused tab group item under the 'Tab groups' section in the organizer panel.">
+        More options for <ph name="TAB_GROUP_NAME">$1<ex>Work</ex></ph>
       </message>
       <if expr="use_titlecase">
         <message name="IDS_TAB_STRIP_UNPIN_TAB_SEARCH" desc="In Title Case: Name of the tab strip system menu item for unpinning tab search.">
@@ -6172,12 +6159,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
         Continue blocking this site from seeing the clipboard
       </message>
 
-      <message name="IDS_TAB_GROUPS_UNNAMED_GROUP_TOOLTIP" desc="Static tooltip to display on hover over unnamed tab group.">
-        Unnamed agent - <ph name="GROUP_CONTENT_STRING">$1<ex>"New Tab" and one other</ex></ph>
-      </message>
-      <message name="IDS_TAB_GROUPS_NAMED_GROUP_TOOLTIP" desc="Dynamic tooltip to display on hover over named tab group.">
-        <ph name="GROUP_NAME">$1<ex>New Group</ex></ph> - <ph name="GROUP_CONTENT_STRING">$2<ex>"New Tab" and one other</ex></ph>
-      </message>
       <if expr="use_titlecase">
         <message name="IDS_TAB_GROUPS_HOVER_CARD_HEADER" desc="In Title Case: Title of the hover card for an open tab group when hovering over the tab group header in the tab strip.">
             {NUM_TABS, plural, =1 {<ph name="GROUP_TITLE">$1<ex>MyGroup</ex></ph> (1 Tab)} other {<ph name="GROUP_TITLE">$1<ex>MyGroup</ex></ph> (# Tabs)}}
@@ -6293,7 +6274,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_CLEAR_BROWSING_DATA_HISTORY_NOTICE_OK" desc="Button in a dialog that informs the user that the deletion of Chrome's browsing data has been completed.">
         Ok, got it
       </message>
-
 
       <!-- Media controls -->
       <message name="IDS_MEDIA_CONTROLS_TITLE_PLACEHOLDER_INCOGNITO" desc="Text used as the placeholder in the OS' media controls' title when the media is being played in an Incognito session.">
@@ -6700,12 +6680,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
         <message name="IDS_SPLIT_TAB_SWAP_BOTTOM_VIEW" desc="The label for a menu item that swaps the bottom view in the active split with the selected tab.">
           Swap with bottom view
         </message>
-        <message name="IDS_SPLIT_TAB_NEW_VERTICAL" desc="The label for a menu item for creating a new split view with a vertical divider.">
-          Side by side
-        </message>
-        <message name="IDS_SPLIT_TAB_NEW_HORIZONTAL" desc="The label for a menu item for creating a new split view with a horizontal divider.">
-          Stacked
-        </message>
         <message name="IDS_SPLIT_TAB_SHOW_STACKED" desc="The label for a menu item that switches the layout of the split tabs to stacked when clicked.">
           Show stacked
         </message>
@@ -6771,12 +6745,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
         <message name="IDS_SPLIT_TAB_SWAP_BOTTOM_VIEW" desc="In title case: The label for a menu item that swaps the bottom view in the active split with the selected tab.">
           Swap with Bottom View
         </message>
-        <message name="IDS_SPLIT_TAB_NEW_VERTICAL" desc="In title case: The label for a menu item for creating a new split view with a vertical divider.">
-          Side by Side
-        </message>
-        <message name="IDS_SPLIT_TAB_NEW_HORIZONTAL" desc="In title case: The label for a menu item for creating a new split view with a horizontal divider.">
-          Stacked
-        </message>
         <message name="IDS_SPLIT_TAB_SHOW_STACKED" desc="In title case: The label for a menu item that switches the layout of the split tabs to stacked when clicked.">
           Show Stacked
         </message>
@@ -6784,7 +6752,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
           Show Side by Side
         </message>
       </if>
-
 
       <message name="IDS_TAB_SEARCH_MENU" desc="The text label for the tab search menu item">
         Tab search
@@ -6845,18 +6812,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
       <!-- Tab Group Editor Bubble -->
       <message name="IDS_TAB_GROUP_HEADER_CXMENU_TAB_GROUP_TITLE_ACCESSIBLE_NAME" desc="The accessible name of the tab-group-title textfield.">
           Agent name
@@ -6878,6 +6833,12 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </message>
       <message name="IDS_TAB_GROUP_HEADER_UNFOCUS_BUTTON" desc="The label for the unfocus button header attached to a focused tab group.">
         Unfocus
+      </message>
+      <message name="IDS_TAB_GROUP_HEADER_UNFOCUS_BUTTON_AX_LABEL" is_accessibility_with_no_ui="true" desc="Screen reader label for the unfocus button of a focused tab group.">
+        Unfocus tab group
+      </message>
+      <message name="IDS_TAB_GROUP_HEADER_UNFOCUS_BUTTON_EPHEMERAL_AX_LABEL" is_accessibility_with_no_ui="true" desc="Screen reader label for the unfocus button of an ephemeral tab group, i.e. focused tabs that are not in a real group. [ICU Syntax]">
+        {NUM_TABS, plural, =1 {Unfocus tab} other {Unfocus tabs}}
       </message>
       <message name="IDS_TAB_GROUP_FOCUS_EXITED_TOAST_BODY" desc="Text shown in a toast when focus mode is exited because a tab outside of the focused tab group was activated.">
         Unfocused tab group
@@ -6934,9 +6895,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
           <!-- Data Sharing Owner Remove Member Dialog -->
             <message name ="IDS_DATA_SHARING_OWNER_REMOVE_MEMBER_DIALOG_TITLE" desc="The title of the remove member dialog.">
               Remove <ph name="MEMBER_FULL_NAME">$1<ex>John Doe</ex></ph>?
-            </message>
-            <message name ="IDS_DATA_SHARING_OWNER_REMOVE_MEMBER_DIALOG_CONFIRM" desc="The confirmation button for the remove member dialog.">
-              Remove
             </message>
           <!-- DataSharing Owner Remove Member Dialog -->
 
@@ -6996,9 +6954,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
           <!-- Data Sharing Owner Remove Member Dialog -->
             <message name ="IDS_DATA_SHARING_OWNER_REMOVE_MEMBER_DIALOG_TITLE" desc="The title of the remove member dialog.">
               Remove <ph name="MEMBER_FULL_NAME">$1<ex>John Doe</ex></ph>?
-            </message>
-            <message name ="IDS_DATA_SHARING_OWNER_REMOVE_MEMBER_DIALOG_CONFIRM" desc="The confirmation button for the remove member dialog.">
-              Remove
             </message>
           <!-- DataSharing Owner Remove Member Dialog -->
 
@@ -7247,7 +7202,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </message>
 
 
-
       <!-- SSL client authentication certificate selection dialog -->
       <message name="IDS_CLIENT_CERT_DIALOG_TITLE" desc="The title of the dialog that prompts for a certificate when doing SSL client authentication.">
         Select a certificate
@@ -7464,7 +7418,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
 
 
 
-
       <message name="IDS_COLLECTED_COOKIES_INFOBAR_MESSAGE" desc="The string shown in the infobar after the user has changed the allowed/blocked state of a cookie, reminding them to reload the page in order for the new cookies to take effect.">
         Reload this page to apply your updated settings on this site
       </message>
@@ -7668,8 +7621,6 @@ This can include information about installed software, files, your browser, the 
 
 
 
-
-
       <if expr="not is_chromeos and not is_android">
         <message name="IDS_SIGNIN_DICE_WEB_INTERCEPT_ENTERPRISE_PROFILE_NAME" desc="Default name for work profiles created after signin interception">
           Work
@@ -7788,6 +7739,9 @@ This can include information about installed software, files, your browser, the 
       <message name="IDS_OTHER_DEVICE_TABS_MENU" desc="The text label of the 'Other device tabs' sub-menu in the wrench menu that lists the tabs currently open on the user's other devices.">
         Other device tabs
       </message>
+      <message name="IDS_OTHER_DEVICE_TABS_SEE_MORE_TABS" desc="Label of the last row under a device in the 'Other device tabs' sub-menu of the wrench menu. It opens a sub-menu listing the remaining tabs open on that device. [ICU_Syntax]">
+        {COUNT, plural, =1 {See 1 more tab} other {See # more tabs}}
+      </message>
       <message name="IDS_DEFAULT_DOWNLOAD_FILENAME" desc="Default name for downloaded files when we have no idea what they could be.">
         download
       </message>
@@ -7855,12 +7809,14 @@ This can include information about installed software, files, your browser, the 
 
 
 
-
       <!-- Translate Bubble -->
 
       <!-- TTC -->
       <message name="IDS_TTC_ENTRYPOINT_LABEL" desc="Text label of the TTC menu item." translateable="false" formatter_data="android_java">
         TTC
+      </message>
+      <message name="IDS_TTC_INACTIVITY_TIMEOUT_TOAST" translateable="false" desc="Text shown in a toast notification when a TTC session terminates due to inactivity.">
+        Listening stopped due to inactivity
       </message>
 
       <!-- Web and message center notifications -->
@@ -8484,7 +8440,6 @@ This can include information about installed software, files, your browser, the 
 
       <!-- Extra Mac UI Strings -->
       <if expr="is_macosx">
-
         <!-- Install from disk image -->
         <message name="IDS_INSTALL_FROM_DMG_TITLE" desc="Title of the dialog asking whether to install from the disk image.  Mac-only.">
           Do you want to install <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph>?
@@ -8935,6 +8890,15 @@ This can include information about installed software, files, your browser, the 
       <message name="IDS_GROUP_AX_LABEL_NAMED_GROUP_FORMAT" desc="Spoken by screen readers when a tab group header that has been named by the user gets focused but is not visually rendered. Example: 'Group MyGroupName - Google Search and 3 other tabs - Collapsed'">
        <ph name="SHARE_STATE">$1<ex>Shared</ex></ph> agent <ph name="GROUP_NAME">$2</ph> - <ph name="GROUP_CONTENTS">$3<ex>Google Search and 3 other tabs</ex></ph> - <ph name="COLLAPSED_STATE">$4</ph>
       </message>
+      <message name="IDS_GROUP_AX_LABEL_FOCUSED_GROUP_FORMAT" is_accessibility_with_no_ui="true" desc="Spoken by screen readers when the header of a tab group in focus mode gets focused. Wraps the regular group header label. Example: 'Focused on group MyGroupName - Google Search and 3 other tabs - Expanded'">
+        Focused on <ph name="GROUP_LABEL">$1<ex>group MyGroupName - Google Search and 3 other tabs - Expanded</ex></ph>
+      </message>
+      <message name="IDS_GROUP_AX_LABEL_EPHEMERAL_GROUP_FORMAT" is_accessibility_with_no_ui="true" desc="Spoken by screen readers when the header of an ephemeral tab group (focused tabs that are not in a real group) gets focused. Example: 'Focused on 2 tabs, Google Search, Gmail - Expanded'">
+        Focused on <ph name="GROUP_CONTENTS">$1<ex>2 tabs, Google Search, Gmail</ex></ph> - <ph name="COLLAPSED_STATE">$2<ex>Expanded</ex></ph>
+      </message>
+      <message name="IDS_GROUP_AX_ROLE_DESCRIPTION_EPHEMERAL_GROUP" is_accessibility_with_no_ui="true" desc="Spoken by screen readers in place of the control type (e.g. 'tab group') for the header of an ephemeral tab group (focused tabs that are not in a real group).">
+        Focus Selection Header
+      </message>
       <message name="IDS_GROUP_AX_LABEL_COLLAPSED" desc="Used as part of the accessibility label text of a group header for a collapsed tab group.">
         Collapsed
       </message>
@@ -9293,7 +9257,6 @@ This can include information about installed software, files, your browser, the 
     <!-- Protocol Handling launch prompt -->
 
     <!-- Font Access chooser -->
-
 
     <!-- Ad Blocking UI strings. -->
     <message name="IDS_BLOCKED_ADS_PROMPT_TOOLTIP" desc="Explanation that Chrome blocked ads on this site. To be shown as a tooltip on the Ads blocked desktop bubble">
@@ -10248,7 +10211,6 @@ This can include information about installed software, files, your browser, the 
     </message>
 
 
-
     <!-- FedCM Account Selection strings -->
     <message name="IDS_ACCOUNT_SELECTION_SHEET_TITLE_EXPLICIT_SIGN_IN" desc="Header for sign-in sheet. Sheet is shown to prompt the user to sign-in to a website using an account from an identity provider.">
       Sign in to <ph name="SITE_ETLD_PLUS_ONE">$1<ex>rp.example</ex></ph> with <ph name="IDENTITY_PROVIDER_ETLD_PLUS_ONE">$2<ex>idp.example</ex></ph>
@@ -10297,6 +10259,28 @@ This can include information about installed software, files, your browser, the 
     </message>
     <message name="IDS_ACCOUNT_SELECTION_DATA_SHARING_CONSENT" desc="The consent text shown to the user before sign up.">
       To continue, <ph name="IDENTITY_PROVIDER_ETLD_PLUS_ONE">$1<ex>idp.com</ex></ph> will share your <ph name="FIELDS_STRING">$2<ex>name and email address</ex></ph> with this site. See this site's <ph name="BEGIN_LINK1">$3</ph>privacy policy<ph name="END_LINK1">$4</ph> and <ph name="BEGIN_LINK2">$5</ph>terms of service<ph name="END_LINK2">$6</ph>.
+    </message>
+    <!-- TODO(crbug.com/571147733): Make the IDS_ACCOUNT_SELECTION_IDP_LINKS* strings translateable before launch. -->
+    <message name="IDS_ACCOUNT_SELECTION_IDP_LINKS_NO_PP" translateable="false" desc="Text shown to the user before sign up, below the consent text, when the identity provider has no privacy policy. The first link opens the user's account page on the identity provider's website. The second link opens the identity provider's terms of service.">
+      You can make changes in your <ph name="BEGIN_LINK1">$2</ph><ph name="IDENTITY_PROVIDER_ETLD_PLUS_ONE">$1<ex>idp.com</ex></ph> account<ph name="END_LINK1">$3</ph>. See <ph name="IDENTITY_PROVIDER_ETLD_PLUS_ONE">$1<ex>idp.com</ex></ph> <ph name="BEGIN_LINK2">$4</ph>terms of service<ph name="END_LINK2">$5</ph>.
+    </message>
+    <message name="IDS_ACCOUNT_SELECTION_IDP_LINKS_NO_TOS" translateable="false" desc="Text shown to the user before sign up, below the consent text, when the identity provider has no terms of service. The first link opens the user's account page on the identity provider's website. The second link opens the identity provider's privacy policy.">
+      You can make changes in your <ph name="BEGIN_LINK1">$2</ph><ph name="IDENTITY_PROVIDER_ETLD_PLUS_ONE">$1<ex>idp.com</ex></ph> account<ph name="END_LINK1">$3</ph>. See <ph name="IDENTITY_PROVIDER_ETLD_PLUS_ONE">$1<ex>idp.com</ex></ph> <ph name="BEGIN_LINK2">$4</ph>privacy policy<ph name="END_LINK2">$5</ph>.
+    </message>
+    <message name="IDS_ACCOUNT_SELECTION_IDP_LINKS" translateable="false" desc="Text shown to the user before sign up, below the consent text. The first link opens the user's account page on the identity provider's website. The other links open the identity provider's privacy policy and terms of service.">
+      You can make changes in your <ph name="BEGIN_LINK1">$2</ph><ph name="IDENTITY_PROVIDER_ETLD_PLUS_ONE">$1<ex>idp.com</ex></ph> account<ph name="END_LINK1">$3</ph>. See <ph name="IDENTITY_PROVIDER_ETLD_PLUS_ONE">$1<ex>idp.com</ex></ph> <ph name="BEGIN_LINK2">$4</ph>privacy policy<ph name="END_LINK2">$5</ph> and <ph name="BEGIN_LINK3">$6</ph>terms of service<ph name="END_LINK3">$7</ph>.
+    </message>
+    <message name="IDS_ACCOUNT_SELECTION_IDP_LINKS_NO_PP_OR_TOS" translateable="false" desc="Text shown to the user before sign up, below the consent text, when the identity provider has no privacy policy or terms of service. The link opens the user's account page on the identity provider's website.">
+      You can make changes in your <ph name="BEGIN_LINK">$2</ph><ph name="IDENTITY_PROVIDER_ETLD_PLUS_ONE">$1<ex>idp.com</ex></ph> account<ph name="END_LINK">$3</ph>.
+    </message>
+    <message name="IDS_ACCOUNT_SELECTION_IDP_LINKS_NO_ACCOUNT_MANAGEMENT_OR_PP" translateable="false" desc="Text shown to the user before sign up, below the consent text, when the identity provider has no account page or privacy policy. The link opens the identity provider's terms of service.">
+      See <ph name="IDENTITY_PROVIDER_ETLD_PLUS_ONE">$1<ex>idp.com</ex></ph> <ph name="BEGIN_LINK">$2</ph>terms of service<ph name="END_LINK">$3</ph>.
+    </message>
+    <message name="IDS_ACCOUNT_SELECTION_IDP_LINKS_NO_ACCOUNT_MANAGEMENT_OR_TOS" translateable="false" desc="Text shown to the user before sign up, below the consent text, when the identity provider has no account page or terms of service. The link opens the identity provider's privacy policy.">
+      See <ph name="IDENTITY_PROVIDER_ETLD_PLUS_ONE">$1<ex>idp.com</ex></ph> <ph name="BEGIN_LINK">$2</ph>privacy policy<ph name="END_LINK">$3</ph>.
+    </message>
+    <message name="IDS_ACCOUNT_SELECTION_IDP_LINKS_NO_ACCOUNT_MANAGEMENT" translateable="false" desc="Text shown to the user before sign up, below the consent text, when the identity provider has no account page. The links open the identity provider's privacy policy and terms of service.">
+      See <ph name="IDENTITY_PROVIDER_ETLD_PLUS_ONE">$1<ex>idp.com</ex></ph> <ph name="BEGIN_LINK1">$2</ph>privacy policy<ph name="END_LINK1">$3</ph> and <ph name="BEGIN_LINK2">$4</ph>terms of service<ph name="END_LINK2">$5</ph>.
     </message>
     <message name="IDS_ACCOUNT_SELECTION_USE_OTHER_ACCOUNT" desc="Title of the button that lets the user log in to a different account.">
       Use a different account
@@ -10422,6 +10406,8 @@ This can include information about installed software, files, your browser, the 
     </if>
     <!-- Performance Intervention Strings-->
 
+    <!-- Glic Activity Hub Strings -->
+
     <!-- Toast Strings-->
     <if expr="not is_android">
       <message name="IDS_TOAST_MENU_BUTTON_NAME" desc="Accessible name of the 3-dot button to open the menu attached to the toast.">
@@ -10480,7 +10466,6 @@ This can include information about installed software, files, your browser, the 
     </if>
 
 
-
     <!-- Responsive Toolbar -->
     <message name="IDS_OVERFLOW_MENU_ITEM_TEXT_PROFILE" desc="Overflow menu item text of profile button">
       Profile
@@ -10506,7 +10491,6 @@ This can include information about installed software, files, your browser, the 
 
 
     <!-- Web App Protocol Handler Picker Dialog. -->
-
 
     <!-- Safety Hub elements. -->
     <!-- TODO(crbug.com/324562205): Make strings translateable once finalized. -->

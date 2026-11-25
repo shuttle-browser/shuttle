@@ -15,7 +15,6 @@
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/mojom/ui_base_types.mojom-shared.h"
 #include "ui/base/ui_base_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/web_dialogs/web_dialogs_export.h"
 
 class GURL;
@@ -309,11 +308,6 @@ class WEB_DIALOGS_EXPORT WebDialogDelegate {
       base::RepeatingCallback<void()> callback);
 
   void set_dialog_frame_kind(FrameKind frame_kind) { frame_kind_ = frame_kind; }
-
-  // Returns true if HTTPS upgrades should be disabled for the initial load.
-  // This exception is restricted to captive portals or specific dialogs
-  // with explicit security exemptions.
-  virtual bool ShouldDisableHttpsUpgrades() const;
 
   base::WeakPtr<WebDialogDelegate> GetWeakPtr();
 

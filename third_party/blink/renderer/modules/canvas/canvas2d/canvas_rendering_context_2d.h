@@ -86,7 +86,6 @@ class ImageDataSettings;
 class MemoryManagedPaintCanvas;
 class Path2D;
 class SVGResource;
-class Canvas2DResourceProvider;
 enum class FlushReason;
 enum class PredefinedColorSpace;
 
@@ -153,8 +152,6 @@ class MODULES_EXPORT CanvasRenderingContext2D final
   void ClearFilterReferences();
 
   // BaseRenderingContext2D implementation
-  bool OriginClean() const final;
-  void SetOriginTainted() final;
   void DisableAcceleration() override;
   bool ShouldDisableAccelerationBecauseOfReadback() const override;
 
@@ -256,7 +253,6 @@ class MODULES_EXPORT CanvasRenderingContext2D final
   bool ResolveFont(const String& new_font) final;
 
  private:
-  friend class CanvasRenderingContext2DAutoRestoreSkCanvas;
   friend class CanvasRenderingContext2DTestBase;
   FRIEND_TEST_ALL_PREFIXES(CanvasRenderingContext2DTestAccelerated,
                            PrepareMailboxWhenContextIsLostWithFailedRestore);

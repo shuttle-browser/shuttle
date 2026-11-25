@@ -49,12 +49,33 @@ bool IsSupportedFormat(viz::SharedImageFormat format) {
   }
 #endif
 
+  if (format == viz::SinglePlaneFormat::kRG_88 ||
+      format == viz::SinglePlaneFormat::kR_16 ||
+      format == viz::SinglePlaneFormat::kRG_1616) {
+    LOG(ERROR) << "SharedImageStub: Incompatible format: " << format.ToString();
+    return false;
+  }
+
   // `k16F` channel format does not support UV planes which have 2 channels.
   if (format.is_multi_plane() &&
       format.channel_format() == viz::SharedImageFormat::ChannelFormat::k16F &&
       (format.plane_config() == viz::SharedImageFormat::PlaneConfig::kY_UV ||
        format.plane_config() == viz::SharedImageFormat::PlaneConfig::kY_UV_A)) {
     LOG(ERROR) << "SharedImageStub: Incompatible format: " << format.ToString();
+    return false;
+  }
+
+  return true;
+}
+
+bool ValidateClientInfo(const gpu::SharedImageMetadata& info) {
+  if (!IsSupportedFormat(info.format)) {
+    return false;
+  }
+
+  if (!gpu::IsValidClientUsage(info.usage)) {
+    LOG(ERROR) << "SharedImageStub: Invalid client usage: "
+               << static_cast<uint32_t>(info.usage);
     return false;
   }
 
@@ -227,7 +248,7 @@ void SharedImageStub::OnCreateSharedImage(
   TRACE_EVENT2("gpu", "SharedImageStub::OnCreateSharedImage", "width",
                params->si_info->meta.size.width(), "height",
                params->si_info->meta.size.height());
-  if (!IsSupportedFormat(params->si_info->meta.format)) {
+  if (!ValidateClientInfo(params->si_info->meta)) {
     OnError();
     return;
   }
@@ -256,7 +277,7 @@ void SharedImageStub::OnCreateSharedImageWithData(
                params->si_info->meta.size.height());
 
   auto& metadata = params->si_info->meta;
-  if (!IsSupportedFormat(metadata.format)) {
+  if (!ValidateClientInfo(metadata)) {
     OnError();
     return;
   }
@@ -348,7 +369,7 @@ bool SharedImageStub::CreateSharedImage(
     std::optional<SharedImagePoolId> pool_id) {
   TRACE_EVENT2("gpu", "SharedImageStub::CreateSharedImage", "width",
                info.size.width(), "height", info.size.height());
-  if (!IsSupportedFormat(info.format)) {
+  if (!ValidateClientInfo(info)) {
     OnError();
     return false;
   }

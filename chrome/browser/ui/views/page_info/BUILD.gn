@@ -4,6 +4,7 @@
 
 import("//components/safe_browsing/buildflags.gni")
 import("//extensions/buildflags/buildflags.gni")
+import("//third_party/blink/public/public_features.gni")
 
 source_set("page_info") {
   public = [
@@ -89,13 +90,13 @@ source_set("impl") {
     "//chrome/browser/ui/views/file_system_access",
     "//chrome/browser/ui/views/frame:browser_view_header",
     "//components/content_settings/browser/ui",
-    "//components/dom_distiller/core",
     "//components/omnibox/browser:vector_icons",
     "//components/page_info/core",
     "//components/privacy_sandbox:features",
     "//components/strings:components_branded_strings_grit",
     "//components/strings:components_strings_grit",
     "//components/strings:privacy_sandbox_strings_grit",
+    "//components/web_distiller/core",
     "//content/public/browser",
     "//extensions/buildflags",
     "//ui/base",

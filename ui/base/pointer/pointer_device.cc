@@ -43,25 +43,35 @@ std::pair<int, int> GetAvailablePointerAndHoverTypes() {
              : GetAvailablePointerAndHoverTypesImpl();
 }
 
-#if !BUILDFLAG(IS_ANDROID)
 PointerType GetPrimaryPointerType() {
-  const int available_pointer_types = GetAvailablePointerAndHoverTypes().first;
+  return GetPrimaryPointerType(GetAvailablePointerAndHoverTypes().first);
+}
+
+HoverType GetPrimaryHoverType() {
+  const auto [available_pointer_types, available_hover_types] =
+      GetAvailablePointerAndHoverTypes();
+  return GetPrimaryHoverType(available_pointer_types, available_hover_types);
+}
+
+#if !BUILDFLAG(IS_ANDROID)
+PointerType GetPrimaryPointerType(int available_pointer_types) {
   if (available_pointer_types & POINTER_TYPE_FINE) {
     return POINTER_TYPE_FINE;
   }
   if (available_pointer_types & POINTER_TYPE_COARSE) {
     return POINTER_TYPE_COARSE;
   }
-  DCHECK_EQ(available_pointer_types, POINTER_TYPE_NONE);
+  CHECK_EQ(available_pointer_types, POINTER_TYPE_NONE,
+           base::NotFatalUntil::M163);
   return POINTER_TYPE_NONE;
 }
 
-HoverType GetPrimaryHoverType() {
-  const int available_hover_types = GetAvailablePointerAndHoverTypes().second;
+HoverType GetPrimaryHoverType(int available_pointer_types,
+                              int available_hover_types) {
   if (available_hover_types & HOVER_TYPE_HOVER) {
     return HOVER_TYPE_HOVER;
   }
-  DCHECK_EQ(available_hover_types, HOVER_TYPE_NONE);
+  CHECK_EQ(available_hover_types, HOVER_TYPE_NONE, base::NotFatalUntil::M163);
   return HOVER_TYPE_NONE;
 }
 #endif

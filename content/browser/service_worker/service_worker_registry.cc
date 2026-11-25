@@ -260,7 +260,6 @@ void ServiceWorkerRegistry::CreateNewRegistration(
     // Can be nullptr in tests.
     quota_manager_proxy_->UpdateOrCreateBucket(
         storage::BucketInitParams::ForDefaultBucket(key),
-        base::SingleThreadTaskRunner::GetCurrentDefault(),
         base::BindOnce(
             &ServiceWorkerRegistry::CreateNewRegistrationWithBucketInfo,
             weak_factory_.GetWeakPtr(), std::move(options), key,
@@ -384,6 +383,15 @@ void ServiceWorkerRegistry::FindRegistrationForClientUrl(
       }
     }
     no_registration = !matched_scope;
+  } else if (service_worker_loader_helpers::IsEligibleForSyntheticResponse(
+                 context_->wrapper()->browser_context(),
+                 context_->wrapper()->storage_partition(), client_url) &&
+             !MaybeHasRegistrationForStorageKey(key)) {
+    // Origins with no stored registrations have no `registration_scope_cache_`
+    // entry. Confirm via `MaybeHasRegistrationForStorageKey()` in memory so
+    // synthetic-response navigations skip the storage Mojo call without
+    // shadowing stored real workers on cache misses (crbug.com/582423396).
+    no_registration = true;
   }
   base::UmaHistogramBoolean(
       "ServiceWorker.FindRegistrationForClientUrl.IsCalledForNavigation",
@@ -420,31 +428,6 @@ void ServiceWorkerRegistry::FindRegistrationForClientUrl(
     // `find_registration_callbacks_`, and will be invoked in
     // `RunFindRegistrationCallbacks()`.
     callback = base::DoNothing();
-  }
-
-  if (service_worker_loader_helpers::IsEligibleForSyntheticResponse(
-          context_->wrapper()->browser_context(),
-          context_->wrapper()->storage_partition(), client_url)) {
-    // If `client_url` is eligible for SyntheticResponse, create a fake
-    // ServiceWorker registration so that the navigation is handled by
-    // ServiceWorker main resource loader.
-    //
-    // NOTE: Unlike the regular SW registration lookup, this lookup is processed
-    // without IPC. This is OK because eventually the feature will be
-    // implemented as a part of ServiceWorker API, and the registration will be
-    // registered by the web developer side. For the regular SW registration,
-    // some internal optimizations (e.g.
-    // `ServiceWorkerBackgroundUpdateForServiceWorkerScopeCache`,
-    // `ServiceWorkerBackgroundUpdateForFindRegistrationForClientUrl`) will
-    // eliminate this IPC overhead.
-    storage::mojom::ServiceWorkerFindRegistrationResultPtr result =
-        service_worker_loader_helpers::GetOrCreateSyntheticRegistration(
-            &*context_, client_url, key);
-    DidFindRegistrationForClientUrl(
-        client_url, key, trace_event_id, std::move(callback),
-        storage::mojom::ServiceWorkerDatabaseStatus::kOk, std::move(result),
-        scopes);
-    return;
   }
 
   if (no_registration) {
@@ -1425,6 +1408,20 @@ void ServiceWorkerRegistry::DidFindRegistrationForClientUrl(
           storage::BucketLocator::ForDefaultBucket(registration->key()),
           base::Time::Now());
     }
+  } else if (status == blink::ServiceWorkerStatusCode::kErrorNotFound &&
+             service_worker_loader_helpers::IsEligibleForSyntheticResponse(
+                 context_->wrapper()->browser_context(),
+                 context_->wrapper()->storage_partition(), client_url)) {
+    // Fall back to an in-memory synthetic registration only after confirming
+    // neither storage nor `installing_registrations_` has a real registration,
+    // without inserting negative synthetic IDs into `registration_id_cache_` or
+    // notifying quota storage.
+    result = service_worker_loader_helpers::GetOrCreateSyntheticRegistration(
+        &*context_, client_url, key);
+    registration =
+        GetOrCreateRegistration(*(result->registration), result->resources,
+                                std::move(result->version_reference));
+    status = blink::ServiceWorkerStatusCode::kOk;
   }
 
   FindRegistrationForClientUrlTraceEventStatus(trace_event_id, status,
@@ -1721,8 +1718,7 @@ void ServiceWorkerRegistry::DidStoreRegistration(
         storage::QuotaClientType::kServiceWorker,
         storage::BucketLocator::ForDefaultBucket(key),
         stored_resources_total_size_bytes - deleted_resources_size,
-        base::Time::Now(), base::SequencedTaskRunner::GetCurrentDefault(),
-        std::move(registration_stored_callback));
+        base::Time::Now(), std::move(registration_stored_callback));
   } else {
     std::move(registration_stored_callback).Run();
   }
@@ -1778,8 +1774,7 @@ void ServiceWorkerRegistry::DidDeleteRegistration(
     quota_manager_proxy_->NotifyBucketModified(
         storage::QuotaClientType::kServiceWorker,
         storage::BucketLocator::ForDefaultBucket(key), -deleted_resources_size,
-        base::Time::Now(), base::SequencedTaskRunner::GetCurrentDefault(),
-        std::move(notify_registration_deleted_callback));
+        base::Time::Now(), std::move(notify_registration_deleted_callback));
   } else {
     std::move(notify_registration_deleted_callback).Run();
   }

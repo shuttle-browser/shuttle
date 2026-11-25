@@ -33,6 +33,10 @@ source_set("runtime") {
     "//net",
   ]
 
+  if (!is_android) {
+    deps += [ "//chrome/browser/ui/waap:window_creation" ]
+  }
+
   if (is_chromeos) {
     deps += [
       "//chromeos/components/kiosk",

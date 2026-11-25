@@ -13,8 +13,14 @@
 #include "media/base/video_frame_converter.h"
 #include "media/base/video_frame_pool.h"
 #include "media/formats/mp4/h264_annex_b_to_avc_bitstream_converter.h"
-#include "third_party/openh264/src/codec/api/wels/codec_api.h"
 #include "ui/gfx/geometry/size.h"
+
+#ifdef RUST_OPENH264_BUILD
+#include "third_party/openh264rs/codec_api.h"  // nogncheck
+#define OpenH264VideoEncoder OpenH264RsVideoEncoder
+#else
+#include "third_party/openh264/src/codec/api/wels/codec_api.h"
+#endif
 
 namespace media {
 
@@ -71,6 +77,8 @@ class MEDIA_EXPORT OpenH264VideoEncoder : public VideoEncoder {
   std::vector<uint8_t> conversion_buffer_;
   std::unique_ptr<H264AnnexBToAvcBitstreamConverter> h264_converter_;
 };
+
+MEDIA_EXPORT std::unique_ptr<VideoEncoder> CreateOpenH264VideoEncoder();
 
 }  // namespace media
 #endif  // MEDIA_VIDEO_OPENH264_VIDEO_ENCODER_H_

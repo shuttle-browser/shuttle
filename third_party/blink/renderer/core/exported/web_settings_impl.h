@@ -32,10 +32,12 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_EXPORTED_WEB_SETTINGS_IMPL_H_
 
 #include "base/memory/raw_ptr.h"
+#include "third_party/blink/public/mojom/manifest/display_mode.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/v8_cache_options.mojom-blink.h"
 #include "third_party/blink/public/mojom/webpreferences/web_preferences.mojom-blink.h"
 #include "third_party/blink/public/web/web_settings.h"
 #include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/platform/heap/persistent.h"
 
 namespace blink {
@@ -74,8 +76,6 @@ class CORE_EXPORT WebSettingsImpl final : public WebSettings {
   void SetClobberUserAgentInitialScaleQuirk(bool) override;
   void SetCookieEnabled(bool) override;
   void SetCaretBrowsingEnabled(bool) override;
-  void SetCursiveFontFamily(const WebString&,
-                            UScriptCode = USCRIPT_COMMON) override;
   void SetDNSPrefetchingEnabled(bool) override;
   void SetDOMPasteAllowed(bool) override;
   void SetDefaultFixedFontSize(int) override;
@@ -95,12 +95,9 @@ class CORE_EXPORT WebSettingsImpl final : public WebSettings {
   void SetInvertedColors(bool) override;
   void SetWebGL1Enabled(bool) override;
   void SetWebGL2Enabled(bool) override;
-  void SetFantasyFontFamily(const WebString&,
+  void SetGenericFontFamily(GenericFontFamily,
+                            const WebString&,
                             UScriptCode = USCRIPT_COMMON) override;
-  void SetMathFontFamily(const WebString&,
-                         UScriptCode = USCRIPT_COMMON) override;
-  void SetFixedFontFamily(const WebString&,
-                          UScriptCode = USCRIPT_COMMON) override;
   void SetNetworkQuietTimeout(double timeout) override;
   void SetForceMainWorldInitialization(bool) override;
   void SetForceZeroLayoutHeight(bool) override;
@@ -149,13 +146,9 @@ class CORE_EXPORT WebSettingsImpl final : public WebSettings {
   void SetRenderVSyncNotificationEnabled(bool) override;
   void SetReportScreenSizeInPhysicalPixelsQuirk(bool) override;
   void SetRubberBandingOnCompositorThread(bool) override;
-  void SetSansSerifFontFamily(const WebString&,
-                              UScriptCode = USCRIPT_COMMON) override;
   void SetSelectTrailingWhitespaceEnabled(bool override) override;
   void SetSelectionIncludesAltImageText(bool) override;
   void SetSelectionStrategy(SelectionStrategyType) override;
-  void SetSerifFontFamily(const WebString&,
-                          UScriptCode = USCRIPT_COMMON) override;
   void SetShouldPrintBackgrounds(bool) override;
   void SetShouldClearDocumentBackground(bool) override;
   void SetShowContextMenuOnMouseUp(bool) override;
@@ -164,8 +157,6 @@ class CORE_EXPORT WebSettingsImpl final : public WebSettings {
   void SetSmoothScrollForFindEnabled(bool) override;
   void SetSpatialNavigationEnabled(bool) override;
   void SetSpellCheckEnabledByDefault(bool) override;
-  void SetStandardFontFamily(const WebString&,
-                             UScriptCode = USCRIPT_COMMON) override;
   void SetStrictMixedContentChecking(bool) override;
   void SetStrictMixedContentCheckingForPlugin(bool) override;
   void SetStrictlyBlockBlockableMixedContent(bool) override;
@@ -266,6 +257,38 @@ class CORE_EXPORT WebSettingsImpl final : public WebSettings {
 
   void SetMockGestureTapHighlightsEnabled(bool);
   bool MockGestureTapHighlightsEnabled() const;
+
+  void SetAcceleratedCompositingEnabled(bool);
+  void SetAcceptLanguages(const String&);
+  void SetAutoplayPolicy(AutoplayPolicy::Type);
+  void SetBypassCSP(bool);
+  void SetDisallowFetchForDocWrittenScriptsInMainFrame(bool);
+  void SetDisallowFetchForDocWrittenScriptsInMainFrameIfEffectively2G(bool);
+  void SetDisallowFetchForDocWrittenScriptsInMainFrameOnSlowConnections(bool);
+  void SetDisplayModeOverride(mojom::blink::DisplayMode);
+  void SetDoHtmlPreloadScanning(bool);
+  void SetForceAndroidOverlayScrollbar(bool);
+  void SetEditingBehaviorType(mojom::blink::EditingBehavior);
+  void SetForceTouchEventFeatureDetectionForInspector(bool);
+  void SetLogDnsPrefetchAndPreconnect(bool);
+  void SetLogPreload(bool);
+  void SetMediaTypeOverride(const String&);
+  void SetMultiTargetTapNotificationEnabled(bool);
+  void SetNavigateOnDragDrop(bool);
+  void SetNavigatorPlatformOverride(const String&);
+  void SetParserScriptingFlagPolicy(ParserScriptingFlagPolicy);
+  void SetPlaceRTLScrollbarsOnLeftSideInMainFrame(bool);
+  void SetPrintingMaximumShrinkFactor(float);
+  void SetResizable(bool);
+  void SetSelectionStrategy(SelectionStrategy);
+  void SetScrollAnimatorEnabled(bool);
+  void SetScriptEnabled(bool);
+  void SetStrictPowerfulFeatureRestrictions(bool);
+  void SetTouchEditingEnabled(bool);
+  void SetUseAXMenuList(bool);
+  void SetWebAppCustomManifestUrl(const String&);
+  void SetWindowShowState(ui::mojom::blink::WindowShowState);
+  void SetXSLTDeprecationBannerSuppressed(bool);
 
  private:
   raw_ptr<Settings, UnprotectedInRelease | DanglingUntriaged> settings_;

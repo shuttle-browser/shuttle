@@ -11,12 +11,16 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
+#include "base/nix/xdg_util.h"
 #include "chrome/browser/lifetime/application_lifetime_desktop.h"
-#include "chrome/common/chrome_features.h"
 #include "components/dbus/thread_linux/dbus_thread_linux.h"
+#include "components/dbus/xdg/inhibit_session_monitor.h"
 #include "components/version_info/version_info.h"
 #include "dbus/object_path.h"
 #include "dbus/object_proxy.h"
+
+BASE_FEATURE(kLinuxInhibitPortalSessionMonitor,
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 const char SessionEndListenerLinux::kLogindServiceName[] =
     "org.freedesktop.login1";
@@ -38,9 +42,6 @@ const char SessionEndListenerLinux::kSessionOverSignal[] = "SessionOver";
 
 // static
 std::unique_ptr<SessionEndListenerLinux> SessionEndListenerLinux::Create() {
-  if (!base::FeatureList::IsEnabled(features::kLinuxLogindShutdownInhibitor)) {
-    return nullptr;
-  }
   auto system_bus = dbus_thread_linux::GetSharedSystemBus();
   auto session_bus = dbus_thread_linux::GetSharedSessionBus();
   if (!system_bus && !session_bus) {
@@ -57,10 +58,7 @@ SessionEndListenerLinux::SessionEndListenerLinux(
     base::OnceClosure session_ending_cb)
     : system_bus_(std::move(system_bus)),
       session_bus_(std::move(session_bus)),
-      logind_proxy_(system_bus_ ? system_bus_->GetObjectProxy(
-                                      kLogindServiceName,
-                                      dbus::ObjectPath(kLogindObjectPath))
-                                : nullptr),
+      logind_proxy_(GetLogindProxy(system_bus_.get())),
       gnome_session_proxy_(
           session_bus_ ? session_bus_->GetObjectProxy(
                              kGnomeSessionManagerServiceName,
@@ -70,9 +68,32 @@ SessionEndListenerLinux::SessionEndListenerLinux(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   ConnectToLogind();
   ConnectToGnomeSessionManager();
+  if (session_bus_ &&
+      base::FeatureList::IsEnabled(kLinuxInhibitPortalSessionMonitor)) {
+    inhibit_session_monitor_ =
+        std::make_unique<dbus_xdg::InhibitSessionMonitor>(
+            session_bus_,
+            base::BindOnce(&SessionEndListenerLinux::OnSessionEnding,
+                           weak_ptr_factory_.GetWeakPtr()));
+  }
 }
 
 SessionEndListenerLinux::~SessionEndListenerLinux() = default;
+
+// static
+dbus::ObjectProxy* SessionEndListenerLinux::GetLogindProxy(
+    dbus::Bus* system_bus) {
+  // Snap's AppArmor policy denies all messages to and from
+  // org.freedesktop.login1, so in a snap PrepareForShutdown never arrives, and
+  // the Inhibit call fails and logs a denial on every startup. The Inhibit
+  // portal still reports the end of the session there.
+  if (!system_bus ||
+      base::nix::GetAppSandbox() == base::nix::AppSandbox::kSnap) {
+    return nullptr;
+  }
+  return system_bus->GetObjectProxy(kLogindServiceName,
+                                    dbus::ObjectPath(kLogindObjectPath));
+}
 
 void SessionEndListenerLinux::ConnectToLogind() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);

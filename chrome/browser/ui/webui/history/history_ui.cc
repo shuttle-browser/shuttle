@@ -80,6 +80,9 @@ content::WebUIDataSource* CreateAndAddHistoryUIHTMLSource(Profile* profile) {
   source->AddBoolean("isGlicEnabled", false);
   source->AddBoolean("isGlicWebActuationAvailable", false);
 
+  source->AddBoolean("isBrowsingHistoryCollapsibleDayCardsEnabled",
+                     base::FeatureList::IsEnabled(
+                         history::kBrowsingHistoryCollapsibleDayCards));
   source->AddBoolean(
       "isBrowsingHistoryFilterByActorEnabled",
       base::FeatureList::IsEnabled(history::kBrowsingHistoryFilterByActor));

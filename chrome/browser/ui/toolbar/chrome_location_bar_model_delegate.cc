@@ -119,9 +119,7 @@ bool ChromeLocationBarModelDelegate::ShouldDisplayURL() const {
   }
 
   const auto is_ntp = [](const GURL& url) {
-    return (url.SchemeIs(content::kChromeUIScheme) &&
-            url.host() == chrome::kChromeUINewTabHost) ||
-           url.spec() == chrome::kChromeUISplitViewNewTabPageURL;
+    return search::IsNewTabOrigin(url) || search::IsSplitViewNewTabPage(url);
   };
 
   GURL url = entry->GetURL();
@@ -231,8 +229,7 @@ bool ChromeLocationBarModelDelegate::IsNewTabPage() const {
 }
 
 bool ChromeLocationBarModelDelegate::IsNewTabPageURL(const GURL& url) const {
-  const GURL& ntp_url = chrome::ChromeUINewTabURLAsGURL();
-  return ntp_url.scheme() == url.scheme() && ntp_url.host() == url.host();
+  return search::IsNewTabOrigin(url);
 }
 
 bool ChromeLocationBarModelDelegate::IsHomePage(const GURL& url) const {

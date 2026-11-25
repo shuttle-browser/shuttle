@@ -102,7 +102,7 @@ class CORE_EXPORT HTMLFormElement final : public HTMLElement {
   void Disassociate(ListedElement&);
   void Associate(HTMLImageElement&);
   void Disassociate(HTMLImageElement&);
-  void DidAssociateByParser();
+  void DidAssociateNonDescendantByParser();
 
   // For native form controls, pass the submit button as submitter. For custom
   // elements with `HTMLSubmitButtonBehavior`, pass the custom element as
@@ -292,7 +292,7 @@ class CORE_EXPORT HTMLFormElement final : public HTMLElement {
       CHECK(!tool_name.IsNull() && !tool_description.IsNull());
     }
     String ToolName() const override { return tool_name_; }
-    const base::UnguessableToken& ToolId() const override { return tool_id_; }
+    const ScriptToolToken& ToolId() const override { return tool_id_; }
     String ToolDescription() const override { return tool_description_; }
     String ToolTitle() const override { return tool_title_; }
     String ComputeInputSchema() override;
@@ -339,7 +339,7 @@ class CORE_EXPORT HTMLFormElement final : public HTMLElement {
 
     // Minted once per `HTMLFormMcpTool`. Every (re-)registration of `form_`
     // creates a new `HTMLFormMcpTool`, and therefore a new ID.
-    const base::UnguessableToken tool_id_ = base::UnguessableToken::Create();
+    const ScriptToolToken tool_id_;
 
     // Both `tool_name_` and `tool_description_` are guaranteed to be non-null
     // (i.e., `blink::String::IsNull()`), since the `toolname` and
@@ -377,7 +377,6 @@ class CORE_EXPORT HTMLFormElement final : public HTMLElement {
   bool image_elements_are_dirty_ : 1;
   bool has_elements_associated_by_parser_ : 1;
   bool has_elements_associated_by_form_attribute_ : 1;
-  bool did_finish_parsing_children_ : 1;
   bool is_in_reset_function_ : 1;
   // Whether this form is connected and has a <form> ancestor, i.e. is counted
   // in Document::HasConnectedNestedForms(). Maintained in InsertedInto() and

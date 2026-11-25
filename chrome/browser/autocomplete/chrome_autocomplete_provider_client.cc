@@ -501,15 +501,6 @@ bool ChromeAutocompleteProviderClient::IsSharingHubAvailable() const {
   return false;
 }
 
-bool ChromeAutocompleteProviderClient::IsHistoryEmbeddingsEnabled() const {
-  return false;
-}
-
-bool ChromeAutocompleteProviderClient::IsHistoryEmbeddingsSettingVisible()
-    const {
-  return false;
-}
-
 bool ChromeAutocompleteProviderClient::IsLensEnabled() const {
   return false;
 }

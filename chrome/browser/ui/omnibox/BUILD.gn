@@ -114,6 +114,7 @@ source_set("impl") {
     "//components/strings:components_strings",
     "//components/strings:components_strings_grit",
     "//components/vector_icons",
+    "//third_party/blink/public/common:headers",
     "//ui/accessibility",
   ]
   if (!is_android) {
@@ -162,12 +163,12 @@ source_set("impl") {
       "//chrome/browser/ui/webui/omnibox_popup",
       "//chrome/browser/ui/webui/top_chrome",
       "//chrome/common",
-      "//components/dom_distiller/core",
       "//components/favicon/content",
       "//components/infobars/content",
       "//components/infobars/core",
       "//components/resources:components_scaled_resources_grit",
       "//components/tabs:public",
+      "//components/web_distiller/core",
       "//content/public/browser",
       "//extensions/buildflags",
       "//net",

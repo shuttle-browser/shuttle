@@ -34,7 +34,6 @@
 #include "ui/gfx/geometry/rect_conversions.h"
 #include "ui/gfx/geometry/rect_f.h"
 #include "ui/gfx/switches.h"
-#include "ui/gfx/x/atom_cache.h"
 #include "ui/gfx/x/connection.h"
 #include "ui/gfx/x/randr.h"
 #include "ui/strings/grit/ui_strings.h"
@@ -97,7 +96,7 @@ x11::Future<x11::GetPropertyReply> GetIccProfileFuture(
                               : base::StringPrintf("_ICC_PROFILE_%zu", monitor);
   auto future = connection->GetProperty({
       .window = connection->default_root(),
-      .property = x11::GetAtom(atom_name.c_str()),
+      .property = connection->GetAtom(atom_name.c_str()),
       .long_length = kMaxIccProfileLongLength,
   });
   future.IgnoreError();
@@ -126,7 +125,7 @@ x11::Future<x11::RandR::GetOutputPropertyReply> GetEdidFuture(
     x11::RandR::Output output) {
   auto future = connection->randr().GetOutputProperty({
       .output = output,
-      .property = x11::GetAtom(kRandrEdidProperty),
+      .property = connection->GetAtom(kRandrEdidProperty),
       .long_length = 128,
   });
   future.IgnoreError();
@@ -295,6 +294,8 @@ std::vector<display::Display> GetFallbackDisplayList(
 
   if (!display::Display::HasForceDeviceScaleFactor() &&
       display::IsDisplaySizeValid(physical_size)) {
+    // TODO(crbug.com/586148927): CHECK-exclusion: Convert to a CHECK once we
+    // are confident it won't be triggered.
     DCHECK_LE(1.0f, scale);
     gfx_display.set_size_in_pixels(bounds_in_pixels.size());
     gfx_display.SetScale(scale);
@@ -320,12 +321,13 @@ std::vector<display::Display> GetFallbackDisplayList(
 std::vector<display::Display> BuildDisplaysFromXRandRInfo(
     const display::DisplayConfig& display_config,
     size_t* primary_display_index_out) {
-  DCHECK(primary_display_index_out);
+  CHECK(primary_display_index_out, base::NotFatalUntil::M163);
   auto* command_line = base::CommandLine::ForCurrentProcess();
   const float primary_scale = display_config.primary_scale;
 
   auto* connection = x11::Connection::Get();
-  DCHECK(connection->randr_version() >= kMinVersionXrandr);
+  CHECK(connection->randr_version() >= kMinVersionXrandr,
+        base::NotFatalUntil::M163);
   auto& randr = connection->randr();
   auto x_root_window = ui::GetX11RootWindow();
   std::vector<display::Display> displays;
@@ -547,18 +549,28 @@ std::vector<display::Display> BuildDisplaysFromXRandRInfo(
   return displays;
 }
 
-base::TimeDelta GetPrimaryDisplayRefreshIntervalFromXrandr() {
+base::TimeDelta GetDisplayRefreshInterval(
+    const std::vector<display::Display>& displays,
+    size_t primary_display_index,
+    const std::optional<gfx::Rect>& bounds_px) {
   constexpr base::TimeDelta kDefaultInterval = base::Seconds(1. / 60);
 
-  size_t primary_display_index = 0;
-  auto displays = BuildDisplaysFromXRandRInfo(display::DisplayConfig(),
-                                              &primary_display_index);
   CHECK_LT(primary_display_index, displays.size());
+  const display::Display* best_display = &displays[primary_display_index];
+  if (bounds_px) {
+    uint64_t best_area = 0;
+    for (const auto& display : displays) {
+      gfx::Rect intersection(display.native_origin(), display.GetSizeInPixel());
+      intersection.Intersect(*bounds_px);
+      const uint64_t area = intersection.size().Area64();
+      if (area > best_area) {
+        best_area = area;
+        best_display = &display;
+      }
+    }
+  }
 
-  // TODO(crbug.com/41321728): It might make sense here to pick the output that
-  // the window is on. On the other hand, if compositing is enabled, all drawing
-  // might be synced to the primary output anyway. Needs investigation.
-  auto frequency = displays[primary_display_index].display_frequency();
+  const float frequency = best_display->display_frequency();
   return frequency > 0 ? base::Seconds(1. / frequency) : kDefaultInterval;
 }
 

@@ -102,6 +102,7 @@ class TabGroupEditorBubbleView : public views::BubbleDialogDelegateView,
   void OnDisplayTabletStateChanged(display::TabletState state) override;
 
   void UpdateGroup();
+  void UpdateGroupVisuals();
   std::u16string GetTextForCloseButton() const;
 
   // Returns whether the user has the appropriate profile and the

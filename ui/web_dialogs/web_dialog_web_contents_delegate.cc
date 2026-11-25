@@ -9,6 +9,7 @@
 #include "base/check.h"
 #include "content/public/browser/file_select_listener.h"
 #include "content/public/browser/web_contents.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 
 using content::BrowserContext;
 using content::OpenURLParams;
@@ -26,7 +27,7 @@ WebDialogWebContentsDelegate::WebDialogWebContentsDelegate(
     content::BrowserContext* browser_context,
     std::unique_ptr<WebContentsHandler> handler)
     : browser_context_(browser_context), handler_(std::move(handler)) {
-  DCHECK(handler_);
+  CHECK(handler_, base::NotFatalUntil::M163);
 }
 
 WebDialogWebContentsDelegate::~WebDialogWebContentsDelegate() {
@@ -49,7 +50,7 @@ WebContents* WebDialogWebContentsDelegate::AddNewContents(
     WebContents* source,
     std::unique_ptr<WebContents> new_contents,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {
@@ -67,4 +68,10 @@ void WebDialogWebContentsDelegate::RunFileChooser(
     const blink::mojom::FileChooserParams& params) {
   handler_->RunFileChooser(render_frame_host, listener, params);
 }
+
+void WebDialogWebContentsDelegate::OnDialogWebContentsCreated(
+    content::WebContents* web_contents) {
+  handler_->OnDialogWebContentsCreated(web_contents);
+}
+
 }  // namespace ui

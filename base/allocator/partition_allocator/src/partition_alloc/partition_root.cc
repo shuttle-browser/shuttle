@@ -243,14 +243,12 @@ void BeforeForkInParent() PA_NO_THREAD_SAFETY_ANALYSIS {
       internal::PartitionRootEnumerator::EnumerateOrder::kNormal);
 
   internal::PartitionTlsRegistry::GetLock().Acquire();
-  internal::ThreadCacheRegistry::GetLock().Acquire();
   g_leak_size_map_lock.Acquire();
 }
 
 void ReleaseLocks(bool in_child) PA_NO_THREAD_SAFETY_ANALYSIS {
   UnlockOrReinit(g_leak_size_map_lock, in_child);
   // In reverse order, even though there are no lock ordering dependencies.
-  UnlockOrReinit(internal::ThreadCacheRegistry::GetLock(), in_child);
   UnlockOrReinit(internal::PartitionTlsRegistry::GetLock(), in_child);
   internal::PartitionRootEnumerator::Instance().Enumerate(
       UnlockOrReinitRoot, in_child,
@@ -275,8 +273,7 @@ void AfterForkInChild() {
   // If we don't reclaim this memory, it is lost forever. Note that this is only
   // really an issue if we fork() a multi-threaded process without calling
   // exec() right away, which is discouraged.
-  internal::ThreadCacheRegistry::Instance()
-      .ForcePurgeAllThreadAfterForkUnsafe();
+  internal::ThreadCache::ForcePurgeAllThreadAfterForkUnsafe();
 }
 #endif  // PA_CONFIG(HAS_ATFORK_HANDLER)
 
@@ -1099,14 +1096,25 @@ void PartitionRoot::Init(PartitionOptions opts) {
 #endif  // PA_BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT)
 #endif  // PA_CONFIG(EXTRAS_REQUIRED)
 
-#if !PA_BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT)
+    // AsanBackupRefPtr only needs `brp_enabled` or not. It doesn't need any
+    // extras.
+#if !PA_BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT) && \
+    PA_BUILDFLAG(USE_ASAN_BACKUP_REF_PTR)
+    settings_.brp_enabled_ = opts.backup_ref_ptr == PartitionOptions::kEnabled;
+#endif  // !PA_BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT) &&
+        // PA_BUILDFLAG(USE_ASAN_BACKUP_REF_PTR)
+
+#if !PA_BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT) && \
+    !PA_BUILDFLAG(USE_ASAN_BACKUP_REF_PTR)
     PA_CHECK(opts.backup_ref_ptr == PartitionOptions::kDisabled);
-#endif  // !PA_BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT)
+#endif  // !PA_BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT) &&
+        // !PA_BUILDFLAG(USE_ASAN_BACKUP_REF_PTR)
 
     settings_.intended_leak = opts.intended_leak == PartitionOptions::kEnabled;
     if (settings_.intended_leak) {
       PA_CHECK(opts.thread_cache == PartitionOptions::kDisabled);
-#if PA_BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT)
+#if PA_BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT) || \
+    PA_BUILDFLAG(USE_ASAN_BACKUP_REF_PTR)
       PA_CHECK(!brp_enabled());
 #endif
     }
@@ -1777,11 +1785,10 @@ void PartitionRoot::DumpStats(const char* partition_name,
 
     stats.has_thread_cache = settings_.with_thread_cache;
     if (stats.has_thread_cache) {
-      internal::ThreadCacheRegistry::Instance().DumpStats(
-          true, &stats.current_thread_cache_stats,
-          settings_.thread_cache_index);
-      internal::ThreadCacheRegistry::Instance().DumpStats(
-          false, &stats.all_thread_caches_stats, settings_.thread_cache_index);
+      internal::ThreadCache::DumpStats(true, &stats.current_thread_cache_stats,
+                                       settings_.thread_cache_index);
+      internal::ThreadCache::DumpStats(false, &stats.all_thread_caches_stats,
+                                       settings_.thread_cache_index);
     }
 
     stats.has_scheduler_loop_quarantine =
@@ -2066,6 +2073,11 @@ void PartitionRoot::SetSortSmallerSlotSpanFreeListsEnabled(bool new_value) {
 // static
 void PartitionRoot::SetSortActiveSlotSpansEnabled(bool new_value) {
   sort_active_slot_spans_ = new_value;
+}
+
+// static
+void PartitionRoot::SetMinProvisioningSize(size_t new_value) {
+  min_provisioning_size_.store(new_value, std::memory_order_relaxed);
 }
 
 void PartitionRoot::ReconfigureSchedulerLoopQuarantineForCurrentThread(

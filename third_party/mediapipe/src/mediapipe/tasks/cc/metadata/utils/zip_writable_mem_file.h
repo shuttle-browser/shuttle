@@ -17,8 +17,9 @@ limitations under the License.
 #define MEDIAPIPE_TASKS_CC_METADATA_UTILS_ZIP_MEM_FILE_H_
 
 #include <cstdlib>
+#include <string>
 
-#include "absl/strings/string_view.h"
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "contrib/minizip/ioapi.h"
 
 namespace mediapipe {

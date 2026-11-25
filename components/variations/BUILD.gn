@@ -141,6 +141,7 @@ component("variations") {
     "//components/prefs",
     "//components/version_info",
     "//crypto",
+    "//third_party/boringssl",
     "//third_party/protobuf:protobuf_lite",
     "//third_party/zlib/google:compression_utils",
   ]

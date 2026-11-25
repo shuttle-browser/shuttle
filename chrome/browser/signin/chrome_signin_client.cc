@@ -322,8 +322,7 @@ void ChromeSigninClient::PreSignOut(
           signin_metrics::ProfileSignout::kServerForcedDisable ||
       signout_source_metric == signin_metrics::ProfileSignout::kPrefChanged ||
       user_declines_sync_after_consenting_to_management;
-  if (signin_util::IsForceSigninEnabled() && !profile_->IsChild() &&
-      !keep_window_opened) {
+  if (signin_util::IsForceSigninEnabled() && !keep_window_opened) {
     chrome::CloseAllBrowsersWithProfile(
         profile_,
         signout_source_metric == signin_metrics::ProfileSignout::kAbortSignin ||
@@ -458,15 +457,10 @@ void ChromeSigninClient::RecordOpenTabCount(
   size_t tabs_count = 0;
 
 #if BUILDFLAG(IS_ANDROID)
-  for (const TabModel* model : TabModelList::models()) {
-    // Note: Even though on Android only a single regular profile is supported,
-    // there can also be an incognito profile which should be excluded here.
-    if (model->GetProfile() != profile_) {
-      continue;
-    }
-
+  TabModelList::ForEach(profile_, [&tabs_count](TabModel* model) {
     tabs_count += model->GetTabCount();
-  }
+    return true;
+  });
 #else   // !BUILDFLAG(IS_ANDROID)
   ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
       [this, &tabs_count](BrowserWindowInterface* browser) {

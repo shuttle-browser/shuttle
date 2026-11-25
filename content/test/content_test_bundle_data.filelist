@@ -6108,7 +6108,11 @@ data/accessibility/html/multi-selectable-expected-blink.txt
 data/accessibility/html/multi-selectable-expected-fuchsia.txt
 data/accessibility/html/multi-selectable-expected-win.txt
 data/accessibility/html/multi-selectable.html
+data/accessibility/html/name-calc-focusable-description-list-expected-blink.txt
+data/accessibility/html/name-calc-focusable-description-list.html
 data/accessibility/html/name-calc-focusable-expected-blink.txt
+data/accessibility/html/name-calc-focusable-list-expected-blink.txt
+data/accessibility/html/name-calc-focusable-list.html
 data/accessibility/html/name-calc-focusable.html
 data/accessibility/html/name-from-popovertarget-and-interestfor-expected-android-external.txt
 data/accessibility/html/name-from-popovertarget-and-interestfor-expected-android.txt
@@ -7747,6 +7751,8 @@ data/browsing_data/worker_setup.html
 data/browsing_data/worker_test.html
 data/btm/v1.sql
 data/btm/v10.sql
+data/btm/v11.sql
+data/btm/v12.sql
 data/btm/v2.sql
 data/btm/v3.sql
 data/btm/v4.sql
@@ -8196,6 +8202,15 @@ data/frame_tree/scrollable_page_with_two_frames.html
 data/frame_tree/top.html
 data/frame_with_load_event.html
 data/fullscreen_frame.html
+data/fuzzer_corpus/clear_site_data/all.txt
+data/fuzzer_corpus/clear_site_data/cache.txt
+data/fuzzer_corpus/clear_site_data/clientHints.txt
+data/fuzzer_corpus/clear_site_data/cookies.txt
+data/fuzzer_corpus/clear_site_data/extra.txt
+data/fuzzer_corpus/clear_site_data/storage-bucket.txt
+data/fuzzer_corpus/clear_site_data/storage.txt
+data/fuzzer_corpus/clear_site_data/string.txt
+data/fuzzer_corpus/clear_site_data/unknown.txt
 data/gamepad-permissions-policy-none.html
 data/gamepad-permissions-policy-none.html.mock-http-headers
 data/generic_sensor/ambient_light_sensor_cross_origin_iframe_test.html
@@ -8465,6 +8480,8 @@ data/indexeddb/aborted_upgrade_reopen.js
 data/indexeddb/blobs_use_quota.html
 data/indexeddb/blocked_explicit_commit.html
 data/indexeddb/blocked_explicit_commit.js
+data/indexeddb/bucket_deletion_cancels_legacy_blob_read.html
+data/indexeddb/bucket_deletion_cancels_legacy_blob_read.js
 data/indexeddb/bucket_deletion_during_cleanup.html
 data/indexeddb/bucket_deletion_during_cleanup.js
 data/indexeddb/bucket_durability_override.html
@@ -8511,6 +8528,7 @@ data/indexeddb/crbug899446_noai/file__0.indexeddb.leveldb/LOG
 data/indexeddb/crbug899446_noai/file__0.indexeddb.leveldb/MANIFEST-000001
 data/indexeddb/cursor_prefetch.html
 data/indexeddb/cursor_prefetch.js
+data/indexeddb/cursor_prefetch_delete_during_upgrade.html
 data/indexeddb/cursor_test.html
 data/indexeddb/cursor_test.js
 data/indexeddb/database_callbacks_first.html

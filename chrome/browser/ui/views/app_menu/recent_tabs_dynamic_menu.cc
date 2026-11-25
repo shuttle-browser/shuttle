@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "base/functional/bind.h"
@@ -15,6 +16,7 @@
 #include "chrome/browser/favicon/favicon_service_factory.h"
 #include "chrome/browser/favicon/history_ui_favicon_request_handler_factory.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
+#include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/actions/chrome_action_properties.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_live_tab_context.h"
@@ -32,7 +34,7 @@
 #include "components/sessions/core/tab_restore_service.h"
 #include "ui/actions/actions.h"
 #include "ui/base/accelerators/menu_label_accelerator_util.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/color/color_id.h"
 
 namespace {
@@ -51,8 +53,12 @@ bool MayHaveMnemonics(const RecentTabItem& item) {
 
 }  // namespace
 
-RecentTabsDynamicMenu::RecentTabsDynamicMenu(BrowserWindowInterface* browser)
-    : browser_window_interface_(browser) {}
+RecentTabsDynamicMenu::RecentTabsDynamicMenu(
+    BrowserWindowInterface* browser,
+    AppMenuDragAndDropDelegate::Host* host)
+    : browser_window_interface_(browser), host_(host) {
+  CHECK(host_);
+}
 
 RecentTabsDynamicMenu::~RecentTabsDynamicMenu() = default;
 
@@ -69,16 +75,23 @@ void RecentTabsDynamicMenu::BuildRecentTabsActions(
           browser_window_interface_->GetProfile(), browser_window_interface_));
 }
 
+void RecentTabsDynamicMenu::BuildOtherDeviceTabsActions(
+    actions::BaseAction* parent_item) {
+  // Shuttle: sync (foreign sessions) is removed, so tabs from other devices
+  // never exist; the submenu stays empty.
+  parent_item->ResetActionList();
+}
+
 void RecentTabsDynamicMenu::ExecuteRecentTab(
     const RecentTabItem& recent_item,
     actions::ActionItem* item,
     actions::ActionInvocationContext context) {
   // Foreign-session (synced) tabs no longer exist; only local entries.
-  WindowOpenDisposition disposition =
+  ui::mojom::WindowOpenDisposition disposition =
       context.GetProperty(chrome::kDispositionKey);
-  if (disposition == WindowOpenDisposition::kCurrentTab ||
-      disposition == WindowOpenDisposition::kUnknown) {
-    disposition = WindowOpenDisposition::kNewForegroundTab;
+  if (disposition == ui::mojom::WindowOpenDisposition::kCurrentTab ||
+      disposition == ui::mojom::WindowOpenDisposition::kUnknown) {
+    disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   }
   if (recent_item.is_local()) {
     base::RecordAction(
@@ -89,7 +102,7 @@ void RecentTabsDynamicMenu::ExecuteRecentTab(
 
 void RecentTabsDynamicMenu::ExecuteRestoreEntry(
     SessionID id,
-    WindowOpenDisposition disposition) {
+    ui::mojom::WindowOpenDisposition disposition) {
   sessions::TabRestoreService* service =
       TabRestoreServiceFactory::GetForProfile(
           browser_window_interface_->GetProfile());
@@ -122,11 +135,11 @@ void RecentTabsDynamicMenu::ExecuteRecentSplit(
     default:
       break;
   }
-  WindowOpenDisposition disposition =
+  ui::mojom::WindowOpenDisposition disposition =
       context.GetProperty(chrome::kDispositionKey);
-  if (disposition == WindowOpenDisposition::kCurrentTab ||
-      disposition == WindowOpenDisposition::kUnknown) {
-    disposition = WindowOpenDisposition::kNewForegroundTab;
+  if (disposition == ui::mojom::WindowOpenDisposition::kCurrentTab ||
+      disposition == ui::mojom::WindowOpenDisposition::kUnknown) {
+    disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   }
   ExecuteRestoreEntry(recent_item.session_id(), disposition);
 }
@@ -157,6 +170,7 @@ RecentTabsDynamicMenu::GetInvokeCallback(RecentTabItem recent_item) {
     case RecentTabItem::Type::kHeader:
     case RecentTabItem::Type::kDevice:
     case RecentTabItem::Type::kDivider:
+    case RecentTabItem::Type::kMoreTabs:
       break;
   }
   return base::DoNothing();

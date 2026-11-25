@@ -22,7 +22,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":metadata_version_utils",
-        "//mediapipe/framework/port:status",
         "//mediapipe/tasks/cc:common",
         "//mediapipe/tasks/cc/metadata/utils:zip_utils",
         "//mediapipe/tasks/metadata:metadata_schema_cc",
@@ -30,11 +29,12 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@flatbuffers//:runtime_cc",
-        "@org_tensorflow//tensorflow/lite/schema:schema_fbs",
+        "@litert//tflite/schema:schema_fbs",
     ],
 )
 
@@ -49,9 +49,9 @@ cc_library(
         "//mediapipe/tasks/metadata:metadata_schema_cc",
         "@com_google_absl//absl/strings",
         "@flatbuffers//:runtime_cc",
-        "@org_tensorflow//tensorflow/lite/c:common",
-        "@org_tensorflow//tensorflow/lite/kernels/internal:compatibility",
-        "@org_tensorflow//tensorflow/lite/tools:logging",
+        "@litert//tflite/c:common",
+        "@litert//tflite/kernels/internal:compatibility",
+        "@litert//tflite/tools:logging",
     ],
 )
 
@@ -61,7 +61,6 @@ cc_library(
     hdrs = ["metadata_populator.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//mediapipe/framework/port:status",
         "//mediapipe/tasks/cc:common",
         "//mediapipe/tasks/cc/metadata/utils:zip_writable_mem_file",
         "//mediapipe/tasks/metadata:metadata_schema_cc",
@@ -69,7 +68,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@flatbuffers//:runtime_cc",
-        "@org_tensorflow//tensorflow/lite/schema:schema_fbs",
+        "@litert//tflite/schema:schema_fbs",
         "@zlib//:zlib_minizip",
     ],
 )

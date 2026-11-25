@@ -2,8 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//extensions/buildflags/buildflags.gni")
-
 source_set("organizer") {
   sources = [
     "organizer_panel_controller.h",
@@ -13,14 +11,11 @@ source_set("organizer") {
 
   public_deps = [
     "//base",
+    "//chrome/browser/ui/animation",
     "//chrome/browser/ui/views/tabs/organizer:organizer_panel_host",
-    "//extensions/buildflags",
+    "//components/site_engagement/content",
     "//ui/base/unowned_user_data",
   ]
-
-  if (enable_extensions) {
-    public_deps += [ "//extensions/common" ]
-  }
 }
 
 source_set("impl") {
@@ -37,6 +32,7 @@ source_set("impl") {
     "//chrome/app/vector_icons",
     "//chrome/browser:primitives",
     "//chrome/browser/profiles:profile",
+    "//chrome/browser/signin",
     "//chrome/browser/ui:browser_element_identifiers",
     "//chrome/browser/ui/actions:actions_headers",
     "//chrome/browser/ui/actions:actions_util",
@@ -44,15 +40,16 @@ source_set("impl") {
     "//chrome/browser/ui/tabs",
     "//chrome/browser/ui/tabs:features",
     "//chrome/browser/ui/views/tabs/organizer",
+    "//chrome/browser/ui/webui:webui_util",
+    "//chrome/browser/ui/webui/top_chrome",
     "//chrome/common:constants",
     "//components/pref_registry",
     "//components/prefs",
+    "//components/signin/public/base",
+    "//components/signin/public/identity_manager",
+    "//content/public/browser",
     "//ui/base",
     "//ui/views",
   ]
-
-  if (enable_extensions) {
-    deps += [ "//extensions/browser" ]
-  }
 }
 

@@ -2222,7 +2222,7 @@ void AuthenticationCredentialsContainer::ForwardRequestToAuthenticator(
   }
 
   Mediation mediation = Mediation::MODAL;
-  if (RuntimeEnabledFeatures::WebAuthenticationAmbientEnabled() &&
+  if (RuntimeEnabledFeatures::WebAuthenticationAmbientEnabled(context) &&
       options->uiMode() == V8CredentialUiModeRequirement::Enum::kPassive &&
       options->mediation() ==
           V8CredentialMediationRequirement::Enum::kConditional) {
@@ -2236,6 +2236,7 @@ void AuthenticationCredentialsContainer::ForwardRequestToAuthenticator(
           "Unsupported combination of credential types requested."));
       return;
     }
+    UseCounter::Count(context, WebFeature::kWebAuthnAmbientUiGet);
     mediation = Mediation::AMBIENT;
   } else if (options->mediation() ==
              V8CredentialMediationRequirement::Enum::kConditional) {

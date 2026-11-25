@@ -439,8 +439,6 @@ std::vector<TestParams> GetTestParams() {
 
 }  // namespace
 
-// TODO(crbug.com/365771838): Add tests for non-ip protection nested proxy
-// chains if support is enabled for all builds.
 class HttpNetworkTransactionTestBase : public PlatformTest,
                                        public WithTaskEnvironment {
  public:
@@ -656,13 +654,21 @@ class HttpNetworkTransactionTestBase : public PlatformTest,
 
   void CheckErrorIsPassedBack(int error, IoMode mode);
 
+  // Runs a request that changes proxies on each retry, without receiving any
+  // auth challenges, and checks that it succeeds. If
+  // `use_cached_proxy_credentials` is true, each proxy has credentials in the
+  // auth cache, which are sent preemptively.
+  void ProxyChangesDontHitLimitHelper(bool use_cached_proxy_credentials);
+
   base::RepeatingClosure FastForwardByCallback(base::TimeDelta delta) {
     return base::BindRepeating(&HttpNetworkTransactionTestBase::FastForwardBy,
                                base::Unretained(this), delta);
   }
 
+#if BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
   void HttpsNestedProxyNoSocketReuseHelper(const ProxyChain& chain1,
                                            const ProxyChain& chain2);
+#endif  // BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
 
   const CommonConnectJobParams dummy_connect_job_params_;
 
@@ -724,12 +730,13 @@ class HttpNetworkTransactionTest
 
   base::HistogramTester histogram_tester_;
 
+#if BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
   const ProxyServer proxy_server_1_{ProxyServer::SCHEME_HTTPS,
                                     HostPortPair("proxy1.test", 70)};
   const ProxyServer proxy_server_2_{ProxyServer::SCHEME_HTTPS,
                                     HostPortPair("proxy2.test", 71)};
-  const ProxyChain nested_proxy_chain_{
-      ProxyChain::ForIpProtection({{proxy_server_1_, proxy_server_2_}})};
+  const ProxyChain nested_proxy_chain_{{proxy_server_1_, proxy_server_2_}};
+#endif  // BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
   const ProxyChain example_proxy_server_chain_{ProxyServer{
       ProxyServer::SCHEME_HTTPS, HostPortPair("www.example.org", 443)}};
 };
@@ -7066,6 +7073,7 @@ TEST_P(HttpNetworkTransactionTest, HttpsProxyGet) {
   EXPECT_FALSE(response->ssl_info.cert);
 }
 
+#if BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
 // Test a simple GET (for an HTTP endpoint) through two HTTPS proxies
 // (HTTPS -> HTTPS -> HTTP). This should tunnel through both proxies.
 TEST_P(HttpNetworkTransactionTest, HttpsNestedProxyGet) {
@@ -7163,6 +7171,7 @@ TEST_P(HttpNetworkTransactionTest, HttpsNestedProxyGet) {
   // not be reported as a property of the origin.
   EXPECT_FALSE(response->ssl_info.cert);
 }
+#endif  // BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
 
 // Test a SPDY GET (for an HTTP endpoint) through an HTTPS (SPDY) proxy
 // (SPDY -> HTTP).
@@ -7248,6 +7257,7 @@ TEST_P(HttpNetworkTransactionTest, HttpsProxySpdyGet) {
   EXPECT_FALSE(response->ssl_info.cert);
 }
 
+#if BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
 // Test a SPDY GET (for an HTTP endpoint) through two HTTPS (SPDY) proxies
 // (SPDY -> SPDY -> HTTP).
 TEST_P(HttpNetworkTransactionTest, HttpsNestedProxySpdyGet) {
@@ -7410,8 +7420,8 @@ TEST_P(HttpNetworkTransactionTest, HttpsNestedProxySameProxyTwiceSpdyGet) {
       MutableNetworkTrafficAnnotationTag(TRAFFIC_ANNOTATION_FOR_TESTS);
 
   // Configure a nested proxy.
-  const ProxyChain kSameServerNestedProxyChain =
-      ProxyChain::ForIpProtection({{proxy_server_1_, proxy_server_1_}});
+  const ProxyChain kSameServerNestedProxyChain{
+      {proxy_server_1_, proxy_server_1_}};
 
   ProxyList proxy_list;
   proxy_list.AddProxyChain(kSameServerNestedProxyChain);
@@ -7646,6 +7656,7 @@ TEST_P(HttpNetworkTransactionTest, NestedProxyHttpOverSpdyProtocolError) {
   rv = callback.WaitForResult();
   ASSERT_THAT(rv, IsError(ERR_HTTP2_PROTOCOL_ERROR));
 }
+#endif  // BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
 
 // Test that a proxy server requesting a client auth cert doesn't cause a crash.
 // TODO(crbug.com/40284947): This test can be deleted once we no longer
@@ -7712,6 +7723,7 @@ TEST_P(HttpNetworkTransactionTest, HttpsClientAuthCertNeededNoCrash) {
   EXPECT_FALSE(cert_request_info);
 }
 
+#if BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
 // Test that the first proxy server in a multi-proxy chain requesting a client
 // auth cert doesn't cause a crash.
 // TODO(crbug.com/40284947): Support client auth certificates for
@@ -8132,6 +8144,7 @@ TEST_P(HttpNetworkTransactionTest,
   EXPECT_EQ(cert_request_info->host_and_port,
             HostPortPair("www.example.org", 443));
 }
+#endif  // BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
 
 // Verifies that a session which races and wins against the owning transaction
 // (completing prior to host resolution), doesn't fail the transaction.
@@ -8392,6 +8405,7 @@ TEST_P(HttpNetworkTransactionTest, HttpsProxySpdyConnectHttps) {
   EXPECT_EQ(kRespData, response_data);
 }
 
+#if BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
 // Test a SPDY CONNECT through two HTTPS (SPDY) proxies to an HTTPS (non-SPDY)
 // server (SPDY -> SPDY -> HTTPS).
 TEST_P(HttpNetworkTransactionTest, HttpsNestedProxySpdyConnectHttps) {
@@ -8875,6 +8889,7 @@ TEST_P(HttpNetworkTransactionTest,
   spdy_data.ExpectAllReadDataConsumed();
   spdy_data.ExpectAllWriteDataConsumed();
 }
+#endif  // BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
 
 // Test a SPDY CONNECT through an HTTPS Proxy to a SPDY server (SPDY -> SPDY).
 TEST_P(HttpNetworkTransactionTest, HttpsProxySpdyConnectSpdy) {
@@ -8973,6 +8988,7 @@ TEST_P(HttpNetworkTransactionTest, HttpsProxySpdyConnectSpdy) {
   EXPECT_EQ(kUploadData, response_data);
 }
 
+#if BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
 // Test a SPDY CONNECT for an HTTPS (non-SPDY) endpoint through an HTTPS
 // (non-SPDY) proxy and HTTPS (SPDY) proxy chain (HTTPS -> SPDY -> HTTPS).
 TEST_P(HttpNetworkTransactionTest, HttpsNestedProxyMixedConnectSpdy) {
@@ -9201,6 +9217,7 @@ TEST_P(HttpNetworkTransactionTest, HttpsNestedProxyMixedConnectHttps) {
   ASSERT_THAT(ReadTransaction(&trans, &response_data), IsOk());
   EXPECT_EQ(kRespData, response_data);
 }
+#endif  // BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
 
 // Test a SPDY CONNECT failure through an HTTPS (SPDY) proxy
 // (SPDY -> HTTPS/SPDY).
@@ -9262,6 +9279,7 @@ TEST_P(HttpNetworkTransactionTest, HttpsProxySpdyConnectFailure) {
   // TODO(juliatuttle): Anything else to check here?
 }
 
+#if BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
 // Test a SPDY CONNECT failure through two HTTPS (SPDY) proxies where the
 // connection to the first proxy fails (SPDY -> HTTPS/SPDY -> HTTPS/SPDY).
 TEST_P(HttpNetworkTransactionTest,
@@ -9632,8 +9650,7 @@ TEST_P(HttpNetworkTransactionTest, HttpsNestedProxyNoSocketReuseSecondHop) {
 // establish a tunnel through the same proxies with the order reversed, ensure
 // that socket re-use does not occur (HTTPS A -> HTTPS B != HTTPS B -> HTTPS A).
 TEST_P(HttpNetworkTransactionTest, HttpsNestedProxyNoSocketReuseReversedChain) {
-  const ProxyChain kReversedChain =
-      ProxyChain::ForIpProtection({{proxy_server_2_, proxy_server_1_}});
+  const ProxyChain kReversedChain{{proxy_server_2_, proxy_server_1_}};
 
   HttpsNestedProxyNoSocketReuseHelper(nested_proxy_chain_, kReversedChain);
 }
@@ -9652,10 +9669,8 @@ TEST_P(HttpNetworkTransactionTest,
   request.traffic_annotation =
       MutableNetworkTrafficAnnotationTag(TRAFFIC_ANNOTATION_FOR_TESTS);
 
-  const ProxyChain kFirstHopOnlyChain =
-      ProxyChain::ForIpProtection({proxy_server_1_});
-  const ProxyChain kSecondHopOnlyChain =
-      ProxyChain::ForIpProtection({proxy_server_2_});
+  const ProxyChain kFirstHopOnlyChain{proxy_server_1_};
+  const ProxyChain kSecondHopOnlyChain{proxy_server_2_};
 
   session_deps_.proxy_delegate = std::make_unique<TestProxyDelegate>();
   auto* proxy_delegate =
@@ -10317,6 +10332,7 @@ TEST_P(HttpNetworkTransactionTest, HttpsNestedProxySpdySocketReuseAfterError) {
   ASSERT_THAT(ReadTransaction(&trans2, &response_data), IsOk());
   EXPECT_EQ(kRespData, response_data);
 }
+#endif  // BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
 
 // Test the case where a proxied H2 session doesn't exist when an auth challenge
 // is observed, but does exist by the time auth credentials are provided. In
@@ -10611,7 +10627,6 @@ TEST_P(HttpNetworkTransactionTest,
   ASSERT_TRUE(response->headers);
   EXPECT_EQ("HTTP/1.1 200 OK", response->headers->GetStatusLine());
 
-  std::string response_data;
   auto buf = base::MakeRefCounted<IOBufferWithSize>(256);
   rv = trans.Read(buf.get(), 256, callback.callback());
   EXPECT_EQ(1, callback.GetResult(rv));
@@ -10741,7 +10756,6 @@ TEST_P(HttpNetworkTransactionTest,
   ASSERT_TRUE(response->headers);
   EXPECT_EQ("HTTP/1.1 200 OK", response->headers->GetStatusLine());
 
-  std::string response_data;
   auto buf = base::MakeRefCounted<IOBufferWithSize>(256);
   EXPECT_EQ(1, trans->Read(buf.get(), 256, callback.callback()));
   trans.reset();
@@ -10847,7 +10861,6 @@ TEST_P(HttpNetworkTransactionTest, HttpsProxySpdyLoadTimingTwoHttpRequests) {
   ASSERT_TRUE(response->headers);
   EXPECT_EQ("HTTP/1.1 200", response->headers->GetStatusLine());
 
-  std::string response_data;
   auto buf = base::MakeRefCounted<IOBufferWithSize>(256);
   rv = trans->Read(buf.get(), 256, callback.callback());
   EXPECT_EQ(1, callback.GetResult(rv));
@@ -11890,6 +11903,537 @@ TEST_P(HttpNetworkTransactionTest,
   EXPECT_TRUE(fail_data.AllWriteDataConsumed());
   EXPECT_TRUE(data2.AllReadDataConsumed());
   EXPECT_TRUE(data2.AllWriteDataConsumed());
+}
+
+// Test the case where a reused connection to an HTTP proxy with cached auth
+// credentials is reset, resulting in a retry. The retry to the same proxy
+// fails to connect, triggering fallback to a SOCKS proxy. A 407 received over
+// the SOCKS proxy should be rejected with ERR_UNEXPECTED_PROXY_AUTH, rather
+// than being treated as a challenge from the HTTP proxy, and should not affect
+// the HTTP proxy's cached credentials.
+TEST_P(HttpNetworkTransactionTest,
+       HttpProxyPreemptiveAuthKeepAliveResetFallbackToSocks407) {
+  const IPAddress kProxy1IP(1, 2, 3, 4);
+  const IPAddress kSocksProxyIP(5, 6, 7, 8);
+  auto host_resolver = std::make_unique<MockHostResolver>();
+  host_resolver->rules()->AddRule("myproxy", "1.2.3.4");
+  host_resolver->rules()->AddRule("sockshost", "5.6.7.8");
+  session_deps_.host_resolver = std::move(host_resolver);
+
+  session_deps_.proxy_resolution_service =
+      ConfiguredProxyResolutionService::CreateFixedFromPacResultForTest(
+          "PROXY myproxy:70; SOCKS5 sockshost:1080",
+          TRAFFIC_ANNOTATION_FOR_TESTS);
+  std::unique_ptr<HttpNetworkSession> session(CreateSession(&session_deps_));
+
+  const url::SchemeHostPort kProxy1SchemeHostPort(GURL("http://myproxy:70/"));
+  session->http_auth_cache()->Add(
+      kProxy1SchemeHostPort, HttpAuth::AUTH_PROXY, "MyRealm1",
+      HttpAuth::AUTH_SCHEME_BASIC, NetworkAnonymizationKey(),
+      "Basic realm=MyRealm1", AuthCredentials(kFoo, kBar), "/");
+
+  HttpRequestInfo request;
+  request.method = "GET";
+  request.url = GURL("http://www.example.org/");
+  request.traffic_annotation =
+      MutableNetworkTrafficAnnotationTag(TRAFFIC_ANNOTATION_FOR_TESTS);
+
+  // First socket to myproxy:70. The first request succeeds, and leaves the
+  // socket alive in the socket pool. It's then reused for a second request but
+  // receives a connection reset, triggering a retry.
+  MockWrite data_writes1[] = {
+      MockWrite(ASYNC, 0,
+                "GET http://www.example.org/ HTTP/1.1\r\n"
+                "Host: www.example.org\r\n"
+                "Proxy-Connection: keep-alive\r\n"
+                "Proxy-Authorization: Basic Zm9vOmJhcg==\r\n\r\n"),
+      MockWrite(ASYNC, 3,
+                "GET http://www.example.org/ HTTP/1.1\r\n"
+                "Host: www.example.org\r\n"
+                "Proxy-Connection: keep-alive\r\n"
+                "Proxy-Authorization: Basic Zm9vOmJhcg==\r\n\r\n"),
+  };
+  MockRead data_reads1[] = {
+      MockRead(ASYNC, 1, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n"),
+      MockRead(ASYNC, 2, "hello"),
+      MockRead(ASYNC, ERR_CONNECTION_RESET, 4),
+  };
+  SequencedSocketData data1(data_reads1, data_writes1);
+  data1.set_expected_addresses(AddressList(IPEndPoint(kProxy1IP, 70)));
+  session_deps_.socket_factory->AddSocketDataProvider(&data1);
+
+  // Second socket: retry to myproxy:70 fails, triggering fallback to the SOCKS
+  // proxy.
+  SequencedSocketData fail_data;
+  fail_data.set_connect_data(MockConnect(ASYNC, ERR_CONNECTION_REFUSED));
+  fail_data.set_expected_addresses(AddressList(IPEndPoint(kProxy1IP, 70)));
+  session_deps_.socket_factory->AddSocketDataProvider(&fail_data);
+
+  // Third socket: fallback to the SOCKS proxy. After establishing a connection
+  // through the proxy and sending an HTTP request, the server responds with a
+  // 407 for the HTTP proxy's realm.
+  const char kSOCKS5ExampleOkRequest[] = {
+      0x05,  // Version
+      0x01,  // Command (CONNECT)
+      0x00,  // Reserved.
+      0x03,  // Address type (DOMAINNAME).
+      0x0F,  // Length of domain (15)
+      'w',  'w', 'w', '.', 'e',  'x',
+      'a',  'm', 'p', 'l', 'e',         // Domain string
+      '.',  'o', 'r', 'g', 0x00, 0x50,  // 16-bit port (80)
+  };
+  MockWrite data_writes2[] = {
+      MockWrite(ASYNC, kSOCKS5GreetRequest),
+      MockWrite(ASYNC, base::as_byte_span(kSOCKS5ExampleOkRequest)),
+      MockWrite("GET / HTTP/1.1\r\n"
+                "Host: www.example.org\r\n"
+                "Connection: keep-alive\r\n\r\n"),
+  };
+  MockRead data_reads2[] = {
+      MockRead(ASYNC, kSOCKS5GreetResponse),
+      MockRead(ASYNC, kSOCKS5OkResponse),
+      MockRead("HTTP/1.1 407 Proxy Authentication Required\r\n"
+               "Proxy-Authenticate: Basic realm=\"MyRealm1\"\r\n"
+               "Content-Length: 0\r\n\r\n"),
+  };
+  StaticSocketDataProvider data2(data_reads2, data_writes2);
+  data2.set_expected_addresses(AddressList(IPEndPoint(kSocksProxyIP, 1080)));
+  session_deps_.socket_factory->AddSocketDataProvider(&data2);
+
+  // First request sets up a persistent connection to myproxy:70 in the socket
+  // pool.
+  {
+    HttpNetworkTransaction trans(DEFAULT_PRIORITY, session.get());
+    TestCompletionCallback callback;
+    int rv = trans.Start(&request, callback.callback(), NetLogWithSource());
+    EXPECT_THAT(callback.GetResult(rv), IsOk());
+    std::string response_data;
+    EXPECT_THAT(ReadTransaction(&trans, &response_data), IsOk());
+    EXPECT_EQ("hello", response_data);
+  }
+
+  // Second transaction: reuses the myproxy:70 socket, which is reset. The retry
+  // to myproxy:70 fails to connect, so it falls back to the SOCKS proxy, which
+  // returns a 407.
+  {
+    HttpNetworkTransaction trans(DEFAULT_PRIORITY, session.get());
+    TestCompletionCallback callback;
+    int rv = trans.Start(&request, callback.callback(), NetLogWithSource());
+    EXPECT_THAT(callback.GetResult(rv), IsError(ERR_UNEXPECTED_PROXY_AUTH));
+    EXPECT_FALSE(trans.GetResponseInfo()->auth_challenge.has_value());
+  }
+
+  // myproxy's credentials should not have been removed from the cache.
+  HttpAuthCache::Entry* entry = session->http_auth_cache()->Lookup(
+      kProxy1SchemeHostPort, HttpAuth::AUTH_PROXY, "MyRealm1",
+      HttpAuth::AUTH_SCHEME_BASIC, NetworkAnonymizationKey());
+  ASSERT_TRUE(entry);
+  EXPECT_EQ(kFoo, entry->credentials().username());
+  EXPECT_EQ(kBar, entry->credentials().password());
+
+  EXPECT_TRUE(data1.AllReadDataConsumed());
+  EXPECT_TRUE(data1.AllWriteDataConsumed());
+  EXPECT_TRUE(fail_data.AllReadDataConsumed());
+  EXPECT_TRUE(fail_data.AllWriteDataConsumed());
+  EXPECT_TRUE(data2.AllReadDataConsumed());
+  EXPECT_TRUE(data2.AllWriteDataConsumed());
+}
+
+// Test that the number of times auth controllers are discarded due to proxy
+// changes is bounded. Each proxy in the list responds with a 407, and closes
+// the connection, and the connection attempt made after restarting with
+// credentials fails, triggering fallback to the next proxy, which discards the
+// proxy auth controller.
+TEST_P(HttpNetworkTransactionTest, TooManyAuthControllerResetsOnProxyChange) {
+  constexpr size_t kNumProxies = 5;
+  auto host_resolver = std::make_unique<MockHostResolver>();
+  std::string pac_string;
+  ProxyChain last_proxy_chain;
+  for (size_t i = 0; i < kNumProxies; ++i) {
+    host_resolver->rules()->AddRule(base::StringPrintf("proxy%zu", i),
+                                    base::StringPrintf("1.1.1.%zu", i + 1));
+    if (i > 0) {
+      pac_string += "; ";
+    }
+    std::string next_proxy = base::StringPrintf("PROXY proxy%zu:70", i);
+    if (i == kNumProxies - 1) {
+      last_proxy_chain = PacResultElementToProxyChain(next_proxy);
+    }
+    pac_string += next_proxy;
+  }
+  session_deps_.host_resolver = std::move(host_resolver);
+  session_deps_.proxy_resolution_service =
+      ConfiguredProxyResolutionService::CreateFixedFromPacResultForTest(
+          pac_string, TRAFFIC_ANNOTATION_FOR_TESTS);
+  std::unique_ptr<HttpNetworkSession> session(CreateSession(&session_deps_));
+
+  HttpRequestInfo request;
+  request.method = "GET";
+  request.url = GURL("http://www.example.org/");
+  request.traffic_annotation =
+      MutableNetworkTrafficAnnotationTag(TRAFFIC_ANNOTATION_FOR_TESTS);
+
+  MockWrite auth_writes[] = {
+      MockWrite("GET http://www.example.org/ HTTP/1.1\r\n"
+                "Host: www.example.org\r\n"
+                "Proxy-Connection: keep-alive\r\n\r\n"),
+  };
+  MockRead auth_reads[] = {
+      MockRead("HTTP/1.1 407 Proxy Authentication Required\r\n"
+               "Proxy-Authenticate: Basic realm=\"MyRealm1\"\r\n"
+               "Connection: close\r\n"
+               "Content-Length: 0\r\n\r\n"),
+  };
+
+  // For all but the last proxy, the first connection returns a 407, and the
+  // second connection fails.
+  MockConnectCompleter last_proxy_connect_completer;
+  std::vector<std::unique_ptr<StaticSocketDataProvider>> data_providers;
+  for (size_t i = 0; i < kNumProxies - 1; ++i) {
+    IPEndPoint endpoint(IPAddress(1, 1, 1, static_cast<uint8_t>(i + 1)), 70);
+
+    data_providers.push_back(
+        std::make_unique<StaticSocketDataProvider>(auth_reads, auth_writes));
+    data_providers.back()->set_expected_addresses(AddressList(endpoint));
+    session_deps_.socket_factory->AddSocketDataProvider(
+        data_providers.back().get());
+
+    data_providers.push_back(std::make_unique<StaticSocketDataProvider>());
+    data_providers.back()->set_connect_data(
+        MockConnect(ASYNC, ERR_CONNECTION_REFUSED));
+    data_providers.back()->set_expected_addresses(AddressList(endpoint));
+    session_deps_.socket_factory->AddSocketDataProvider(
+        data_providers.back().get());
+  }
+  // A connection is established to the last proxy, but it's never used, since
+  // switching to it exceeds the limit. Use a MockConnectCompleter to verify
+  // the connection is attempted.
+  data_providers.push_back(std::make_unique<StaticSocketDataProvider>());
+  data_providers.back()->set_connect_data(
+      MockConnect(&last_proxy_connect_completer));
+  data_providers.back()->set_expected_addresses(AddressList(
+      IPEndPoint(IPAddress(1, 1, 1, static_cast<uint8_t>(kNumProxies)), 70)));
+  session_deps_.socket_factory->AddSocketDataProvider(
+      data_providers.back().get());
+
+  HttpNetworkTransaction trans(DEFAULT_PRIORITY, session.get());
+  TestCompletionCallback callback;
+  int rv = trans.Start(&request, callback.callback(), NetLogWithSource());
+  EXPECT_THAT(callback.GetResult(rv), IsOk());
+
+  for (size_t i = 0; i < kNumProxies - 1; ++i) {
+    SCOPED_TRACE(i);
+    const HttpResponseInfo* response = trans.GetResponseInfo();
+    ASSERT_TRUE(response);
+    ASSERT_TRUE(response->headers);
+    EXPECT_EQ(407, response->headers->response_code());
+    EXPECT_EQ(PacResultElementToProxyChain(
+                  base::StringPrintf("PROXY proxy%zu:70", i)),
+              response->proxy_chain);
+    EXPECT_TRUE(response->auth_challenge.has_value());
+
+    rv =
+        trans.RestartWithAuth(AuthCredentials(kFoo, kBar), callback.callback());
+    if (i < kNumProxies - 2) {
+      EXPECT_THAT(callback.GetResult(rv), IsOk());
+    } else {
+      ASSERT_THAT(rv, IsError(ERR_IO_PENDING));
+      last_proxy_connect_completer.WaitForConnectAndComplete(OK);
+      EXPECT_THAT(callback.WaitForResult(), IsError(ERR_TOO_MANY_RETRIES));
+    }
+  }
+
+  // The response should indicate the last proxy was used, and have no headers
+  // or auth challenge.
+  const HttpResponseInfo* response = trans.GetResponseInfo();
+  ASSERT_TRUE(response);
+  EXPECT_FALSE(response->headers);
+  EXPECT_FALSE(response->auth_challenge.has_value());
+  EXPECT_EQ(response->proxy_chain, last_proxy_chain);
+
+  for (const auto& data_provider : data_providers) {
+    EXPECT_TRUE(data_provider->AllReadDataConsumed());
+    EXPECT_TRUE(data_provider->AllWriteDataConsumed());
+  }
+}
+
+// Same as above, but with server auth instead of proxy auth, to check that the
+// server auth controller of http:// requests is discarded on proxy changes.
+TEST_P(HttpNetworkTransactionTest,
+       TooManyServerAuthControllerResetsOnProxyChange) {
+  constexpr size_t kNumProxies = 5;
+  auto host_resolver = std::make_unique<MockHostResolver>();
+  std::string pac_string;
+  ProxyChain last_proxy_chain;
+  for (size_t i = 0; i < kNumProxies; ++i) {
+    host_resolver->rules()->AddRule(base::StringPrintf("proxy%zu", i),
+                                    base::StringPrintf("1.1.1.%zu", i + 1));
+    if (i > 0) {
+      pac_string += "; ";
+    }
+    std::string next_proxy = base::StringPrintf("PROXY proxy%zu:70", i);
+    if (i == kNumProxies - 1) {
+      last_proxy_chain = PacResultElementToProxyChain(next_proxy);
+    }
+    pac_string += next_proxy;
+  }
+  session_deps_.host_resolver = std::move(host_resolver);
+  session_deps_.proxy_resolution_service =
+      ConfiguredProxyResolutionService::CreateFixedFromPacResultForTest(
+          pac_string, TRAFFIC_ANNOTATION_FOR_TESTS);
+  std::unique_ptr<HttpNetworkSession> session(CreateSession(&session_deps_));
+
+  HttpRequestInfo request;
+  request.method = "GET";
+  request.url = GURL("http://www.example.org/");
+  request.traffic_annotation =
+      MutableNetworkTrafficAnnotationTag(TRAFFIC_ANNOTATION_FOR_TESTS);
+
+  // The first request has no credentials. After that, the credentials entered
+  // for the previous proxy are in the cache, so are sent preemptively.
+  MockWrite first_auth_writes[] = {
+      MockWrite("GET http://www.example.org/ HTTP/1.1\r\n"
+                "Host: www.example.org\r\n"
+                "Proxy-Connection: keep-alive\r\n\r\n"),
+  };
+  MockWrite auth_writes[] = {
+      MockWrite("GET http://www.example.org/ HTTP/1.1\r\n"
+                "Host: www.example.org\r\n"
+                "Proxy-Connection: keep-alive\r\n"
+                "Authorization: Basic Zm9vOmJhcg==\r\n\r\n"),
+  };
+  MockRead auth_reads[] = {
+      MockRead("HTTP/1.1 401 Unauthorized\r\n"
+               "WWW-Authenticate: Basic realm=\"MyRealm1\"\r\n"
+               "Connection: close\r\n"
+               "Content-Length: 0\r\n\r\n"),
+  };
+
+  // For all but the last proxy, the first connection returns a 401, and the
+  // second connection fails.
+  MockConnectCompleter last_proxy_connect_completer;
+  std::vector<std::unique_ptr<StaticSocketDataProvider>> data_providers;
+  for (size_t i = 0; i < kNumProxies - 1; ++i) {
+    IPEndPoint endpoint(IPAddress(1, 1, 1, static_cast<uint8_t>(i + 1)), 70);
+
+    if (i == 0) {
+      data_providers.push_back(std::make_unique<StaticSocketDataProvider>(
+          auth_reads, first_auth_writes));
+    } else {
+      data_providers.push_back(
+          std::make_unique<StaticSocketDataProvider>(auth_reads, auth_writes));
+    }
+    data_providers.back()->set_expected_addresses(AddressList(endpoint));
+    session_deps_.socket_factory->AddSocketDataProvider(
+        data_providers.back().get());
+
+    data_providers.push_back(std::make_unique<StaticSocketDataProvider>());
+    data_providers.back()->set_connect_data(
+        MockConnect(ASYNC, ERR_CONNECTION_REFUSED));
+    data_providers.back()->set_expected_addresses(AddressList(endpoint));
+    session_deps_.socket_factory->AddSocketDataProvider(
+        data_providers.back().get());
+  }
+  // A connection is established to the last proxy, but it's never used, since
+  // switching to it exceeds the limit. Use a MockConnectCompleter to verify
+  // the connection is attempted.
+  data_providers.push_back(std::make_unique<StaticSocketDataProvider>());
+  data_providers.back()->set_connect_data(
+      MockConnect(&last_proxy_connect_completer));
+  data_providers.back()->set_expected_addresses(AddressList(
+      IPEndPoint(IPAddress(1, 1, 1, static_cast<uint8_t>(kNumProxies)), 70)));
+  session_deps_.socket_factory->AddSocketDataProvider(
+      data_providers.back().get());
+
+  HttpNetworkTransaction trans(DEFAULT_PRIORITY, session.get());
+  TestCompletionCallback callback;
+  int rv = trans.Start(&request, callback.callback(), NetLogWithSource());
+  EXPECT_THAT(callback.GetResult(rv), IsOk());
+
+  for (size_t i = 0; i < kNumProxies - 1; ++i) {
+    SCOPED_TRACE(i);
+    const HttpResponseInfo* response = trans.GetResponseInfo();
+    ASSERT_TRUE(response);
+    ASSERT_TRUE(response->headers);
+    EXPECT_EQ(401, response->headers->response_code());
+    EXPECT_EQ(PacResultElementToProxyChain(
+                  base::StringPrintf("PROXY proxy%zu:70", i)),
+              response->proxy_chain);
+    EXPECT_TRUE(response->auth_challenge.has_value());
+
+    rv =
+        trans.RestartWithAuth(AuthCredentials(kFoo, kBar), callback.callback());
+    if (i < kNumProxies - 2) {
+      EXPECT_THAT(callback.GetResult(rv), IsOk());
+    } else {
+      ASSERT_THAT(rv, IsError(ERR_IO_PENDING));
+      last_proxy_connect_completer.WaitForConnectAndComplete(OK);
+      EXPECT_THAT(callback.WaitForResult(), IsError(ERR_TOO_MANY_RETRIES));
+    }
+  }
+
+  const HttpResponseInfo* response = trans.GetResponseInfo();
+  ASSERT_TRUE(response);
+  EXPECT_FALSE(response->headers);
+  EXPECT_FALSE(response->auth_challenge.has_value());
+  EXPECT_EQ(response->proxy_chain, last_proxy_chain);
+
+  for (const auto& data_provider : data_providers) {
+    EXPECT_TRUE(data_provider->AllReadDataConsumed());
+    EXPECT_TRUE(data_provider->AllWriteDataConsumed());
+  }
+}
+
+// TestProxyDelegate that uses the next proxy chain in a list each time a proxy
+// is resolved. Assumes there's exactly one proxy resolution per stream request.
+class RotatingProxyDelegate : public TestProxyDelegate {
+ public:
+  explicit RotatingProxyDelegate(std::vector<ProxyChain> proxy_chains)
+      : proxy_chains_(std::move(proxy_chains)) {}
+
+  void set_next_index(size_t next_index) { next_index_ = next_index; }
+
+  void OnResolveProxy(const GURL& url,
+                      const NetworkAnonymizationKey& network_anonymization_key,
+                      const std::string& method,
+                      const ProxyRetryInfoMap& proxy_retry_info,
+                      ProxyInfo* result) override {
+    CHECK_LT(next_index_, proxy_chains_.size());
+    set_proxy_chain(proxy_chains_[next_index_++]);
+    TestProxyDelegate::OnResolveProxy(url, network_anonymization_key, method,
+                                      proxy_retry_info, result);
+  }
+
+ private:
+  const std::vector<ProxyChain> proxy_chains_;
+  size_t next_index_ = 0;
+};
+
+// Each retry is caused by a reused keep-alive connection being reset, and uses
+// a different proxy.
+void HttpNetworkTransactionTestBase::ProxyChangesDontHitLimitHelper(
+    bool use_cached_proxy_credentials) {
+  constexpr size_t kNumProxies = 5;
+  std::vector<ProxyChain> proxy_chains;
+  auto host_resolver = std::make_unique<MockHostResolver>();
+  for (size_t i = 0; i < kNumProxies; ++i) {
+    host_resolver->rules()->AddRule(base::StringPrintf("proxy%zu", i),
+                                    base::StringPrintf("1.1.1.%zu", i + 1));
+    proxy_chains.push_back(PacResultElementToProxyChain(
+        base::StringPrintf("PROXY proxy%zu:70", i)));
+  }
+  session_deps_.host_resolver = std::move(host_resolver);
+
+  session_deps_.proxy_delegate =
+      std::make_unique<RotatingProxyDelegate>(proxy_chains);
+  auto* proxy_delegate =
+      static_cast<RotatingProxyDelegate*>(session_deps_.proxy_delegate.get());
+  session_deps_.proxy_resolution_service =
+      ConfiguredProxyResolutionService::CreateFixedForTest(
+          "proxy0:70", TRAFFIC_ANNOTATION_FOR_TESTS);
+  session_deps_.proxy_resolution_service->SetProxyDelegate(proxy_delegate);
+  std::unique_ptr<HttpNetworkSession> session(CreateSession(&session_deps_));
+
+  if (use_cached_proxy_credentials) {
+    for (size_t i = 0; i < kNumProxies; ++i) {
+      session->http_auth_cache()->Add(
+          url::SchemeHostPort(
+              GURL(base::StringPrintf("http://proxy%zu:70", i))),
+          HttpAuth::AUTH_PROXY, "MyRealm1", HttpAuth::AUTH_SCHEME_BASIC,
+          NetworkAnonymizationKey(), "Basic realm=MyRealm1",
+          AuthCredentials(kFoo, kBar), "/");
+    }
+  }
+
+  HttpRequestInfo request;
+  request.method = "GET";
+  request.url = GURL("http://www.example.org/");
+  request.traffic_annotation =
+      MutableNetworkTrafficAnnotationTag(TRAFFIC_ANNOTATION_FOR_TESTS);
+
+  const std::string request_str =
+      base::StrCat({"GET http://www.example.org/ HTTP/1.1\r\n"
+                    "Host: www.example.org\r\n"
+                    "Proxy-Connection: keep-alive\r\n",
+                    use_cached_proxy_credentials
+                        ? "Proxy-Authorization: Basic Zm9vOmJhcg==\r\n"
+                        : "",
+                    "\r\n"});
+  MockWrite writes[] = {
+      MockWrite(ASYNC, 0, request_str),
+      MockWrite(ASYNC, 3, request_str),
+  };
+  // The second request on each connection is reset, except on the last one.
+  MockRead reset_reads[] = {
+      MockRead(ASYNC, 1, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n"),
+      MockRead(ASYNC, 2, "hello"),
+      MockRead(ASYNC, ERR_CONNECTION_RESET, 4),
+  };
+  MockRead success_reads[] = {
+      MockRead(ASYNC, 1, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n"),
+      MockRead(ASYNC, 2, "hello"),
+      MockRead(ASYNC, 4, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n"),
+      MockRead(ASYNC, 5, "world"),
+  };
+  std::vector<std::unique_ptr<SequencedSocketData>> data_providers;
+  for (size_t i = 0; i < kNumProxies; ++i) {
+    if (i < kNumProxies - 1) {
+      data_providers.push_back(
+          std::make_unique<SequencedSocketData>(reset_reads, writes));
+    } else {
+      data_providers.push_back(
+          std::make_unique<SequencedSocketData>(success_reads, writes));
+    }
+    data_providers.back()->set_expected_addresses(AddressList(
+        IPEndPoint(IPAddress(1, 1, 1, static_cast<uint8_t>(i + 1)), 70)));
+    session_deps_.socket_factory->AddSocketDataProvider(
+        data_providers.back().get());
+  }
+
+  // Warm up a keep-alive connection to each proxy.
+  for (size_t i = 0; i < kNumProxies; ++i) {
+    SCOPED_TRACE(i);
+    proxy_delegate->set_next_index(i);
+    HttpNetworkTransaction trans(DEFAULT_PRIORITY, session.get());
+    TestCompletionCallback callback;
+    int rv = trans.Start(&request, callback.callback(), NetLogWithSource());
+    EXPECT_THAT(callback.GetResult(rv), IsOk());
+    std::string response_data;
+    EXPECT_THAT(ReadTransaction(&trans, &response_data), IsOk());
+    EXPECT_EQ("hello", response_data);
+  }
+
+  // Each attempt reuses a connection to a different proxy, which is reset,
+  // except for the last one.
+  proxy_delegate->set_next_index(0);
+  HttpNetworkTransaction trans(DEFAULT_PRIORITY, session.get());
+  TestCompletionCallback callback;
+  int rv = trans.Start(&request, callback.callback(), NetLogWithSource());
+  EXPECT_THAT(callback.GetResult(rv), IsOk());
+  const HttpResponseInfo* response = trans.GetResponseInfo();
+  ASSERT_TRUE(response);
+  EXPECT_EQ(proxy_chains.back(), response->proxy_chain);
+  std::string response_data;
+  EXPECT_THAT(ReadTransaction(&trans, &response_data), IsOk());
+  EXPECT_EQ("world", response_data);
+
+  for (const auto& data_provider : data_providers) {
+    EXPECT_TRUE(data_provider->AllReadDataConsumed());
+    EXPECT_TRUE(data_provider->AllWriteDataConsumed());
+  }
+}
+
+// Test that proxy changes don't count against the limit on discarding auth
+// state when no auth is in use, even though auth controllers are still
+// created.
+TEST_P(HttpNetworkTransactionTest, ProxyChangesWithoutAuthDontHitLimit) {
+  ProxyChangesDontHitLimitHelper(/*use_cached_proxy_credentials=*/false);
+}
+
+// Test that proxy changes don't count against the limit on discarding auth
+// state when only preemptive auth, using cached credentials, is in use.
+TEST_P(HttpNetworkTransactionTest, ProxyChangesWithPreemptiveAuthDontHitLimit) {
+  ProxyChangesDontHitLimitHelper(/*use_cached_proxy_credentials=*/true);
 }
 
 void HttpNetworkTransactionTestBase::ConnectStatusHelperWithExpectedStatus(
@@ -18550,7 +19094,6 @@ TEST_P(HttpNetworkTransactionTest, IdentifyQuicBroken) {
   url::SchemeHostPort server("https", "origin.example.org", 443);
   HostPortPair alternative("alternative.example.org", 443);
   std::string origin_url = "https://origin.example.org:443";
-  std::string alternative_url = "https://alternative.example.org:443";
 
   // Negotiate HTTP/1.1 with alternative.example.org.
   SSLSocketDataProvider ssl(ASYNC, OK);
@@ -18611,8 +19154,6 @@ TEST_P(HttpNetworkTransactionTest, IdentifyQuicNotBroken) {
   HostPortPair alternative1("alternative1.example.org", 443);
   HostPortPair alternative2("alternative2.example.org", 443);
   std::string origin_url = "https://origin.example.org:443";
-  std::string alternative_url1 = "https://alternative1.example.org:443";
-  std::string alternative_url2 = "https://alternative2.example.org:443";
 
   // Negotiate HTTP/1.1 with alternative1.example.org.
   SSLSocketDataProvider ssl(ASYNC, OK);
@@ -21057,7 +21598,6 @@ TEST_P(HttpNetworkTransactionTest, ProxyGet) {
   EXPECT_EQ(200, response->headers->response_code());
   EXPECT_EQ(100u, response->headers->GetContentLength()->InBytes());
   EXPECT_TRUE(response->WasFetchedViaProxy());
-  EXPECT_FALSE(response->proxy_chain.is_for_ip_protection());
   EXPECT_EQ(ProxyChain(ProxyServer::SCHEME_HTTP,
                        HostPortPair::FromString("myproxy:70")),
             response->proxy_chain);
@@ -25314,7 +25854,6 @@ void CheckContentEncodingMatching(SpdySessionDependencies* session_deps,
   };
 
   std::string response_code = "200 OK";
-  std::string extra;
   if (!location.empty()) {
     response_code = "301 Redirect\r\nLocation: ";
     response_code.append(location);
@@ -29463,7 +30002,6 @@ TEST_P(HttpNetworkTransactionTest, SetProxyInfoInResponse_Direct) {
   HttpResponseInfo response_info;
   HttpNetworkTransaction::SetProxyInfoInResponse(proxy_info, &response_info);
   EXPECT_EQ(response_info.WasFetchedViaProxy(), false);
-  EXPECT_EQ(response_info.proxy_chain.is_for_ip_protection(), false);
   EXPECT_EQ(response_info.proxy_chain, ProxyChain::Direct());
 }
 
@@ -29476,7 +30014,6 @@ TEST_P(HttpNetworkTransactionTest, SetProxyInfoInResponse_Proxied) {
   HttpResponseInfo response_info;
   HttpNetworkTransaction::SetProxyInfoInResponse(proxy_info, &response_info);
   EXPECT_EQ(response_info.WasFetchedViaProxy(), true);
-  EXPECT_EQ(response_info.proxy_chain.is_for_ip_protection(), false);
   EXPECT_EQ(response_info.proxy_chain, proxy_chain);
 }
 
@@ -29487,68 +30024,8 @@ TEST_P(HttpNetworkTransactionTest, SetProxyInfoInResponse_Empty) {
   HttpNetworkTransaction::SetProxyInfoInResponse(empty_proxy_info,
                                                  &response_info);
   EXPECT_EQ(response_info.WasFetchedViaProxy(), false);
-  EXPECT_EQ(response_info.proxy_chain.is_for_ip_protection(), false);
   EXPECT_FALSE(response_info.proxy_chain.IsValid());
 }
-
-// Test behavior of SetProxyInfoInResponse with a proxied connection for IP
-// protection.
-TEST_P(HttpNetworkTransactionTest, SetProxyInfoInResponse_IpProtectionProxied) {
-  ProxyInfo proxy_info;
-  ProxyChain ip_protection_proxy_chain =
-      ProxyChain::ForIpProtection({ProxyServer::FromSchemeHostAndPort(
-          ProxyServer::SCHEME_HTTPS, "prx", 443)});
-  proxy_info.UseProxyChain(ip_protection_proxy_chain);
-  HttpResponseInfo response_info;
-  HttpNetworkTransaction::SetProxyInfoInResponse(proxy_info, &response_info);
-  EXPECT_EQ(response_info.WasFetchedViaProxy(), true);
-  EXPECT_EQ(response_info.proxy_chain.is_for_ip_protection(), true);
-  EXPECT_EQ(response_info.proxy_chain, ip_protection_proxy_chain);
-}
-
-// Test behavior of SetProxyInfoInResponse with a direct connection for IP
-// protection.
-TEST_P(HttpNetworkTransactionTest, SetProxyInfoInResponse_IpProtectionDirect) {
-  ProxyInfo proxy_info;
-  const ProxyChain kIpProtectionDirectChain = ProxyChain::ForIpProtection({});
-  proxy_info.UseProxyChain(kIpProtectionDirectChain);
-  HttpResponseInfo response_info;
-  HttpNetworkTransaction::SetProxyInfoInResponse(proxy_info, &response_info);
-  EXPECT_EQ(response_info.WasFetchedViaProxy(), false);
-  EXPECT_EQ(response_info.proxy_chain.is_for_ip_protection(), true);
-  EXPECT_EQ(response_info.proxy_chain, kIpProtectionDirectChain);
-}
-
-class IpProtectionProxyDelegate : public TestProxyDelegate {
- public:
-  IpProtectionProxyDelegate() {
-    set_extra_header_name(HttpRequestHeaders::kAuthorization);
-  }
-
-  // ProxyDelegate implementation:
-  void OnResolveProxy(const GURL& url,
-                      const NetworkAnonymizationKey& network_anonymization_key,
-                      const std::string& method,
-                      const ProxyRetryInfoMap& proxy_retry_info,
-                      ProxyInfo* result) override {
-    ProxyList proxy_list;
-    proxy_list.AddProxyChain(proxy_chain());
-
-    // For IP Protection we always want to fallback to direct, so emulate the
-    // behavior of NetworkServiceProxyDelegate where a direct chain will always
-    // be added as the last ProxyList entry.
-    if (!proxy_chain().is_direct()) {
-      proxy_list.AddProxyChain(ProxyChain::Direct());
-    }
-
-    result->UseProxyList(proxy_list);
-  }
-
-  static std::string GetAuthorizationHeaderValue(
-      const ProxyServer& proxy_server) {
-    return GetExtraHeaderValue(proxy_server);
-  }
-};
 
 TEST_P(HttpNetworkTransactionTest, EarlyHintsWithAltSvcHeader) {
   AddScopedFeatureList().InitWithFeatures(

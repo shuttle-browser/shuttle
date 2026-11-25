@@ -7,10 +7,11 @@ module blink.mojom;
 import "mojo/public/mojom/base/language_tag.mojom";
 import "mojo/public/mojom/base/string16.mojom";
 import "services/device/public/mojom/screen_orientation_lock_types.mojom";
+import "services/network/public/mojom/permissions_policy/permissions_policy.mojom";
+import "skia/public/mojom/skcolor.mojom";
 import "third_party/blink/public/mojom/manifest/display_mode.mojom";
 import "third_party/blink/public/mojom/manifest/manifest_launch_handler.mojom";
 import "third_party/blink/public/mojom/manifest/manifest_migration_behavior.mojom";
-import "services/network/public/mojom/permissions_policy/permissions_policy.mojom";
 import "third_party/blink/public/mojom/safe_url_pattern.mojom";
 import "ui/gfx/geometry/mojom/geometry.mojom";
 import "url/mojom/origin.mojom";
@@ -20,8 +21,12 @@ import "url/mojom/url.mojom";
 // The Manifest structure is an internal representation of the Manifest file
 // described in the "Manifest for Web Application" document:
 // http://w3c.github.io/manifest/
-// All fields will be their default constructed values (optional types nullopt)
-// if the manifest failed to parse.
+//
+// Typemapped in non-Blink C++ to `blink::Manifest`, which enforces at Mojo
+// deserialization that `start_url`, `id`, and `scope` are valid and
+// same-origin (with a non-opaque origin), along with intrinsic field
+// invariants. There is no "empty" state; IPCs use `Manifest?` when a manifest
+// cannot be produced.
 [JavaClassName="WebManifest"]
 struct Manifest {
   enum TextDirection {
@@ -33,6 +38,7 @@ struct Manifest {
     kRTL,
   };
 
+  // LINT.IfChange(ManifestFields)
   // The URL this manifest was loaded from. This can be an empty URL if this is
   // an automatically generated "default" manifest.
   url.mojom.Url manifest_url;
@@ -45,7 +51,7 @@ struct Manifest {
 
   mojo_base.mojom.String16? description;
 
-  // This is empty or invalid iff the start_url is empty or invalid.
+  // Always valid, without ref, and same-origin with `start_url`.
   url.mojom.Url id;
 
   // Set to true if the json specified a specific value for the id.
@@ -111,9 +117,10 @@ struct Manifest {
   // The app that this PWA intends to migrate to.
   ManifestMigrateTo? migrate_to;
 
-  // TODO(https://crbug.com/479448266): Use skia.mojom.SkColor.
-  uint32? theme_color;
-  uint32? background_color;
+  // Null if the member is absent from the manifest, is not a string, or is not
+  // a valid CSS color.
+  skia.mojom.SkColor? theme_color;
+  skia.mojom.SkColor? background_color;
 
   mojo_base.mojom.String16? gcm_sender_id;
 
@@ -140,10 +147,8 @@ struct Manifest {
   // TODO(b:340126786): Remove these obsolete fields.
   // TODO(crbug.com/40222835): This field is non-standard and part of a Chrome
   // experiment. See: https://github.com/w3c/manifest/issues/1045
-  // TODO(https://crbug.com/479448266): Use skia.mojom.SkColor possibly if these
-  // aren't yet removed.
-  uint32? dark_theme_color;
-  uint32? dark_background_color;
+  skia.mojom.SkColor? dark_theme_color;
+  skia.mojom.SkColor? dark_background_color;
 
   // TODO(crbug.com/897314): This field is non-standard and part of a Chrome
   // experiment. See:
@@ -163,6 +168,13 @@ struct Manifest {
       description_localized;
   map<mojo_base.mojom.LanguageTag, array<ManifestImageResource>>?
       icons_localized;
+  // LINT.ThenChange(
+  //   //third_party/blink/public/common/manifest/manifest.h:ManifestFields,
+  //   //third_party/blink/common/manifest/manifest.cc:ManifestEquality,
+  //   //third_party/blink/common/manifest/manifest_mojom_traits.cc:ManifestStructTraitsRead,
+  //   //third_party/blink/common/manifest/manifest_unittest.cc:ManifestEqualityTest,
+  //   //third_party/blink/common/manifest/manifest_mojom_traits_unittest.cc:ManifestMojomRoundTripFields
+  // )
 };
 
 struct ManifestLocalizedTextObject {
@@ -348,8 +360,9 @@ struct ManifestFileHandler {
   // Human-readable name for the file handler. May be displayed in file manager.
   mojo_base.mojom.String16 name;
   // A mapping of valid MIME types to a corresponding list of file extensions.
-  // Each MIME type must be syntactically valid and must NOT contain protocol
-  // scheme handlers or FreeDesktop pseudo-MIME types (e.g. "x-scheme-handler/*").
+  // Each MIME type must be syntactically valid and must use a standard IANA
+  // top-level media type (excluding "x-*" top-level types, such as FreeDesktop
+  // pseudo-MIME types like "x-scheme-handler/*" or "x-content/*").
   // Each file extension must start with '.' and be longer than 1 character.
   map<mojo_base.mojom.String16, array<mojo_base.mojom.String16>> accept;
 

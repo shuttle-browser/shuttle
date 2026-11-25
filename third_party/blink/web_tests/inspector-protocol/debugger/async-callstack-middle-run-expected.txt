@@ -1,0 +1,12 @@
+Tests that Debugger.setAsyncCallStackDepth captures asynchronous call stacks when enabled after the page loads.
+Set timer for test function.
+Captured call stacks in no particular order:
+Call stack:
+    0) timeoutOffCapturing2 (async-callstack-middle-run.js:27)
+
+Call stack:
+    0) timeoutOnCapturing (async-callstack-middle-run.js:32)
+    [setTimeout]
+    0) timeoutOffCapturing (async-callstack-middle-run.js:22)
+
+

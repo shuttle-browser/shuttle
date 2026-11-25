@@ -61,7 +61,7 @@ export class SettingsSecurityKeysPinFieldElement extends
   accessor minPinLength: number = 4;
   protected accessor error_: string = '';
   protected accessor value_: string = '';
-  protected accessor inputVisible_: boolean = false;
+  private accessor inputVisible_: boolean = false;
 
   override updated(changedProperties: PropertyValues<this>) {
     super.updated(changedProperties);
@@ -225,8 +225,6 @@ declare global {
     'settings-security-keys-pin-field': SettingsSecurityKeysPinFieldElement;
   }
 }
-
-export type SecurityKeysPinFieldElement = SettingsSecurityKeysPinFieldElement;
 
 customElements.define(
     SettingsSecurityKeysPinFieldElement.is,

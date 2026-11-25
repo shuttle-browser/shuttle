@@ -77,8 +77,8 @@ struct SharedImageEncodeAccess
   // Destroyed in reverse declaration order so scoped_access ends first and the
   // helper-provided memory tracker outlives the representation.
   scoped_refptr<CommandBufferHelper> command_buffer_helper;
-  std::unique_ptr<gpu::OverlayImageRepresentation> representation;
-  std::unique_ptr<gpu::OverlayImageRepresentation::ScopedReadAccess>
+  std::unique_ptr<gpu::VideoImageRepresentation> representation;
+  std::unique_ptr<gpu::VideoImageRepresentation::ScopedReadAccess>
       scoped_access;
 
  private:
@@ -148,6 +148,43 @@ constexpr std::string_view kRealtimeHardwareEncoderIDs[] = {
     "com.apple.videotoolbox.videoencoder.h264.rtvc",
     "com.apple.videotoolbox.videoencoder.hevc.rtvc",
 };
+
+// The hardware HEVC encoders on Intel Macs with a T2 chip: hevc.ave runs on
+// the T2 and hevc.gva on the Intel GPU.
+constexpr char kHevcT2EncoderID[] =
+    "com.apple.videotoolbox.videoencoder.hevc.ave";
+constexpr char kHevcIntelGpuEncoderID[] =
+    "com.apple.videotoolbox.videoencoder.hevc.gva";
+
+// Returns true if VideoToolbox lists both `kHevcT2EncoderID` and
+// `kHevcIntelGpuEncoderID`.
+bool HasT2AndIntelGpuHevcEncoders() {
+  static const bool kHasBoth = [] {
+    CFArrayRef encoder_list = nullptr;
+    if (VTCopyVideoEncoderList(/*options=*/nullptr, &encoder_list) != noErr ||
+        !encoder_list) {
+      return false;
+    }
+    NSArray* encoders = base::apple::CFToNSOwnershipCast(encoder_list);
+    bool has_t2_encoder = false;
+    bool has_gpu_encoder = false;
+    for (id encoder in encoders) {
+      NSDictionary* encoder_dict = base::apple::ObjCCast<NSDictionary>(encoder);
+      NSString* encoder_id = base::apple::ObjCCast<NSString>(
+          encoder_dict[CFToNSPtrCast(kVTVideoEncoderList_EncoderID)]);
+      if ([encoder_id isEqualToString:@(kHevcT2EncoderID)]) {
+        has_t2_encoder = true;
+      } else if ([encoder_id isEqualToString:@(kHevcIntelGpuEncoderID)]) {
+        has_gpu_encoder = true;
+      }
+      if (has_t2_encoder && has_gpu_encoder) {
+        return true;
+      }
+    }
+    return false;
+  }();
+  return kHasBoth;
+}
 #endif  // SOFTWARE_ENCODING_SUPPORTED
 
 base::span<const VideoCodecProfile> GetSupportedVideoCodecProfiles() {
@@ -463,6 +500,18 @@ CreateCompressionSession(
         kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder)] =
         @NO;
   }
+
+  // On Intel Macs with a T2 chip, hevc.ave intermittently creates sessions
+  // that fail every encode with kVTPropertyNotSupportedErr, see
+  // crbug.com/580153607. Prefer the GPU encoder when both are present.
+  const bool prefer_gpu_hevc_encoder =
+      required_encoder_type != EncoderType::kSoftware &&
+      VideoCodecProfileToVideoCodec(profile) == VideoCodec::kHEVC &&
+      HasT2AndIntelGpuHevcEncoders();
+  if (prefer_gpu_hevc_encoder) {
+    encoder_spec[CFToNSPtrCast(kVTVideoEncoderSpecification_EncoderID)] =
+        @(kHevcIntelGpuEncoderID);
+  }
 #endif  // SOFTWARE_ENCODING_SUPPORTED
 
   // Don't enable low-latency rate control in SW mode as it doesn't seem to
@@ -488,12 +537,26 @@ CreateCompressionSession(
   // before returning to the client. Therefore, when control returns to us, we
   // are guaranteed that the output callback will not execute again.
   video_toolbox::ScopedVTCompressionSessionRef session;
-  const OSStatus status = VTCompressionSessionCreate(
-      kCFAllocatorDefault, input_size.width(), input_size.height(),
-      VideoCodecToCMVideoCodec(VideoCodecProfileToVideoCodec(profile)),
-      NSToCFPtrCast(encoder_spec), source_image_buffer_attributes,
-      /*compressedDataAllocator=*/nullptr, output_callback,
-      reinterpret_cast<void*>(accelerator), session.InitializeInto());
+  auto create_session = [&] {
+    return VTCompressionSessionCreate(
+        kCFAllocatorDefault, input_size.width(), input_size.height(),
+        VideoCodecToCMVideoCodec(VideoCodecProfileToVideoCodec(profile)),
+        NSToCFPtrCast(encoder_spec), source_image_buffer_attributes,
+        /*compressedDataAllocator=*/nullptr, output_callback,
+        reinterpret_cast<void*>(accelerator), session.InitializeInto());
+  };
+  OSStatus status = create_session();
+#if SOFTWARE_ENCODING_SUPPORTED
+  if (status != noErr && prefer_gpu_hevc_encoder) {
+    DVLOG(1) << "Failed to create a " << kHevcIntelGpuEncoderID << " session ("
+             << status << "), retrying without EncoderID";
+    [encoder_spec
+        removeObjectForKey:CFToNSPtrCast(
+                               kVTVideoEncoderSpecification_EncoderID)];
+    session.reset();
+    status = create_session();
+  }
+#endif  // SOFTWARE_ENCODING_SUPPORTED
   if (status != noErr) {
     return base::unexpected(status);
   }
@@ -678,13 +741,14 @@ void CreatePixelBufferFromSharedImage(scoped_refptr<CommandBufferHelper> helper,
 
   auto access = base::MakeRefCounted<SharedImageEncodeAccess>();
   access->command_buffer_helper = helper;
-  access->representation = shared_image_manager->ProduceOverlay(
-      frame->shared_image()->mailbox(), helper->GetMemoryTypeTracker());
+  access->representation = shared_image_manager->ProduceVideo(
+      /*device=*/nullptr, frame->shared_image()->mailbox(),
+      helper->GetMemoryTypeTracker());
   if (!access->representation) {
     std::move(done_cb).Run(base::apple::ScopedCFTypeRef<CVPixelBufferRef>(),
                            nullptr,
                            {EncoderStatus::Codes::kEncoderFailedEncode,
-                            "ProduceOverlay failed for SharedImage"});
+                            "ProduceVideo failed for SharedImage"});
     return;
   }
 
@@ -1462,9 +1526,21 @@ void VTVideoEncodeAccelerator::MaybeFinishFlush() {
     OSStatus status = VTCompressionSessionCompleteFrames(
         compression_session_.get(), kCMTimeInvalid);
     if (status != noErr) {
-      OSSTATUS_DLOG(ERROR, status)
-          << " VTCompressionSessionCompleteFrames failed: ";
-      std::move(pending_flush_cb_).Run(/*success=*/false);
+      // Report the failure reason before failing the flush, matching
+      // CompressionCallbackTask(). NotifyErrorStatus() may synchronously
+      // destroy this object, so take ownership of the callback first.
+      auto flush_cb = std::move(pending_flush_cb_);
+      if (status == kVTVideoEncoderNotAvailableNowErr ||
+          status == kVTCouldNotCreateInstanceErr) {
+        NotifyErrorStatus({EncoderStatus::Codes::kOutOfPlatformEncoders,
+                           "No more encoders available. " +
+                               logging::DescriptionFromOSStatus(status)});
+      } else {
+        NotifyErrorStatus({EncoderStatus::Codes::kEncoderFailedFlush,
+                           "VTCompressionSessionCompleteFrames failed: " +
+                               logging::DescriptionFromOSStatus(status)});
+      }
+      std::move(flush_cb).Run(/*success=*/false);
       return;
     }
     flush_complete_frames_issued_ = true;
@@ -1789,8 +1865,7 @@ bool VTVideoEncodeAccelerator::ConfigureCompressionSession(VideoCodec codec) {
 
   if (@available(macOS 14.4, *)) {
     if (session_property_setter.IsSupported(
-            kVTCompressionPropertyKey_CalculateMeanSquaredError) &&
-        base::FeatureList::IsEnabled(kVTVideoEncodeAcceleratorCalculatePSNR)) {
+            kVTCompressionPropertyKey_CalculateMeanSquaredError)) {
       if (session_property_setter.Set(
               kVTCompressionPropertyKey_CalculateMeanSquaredError, true)) {
         calculate_psnr_ = true;
@@ -1984,7 +2059,7 @@ bool VTVideoEncodeAccelerator::CanEncodeOpaqueSharedImage(
   }
   // SharedImages must have SCANOUT (e.g. WebGL, WebGPU) or
   // MACOS_VIDEO_TOOLBOX (e.g. canvas, camera capture, video decoders) usage so
-  // that ProduceOverlay succeeds on the GPU thread.
+  // that they are IOSurface-backed and ProduceVideo succeeds on the GPU thread.
   //
   // Note: For CPU memory sessions (such as I420),
   // `gpu_supported_pixel_formats_` is left empty in `Initialize()`, ensuring

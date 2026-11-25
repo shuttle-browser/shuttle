@@ -10,14 +10,17 @@
 
 #include "base/callback_list.h"
 #include "base/memory/raw_ptr.h"
+#include "base/time/time.h"
 #include "base/values.h"
 #include "build/build_config.h"
+#include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_handler.h"
 #include "chrome/browser/ui/webui/omnibox_popup/mojom/omnibox_popup.mojom.h"
 #include "chrome/browser/ui/webui/top_chrome/top_chrome_web_ui_controller.h"
 #include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_config.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/omnibox/browser/searchbox.mojom.h"
 #include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/web_contents_observer.h"
 #include "content/public/common/url_constants.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -26,8 +29,8 @@
 
 class Profile;
 
+class OmniboxController;
 class OmniboxPopupHandler;
-class OmniboxPopupPresenterBase;
 class OmniboxPopupUI;
 class SearchboxHandler;
 
@@ -46,7 +49,8 @@ class OmniboxPopupUIConfig
 // The Web UI controller for the chrome://omnibox-popup.top-chrome.
 class OmniboxPopupUI : public TopChromeWebUIController,
                        public omnibox_popup::mojom::PageHandlerFactory,
-                       public searchbox::mojom::PageHandlerFactory {
+                       public searchbox::mojom::PageHandlerFactory,
+                       public content::WebContentsObserver {
  public:
   explicit OmniboxPopupUI(content::WebUI* web_ui);
   OmniboxPopupUI(const OmniboxPopupUI&) = delete;
@@ -59,6 +63,9 @@ class OmniboxPopupUI : public TopChromeWebUIController,
   void PopulateLocalResourceLoaderConfig(
       blink::mojom::LocalResourceLoaderConfig* config,
       const url::Origin& requesting_origin) override;
+
+  // content::WebContentsObserver:
+  void OnColorProviderChanged() override;
 
   // Returns the loadTimeData values that depend on `profile`, the profile of
   // the window that shows the popup. They are in the WebUIDataSource, or passed
@@ -91,6 +98,7 @@ class OmniboxPopupUI : public TopChromeWebUIController,
     return popup_handler_.get();
   }
 
+
   // searchbox::mojom::PageHandlerFactory:
   void CreatePageHandler(
       mojo::PendingRemote<searchbox::mojom::Page> page,
@@ -98,9 +106,31 @@ class OmniboxPopupUI : public TopChromeWebUIController,
 
   static constexpr std::string_view GetWebUIName() { return "OmniboxPopup"; }
 
-  void SetPresenterDelegate(OmniboxPopupPresenterBase* delegate);
+  void SetSearchboxHandlerDelegate(SearchboxHandler::Delegate* delegate);
+
+  // Moving the popup's WebContents to another browser window of the same
+  // profile is done in two steps. `DetachFromWindow()` runs while the old
+  // window still embeds the popup: the handlers stop observing that window's
+  // omnibox and tabs. Afterwards the WebUI keeps no pointer into the old
+  // window, so it may close before `AttachToWindow()` runs. The caller then
+  // points the WebContents at the new window and calls `AttachToWindow()` with
+  // its omnibox controller, which rebinds the handlers and sends the new
+  // window's results and selection to the page if it has any. Not supported for
+  // the full WebUI omnibox popup.
+  void DetachFromWindow();
+  void AttachToWindow(OmniboxController* omnibox_controller);
+
+  // Returns whether the handlers hold no work for the current window that a
+  // move would lose.
+  bool CanMoveToAnotherWindow() const;
+
+  // When the popup was last hidden, in any window, or null if it was never
+  // shown. Moves with the page.
+  base::TimeTicks last_hidden_time() const { return last_hidden_time_; }
+  void set_last_hidden_time(base::TimeTicks time) { last_hidden_time_ = time; }
 
  private:
+  // The profile of the window showing the popup.
   raw_ptr<Profile> profile_;
 
   std::unique_ptr<SearchboxHandler> omnibox_handler_;
@@ -112,8 +142,9 @@ class OmniboxPopupUI : public TopChromeWebUIController,
   mojo::Receiver<searchbox::mojom::PageHandlerFactory>
       searchbox_page_factory_receiver_{this};
 
-  raw_ptr<OmniboxPopupPresenterBase> presenter_delegate_ = nullptr;
+  raw_ptr<SearchboxHandler::Delegate> searchbox_handler_delegate_ = nullptr;
 
+  base::TimeTicks last_hidden_time_;
   WEB_UI_CONTROLLER_TYPE_DECL();
 };
 

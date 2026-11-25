@@ -98,6 +98,7 @@ source_set("impl") {
   deps = [
     ":toolbar",
     "//chrome/browser/ui/immersive:immersive_mode_controller",
+    "//components/subscription_eligibility:tier_names",
   ]
 
   if (!is_android) {
@@ -154,8 +155,6 @@ source_set("impl") {
       "//chrome/common:chrome_features",
       "//chrome/common:constants",
       "//chrome/common:non_code_constants",
-      "//components/dom_distiller/content/browser",
-      "//components/dom_distiller/core",
       "//components/favicon_base",
       "//components/omnibox/browser",
       "//components/omnibox/browser:vector_icons",
@@ -170,6 +169,8 @@ source_set("impl") {
       "//components/strings:components_strings",
       "//components/vector_icons",
       "//components/version_info:channel",
+      "//components/web_distiller/content/browser",
+      "//components/web_distiller/core",
       "//content/public/browser",
       "//content/public/common",
       "//extensions/common:extension_features",

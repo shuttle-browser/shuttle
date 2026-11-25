@@ -1656,14 +1656,14 @@ bool StoragePartitionImpl::IsNetworkContextInitialized() {
 
 void StoragePartitionImpl::CloneNetworkContext(
     mojo::PendingReceiver<network::mojom::NetworkContext> receiver) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   CHECK(initialized_);
   GetNetworkContext()->Clone(std::move(receiver));
 }
 
 scoped_refptr<CrossThreadNetworkContext>
 StoragePartitionImpl::CreateCrossThreadNetworkContext() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   CHECK(initialized_);
   return CrossThreadNetworkContext::Create(weak_factory_.GetWeakPtr());
 }
@@ -2057,7 +2057,8 @@ void StoragePartitionImpl::OnAuthRequired(
         auth_challenge_responder) {
   // The network service only forwards proxy challenges for requests that must
   // not prompt for login.
-  DCHECK(!do_not_prompt_for_login || auth_info.is_proxy);
+  CHECK(!do_not_prompt_for_login || auth_info.is_proxy,
+        base::NotFatalUntil::M163);
 
   URLLoaderNetworkContext context =
       url_loader_network_observers_.current_context();
@@ -3253,9 +3254,7 @@ void StoragePartitionImpl::ClearDataForBuckets(
   storage::QuotaManagerProxy* quota_manager_proxy = GetQuotaManagerProxy();
 
   for (const auto& bucket : storage_buckets) {
-    quota_manager_proxy->DeleteBucket(
-        storage_key, bucket, base::SequencedTaskRunner::GetCurrentDefault(),
-        remove_buckets_done);
+    quota_manager_proxy->DeleteBucket(storage_key, bucket, remove_buckets_done);
   }
 }
 
@@ -3452,7 +3451,6 @@ void StoragePartitionImpl::BindLockManager(
 
   GetQuotaManagerProxy()->UpdateOrCreateBucket(
       storage::BucketInitParams::ForDefaultBucket(storage_key),
-      GetUIThreadTaskRunner({}),
       base::BindOnce(&StoragePartitionImpl::CreateLockManagerWithBucketInfo,
                      weak_factory_.GetWeakPtr(), std::move(receiver), token));
 }

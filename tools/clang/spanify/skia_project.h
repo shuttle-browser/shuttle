@@ -35,17 +35,17 @@ class SkiaProject : public Project {
   std::string_view GetSpanFromRefRelativePath(
       const clang::ast_matchers::MatchFinder::MatchResult& result)
       const override {
-    return "SPAN_FROM_REF_NOT_AVAILABLE";
+    return "SkSpanFromRef";
   }
   std::string_view GetAsByteSpanRelativePath(
       const clang::ast_matchers::MatchFinder::MatchResult& result)
       const override {
-    return "AS_BYTE_SPAN_NOT_AVAILABLE";
+    return "SkAsByteSpan";
   }
   std::string_view GetAsWritableByteSpanRelativePath(
       const clang::ast_matchers::MatchFinder::MatchResult& result)
       const override {
-    return "AS_WRITABLE_BYTE_SPAN_NOT_AVAILABLE";
+    return "SkAsWritableByteSpan";
   }
   std::string_view GetSafeConversionsIncludePath() const override {
     return "include/private/SkTo.h";
@@ -59,13 +59,8 @@ class SkiaProject : public Project {
   std::string_view GetRawSpanIncludePath() const override {
     return "PATH_TO_RAW_SPAN_H_NOT_AVAILABLE";
   }
-  std::string_view GetAutoSpanificationHelperIncludePath() const override {
-    return "include/core/SkSpan.h";
-  }
-  const std::vector<FuncMapping>& GetFuncMappingTable() const override {
-    static const std::vector<FuncMapping> kFuncMappingTable = {};
-    return kFuncMappingTable;
-  }
+  // SkSpan has no operator==.
+  bool SpanHasEqualityOperator() const override { return false; }
   bool IsExcludedFromProject(const clang::Decl& Node) const override {
     const clang::SourceManager& source_manager =
         Node.getASTContext().getSourceManager();
@@ -77,7 +72,6 @@ class SkiaProject : public Project {
     return IsExcludedFromSubmodule(filename, "third_party/skia/",
                                    "tools/clang/spanify/tests/skia/");
   }
-  bool SupportsStaticExtent() const override { return false; }
 };
 
 #endif  // TOOLS_CLANG_SPANIFY_SKIA_PROJECT_H_

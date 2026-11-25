@@ -79,7 +79,6 @@ DECLARE_ELEMENT_IDENTIFIER_VALUE(kContentsSeparatorTrailingEdgeElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(
     kContextualTasksEphemeralToolbarButtonElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kContextualTasksFaviconsElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kContextualTasksGhostLoaderViewElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kContextualTasksPageActionElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kContextualTasksWebUIPinButtonElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kContextualTasksWebUIToolbarElementId);
@@ -109,7 +108,6 @@ DECLARE_ELEMENT_IDENTIFIER_VALUE(kExtensionsMenuManageExtensionsElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kExtensionsRequestAccessButtonElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kExtensionsPinnedByDefaultElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kFallbackPopupAnchorElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kFeatureFirstRunDialogContentViewElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kFedCmAccountChooserDialogAccountElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kFederationElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kFindPageActionElementId);
@@ -126,7 +124,6 @@ DECLARE_ELEMENT_IDENTIFIER_VALUE(kGlicNudgeButtonElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kGlicActorTaskIconElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kGlicViewElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kGlicSelectionOverlayViewElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kHistorySearchInputElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kInactiveTabSettingElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kInfoBarContainerElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kInstallPwaElementId);
@@ -160,8 +157,6 @@ DECLARE_ELEMENT_IDENTIFIER_VALUE(kPriceTrackingBookmarkViewElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kPriceTrackingChipElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kProductSpecificationsChipElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kProductSpecificationsButtonElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kOrganizerPanelCloseButtonElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kOrganizerPanelControlsElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kOrganizerPanelElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kReadAnythingAiPlaybackToggleElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kReadAnythingSettingsButtonElementId);
@@ -205,7 +200,6 @@ DECLARE_ELEMENT_IDENTIFIER_VALUE(kTabGroupEditorBubbleSaveToggleId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kTabGroupHeaderAttentionIndicatorElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kTabGroupHeaderElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kTabDeclutterButtonElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kTabSearchBubbleElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kTabSearchButtonElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kTabStripActionContainerElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kTabStripComboButtonElementId);
@@ -249,8 +243,6 @@ DECLARE_ELEMENT_IDENTIFIER_VALUE(kTranslatePageActionElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kUnfocusTabGroupButtonElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kVerticalTabStripCollapseButtonElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kVerticalTabStripBottomContainerElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kVerticalTabStripOrganizerButtonElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kVerticalTabStripTabStripButtonElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kVerticalTabStripTopContainerElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kVerticalTabTitleElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kPageActionGmailOtpOptInElementId);
@@ -263,5 +255,17 @@ DECLARE_CUSTOM_ELEMENT_EVENT_TYPE(kExtensionsMenuPinExtensionsEventId);
 DECLARE_CUSTOM_ELEMENT_EVENT_TYPE(kTabGroupedCustomEventId);
 DECLARE_CUSTOM_ELEMENT_EVENT_TYPE(kTabGroupSavedCustomEventId);
 DECLARE_CUSTOM_ELEMENT_EVENT_TYPE(kVerticalTabStripCollapsedCustomEventId);
+
+// Aliases
+//
+// If for historical reasons there is a surface or element which changed name
+// but needs to work both with and without the new version of the feature
+// enabled, you can (temporarily) alias it here. Please put a TODO to eliminate
+// the old name once the feature is shipped.
+
+// TODO(https://crbug.com/579025166): Once the Organizer Panel is shipped, this
+// surface won't exist and this can be removed.
+inline constexpr ui::ElementIdentifier kTabSearchBubbleElementId =
+    kOrganizerPanelElementId;
 
 #endif  // CHROME_BROWSER_UI_BROWSER_ELEMENT_IDENTIFIERS_H_

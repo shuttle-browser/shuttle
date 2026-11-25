@@ -62,6 +62,7 @@
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
 #include "third_party/blink/renderer/platform/scheduler/public/frame_or_worker_scheduler.h"
 #include "third_party/blink/renderer/platform/timer.h"
+#include "third_party/blink/renderer/platform/wtf/casting.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/skia/include/core/SkData.h"
 
@@ -858,6 +859,10 @@ class MODULES_EXPORT WebGLRenderingContextBase
   HeapTaskRunnerTimer<WebGLRenderingContextBase> restore_timer_;
 
   bool destruction_in_progress_ = false;
+  // Tracks whether ActivateContext() was ever called for this context, so
+  // Dispose() does not restore an evicted context when disposing an
+  // uninitialized context whose initial CreateDrawingBuffer() failed.
+  bool was_activated_ = false;
   bool marked_canvas_dirty_;
   // For performance reasons we must separately track whether we've
   // copied WebGL's drawing buffer to the canvas's backing store, for
@@ -1881,8 +1886,6 @@ class MODULES_EXPORT WebGLRenderingContextBase
                                        GLsizei height,
                                        const char* function_name);
 
-  friend class WebGLStateRestorer;
-  friend class WebGLRenderingContextEvictionManager;
 
   static void ActivateContext(WebGLRenderingContextBase*);
   static void DeactivateContext(WebGLRenderingContextBase*);
@@ -1965,9 +1968,6 @@ class MODULES_EXPORT WebGLRenderingContextBase
                                 Platform::WebGLContextType,
                                 Platform::WebGLContextInfo*);
 
-  scoped_refptr<ExternalCanvasResource> ExportLowLatencyCanvasResource(
-      SourceDrawingBuffer source_buffer);
-
   CanvasNon2DResourceProvider* GetSharedImageResourceProvider();
 
   // Attempts to copy the most recent rendering results from the drawing buffer
@@ -1997,6 +1997,7 @@ class MODULES_EXPORT WebGLRenderingContextBase
   bool IsPaintable() const final { return GetDrawingBuffer(); }
 
   void HoldReferenceToDrawingBuffer(DrawingBuffer*);
+  void ForceLostContextFromDrawingBuffer(DrawingBuffer* failed_drawing_buffer);
 
   static void InitializeWebGLContextLimits(
       WebGraphicsContext3DProvider* context_provider);

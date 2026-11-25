@@ -15,13 +15,13 @@
 // Converts vector<std::string> (or vector<vector<std::string>>) to 1D (or 2D)
 // tf::Tensor.
 
-#include "absl/log/absl_log.h"
+#include "absl/log/absl_log.h"   // from @com_google_absl
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/calculators/tensorflow/vector_string_to_tensor_calculator_options.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/tensor.h"  // from @org_tensorflow
+#include "tensorflow/core/framework/types.h"   // from @org_tensorflow
 
 namespace mediapipe {
 
@@ -107,7 +107,7 @@ absl::Status VectorStringToTensorCalculator::Process(CalculatorContext* cc) {
     } else {
       tensor_shape = tf::TensorShape({rows, cols});
     }
-    auto output = ::absl::make_unique<tf::Tensor>(tf::DT_STRING, tensor_shape);
+    auto output = std::make_unique<tf::Tensor>(tf::DT_STRING, tensor_shape);
     for (int r = 0; r < rows; ++r) {
       for (int c = 0; c < cols; ++c) {
         if (options_.transpose()) {
@@ -124,7 +124,7 @@ absl::Status VectorStringToTensorCalculator::Process(CalculatorContext* cc) {
     RET_CHECK_GE(input.size(), 1);
     const int32_t length = input.size();
     tensor_shape = tf::TensorShape({length});
-    auto output = ::absl::make_unique<tf::Tensor>(tf::DT_STRING, tensor_shape);
+    auto output = std::make_unique<tf::Tensor>(tf::DT_STRING, tensor_shape);
     for (int i = 0; i < length; ++i) {
       output->tensor<tensorflow::tstring, 1>()(i) = input.at(i);
     }

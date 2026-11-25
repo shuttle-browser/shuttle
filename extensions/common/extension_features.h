@@ -68,6 +68,11 @@ BASE_DECLARE_FEATURE(kApiOdfsConfigPrivate);
 // Controls the availability of the contextualTasksPrivate API.
 BASE_DECLARE_FEATURE(kApiContextualTasksPrivate);
 
+// Controls the availability of the
+// `contextualTasksPrivate.registerAimThreadForPromo` API for ABA search
+// journeys.
+BASE_DECLARE_FEATURE(kApiContextualTasksPrivateAba);
+
 // Controls the availability of the glicPrivate API.
 BASE_DECLARE_FEATURE(kApiGlicPrivate);
 
@@ -120,6 +125,9 @@ BASE_DECLARE_FEATURE(kApiProxyOverrideRulesPrivate);
 // runtime.getPlatformInfo() API.
 BASE_DECLARE_FEATURE(kApiRuntimeGetPlatformInfoNaClArch);
 
+// Controls the availability of the runtime.getDocumentId() API.
+BASE_DECLARE_FEATURE(kApiRuntimeGetDocumentId);
+
 // Controls the availability of runtime.sendNativeMessage and
 // runtime.connectNative on Desktop Android.
 BASE_DECLARE_FEATURE(kApiDesktopAndroidNativeMessaging);
@@ -133,6 +141,10 @@ BASE_DECLARE_FEATURE(kApiDesktopAndroidNativeMessagingBypassExtensionAllowlist);
 ///////////////////////////////////////////////////////////////////////////////
 
 // For historical reasons, this includes some APIs. Please don't add more APIs.
+
+// When enabled, `ExtensionFunction::GetMutableArgs()` avoids cloning `args_`
+// into `original_args_`.
+BASE_DECLARE_FEATURE(kAvoidCloneMutableExtensionFunctionArgs);
 
 // Controls whether opted-in component extension frames are permitted to
 // enter BackForwardCache instead of being unconditionally disabled.
@@ -272,6 +284,16 @@ BASE_DECLARE_FEATURE(kExperimentalOmniboxLabs);
 // out of the allowlist.
 BASE_DECLARE_FEATURE(kSafeBrowsingCrxAllowlistAutoDisable);
 
+// When enabled, `WebRequestProxyingURLLoaderFactory` moves `current_response_`
+// instead of deep-cloning it when forwarding the final `OnReceiveResponse()` to
+// `target_client_`.
+BASE_DECLARE_FEATURE(kWebRequestProxyMoveResponse);
+
+// When enabled, `WebRequestProxyingURLLoaderFactory` binds
+// `TrustedHeaderClient` and cloned `URLLoaderFactory` receivers to
+// `navigation_response_task_runner_`.
+BASE_DECLARE_FEATURE(kWebRequestProxyNavigationResponseTaskRunner);
+
 // Controls whether the component webstore hosted app is loaded.
 BASE_DECLARE_FEATURE(kWebstoreHostedApp);
 
@@ -391,6 +413,18 @@ BASE_DECLARE_FEATURE(kUseSha256ForExtensionHashes);
 // must be explicitly listed to be web accessible, and the generated background
 // page is never web accessible.
 BASE_DECLARE_FEATURE(kRestrictGeneratedPathsInWebAccessibleResources);
+
+// If enabled (the default), `ExtensionMessagePort` only registers a frame as a
+// message receiver for an extension if the frame's process may act for that
+// extension: a process in `ProcessMap` for the extension, or a process that has
+// run a content script or user script from the extension. The extension's own
+// pages shown in its `<webview>` (e.g. a Chrome App's webview-accessible
+// resources) are also registered, as long as the browser confirms that their
+// process committed the extension's origin. If disabled, every live frame is
+// registered. Disabling this has security implications.
+// TODO(crbug.com/578977501): Remove this flag once the change has shipped to
+// stable without issues.
+BASE_DECLARE_FEATURE(kRestrictMessagingReceiverFramesToExtensionProcesses);
 
 }  // namespace extensions_features
 

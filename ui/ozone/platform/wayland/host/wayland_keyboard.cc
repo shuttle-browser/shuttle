@@ -9,14 +9,17 @@
 #include <sys/mman.h>
 
 #include <cstddef>
-#include <cstring>
+#include <string_view>
 #include <utility>
 
+#include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "base/files/scoped_file.h"
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted_memory.h"
 #include "base/notimplemented.h"
+#include "base/strings/string_view_util.h"
 #include "base/unguessable_token.h"
 #include "ui/base/buildflags.h"
 #include "ui/events/base_event_utils.h"
@@ -133,7 +136,7 @@ class WaylandKeyboard::ZCRExtendedKeyboard {
                         uint32_t key,
                         uint32_t state) {
     auto* self = static_cast<ZCRExtendedKeyboard*>(data);
-    DCHECK(self);
+    CHECK(self, base::NotFatalUntil::M163);
     self->keyboard_->ProcessKey(serial, time, key, state,
                                 WaylandKeyboard::KeyEventKind::kPeekKey);
   }
@@ -187,7 +190,7 @@ void WaylandKeyboard::OnUnhandledKeyEvent(const KeyEvent& key_event) {
   auto it = properties->find(kPropertyWaylandSerial);
   if (it == properties->end())
     return;
-  DCHECK_EQ(it->second.size(), 4u);
+  CHECK_EQ(it->second.size(), 4u, base::NotFatalUntil::M163);
   uint32_t serial = it->second[0] | (it->second[1] << 8) |
                     (it->second[2] << 16) | (it->second[3] << 24);
 
@@ -205,7 +208,7 @@ std::unique_ptr<PlatformKeyboardHook> WaylandKeyboard::CreateKeyboardHook(
     WaylandWindow* window,
     std::optional<base::flat_set<DomCode>> dom_codes,
     PlatformKeyboardHook::KeyEventCallback callback) {
-  DCHECK(window);
+  CHECK(window, base::NotFatalUntil::M163);
   if (dom_codes.has_value() && dom_codes->size() == 1 &&
       *dom_codes->begin() == DomCode::ESCAPE) {
     // TODO(crbug.com/40270434): The protocol doesn't support locking specific
@@ -225,8 +228,8 @@ std::unique_ptr<PlatformKeyboardHook> WaylandKeyboard::CreateKeyboardHook(
 
 wl::Object<zwp_keyboard_shortcuts_inhibitor_v1>
 WaylandKeyboard::CreateShortcutsInhibitor(WaylandWindow* window) {
-  DCHECK(window);
-  DCHECK(window->root_surface());
+  CHECK(window, base::NotFatalUntil::M163);
+  CHECK(window->root_surface(), base::NotFatalUntil::M163);
   if (auto* manager = connection_->keyboard_shortcuts_inhibit_manager_v1()) {
     return wl::Object<zwp_keyboard_shortcuts_inhibitor_v1>(
         zwp_keyboard_shortcuts_inhibit_manager_v1_inhibit_shortcuts(
@@ -244,7 +247,7 @@ void WaylandKeyboard::OnKeymap(void* data,
                                uint32_t size) {
   base::ScopedFD scoped_fd(fd);
   auto* self = static_cast<WaylandKeyboard*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
 
   if (!data || format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1)
     return;
@@ -259,9 +262,12 @@ void WaylandKeyboard::OnKeymap(void* data,
     return;
   }
 
-  const char* keymap_string = static_cast<const char*>(keymap);
-  if (!self->layout_engine_->SetCurrentLayoutFromBuffer(
-          keymap_string, UNSAFE_TODO(strnlen(keymap_string, size)))) {
+  // SAFETY: mmap() above succeeded in mapping `size` bytes at `keymap`.
+  std::string_view keymap_string = base::as_string_view(
+      UNSAFE_BUFFERS(base::span(static_cast<const char*>(keymap), size)));
+  // The keymap may be NUL-terminated before `size`.
+  keymap_string = keymap_string.substr(0, keymap_string.find('\0'));
+  if (!self->layout_engine_->SetCurrentLayoutFromBuffer(keymap_string)) {
     DLOG(ERROR) << "Failed to set XKB keymap.";
   }
   munmap(keymap, size);
@@ -304,7 +310,7 @@ void WaylandKeyboard::OnKey(void* data,
                             uint32_t key,
                             uint32_t state) {
   auto* self = static_cast<WaylandKeyboard*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
   self->ProcessKey(serial, time, key, state, KeyEventKind::kKey);
 }
 
@@ -318,7 +324,7 @@ void WaylandKeyboard::OnModifiers(void* data,
                                   uint32_t group) {
 #if BUILDFLAG(USE_XKBCOMMON)
   auto* self = static_cast<WaylandKeyboard*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
 
   int modifiers =
       self->layout_engine_->UpdateModifiers(depressed, latched, locked, group);
@@ -339,7 +345,7 @@ void WaylandKeyboard::OnRepeatInfo(void* data,
   }
 
   auto* self = static_cast<WaylandKeyboard*>(data);
-  DCHECK(self);
+  CHECK(self, base::NotFatalUntil::M163);
   EventAutoRepeatHandler& handler = self->auto_repeat_handler_;
 
   // A rate of zero will disable any repeating.
@@ -356,8 +362,8 @@ void WaylandKeyboard::OnSyncDone(void* data,
                                  struct wl_callback* callback,
                                  uint32_t time) {
   auto* self = static_cast<WaylandKeyboard*>(data);
-  DCHECK(self);
-  DCHECK(self->auto_repeat_closure_);
+  CHECK(self, base::NotFatalUntil::M163);
+  CHECK(self->auto_repeat_closure_, base::NotFatalUntil::M163);
   std::move(self->auto_repeat_closure_).Run();
   self->sync_callback_.reset();
 }

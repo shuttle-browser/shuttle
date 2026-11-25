@@ -5,6 +5,10 @@
 #ifndef EXTENSIONS_BROWSER_PERMISSIONS_ACTIVE_TAB_PERMISSION_GRANTER_H_
 #define EXTENSIONS_BROWSER_PERMISSIONS_ACTIVE_TAB_PERMISSION_GRANTER_H_
 
+#include <map>
+#include <vector>
+
+#include "base/functional/callback.h"
 #include "base/gtest_prod_util.h"
 #include "base/scoped_observation.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -12,6 +16,7 @@
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_registry_observer.h"
 #include "extensions/buildflags/buildflags.h"
+#include "extensions/common/extension_id.h"
 #include "extensions/common/extension_set.h"
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
@@ -39,8 +44,26 @@ class ActiveTabPermissionGranter
   ~ActiveTabPermissionGranter() override;
 
   // If `extension` has the activeTab or tabCapture permission, grants
-  // tab-specific permissions to it until the next page navigation or refresh.
-  void GrantIfRequested(const Extension* extension);
+  // tab-specific permissions to it until the next page navigation or refresh,
+  // provided the committed page has either painted or finished loading.
+  //
+  // `on_granted` is called (asynchronously) after the grant has taken effect
+  // everywhere, including in the network service (where CORS and ORB depend
+  // on the grant).  Callers that notify the extension about the user action
+  // that caused the grant (e.g. callers that dispatch `action.onClicked`)
+  // should do this from `on_granted`.  This way the extension can use the
+  // grant right away.  `on_granted` is called also if there is nothing to
+  // grant, or if the grant is revoked before it takes effect.
+  void GrantIfRequested(const Extension* extension,
+                        base::OnceClosure on_granted);
+
+  // Returns true if tab-specific permissions can be granted for
+  // `web_contents`. Else, returns false and rejects a grant request if
+  // a newly committed page is still loading and has not yet completed
+  // its first visually non-empty paint (e.g. during paint holding). This
+  // ensures that tabs permissions are only granted when the page
+  // contents accurately represent the committed URL.
+  static bool ShouldGrantPermissions(content::WebContents* web_contents);
 
   // Returns true if `extension` has been granted tab-specific permissions.
   bool IsGranted(const Extension* extension) const;
@@ -53,6 +76,20 @@ class ActiveTabPermissionGranter
   void RevokeForTesting();
 
  private:
+  // A grant that hasn't yet taken effect in the Network Service.
+  struct PendingGrant {
+    PendingGrant();
+    PendingGrant(PendingGrant&&);
+    PendingGrant& operator=(PendingGrant&&);
+    ~PendingGrant();
+
+    // ID of the Network Service update that the grant is waiting for.
+    int update_id = 0;
+
+    // Callbacks to run after the grant takes effect.
+    std::vector<base::OnceClosure> on_granted_callbacks;
+  };
+
   friend class content::WebContentsUserData<ActiveTabPermissionGranter>;
 
   FRIEND_TEST_ALL_PREFIXES(ExtensionActionRunnerFencedFrameBrowserTest,
@@ -81,10 +118,26 @@ class ActiveTabPermissionGranter
   void ClearGrantedExtensionsAndNotify(
       const ExtensionSet& granted_extensions_to_remove);
 
-  // Notifies the renderer and other observers that the permission has been
-  // granted.
-  void NotifyGranted(scoped_refptr<const Extension> extension,
-                     URLPatternSet new_hosts);
+  // Notifies renderers (and `ScriptInjectionTracker`) that `new_hosts` have
+  // been granted to `extension`.
+  void NotifyRenderers(const Extension& extension,
+                       const URLPatternSet& new_hosts);
+
+  // Called after the Network Service has processed the update with ID
+  // `update_id` (sent when granting permissions to `extension`).  Notifies
+  // observers and runs `on_granted` callbacks (unless the grant has been
+  // revoked in the meantime).
+  void OnNetworkServiceUpdated(scoped_refptr<const Extension> extension,
+                               int update_id);
+
+  // Runs (asynchronously) the `on_granted` callbacks of the grant to the
+  // extension with `id`, if the grant hasn't taken effect yet.
+  void CancelPendingGrant(const ExtensionId& id);
+
+  // Notifies observers that the permission has been granted.  Called after
+  // the Network Service has been updated, so that observers can rely on CORS
+  // and ORB taking the new permissions into account.
+  void NotifyObservers(const Extension& extension);
 
   // The tab ID for this tab.
   const int tab_id_;
@@ -92,6 +145,13 @@ class ActiveTabPermissionGranter
   // Extensions with the activeTab permission that have been granted
   // tab-specific permissions until the next navigation/refresh.
   ExtensionSet granted_extensions_;
+
+  // Grants (in `granted_extensions_`) that haven't yet taken effect in the
+  // Network Service.
+  std::map<ExtensionId, PendingGrant> pending_grants_;
+
+  // The last `PendingGrant::update_id` that has been used.
+  int last_update_id_ = 0;
 
   // Listen to extension unloaded notifications.
   base::ScopedObservation<ExtensionRegistry, ExtensionRegistryObserver>

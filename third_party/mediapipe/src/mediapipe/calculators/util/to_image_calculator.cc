@@ -17,16 +17,16 @@
 #include <memory>
 #include <utility>
 
-#include "absl/functional/overload.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/functional/overload.h"   // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/framework/api3/calculator.h"
 #include "mediapipe/framework/api3/calculator_context.h"
 #include "mediapipe/framework/api3/calculator_contract.h"
 #include "mediapipe/framework/api3/packet.h"
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/image_frame.h"
-#include "mediapipe/framework/port/status_macros.h"
 
 namespace mediapipe::api3 {
 
@@ -55,7 +55,7 @@ absl::Status ToImageNodeImpl::UpdateContract(
 }
 
 absl::Status ToImageNodeImpl::Process(CalculatorContext<ToImageNode>& cc) {
-  MP_ASSIGN_OR_RETURN(auto output, GetInputImage(cc));
+  ABSL_ASSIGN_OR_RETURN(auto output, GetInputImage(cc));
   cc.out_image.Send(std::move(output).At(cc.InputTimestamp()));
   return absl::OkStatus();
 }
@@ -64,7 +64,7 @@ namespace {
 
 // Wrap ImageFrameSharedPtr; shallow copy.
 absl::StatusOr<Packet<Image>> FromImageFrame(Packet<ImageFrame> packet) {
-  MP_ASSIGN_OR_RETURN(auto shared_ptr, packet.Share());
+  ABSL_ASSIGN_OR_RETURN(auto shared_ptr, packet.Share());
   return MakePacket<Image, std::shared_ptr<mediapipe::ImageFrame>>(
       std::const_pointer_cast<mediapipe::ImageFrame>(std::move(shared_ptr)));
 }

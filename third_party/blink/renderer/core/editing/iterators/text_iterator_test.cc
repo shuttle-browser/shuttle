@@ -30,6 +30,9 @@
 
 #include "third_party/blink/renderer/core/editing/iterators/text_iterator.h"
 
+#include <tuple>
+#include <vector>
+
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/editing/ephemeral_range.h"
 #include "third_party/blink/renderer/core/editing/position.h"
@@ -112,6 +115,11 @@ class TextIteratorTest : public EditingTestBase {
  private:
   template <typename Tree>
   std::string IterateWithIterator(typename Tree::TextIteratorType&);
+
+  // Turns FastCommonGraphemeClusterPrefixLength on for every test, so that no
+  // test depends on the flag's default. CurrentContainerMatchesLegacy turns it
+  // off to get the legacy containers.
+  ScopedFastCommonGraphemeClusterPrefixLengthForTest scoped_feature_{true};
 };
 
 template <typename Tree>
@@ -330,7 +338,7 @@ TEST_F(TextIteratorTest, StartingAtNodeInShadowRoot) {
   SetBodyContent(body_content);
   ShadowRoot* shadow_root = CreateShadowRootForElementWithIdAndSetInnerHtml(
       GetDocument(), "host", shadow_content);
-  Node* outer_div = GetDocument().getElementById(AtomicString("outer"));
+  Node* outer_div = GetElementById("outer");
   Node* span_in_shadow = shadow_root->firstChild();
   Position start = Position::FirstPositionInNode(*span_in_shadow);
   Position end = Position::LastPositionInNode(*outer_div);
@@ -355,7 +363,7 @@ TEST_F(TextIteratorTest, FinishingAtNodeInShadowRoot) {
   SetBodyContent(body_content);
   ShadowRoot* shadow_root = CreateShadowRootForElementWithIdAndSetInnerHtml(
       GetDocument(), "host", shadow_content);
-  Node* outer_div = GetDocument().getElementById(AtomicString("outer"));
+  Node* outer_div = GetElementById("outer");
   Node* span_in_shadow = shadow_root->firstChild();
   Position start = Position::FirstPositionInNode(*outer_div);
   Position end = Position::LastPositionInNode(*span_in_shadow);
@@ -470,7 +478,7 @@ TEST_F(TextIteratorTest, RangeLengthWithReplacedElements) {
   SetBodyContent(body_content);
   UpdateAllLifecyclePhasesForTest();
 
-  Node* div_node = GetDocument().getElementById(AtomicString("div"));
+  Node* div_node = GetElementById("div");
   const EphemeralRange range(Position(div_node, 0), Position(div_node, 3));
 
   EXPECT_EQ(3, TextIterator::RangeLength(range));
@@ -491,7 +499,7 @@ TEST_F(TextIteratorTest, RangeLengthInMultilineSpan) {
   SetBodyContent(body_content);
   UpdateAllLifecyclePhasesForTest();
 
-  Node* span_node = GetDocument().getElementById(AtomicString("span1"));
+  Node* span_node = GetElementById("span1");
   Node* text_node = span_node->firstChild();
 
   // Select the word "two", this is the last word on the line.
@@ -605,7 +613,7 @@ TEST_F(TextIteratorTest, characterAt) {
   SetBodyContent(body_content);
   SetShadowContent(shadow_content, "host");
 
-  Element* host = GetDocument().getElementById(AtomicString("host"));
+  Element* host = GetElementById("host");
 
   EphemeralRangeTemplate<EditingStrategy> range1(
       EphemeralRangeTemplate<EditingStrategy>::RangeOfContents(*host));
@@ -671,8 +679,7 @@ TEST_F(TextIteratorTest, EndingConditionWithDisplayNoneInShadowTree) {
   SetBodyContent(body_content);
   SetShadowContent(shadow_content, "host");
 
-  ShadowRoot* shadow_root =
-      GetDocument().getElementById(AtomicString("host"))->OpenShadowRoot();
+  ShadowRoot* shadow_root = GetElementById("host")->OpenShadowRoot();
   Node* b_in_shadow_tree = shadow_root->getElementById(AtomicString("end"));
 
   Position start(&GetDocument(), 0);
@@ -704,8 +711,7 @@ TEST_F(TextIteratorTest, PreserveOnlyLeadingSpace) {
   SetBodyContent(
       "<div style='width: 2em;'><b><i id='foo'>foo </i></b> bar</div>");
   Element* div = QuerySelector("div");
-  Position start(
-      GetDocument().getElementById(AtomicString("foo"))->firstChild(), 0);
+  Position start(GetElementById("foo")->firstChild(), 0);
   Position end(div->lastChild(), 4);
   EXPECT_EQ("foo bar",
             PlainText(EphemeralRange(start, end), EmitsImageAltTextBehavior()));
@@ -980,8 +986,7 @@ TEST_F(TextIteratorTest, BasicIterationOnChildrenWithStyle) {
 
 TEST_F(TextIteratorTest, BasicIterationInput) {
   SetBodyContent("<input id='a' value='b'>");
-  auto* input_element =
-      ToTextControl(GetDocument().getElementById(AtomicString("a")));
+  auto* input_element = ToTextControl(GetElementById("a"));
   const ShadowRoot* shadow_root = input_element->UserAgentShadowRoot();
   const Position start = Position::FirstPositionInNode(*shadow_root);
   const Position end = Position::LastPositionInNode(*shadow_root);
@@ -990,8 +995,7 @@ TEST_F(TextIteratorTest, BasicIterationInput) {
 
 TEST_F(TextIteratorTest, BasicIterationInputiWithBr) {
   SetBodyContent("<input id='a' value='b'>");
-  auto* input_element =
-      ToTextControl(GetDocument().getElementById(AtomicString("a")));
+  auto* input_element = ToTextControl(GetElementById("a"));
   Element* inner_editor = input_element->InnerEditorElement();
   Element* br = GetDocument().CreateRawElement(html_names::kBrTag);
   inner_editor->AppendChild(br);
@@ -1028,7 +1032,7 @@ TEST_F(TextIteratorTest, NoZWSForSpaceAfterNoWrapSpace) {
 TEST_F(TextIteratorTest, PositionInShadowTree) {
   // Flat Tree: <div id=host>A<slot name=c><img slot=c alt=C></slot></div>
   SetBodyContent("<div id=host><a></a><b></b><img slot=c alt=C></div>");
-  Element& host = *GetDocument().getElementById(AtomicString("host"));
+  Element& host = *GetElementById("host");
   ShadowRoot& shadow_root =
       host.AttachShadowRootForTesting(ShadowRootMode::kOpen);
   shadow_root.SetInnerHTMLWithoutTrustedTypes("A<slot name=c></slot>");
@@ -1086,11 +1090,11 @@ TEST_F(TextIteratorTest, EmitsSpaceForNbsp) {
 
 TEST_F(TextIteratorTest, IterateWithLockedSubtree) {
   SetBodyContent("<div id='parent'>foo<div id='locked'>text</div>bar</div>");
-  auto* locked = GetDocument().getElementById(AtomicString("locked"));
+  auto* locked = GetElementById("locked");
   locked->setAttribute(html_names::kStyleAttr,
                        AtomicString("content-visibility: auto"));
   GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
-  auto* parent = GetDocument().getElementById(AtomicString("parent"));
+  auto* parent = GetElementById("parent");
   const Position start_position = Position::FirstPositionInNode(*parent);
   const Position end_position = Position::LastPositionInNode(*parent);
   EXPECT_EQ(6, TextIterator::RangeLength(start_position, end_position));
@@ -1101,8 +1105,8 @@ TEST_F(TextIteratorTest, IterateRangeEndingAtLockedSubtree) {
       <div id=start>start</div><div hidden=until-found><div id=end>end</div>
       foo</div>
     )HTML");
-  auto* start = GetDocument().getElementById(AtomicString("start"));
-  auto* end = GetDocument().getElementById(AtomicString("end"));
+  auto* start = GetElementById("start");
+  auto* end = GetElementById("end");
   GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
 
   const Position start_position = Position::FirstPositionInNode(*start);
@@ -1244,6 +1248,71 @@ TEST_F(TextIteratorTest, ExcludeAutofilledValueListboxSelect) {
   // text is emitted).
   ScopedTextIteratorExcludeAutofilledSelectFixForTest disable_fix(false);
   EXPECT_EQ("[Two]", IteratePartial<DomTree>(start, end, behavior));
+}
+
+using RunContainers =
+    std::vector<std::tuple<const Node*, wtf_size_t, wtf_size_t>>;
+
+// Returns the container, and the start and end offsets in it, of every run of
+// a text iterator over the contents of `body`, getting the container first.
+template <typename Tree>
+RunContainers GetRunContainers(const Element& body,
+                               const TextIteratorBehavior& behavior) {
+  using PositionType = typename Tree::PositionType;
+  typename Tree::TextIteratorType it(
+      PositionType(&body, 0), PositionType(&body, Tree::CountChildren(body)),
+      behavior);
+  RunContainers runs;
+  for (; !it.AtEnd(); it.Advance()) {
+    const Node* container = &it.CurrentContainer();
+    runs.emplace_back(container, it.StartOffsetInCurrentContainer(),
+                      it.EndOffsetInCurrentContainer());
+  }
+  return runs;
+}
+
+// With FastCommonGraphemeClusterPrefixLength, CurrentContainer() doesn't
+// compute the offsets in the container of a run emitted for a node. Checks that
+// it returns the same container, and that the offsets are the same, as without
+// it, for every run, including the ones emitted for line breaks, replaced
+// elements, blocks, table cells, text controls and shadow hosts, with and
+// without entering text controls and open shadow roots.
+TEST_F(TextIteratorTest, CurrentContainerMatchesLegacy) {
+  SetBodyContent(
+      "<div>ab<br>cd<img width='10' height='10'>ef</div>"
+      "<p>gh   <b>ij</b> <span style='display:none'>hidden</span> "
+      "<span> </span>kl</p>"
+      "<table><tr><td>m</td><td>n</td></tr></table>"
+      "<ul><li>o</li></ul>"
+      "<input value='p  q'><input><textarea>r\n\ns\n</textarea>"
+      "<textarea></textarea>t"
+      "<div id='open-host'><a></a><b></b><img slot=c alt=C></div>"
+      "<div id='closed-host'>light</div>");
+  GetElementById("open-host")
+      ->AttachShadowRootForTesting(ShadowRootMode::kOpen)
+      .SetInnerHTMLWithoutTrustedTypes("A<br><slot name=c></slot>");
+  GetElementById("closed-host")
+      ->AttachShadowRootForTesting(ShadowRootMode::kClosed)
+      .SetInnerHTMLWithoutTrustedTypes("wx<br><slot></slot><br>yz");
+  UpdateAllLifecyclePhasesForTest();
+  const Element& body = *GetDocument().body();
+  for (const TextIteratorBehavior& behavior :
+       {TextIteratorBehavior(), EmitsImageAltTextBehavior(),
+        EmitsObjectReplacementCharacterBehavior(),
+        EmitsCharactersBetweenAllVisiblePositionsBehavior(),
+        EntersTextControlsBehavior(), EntersOpenShadowRootsBehavior()}) {
+    RunContainers legacy_dom;
+    RunContainers legacy_flat;
+    {
+      ScopedFastCommonGraphemeClusterPrefixLengthForTest legacy_feature(false);
+      legacy_dom = GetRunContainers<DomTree>(body, behavior);
+      legacy_flat = GetRunContainers<FlatTree>(body, behavior);
+    }
+    EXPECT_FALSE(legacy_dom.empty());
+    EXPECT_FALSE(legacy_flat.empty());
+    EXPECT_EQ(legacy_dom, GetRunContainers<DomTree>(body, behavior));
+    EXPECT_EQ(legacy_flat, GetRunContainers<FlatTree>(body, behavior));
+  }
 }
 
 }  // namespace text_iterator_test

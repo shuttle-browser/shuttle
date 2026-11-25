@@ -65,6 +65,7 @@
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
 #endif
 #include "chrome/browser/ui/webui/color_pipeline_internals/color_pipeline_internals_ui.h"
+#include "chrome/browser/ui/webui/craft/craft_ui.h"
 #include "chrome/browser/ui/webui/downloads/downloads_ui.h"
 #include "chrome/browser/ui/webui/infobar_internals/infobar_internals_ui.h"
 #include "chrome/browser/ui/webui/inspect/inspect_ui.h"
@@ -244,6 +245,7 @@ void RegisterChromeWebUIConfigs() {
 #endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
   map.AddWebUIConfig(std::make_unique<shuttle::AgentsUIConfig>());
   map.AddWebUIConfig(std::make_unique<ColorPipelineInternalsUIConfig>());
+  map.AddWebUIConfig(std::make_unique<craft::CraftUIConfig>());
   map.AddWebUIConfig(std::make_unique<DownloadsUIConfig>());
   map.AddWebUIConfig(std::make_unique<InfobarInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<InspectUIConfig>());

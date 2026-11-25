@@ -27,11 +27,13 @@
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
 #include "chrome/browser/ui/views/omnibox/full_webui_omnibox_frame.h"
+#include "chrome/browser/ui/views/omnibox/omnibox_popup_content_delegate.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter_base.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_tab_selection_listener.h"
 #include "chrome/browser/ui/views/omnibox/rounded_omnibox_results_frame.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_web_contents_helper.h"
+#include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_profile.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/input/native_web_keyboard_event.h"
@@ -117,21 +119,95 @@ void TransferFocusToView(views::View* target_view,
 }  // namespace
 
 OmniboxPopupWebUIBaseContent::OmniboxPopupWebUIBaseContent(
-    OmniboxPopupPresenterBase* presenter,
+    OmniboxPopupContentDelegate* content_delegate,
     LocationBar* location_bar,
     OmniboxController* controller,
     bool top_rounded_corners)
+    : OmniboxPopupWebUIBaseContent(content_delegate,
+                                   /*sizer=*/nullptr,
+                                   /*config=*/{},
+                                   location_bar,
+                                   controller,
+                                   top_rounded_corners,
+                                   /*contents=*/nullptr) {}
+
+OmniboxPopupWebUIBaseContent::OmniboxPopupWebUIBaseContent(
+    OmniboxPopupContentDelegate* content_delegate,
+    OmniboxPopupContentSizer* sizer,
+    OmniboxPopupContentConfig config,
+    LocationBar* location_bar,
+    OmniboxController* controller,
+    bool top_rounded_corners)
+    : OmniboxPopupWebUIBaseContent(content_delegate,
+                                   sizer,
+                                   config,
+                                   location_bar,
+                                   controller,
+                                   top_rounded_corners,
+                                   /*contents=*/nullptr) {}
+
+OmniboxPopupWebUIBaseContent::OmniboxPopupWebUIBaseContent(
+    OmniboxPopupContentDelegate* content_delegate,
+    OmniboxPopupContentSizer* sizer,
+    OmniboxPopupContentConfig config,
+    LocationBar* location_bar,
+    OmniboxController* controller,
+    bool top_rounded_corners,
+    std::unique_ptr<ContentsWrapper> contents)
     : views::WebView(location_bar->GetProfile()),
-      popup_presenter_(presenter),
+      content_delegate_(content_delegate),
+      sizer_(sizer),
+      config_(config),
       location_bar_(location_bar),
+      presenter_delegate_(location_bar ? location_bar->GetPresenterDelegate()
+                                       : nullptr),
       controller_(controller),
       top_rounded_corners_(top_rounded_corners),
+      contents_wrapper_(std::move(contents)),
       last_location_bar_width_(location_bar->BoundsInScreen().width()) {
   location_bar_->AddLocationBarObserver(this);
 }
 
 OmniboxPopupWebUIBaseContent::~OmniboxPopupWebUIBaseContent() {
   location_bar_->RemoveLocationBarObserver(this);
+}
+
+std::unique_ptr<OmniboxPopupWebUIBaseContent::ContentsWrapper>
+OmniboxPopupWebUIBaseContent::ReleaseContentsWrapper() {
+  CHECK(contents_wrapper_);
+  TRACE_EVENT1("omnibox",
+               "OmniboxPopupWebUIBaseContent::ReleaseContentsWrapper", "prefix",
+               GetMetricPrefix());
+  if (auto* webui_controller = contents_wrapper_->GetWebUIController()) {
+    // Runs while this window still embeds the popup, so that the handlers can
+    // clean up state they added to this window.
+    webui_controller->DetachFromWindow();
+    webui_controller->SetSearchboxHandlerDelegate(nullptr);
+  }
+  contents_wrapper_->SetHost(nullptr);
+  SetWebContents(nullptr);
+  tab_selection_listener_.reset();
+  context_menu_.reset();
+  file_chooser_deactivation_blocker_.reset();
+  debounce_resize_timer_.Stop();
+  return std::move(contents_wrapper_);
+}
+
+bool OmniboxPopupWebUIBaseContent::CanReleaseContentsWrapper() {
+  if (!contents_wrapper_ || file_chooser_open_ || context_menu_) {
+    return false;
+  }
+  content::WebContents* web_contents = contents_wrapper_->web_contents();
+  if (!web_contents || web_contents->IsLoading() || web_contents->IsCrashed()) {
+    return false;
+  }
+  if (auto* permission_manager =
+          permissions::PermissionRequestManager::FromWebContents(web_contents);
+      permission_manager && permission_manager->IsRequestInProgress()) {
+    return false;
+  }
+  OmniboxPopupUI* webui_controller = contents_wrapper_->GetWebUIController();
+  return webui_controller && webui_controller->CanMoveToAnotherWindow();
 }
 
 void OmniboxPopupWebUIBaseContent::AddedToWidget() {
@@ -159,6 +235,12 @@ bool OmniboxPopupWebUIBaseContent::EscClosesUI() const {
 }
 
 void OmniboxPopupWebUIBaseContent::OnLocationBarBoundsChanged() {
+  // Hosts without a sizer lay out this View themselves, so auto-resize and
+  // sizer bounds updates are not used.
+  if (!sizer_) {
+    return;
+  }
+
   // Track if the location bar width actually changed. This indicates a browser
   // window resize. In that case, bypass the height debouncer to prevent
   // flickering due to being 'behind' during actual resizes with rapid changes.
@@ -173,15 +255,13 @@ void OmniboxPopupWebUIBaseContent::OnLocationBarBoundsChanged() {
            : RoundedOmniboxResultsFrame::GetLocationBarAlignmentInsets()
                  .width());
 
-  if (popup_presenter_) {
-    width = std::max(width, popup_presenter_->get_minimum_size().width());
-    if (popup_presenter_->ShouldDrawShadowInWebUI()) {
-      // The WebView spans the whole widget, shadow margin included, and the
-      // page reserves that margin in its own layout. The renderer viewport
-      // must match the WebView or the content would be laid out narrower than
-      // the widget.
-      width += RoundedOmniboxResultsFrame::GetShadowInsets().width();
-    }
+  width = std::max(width, sizer_->GetPopupMinimumSize().width());
+  if (config_.draw_shadow_in_webui) {
+    // The WebView spans the whole widget, shadow margin included, and the
+    // page reserves that margin in its own layout. The renderer viewport
+    // must match the WebView or the content would be laid out narrower than
+    // the widget.
+    width += RoundedOmniboxResultsFrame::GetShadowInsets().width();
   }
 
   // Update the auto-resize limits for WebUI so that the WebUI updates
@@ -211,9 +291,7 @@ void OmniboxPopupWebUIBaseContent::OnLocationBarBoundsChanged() {
                      [](base::WeakPtr<OmniboxPopupWebUIBaseContent> self) {
                        if (self) {
                          self->has_pending_synchronize_ = false;
-                         if (self->popup_presenter_) {
-                           self->popup_presenter_->SynchronizePopupBounds();
-                         }
+                         self->sizer_->SynchronizePopupBounds();
                        }
                      },
                      weak_factory_.GetWeakPtr()));
@@ -235,8 +313,8 @@ void OmniboxPopupWebUIBaseContent::CloseUI() {
 }
 
 void OmniboxPopupWebUIBaseContent::OnPreHandleEscapeKey() {
-  if (popup_presenter_) {
-    popup_presenter_->NotifyEscapeKeyPressed();
+  if (content_delegate_) {
+    content_delegate_->NotifyEscapeKeyPressed();
   }
 }
 
@@ -251,6 +329,8 @@ void OmniboxPopupWebUIBaseContent::ShowUI() {
                  "prefix", GetMetricPrefix());
     base::UmaHistogramBoolean(
         base::StrCat({GetMetricPrefix(), ".CrashRecovery"}), true);
+    // A file dialog opened by the crashed page no longer reports back here.
+    file_chooser_open_ = false;
     LoadContent();
   } else {
     base::UmaHistogramBoolean(
@@ -271,15 +351,13 @@ void OmniboxPopupWebUIBaseContent::ShowUI() {
   //
   // Pre-populating the height directly from `GetViewBounds()` immediately
   // restores the cached height to `views::WebView` and the presenter on show.
-  if (is_full_webui_omnibox()) {
+  if (is_full_webui_omnibox() && sizer_) {
     if (auto* web_contents = GetWrappedWebContents()) {
       if (auto* rwhv = web_contents->GetRenderWidgetHostView()) {
         gfx::Size view_size = rwhv->GetViewBounds().size();
         if (view_size.height() > 1) {
           SetPreferredSize(view_size);
-          if (popup_presenter_) {
-            popup_presenter_->OnContentHeightChanged(view_size.height());
-          }
+          sizer_->OnContentHeightChanged(view_size.height());
         }
       }
     }
@@ -294,6 +372,12 @@ void OmniboxPopupWebUIBaseContent::ShowUI() {
   OnLocationBarBoundsChanged();
 
   is_shown_ = true;
+
+  // Mark the WebContents visible so that a frame will be produced for visual
+  // state callbacks.
+  if (content::WebContents* web_contents = GetWrappedWebContents()) {
+    web_contents->WasShown();
+  }
 }
 
 void OmniboxPopupWebUIBaseContent::ShowCustomContextMenu(
@@ -312,13 +396,16 @@ void OmniboxPopupWebUIBaseContent::ResizeDueToAutoResize(
   // sync. This prevents flickering during rapid continuous window resizes.
   const bool is_resizing = is_window_resizing_;
   is_window_resizing_ = false;
+  if (!sizer_) {
+    return;
+  }
 
-  if (popup_presenter_->ShouldDeferUntilVisualStateReady().has_value() ||
-      is_resizing || !popup_presenter_->ShouldDebounceResize()) {
+  if (config_.defer_until_visual_state.has_value() || is_resizing ||
+      !config_.debounce_resize) {
     debounce_resize_timer_.Stop();
-    popup_presenter_->OnContentHeightChanged(new_size.height());
+    sizer_->OnContentHeightChanged(new_size.height());
   } else {
-        // Debounce the resize event by 2 frame's time (assuming 60 Hz) to avoid
+    // Debounce the resize event by 2 frame's time (assuming 60 Hz) to avoid
     // flickering issues when the renderer sends a transient initial size.
     // The issue is manifested as the popup being clipped at the top.
     // This happens when:
@@ -337,8 +424,8 @@ void OmniboxPopupWebUIBaseContent::ResizeDueToAutoResize(
     // debouncer after making the JS initiate the widget show.
     debounce_resize_timer_.Start(
         FROM_HERE, base::Seconds(2) / 60,
-        base::BindOnce(&OmniboxPopupPresenterBase::OnContentHeightChanged,
-                       base::Unretained(popup_presenter_), new_size.height()));
+        base::BindOnce(&OmniboxPopupContentSizer::OnContentHeightChanged,
+                       base::Unretained(sizer_), new_size.height()));
   }
 }
 
@@ -347,8 +434,8 @@ bool OmniboxPopupWebUIBaseContent::HandleKeyboardEvent(
     const input::NativeWebKeyboardEvent& event) {
   if (event.windows_key_code == ui::VKEY_ESCAPE) {
     if (event.GetType() == input::NativeWebKeyboardEvent::Type::kRawKeyDown &&
-        popup_presenter_) {
-      popup_presenter_->NotifyEscapeKeyPressed();
+        content_delegate_) {
+      content_delegate_->NotifyEscapeKeyPressed();
     }
     if (EscClosesUI()) {
       return controller_->edit_model()->OnEscapeKeyPressed();
@@ -363,11 +450,11 @@ bool OmniboxPopupWebUIBaseContent::HandleKeyboardEvent(
   // keyboard events (excluding Escape, which is handled above and must not
   // trigger `IDC_STOP`) directly to the parent `BrowserView` so browser-level
   // accelerators (e.g., Ctrl+N, Ctrl+T, Ctrl+W) are executed.
-  if (is_full_webui_omnibox() && popup_presenter_ &&
+  if (is_full_webui_omnibox() && presenter_delegate_ &&
       (event.GetType() == input::NativeWebKeyboardEvent::Type::kRawKeyDown ||
        event.GetType() == input::NativeWebKeyboardEvent::Type::kKeyDown)) {
     views::Widget* location_bar_widget =
-        popup_presenter_->delegate().GetLocationBarWidget();
+        presenter_delegate_->GetLocationBarWidget();
     BrowserView* browser_view =
         location_bar_widget ? BrowserView::GetBrowserViewForNativeWindow(
                                   location_bar_widget->GetNativeWindow())
@@ -384,12 +471,11 @@ bool OmniboxPopupWebUIBaseContent::HandleKeyboardEvent(
 }
 
 void OmniboxPopupWebUIBaseContent::AdvanceFocus(bool reverse) {
-  if (!popup_presenter_) {
+  if (!presenter_delegate_) {
     return;
   }
 
-  views::Widget* browser_widget =
-      popup_presenter_->delegate().GetLocationBarWidget();
+  views::Widget* browser_widget = presenter_delegate_->GetLocationBarWidget();
   if (!browser_widget) {
     return;
   }
@@ -401,7 +487,7 @@ void OmniboxPopupWebUIBaseContent::AdvanceFocus(bool reverse) {
   }
 
   views::View* location_bar_view =
-      popup_presenter_->delegate().GetLocationBarFocusRestoreView();
+      presenter_delegate_->GetLocationBarFocusRestoreView();
   if (!location_bar_view) {
     return;
   }
@@ -439,6 +525,10 @@ void OmniboxPopupWebUIBaseContent::RequestMediaAccessPermission(
 
 void OmniboxPopupWebUIBaseContent::SetContentURL(std::string_view url) {
   content_url_ = GURL(url);
+  if (contents_wrapper_) {
+    AdoptContents();
+    return;
+  }
   LoadContent();
 }
 
@@ -449,12 +539,38 @@ void OmniboxPopupWebUIBaseContent::LoadContent() {
                     GetMetricPrefix()})),
                "url", content_url_.spec());
   CHECK(!content_url_.is_empty(), base::NotFatalUntil::M162);
+  // With kTopChromeWebUISharedRenderer, the popup of a browser window is
+  // created in TopChromeWebUIProfile, which is shared by the windows of all
+  // profiles.
   contents_wrapper_ = std::make_unique<WebUIContentsWrapperT<OmniboxPopupUI>>(
-      content_url_, location_bar_->GetProfile(), IDS_TASK_MANAGER_OMNIBOX,
-      EscClosesUI());
+      content_url_,
+      &webui::GetProfileForTopChromeWebUIContents(location_bar_->GetProfile()),
+      IDS_TASK_MANAGER_OMNIBOX, EscClosesUI(),
+      /*supports_draggable_regions=*/false, location_bar_->GetProfile());
+  BindContentsToWindow();
+}
+
+void OmniboxPopupWebUIBaseContent::AdoptContents() {
+  TRACE_EVENT1("omnibox", "OmniboxPopupWebUIBaseContent::AdoptContents",
+               "prefix", GetMetricPrefix());
+  // Only browser windows exchange popups.
+  CHECK(location_bar_->GetBrowser());
+  BindContentsToWindow();
+  // The released WebContents still takes its colors from the old window.
+  if (views::Widget* location_bar_widget =
+          presenter_delegate_->GetLocationBarWidget()) {
+    GetWebContents()->SetColorProviderSource(location_bar_widget);
+  }
+  if (auto* webui_controller = contents_wrapper_->GetWebUIController()) {
+    webui_controller->SetSearchboxHandlerDelegate(content_delegate_);
+    webui_controller->AttachToWindow(controller_);
+  }
+}
+
+void OmniboxPopupWebUIBaseContent::BindContentsToWindow() {
   contents_wrapper_->SetHost(weak_factory_.GetWeakPtr());
   SetWebContents(contents_wrapper_->web_contents());
-  if (popup_presenter_->ShouldEvictOnHide()) {
+  if (config_.evict_on_hide) {
     if (auto* rwhv =
             contents_wrapper_->web_contents()->GetRenderWidgetHostView()) {
       rwhv->SetEvictOnHide(true);
@@ -523,15 +639,15 @@ void OmniboxPopupWebUIBaseContent::Detach() {
       }
       // For popups that don't receive focus (ex: Classic WebUI Omnibox Popup),
       // clear any focused element so stale focus states are not retained.
-      if (popup_presenter_ && !popup_presenter_->ShouldReceiveFocus()) {
+      if (content_delegate_ && !content_delegate_->ShouldReceiveFocus()) {
         web_contents->ClearFocusedElement();
       }
     }
   }
-  if (!popup_presenter_->ShouldDetachWebContentsOnHide()) {
+  if (!config_.detach_on_hide) {
     return;
   }
-  if (popup_presenter_->IsShown()) {
+  if (content_delegate_->IsShown()) {
     return;
   }
 
@@ -540,7 +656,7 @@ void OmniboxPopupWebUIBaseContent::Detach() {
   // hide, then the Webcontents will fall back to use system's
   // color mode, which can be different from the browser's color mode.
   views::Widget* location_bar_widget =
-      popup_presenter_->delegate().GetLocationBarWidget();
+      presenter_delegate_->GetLocationBarWidget();
   if (GetWebContents() && location_bar_widget) {
     GetWebContents()->SetColorProviderSource(location_bar_widget);
   }
@@ -559,6 +675,22 @@ void OmniboxPopupWebUIBaseContent::Detach() {
 
 content::WebContents* OmniboxPopupWebUIBaseContent::GetWrappedWebContents() {
   return contents_wrapper_ ? contents_wrapper_->web_contents() : nullptr;
+}
+
+void OmniboxPopupWebUIBaseContent::HideUI() {
+  if (base::FeatureList::IsEnabled(omnibox::kOmniboxWebUIPopupMarkAsHidden)) {
+    if (content::WebContents* web_contents = GetWrappedWebContents()) {
+      web_contents->WasHidden();
+    }
+  }
+  Clear();
+}
+
+bool OmniboxPopupWebUIBaseContent::CompletedFirstVisuallyNonEmptyPaint() {
+  // Read the wrapped contents, since `GetWebContents()` creates new contents
+  // while the popup is hidden and its contents are detached.
+  content::WebContents* web_contents = GetWrappedWebContents();
+  return web_contents && web_contents->CompletedFirstVisuallyNonEmptyPaint();
 }
 
 void OmniboxPopupWebUIBaseContent::OnMenuClosed() {
@@ -637,11 +769,12 @@ void OmniboxPopupWebUIBaseContent::RunFileChooser(
     content::RenderFrameHost* render_frame_host,
     scoped_refptr<content::FileSelectListener> listener,
     const blink::mojom::FileChooserParams& params) {
+  file_chooser_open_ = true;
   // Prevent focus-loss events from closing the popup when the file dialog
   // opens.
-  if (popup_presenter_) {
+  if (content_delegate_) {
     file_chooser_deactivation_blocker_ =
-        popup_presenter_->CreateDeactivationBlocker();
+        content_delegate_->CreateDeactivationBlocker();
   }
 
   // Wrap the listener to release the deactivation blocker when the dialog
@@ -656,29 +789,28 @@ void OmniboxPopupWebUIBaseContent::RunFileChooser(
 }
 
 void OmniboxPopupWebUIBaseContent::OnFileChooserClosed() {
-  if (popup_presenter_) {
-    popup_presenter_->OnFileSelectionClosed();
+  file_chooser_open_ = false;
+  if (content_delegate_) {
+    content_delegate_->OnFileSelectionClosed();
   }
   // Release the deactivation blocker since the file chooser has been closed.
   file_chooser_deactivation_blocker_.reset();
 }
 
 bool OmniboxPopupWebUIBaseContent::ShouldApplyHeightWorkarounds() const {
-  return !popup_presenter_ || popup_presenter_->ShouldApplyHeightWorkarounds();
+  return !content_delegate_ || config_.height_workarounds;
 }
 
 bool OmniboxPopupWebUIBaseContent::ShouldSizeWebViewToPreferredHeight() const {
-  return popup_presenter_ &&
-         popup_presenter_->ShouldSizeWebViewToPreferredHeight();
+  return content_delegate_ && config_.size_webview_to_preferred_height;
 }
 
 bool OmniboxPopupWebUIBaseContent::ShouldDrawShadowInWebUI() const {
-  return popup_presenter_ && popup_presenter_->ShouldDrawShadowInWebUI();
+  return content_delegate_ && config_.draw_shadow_in_webui;
 }
 
 bool OmniboxPopupWebUIBaseContent::is_full_webui_omnibox() const {
-  return popup_presenter_ &&
-         popup_presenter_->delegate().is_full_webui_omnibox();
+  return presenter_delegate_ && presenter_delegate_->is_full_webui_omnibox();
 }
 
 BEGIN_METADATA(OmniboxPopupWebUIBaseContent)

@@ -12,6 +12,7 @@
 #include "base/json/json_writer.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted_delete_on_sequence.h"
+#include "base/metrics/field_trial_params.h"
 #include "base/trace_event/trace_event.h"
 #include "base/values.h"
 #include "components/optimization_guide/core/optimization_guide_features.h"
@@ -537,11 +538,48 @@ std::optional<odmm::AsrError> SessionAccessor::CreateAsrStreamInternal(
       .language =
           asr_options->language ? asr_options->language->c_str() : nullptr,
       .polisher_model = postprocessor_model_,
+      .enable_token_stability = false,
+      .interim_token_holdback = -1,
+      .interim_release_silence_ms = -1,
+      .interim_stability_steps = -1,
+      .enable_draft_verification = false,
+      .final_decoder_prefill_backoff = -2,
   };
-  if (base::FeatureList::IsEnabled(
-          on_device_model::features::kOnDeviceModelAsrDecoderPrefill)) {
+  const bool decoder_prefill_enabled = base::FeatureList::IsEnabled(
+      on_device_model::features::kOnDeviceModelAsrDecoderPrefill);
+  if (decoder_prefill_enabled) {
     options.decoder_prefill_backoff =
         on_device_model::features::kOnDeviceModelAsrDecoderPrefillBackoff.Get();
+  }
+  if (base::FeatureList::IsEnabled(
+          on_device_model::features::kOnDeviceModelAsrTokenStability)) {
+    options.enable_token_stability = true;
+    options.interim_token_holdback =
+        on_device_model::features::kOnDeviceModelAsrInterimTokenHoldback.Get();
+    options.interim_release_silence_ms =
+        on_device_model::features::kOnDeviceModelAsrInterimReleaseSilenceMs
+            .Get();
+    options.interim_stability_steps =
+        on_device_model::features::kOnDeviceModelAsrInterimStabilitySteps.Get();
+  }
+  if (base::FeatureList::IsEnabled(
+          on_device_model::features::kOnDeviceModelAsrSpeculativeDecoding)) {
+    options.enable_draft_verification =
+        on_device_model::features::kOnDeviceModelAsrEnableDraftVerification
+            .Get();
+    options.final_decoder_prefill_backoff =
+        on_device_model::features::kOnDeviceModelAsrFinalDecoderPrefillBackoff
+            .Get();
+    if (!decoder_prefill_enabled ||
+        !base::GetFieldTrialParamValueByFeature(
+             on_device_model::features::kOnDeviceModelAsrSpeculativeDecoding,
+             on_device_model::features::
+                 kOnDeviceModelAsrInterimDecoderPrefillBackoff.name)
+             .empty()) {
+      options.decoder_prefill_backoff =
+          on_device_model::features::
+              kOnDeviceModelAsrInterimDecoderPrefillBackoff.Get();
+    }
   }
   asr_stream_ = chrome_ml_->ASRCreateStream(session_, &options);
   if (asr_stream_ == 0) {

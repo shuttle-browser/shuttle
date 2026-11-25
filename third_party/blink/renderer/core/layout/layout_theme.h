@@ -179,7 +179,10 @@ class CORE_EXPORT LayoutTheme : public RefCounted<LayoutTheme> {
   // the OS and if it is within an installed WebApp scope, otherwise it will
   // return the default accent color.
   Color GetAccentColorOrDefault(const ColorThemeInfo& theme_info) const;
-  Color GetAccentColorText(const ColorThemeInfo& theme_info) const;
+  // Returns black or white, whichever can be rendered with enough contrast
+  // against `accent_color`. This is the foreground color used for the
+  // `AccentColorText` system-color keyword.
+  static Color GetAccentColorText(const Color& accent_color);
 
   virtual Color SystemHighlightFromColorProvider(
       mojom::blink::ColorScheme color_scheme,
@@ -244,8 +247,6 @@ class CORE_EXPORT LayoutTheme : public RefCounted<LayoutTheme> {
 
   AppearanceValue AdjustAppearanceWithElementType(AppearanceValue appearance,
                                                   const Element&);
-
-  void UpdateForcedColorsState();
 
   std::optional<Color> custom_focus_ring_color_;
   base::TimeDelta caret_blink_interval_ = base::Milliseconds(500);

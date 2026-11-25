@@ -18,7 +18,7 @@ using Displays = std::vector<Display>;
 
 const Display* FindDisplayNearestPoint(const Displays& displays,
                                        const gfx::Point& point) {
-  DCHECK(!displays.empty());
+  CHECK(!displays.empty(), base::NotFatalUntil::M163);
   auto iter = FindDisplayContainingPoint(displays, point);
   if (iter != displays.end())
     return &(*iter);
@@ -33,12 +33,14 @@ const Display* FindDisplayNearestPoint(const Displays& displays,
     }
   }
   // There should always be at least one display that is less than INT_MAX away.
-  DCHECK(nearest_display);
+  CHECK(nearest_display, base::NotFatalUntil::M163);
   return nearest_display;
 }
 
 const Display* FindDisplayWithBiggestIntersection(const Displays& displays,
                                                   const gfx::Rect& rect) {
+  // TODO(crbug.com/581819285): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(!displays.empty());
   int max_area = 0;
   const Display* matching = nullptr;

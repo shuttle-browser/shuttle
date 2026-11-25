@@ -7,26 +7,27 @@
 
 #include <stddef.h>
 
+#include <memory>
+
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
 #include "base/time/time.h"
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/omnibox/omnibox_popup_view.h"
-#include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter_base.h"
+#include "chrome/browser/ui/views/omnibox/omnibox_popup_host.h"
 #include "components/omnibox/browser/omnibox_popup_selection.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "ui/accessibility/ax_node_data.h"
 #include "ui/base/metadata/metadata_header_macros.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 #include "ui/views/view.h"
 #include "ui/views/widget/widget_observer.h"
 
 class LocationBar;
 class OmniboxController;
-class OmniboxView;
 class OmniboxPopupPresenterBase;
-class OmniboxPopupPresenterDelegate;
+class OmniboxView;
 
 class OmniboxPopupViewWebUI : public OmniboxPopupView,
                               OmniboxEditModel::Observer {
@@ -34,12 +35,17 @@ class OmniboxPopupViewWebUI : public OmniboxPopupView,
   OmniboxPopupViewWebUI(OmniboxView* omnibox_view,
                         OmniboxController* controller,
                         LocationBar* location_bar,
-                        OmniboxPopupPresenterDelegate& presenter_delegate);
+                        std::unique_ptr<OmniboxPopupHost> popup_host);
   OmniboxPopupViewWebUI(const OmniboxPopupViewWebUI&) = delete;
   OmniboxPopupViewWebUI& operator=(const OmniboxPopupViewWebUI&) = delete;
   ~OmniboxPopupViewWebUI() override;
 
+  // TODO(crbug.com/584371333): Remove once the remaining callers use
+  // popup_host().
   OmniboxPopupPresenterBase* presenter() override;
+  void set_presenter(OmniboxPopupPresenterBase* presenter);
+
+  OmniboxPopupHost* popup_host() const override;
 
   // OmniboxPopupView:
   void InvalidateLine(size_t line) override;
@@ -49,7 +55,8 @@ class OmniboxPopupViewWebUI : public OmniboxPopupView,
   void GetPopupAccessibleNodeData(ui::AXNodeData* node_data) const override;
   void StepSelection(OmniboxPopupSelection::Direction direction,
                      OmniboxPopupSelection::Step step) override;
-  void OpenCurrentSelection(WindowOpenDisposition disposition) override;
+  void OpenCurrentSelection(
+      ui::mojom::WindowOpenDisposition disposition) override;
   bool IsSelectionPopupControlled() const override;
 
   // OmniboxEditModel::Observer:
@@ -65,12 +72,6 @@ class OmniboxPopupViewWebUI : public OmniboxPopupView,
   LocationBar* location_bar() const { return location_bar_; }
 
  protected:
-  OmniboxPopupViewWebUI(OmniboxView* omnibox_view,
-                        OmniboxController* controller,
-                        LocationBar* location_bar,
-                        OmniboxPopupPresenterDelegate& presenter_delegate,
-                        std::unique_ptr<OmniboxPopupPresenterBase> presenter);
-
   // The edit view owned by `location_bar_`. May be nullptr in tests.
   raw_ptr<OmniboxView> omnibox_view_;
 
@@ -78,8 +79,14 @@ class OmniboxPopupViewWebUI : public OmniboxPopupView,
   // The location bar that owns `this`. May be nullptr in tests.
   raw_ptr<LocationBar> location_bar_;
 
-  // The presenter that manages its own widget and WebUI presentation.
-  std::unique_ptr<OmniboxPopupPresenterBase> presenter_;
+  // Shows the popup's WebUI. In production this is the presenter that owns the
+  // popup widget anchored to the location bar, or OmniboxPopupLocationBarHost,
+  // which shows it inside LocationBarView.
+  std::unique_ptr<OmniboxPopupHost> popup_host_;
+
+  // TODO(crbug.com/584371333): Remove once the remaining callers use
+  // popup_host().
+  raw_ptr<OmniboxPopupPresenterBase> presenter_ = nullptr;
 
   // Whether the "first shown" metrics have been logged at least once.
   bool logged_first_shown_metric_ = false;

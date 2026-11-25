@@ -58,11 +58,10 @@ AdTracker* AdTracker::FromExecutionContext(
 }
 
 // static
-bool AdTracker::IsAdScriptExecutingInDocument(Document* document,
-                                              StackType stack_type) {
+bool AdTracker::IsAdScriptExecutingInDocument(Document* document) {
   AdTracker* ad_tracker =
       document->GetFrame() ? document->GetFrame()->GetAdTracker() : nullptr;
-  return ad_tracker && ad_tracker->IsAdScriptInStack(stack_type);
+  return ad_tracker && ad_tracker->IsAdScriptInStack();
 }
 
 AdTracker::AdTracker(LocalFrame* local_root, ScriptInitiationMonitor* monitor)
@@ -106,7 +105,7 @@ std::optional<AdProvenance> AdTracker::CalculateIfAdSubresource(
       v8::HandleScope handle_scope(isolate);
       LazyStackTrace stack_trace(isolate);
       if (std::optional<V8ScriptId> ancestor_ad_script = GetMarkedScriptInStack(
-              StackType::kTopOnly, stack_trace,
+              stack_trace,
               /*ignore_monkey_patch=*/MonkeyPatchableApi::kNodeAppendChild)) {
         known_ad_provenance = AdProvenance(*ancestor_ad_script);
       }
@@ -210,8 +209,7 @@ AdTracker::AdScriptAncestry AdTracker::GetAncestry(V8ScriptId script_id) {
   return ancestry;
 }
 
-bool AdTracker::IsAdScriptInStack(StackType stack_type,
-                                  MonkeyPatchableApi ignore_monkey_patch,
+bool AdTracker::IsAdScriptInStack(MonkeyPatchableApi ignore_monkey_patch,
                                   AdScriptAncestry* out_ad_script_ancestry) {
   v8::Isolate* isolate = GetIsolate();
   std::optional<v8::HandleScope> handle_scope;
@@ -220,7 +218,7 @@ bool AdTracker::IsAdScriptInStack(StackType stack_type,
   }
   LazyStackTrace stack_trace(isolate);
   std::optional<V8ScriptId> out_ad_script =
-      GetMarkedScriptInStack(stack_type, stack_trace, ignore_monkey_patch);
+      GetMarkedScriptInStack(stack_trace, ignore_monkey_patch);
 
   if (out_ad_script_ancestry) {
     *out_ad_script_ancestry = AdScriptAncestry();
@@ -247,6 +245,8 @@ std::optional<AdScriptIdentifier> AdTracker::GetCreationAdScript(
 
 void AdTracker::Shutdown() {
   ScriptAncestryTracker::Shutdown();
+  bottom_most_script_start_time_ = base::TimeTicks();
+  bottom_most_script_frame_ = nullptr;
 }
 
 bool AdTracker::IsMarkedScript(V8ScriptId script_id) const {
@@ -262,6 +262,25 @@ bool AdTracker::HasMarkedFrames() const {
   return InstanceCounters::CounterValue(InstanceCounters::kAdSubframeCounter) >
              0 ||
          ScriptAncestryTracker::HasMarkedFrames();
+}
+
+void AdTracker::OnBottomMostScriptStarted(ExecutionContext& execution_context) {
+  if (auto* window = DynamicTo<LocalDOMWindow>(execution_context)) {
+    LocalFrame* frame = window->GetFrame();
+    if (!frame->IsAdFrame()) {
+      bottom_most_script_frame_ = frame;
+      bottom_most_script_start_time_ = base::TimeTicks::Now();
+    }
+  }
+}
+
+void AdTracker::OnBottomMostScriptFinished() {
+  if (bottom_most_script_frame_) {
+    bottom_most_script_frame_->AddAdTaskTime(base::TimeTicks::Now() -
+                                             bottom_most_script_start_time_);
+    bottom_most_script_start_time_ = base::TimeTicks();
+    bottom_most_script_frame_ = nullptr;
+  }
 }
 
 void AdTracker::OnScriptRegistered(ExecutionContext& execution_context,
@@ -298,6 +317,7 @@ void AdTracker::OnScriptRegistered(ExecutionContext& execution_context,
 void AdTracker::Trace(Visitor* visitor) const {
   ScriptAncestryTracker::Trace(visitor);
   visitor->Trace(context_known_ad_scripts_);
+  visitor->Trace(bottom_most_script_frame_);
 }
 
 }  // namespace blink

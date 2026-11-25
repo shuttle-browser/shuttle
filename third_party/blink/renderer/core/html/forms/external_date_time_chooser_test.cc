@@ -5,7 +5,6 @@
 #include "third_party/blink/renderer/core/html/forms/external_date_time_chooser.h"
 
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/blink/public/mojom/webpreferences/web_preferences.mojom-blink.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element_traversal.h"
 #include "third_party/blink/renderer/core/dom/shadow_root.h"
@@ -18,11 +17,16 @@
 #include "third_party/blink/renderer/core/testing/null_execution_context.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
-#include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
 
 namespace blink {
 
-class ExternalDateTimeChooserTest : public PageTestBase {};
+class ExternalDateTimeChooserTest : public PageTestBase {
+ protected:
+  void SetUp() override {
+    PageTestBase::SetUp();
+    GetDocument().GetSettings()->SetDateTimeSubfieldsFocusableForTesting(true);
+  }
+};
 
 class TestDateTimeChooserClient final
     : public GarbageCollected<TestDateTimeChooserClient>,
@@ -87,8 +91,7 @@ TEST_F(ExternalDateTimeChooserTest,
       )HTML");
   GetDocument().View()->UpdateAllLifecyclePhasesForTest();
 
-  auto* input =
-      To<HTMLInputElement>(GetDocument().getElementById(AtomicString("test")));
+  auto* input = To<HTMLInputElement>(GetElementById("test"));
   ASSERT_TRUE(input);
 
   DateTimeChooserParameters params;
@@ -110,8 +113,7 @@ TEST_F(ExternalDateTimeChooserTest, IsPickerVisible) {
       "<input id=test type=date>");
   GetDocument().View()->UpdateAllLifecyclePhasesForTest();
 
-  auto* input =
-      To<HTMLInputElement>(GetDocument().getElementById(AtomicString("test")));
+  auto* input = To<HTMLInputElement>(GetElementById("test"));
   ASSERT_TRUE(input);
 
   DateTimeChooserParameters params;
@@ -137,14 +139,10 @@ TEST_F(ExternalDateTimeChooserTest, IsPickerVisible) {
   EXPECT_TRUE(external_date_time_chooser->IsPickerVisible());
 }
 
-TEST_F(ExternalDateTimeChooserTest, FinePointerFocusability) {
-  GetDocument().GetFrame()->GetSettings()->SetAvailablePointerTypes(
-      static_cast<int>(mojom::blink::PointerType::kPointerFineType));
-
+TEST_F(ExternalDateTimeChooserTest, DesktopFocusability) {
   SetBodyContent("<input id=test type=date>");
 
-  auto* input =
-      To<HTMLInputElement>(GetDocument().getElementById(AtomicString("test")));
+  auto* input = To<HTMLInputElement>(GetElementById("test"));
   ASSERT_TRUE(input);
 
   ShadowRoot* shadow = input->UserAgentShadowRoot();
@@ -165,15 +163,12 @@ TEST_F(ExternalDateTimeChooserTest, FinePointerFocusability) {
   EXPECT_TRUE(picker_indicator->IsFocusable());
 }
 
-TEST_F(ExternalDateTimeChooserTest, NonFinePointerFocusability) {
-  ScopedInputMultipleFieldsUIWithPointerChecksForTest scoped_feature(true);
-  GetDocument().GetFrame()->GetSettings()->SetAvailablePointerTypes(
-      static_cast<int>(mojom::blink::PointerType::kPointerCoarseType));
+TEST_F(ExternalDateTimeChooserTest, NonDesktopFocusability) {
+  GetDocument().GetSettings()->SetDateTimeSubfieldsFocusableForTesting(false);
 
   SetBodyContent("<input id=test type=date>");
 
-  auto* input =
-      To<HTMLInputElement>(GetDocument().getElementById(AtomicString("test")));
+  auto* input = To<HTMLInputElement>(GetElementById("test"));
   ASSERT_TRUE(input);
 
   ShadowRoot* shadow = input->UserAgentShadowRoot();

@@ -142,6 +142,24 @@ void ClearContentNavigationCrashKeys() {
   crash_key_did_start_navigation_with_parent.Clear();
 }
 
+MimeHandlerStreamManager::CachedFallbackBody MakeCachedFallbackBody(
+    network::mojom::URLResponseHeadPtr head,
+    size_t decoded_body_size,
+    mojo::ScopedDataPipeConsumerHandle body) {
+  MimeHandlerStreamManager::CachedFallbackBody response;
+  response.decoded_body_size = decoded_body_size;
+  response.head = std::move(head);
+  // The fallback commits this head as a new document. The native handler
+  // should decide again whether to intercept it.
+  response.head->intercepted_by_plugin = false;
+  if (response.head->headers) {
+    response.head->headers = base::MakeRefCounted<net::HttpResponseHeaders>(
+        response.head->headers->raw_headers());
+  }
+  response.pipe = std::move(body);
+  return response;
+}
+
 }  // namespace
 
 bool MimeHandlerStreamManager::EmbedderHostInfo::operator<(
@@ -826,39 +844,38 @@ void MimeHandlerStreamManager::OnGotFallbackDataPipe(
     EmbedderHostInfo embedder_info,
     base::WeakPtr<StreamContainer> weak_stream,
     mojo::ScopedDataPipeConsumerHandle body) {
-  const content::FrameTreeNodeId embedder_ftn =
-      embedder_info.frame_tree_node_id;
   StreamContainer* stream = weak_stream.get();
   if (!stream) {
-    pending_native_fallback_frames_.erase(embedder_ftn);
+    pending_native_fallback_frames_.erase(embedder_info.frame_tree_node_id);
     return;
   }
-  const GURL original_url = stream->original_url();
+  std::optional<CachedFallbackBody> response;
+  if (body.is_valid()) {
+    response =
+        MakeCachedFallbackBody(stream->response_head()->Clone(),
+                               stream->GetCachedBodySize(), std::move(body));
+  }
+  StartFallbackNavigation(embedder_info, stream->original_url(),
+                          std::move(response));
+}
+
+void MimeHandlerStreamManager::StartFallbackNavigation(
+    EmbedderHostInfo embedder_info,
+    const GURL& original_url,
+    std::optional<CachedFallbackBody> response) {
+  const content::FrameTreeNodeId embedder_ftn =
+      embedder_info.frame_tree_node_id;
 
   // If the page moved this frame elsewhere while the body was buffering, the
   // user is no longer looking at the document the handler gave up, and the
-  // fallback navigation would drag them back to it.
+  // fallback navigation would drag them back to it. The controller of
+  // `web_contents()` can only navigate active frames.
   content::RenderFrameHost* embedder_host =
       content::RenderFrameHost::FromID(embedder_info.global_id);
-  if (!embedder_host ||
+  if (!embedder_host || !embedder_host->IsActive() ||
       !embedder_host->GetLastCommittedURL().EqualsIgnoringRef(original_url)) {
     pending_native_fallback_frames_.erase(embedder_ftn);
     return;
-  }
-
-  std::optional<CachedFallbackBody> response;
-  if (body.is_valid()) {
-    response.emplace();
-    response->decoded_body_size = stream->GetCachedBodySize();
-    response->head = stream->response_head()->Clone();
-    // The fallback commits this head as a new document. The native handler
-    // should decide again whether to intercept it.
-    response->head->intercepted_by_plugin = false;
-    if (response->head->headers) {
-      response->head->headers = base::MakeRefCounted<net::HttpResponseHeaders>(
-          response->head->headers->raw_headers());
-    }
-    response->pipe = std::move(body);
   }
 
   const bool has_cached_response = response.has_value();

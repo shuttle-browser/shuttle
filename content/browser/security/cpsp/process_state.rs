@@ -91,6 +91,14 @@ pub(crate) mod ffi {
         fn set_process_is_used(child_id: ChildProcessId);
         fn get_process_lock(child_id: ChildProcessId) -> UniquePtr<CppProcessLock>;
 
+        fn add_committed_origin(child_id: ChildProcessId, origin: UniquePtr<Origin>);
+        fn matches_committed_origin_for_testing(
+            child_id: ChildProcessId,
+            url: UniquePtr<GURL>,
+            url_is_for_precursor_origin: bool,
+        ) -> bool;
+        fn committed_origin_count_for_testing(child_id: ChildProcessId) -> usize;
+
         fn grant_commit_origin(child_id: ChildProcessId, origin: UniquePtr<Origin>);
         fn grant_request_origin(child_id: ChildProcessId, origin: UniquePtr<Origin>);
 
@@ -171,6 +179,28 @@ fn get_process_lock(child_id: ChildProcessId) -> UniquePtr<ffi::CppProcessLock> 
     } else {
         ffi::create_invalid()
     }
+}
+
+fn add_committed_origin(child_id: ChildProcessId, origin: UniquePtr<ffi::Origin>) {
+    let mut cpsp = ChildProcessSecurityPolicyImpl::get_locked_instance();
+    let state = cpsp.process_states.get_mut(&child_id).expect("The process state should exist.");
+    state.add_committed_origin(origin);
+}
+
+fn matches_committed_origin_for_testing(
+    child_id: ChildProcessId,
+    url: UniquePtr<ffi::GURL>,
+    url_is_for_precursor_origin: bool,
+) -> bool {
+    let cpsp = ChildProcessSecurityPolicyImpl::get_locked_instance();
+    cpsp.process_states
+        .get_for_query(&child_id)
+        .is_some_and(|state| state.matches_committed_origin(&url, url_is_for_precursor_origin))
+}
+
+fn committed_origin_count_for_testing(child_id: ChildProcessId) -> usize {
+    let cpsp = ChildProcessSecurityPolicyImpl::get_locked_instance();
+    cpsp.process_states.get_for_query(&child_id).map_or(0, |state| state.committed_origins.len())
 }
 
 fn grant_commit_origin(child_id: ChildProcessId, origin: UniquePtr<ffi::Origin>) {
@@ -462,6 +492,28 @@ pub(crate) struct ProcessState {
     /// which documents are allowed to load in a process and which site data the
     /// process is allowed to access, based on the SiteInfo principal.
     process_lock: StatefulProcessLock,
+    /// The set of all origins ever committed in the child process. Note that
+    /// this is different from `origin_map` below: `origin_map` tracks rules
+    /// which allow new origins to be requested or committed in a particular
+    /// process, while this set tracks origins that have already been committed,
+    /// for the purposes of validating requests for a particular origin's data.
+    ///
+    /// Note that unlike `origin_map`, this set tracks opaque origins and
+    /// distinguishes them based on their precursors and nonces. This set may
+    /// also lack certain entries that exist in `origin_map`, such as special
+    /// cases that allow a process to request particular origins (e.g.,
+    /// DevTools process being allowed to request DevTools extension
+    /// resources).
+    ///
+    /// Stored as a BTreeSet rather than a HashSet (which the C++ version uses)
+    /// to avoid dealing with hash functions for url::Origin. The ordering is
+    /// based on the C++ url::Origin comparison operators.
+    ///
+    /// TODO(crbug.com/522872468): Combine `origin_map` and `committed_origins`
+    /// into one set that supports three kinds of lookup: CanRequest,
+    /// CanCommitAndRequest, and HasCommittedAndCanRequest. This will hopefully
+    /// result in simpler and more efficient origin tracking.
+    committed_origins: BTreeSet<UniquePtr<ffi::Origin>>,
     /// Maps URL schemes to commit/request policies the child process has been
     /// granted. There is no provision for revoking.
     scheme_map: HashMap<String, CommitRequestPolicy>,
@@ -504,6 +556,7 @@ impl ProcessState {
     fn new() -> Self {
         ProcessState {
             process_lock: StatefulProcessLock::default(),
+            committed_origins: BTreeSet::new(),
             scheme_map: HashMap::new(),
             origin_map: BTreeMap::new(),
             #[cfg(IS_CHROMEOS)]
@@ -520,9 +573,68 @@ impl ProcessState {
         self.process_lock.as_ffi()
     }
 
-    // TODO(crbug.com/522872468): Call from `ProcessState::can_commit_url` once
-    // ported to Rust.
-    #[allow(dead_code)]
+    fn matches_committed_origin(&self, url: &ffi::GURL, url_is_for_precursor_origin: bool) -> bool {
+        // TODO(crbug.com/522872468): Currently, this is mostly a line-by-line
+        // translation of ProcessState::MatchesCommittedOrigin() in C++. In the
+        // future, we should pass in an actual origin here rather than a GURL
+        // for most cases, so that we can simply check
+        // `self.committed_origins.contains(&origin)`. As part of this, we'll
+        // need to figure out how to deal with opaque origins, where nonces may
+        // not match.
+
+        let url_origin = url_rust::origin::ffi::create_origin_from_gurl(url);
+        let url_scheme_host_port = url_origin.get_tuple_or_precursor_tuple_if_opaque();
+
+        self.committed_origins.iter().any(|origin| {
+            // If the committed origin is non-opaque, check that the `url` has
+            // the same origin.
+            //
+            // TODO(crbug.com/40148776): Although this matches legacy
+            // enforcements, this check should ideally also enforce that the
+            // `url` does not correspond to an opaque origin's precursor, i.e.
+            // that `url_is_for_precursor_origin` is false, so that we do not
+            // match a non-opaque committed origin to an opaque one, even if the
+            // latter's precursor matches. This almost works, but has a corner
+            // case with dedicated workers, where a worker is allowed to be
+            // created with a data: script URL, resulting in an opaque origin
+            // with a precursor which needs to pass the check here. This case
+            // should be fixed (e.g., by adding that worker's origin to the list
+            // of committed origins).
+            if !origin.opaque() && origin.is_same_origin_with(&url_origin) {
+                return true;
+            }
+
+            // For opaque committed origins, ensure that the passed-in URL
+            // represents a precursor of an opaque origin, and then check if it
+            // matches the committed origin's precursor.
+            if origin.opaque()
+                && url_is_for_precursor_origin
+                && origin.get_tuple_or_precursor_tuple_if_opaque() == url_scheme_host_port
+            {
+                return true;
+            }
+
+            // Temporarily ignore hosts when comparing file origins. This allows
+            // file:///etc to match file://localhost/etc. See the
+            // DOMStorageBrowserTest.FileUrlWithHost test which exercises this.
+            // This is needed because
+            // ChildProcessSecurityPolicyImpl::CanAccessOrigin() currently
+            // converts the passed-in url::Origin into a GURL (which ends up as
+            // `url` here) via url::Origin::GetURL(), and the latter always
+            // converts origins for file URLs into a "file:///" URL without
+            // considering the host. Longer-term, we should either refactor
+            // ChildProcessSecurityPolicyImpl such that CanAccessOrigin()
+            // doesn't convert url::Origins into GURLs before passing them to
+            // CanAccessMaybeOpaqueOrigin(), and/or url::Origin::GetURL() should
+            // be fixed to preserve hosts for file URL origins.
+            //
+            // TODO(crbug.com/40226863): Use Crubit to access `url::kFileScheme`
+            // instead of a string literal (as CXX does not support C++
+            // constants).
+            url.scheme_is_file() && origin.scheme() == "file"
+        })
+    }
+
     fn can_commit_origin(&self, origin: &UniquePtr<ffi::Origin>) -> bool {
         self.origin_map.get(origin) == Some(&CommitRequestPolicy::CommitAndRequest)
     }
@@ -535,9 +647,6 @@ impl ProcessState {
         self.origin_map.contains_key(origin)
     }
 
-    // TODO(crbug.com/522872468): Call from `ProcessState::can_commit_url` once
-    // ported to Rust.
-    #[allow(dead_code)]
     fn can_commit_scheme(&self, scheme: &str) -> bool {
         self.scheme_map.get(scheme) == Some(&CommitRequestPolicy::CommitAndRequest)
     }
@@ -548,6 +657,43 @@ impl ProcessState {
     fn can_request_scheme(&self, scheme: &str) -> bool {
         // Anything in `scheme_map` must have at least request permissions.
         self.scheme_map.contains_key(scheme)
+    }
+
+    // `pub(crate)` so that top-level `can_commit_url()` in
+    // `child_process_security_policy_impl.rs` can call this on a
+    // `&ProcessState` looked up from `process_states` (most other
+    // `ProcessState` methods are either `pub` for CXX FFI or private
+    // helpers within this module).
+    pub(crate) fn can_commit_url(&self, url: &ffi::GURL) -> bool {
+        debug_assert!(
+            !url.scheme_is_blob() && !url.scheme_is_filesystem(),
+            "inner_url extraction should be done already."
+        );
+
+        // Having permission to a scheme implies permission to all of its URLs.
+        if self.can_commit_scheme(url.scheme()) {
+            return true;
+        }
+
+        #[cfg(IS_CHROMEOS)]
+        {
+            // TODO(crbug.com/40226863): Use Crubit to access
+            // `kExternalFileScheme` instead of a string literal (as CXX does
+            // not support C++ constants).
+            if url.scheme_is("externalfile") {
+                return self
+                    .commit_externalfile_set
+                    .contains(&ffi::normalize_external_file_url(url));
+            }
+        }
+
+        // Check for permission for specific origin.
+        if self.can_commit_origin(&url_rust::origin::ffi::create_origin_from_gurl(url)) {
+            return true;
+        }
+
+        // Unmentioned schemes are disallowed.
+        false
     }
 
     fn has_web_ui_bindings(&self) -> bool {
@@ -594,9 +740,6 @@ impl MutableProcessState {
         self.0
     }
 
-    // TODO(crbug.com/568880876): Mark the process as used when it is locked to
-    // a site, so that a `Locked` lock is never unused. This must match the C++
-    // `ProcessState::SetProcessLock()`.
     fn set_process_lock(&mut self, lock_to_set: AssignableProcessLock) {
         let old_lock = std::mem::take(&mut self.0.process_lock);
         self.0.process_lock = old_lock.transition_to_state(lock_to_set).into();
@@ -605,6 +748,20 @@ impl MutableProcessState {
     fn set_process_is_used(&mut self) {
         let old_lock = std::mem::take(&mut self.0.process_lock);
         self.0.process_lock = old_lock.set_is_used();
+    }
+
+    fn add_committed_origin(&mut self, origin: UniquePtr<ffi::Origin>) {
+        // TODO(crbug.com/576113096): Consider adding general defense-in-depth
+        // checks here that `origin` is compatible with the process's
+        // ProcessLock (e.g., that it belongs to the process's shard, or
+        // matches a locked process's site), so that this also covers commits
+        // that don't go through the navigation checks in
+        // CanCommitOriginAndUrl(), such as workers.
+        //
+        // Adding an origin that is already in the set is a no-op, since
+        // equality and ordering of `ffi::Origin` defer to the C++ url::Origin
+        // comparison operators (and not the `UniquePtr` addresses).
+        self.0.committed_origins.insert(origin);
     }
 
     fn grant_commit_origin(&mut self, origin: UniquePtr<ffi::Origin>) {

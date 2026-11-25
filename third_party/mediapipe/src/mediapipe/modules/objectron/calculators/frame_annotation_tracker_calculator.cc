@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
+#include "absl/container/flat_hash_set.h"  // from @com_google_absl
+#include "absl/memory/memory.h"            // from @com_google_absl
+#include "absl/status/status.h"            // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/modules/objectron/calculators/annotation_data.pb.h"
 #include "mediapipe/modules/objectron/calculators/frame_annotation_tracker.h"
 #include "mediapipe/modules/objectron/calculators/frame_annotation_tracker_calculator.pb.h"
@@ -85,7 +85,7 @@ absl::Status FrameAnnotationTrackerCalculator::GetContract(
 
 absl::Status FrameAnnotationTrackerCalculator::Open(CalculatorContext* cc) {
   const auto& options = cc->Options<FrameAnnotationTrackerCalculatorOptions>();
-  frame_annotation_tracker_ = absl::make_unique<FrameAnnotationTracker>(
+  frame_annotation_tracker_ = std::make_unique<FrameAnnotationTracker>(
       options.iou_threshold(), options.img_width(), options.img_height());
   return absl::OkStatus();
 }
@@ -100,7 +100,7 @@ absl::Status FrameAnnotationTrackerCalculator::Process(CalculatorContext* cc) {
       !cc->Inputs().Tag(kInputTrackedBoxesTag).IsEmpty() &&
       cc->Outputs().HasTag(kOutputTrackedFrameAnnotationTag)) {
     absl::flat_hash_set<int> cancel_object_ids;
-    auto output_frame_annotation = absl::make_unique<FrameAnnotation>();
+    auto output_frame_annotation = std::make_unique<FrameAnnotation>();
     *output_frame_annotation =
         frame_annotation_tracker_->ConsolidateTrackingResult(
             cc->Inputs().Tag(kInputTrackedBoxesTag).Get<TimedBoxProtoList>(),

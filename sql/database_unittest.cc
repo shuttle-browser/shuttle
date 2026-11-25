@@ -30,6 +30,7 @@
 #include "base/location.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/not_fatal_until.h"
 #include "base/run_loop.h"
 #include "base/sequence_checker.h"
 #include "base/strings/cstring_view.h"
@@ -44,6 +45,7 @@
 #include "base/test/gmock_expected_support.h"
 #include "base/test/gtest_util.h"
 #include "base/test/metrics/histogram_tester.h"
+#include "base/test/mock_callback.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/thread_annotations.h"
@@ -78,6 +80,7 @@ using ::base::test::ValueIs;
 using ::sql::test::DriveErrorTestVfs;
 using ::sql::test::ExecuteWithResult;
 using ::sql::test::GetUncheckpointedFrameCount;
+using ::testing::_;
 using ::testing::Bool;
 using ::testing::Combine;
 using ::testing::Contains;
@@ -181,11 +184,12 @@ class SQLDatabaseTest : public Test, public WithParamInterface<bool> {
     base::File file(db_path_,
                     base::File::FLAG_CREATE_ALWAYS | base::File::FLAG_WRITE);
     if (type == OverwriteType::kTruncate) {
-      if (!file.SetLength(0))
+      if (!file.SetLength(0)) {
         return false;
+      }
     }
 
-  return file.WriteAndCheck(0, base::byte_span_with_nul_from_cstring(
+    return file.WriteAndCheck(0, base::byte_span_with_nul_from_cstring(
                                      "Now is the winter of our discontent."));
   }
 
@@ -582,49 +586,69 @@ TEST_P(SQLDatabaseTest, ErrorCallbackCausingAnError) {
 
 // Regression test for https://crbug.com/1522873
 TEST_P(SQLDatabaseTest, ErrorCallbackThatClosesDb) {
-  for (const bool reopen_db : {false, true}) {
-    SCOPED_TRACE(testing::Message() << "reopen_db: " << reopen_db);
-    // Ensure that `db_` is fresh in this iteration.
-    CreateFreshDB();
-    static constexpr char kCreateSql[] =
-        "CREATE TABLE rows(id INTEGER PRIMARY KEY NOT NULL)";
-    ASSERT_TRUE(db_->Execute(kCreateSql));
-    ASSERT_TRUE(db_->Execute("INSERT INTO rows(id) VALUES(12)"));
+  base::MockCallback<Database::ErrorCallback> error_callback;
+  db_->set_error_callback(error_callback.Get());
+  EXPECT_CALL(error_callback, Run(SQLITE_ERROR, _)).WillOnce([&] {
+    EXPECT_CHECK_DEATH(db_->Close(), base::NotFatalUntil::M161, UNTIL_THEN({
+                         db_->Close();
+                         EXPECT_FALSE(db_->is_open());
+                       }));
+  });
+  ASSERT_TRUE(db_->Execute("CREATE TABLE rows(id)"));
+  EXPECT_FALSE(db_->Execute("SELECT invalid FROM rows"));
+}
 
-    bool error_callback_called = false;
-    int error = SQLITE_OK;
-    db_->set_error_callback(
-        base::BindLambdaForTesting([&](int sqlite_error, Statement* statement) {
-          error_callback_called = true;
-          error = sqlite_error;
-          db_->Close();
-          if (reopen_db) {
-            ASSERT_TRUE(db_->Open(db_path_));
-          }
-        }));
+TEST_P(SQLDatabaseTest, ErrorCallbackThatClosesAndDeletesDb) {
+  base::MockCallback<Database::ErrorCallback> error_callback;
+  db_->set_error_callback(error_callback.Get());
+  EXPECT_CALL(error_callback, Run(SQLITE_ERROR, _)).WillOnce([&] {
+    EXPECT_CHECK_DEATH(db_->CloseAndDelete(), base::NotFatalUntil::M161,
+                       UNTIL_THEN({
+                         EXPECT_TRUE(db_->CloseAndDelete());
+                         EXPECT_FALSE(db_->is_open());
+                         EXPECT_FALSE(base::PathExists(db_path_));
+                       }));
+  });
+  ASSERT_TRUE(db_->Execute("CREATE TABLE rows(id)"));
+  EXPECT_FALSE(db_->Execute("SELECT invalid FROM rows"));
+}
 
-    {
-      sql::test::ScopedErrorExpecter expecter;
-      expecter.ExpectError(SQLITE_CONSTRAINT);
-      EXPECT_FALSE(db_->Execute("INSERT INTO rows(id) VALUES(12)"))
-          << "Inserting a duplicate primary key should have failed";
-      EXPECT_TRUE(expecter.SawExpectedErrors())
-          << "Inserting a duplicate primary key should have failed";
-    }
-    EXPECT_TRUE(error_callback_called);
-    EXPECT_EQ(SQLITE_CONSTRAINT_PRIMARYKEY, error);
-    EXPECT_EQ(db_->is_open(), reopen_db);
-  }
+TEST_P(SQLDatabaseTest, ErrorCallbackCallingOpen) {
+  base::MockCallback<Database::ErrorCallback> error_callback;
+  db_->set_error_callback(error_callback.Get());
+  EXPECT_CALL(error_callback, Run(SQLITE_ERROR, _)).WillOnce([&] {
+    EXPECT_CHECK_DEATH(std::ignore = db_->Open(db_path_),
+                       base::NotFatalUntil::M161, UNTIL_THEN({
+                         db_->Close();
+                         EXPECT_TRUE(db_->Open(db_path_));
+                         EXPECT_TRUE(db_->is_open());
+                       }));
+  });
+  ASSERT_TRUE(db_->Execute("CREATE TABLE rows(id)"));
+  EXPECT_FALSE(db_->Execute("SELECT invalid FROM rows"));
+}
+
+TEST_P(SQLDatabaseTest, ErrorCallbackCallingOpenInMemory) {
+  base::MockCallback<Database::ErrorCallback> error_callback;
+  db_->set_error_callback(error_callback.Get());
+  EXPECT_CALL(error_callback, Run(SQLITE_ERROR, _)).WillOnce([&] {
+    EXPECT_CHECK_DEATH(std::ignore = db_->OpenInMemory(),
+                       base::NotFatalUntil::M161, UNTIL_THEN({
+                         db_->Close();
+                         EXPECT_TRUE(db_->OpenInMemory());
+                         EXPECT_TRUE(db_->is_open());
+                       }));
+  });
+  ASSERT_TRUE(db_->Execute("CREATE TABLE rows(id)"));
+  EXPECT_FALSE(db_->Execute("SELECT invalid FROM rows"));
 }
 
 // Regression test for https://crbug.com/1522873
 TEST_P(SQLDatabaseTest, ErrorCallbackThatFreesDatabase) {
   ASSERT_TRUE(db_->Execute("CREATE TABLE rows(id)"));
 
-  db_->set_error_callback(
-      base::BindLambdaForTesting([&](int sqlite_error, Statement* statement) {
-        db_.reset();
-      }));
+  db_->set_error_callback(base::BindLambdaForTesting(
+      [&](int sqlite_error, Statement* statement) { db_.reset(); }));
 
   EXPECT_CHECK_DEATH(std::ignore = db_->Execute("SELECT invalid FROM rows"))
       << "Running an error callback deleting `db_` should have `CHECK`ed";
@@ -681,8 +705,9 @@ class LifeTracker {
 
   ~LifeTracker() {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-    if (flag_ptr_)
+    if (flag_ptr_) {
       *flag_ptr_ = false;
+    }
   }
 
  private:
@@ -1073,7 +1098,9 @@ TEST_P(SQLDatabaseTest, RazeFailedOnPoisoned) {
 
   base::HistogramTester tester;
   EXPECT_FALSE(db_->Raze());
-  tester.ExpectTotalCount("Sql.Database.Raze.FailureReason.Test", 1);
+  tester.ExpectUniqueSample("Sql.Database.Raze.FailureReason.Test",
+                            Database::RazeFailedReason::kPoisoned,
+                            /*expected_bucket_count=*/1);
 }
 
 TEST_P(SQLDatabaseTest, RazeDuringSelect) {
@@ -1558,8 +1585,9 @@ TEST_P(SQLDatabaseTest, Close_IsSQLValid) {
 
   db_->Close();
 
-  EXPECT_DCHECK_DEATH_WITH({ std::ignore = db_->IsSQLValid("SELECT 1"); },
-                           "Illegal use of Database without a db");
+  EXPECT_DCHECK_DEATH_WITH(
+      { std::ignore = db_->IsSQLValid("SELECT 1"); },
+      "Illegal use of Database without a db");
 }
 
 // On Windows, truncate silently fails against a memory-mapped file.  One goal
@@ -2052,8 +2080,7 @@ TEST_P(SQLDatabaseTest, CollectDiagnosticInfo) {
     EXPECT_TRUE(error_expecter.SawExpectedErrors());
 
     DatabaseDiagnostics diagnostics;
-    const std::string error_info =
-        db_->CollectErrorInfo(SQLITE_ERROR, &s, &diagnostics);
+    db_->CollectErrorInfo(SQLITE_ERROR, &s, &diagnostics);
     // Expect that the error message contains the table name and a column error.
     EXPECT_TRUE(diagnostics.error_message.contains("table"));
     EXPECT_TRUE(diagnostics.error_message.contains("volcano"));
@@ -2699,7 +2726,9 @@ TEST_P(SQLDatabaseTest, OpenFails_WindowsExclusiveReadMode) {
   expecter.ExpectError(SQLITE_CANTOPEN);
   ASSERT_FALSE(db_->Open(db_path_));
   ASSERT_TRUE(expecter.SawExpectedErrors());
-  tester.ExpectTotalCount("Sql.Database.Open.FailureReason.Test", 1);
+  tester.ExpectUniqueSample("Sql.Database.Open.FailureReason.Test",
+                            Database::OpenFailedReason::kSqliteOpenFailed,
+                            /*expected_bucket_count=*/1);
   db_->Close();
 
   file.Close();
@@ -2720,7 +2749,9 @@ TEST_P(SQLDatabaseTest, OpenFails_WindowsExclusiveWriteMode) {
   expecter.ExpectError(SQLITE_READONLY);
   ASSERT_FALSE(db_->Open(db_path_));
   ASSERT_TRUE(expecter.SawExpectedErrors());
-  tester.ExpectTotalCount("Sql.Database.Open.FailureReason.Test", 1);
+  tester.ExpectUniqueSample("Sql.Database.Open.FailureReason.Test",
+                            Database::OpenFailedReason::kSqliteOpenFailed,
+                            /*expected_bucket_count=*/1);
   db_->Close();
 
   file.Close();
@@ -2741,7 +2772,9 @@ TEST_P(SQLDatabaseTest, OpenFails_ExclusiveLock) {
     expecter.ExpectError(SQLITE_IOERR_READ);
     ASSERT_FALSE(db_->Open(db_path_));
     ASSERT_TRUE(expecter.SawExpectedErrors());
-    tester.ExpectTotalCount("Sql.Database.Open.FailureReason.Test", 1);
+    tester.ExpectUniqueSample("Sql.Database.Open.FailureReason.Test",
+                              Database::OpenFailedReason::kSqliteOpenFailed,
+                              /*expected_bucket_count=*/1);
     db_->Close();
   }
 

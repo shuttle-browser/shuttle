@@ -103,6 +103,7 @@ chromium-metrics-reviews@google.com.
   <int value="3" label="Image Generation"/>
   <int value="4" label="Canvas"/>
   <int value="5" label="Deep Search"/>
+  <int value="6" label="PTM"/>
 </enum>
 
 <!-- LINT.ThenChange(//components/omnibox/browser/android/java/src/org/chromium/components/omnibox/AutocompleteRequestType.java,//ios/chrome/browser/composebox/shared/metrics/composebox_metrics_constants.h:AutocompleteRequestType)-->
@@ -110,11 +111,6 @@ chromium-metrics-reviews@google.com.
 <enum name="BooleanNonNull">
   <int value="0" label="Null"/>
   <int value="1" label="Non-null"/>
-</enum>
-
-<enum name="BooleanOffered">
-  <int value="0" label="Not offered"/>
-  <int value="1" label="Offered"/>
 </enum>
 
 <enum name="BooleanOffTheRecord">
@@ -280,6 +276,24 @@ chromium-metrics-reviews@google.com.
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/ui/android/omnibox/java/src/org/chromium/chrome/browser/omnibox/fusebox/FuseboxMetrics.java:FuseboxAttachmentSizeLimitCheck) -->
+
+<!-- LINT.IfChange(FuseboxSniffedImageFormat) -->
+
+<enum name="FuseboxSniffedImageFormat">
+  <int value="0" label="Unknown / unrecognised signature"/>
+  <int value="1" label="JPEG"/>
+  <int value="2" label="PNG"/>
+  <int value="3" label="GIF"/>
+  <int value="4" label="WebP"/>
+  <int value="5" label="BMP"/>
+  <int value="6" label="ICO / CUR"/>
+  <int value="7" label="AVIF"/>
+  <int value="8" label="HEIF / HEIC"/>
+  <int value="9" label="TIFF (incl. DNG)"/>
+  <int value="10" label="JPEG XL"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/ui/android/omnibox/java/src/org/chromium/chrome/browser/omnibox/fusebox/ImageFormatSniffer.java:FuseboxSniffedImageFormat) -->
 
 <!-- LINT.IfChange(FuseboxTabAttachStartFailureReason) -->
 
@@ -457,14 +471,20 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//components/omnibox/browser/geolocation_header_service.h:OmniboxInlineLocationSuggestionShown) -->
 
-<enum name="OmniboxInputType">
-  <int value="0" label="empty"/>
-  <int value="1" label="unknown"/>
-  <int value="2" label="deprecated: requested url"/>
-  <int value="3" label="url"/>
-  <int value="4" label="query"/>
-  <int value="5" label="forced query"/>
+<!-- LINT.IfChange(OmniboxInputSource) -->
+
+<enum name="OmniboxInputSource">
+  <int value="0" label="Unspecified"/>
+  <int value="1" label="Gallery"/>
+  <int value="2" label="Camera"/>
+  <int value="3" label="FilePicker"/>
+  <int value="4" label="Drive"/>
+  <int value="5" label="TabPicker"/>
+  <int value="6" label="Voice"/>
+  <int value="7" label="SearchLive"/>
 </enum>
+
+<!-- LINT.ThenChange(//chrome/browser/ui/android/omnibox/java/src/org/chromium/chrome/browser/omnibox/fusebox/FuseboxMetrics.java:InputSource) -->
 
 <!-- LINT.IfChange(OmniboxModelMode) -->
 
@@ -491,6 +511,28 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//components/omnibox/common/omnibox_metrics_utils.cc:ModelMode,//chrome/browser/ui/android/omnibox/java/src/org/chromium/chrome/browser/omnibox/fusebox/FuseboxMetrics.java:ModelMode) -->
 
+<!-- LINT.IfChange(OmniboxOutgoingPageDisposal) -->
+
+<enum name="OmniboxOutgoingPageDisposal">
+  <int value="0" label="Stored in Back/Forward Cache">
+    The outgoing document was stored in the Back/Forward Cache and frozen,
+    generating no unload or DOM teardown overhead at commit time.
+  </int>
+  <int value="1" label="Unloaded cross-process">
+    The outgoing document was ineligible for BFCache and was unloaded across
+    processes at commit time (potential candidate for delayed frame unload).
+  </int>
+  <int value="2" label="Unloaded same-process">
+    The outgoing document was ineligible for BFCache and was unloaded within the
+    same renderer process.
+  </int>
+  <int value="3" label="Previous document was initial or empty">
+    The previous document was an initial empty document or about:blank.
+  </int>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/page_load_metrics/observers/omnibox_suggestion_used_page_load_metrics_observer.h:OmniboxOutgoingPageDisposal) -->
+
 <!-- LINT.IfChange(OmniboxPopupResultToContentReadyEarlyExitReason) -->
 
 <enum name="OmniboxPopupResultToContentReadyEarlyExitReason">
@@ -500,6 +542,19 @@ chromium-metrics-reviews@google.com.
 </enum>
 
 <!-- LINT.ThenChange(//components/omnibox/common/omnibox_metrics_utils.h:OmniboxPopupResultToContentReadyEarlyExitReason) -->
+
+<!-- LINT.IfChange(OmniboxPopupSharedContentSource) -->
+
+<enum name="OmniboxPopupSharedContentSource">
+  <int value="0" label="Created"/>
+  <int value="1" label="Created after holder window closed"/>
+  <int value="2" label="Taken on demand"/>
+  <int value="3" label="Taken on window activation"/>
+  <int value="4" label="Prewarm skipped"/>
+  <int value="5" label="Created while another window's popup was busy"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/ui/views/omnibox/omnibox_popup_webui_pool_client.h:OmniboxPopupSharedContentSource) -->
 
 <enum name="OmniboxRichAutocompletionType">
   <int value="0" label="None"/>
@@ -819,6 +874,35 @@ chromium-metrics-reviews@google.com.
 </enum>
 
 <!-- TODO(b/501544449): Remove NewTabPageVoiceAction and NewTabPageVoiceError in tools/metrics/histograms/metadata/new_tab_page/enums.xml. -->
+
+<enum name="VoicePlateEligibility">
+  <summary>
+    Eligibility of a voice search request to use the Google app Voice Plate.
+  </summary>
+  <int value="0" label="Eligible"/>
+  <int value="1" label="No profile"/>
+  <int value="2" label="Incognito profile"/>
+  <int value="3" label="Non-Google default search engine"/>
+  <int value="4" label="AGSA not installed"/>
+  <int value="5" label="AGSA version below minimum"/>
+  <int value="6" label="Service previously refused"/>
+  <int value="7" label="AGSA invalid package"/>
+</enum>
+
+<enum name="VoicePlateResult">
+  <summary>Outcome returned by the Google app Voice Plate activity.</summary>
+  <int value="0" label="Success (auto-endpointed)"/>
+  <int value="1" label="Aborted: User canceled"/>
+  <int value="2" label="Aborted: Navigated away"/>
+  <int value="3" label="Aborted: Permission denied"/>
+  <int value="4" label="Refused: Account consent declined"/>
+  <int value="5" label="Refused: Account mismatch"/>
+  <int value="6" label="Refused: Error"/>
+  <int value="7" label="Refused: Other or missing reason"/>
+  <int value="8" label="Success (submitted)"/>
+  <int value="9" label="Success (stopped)"/>
+  <int value="10" label="Aborted: Stopped with empty transcript"/>
+</enum>
 
 <!-- LINT.IfChange(VoiceSearchAction) -->
 

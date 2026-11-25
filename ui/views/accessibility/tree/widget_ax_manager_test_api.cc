@@ -4,6 +4,7 @@
 
 #include "ui/views/accessibility/tree/widget_ax_manager_test_api.h"
 
+#include "base/auto_reset.h"
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
 
@@ -23,6 +24,22 @@ WidgetAXManagerTestApi::~WidgetAXManagerTestApi() {
 
 void WidgetAXManagerTestApi::Enable() {
   manager_->Enable();
+}
+
+void WidgetAXManagerTestApi::Disable() {
+  manager_->Disable();
+}
+
+bool WidgetAXManagerTestApi::is_observing_focus() const {
+  return manager_->focus_manager_observation_.IsObserving();
+}
+
+bool WidgetAXManagerTestApi::has_tree_serializer() const {
+  return !!manager_->tree_serializer_;
+}
+
+bool WidgetAXManagerTestApi::enable_on_widget_created() const {
+  return manager_->is_waiting_for_widget_creation();
 }
 
 const std::vector<WidgetAXManager::Event>&
@@ -51,6 +68,11 @@ WidgetViewAXCache* WidgetAXManagerTestApi::cache() const {
   return manager_->cache_.get();
 }
 
+const ViewAccessibilityAXTreeSource* WidgetAXManagerTestApi::tree_source()
+    const {
+  return manager_->tree_source_.get();
+}
+
 ui::BrowserAccessibilityManager* WidgetAXManagerTestApi::ax_tree_manager()
     const {
   return manager_->ax_tree_manager_.get();
@@ -73,7 +95,8 @@ void WidgetAXManagerTestApi::WaitForNextSerialization() {
   CHECK(manager_);
   base::RunLoop run_loop;
   CHECK(!waiting_run_loop_);
-  waiting_run_loop_ = &run_loop;
+  base::AutoReset<raw_ptr<base::RunLoop>> reset_run_loop(&waiting_run_loop_,
+                                                         &run_loop);
   run_loop.Run();
 }
 

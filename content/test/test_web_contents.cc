@@ -38,6 +38,7 @@
 #include "third_party/blink/public/common/page_state/page_state.h"
 #include "third_party/blink/public/mojom/security_context/insecure_request_policy.mojom.h"
 #include "third_party/blink/public/mojom/speculation_rules/speculation_rules.mojom-shared.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
 
 namespace content {
@@ -279,7 +280,12 @@ void TestWebContents::TestDidFailLoadWithError(const GURL& url,
 }
 
 void TestWebContents::TestDidFirstVisuallyNonEmptyPaint() {
-  OnFirstVisuallyNonEmptyPaint(GetPrimaryPage());
+  // Call through PageImpl::OnFirstVisuallyNonEmptyPaint() (matching
+  // RenderFrameHostImpl::DidFirstVisuallyNonEmptyPaint() in production) so
+  // `PageImpl::did_first_visually_non_empty_paint_` is set to true (updating
+  // `WebContents::CompletedFirstVisuallyNonEmptyPaint()`) before delegating
+  // to `WebContentsImpl::OnFirstVisuallyNonEmptyPaint()` to notify observers.
+  GetPrimaryPage().OnFirstVisuallyNonEmptyPaint();
 }
 
 bool TestWebContents::CrossProcessNavigationPending() {
@@ -383,6 +389,11 @@ void TestWebContents::SetOriginalOpener(WebContents* opener) {
       static_cast<WebContentsImpl*>(opener)->GetPrimaryFrameTree().root());
 }
 
+void TestWebContents::SetOriginalWindowOpenDisposition(
+    ui::mojom::WindowOpenDisposition disposition) {
+  original_window_open_disposition_ = disposition;
+}
+
 void TestWebContents::SetIsCrashed(base::TerminationStatus status,
                                    int error_code) {
   SetPrimaryMainFrameProcessStatus(status, error_code);
@@ -422,7 +433,7 @@ RenderWidgetHostImpl* TestWebContents::CreateNewPopupWidget(
 WebContents* TestWebContents::ShowCreatedWindow(
     RenderFrameHostImpl* opener,
     int route_id,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture) {
   return nullptr;

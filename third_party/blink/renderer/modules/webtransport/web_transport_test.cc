@@ -124,6 +124,7 @@ class WebTransportConnector final : public mojom::blink::WebTransportConnector {
         std::optional<uint16_t>
             anticipated_concurrent_incoming_bidirectional_streams,
         net::HttpRequestHeaders::HeaderVector additional_headers,
+        std::optional<base::UnguessableToken> throttling_profile_id,
         mojo::PendingRemote<network::mojom::blink::WebTransportHandshakeClient>
             handshake_client)
         : url(url),
@@ -135,6 +136,7 @@ class WebTransportConnector final : public mojom::blink::WebTransportConnector {
           anticipated_concurrent_incoming_bidirectional_streams(
               anticipated_concurrent_incoming_bidirectional_streams),
           additional_headers(std::move(additional_headers)),
+          throttling_profile_id(std::move(throttling_profile_id)),
           handshake_client(std::move(handshake_client)) {}
 
     KURL url;
@@ -147,6 +149,7 @@ class WebTransportConnector final : public mojom::blink::WebTransportConnector {
     std::optional<uint16_t>
         anticipated_concurrent_incoming_bidirectional_streams;
     net::HttpRequestHeaders::HeaderVector additional_headers;
+    std::optional<base::UnguessableToken> throttling_profile_id;
     mojo::PendingRemote<network::mojom::blink::WebTransportHandshakeClient>
         handshake_client;
   };
@@ -162,13 +165,15 @@ class WebTransportConnector final : public mojom::blink::WebTransportConnector {
       std::optional<uint16_t>
           anticipated_concurrent_incoming_bidirectional_streams,
       net::HttpRequestHeaders::HeaderVector additional_headers,
+      const std::optional<base::UnguessableToken>& throttling_profile_id,
       mojo::PendingRemote<network::mojom::blink::WebTransportHandshakeClient>
           handshake_client) override {
     connect_args_.push_back(ConnectArgs(
         url, std::move(fingerprints), application_protocols, congestion_control,
         anticipated_concurrent_incoming_unidirectional_streams,
         anticipated_concurrent_incoming_bidirectional_streams,
-        std::move(additional_headers), std::move(handshake_client)));
+        std::move(additional_headers), throttling_profile_id,
+        std::move(handshake_client)));
   }
 
   Vector<ConnectArgs> TakeConnectArgs() { return std::move(connect_args_); }
@@ -318,11 +323,11 @@ class MockWebTransport : public network::mojom::blink::WebTransport {
 
   void SendFin(uint32_t stream_id) override {}
   void AbortStream(uint32_t stream_id,
-                   uint8_t code,
+                   uint32_t code,
                    AbortStreamCallback callback) override {
     std::move(callback).Run(std::move(abort_stream_stats_));
   }
-  void StopSending(uint32_t stream_id, uint8_t code) override {}
+  void StopSending(uint32_t stream_id, uint32_t code) override {}
 
   void SetAbortStreamStats(
       network::mojom::blink::WebTransportSendStreamStatsPtr stats) {

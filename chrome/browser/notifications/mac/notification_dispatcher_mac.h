@@ -12,6 +12,7 @@
 #include "base/functional/callback_forward.h"
 #include "chrome/browser/notifications/displayed_notifications_dispatch_callback.h"
 #include "chrome/browser/notifications/notification_handler.h"
+#include "chrome/services/mac_notifications/public/mojom/mac_notifications.mojom.h"
 #include "ui/message_center/public/cpp/notification.h"
 
 class Profile;
@@ -26,6 +27,7 @@ struct MacNotificationIdentifier {
     return std::tie(notification_id, profile_id, incognito) <
            std::tie(rhs.notification_id, rhs.profile_id, rhs.incognito);
   }
+  bool operator==(const MacNotificationIdentifier& rhs) const = default;
 };
 
 // Interface to interact with notifications on macOS. It is responsible for one
@@ -35,6 +37,8 @@ class NotificationDispatcherMac {
   // Callback to get all notifications shown on the system for all profiles.
   using GetAllDisplayedNotificationsCallback =
       base::OnceCallback<void(base::flat_set<MacNotificationIdentifier>)>;
+  using DisplayNotificationCallback = base::OnceCallback<void(
+      mac_notifications::mojom::DisplayNotificationResult)>;
 
   NotificationDispatcherMac() = default;
   NotificationDispatcherMac(const NotificationDispatcherMac&) = delete;
@@ -46,7 +50,8 @@ class NotificationDispatcherMac {
   virtual void DisplayNotification(
       NotificationHandler::Type notification_type,
       Profile* profile,
-      const message_center::Notification& notification) = 0;
+      const message_center::Notification& notification,
+      DisplayNotificationCallback callback) = 0;
 
   // Close a notification with the given |identifier|.
   virtual void CloseNotificationWithId(

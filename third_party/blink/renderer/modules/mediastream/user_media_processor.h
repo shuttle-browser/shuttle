@@ -122,6 +122,10 @@ class MODULES_EXPORT UserMediaProcessor
     dispatcher_host_.Bind(std::move(dispatcher_host), task_runner_);
   }
 
+  void FlushMediaStreamDispatcherHostForTesting() {
+    dispatcher_host_.FlushForTesting();
+  }
+
   // Ensure the MediaStreamDevice underlying a source is not closed even if
   // there are no remaining usages from this frame, as it's in the process of
   // being transferred.
@@ -323,6 +327,11 @@ class MODULES_EXPORT UserMediaProcessor
       HashMap<String, base::UnguessableToken>
           requested_audio_capture_session_ids = {});
 
+  // Initializes the renderer-side observer if not yet created. Safe to call
+  // repeatedly.
+  void EnsureMediaStreamDeviceObserverInitialized();
+
+  // Accessor; initializes lazily as a fallback.
   WebMediaStreamDeviceObserver* GetMediaStreamDeviceObserver();
 
   MediaDevices* GetMediaDevices() const;

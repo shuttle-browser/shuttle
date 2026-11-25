@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "base/containers/flat_set.h"
 #include "base/containers/span.h"
 #include "build/build_config.h"
 #include "services/network/public/cpp/resource_request_body.h"
@@ -27,14 +28,17 @@ constexpr int kMaxScrollAnchorSelectorLength = 500;
 struct BLINK_COMMON_EXPORT ExplodedHttpBody {
   std::optional<std::u16string> http_content_type;
   scoped_refptr<network::ResourceRequestBody> request_body;
-  bool contains_passwords;
+  bool contains_passwords = false;
 
   ExplodedHttpBody();
+  ExplodedHttpBody(const ExplodedHttpBody&);
+  ExplodedHttpBody& operator=(const ExplodedHttpBody&);
+  ExplodedHttpBody(ExplodedHttpBody&&) noexcept;
+  ExplodedHttpBody& operator=(ExplodedHttpBody&&) noexcept;
   ~ExplodedHttpBody();
 };
 
 struct BLINK_COMMON_EXPORT ExplodedFrameState {
-  // When adding a new member, also add it to ExplodedFrameState::assign.
   std::optional<std::u16string> url_string;
   std::optional<std::u16string> referrer;
   std::optional<url::Origin> initiator_origin;
@@ -63,23 +67,26 @@ struct BLINK_COMMON_EXPORT ExplodedFrameState {
   std::vector<ExplodedFrameState> children;
 
   ExplodedFrameState();
-  ExplodedFrameState(const ExplodedFrameState& other);
+  ExplodedFrameState(const ExplodedFrameState&);
+  ExplodedFrameState& operator=(const ExplodedFrameState&);
+  ExplodedFrameState(ExplodedFrameState&&) noexcept;
+  ExplodedFrameState& operator=(ExplodedFrameState&&) noexcept;
   ~ExplodedFrameState();
-  void operator=(const ExplodedFrameState& other);
-
- private:
-  void assign(const ExplodedFrameState& other);
 };
 
 struct BLINK_COMMON_EXPORT ExplodedPageState {
   // TODO(creis, lukasza): Instead of storing them in |referenced_files|,
   // extract referenced files from ExplodedHttpBody.  |referenced_files|
-  // currently contains a list from all frames, but cannot be deserialized into
+  // currently contains a set from all frames, but cannot be deserialized into
   // the files referenced by each frame.  See http://crbug.com/441966.
-  std::vector<std::optional<std::u16string>> referenced_files;
+  base::flat_set<std::optional<std::u16string>> referenced_files;
   ExplodedFrameState top;
 
   ExplodedPageState();
+  ExplodedPageState(const ExplodedPageState&) = delete;
+  ExplodedPageState& operator=(const ExplodedPageState&) = delete;
+  ExplodedPageState(ExplodedPageState&&) noexcept;
+  ExplodedPageState& operator=(ExplodedPageState&&) noexcept;
   ~ExplodedPageState();
 };
 

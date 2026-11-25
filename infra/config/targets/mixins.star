@@ -80,7 +80,8 @@ android_emulator_mixin("15-tablet-x64-emulator", "android_35_google_apis_x64_tab
 android_emulator_mixin("15-tablet-landscape-x64-emulator", "android_35_google_apis_x64_tablet_landscape.textpb")
 android_emulator_mixin("15-x64-emulator", "android_35_google_apis_x64.textpb")
 android_emulator_mixin("16-x64-emulator", "android_36_google_apis_x64.textpb")
-android_emulator_mixin("17-beta-x64-emulator", "android_37_google_apis_ps16k_x64.textpb")
+android_emulator_mixin("17-desktop-x64-emulator", "android_37_desktop_x64.textpb")
+android_emulator_mixin("17-x64-emulator", "android_37_google_apis_ps16k_x64.textpb")
 android_emulator_mixin("canary-x64-emulator", "android_canary_google_apis_x64.textpb")
 
 # The following emulator mixins are deprecated on the chromium side. But they
@@ -1032,6 +1033,22 @@ targets.mixin(
     ],
 )
 
+targets.mixin(
+    name = "gpu_force_webgl_on_webgpu",
+    args = [
+        # --enable-unsafe-webgpu bypasses the WebGPU adapter blocklist so the
+        # suite can run on bots whose GPU/driver isn't allowlisted yet.
+        "--extra-browser-args=--enable-features=WebGLOnWebGPU --enable-unsafe-webgpu",
+    ],
+    linux_args = [
+        # Linux defaults to GL SharedImages, and webgpu_on_vk_via_gl_interop is
+        # blocklisted on AMD and Intel < Gen12. Enable Vulkan so Dawn can get a
+        # WebGPU adapter on all Linux GPU bots (Telemetry merges multiple
+        # --enable-features flags).
+        "--extra-browser-args=--enable-features=Vulkan",
+    ],
+)
+
 # Use of this mixin signals to the recipe that the test uploads its results
 # to result-sink and doesn't need to be wrapped by result_adapter.
 targets.mixin(
@@ -1142,24 +1159,36 @@ targets.mixin(
 )
 
 targets.mixin(
-    name = "ios_runtime_cache_27_1",
-    swarming = targets.swarming(
-        named_caches = [
-            swarming.cache(
-                name = "runtime_ios_27_1",
-                path = "Runtime-ios-27.1",
-            ),
-        ],
-    ),
-)
-
-targets.mixin(
     name = "ios_runtime_cache_27_2",
     swarming = targets.swarming(
         named_caches = [
             swarming.cache(
                 name = "runtime_ios_27_2",
                 path = "Runtime-ios-27.2",
+            ),
+        ],
+    ),
+)
+
+targets.mixin(
+    name = "ios_runtime_cache_27_3",
+    swarming = targets.swarming(
+        named_caches = [
+            swarming.cache(
+                name = "runtime_ios_27_3",
+                path = "Runtime-ios-27.3",
+            ),
+        ],
+    ),
+)
+
+targets.mixin(
+    name = "ios_runtime_cache_27_2_iphone19_4",
+    swarming = targets.swarming(
+        named_caches = [
+            swarming.cache(
+                name = "runtime_ios_27_2_iphone19_4",
+                path = "Runtime-ios-27.2-iphone19-4",
             ),
         ],
     ),
@@ -1284,6 +1313,19 @@ targets.mixin(
     swarming = targets.swarming(
         dimensions = {
             "gpu": "10de|1002",
+        },
+    ),
+)
+
+# Expands Windows CPU AI WPT tasks across all x86-64 Windows 10 and Windows 11
+# hosts (both GCE VMs and physical machines) so CPU WPT shards do not saturate
+# the 11 Windows GCE VMs in chrome.tests.intelligence.
+targets.mixin(
+    name = "win_cpu_ai_wpt_dimensions",
+    swarming = targets.swarming(
+        dimensions = {
+            "cpu": "x86-64",
+            "os": "Windows",
         },
     ),
 )
@@ -1422,6 +1464,19 @@ targets.mixin(
 )
 
 targets.mixin(
+    name = "linux_intel_uhd_770_wayland_stable",
+    swarming = targets.swarming(
+        dimensions = {
+            "gpu": "8086:4680-26.0.8",
+            "os": "Ubuntu-26.04",
+            "display_attached": "1",
+            "display_server": "wayland",
+            "pool": "chromium.tests.gpu",
+        },
+    ),
+)
+
+targets.mixin(
     name = "linux_nvidia_gtx_1660_experimental",
     swarming = targets.swarming(
         dimensions = {
@@ -1438,8 +1493,8 @@ targets.mixin(
     swarming = targets.swarming(
         dimensions = {
             "display_server": "x11",
-            "gpu": "10de:2184-535.183.01",
-            "os": "Ubuntu-22.04",
+            "gpu": "10de:2184-535.183.01|10de:2184-595.104.02",
+            "os": "Ubuntu-22.04|Ubuntu-24.04",
             "pool": "chromium.tests.gpu",
         },
     ),
@@ -1449,6 +1504,7 @@ targets.mixin(
     name = "linux_nvidia_rtx_4070_super_wayland_stable",
     swarming = targets.swarming(
         dimensions = {
+            "display_attached": "1",
             "display_server": "wayland",
             "gpu": "10de:2783-595.91.07",
             "os": "Ubuntu-26.04",
@@ -2407,31 +2463,15 @@ targets.mixin(
 )
 
 targets.mixin(
-    name = "xcode_27_1",
-    args = [
-        "--xcode-build-version",
-        "27a9275",
-    ],
-    swarming = targets.swarming(
-        named_caches = [
-            swarming.cache(
-                name = "xcode_ios_27a9275",
-                path = "Xcode.app",
-            ),
-        ],
-    ),
-)
-
-targets.mixin(
     name = "xcode_27_beta",
     args = [
         "--xcode-build-version",
-        "27b48",
+        "27c5020n",
     ],
     swarming = targets.swarming(
         named_caches = [
             swarming.cache(
-                name = "xcode_ios_27b48",
+                name = "xcode_ios_27c5020n",
                 path = "Xcode.app",
             ),
         ],

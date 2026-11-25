@@ -32,11 +32,15 @@ Example:
 
 ```cpp
 // build/rust/tests/test_rust_api_from_cpp/self_contained_target_header2.h:
+namespace test_ns {
+
 int AddViaCc(int x, int y);
 
 struct CcPodStruct final {
   int value;
 };
+
+}  // namespace test_ns
 ```
 
 ```gn
@@ -60,6 +64,9 @@ rust_api_from_cpp("self_contained_target_rs_api") {
   public_headers = [
     "self_contained_target_header2.h",
   ]
+
+  # Re-exports items of the `test_ns` C++ namespace at the root of the crate.
+  root_namespaces = [ "test_ns" ]
 }
 
 rust_static_library("rust_api_from_cpp_unittests") {
@@ -88,6 +95,9 @@ Notes:
   `bindings_target` with an `_rs_api` suffix (e.g. `foo_rs_api` for `foo`).
 * `public_headers` lists only the headers that provide the public API of the
   `bindings_target`.  Rust bindings are generated only for these headers.
+* `root_namespaces` is optional.  Without it, Rust code has to write
+  `self_contained_target_rs_api::test_ns::AddViaCc` (see the "Shorter paths for
+  items from C++ namespaces" section below).
 
 ## Inspecting the generated bindings
 
@@ -116,9 +126,13 @@ Example (`CreateCcPodStructFromValue` below returns `CcPodStruct` from the
 
 #include "build/rust/tests/test_rust_api_from_cpp/self_contained_target_header2.h"
 
+namespace test_ns {
+
 inline CcPodStruct CreateCcPodStructFromValue(int x) {
   return CcPodStruct{.value = x};
 }
+
+}  // namespace test_ns
 ```
 
 ```gn
@@ -135,6 +149,8 @@ rust_api_from_cpp("target_depending_on_another_rs_api") {
 
   # Parallels `public_deps` of `target_depending_on_another`.
   bindings_deps = [ ":self_contained_target_rs_api" ]
+
+  root_namespaces = [ "test_ns" ]
 }
 
 rust_static_library("rust_api_from_cpp_unittests") {
@@ -190,13 +206,13 @@ cases, annotate the C++ API:
   it into Rust lifetimes.  Clang warnings also lightly check it (e.g.
   `-Wdangling` reports a temporary passed to a `LIFETIME_BOUND` parameter
   if the result outlives the temporary).  See
-  `build/rust/tests/test_rust_api_from_cpp/lifetime_bound.h`.
+  `build/rust/tests/test_rust_api_from_cpp/lifetimes/lifetime_bound.h`.
 * Use explicit lifetime annotations (e.g. `$a` from
   `#include "third_party/crubit/support/lifetime_annotations.h"`) only if
   `LIFETIME_BOUND` can't express the lifetimes.  Nothing checks that these
   annotations are correct.  C++ targets that use these annotations need to
   depend on `//build/rust/crubit`.  See
-  `build/rust/tests/test_rust_api_from_cpp/explicit_lifetimes.h`.
+  `build/rust/tests/test_rust_api_from_cpp/lifetimes/explicit_lifetimes.h`.
 
 See
 [Crubit's "References and lifetimes" docs](https://crubit.rs/cpp/references_and_lifetimes.html)
@@ -204,6 +220,43 @@ for more details and examples.
 
 See also https://crbug.com/572054453 and https://crbug.com/572056816 which track
 enabling additional lifetime-related warnings in Chromium's C++ targets.
+
+## C++ standard library types
+
+Some C++ standard library types (e.g. `std::optional<T>`, `std::unique_ptr<T>`,
+`std::vector<T>`, and `std::string_view`) are represented in the generated
+bindings by layout-compatible Rust types from the `cpp_std` crate.  To name
+these types, Rust code should depend on `//build/rust/crubit:cpp_std` and write
+e.g. `cpp_std::vector<T>`.
+See `build/rust/tests/test_rust_api_from_cpp/std/std_types.h` and
+`build/rust/tests/test_rust_api_from_cpp/std/unittests.rs`.
+
+`std::string_view` is represented as `cpp_std::string_view<'a>` (see the
+"References and lifetimes" section above).
+
+## Types that Rust can't move
+
+Rust moves values with `memcpy` - it cannot move C++ objects that are not Rust
+movable.  For more details please see the following sections of the Crubit book:
+
+* ["Rust-movable classes"](https://crubit.rs/cpp/classes_and_structs.html#rust_movable)
+  (generic introduction)
+* ["Making types Rust-movable"](https://crubit.rs/cpp/cookbook#rust_movable)
+  (tips for making a C++ object Rust-movable).  Some extra notes about
+  `TRIVIAL_ABI`:
+    - Note that in Chromium `TRIVIAL_ABI` from `base/compiler_specific.h`
+      should be used instead of the equivalent Abseil macro.
+    - Note that Crubit docs and
+      [Clang docs](https://clang.llvm.org/docs/AttributeReference.html#trivial-abi:~:text=objects%20that%20contain%20pointers%20to%20themselves%20or%20otherwise%20depend%20on%20their%20address%20(or%20the%20address%20or%20their%20subobjects)
+      point out that misusing `TRIVIAL_ABI` can lead to
+      Undefined Behavior (UB) - e.g. when the attribute is applied to
+      objects that are not
+      [bitwise-relocatable (as defined by Crubit)](https://github.com/google/crubit/blob/4fd627869b9e9becbf4c041f7a511102c2db4ce1/docs/design/bitwise_relocatable.md?plain=1#L35-L52).
+* `ctor` crate documentation (support for in-place construction and mutation of
+  Rust types like ones that were originally defined in C++):
+    - ["Quick guide"](https://crubit.rs/types/non_rust_movable/intro_short.html)
+    - ["Advanced guide"](https://crubit.rs/types/non_rust_movable/intro_advanced.html)
+    - ["Cheat sheet"](https://crubit.rs/types/non_rust_movable/cheat_sheet.html)
 
 ## Adding hand-written Rust code to the bindings
 
@@ -218,7 +271,7 @@ section below).
 Example:
 
 ```cpp
-// build/rust/tests/test_rust_api_from_cpp/test_time_delta.h:
+// build/rust/tests/test_rust_api_from_cpp/extra_rust_sources/time_delta.h:
 
 namespace test_base {
 
@@ -233,7 +286,7 @@ class TestTimeDelta {
 ```
 
 ```rust
-// build/rust/tests/test_rust_api_from_cpp/test_time_delta.rs:
+// build/rust/tests/test_rust_api_from_cpp/extra_rust_sources/time_delta.rs:
 
 use crate::test_base::TestTimeDelta;
 use core::num::TryFromIntError;
@@ -250,25 +303,26 @@ impl TryFrom<TestTimeDelta> for Duration {
 ```
 
 ```gn
-# build/rust/tests/test_rust_api_from_cpp/BUILD.gn
+# build/rust/tests/test_rust_api_from_cpp/extra_rust_sources/BUILD.gn
 
-rust_api_from_cpp("test_time_delta_rs_api") {
-  bindings_target = ":test_time_delta"
-  public_headers = [ "test_time_delta.h" ]
-  extra_rust_sources = [ "test_time_delta.rs" ]
+rust_api_from_cpp("time_delta_rs_api") {
+  bindings_target = ":time_delta"
+  public_headers = [ "time_delta.h" ]
+  root_namespaces = [ "test_base" ]
+  extra_rust_sources = [ "time_delta.rs" ]
 }
 ```
 
 ```rust
-// build/rust/tests/test_rust_api_from_cpp/tests.rs:
+// build/rust/tests/test_rust_api_from_cpp/extra_rust_sources/unittests.rs:
 
 chromium::import! {
-    "//build/rust/tests/test_rust_api_from_cpp:test_time_delta_rs_api"
-        as test_time_delta;
+    "//build/rust/tests/test_rust_api_from_cpp/extra_rust_sources:time_delta_rs_api"
+        as time_delta;
 }
 
 fn foo() {
-    let delta = ::test_time_delta::test_base::TestTimeDelta::FromMicroseconds(123);
+    let delta = ::time_delta::TestTimeDelta::FromMicroseconds(123);
     let duration = std::time::Duration::try_from(delta).unwrap();
 }
 ```
@@ -288,9 +342,29 @@ Notes:
   `sources` and a Rust module path in `mod` (e.g. `"foo::bar"`) - the sources
   are placed into that module.  Reaching for this attribute should be
   needed quite rarely - usually only for `cc_std` or `base` bindings.  See
-  `test_extra_rust_source_groups_rs_api` in
-  [`build/rust/tests/test_rust_api_from_cpp/BUILD.gn`](../../../build/rust/tests/test_rust_api_from_cpp/BUILD.gn)
+  `source_groups_rs_api` in
+  [`build/rust/tests/test_rust_api_from_cpp/extra_rust_sources/BUILD.gn`](../../../build/rust/tests/test_rust_api_from_cpp/extra_rust_sources/BUILD.gn)
   for an example.
+
+## Shorter paths for items from C++ namespaces
+
+C++ namespaces become Rust modules in the generated bindings (e.g.
+`test_outer::test_inner::GetValueFromNestedNamespace` from C++ becomes
+`test_root_namespaces::test_outer::test_inner::GetValueFromNestedNamespace` in
+Rust).  The `root_namespaces` attribute of `rust_api_from_cpp` also re-exports
+the items of the specified namespaces at the root of the crate.
+
+Example:
+
+```gn
+# base/BUILD.gn
+
+rust_api_from_cpp("base_rs_api") {
+  bindings_target = ":base"
+  root_namespaces = [ "base" ]
+  # ...
+}
+```
 
 ## Troubleshooting
 
@@ -325,17 +399,17 @@ Then you want to read the "Specifying binding dependencies" section above.
 Rust's
 [orphan rule](https://doc.rust-lang.org/reference/items/implementations.html#r-items.impl.trait.orphan-rule)
 prevents implementing a foreign trait for foreign types.  For example, if
-`tests.rs` tries to implement `TryFrom` for a type from `rust_api_from_cpp`
-bindings, then the build fails with an error like:
+`extra_rust_sources/unittests.rs` tries to implement `TryFrom` for a type from
+`rust_api_from_cpp` bindings, then the build fails with an error like:
 
 ```
 error[E0117]: only traits defined in the current crate can be implemented for types defined outside of the crate
-  --> ../../build/rust/tests/test_rust_api_from_cpp/tests.rs:47:1
+  --> ../../build/rust/tests/test_rust_api_from_cpp/extra_rust_sources/unittests.rs:47:1
    |
-47 | impl TryFrom<::test_time_delta::test_base::TestTimeDelta> for std::time::Duration {
-   | ^^^^^----------------------------------------------------^^^^^-------------------
-   |      |                                                        |
-   |      |                                                        `Duration` is not defined in the current crate
+47 | impl TryFrom<::time_delta::test_base::TestTimeDelta> for std::time::Duration {
+   | ^^^^^-----------------------------------------------^^^^^-------------------
+   |      |                                                   |
+   |      |                                                   `Duration` is not defined in the current crate
    |      this is not defined in the current crate because this is a foreign trait
 ```
 

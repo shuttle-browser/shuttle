@@ -30,6 +30,7 @@
 
 #include <tuple>
 
+#include "base/no_destructor.h"
 #include "base/numerics/checked_math.h"
 #include "build/build_config.h"
 #include "cc/tiles/software_image_decode_cache.h"
@@ -45,6 +46,7 @@
 #include "third_party/blink/renderer/platform/graphics/paint/paint_image.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_recorder.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_shader.h"
+#include "third_party/blink/renderer/platform/image-decoders/image_decoder.h"
 #include "third_party/blink/renderer/platform/instrumentation/histogram.h"
 #include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
 #include "third_party/blink/renderer/platform/transforms/affine_transform.h"
@@ -53,6 +55,7 @@
 #include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+#include "third_party/blink/renderer/platform/wtf/wtf.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkColorSpace.h"
 #include "third_party/skia/include/core/SkImage.h"
@@ -65,18 +68,23 @@
 
 namespace blink {
 
-Image::Image(ImageObserver* observer, bool is_multipart)
+Image::Image(ImageObserver* observer,
+             bool is_multipart,
+             bool is_cors_same_origin)
     : image_observer_disabled_(false),
       image_observer_(observer),
       stable_image_id_(PaintImage::GetNextId()),
-      is_multipart_(is_multipart) {}
+      is_multipart_(is_multipart),
+      is_cors_same_origin_(is_cors_same_origin) {}
 
 Image::~Image() = default;
 
 Image* Image::NullImage() {
   DCHECK(IsMainThread());
-  DEFINE_STATIC_REF(Image, null_image, (BitmapImage::Create()));
-  return null_image;
+  static const base::NoDestructor<scoped_refptr<Image>> null_image(
+      BitmapImage::Create(/*observer=*/nullptr, /*is_multipart=*/false,
+                          /*is_cors_same_origin=*/true));
+  return null_image->get();
 }
 
 // static
@@ -106,7 +114,9 @@ scoped_refptr<Image> Image::LoadPlatformResource(
   if (resource.IsEmpty())
     return Image::NullImage();
 
-  scoped_refptr<Image> image = BitmapImage::Create();
+  scoped_refptr<Image> image =
+      BitmapImage::Create(/*observer=*/nullptr, /*is_multipart=*/false,
+                          /*is_cors_same_origin=*/true);
   image->SetData(resource, true);
   return image;
 }
@@ -200,6 +210,10 @@ String Image::FilenameExtension() const {
 
 const AtomicString& Image::MimeType() const {
   return g_empty_atom;
+}
+
+C2PAManifestStatus Image::GetC2PAManifestStatus() const {
+  return C2PAManifestStatus::kUnknown;
 }
 
 namespace {
@@ -354,7 +368,9 @@ PaintImageBuilder Image::CreatePaintImageBuilder(
                                         : PaintImage::AnimationType::kStatic;
   auto builder = PaintImageBuilder::WithDefault();
   builder.set_id(paint_id.value_or(stable_image_id_));
-  builder.set_animation_type(animation_type).set_is_multipart(is_multipart_);
+  builder.set_animation_type(animation_type)
+      .set_is_multipart(is_multipart_)
+      .set_is_read_back_disallowed(!IsCorsSameOrigin());
 
   return builder;
 }

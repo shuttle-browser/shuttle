@@ -79,9 +79,7 @@ class CORE_EXPORT AbstractPropertySetCSSStyleDeclaration
                    ExceptionState&) final;
   String removeProperty(const String& property_name, ExceptionState&) final;
   void QuietlyRemoveProperty(const String& property_name) final;
-  String CssFloat() const;
-  void SetCSSFloat(const String&, ExceptionState&);
-  String cssText() const final;
+  String cssText() const override;
   void setCSSText(const ExecutionContext*,
                   const String&,
                   ExceptionState&) final;
@@ -108,6 +106,16 @@ class CORE_EXPORT AbstractPropertySetCSSStyleDeclaration
   virtual void WillMutate() {}
   virtual void DidMutate(MutationType) {}
   virtual MutableCSSPropertyValueSet& PropertySet() const = 0;
+  virtual void SetCSSTextInternal(const String&, SecureContextMode);
+  virtual void PrepareCustomProperty(AtomicString&, StringView, bool&) {}
+  virtual AtomicString HygienicToAuthoredCustomPropertyName(
+      const AtomicString& name) const {
+    return name;
+  }
+  virtual AtomicString AuthoredToHygienicCustomPropertyName(
+      const AtomicString& name) const {
+    return name;
+  }
   virtual bool IsKeyframeStyle() const { return false; }
   bool FastPathSetProperty(CSSPropertyID unresolved_property,
                            double value) override;

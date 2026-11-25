@@ -39,6 +39,7 @@ source_set("lib") {
     "//services/device/fingerprint",
     "//services/device/generic_sensor",
     "//services/device/geolocation",
+    "//services/device/haptics",
     "//services/device/hid",
     "//services/device/power_monitor",
     "//services/device/public/cpp:device_features",

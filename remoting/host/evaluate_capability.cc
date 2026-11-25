@@ -12,7 +12,6 @@
 #include "base/files/file_path.h"
 #include "base/notreached.h"
 #include "base/path_service.h"
-#include "base/process/kill.h"
 #include "base/process/launch.h"
 #include "base/threading/thread_restrictions.h"
 #include "build/build_config.h"
@@ -74,9 +73,6 @@ base::FilePath BuildHostBinaryPath() {
   return directory.Append(FILE_PATH_LITERAL(
       "remoting_me2me_host.app/Contents/MacOS/remoting_me2me_host"));
 #elif BUILDFLAG(IS_WIN)
-  if (path.BaseName().value() == FILE_PATH_LITERAL("remoting_console.exe")) {
-    return path;
-  }
   if (path.BaseName().value() == FILE_PATH_LITERAL("remoting_desktop.exe")) {
     return path;
   }
@@ -112,7 +108,7 @@ int EvaluateCapability(const std::string& type,
                             kProcessTypeEvaluateCapability);
   command.AppendSwitchASCII(kEvaluateCapabilitySwitchName, type);
 
-  int exit_code;
+  int exit_code = kInitializationFailed;
   std::string dummy_output;
   if (!output) {
     output = &dummy_output;

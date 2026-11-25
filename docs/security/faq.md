@@ -242,7 +242,7 @@ chrome://safe-browsing before starting the download.
 ### What about dangerous file types not listed in the file type policy?
 
 The [file type
-policy](https://source.chromium.org/chromium/chromium/src/+/main:components/safe_browsing/content/resources/download_file_types.asciipb?q=download_file_types.asciipb%20-f:%2Fgen%2F&ss=chromium)
+policy](https://source.chromium.org/chromium/chromium/src/+/main:components/safe_browsing/content/resources/download_file_types/download_file_types.asciipb?q=download_file_types.asciipb%20-f:%2Fgen%2F&ss=chromium)
 controls some details of which security checks to enable for a given file
 extension. Most importantly, it controls whether we contact Safe Browsing about
 a download, and whether we show a warning for all downloads of that file type.
@@ -266,6 +266,14 @@ to sensitive files, by listing well-known, security-sensitive locations, as a
 defense in-depth strategy. Therefore, evading the blocklist in some manner is
 not deemed as a security bug, especially as it requires user's explicit
 selection on a file or a directory from the file picker.
+
+In particular, the blocklist cannot exhaustively enumerate every third-party
+application, shell, editor, package manager, or build tool configuration file,
+dotfile, or project script that another local program might read or execute
+when run by the user. Once a user explicitly selects a file or directory in the
+file picker, the site is granted access to the user-selected location; finding
+an unblocked application configuration file or project file is not considered a
+security bug.
 
 <a name="TOC-I-can-download-a-file-with-an-unsafe-extension-but-a-different-extension-or-file-type-is-shown-to-the-user-"></a>
 ### I can download a file with an unsafe extension but a different extension or file type is shown to the user - is this a security bug?

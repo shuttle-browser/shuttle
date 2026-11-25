@@ -164,7 +164,7 @@ SessionServiceBase::SessionServiceBase(Profile* profile,
       TaskRunnerData::GetBackendTaskRunnerForProfile(profile, type));
 
   // We should never be created when incognito.
-  DCHECK(!profile->IsOffTheRecord());
+  CHECK(!profile->IsOffTheRecord(), base::NotFatalUntil::M163);
   if (profile->AllowsBrowserWindows()) {
     browser_collection_observer_.Observe(
         ProfileBrowserCollection::GetForProfile(profile));
@@ -178,7 +178,7 @@ SessionServiceBase::~SessionServiceBase() {
   session_service_base_observers_.Clear();
   // command_storage_manager_->Save() should be called by child classes which
   // should have destructed the command_storage_manager.
-  DCHECK(command_storage_manager_ == nullptr);
+  CHECK(command_storage_manager_ == nullptr, base::NotFatalUntil::M163);
 }
 
 void SessionServiceBase::AddObserver(SessionServiceBaseObserver* observer) {
@@ -392,7 +392,8 @@ void SessionServiceBase::OnWillSaveCommands() {
   if (!is_saving_enabled_) {
     // There should be no commands scheduled, otherwise data will be written,
     // potentially clobbering the last file.
-    DCHECK(command_storage_manager_->pending_commands().empty());
+    CHECK(command_storage_manager_->pending_commands().empty(),
+          base::NotFatalUntil::M163);
     return;
   }
 
@@ -464,8 +465,8 @@ void SessionServiceBase::TabNavigationPathPruned(SessionID window_id,
     return;
   }
 
-  DCHECK_GE(index, 0);
-  DCHECK_GT(count, 0);
+  CHECK_GE(index, 0, base::NotFatalUntil::M163);
+  CHECK_GT(count, 0, base::NotFatalUntil::M163);
 
   // Update the range of available indices.
   auto it = tab_to_available_range_.find(tab_id);
@@ -593,8 +594,8 @@ void SessionServiceBase::BuildCommandsForTab(
     std::optional<split_tabs::SplitTabId> split,
     bool is_pinned,
     IdToRange* tab_to_available_range) {
-  DCHECK(tab);
-  DCHECK(window_id.is_valid());
+  CHECK(tab, base::NotFatalUntil::M163);
+  CHECK(window_id.is_valid(), base::NotFatalUntil::M163);
 
   sessions::SessionTabHelper* session_tab_helper =
       sessions::SessionTabHelper::FromWebContents(tab);
@@ -622,7 +623,7 @@ void SessionServiceBase::BuildCommandsForTab(
     NavigationEntry* entry = (i == pending_index)
                                  ? tab->GetController().GetPendingEntry()
                                  : tab->GetController().GetEntryAtIndex(i);
-    DCHECK(entry);
+    CHECK(entry, base::NotFatalUntil::M163);
     if (ShouldTrackURLForRestore(entry->GetVirtualURL()) &&
         !entry->IsInitialEntry()) {
       // Don't try to persist initial NavigationEntry, as it is not actually
@@ -660,9 +661,9 @@ void SessionServiceBase::BuildCommandsForBrowser(
     BrowserWindowInterface* browser,
     IdToRange* tab_to_available_range,
     std::set<SessionID>* windows_to_track) {
-  DCHECK(is_saving_enabled_);
-  DCHECK(browser);
-  DCHECK(browser->GetSessionID().is_valid());
+  CHECK(is_saving_enabled_, base::NotFatalUntil::M163);
+  CHECK(browser, base::NotFatalUntil::M163);
+  CHECK(browser->GetSessionID().is_valid(), base::NotFatalUntil::M163);
 
   command_storage_manager()->AppendRebuildCommand(
       sessions::CreateSetWindowBoundsCommand(
@@ -710,6 +711,9 @@ void SessionServiceBase::BuildCommandsForBrowser(
 
     for (const tab_groups::TabGroupId& group_id :
          group_model->ListTabGroups()) {
+      if (!tab_strip->IsPersistableTabGroup(group_id)) {
+        continue;
+      }
       const tab_groups::TabGroupVisualData* visual_data =
           group_model->GetTabGroup(group_id)->visual_data();
 
@@ -730,7 +734,7 @@ void SessionServiceBase::BuildCommandsForBrowser(
   if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing) &&
       tab_strip->SupportsTabGroups()) {
     std::optional<tab_groups::TabGroupId> focused_group =
-        tab_strip->GetFocusedGroup();
+        tab_strip->GetPersistableFocusedGroup();
     if (focused_group.has_value()) {
       command_storage_manager()->AppendRebuildCommand(
           sessions::CreateAddWindowExtraDataCommand(
@@ -743,9 +747,9 @@ void SessionServiceBase::BuildCommandsForBrowser(
   int index = 0;
   for (const tabs::TabInterface* tab_interface : *tab_strip) {
     WebContents* tab = tab_interface->GetContents();
-    DCHECK(tab);
+    CHECK(tab, base::NotFatalUntil::M163);
     const std::optional<tab_groups::TabGroupId> group_id =
-        tab_strip->GetTabGroupForTab(index);
+        tab_strip->GetPersistableTabGroupForTab(index);
     const std::optional<split_tabs::SplitTabId> split_id =
         tab_strip->GetSplitForTab(index);
 
@@ -761,7 +765,14 @@ void SessionServiceBase::BuildCommandsForBrowser(
 void SessionServiceBase::BuildCommandsFromBrowsers(
     IdToRange* tab_to_available_range,
     std::set<SessionID>* windows_to_track) {
-  DCHECK(is_saving_enabled_);
+  CHECK(is_saving_enabled_, base::NotFatalUntil::M163);
+  // The platform session id is only written once, when the platform session is
+  // initialized, so it has to be carried over when the commands are rebuilt.
+  // Otherwise the next launch can't restore the platform session.
+  if (platform_session_id_.has_value()) {
+    command_storage_manager()->AppendRebuildCommand(
+        sessions::CreateSetPlatformSessionIdCommand(*platform_session_id_));
+  }
   ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
       [this, tab_to_available_range,
        windows_to_track](BrowserWindowInterface* browser) {
@@ -785,7 +796,7 @@ void SessionServiceBase::ScheduleCommand(
     return;
   }
 
-  DCHECK(command);
+  CHECK(command, base::NotFatalUntil::M163);
   if (ReplacePendingCommand(command_storage_manager_.get(), &command)) {
     return;
   }
@@ -866,7 +877,7 @@ void SessionServiceBase::SetSavingEnabled(bool enabled) {
     // before any commands are actually written. If commands are written, then
     // the purpose of disabling will have failed (because by writing some
     // commands the previous session is going to be lost on exit).
-    DCHECK(!did_save_commands_at_least_once_);
+    CHECK(!did_save_commands_at_least_once_, base::NotFatalUntil::M163);
     command_storage_manager()->ClearPendingCommands();
   } else {
     ScheduleResetCommands();
@@ -895,7 +906,7 @@ void SessionServiceBase::InitializePlatformSessionIfNeeded(
     return;
   }
 
-  DCHECK(platform->GetSessionManager());
+  CHECK(platform->GetSessionManager(), base::NotFatalUntil::M163);
   ui::PlatformSessionManager* session_manager = platform->GetSessionManager();
   const bool should_restore = !restored_platform_session_id.empty();
 

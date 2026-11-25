@@ -1,0 +1,5 @@
+This is a testharness.js-based test.
+[FAIL] SVG switch active child during reentrant removal
+  assert_true: The unload handler ran during removeChild expected true got false
+Harness: the test ran to completion.
+

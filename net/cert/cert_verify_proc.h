@@ -19,6 +19,7 @@
 #include "net/cert/ct_log_verifier.h"
 #include "net/cert/ct_policy_enforcer.h"
 #include "net/cert/ct_verifier.h"
+#include "net/cert/key_pinning_state.h"
 #include "net/cert/require_ct_delegate.h"
 #include "net/net_buildflags.h"
 #include "third_party/boringssl/src/pki/parsed_certificate.h"
@@ -91,6 +92,7 @@ class NET_EXPORT CertVerifyProc
     scoped_refptr<CRLSet> crl_set;
     std::vector<scoped_refptr<const net::CTLogVerifier>> ct_logs;
     scoped_refptr<net::CTPolicyEnforcer> ct_policy_enforcer;
+    scoped_refptr<KeyPinningState> key_pinning_state;
     std::optional<network_time::TimeTracker> time_tracker;
 #if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
     std::optional<net::ChromeRootStoreData> root_store_data;
@@ -264,16 +266,6 @@ class NET_EXPORT CertVerifyProc
       const std::string& hostname,
       base::span<const uint8_t> tls_cert,
       const NetLogWithSource& net_log);
-
-  // TODO(crbug.com/436300895): remove this (make internal to
-  // CertVerifyProcBuiltin), since it is only used internally by
-  // Verify2QwacBinding.
-  // Performs 2-QWAC verification, if implemented by the subclass. The default
-  // implementation always fails.
-  virtual int Verify2Qwac(X509Certificate* cert,
-                          const std::string& hostname,
-                          CertVerifyResult* verify_result,
-                          const NetLogWithSource& net_log);
 
  protected:
   explicit CertVerifyProc(scoped_refptr<CRLSet> crl_set);

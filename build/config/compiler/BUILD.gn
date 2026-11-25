@@ -688,29 +688,13 @@ config("compiler") {
   # C11/C++11 compiler flags setup.
   # ---------------------------
   if (is_linux || is_chromeos || is_android || current_os == "aix") {
-    if (is_clang) {
-      standard_prefix = "c"
+    # Since builds use -std=c* and not -std=gnu*, _GNU_SOURCE will not be
+    # defined by the compiler.  However, lots of code relies on the
+    # non-standard features that _GNU_SOURCE enables, so define it manually.
+    defines += [ "_GNU_SOURCE" ]
+  }
 
-      # Since we build with -std=c* and not -std=gnu*, _GNU_SOURCE will not be
-      # defined by the compiler.  However, lots of code relies on the
-      # non-standard features that _GNU_SOURCE enables, so define it manually.
-      defines += [ "_GNU_SOURCE" ]
-    } else {
-      # Gcc does not support ##__VA_ARGS__ when in standards-conforming mode,
-      # but we use this feature in several places in Chromium.
-      # TODO(thomasanderson): Replace usages of ##__VA_ARGS__ with the
-      # standard-compliant __VA_OPT__ added by C++20, and switch the gcc build
-      # to -std=c*.
-      standard_prefix = "gnu"
-    }
-
-    cflags_c += [ "-std=${standard_prefix}11" ]
-    if (use_cxx23) {
-      cflags_cc += [ "-std=${standard_prefix}++23" ]
-    } else {
-      cflags_cc += [ "-std=${standard_prefix}++20" ]
-    }
-  } else if (is_win) {
+  if (is_win) {
     cflags_c += [ "/std:c11" ]
     if (use_cxx23) {
       cflags_cc += [ "/std:c++23preview" ]
@@ -745,6 +729,9 @@ config("compiler") {
   }
 
   if (is_wasm) {
+    # WASM targets that link with -pthread (shared memory) require that every
+    # object file be compiled with atomics and bulk-memory enabled.
+    cflags += [ "-pthread" ]
     ldflags += [
       "-s",
       "ALLOW_MEMORY_GROWTH=1",
@@ -853,6 +840,8 @@ config("compiler") {
         # TODO(crbug.com/40219076): Investigate if we can get the > 6% perf win
         # of import_instr_limit 30 with a binary size hit smaller than ~2 MiB.
         import_instr_limit = 5
+      } else if (is_castos && optimize_for_size) {
+        import_instr_limit = 0
       }
 
       ldflags += [ "-Wl,-mllvm,-import-instr-limit=$import_instr_limit" ]
@@ -1057,6 +1046,15 @@ config("compiler") {
   # as NEON is a mandatory part of ARMv8 anyway.
   if (current_cpu == "arm64") {
     defines += [ "__ARM_NEON__=1" ]
+  }
+
+  # This reduces the core_runtime_starboard binary size by ~4.2MB uncompressed
+  # (~1.25MB compressed) on ARM32 embedded platforms.
+  if (enable_cast_receiver) {
+    cflags += [
+      "-mllvm",
+      "-inline-threshold=32",
+    ]
   }
 }
 
@@ -1318,7 +1316,11 @@ config("thinlto_optimize_default") {
 config("thinlto_optimize_max") {
   if (!is_debug && use_thin_lto && is_a_target_toolchain) {
     if (thin_lto_enable_optimizations) {
-      lto_opt_level = 2
+      if (is_castos && optimize_for_size) {
+        lto_opt_level = 1
+      } else {
+        lto_opt_level = 2
+      }
     } else {
       lto_opt_level = 0
     }

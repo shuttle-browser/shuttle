@@ -16,19 +16,22 @@
 
 #include <utility>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/calculators/util/landmarks_transformation_calculator.pb.h"
 #include "mediapipe/framework/api2/node.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/statusor.h"
 
 namespace mediapipe {
 namespace api2 {
 
 namespace {
 
-StatusOr<LandmarkList> NormalizeTranslation(const LandmarkList& in_landmarks) {
+absl::StatusOr<LandmarkList> NormalizeTranslation(
+    const LandmarkList& in_landmarks) {
   RET_CHECK_GT(in_landmarks.landmark_size(), 0);
 
   double x_sum = 0.0f;
@@ -56,7 +59,7 @@ StatusOr<LandmarkList> NormalizeTranslation(const LandmarkList& in_landmarks) {
   return out_landmarks;
 }
 
-StatusOr<LandmarkList> FlipAxis(
+absl::StatusOr<LandmarkList> FlipAxis(
     const LandmarkList& in_landmarks,
     const LandmarksTransformationCalculatorOptions::FlipAxis& options) {
   float x_mul = options.flip_x() ? -1 : 1;
@@ -119,10 +122,10 @@ class LandmarksTransformationCalculatorImpl
 
     for (auto& transformation : options.transformation()) {
       if (transformation.has_normalize_translation()) {
-        MP_ASSIGN_OR_RETURN(landmarks, NormalizeTranslation(landmarks));
+        ABSL_ASSIGN_OR_RETURN(landmarks, NormalizeTranslation(landmarks));
       } else if (transformation.has_flip_axis()) {
-        MP_ASSIGN_OR_RETURN(landmarks,
-                            FlipAxis(landmarks, transformation.flip_axis()));
+        ABSL_ASSIGN_OR_RETURN(landmarks,
+                              FlipAxis(landmarks, transformation.flip_axis()));
       } else {
         RET_CHECK_FAIL() << "Unknown landmarks transformation";
       }

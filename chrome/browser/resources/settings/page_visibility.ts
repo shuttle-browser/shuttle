@@ -13,6 +13,8 @@ export interface PageVisibility {
   defaultBrowser?: boolean;
   downloads?: boolean;
   extensions?: boolean;
+  general?: boolean;
+  home?: boolean;
   languages?: boolean;
   onStartup?: boolean;
   performance?: boolean;
@@ -39,7 +41,7 @@ function createPageVisibility(): PageVisibility|undefined {
   }
 
   // <if expr="not is_chromeos">
-  const pageVisibility = {
+  const pageVisibility: PageVisibility = {
     a11y: false,
     appearance: false,
     defaultBrowser: false,
@@ -54,7 +56,7 @@ function createPageVisibility(): PageVisibility|undefined {
   };
   // </if>
   // <if expr="is_chromeos">
-  const pageVisibility = {
+  const pageVisibility: PageVisibility = {
     onStartup: false,
     reset: false,
     appearance: {
@@ -74,6 +76,11 @@ function createPageVisibility(): PageVisibility|undefined {
     performance: false,
   };
   // </if>
+
+  if (loadTimeData.getString('settingsRefresh2026') !== '') {
+    pageVisibility.general = false;
+    pageVisibility.home = false;
+  }
 
   return pageVisibility;
 }

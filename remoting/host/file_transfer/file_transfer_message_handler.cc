@@ -129,16 +129,21 @@ void FileTransferMessageHandler::OnDisconnecting() {}
 
 void FileTransferMessageHandler::OnMetadata(
     protocol::FileTransfer::Metadata metadata) {
+  std::unique_ptr<FileOperations::Writer> writer =
+      file_operations_->CreateWriter();
+  if (!writer) {
+    Cancel();
+    SendError(protocol::MakeFileTransferError(
+        FROM_HERE, protocol::FileTransfer_Error_Type_PROTOCOL_ERROR));
+    return;
+  }
   SetState(kWriting);
-  // Unretained is sound because the callbacks won't be called after
-  // BufferedFileWriter is destroyed, which is in turn owned by this
-  // FileTransferMessageHandler.
   buffered_file_writer_.emplace(
-      file_operations_->CreateWriter(),
+      std::move(writer),
       base::BindOnce(&FileTransferMessageHandler::OnWritingComplete,
-                     base::Unretained(this)),
+                     weak_ptr_factory_.GetWeakPtr()),
       base::BindOnce(&FileTransferMessageHandler::OnWriteError,
-                     base::Unretained(this)));
+                     weak_ptr_factory_.GetWeakPtr()));
   buffered_file_writer_->Start(
       // Ensure filename is safe, and convert from UTF-8 to a FilePath.
       net::GenerateFileName(GURL(), std::string(), std::string(),
@@ -158,12 +163,16 @@ void FileTransferMessageHandler::OnEnd() {
 }
 
 void FileTransferMessageHandler::OnRequestTransfer() {
-  SetState(kReading);
   file_reader_ = file_operations_->CreateReader();
-  // Unretained is sound because FileReader will not call us after it is
-  // destroyed, and we own it.
+  if (!file_reader_) {
+    Cancel();
+    SendError(protocol::MakeFileTransferError(
+        FROM_HERE, protocol::FileTransfer_Error_Type_PROTOCOL_ERROR));
+    return;
+  }
+  SetState(kReading);
   file_reader_->Open(base::BindOnce(&FileTransferMessageHandler::OnOpenResult,
-                                    base::Unretained(this)));
+                                    weak_ptr_factory_.GetWeakPtr()));
 }
 
 void FileTransferMessageHandler::OnSuccess() {
@@ -249,11 +258,9 @@ void FileTransferMessageHandler::ReadNextChunk() {
     return;
   }
 
-  // Unretained is sound because file_reader_ is guaranteed not to execute any
-  // callbacks after it is destroyed.
   file_reader_->ReadChunk(
       kChunkSize, base::BindOnce(&FileTransferMessageHandler::OnReadResult,
-                                 base::Unretained(this)));
+                                 weak_ptr_factory_.GetWeakPtr()));
 }
 
 void FileTransferMessageHandler::Cancel() {

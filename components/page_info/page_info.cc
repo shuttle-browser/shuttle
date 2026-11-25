@@ -58,7 +58,7 @@
 #include "components/permissions/request_type.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
 #include "components/safe_browsing/buildflags.h"
-#include "components/safe_browsing/core/browser/safe_browsing_metrics_collector.h"
+#include "components/safe_browsing/core/browser/metrics_collector/safe_browsing_metrics_collector.h"
 #include "components/safe_browsing/core/common/proto/csd.pb.h"
 #include "components/security_interstitials/content/stateful_ssl_host_state_delegate.h"
 #include "components/ssl_errors/error_info.h"
@@ -83,6 +83,7 @@
 #include "services/metrics/public/cpp/ukm_recorder.h"
 #include "third_party/abseil-cpp/absl/functional/overload.h"
 #include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/public_buildflags.h"
 #include "third_party/boringssl/src/include/openssl/ssl.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "url/origin.h"
@@ -242,7 +243,7 @@ const PageInfo::ChooserUIInfo kChooserUIInfo[] = {
      IDS_PAGE_INFO_SERIAL_PORT_SECONDARY_LABEL,
      IDS_PAGE_INFO_SERIAL_PORT_ALLOWED_BY_POLICY_LABEL,
      IDS_PAGE_INFO_DELETE_SERIAL_PORT_WITH_NAME},
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
     {ContentSettingsType::SMART_CARD_DATA,
      IDS_PAGE_INFO_SMART_CARD_READER_SECONDARY_LABEL,
      IDS_PAGE_INFO_SMART_CARD_READER_ALLOWED_BY_POLICY_LABEL,
@@ -371,6 +372,10 @@ PageInfo::PageInfo(std::unique_ptr<PageInfoDelegate> delegate,
       did_perform_action_(false),
       surface_(surface) {
   DCHECK(delegate_);
+  if (auto* pscs = content_settings::PageSpecificContentSettings::GetForFrame(
+          web_contents->GetPrimaryMainFrame())) {
+    page_specific_content_settings_ = pscs->AsWeakPtr();
+  }
   security_level_ = delegate_->GetSecurityLevel();
   visible_security_state_for_metrics_ = delegate_->GetVisibleSecurityState();
 
@@ -394,9 +399,8 @@ PageInfo::PageInfo(std::unique_ptr<PageInfoDelegate> delegate,
     // and once from InitializeUiState. This should be cleaned up.
     cookie_controller_->Update(web_contents, site_url_);
 
-    auto* pscs = GetPageSpecificContentSettings();
-    if (pscs) {
-      pscs->AddPermissionUsageObserver(this);
+    if (page_specific_content_settings_) {
+      page_specific_content_settings_->AddPermissionUsageObserver(this);
     }
   }
 #endif
@@ -443,11 +447,8 @@ PageInfo::~PageInfo() {
   base::RecordAction(base::UserMetricsAction("PageInfo.Closed"));
 
 #if !BUILDFLAG(IS_ANDROID)
-  if (web_contents_) {
-    auto* pscs = GetPageSpecificContentSettings();
-    if (pscs) {
-      pscs->RemovePermissionUsageObserver(this);
-    }
+  if (page_specific_content_settings_) {
+    page_specific_content_settings_->RemovePermissionUsageObserver(this);
   }
 #endif
 }
@@ -1326,14 +1327,13 @@ void PageInfo::PopulatePermissionInfo(PermissionInfo& permission_info,
       content_settings::PermissionSettingsRegistry::GetInstance()->Get(
           permission_info.type);
 
-  auto* page_specific_content_settings = GetPageSpecificContentSettings();
-  if (page_specific_content_settings &&
+  if (page_specific_content_settings_ &&
       setting_info->delegate().IsAnyPermissionAllowed(setting)) {
     permission_info.is_in_use =
-        page_specific_content_settings->IsInUse(permission_info.type);
+        page_specific_content_settings_->IsInUse(permission_info.type);
 
     permission_info.last_used =
-        page_specific_content_settings->GetLastUsedTime(permission_info.type);
+        page_specific_content_settings_->GetLastUsedTime(permission_info.type);
   }
 
   if (info.primary_pattern == ContentSettingsPattern::Wildcard() &&
@@ -1633,9 +1633,9 @@ std::set<net::SchemefulSite> PageInfo::GetTwoSitePermissionRequesters(
     ContentSettingsType type) {
   std::set<net::SchemefulSite> requesters;
   // Collect sites that have tried to request a permission.
-  auto* pscs = GetPageSpecificContentSettings();
-  if (pscs) {
-    for (auto& [requester, allowed] : pscs->GetTwoSiteRequests(type)) {
+  if (page_specific_content_settings_) {
+    for (auto& [requester, allowed] :
+         page_specific_content_settings_->GetTwoSiteRequests(type)) {
       requesters.insert(requester);
     }
   }
@@ -1701,8 +1701,7 @@ void PageInfo::PresentSiteDataInternal(base::OnceClosure done) {
 }
 
 void PageInfo::PresentSiteData(base::OnceClosure done) {
-  auto* settings = GetPageSpecificContentSettings();
-  if (settings && weak_factory_.GetWeakPtr()) {
+  if (page_specific_content_settings_ && weak_factory_.GetWeakPtr()) {
     PresentSiteDataInternal(std::move(done));
   } else {
     std::move(done).Run();
@@ -1826,42 +1825,31 @@ void PageInfo::GetSafeBrowsingStatusByMaliciousContentStatus(
   }
 }
 
-content_settings::PageSpecificContentSettings*
-PageInfo::GetPageSpecificContentSettings() const {
-  // TODO(https://crbug.com/1103176, https://crbug.com/1233122): PageInfo should
-  // be per page. Why is it a WebContentsObserver if it is not observing
-  // anything?
-  DCHECK(web_contents_);
-  return content_settings::PageSpecificContentSettings::GetForFrame(
-      web_contents_->GetPrimaryMainFrame());
-}
-
 bool PageInfo::HasContentSettingChangedViaPageInfo(
     ContentSettingsType type) const {
-  auto* settings = GetPageSpecificContentSettings();
-  if (!settings) {
+  if (!page_specific_content_settings_) {
     return false;
   }
 
-  return settings->HasContentSettingChangedViaPageInfo(type);
+  return page_specific_content_settings_->HasContentSettingChangedViaPageInfo(
+      type);
 }
 
 void PageInfo::ContentSettingChangedViaPageInfo(ContentSettingsType type) {
-  auto* settings = GetPageSpecificContentSettings();
-  if (!settings) {
+  if (!page_specific_content_settings_) {
     return;
   }
 
-  return settings->ContentSettingChangedViaPageInfo(type);
+  return page_specific_content_settings_->ContentSettingChangedViaPageInfo(
+      type);
 }
 
 int PageInfo::GetSitesWithAllowedCookiesAccessCount() {
-  auto* settings = GetPageSpecificContentSettings();
-  if (!settings) {
+  if (!page_specific_content_settings_) {
     return 0;
   }
   return browsing_data::GetUniqueHostCount(
-      *(settings->allowed_browsing_data_model()));
+      *(page_specific_content_settings_->allowed_browsing_data_model()));
 }
 
 bool PageInfo::IsIsolatedWebApp() const {

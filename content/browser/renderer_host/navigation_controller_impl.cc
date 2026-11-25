@@ -636,19 +636,21 @@ NavigationControllerImpl::ScopedPendingEntryReentrancyGuard::
 
 NavigationControllerImpl::ScopedDeferredNavigationStateChangeNotifier::
     ScopedDeferredNavigationStateChangeNotifier(
-        raw_ptr<NavigationControllerDelegate> delegate)
-    : delegate_(delegate) {}
+        raw_ptr<NavigationControllerDelegate> delegate,
+        const GURL& previous_virtual_url)
+    : delegate_(delegate), previous_virtual_url_(previous_virtual_url) {}
 
 NavigationControllerImpl::ScopedDeferredNavigationStateChangeNotifier::
     ~ScopedDeferredNavigationStateChangeNotifier() {
-  if (requested_) {
-    delegate_->NotifyNavigationStateChangedFromController(INVALIDATE_TYPE_ALL);
+  if (changed_flags_) {
+    delegate_->NotifyNavigationStateChangedFromController(
+        static_cast<InvalidateTypes>(changed_flags_));
   }
 }
 
 void NavigationControllerImpl::ScopedDeferredNavigationStateChangeNotifier::
-    RequestDeferredNotification() {
-  requested_ = true;
+    RequestDeferredNotification(InvalidateTypes changed_flags) {
+  changed_flags_ |= changed_flags;
 }
 
 // NavigationControllerImpl ----------------------------------------------------
@@ -1855,7 +1857,8 @@ NavigationControllerImpl::RendererDidNavigate(
   // avoids redundant notifications (which can be expensive) without risking a
   // missed notification (which can cause URL spoof vulnerabilities if the
   // address bar is stale).
-  ScopedDeferredNavigationStateChangeNotifier deferred_notifier(delegate_);
+  ScopedDeferredNavigationStateChangeNotifier deferred_notifier(
+      delegate_, GetLastCommittedEntry()->GetVirtualURL());
 
   // Note: validation checks and renderer kills due to invalid commit messages
   // must happen before getting here, in
@@ -4818,7 +4821,6 @@ NavigationControllerImpl::CreateNavigationRequestFromLoadParams(
           /*commit_sent=*/base::TimeTicks(), /*srcdoc_value=*/std::string(),
           /*should_load_data_url=*/false,
           /*ancestor_or_self_has_cspee=*/node->AncestorOrSelfHasCSPEE(),
-          /*reduced_accept_language=*/std::string(),
           /*navigation_delivery_type=*/
           network::mojom::NavigationDeliveryType::kDefault,
           /*view_transition_state=*/std::nullopt,
@@ -5064,7 +5066,24 @@ void NavigationControllerImpl::NotifyNavigationEntryCommitted(
   // function to not send the notification immediately. The notification will be
   // sent when RendererDidNavigate returns.
   if (deferred_notifier) {
-    deferred_notifier->RequestDeferredNotification();
+    InvalidateTypes changed_flags = INVALIDATE_TYPE_ALL;
+    // A main frame same-document navigation that replaces the current entry
+    // without changing its URL or virtual URL (e.g. history.replaceState() to
+    // the current URL) doesn't change what the address bar shows, so don't
+    // invalidate the URL. Any other request on `deferred_notifier` (e.g. for
+    // discarding a pending entry) still invalidates it.
+    if (details->is_main_frame && details->is_same_document &&
+        details->did_replace_entry &&
+        details->entry->GetURL() == details->previous_main_frame_url &&
+        details->entry->GetVirtualURL() ==
+            deferred_notifier->previous_virtual_url() &&
+        base::FeatureList::IsEnabled(
+            features::
+                kSkipUrlInvalidationForUnchangedSameDocumentReplacement)) {
+      changed_flags = static_cast<InvalidateTypes>(INVALIDATE_TYPE_ALL &
+                                                   ~INVALIDATE_TYPE_URL);
+    }
+    deferred_notifier->RequestDeferredNotification(changed_flags);
   } else {
     delegate_->NotifyNavigationStateChangedFromController(INVALIDATE_TYPE_ALL);
   }
@@ -5563,6 +5582,7 @@ namespace {
 // The caller is responsible for ensuring the entry is same-origin to the
 // origin to be committed.
 blink::mojom::NavigationApiHistoryEntryPtr ToNavigationApiHistoryEntry(
+    const url::Origin& pending_origin,
     FrameNavigationEntry* frame_entry,
     int64_t pending_document_sequence_number) {
   blink::ExplodedPageState exploded_state;
@@ -5580,6 +5600,10 @@ blink::mojom::NavigationApiHistoryEntryPtr ToNavigationApiHistoryEntry(
           frame_entry->document_sequence_number() ||
       !frame_entry->protect_url_in_navigation_api()) {
     url = frame_state.url_string.value_or(std::u16string());
+  }
+
+  if (!url.empty() && !pending_origin.CanBeDerivedFrom(GURL(url))) {
+    return nullptr;
   }
 
   return blink::mojom::NavigationApiHistoryEntry::New(
@@ -5633,14 +5657,14 @@ NavigationControllerImpl::PopulateSingleNavigationApiHistoryEntryVector(
     if (previous_item_sequence_number == frame_entry->item_sequence_number()) {
       continue;
     }
-    if (blink::mojom::NavigationApiHistoryEntryPtr entry =
-            ToNavigationApiHistoryEntry(frame_entry,
-                                        pending_document_sequence_number)) {
-      DCHECK(entry->url.empty() ||
-             pending_origin.CanBeDerivedFrom(GURL(entry->url)));
-      entries.push_back(std::move(entry));
-      previous_item_sequence_number = frame_entry->item_sequence_number();
+    blink::mojom::NavigationApiHistoryEntryPtr entry =
+        ToNavigationApiHistoryEntry(pending_origin, frame_entry,
+                                    pending_document_sequence_number);
+    if (!entry) {
+      break;
     }
+    entries.push_back(std::move(entry));
+    previous_item_sequence_number = frame_entry->item_sequence_number();
   }
   // If |entries| was constructed by iterating backwards from
   // |entry_index|, it's latest-at-the-front, but the renderer will want it
@@ -5760,7 +5784,7 @@ NavigationControllerImpl::GetNavigationApiHistoryEntryVectors(
     // cross-origin.
     if (pending_origin.IsSameOriginWith(previous_entry_origin)) {
       entry_arrays->previous_entry = ToNavigationApiHistoryEntry(
-          previous_entry, pending_document_sequence_number);
+          pending_origin, previous_entry, pending_document_sequence_number);
     }
   }
 

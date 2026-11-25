@@ -91,11 +91,13 @@ constexpr int kLowLevelMicrophoneLevelPercent = 10;
 // Logs if the user has enabled the microphone mute or not. This is normally
 // done by marking a checkbox in an audio-settings UI which is unique for each
 // platform. Elements in this enum should not be added, deleted or rearranged.
+// LINT.IfChange(MicrophoneMuteResult)
 enum MicrophoneMuteResult {
   MICROPHONE_IS_MUTED = 0,
   MICROPHONE_IS_NOT_MUTED = 1,
   MICROPHONE_MUTE_MAX = MICROPHONE_IS_NOT_MUTED
 };
+// LINT.ThenChange(//tools/metrics/histograms/metadata/media/enums.xml:MicrophoneMuteResult)
 
 void LogMicrophoneMuteResult(MicrophoneMuteResult result) {
   UMA_HISTOGRAM_ENUMERATION("Media.MicrophoneMuted", result,
@@ -244,8 +246,6 @@ class InputController::StatsReporter {
         "%s => (glitches=[%s], glitch_percentage=%.3f%%)", call_name,
         glitch_info.ToString().c_str(), glitch_percentage * 100));
   }
-
-  AECType GetAecType() const { return aec_type_; }
 
   const char* GetAECTypeAsString() const {
     switch (aec_type_) {

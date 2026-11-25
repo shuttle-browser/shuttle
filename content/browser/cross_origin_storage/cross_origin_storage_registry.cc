@@ -171,27 +171,32 @@ class CrossOriginStorageRegistry::StorageBackend
       CrossOriginStorageAccessSpec access_spec,
       CrossOriginStorageStagingWriter::Result staging_result) {
     if (staging_result.status != CrossOriginStorageStatus::kSuccess) {
-      if (!staging_result.path.empty()) {
-        base::DeleteFile(staging_result.path);
+      base::FilePath staging_path = staging_result.ReleasePath();
+      if (!staging_path.empty() && StagingDirectory().IsParent(staging_path)) {
+        base::DeleteFile(staging_path);
       }
       return staging_result.status;
     }
 
-    if (!StagingDirectory().IsParent(staging_result.path) ||
-        !base::PathExists(staging_result.path)) {
-      DLOG(ERROR) << "Invalid or missing COS staging file: "
-                  << staging_result.path.value();
+    const base::FilePath staging_path = staging_result.ReleasePath();
+    if (!StagingDirectory().IsParent(staging_path)) {
+      DLOG(ERROR) << "Invalid COS staging file: " << staging_path.value();
+      return CrossOriginStorageStatus::kOperationFailed;
+    }
+
+    if (!base::PathExists(staging_path)) {
+      DLOG(ERROR) << "Missing COS staging file: " << staging_path.value();
       return CrossOriginStorageStatus::kOperationFailed;
     }
 
     if (!initialized_) {
-      base::DeleteFile(staging_result.path);
+      base::DeleteFile(staging_path);
       return CrossOriginStorageStatus::kOperationFailed;
     }
 
     if (caller.opaque() || !caller.GetURL().SchemeIsHTTPOrHTTPS() ||
         !net::IsOriginPotentiallyTrustworthy(caller)) {
-      base::DeleteFile(staging_result.path);
+      base::DeleteFile(staging_path);
       return CrossOriginStorageStatus::kInvalidArgument;
     }
 
@@ -199,7 +204,7 @@ class CrossOriginStorageRegistry::StorageBackend
     // declared up front. This is what makes the cache content-addressed and
     // safe to share across origins.
     if (!hash.MatchesDigest(staging_result.digest)) {
-      base::DeleteFile(staging_result.path);
+      base::DeleteFile(staging_path);
       return CrossOriginStorageStatus::kDataError;
     }
 
@@ -207,20 +212,20 @@ class CrossOriginStorageRegistry::StorageBackend
     if (!base::CreateDirectory(final_path.DirName())) {
       DLOG(ERROR) << "Failed to create COS blobs directory: "
                   << final_path.DirName().value();
-      base::DeleteFile(staging_result.path);
+      base::DeleteFile(staging_path);
       return CrossOriginStorageStatus::kOperationFailed;
     }
 
     if (base::PathExists(final_path)) {
       // Another origin already contributed byte-identical content, which the
       // digest check above proves. Keep the existing file and drop ours.
-      base::DeleteFile(staging_result.path);
+      base::DeleteFile(staging_path);
     } else {
       base::File::Error error = base::File::FILE_OK;
-      if (!base::ReplaceFile(staging_result.path, final_path, &error)) {
+      if (!base::ReplaceFile(staging_path, final_path, &error)) {
         DLOG(ERROR) << "Failed to commit COS resource: "
                     << base::File::ErrorToString(error);
-        base::DeleteFile(staging_result.path);
+        base::DeleteFile(staging_path);
         return CrossOriginStorageStatus::kOperationFailed;
       }
       // Drop any orphaned metadata left behind if the blob was previously
@@ -568,7 +573,7 @@ class CrossOriginStorageRegistry::StorageBackend
 CrossOriginStorageRegistry*
 CrossOriginStorageRegistry::GetOrCreateForBrowserContext(
     BrowserContext* browser_context) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   CHECK(browser_context);
 
   auto* existing = static_cast<CrossOriginStorageRegistry*>(
@@ -604,7 +609,7 @@ CrossOriginStorageRegistry::CrossOriginStorageRegistry(
                    {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
                     base::TaskShutdownBehavior::BLOCK_SHUTDOWN}),
                std::move(root_directory)) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
 }
 
 CrossOriginStorageRegistry::~CrossOriginStorageRegistry() = default;
@@ -613,7 +618,7 @@ void CrossOriginStorageRegistry::OpenForRead(const CrossOriginStorageHash& hash,
                                              const url::Origin& caller,
                                              bool update_access_time,
                                              OpenForReadCallback callback) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   backend_.AsyncCall(&StorageBackend::OpenForRead)
       .WithArgs(hash, caller, update_access_time)
       .Then(std::move(callback));
@@ -625,7 +630,7 @@ void CrossOriginStorageRegistry::Commit(
     CrossOriginStorageAccessSpec access_spec,
     CrossOriginStorageStagingWriter::Result staging_result,
     CommitCallback callback) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   backend_.AsyncCall(&StorageBackend::Commit)
       .WithArgs(hash, caller, std::move(access_spec), std::move(staging_result))
       .Then(std::move(callback));
@@ -634,7 +639,7 @@ void CrossOriginStorageRegistry::Commit(
 void CrossOriginStorageRegistry::CreateStagingWriter(
     blink::mojom::CrossOriginStorageAlgorithm algorithm,
     CreateStagingWriterCallback callback) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   backend_.AsyncCall(&StorageBackend::CreateStagingWriter)
       .WithArgs(algorithm)
       .Then(std::move(callback));
@@ -642,12 +647,12 @@ void CrossOriginStorageRegistry::CreateStagingWriter(
 
 base::WeakPtr<CrossOriginStorageRegistry>
 CrossOriginStorageRegistry::GetWeakPtr() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   return weak_factory_.GetWeakPtr();
 }
 
 void CrossOriginStorageRegistry::SynchronouslyResetBackendForTesting() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   backend_.SynchronouslyResetForTest();  // IN-TEST
 }
 

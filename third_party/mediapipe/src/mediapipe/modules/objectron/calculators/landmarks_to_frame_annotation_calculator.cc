@@ -11,11 +11,11 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 
-#include "absl/memory/memory.h"
+#include "absl/memory/memory.h"  // from @com_google_absl
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/modules/objectron/calculators/annotation_data.pb.h"
 
 namespace mediapipe {
@@ -67,7 +67,7 @@ absl::Status LandmarksToFrameAnnotationCalculator::Open(CalculatorContext* cc) {
 
 absl::Status LandmarksToFrameAnnotationCalculator::Process(
     CalculatorContext* cc) {
-  auto frame_annotation = absl::make_unique<FrameAnnotation>();
+  auto frame_annotation = std::make_unique<FrameAnnotation>();
 
   // Handle the case when input has only one NormalizedLandmarkList.
   if (cc->Inputs().HasTag(kInputLandmarksTag) &&

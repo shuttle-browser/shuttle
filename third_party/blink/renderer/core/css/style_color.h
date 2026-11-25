@@ -32,6 +32,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_STYLE_COLOR_H_
 
 #include <memory>
+#include <optional>
 
 #include "base/check.h"
 #include "base/memory/raw_ptr.h"
@@ -40,6 +41,7 @@
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css_value_keywords.h"
 #include "third_party/blink/renderer/platform/graphics/color.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/member.h"
 #include "third_party/blink/renderer/platform/heap/visitor.h"
@@ -60,6 +62,10 @@ class CSSValue;
 struct ColorThemeInfo {
   raw_ptr<const ui::ColorProvider> color_provider = nullptr;
   mojom::blink::ColorScheme color_scheme = mojom::blink::ColorScheme::kLight;
+  // When set, this is the resolved `accent-color` that the
+  // `AccentColor`/`AccentColorText` keywords mirror. A null value means those
+  // keywords should fall back to the system accent color.
+  std::optional<Color> accent_color = std::nullopt;
   // Whether the OS accent color may be exposed to this document. This is
   // restricted to installed web apps in the initial browser profile to limit
   // fingerprinting.
@@ -136,48 +142,50 @@ class CORE_EXPORT StyleColor {
 
   class CORE_EXPORT UnresolvedColorMix : public UnresolvedColorFunction {
    public:
+    // A color argument of the mix.
+    struct Item {
+      DISALLOW_NEW();
+
+     public:
+      CORE_EXPORT explicit Item(const StyleColor& color);
+
+      void Trace(Visitor* visitor) const { visitor->Trace(color); }
+
+      bool operator==(const Item& other) const {
+        return color_type == other.color_type &&
+               ColorOrUnresolvedColorFunction::Equals(color, other.color,
+                                                      color_type);
+      }
+
+      ColorOrUnresolvedColorFunction color;
+      UnderlyingColorType color_type;
+    };
+
+    using ItemVector = HeapVector<Item>;
+
+    // `items` must have exactly two items for now, and `percentage` is the
+    // progress percentage towards the second one.
     UnresolvedColorMix(Color::ColorSpace color_interpolation_space,
                        Color::HueInterpolationMethod hue_interpolation_method,
-                       const StyleColor& c1,
-                       const StyleColor& c2,
+                       ItemVector items,
                        double percentage,
                        double alpha_multiplier);
 
-    void Trace(Visitor* visitor) const override {
-      UnresolvedColorFunction::Trace(visitor);
-      visitor->Trace(color1_);
-      visitor->Trace(color2_);
-    }
+    void Trace(Visitor* visitor) const override;
 
     CSSValue* ToCSSValue() const override;
 
     Color Resolve(const Color& current_color) const override;
 
-    bool operator==(const UnresolvedColorMix& other) const {
-      if (color_interpolation_space_ != other.color_interpolation_space_ ||
-          hue_interpolation_method_ != other.hue_interpolation_method_ ||
-          percentage_ != other.percentage_ ||
-          alpha_multiplier_ != other.alpha_multiplier_ ||
-          color1_type_ != other.color1_type_ ||
-          color2_type_ != other.color2_type_) {
-        return false;
-      }
-      return ColorOrUnresolvedColorFunction::Equals(color1_, other.color1_,
-                                                    color1_type_) &&
-             ColorOrUnresolvedColorFunction::Equals(color2_, other.color2_,
-                                                    color2_type_);
-    }
+    bool operator==(const UnresolvedColorMix& other) const;
 
    private:
     Color::ColorSpace color_interpolation_space_ = Color::ColorSpace::kNone;
     Color::HueInterpolationMethod hue_interpolation_method_ =
         Color::HueInterpolationMethod::kShorter;
-    ColorOrUnresolvedColorFunction color1_;
-    ColorOrUnresolvedColorFunction color2_;
+    ItemVector items_;
     double percentage_ = 0.0;
     double alpha_multiplier_ = 1.0;
-    UnderlyingColorType color1_type_ = UnderlyingColorType::kColor;
-    UnderlyingColorType color2_type_ = UnderlyingColorType::kColor;
   };
 
   class CORE_EXPORT UnresolvedRelativeColor : public UnresolvedColorFunction {
@@ -391,4 +399,6 @@ CORE_EXPORT std::ostream& operator<<(
 }  // namespace blink
 
 WTF_ALLOW_CLEAR_UNUSED_SLOTS_WITH_MEM_FUNCTIONS(blink::StyleColor)
+WTF_ALLOW_CLEAR_UNUSED_SLOTS_WITH_MEM_FUNCTIONS(
+    blink::StyleColor::UnresolvedColorMix::Item)
 #endif  // THIRD_PARTY_BLINK_RENDERER_CORE_CSS_STYLE_COLOR_H_

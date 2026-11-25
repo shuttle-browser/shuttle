@@ -95,8 +95,6 @@ export class ViewerToolbarElement extends CrLitElement {
       },
 
       pageNo: {type: Number},
-
-      rotated: {type: Boolean},
       strings: {type: Object},
       viewportZoom: {type: Number},
       zoomBounds: {type: Object},
@@ -114,6 +112,7 @@ export class ViewerToolbarElement extends CrLitElement {
       viewportZoomPercent_: {type: Number},
 
       pdfGlicSummarizeEnabled_: {type: Boolean},
+      pdfGlicSummarizeUseLongButtonText_: {type: Boolean},
 
       // <if expr="enable_pdf_ink2">
       annotationAvailable: {type: Boolean},
@@ -145,7 +144,6 @@ export class ViewerToolbarElement extends CrLitElement {
   accessor formFieldFocus: FormFieldFocusType = FormFieldFocusType.NONE;
   accessor loadProgress: number = 0;
   accessor pageNo: number = 0;
-  accessor rotated: boolean = false;
   accessor strings: LoadTimeDataRaw|undefined;
   accessor viewportZoom: number = 0;
   accessor zoomBounds: {min: number, max: number} = {min: 0, max: 0};
@@ -159,6 +157,7 @@ export class ViewerToolbarElement extends CrLitElement {
   private accessor viewportZoomPercent_: number = 0;
 
   protected accessor pdfGlicSummarizeEnabled_: boolean = false;
+  private accessor pdfGlicSummarizeUseLongButtonText_: boolean = false;
 
   // <if expr="enable_pdf_save_to_drive">
   accessor pdfSaveToDriveEnabled: boolean = false;
@@ -173,8 +172,8 @@ export class ViewerToolbarElement extends CrLitElement {
   accessor enableUndoRedo: boolean = true;
   accessor hasInk2Edits: boolean = false;
   accessor pdfInk2Enabled: boolean = false;
-  protected accessor shouldEnableRedo_: boolean = false;
-  protected accessor shouldEnableUndo_: boolean = false;
+  private accessor shouldEnableRedo_: boolean = false;
+  private accessor shouldEnableUndo_: boolean = false;
   protected accessor pdfSignaturesEnabled_: boolean = false;
   protected accessor pdfTextAnnotationsEnabled_: boolean = false;
 
@@ -237,6 +236,8 @@ export class ViewerToolbarElement extends CrLitElement {
     this.printingEnabled_ = loadTimeData.getBoolean('printingEnabled');
     this.pdfGlicSummarizeEnabled_ =
         loadTimeData.getBoolean('pdfGlicSummarizeEnabled');
+    this.pdfGlicSummarizeUseLongButtonText_ =
+        loadTimeData.getBoolean('pdfGlicSummarizeUseLongButtonText');
     // <if expr="enable_pdf_ink2">
     this.pdfSignaturesEnabled_ =
         loadTimeData.getBoolean('pdfSignaturesEnabled');
@@ -264,6 +265,15 @@ export class ViewerToolbarElement extends CrLitElement {
     return loadTimeData.getString(
         this.fittingType_ === FittingType.FIT_TO_PAGE ? 'tooltipFitToPage' :
                                                         'tooltipFitToWidth');
+  }
+
+  protected getGlicSummarizeButtonLabel_(): string {
+    if (!this.strings) {
+      return '';
+    }
+    return loadTimeData.getString(
+        this.pdfGlicSummarizeUseLongButtonText_ ? 'glicSummarizeWithGemini' :
+                                                  'glicSummarize');
   }
 
   protected onGlicSummarizeClick_() {

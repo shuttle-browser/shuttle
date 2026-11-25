@@ -30,11 +30,6 @@
 #include "chrome/browser/extensions/api/notifications/extension_notification_handler.h"
 #endif
 
-#if BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/nearby_sharing/nearby_notification_handler.h"
-#include "chrome/browser/nearby_sharing/nearby_sharing_service_factory.h"
-#endif
-
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/notifications/muted_notification_handler.h"
 #include "chrome/browser/notifications/screen_capture_notification_blocker.h"
@@ -82,14 +77,6 @@ NotificationDisplayServiceImpl::NotificationDisplayServiceImpl(Profile* profile)
                                screen_capture_blocker.get()));
     notification_queue_.AddNotificationBlocker(
         std::move(screen_capture_blocker));
-#endif
-
-#if BUILDFLAG(IS_CHROMEOS)
-    if (NearbySharingServiceFactory::IsNearbyShareSupportedForBrowserContext(
-            profile_)) {
-      AddNotificationHandler(NotificationHandler::Type::NEARBY_SHARE,
-                             std::make_unique<NearbyNotificationHandler>());
-    }
 #endif
   }
 

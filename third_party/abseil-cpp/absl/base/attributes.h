@@ -300,7 +300,9 @@
 //
 // Tells the ControlFlowIntegrity sanitizer to not instrument a given function.
 // See https://clang.llvm.org/docs/ControlFlowIntegrity.html for details.
-#if ABSL_HAVE_ATTRIBUTE(no_sanitize) && defined(__llvm__)
+#if ABSL_HAVE_CPP_ATTRIBUTE(gnu::no_sanitize) && defined(__llvm__)
+#define ABSL_ATTRIBUTE_NO_SANITIZE_CFI [[gnu::no_sanitize("cfi")]]
+#elif ABSL_HAVE_ATTRIBUTE(no_sanitize) && defined(__llvm__)
 #define ABSL_ATTRIBUTE_NO_SANITIZE_CFI __attribute__((no_sanitize("cfi")))
 #else
 #define ABSL_ATTRIBUTE_NO_SANITIZE_CFI
@@ -657,7 +659,9 @@ struct [[deprecated("Use [[maybe_unused]] instead.")]] _absl_unused_macro;
 //
 // Tells the compiler to align the function start at least to certain
 // alignment boundary
-#if ABSL_HAVE_ATTRIBUTE(aligned) || (defined(__GNUC__) && !defined(__clang__))
+#if ABSL_HAVE_CPP_ATTRIBUTE(gnu::aligned)
+#define ABSL_ATTRIBUTE_FUNC_ALIGN(bytes) [[gnu::aligned(bytes)]]
+#elif ABSL_HAVE_ATTRIBUTE(aligned) || (defined(__GNUC__) && !defined(__clang__))
 #define ABSL_ATTRIBUTE_FUNC_ALIGN(bytes) __attribute__((aligned(bytes)))
 #else
 #define ABSL_ATTRIBUTE_FUNC_ALIGN(bytes)

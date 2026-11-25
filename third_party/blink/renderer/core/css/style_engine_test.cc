@@ -5,9 +5,12 @@
 #include "third_party/blink/renderer/core/css/style_engine.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <memory>
+#include <string_view>
 
+#include "base/memory/stack_allocated.h"
 #include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/css/forced_colors.h"
@@ -35,6 +38,7 @@
 #include "third_party/blink/renderer/core/css/parser/css_tokenizer.h"
 #include "third_party/blink/renderer/core/css/properties/css_property_ref.h"
 #include "third_party/blink/renderer/core/css/properties/longhands.h"
+#include "third_party/blink/renderer/core/css/property_registry.h"
 #include "third_party/blink/renderer/core/css/resolver/scoped_style_resolver.h"
 #include "third_party/blink/renderer/core/css/resolver/style_resolver.h"
 #include "third_party/blink/renderer/core/css/resolver/style_resolver_stats.h"
@@ -77,6 +81,7 @@
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
 #include "third_party/blink/renderer/core/testing/sim/sim_request.h"
 #include "third_party/blink/renderer/core/testing/sim/sim_test.h"
+#include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/thread_state.h"
 #include "third_party/blink/renderer/platform/network/network_state_notifier.h"
@@ -1477,6 +1482,132 @@ TEST_F(StyleEngineTest, ScheduleInvalidationAfterSubtreeRecalc) {
   EXPECT_FALSE(GetDocument().documentElement()->ChildNeedsStyleRecalc());
   EXPECT_FALSE(t1->NeedsStyleRecalc());
   EXPECT_FALSE(t2->NeedsStyleRecalc());
+}
+
+TEST_F(StyleEngineTest, FocusedInvalidationSetFeature) {
+  GetDocument().body()->SetInnerHTMLWithoutTrustedTypes(R"HTML(
+    <style>
+      .a :focus { color: green }
+      .b :is(:focus, .other) { color: blue }
+      .c :focus { color: red }
+      .d ~ :focus { color: purple }
+    </style>
+    <div id=outer>
+      <div><div><div><div></div></div></div></div>
+      <div><div id=other class=other></div></div>
+      <div id=parent>
+        <div id=focusable tabindex=0></div>
+        <div id=focusable2 tabindex=0></div>
+      </div>
+    </div>
+    <div>
+      <div id=sibling></div>
+      <div id=sibling_focusable tabindex=0></div>
+      <div></div>
+    </div>
+  )HTML");
+  GetDocument().GetPage()->GetFocusController().SetActive(true);
+  GetDocument().GetPage()->GetFocusController().SetFocused(true);
+  UpdateAllLifecyclePhases();
+
+  Element* outer = GetElementById("outer");
+  Element* other = GetElementById("other");
+  Element* focusable = GetElementById("focusable");
+  Element* focusable2 = GetElementById("focusable2");
+  Element* sibling = GetElementById("sibling");
+  Element* sibling_focusable = GetElementById("sibling_focusable");
+  ASSERT_TRUE(outer && other && focusable && focusable2 && sibling &&
+              sibling_focusable);
+
+  auto color_of = [](Element* element) {
+    return element->ComputedStyleRef().VisitedDependentColor(
+        GetCSSPropertyColor());
+  };
+
+  focusable->Focus();
+  UpdateAllLifecyclePhases();
+  ASSERT_TRUE(focusable->IsFocused());
+
+  // Adding .a to #outer only needs to recalculate the focused descendant, not
+  // the whole subtree.
+  unsigned start_count = GetStyleEngine().StyleForElementCount();
+  outer->classList().Add(AtomicString("a"));
+  UpdateAllLifecyclePhases();
+  EXPECT_EQ(1u, GetStyleEngine().StyleForElementCount() - start_count);
+  EXPECT_EQ(Color::FromRGB(0, 128, 0), color_of(focusable));
+
+  start_count = GetStyleEngine().StyleForElementCount();
+  outer->classList().Remove(AtomicString("a"));
+  UpdateAllLifecyclePhases();
+  EXPECT_EQ(1u, GetStyleEngine().StyleForElementCount() - start_count);
+  EXPECT_EQ(Color::FromRGB(0, 0, 0), color_of(focusable));
+
+  // Moving focus to a descendant which was not recalculated when .a was added
+  // still applies the rule, since focus changes always recalculate the
+  // elements losing and gaining focus.
+  outer->classList().Add(AtomicString("a"));
+  UpdateAllLifecyclePhases();
+  focusable2->Focus();
+  UpdateAllLifecyclePhases();
+  EXPECT_EQ(Color::FromRGB(0, 0, 0), color_of(focusable));
+  EXPECT_EQ(Color::FromRGB(0, 128, 0), color_of(focusable2));
+
+  // :is(:focus, .other) combines the feature with the class feature.
+  start_count = GetStyleEngine().StyleForElementCount();
+  outer->classList().Add(AtomicString("b"));
+  UpdateAllLifecyclePhases();
+  EXPECT_EQ(2u, GetStyleEngine().StyleForElementCount() - start_count);
+  EXPECT_EQ(Color::FromRGB(0, 0, 255), color_of(focusable2));
+  EXPECT_EQ(Color::FromRGB(0, 0, 255), color_of(other));
+
+  // Sibling invalidation: adding .d to #sibling only recalculates the focused
+  // following sibling.
+  sibling_focusable->Focus();
+  UpdateAllLifecyclePhases();
+  start_count = GetStyleEngine().StyleForElementCount();
+  sibling->classList().Add(AtomicString("d"));
+  UpdateAllLifecyclePhases();
+  EXPECT_EQ(1u, GetStyleEngine().StyleForElementCount() - start_count);
+  EXPECT_EQ(Color::FromRGB(128, 0, 128), color_of(sibling_focusable));
+
+  // Without a focused descendant, nothing needs to be recalculated.
+  sibling_focusable->blur();
+  UpdateAllLifecyclePhases();
+  start_count = GetStyleEngine().StyleForElementCount();
+  outer->classList().Add(AtomicString("c"));
+  UpdateAllLifecyclePhases();
+  EXPECT_EQ(0u, GetStyleEngine().StyleForElementCount() - start_count);
+}
+
+TEST_F(StyleEngineTest, FocusedInvalidationSetFeatureDisabled) {
+  ScopedInvalidationSetFocusFeatureForTest disabled(false);
+  GetDocument().body()->SetInnerHTMLWithoutTrustedTypes(R"HTML(
+    <style>
+      .a :focus { color: green }
+    </style>
+    <div id=outer>
+      <div><div><div><div></div></div></div></div>
+      <div id=focusable tabindex=0></div>
+    </div>
+  )HTML");
+  GetDocument().GetPage()->GetFocusController().SetActive(true);
+  GetDocument().GetPage()->GetFocusController().SetFocused(true);
+  UpdateAllLifecyclePhases();
+
+  Element* outer = GetElementById("outer");
+  Element* focusable = GetElementById("focusable");
+  ASSERT_TRUE(outer && focusable);
+  focusable->Focus();
+  UpdateAllLifecyclePhases();
+
+  // Without the feature, .a :focus makes the whole subtree of #outer invalid.
+  unsigned start_count = GetStyleEngine().StyleForElementCount();
+  outer->classList().Add(AtomicString("a"));
+  UpdateAllLifecyclePhases();
+  EXPECT_EQ(6u, GetStyleEngine().StyleForElementCount() - start_count);
+  EXPECT_EQ(Color::FromRGB(0, 128, 0),
+            focusable->ComputedStyleRef().VisitedDependentColor(
+                GetCSSPropertyColor()));
 }
 
 TEST_F(StyleEngineTest, EmptyHttpEquivDefaultStyle) {
@@ -4091,10 +4222,65 @@ TEST_F(StyleEngineTest, AtScopeUseCount) {
   EXPECT_TRUE(GetDocument().IsUseCounted(WebFeature::kCSSAtRuleScope));
 }
 
-TEST_F(StyleEngineTest, RemoveDeclaredPropertiesEmptyRegistry) {
-  EXPECT_FALSE(GetDocument().GetPropertyRegistry());
-  PropertyRegistration::RemoveDeclaredProperties(GetDocument());
-  EXPECT_FALSE(GetDocument().GetPropertyRegistry());
+TEST_F(StyleEngineTest, UnchangedAtPropertyAfterMediaChange) {
+  GetDocument().View()->SetLayoutSizeFixedToFrameSize(false);
+  GetDocument().View()->SetLayoutSize(gfx::Size(800, 600));
+  GetDocument().body()->SetInnerHTMLWithoutTrustedTypes(R"HTML(
+    <style>
+      @property --unused {
+        syntax: "<number>";
+        inherits: false;
+        initial-value: 0;
+      }
+      @media (min-width: 1000px) {
+        .does-not-exist { color: red; }
+      }
+    </style>
+    <div><span>Unchanged</span></div>
+  )HTML");
+  UpdateAllLifecyclePhases();
+
+  const PropertyRegistry* registry = GetDocument().GetPropertyRegistry();
+  ASSERT_TRUE(registry);
+  const PropertyRegistration* registration =
+      registry->Registration(AtomicString("--unused"));
+  ASSERT_TRUE(registration);
+  const size_t version = registry->Version();
+  const unsigned initial_count = GetStyleEngine().StyleForElementCount();
+
+  GetDocument().View()->SetLayoutSize(gfx::Size(1100, 600));
+  UpdateAllLifecyclePhases();
+  EXPECT_EQ(registration, registry->Registration(AtomicString("--unused")));
+  EXPECT_EQ(version, registry->Version());
+  EXPECT_EQ(initial_count, GetStyleEngine().StyleForElementCount());
+}
+
+TEST_F(StyleEngineTest, UnchangedUserAtPropertyAfterMediaChange) {
+  GetDocument().View()->SetLayoutSizeFixedToFrameSize(false);
+  GetDocument().View()->SetLayoutSize(gfx::Size(800, 600));
+  InjectSheet("user", WebCssOrigin::kUser, R"CSS(
+    @property --unused {
+      syntax: "<number>";
+      inherits: false;
+      initial-value: 0;
+    }
+    @media (min-width: 1000px) {
+      .does-not-exist { color: red; }
+    }
+  )CSS");
+  GetDocument().body()->SetInnerHTMLWithoutTrustedTypes(
+      "<div><span>Unchanged</span></div>");
+  UpdateAllLifecyclePhases();
+
+  const PropertyRegistry* registry = GetDocument().GetPropertyRegistry();
+  ASSERT_TRUE(registry);
+  const size_t version = registry->Version();
+  const unsigned initial_count = GetStyleEngine().StyleForElementCount();
+
+  GetDocument().View()->SetLayoutSize(gfx::Size(1100, 600));
+  UpdateAllLifecyclePhases();
+  EXPECT_EQ(version, registry->Version());
+  EXPECT_EQ(initial_count, GetStyleEngine().StyleForElementCount());
 }
 
 TEST_F(StyleEngineTest, AtPropertyInUserOrigin) {
@@ -4575,6 +4761,50 @@ TEST_F(StyleEngineTest, DynamicViewportUnitsInMediaQueryMatcher) {
 }
 
 class StyleEngineSimTest : public SimTest {};
+
+TEST_F(StyleEngineSimTest, LoadedCascadeLayerOrderInvalidatesStyle) {
+  constexpr Color kRed = Color::FromRGB(255, 0, 0);
+  constexpr Color kGreen = Color::FromRGB(0, 128, 0);
+
+  SimRequest main_resource("https://example.com/", "text/html");
+  SimSubresourceRequest css_resource("https://example.com/order.css",
+                                     "text/css");
+  LoadURL("https://example.com/");
+  main_resource.Complete(R"HTML(
+    <!doctype html>
+    <div id="order"></div>
+    <style>
+      @layer first { #target { color: green; } }
+      @layer second { #target { color: red; } }
+    </style>
+    <div id="target"></div>
+  )HTML");
+  test::RunPendingTasks();
+  Compositor().BeginFrame();
+
+  Element* target = GetElementById("target");
+  ASSERT_TRUE(target);
+  ASSERT_TRUE(target->GetComputedStyle());
+  ASSERT_EQ(kRed, target->GetComputedStyle()->VisitedDependentColor(
+                      GetCSSPropertyColor()));
+
+  GetElementById("order")->SetInnerHTMLWithoutTrustedTypes(
+      "<link rel=stylesheet href=order.css>");
+  test::RunPendingTasks();
+  Compositor().BeginFrame();
+  ASSERT_TRUE(target->GetComputedStyle());
+  ASSERT_EQ(kRed, target->GetComputedStyle()->VisitedDependentColor(
+                      GetCSSPropertyColor()));
+
+  // Complete the earlier sheet only after the target has a computed style.
+  css_resource.Complete("@layer second, first;");
+  test::RunPendingTasks();
+  Compositor().BeginFrame();
+
+  ASSERT_TRUE(target->GetComputedStyle());
+  EXPECT_EQ(kGreen, target->GetComputedStyle()->VisitedDependentColor(
+                        GetCSSPropertyColor()));
+}
 
 TEST_F(StyleEngineSimTest, OwnerColorScheme) {
   SimRequest main_resource("https://example.com", "text/html");
@@ -6187,6 +6417,167 @@ TEST_F(StyleEngineTest, CascadeLayerUseCount) {
     EXPECT_TRUE(IsUseCounted(WebFeature::kCSSCascadeLayers));
     ClearUseCounter(WebFeature::kCSSCascadeLayers);
   }
+}
+
+TEST_F(StyleEngineTest, ShadowLayerOrderInvalidatesOnlyHostSubtree) {
+  constexpr Color kRed = Color::FromRGB(255, 0, 0);
+  constexpr Color kGreen = Color::FromRGB(0, 128, 0);
+
+  GetDocument().body()->SetHTMLUnsafeWithoutTrustedTypes(R"HTML(
+    <div id="host">
+      <template shadowrootmode="open">
+        <style id="order"></style>
+        <style>
+          @layer first { #target { background-color: green; } }
+          @layer second { #target { background-color: red; } }
+        </style>
+        <div id="target"></div>
+      </template>
+    </div>
+    <div id="unrelated"></div>
+  )HTML");
+  UpdateAllLifecyclePhases();
+
+  Element* host = GetElementById("host");
+  Element* unrelated = GetElementById("unrelated");
+  ASSERT_TRUE(host);
+  ASSERT_TRUE(unrelated);
+  ShadowRoot* shadow = host->GetShadowRoot();
+  ASSERT_TRUE(shadow);
+  Element* target = shadow->getElementById(AtomicString("target"));
+  ASSERT_TRUE(target);
+  ASSERT_TRUE(target->GetComputedStyle());
+  ASSERT_EQ(kRed, target->GetComputedStyle()->VisitedDependentColor(
+                      GetCSSPropertyBackgroundColor()));
+  ASSERT_FALSE(GetStyleRecalcRoot());
+
+  auto* order =
+      To<HTMLStyleElement>(shadow->getElementById(AtomicString("order")));
+  ASSERT_TRUE(order);
+  ASSERT_TRUE(order->sheet());
+  order->sheet()->insertRule("@layer second, first;", 0, ASSERT_NO_EXCEPTION);
+  GetStyleEngine().UpdateActiveStyle();
+
+  EXPECT_EQ(host, GetStyleRecalcRoot());
+  EXPECT_EQ(kSubtreeStyleChange, host->GetStyleChangeType());
+  EXPECT_FALSE(GetDocument().documentElement()->NeedsStyleRecalc());
+  EXPECT_FALSE(unrelated->NeedsStyleRecalc());
+
+  UpdateAllLifecyclePhases();
+  ASSERT_TRUE(target->GetComputedStyle());
+  EXPECT_EQ(kGreen, target->GetComputedStyle()->VisitedDependentColor(
+                        GetCSSPropertyBackgroundColor()));
+}
+
+TEST_F(StyleEngineTest,
+       RemovingUserLayerOrderInvalidatesStyleInNestedShadowTrees) {
+  constexpr Color kRed = Color::FromRGB(255, 0, 0);
+  constexpr Color kGreen = Color::FromRGB(0, 128, 0);
+
+  InjectSheet("user_layer_order", WebCssOrigin::kUser, "@layer second, first;");
+  InjectSheet("user_layer_rules", WebCssOrigin::kUser, R"CSS(
+    @layer first { #target { background-color: green; } }
+    @layer second { #target { background-color: red; } }
+  )CSS");
+  GetDocument().body()->SetHTMLUnsafeWithoutTrustedTypes(R"HTML(
+    <div id="target"></div>
+    <div id="host">
+      <template shadowrootmode="open">
+        <div id="target"></div>
+        <div id="nested-host">
+          <template shadowrootmode="open">
+            <div id="target"></div>
+          </template>
+        </div>
+      </template>
+    </div>
+  )HTML");
+  UpdateAllLifecyclePhases();
+
+  Element* host = GetElementById("host");
+  ASSERT_TRUE(host);
+  ShadowRoot* shadow = host->GetShadowRoot();
+  ASSERT_TRUE(shadow);
+  Element* nested_host = shadow->getElementById(AtomicString("nested-host"));
+  ASSERT_TRUE(nested_host);
+  ShadowRoot* nested = nested_host->GetShadowRoot();
+  ASSERT_TRUE(nested);
+
+  struct TreeScopeTarget {
+    STACK_ALLOCATED();
+
+   public:
+    std::string_view scope_name;
+    Element* element;
+  };
+  const auto targets = std::to_array<TreeScopeTarget>({
+      {"document", GetElementById("target")},
+      {"shadow", shadow->getElementById(AtomicString("target"))},
+      {"nested shadow", nested->getElementById(AtomicString("target"))},
+  });
+  for (const auto& [scope_name, target] : targets) {
+    SCOPED_TRACE(scope_name);
+    ASSERT_TRUE(target);
+    ASSERT_TRUE(target->GetComputedStyle());
+    ASSERT_EQ(kGreen, target->GetComputedStyle()->VisitedDependentColor(
+                          GetCSSPropertyBackgroundColor()));
+  }
+
+  // Background color is not inherited, so each target must be recalculated.
+  GetStyleEngine().RemoveInjectedSheet(StyleSheetKey("user_layer_order"),
+                                       WebCssOrigin::kUser);
+  GetStyleEngine().UpdateActiveStyle();
+  EXPECT_EQ(kSubtreeStyleChange,
+            GetDocument().documentElement()->GetStyleChangeType());
+  UpdateAllLifecyclePhases();
+
+  for (const auto& [scope_name, target] : targets) {
+    SCOPED_TRACE(scope_name);
+    ASSERT_TRUE(target->GetComputedStyle());
+    EXPECT_EQ(kRed, target->GetComputedStyle()->VisitedDependentColor(
+                        GetCSSPropertyBackgroundColor()));
+  }
+}
+
+class StyleEngineCascadeLayerOriginTest
+    : public StyleEngineTest,
+      public testing::WithParamInterface<WebCssOrigin> {};
+
+INSTANTIATE_TEST_SUITE_P(AuthorAndUser,
+                         StyleEngineCascadeLayerOriginTest,
+                         testing::Values(WebCssOrigin::kAuthor,
+                                         WebCssOrigin::kUser),
+                         [](const testing::TestParamInfo<WebCssOrigin>& info) {
+                           return info.param == WebCssOrigin::kAuthor ? "Author"
+                                                                      : "User";
+                         });
+
+TEST_P(StyleEngineCascadeLayerOriginTest,
+       AppendingLayerOrderDoesNotRecalculateStyle) {
+  constexpr Color kRed = Color::FromRGB(255, 0, 0);
+
+  InjectSheet("layer_rules", GetParam(), R"CSS(
+    @layer first { #target { color: green; } }
+    @layer second { #target { color: red; } }
+  )CSS");
+  SetBodyInnerHTML("<div id=target></div>");
+
+  Element* target = GetElementById("target");
+  ASSERT_TRUE(target);
+  ASSERT_TRUE(target->GetComputedStyle());
+  ASSERT_EQ(kRed, target->GetComputedStyle()->VisitedDependentColor(
+                      GetCSSPropertyColor()));
+
+  // Appending a declaration cannot reorder layers established by earlier
+  // sheets.
+  const unsigned initial_count = GetStyleEngine().StyleForElementCount();
+  InjectSheet("layer_order", GetParam(), "@layer second, first;");
+  UpdateAllLifecyclePhases();
+
+  EXPECT_EQ(initial_count, GetStyleEngine().StyleForElementCount());
+  ASSERT_TRUE(target->GetComputedStyle());
+  EXPECT_EQ(kRed, target->GetComputedStyle()->VisitedDependentColor(
+                      GetCSSPropertyColor()));
 }
 
 TEST_F(StyleEngineTest, UserKeyframesOverrideWithCascadeLayers) {

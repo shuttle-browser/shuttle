@@ -752,15 +752,12 @@ void AutocompleteController::OnProviderUpdate(
   }
 
   // Allow some providers to trigger updates after `stop_timer_` has fired.
-  // TODO(crbug.com/364303536) This is a temporary fix for allowing history
-  //   embedding answers to `UpdateResults()` after `stop_timer_` has fired.
   // TODO(crbug.com/408512535): This is a temporary fix for allowing the
   //   contextual search provider to `UpdateResults()` after `stop_timer_` has
   //   fired.
   bool allow_post_done_updates =
       provider &&
-      (provider->type() == AutocompleteProvider::Type::kHistoryEmbeddings ||
-       provider->type() == AutocompleteProvider::Type::kUnscopedExtension ||
+      (provider->type() == AutocompleteProvider::Type::kUnscopedExtension ||
        provider->type() == AutocompleteProvider::Type::kContextualSearch ||
        provider->type() ==
            AutocompleteProvider::Type::kEnterpriseSearchAggregator);
@@ -1078,12 +1075,9 @@ bool AutocompleteController::ShouldRunProvider(
           return (keyword_turl->starter_pack_id() ==
                   template_url_starter_pack_data::StarterPackId::kBookmarks);
 
-        // @History starter pack scope - run the history providers & featured
-        // search for embeddings IPH suggestions.
+        // @History starter pack scope - run the history providers.
         case AutocompleteProvider::Type::kHistoryQuick:
         case AutocompleteProvider::Type::kHistoryUrl:
-        case AutocompleteProvider::Type::kHistoryEmbeddings:
-        case AutocompleteProvider::Type::kFeaturedSearch:
           return (keyword_turl->starter_pack_id() ==
                   template_url_starter_pack_data::StarterPackId::kHistory);
 
@@ -1316,10 +1310,8 @@ void AutocompleteController::InitializeSyncProviders(int provider_types) {
   }
   if (provider_types &
       static_cast<int>(AutocompleteProvider::Type::kHistoryFuzzy)) {
-    auto history_fuzzy_provider =
-        base::MakeRefCounted<HistoryFuzzyProvider>(provider_client_.get());
-    history_fuzzy_provider_ = history_fuzzy_provider.get();
-    providers_.push_back(std::move(history_fuzzy_provider));
+    providers_.push_back(
+        base::MakeRefCounted<HistoryFuzzyProvider>(provider_client_.get()));
   }
   if (provider_types & static_cast<int>(AutocompleteProvider::Type::kOpenTab)) {
     auto open_tab_provider =
@@ -1418,9 +1410,14 @@ void AutocompleteController::UpdateResult(UpdateType update_type,
   MlRerank(old_result);
 
   // If the entrypoints aren't visible, then Lens is active and contextual
-  // suggestions shouldn't be shown.
+  // suggestions shouldn't be shown. This doesn't apply if the client can open
+  // the co-browse panel or fulfill contextual suggestions without Lens (e.g.
+  // on desktop Android), where the Lens entrypoints don't exist at all.
   const bool is_lens_active =
-      !autocomplete_provider_client()->AreLensEntrypointsVisible();
+      !autocomplete_provider_client()->AreLensEntrypointsVisible() &&
+      !autocomplete_provider_client()->CanOpenCoBrowsePanelWithoutLens() &&
+      !autocomplete_provider_client()
+           ->CanFulfillContextualSuggestionsWithoutLens();
   const bool can_show_contextual_suggestions = CanShowContextualSuggestions(
       autocomplete_provider_client()->IsPagePaywalled());
   const bool mia_enabled = false;
@@ -1750,7 +1747,7 @@ void AutocompleteController::UpdateAssociatedKeywords(
 
 void AutocompleteController::UpdateKeywordDescriptions(
     AutocompleteResult* result) {
-  // No need to update the description on Android since description for plain
+  // No need to update the description on mobile since description for plain
   // text match is not allowed.
   // The Lens searchbox does not require the search engine name description
   // label since all suggestions will be from a single source.
@@ -1760,7 +1757,7 @@ void AutocompleteController::UpdateKeywordDescriptions(
     return;
   }
 
-#if BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   // Do not include search engine name for the DSE.
   auto* default_engine = template_url_service_->GetDefaultSearchProvider();
 #endif
@@ -1772,7 +1769,7 @@ void AutocompleteController::UpdateKeywordDescriptions(
         continue;
       }
 
-#if BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
       if (default_engine && i->keyword == default_engine->keyword()) {
         continue;
       }
@@ -2327,8 +2324,7 @@ void AutocompleteController::MaybeCleanIphSuggestions(
                                           &AutocompleteMatch::IsToolbelt);
   if (has_toolbelt) {
     result->EraseMatchesWhere([](const auto& match) {
-      return match.IsIphSuggestion() &&
-             match.iph_type != IphType::kHistoryEmbeddingsDisclaimer;
+      return match.IsIphSuggestion();
     });
   }
 }

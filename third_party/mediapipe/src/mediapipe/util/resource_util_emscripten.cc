@@ -15,9 +15,11 @@
 #include <fstream>
 #include <iterator>
 
-#include "absl/log/absl_log.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/str_format.h"    // from @com_google_absl
 #include "mediapipe/framework/port/file_helpers.h"
 #include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/util/resource_util.h"
@@ -50,7 +52,7 @@ absl::Status DefaultGetResourceContents(const std::string& path,
     ABSL_LOG(WARNING)
         << "Setting \"read_as_binary\" to false is a no-op on Emscripten.";
   }
-  MP_ASSIGN_OR_RETURN(std::string full_path, PathToResourceAsFile(path));
+  ABSL_ASSIGN_OR_RETURN(std::string full_path, PathToResourceAsFile(path));
   std::ifstream input(full_path);
   output->assign((std::istreambuf_iterator<char>(input)),
                  std::istreambuf_iterator<char>());

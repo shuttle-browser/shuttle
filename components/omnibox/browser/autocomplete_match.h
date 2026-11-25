@@ -27,7 +27,6 @@
 #include "components/omnibox/browser/autocomplete_enums.h"
 #include "components/omnibox/browser/autocomplete_input.h"
 #include "components/omnibox/browser/autocomplete_match_type.h"
-#include "components/omnibox/browser/buildflags.h"
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_starter_pack_data.h"
 #include "components/url_formatter/url_formatter.h"
@@ -46,6 +45,10 @@
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/jni_weak_ref.h"
 #include "base/android/scoped_java_ref.h"
+#endif
+
+#if BUILDFLAG(IS_ANDROID)
+class SkBitmap;
 #endif
 
 class AutocompleteProvider;
@@ -131,6 +134,9 @@ struct SessionData {
   // Whether the "Ask Google Lens about this page" action was shown at least
   // once in the session.
   bool lens_action_shown_in_session = false;
+
+  // Whether at least one agentic update suggestion was shown in the session.
+  bool agentic_update_suggestions_shown_in_session = false;
 };
 
 enum class IphType {
@@ -141,15 +147,8 @@ enum class IphType {
   kEnterpriseSearchAggregator,
   // Featured enterprise site search promo; shown in zero state.
   kFeaturedEnterpriseSiteSearch,
-  // Embeddings' setting promo when embeddings are disabled; shown in '@history'
-  // scope.
-  kHistoryEmbeddingsSettingsPromo,
-  // Disclaimer when embeddings are enabled; shown in '@history' scope.
-  kHistoryEmbeddingsDisclaimer,
-  // '@history' promo when embeddings are disabled; shown in zero state.
+  // '@history' promo; shown in zero state.
   kHistoryScopePromo,
-  // '@history' promo when embeddings are enabled; shown in zero state.
-  kHistoryEmbeddingsScopePromo,
 };
 
 enum class FeedbackType {
@@ -167,13 +166,6 @@ enum class AutocompleteMatchDedupeType {
   kVerbatimProvider,  // Matches that come from the verbatim provider, which
                       // does not include the verbatim SWYT match.
   kHistoryEmbeddingAnswer,  // Matches with type `HISTORY_EMBEDDINGS_ANSWER`.
-  kAiMode,  // Matches that activate the DSE's AI Mode. AIM suggestions' URLs
-            // are discerned by a query param `udm=50`. But deduping doesn't
-            // consider extra query params; `google.com/?q=query&udm=50` and
-            // `google.com/?q=query` would usually be deduped. `kAiMode` allows
-            // matches with `udm=50` in their suggest template to not be deduped
-            // with matches without it. But this does not apply to `udm=50` in
-            // the actual match URL; nor to udm values other than 50.
   // Search matches created as a duplicate of an existing match which
   // additionally send location data when selected.
   kInlineLocationSignaling,
@@ -361,6 +353,14 @@ struct AutocompleteMatch {
   void OnClipboardSuggestionContentUpdated(
       const base::android::JavaRef<jobject>& j_callback);
 
+  // Rasterizes the vector icon resolved for the Java object (see
+  // GetOrCreateJavaObject()) into a square bitmap of `size_dip` device
+  // independent pixels at `scale`. Returns an empty SkBitmap (null on the Java
+  // side) if the match has no vector icon.
+  SkBitmap GetVectorIconBitmap(bool is_bookmark,
+                               int size_dip,
+                               float scale) const;
+
   // Update the Java object with clipboard content.
   void UpdateClipboardContent(JNIEnv* env);
   // Update the Java object with new destination URL.
@@ -369,7 +369,7 @@ struct AutocompleteMatch {
   void UpdateJavaDescription();
 #endif
 
-#if (!BUILDFLAG(IS_ANDROID) || BUILDFLAG(ENABLE_VR)) && !BUILDFLAG(IS_IOS)
+#if !BUILDFLAG(IS_IOS)
 
   // Gets the vector icon identifier for the icon to be shown for this match. If
   // `is_bookmark` is true, returns a bookmark icon rather than what the type
@@ -578,12 +578,23 @@ struct AutocompleteMatch {
   // Checks if this match is an  Aim threads history suggestion.
   bool IsThreadsHistorySuggestion() const;
 
+  // Checks if this match is an AI Mode thread suggestion that carries an
+  // agentic update from the server.
+  bool IsAgenticUpdateSuggestion() const;
+
   // Checks if this match is a specialized toolbelt match with actions on
   // a button row.
   bool IsToolbelt() const;
 
   // Checks if this match is a AI mode suggestion.
   bool IsSearchAimSuggestion() const;
+
+  // Returns what this match's suggest template says it does on click beyond
+  // its stripped destination URL, e.g. its search mode (`udm`) or the tool its
+  // `fusebox_action` preselects. Empty for most matches. Matches only dedupe if
+  // these are equal (see `AutocompleteResult::GetMatchComparisonFields()`), so
+  // presentation taken from a duplicate fits what the match does.
+  std::string GetSuggestTemplateBehaviorKey() const;
 
   // Returns the kind for accessibility announcements.
   OmniboxSuggestionKind GetOmniboxSuggestionKind() const;
@@ -623,10 +634,7 @@ struct AutocompleteMatch {
   // `keyword_state` will be set to `KeywordState::kNone`.
   // `keyword_placeholder_out` will be set to any placeholder text the keyword
   // wants to display. Set for both hint and non-hint keyword modes.
-  // `is_history_embeddings_enabled` will affect the placeholder text for the
-  // @history keyword.
   void GetKeywordUiState(const TemplateURLService* template_url_service,
-                         bool is_history_embeddings_enabled,
                          KeywordState* keyword_state,
                          std::u16string* keyword_out,
                          std::u16string* keyword_placeholder_out) const;
@@ -641,9 +649,7 @@ struct AutocompleteMatch {
   // TemplateURL, returned for both hint and non-hint keyword modes.
   // The `template_url` may be nullptr and this method often defaults to
   // returning the empty string.
-  static std::u16string GetKeywordPlaceholder(
-      const TemplateURL* template_url,
-      bool is_history_embeddings_enabled);
+  static std::u16string GetKeywordPlaceholder(const TemplateURL* template_url);
 
   // Returns the `TemplateURL` associated with this match. This may be nullptr
   // if the match has no keyword OR if the keyword no longer corresponds to a
@@ -1160,6 +1166,13 @@ struct AutocompleteMatch {
   // See AutocompleteControllerAndroid for more details.
   mutable std::unique_ptr<base::android::ScopedJavaGlobalRef<jobject>>
       java_match_;
+
+  // Vector icons (regular and bookmarked variants) resolved for java_match_
+  // by GetOrCreateJavaObject(), where the TemplateURL is available. Vector
+  // icons have static storage duration, so the pointers never dangle. Reset
+  // together with java_match_.
+  mutable raw_ptr<const gfx::VectorIcon> java_vector_icon_ = nullptr;
+  mutable raw_ptr<const gfx::VectorIcon> java_bookmark_vector_icon_ = nullptr;
 #endif
   base::WeakPtrFactory<AutocompleteMatch> weak_ptr_factory_{this};
 };

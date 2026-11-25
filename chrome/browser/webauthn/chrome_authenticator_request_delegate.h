@@ -165,6 +165,7 @@ class ChromeAuthenticatorRequestDelegate
   // content::AuthenticatorRequestClientDelegate:
   void SetRelyingPartyId(const std::string& rp_id) override;
   void SetUIPresentation(UIPresentation ui_presentation) override;
+  void SetAmbientChipOnly(bool ambient_chip_only) override;
   bool DoesBlockRequestOnFailure(InterestingFailureReason reason) override;
   void RegisterActionCallbacks(
       base::OnceClosure cancel_callback,

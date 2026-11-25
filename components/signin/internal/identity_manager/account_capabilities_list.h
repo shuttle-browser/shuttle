@@ -171,11 +171,28 @@ ACCOUNT_CAPABILITY(kMustFetchAppleAgeRangeInChromeCapabilityName,
                    "accountcapabilities/gi3dkmbnmnqxa")
 #endif
 
+ACCOUNT_CAPABILITY(
+    kMustShowEquallyWeightedButtonsForPrivatePassesInChromeAutofillCapabilityName,
+    MUST_SHOW_EQUALLY_WEIGHTED_BUTTONS_FOR_PRIVATE_PASSES_IN_CHROME_AUTOFILL_CAPABILITY_NAME,
+    "accountcapabilities/gm3denjnmnqxa")
+
 #if BUILDFLAG(IS_IOS)
 ACCOUNT_CAPABILITY(kMustSkipAppleAgeRangeInChromeCapabilityName,
                    MUST_SKIP_APPLE_AGE_RANGE_IN_CHROME_CAPABILITY_NAME,
                    "accountcapabilities/gi2tqnbnmnqxa")
 #endif
+
+ACCOUNT_CAPABILITY(kShouldBeAddressedInFeminineGrammaticalGender,
+                   SHOULD_BE_ADDRESSED_IN_FEMININE_GRAMMATICAL_GENDER,
+                   "accountcapabilities/ge3dsnbnmnqxa")
+
+ACCOUNT_CAPABILITY(kShouldBeAddressedInMasculineGrammaticalGender,
+                   SHOULD_BE_ADDRESSED_IN_MASCULINE_GRAMMATICAL_GENDER,
+                   "accountcapabilities/ge3dsnjnmnqxa")
+
+ACCOUNT_CAPABILITY(kShouldBeAddressedInNeuterGrammaticalGender,
+                   SHOULD_BE_ADDRESSED_IN_NEUTER_GRAMMATICAL_GENDER,
+                   "accountcapabilities/ge3dsnrnmnqxa")
 
 ACCOUNT_CAPABILITY(
     kSupportsWalletPrivatePassesInAutofillCapabilityName,

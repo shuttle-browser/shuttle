@@ -134,8 +134,6 @@ class CORE_EXPORT FrameFetchContext final : public BaseFetchContext,
   void AddClientHintsIfNecessary(const std::optional<float> resource_width,
                                  ResourceRequest&);
 
-  void AddReducedAcceptLanguageIfNecessary(ResourceRequest&);
-
   FetchContext* Detach() override;
 
   void Trace(Visitor*) const override;
@@ -218,7 +216,7 @@ class CORE_EXPORT FrameFetchContext final : public BaseFetchContext,
   std::optional<UserAgentMetadata> GetUserAgentMetadata() const;
   const network::PermissionsPolicy* GetPermissionsPolicy() const override;
   const FeatureContext* GetFeatureContext() const override;
-  HashSet<HashAlgorithm> CSPHashesToReport() const override;
+  HashAlgorithmSet CSPHashesToReport() const override;
   void AddCSPHashReport(
       const String& url,
       const HashMap<HashAlgorithm, String>& integrity_hashes) override;
@@ -226,7 +224,6 @@ class CORE_EXPORT FrameFetchContext final : public BaseFetchContext,
 
   const ClientHintsPreferences& GetClientHintsPreferences() const;
   float GetDevicePixelRatio() const;
-  String GetReducedAcceptLanguage() const;
 
   enum class ClientHintsMode { kLegacy, kStandard };
   void SetFirstPartyCookie(ResourceRequest&);

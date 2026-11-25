@@ -51,7 +51,6 @@
 #include "components/strings/grit/components_strings.h"
 #include "content/public/browser/url_data_source.h"
 #include "content/public/browser/web_ui.h"
-#include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/l10n/time_format.h"
 #include "ui/webui/resources/cr_components/history/history.mojom.h"
@@ -222,7 +221,12 @@ BrowsingHistoryHandler::BrowsingHistoryHandler(
       std::make_unique<BrowsingHistoryService>(this, local_history);
 }
 
-BrowsingHistoryHandler::~BrowsingHistoryHandler() = default;
+BrowsingHistoryHandler::~BrowsingHistoryHandler() {
+  // Close the receiver before `query_history_callback_` and
+  // `remove_visits_callbacks_` are destroyed. Destroying a pending Mojo
+  // responder while its receiver is still bound DCHECKs.
+  page_handler_.reset();
+}
 
 void BrowsingHistoryHandler::SetPage(
     mojo::PendingRemote<history::mojom::Page> pending_page) {
@@ -237,7 +241,8 @@ void BrowsingHistoryHandler::SetPage(
 void BrowsingHistoryHandler::QueryHistory(
     const std::string& query,
     int max_count,
-    std::optional<double> begin_timestamp,
+    std::optional<base::Time> begin_time,
+    std::optional<base::Time> end_time,
     bool include_user_visits,
     bool include_actor_visits,
     const std::vector<std::string>& client_ids,
@@ -254,14 +259,15 @@ void BrowsingHistoryHandler::QueryHistory(
 
   query_history_callback_ = std::move(callback);
 
-  SendHistoryQuery(max_count, query, begin_timestamp, include_user_visits,
+  SendHistoryQuery(max_count, query, begin_time, end_time, include_user_visits,
                    include_actor_visits, client_ids);
 }
 
 void BrowsingHistoryHandler::SendHistoryQuery(
     int max_count,
     const std::string& query,
-    std::optional<double> begin_timestamp,
+    std::optional<base::Time> begin_time,
+    std::optional<base::Time> end_time,
     bool include_user_visits,
     bool include_actor_visits,
     const std::vector<std::string>& client_ids) {
@@ -269,7 +275,10 @@ void BrowsingHistoryHandler::SendHistoryQuery(
   history::QueryOptions options;
   options.max_count = max_count;
   options.policy_for_404_visits = history::VisitQuery404sPolicy::kExclude404s;
-  options.duplicate_policy = history::QueryOptions::REMOVE_DUPLICATES_PER_DAY;
+  // `BrowsingHistoryService` has more elaborate deduplication logic. Using the
+  // DB-level deduplication would also drop some data, like the visit IDs of
+  // the merged visits.
+  options.duplicate_policy = history::QueryOptions::KEEP_ALL_DUPLICATES;
   options.include_actor_visits = include_actor_visits;
   options.include_user_visits = include_user_visits;
   std::string text_query;
@@ -302,9 +311,11 @@ void BrowsingHistoryHandler::SendHistoryQuery(
 
   query_hostname_suffix_ = options.hostname_suffix;
 
-  if (begin_timestamp.has_value()) {
-    options.begin_time =
-        base::Time::FromMillisecondsSinceUnixEpoch(begin_timestamp.value());
+  if (begin_time.has_value()) {
+    options.begin_time = begin_time.value();
+  }
+  if (end_time.has_value()) {
+    options.end_time = end_time.value();
   }
 
   options.client_ids = client_ids;
@@ -390,6 +401,7 @@ void BrowsingHistoryHandler::HandleQueryResults(
   }
 
   std::vector<history::mojom::HistoryEntryPtr> results_mojom;
+  results_mojom.reserve(results.size());
   for (const BrowsingHistoryService::HistoryEntry& entry : results) {
     history::mojom::HistoryEntryPtr entry_mojom =
         HistoryEntryToMojom(entry, *profile_, clock_);
@@ -451,11 +463,10 @@ void BrowsingHistoryHandler::GetTimePeriodOptions(
         static_cast<history::mojom::TimePeriodOptionId>(option.id);
     option_mojom->label = base::UTF16ToUTF8(option.label);
     if (!option.begin_time.is_null()) {
-      option_mojom->begin_time =
-          option.begin_time.InMillisecondsFSinceUnixEpoch();
+      option_mojom->begin_time = option.begin_time;
     }
     if (!option.end_time.is_null()) {
-      option_mojom->end_time = option.end_time.InMillisecondsFSinceUnixEpoch();
+      option_mojom->end_time = option.end_time;
     }
     options_mojom.push_back(std::move(option_mojom));
   }

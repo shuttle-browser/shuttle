@@ -247,6 +247,16 @@ std::vector<WebString> CopyForceEnabledOriginTrials(
   return base::ToVector(force_enabled_origin_trials, ToWebString);
 }
 
+HeapVector<Member<HistoryItem>> CopyWebHistoryItems(
+    const std::vector<WebHistoryItem>& items) {
+  HeapVector<Member<HistoryItem>> result;
+  result.ReserveInitialCapacity(base::checked_cast<wtf_size_t>(items.size()));
+  for (const auto& item : items) {
+    result.push_back(static_cast<HistoryItem*>(item));
+  }
+  return result;
+}
+
 bool IsPagePopupRunningInWebTest(LocalFrame* frame) {
   return frame && frame->GetPage()->GetChromeClient().IsPopup() &&
          WebTestSupport::IsRunningWebTest();
@@ -443,10 +453,8 @@ struct SameSizeAsDocumentLoader
   AgentClusterKey agent_cluster_key;
   bool is_cross_site_cross_browsing_context_group;
   bool should_have_sticky_user_activation;
-  std::vector<WebHistoryItem> navigation_api_back_entries
-      ALLOW_DISCOURAGED_TYPE("For same size");
-  std::vector<WebHistoryItem> navigation_api_forward_entries
-      ALLOW_DISCOURAGED_TYPE("For same size");
+  HeapVector<Member<HistoryItem>> navigation_api_back_entries;
+  HeapVector<Member<HistoryItem>> navigation_api_forward_entries;
   Member<HistoryItem> navigation_api_previous_entry;
   std::unique_ptr<CodeCacheHost> code_cache_host;
   mojo::PendingRemote<mojom::blink::CodeCacheHost>
@@ -455,7 +463,6 @@ struct SameSizeAsDocumentLoader
   Vector<DocumentLoader::Preconnect> preconnects;
   std::optional<Vector<KURL>> ad_auction_components;
   std::unique_ptr<ExtraData> extra_data;
-  AtomicString reduced_accept_language;
   network::mojom::NavigationDeliveryType navigation_delivery_type;
   std::optional<ViewTransitionState> view_transition_state;
   std::optional<FencedFrame::RedactedFencedFrameProperties>
@@ -623,11 +630,12 @@ DocumentLoader::DocumentLoader(
           params_->is_cross_site_cross_browsing_context_group),
       should_have_sticky_user_activation_(
           params_->should_have_sticky_user_activation),
-      navigation_api_back_entries_(params_->navigation_api_back_entries),
-      navigation_api_forward_entries_(params_->navigation_api_forward_entries),
+      navigation_api_back_entries_(
+          CopyWebHistoryItems(params_->navigation_api_back_entries)),
+      navigation_api_forward_entries_(
+          CopyWebHistoryItems(params_->navigation_api_forward_entries)),
       navigation_api_previous_entry_(params_->navigation_api_previous_entry),
       extra_data_(std::move(extra_data)),
-      reduced_accept_language_(params_->reduced_accept_language),
       navigation_delivery_type_(params_->navigation_delivery_type),
       view_transition_state_(std::move(params_->view_transition_state)),
       storage_access_api_status_(params_->load_with_storage_access),
@@ -822,7 +830,6 @@ DocumentLoader::CreateWebNavigationParamsToCloneDocument() {
       params->ad_auction_components->emplace_back(KURL(url));
     }
   }
-  params->reduced_accept_language = reduced_accept_language_;
   params->navigation_delivery_type = navigation_delivery_type_;
   params->load_with_storage_access = storage_access_api_status_;
   params->can_use_device_bound_session_js_api =
@@ -890,6 +897,8 @@ void DocumentLoader::Trace(Visitor* visitor) const {
   visitor->Trace(document_load_timing_);
   visitor->Trace(prefetched_signed_exchange_manager_);
   visitor->Trace(use_counter_);
+  visitor->Trace(navigation_api_back_entries_);
+  visitor->Trace(navigation_api_forward_entries_);
   visitor->Trace(navigation_api_previous_entry_);
 }
 
@@ -1202,7 +1211,6 @@ void DocumentLoader::UpdateForSameDocumentNavigation(
     }
 
     caused_by_ad = ad_tracker->IsAdScriptInStack(
-        AdTracker::StackType::kTopOnly,
         /*ignore_monkey_patch=*/monkey_patchable_api);
   }
 
@@ -1693,7 +1701,12 @@ DocumentPolicy::ParsedDocumentPolicy DocumentLoader::CreateDocumentPolicy() {
 void DocumentLoader::HandleResponse() {
   DCHECK(frame_);
 
-  if (response_.IsHTTP() &&
+  // Non-2xx HTTP responses in <object> frames are intercepted by browser-side
+  // navigation to render fallback content. Static data commits (e.g.
+  // javascript: URLs after document.open(), MHTML subframes, or synthetic test
+  // responses) can have an HTTP(S) URL with status code 0 without going through
+  // browser-side HTTP response handling.
+  if (!is_static_data_ && response_.IsHTTP() &&
       !network::IsSuccessfulStatus(response_.HttpStatusCode())) {
     DCHECK(!IsA<HTMLObjectElement>(frame_->Owner()));
   }
@@ -2326,8 +2339,6 @@ void DocumentLoader::DidInstallNewDocument(Document* document) {
   document->GetFrame()->GetClientHintsPreferences().UpdateFrom(
       client_hints_preferences_);
 
-  document->GetFrame()->SetReducedAcceptLanguage(reduced_accept_language_);
-
   const AtomicString& dns_prefetch_control =
       response_.HttpHeaderField(http_names::kXDNSPrefetchControl);
   if (!dns_prefetch_control.empty())
@@ -2385,11 +2396,19 @@ void DocumentLoader::DidCommitNavigation() {
   // same frame.
   base::TimeDelta previous_document_unreported_task_time =
       frame_->GetFrameScheduler()->UnreportedTaskTime();
+  base::TimeDelta previous_document_unreported_ad_task_time =
+      frame_->UnreportedAdTaskTime();
   if (OldDocumentInfoForCommit* old_document_info =
           ScopedOldDocumentInfoForCommitCapturer::CurrentInfo()) {
     previous_document_unreported_task_time =
         old_document_info->frame_scheduler_unreported_task_time;
+    previous_document_unreported_ad_task_time =
+        old_document_info->unreported_ad_task_time;
   }
+  frame_->SetUnreportedAdTaskTime(
+      frame_->IsOutermostMainFrame()
+          ? base::TimeDelta()
+          : previous_document_unreported_ad_task_time);
   WebHistoryCommitType commit_type = LoadTypeToCommitType(load_type_);
   frame_->GetFrameScheduler()->DidCommitProvisionalLoad(
       commit_type == kWebHistoryInertCommit,
@@ -2536,27 +2555,21 @@ scoped_refptr<SecurityOrigin> DocumentLoader::CalculateOrigin(
     // use `origin_to_commit_`, which is already opaque.
     scoped_refptr<SecurityOrigin> sandbox_origin;
 
-    if (base::FeatureList::IsEnabled(
-            blink::features::kUseSandboxTokenForOriginDerivation)) {
-      if (origin_to_commit_) {
-        sandbox_origin = origin_to_commit_;
-      } else {
-        // The token is only set for the initial empty document of sandboxed
-        // frames/windows, so verify we're in that state.
-        CHECK(GetFrameLoader().IsOnInitialEmptyDocument());
-        CHECK(url_.IsAboutBlankUrl() || url_.IsEmpty());
-        // Create a new opaque origin using the provided nonce token for
-        // sandboxed frames that require specific origin generation.
-        auto sandbox_origin_token = std::move(sandbox_origin_token_);
-        CHECK(sandbox_origin_token);
-        sandbox_origin =
-            SandboxedOpaqueSecurityOriginCreator::CreateOriginForSandboxedFrame(
-                base::PassKey<DocumentLoader>(), *sandbox_origin_token,
-                origin.get());
-      }
+    if (origin_to_commit_) {
+      sandbox_origin = origin_to_commit_;
     } else {
-      sandbox_origin = origin_to_commit_ ? origin_to_commit_
-                                         : origin->DeriveNewOpaqueOrigin();
+      // The token is only set for the initial empty document of sandboxed
+      // frames/windows, so verify we're in that state.
+      CHECK(GetFrameLoader().IsOnInitialEmptyDocument());
+      CHECK(url_.IsAboutBlankUrl() || url_.IsEmpty());
+      // Create a new opaque origin using the provided nonce token for
+      // sandboxed frames that require specific origin generation.
+      auto sandbox_origin_token = std::move(sandbox_origin_token_);
+      CHECK(sandbox_origin_token);
+      sandbox_origin =
+          SandboxedOpaqueSecurityOriginCreator::CreateOriginForSandboxedFrame(
+              base::PassKey<DocumentLoader>(), *sandbox_origin_token,
+              origin.get());
     }
 
     CHECK(sandbox_origin->IsOpaque());
@@ -3071,7 +3084,7 @@ void DocumentLoader::CommitNavigation() {
   InitializeWindow(owner_document);
 
   // If the navigation is cross-origin, clear the natural size.
-  if (RuntimeEnabledFeatures::ResponsiveIframesEnabled() && frame_->Owner()) {
+  if (frame_->Owner()) {
     if (const OldDocumentInfoForCommit* info =
             ScopedOldDocumentInfoForCommitCapturer::CurrentInfo();
         info && info->old_document_origin) {
@@ -3317,7 +3330,7 @@ void DocumentLoader::CommitNavigation() {
     // to retain the state from which it was initialized.
     navigation_api_back_entries_.clear();
     navigation_api_forward_entries_.clear();
-    navigation_api_previous_entry_ = WebHistoryItem();
+    navigation_api_previous_entry_ = nullptr;
   }
 
   if (commit_reason_ == CommitReason::kXSLT)
@@ -3804,7 +3817,7 @@ void DocumentLoader::RecordUseCountersForCommit() {
   }
 
   FrameClientHintsPreferencesContext hints_context(frame_);
-  for (const auto& elem : network::GetClientHintToNameMap()) {
+  for (const auto& elem : network::kClientHintToNameMap) {
     const auto& type = elem.first;
     if (client_hints_preferences_.ShouldSend(type)) {
       hints_context.CountClientHints(type);

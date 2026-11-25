@@ -1322,14 +1322,14 @@ TEST_F(InlineNodeTest, ClearFirstInlineFragmentOnSplitFlow) {
   EXPECT_TRUE(after_layout);
 
   // Check it is the one owned by the new root inline formatting context.
-  LayoutBox* inner_span_cb = inner_span->GetLayoutObject()->ContainingBlock();
+  LayoutBox* inner_span_box = inner_span->GetLayoutObject()->ContainingBox();
   LayoutObject* container = GetLayoutObjectByElementId("container");
-  EXPECT_EQ(inner_span_cb, container);
-  InlineCursor inner_span_cb_cursor(*To<LayoutBlockFlow>(inner_span_cb));
-  inner_span_cb_cursor.MoveToFirstLine();
-  inner_span_cb_cursor.MoveToFirstChild();
-  EXPECT_TRUE(inner_span_cb_cursor);
-  EXPECT_EQ(inner_span_cb_cursor.Current().GetLayoutObject(),
+  EXPECT_EQ(inner_span_box, container);
+  InlineCursor inner_span_box_cursor(*To<LayoutBlockFlow>(inner_span_box));
+  inner_span_box_cursor.MoveToFirstLine();
+  inner_span_box_cursor.MoveToFirstChild();
+  EXPECT_TRUE(inner_span_box_cursor);
+  EXPECT_EQ(inner_span_box_cursor.Current().GetLayoutObject(),
             outer_span->GetLayoutObject());
 }
 
@@ -1498,6 +1498,27 @@ TEST_F(InlineNodeTest, SegmentRanges) {
   EXPECT_EQ(ToEndOffsetList(segments->Ranges(8, 10, 1)), expect_8_10);
   Vector<unsigned> expect_9_12 = {12u};
   EXPECT_EQ(ToEndOffsetList(segments->Ranges(9, 12, 1)), expect_9_12);
+}
+
+// Latin Extended letters and General Punctuation should take the fast path,
+// and get the same segment as RunSegmenter gives.
+TEST_F(InlineNodeTest, SegmentLatinAndPunctuation) {
+  for (const bool enabled : {false, true}) {
+    ScopedLayoutSegmentationFastPathForLatinAndPunctuationForTest scope(
+        enabled);
+    SetupHtml(
+        "t",
+        u"<div id=t>\u201C\u0152uvres\u201D \u2014 Swann\u2019s\u2026</div>");
+    const InlineNodeData* data = layout_block_flow_->GetInlineNodeData();
+    EXPECT_EQ(data->HasNonOrc16BitCharacters(), !enabled);
+    EXPECT_FALSE(data->segments);
+    ASSERT_EQ(Items().size(), 1u);
+    EXPECT_EQ(Items()[0]->CreateRunSegmenterRange().script, USCRIPT_LATIN);
+  }
+
+  SetupHtml("t", u"<div id=t>Swann\u2019s \u03A9</div>");
+  EXPECT_TRUE(
+      layout_block_flow_->GetInlineNodeData()->HasNonOrc16BitCharacters());
 }
 
 // https://crbug.com/1275383

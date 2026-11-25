@@ -16,8 +16,10 @@ source_set("content_settings") {
     "//components/custom_handlers",
     "//components/permissions",
     "//components/tabs:public",
+    "//components/user_education/common",
     "//services/device/public/cpp/geolocation:buildflags",
     "//skia",
+    "//third_party/blink/public:buildflags",
     "//ui/base/interaction",
   ]
 
@@ -36,10 +38,7 @@ source_set("content_settings") {
 
 source_set("impl") {
   sources = []
-  deps = [
-    "//chrome/browser/ui:browser_element_identifiers",
-    "//chrome/browser/ui:collected_cookies_infobar_delegate",
-  ]
+  deps = [ "//chrome/browser/ui:browser_element_identifiers" ]
 
   if (!is_android) {
     sources += [
@@ -63,21 +62,25 @@ source_set("impl") {
     "//chrome/browser/content_settings",
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/content_settings:content_settings_util",
-    "//chrome/browser/infobars",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/permissions",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/ui:layout_constants",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui:url_identity",
+    "//chrome/browser/ui/browser_window",
     "//chrome/common:non_code_constants",
     "//components/content_settings/core/browser",
     "//components/content_settings/core/browser:cookie_settings",
-    "//components/infobars/content",
+    "//components/feature_engagement/public",
     "//components/no_state_prefetch/browser",
     "//components/subresource_filter/content/browser",
     "//components/subresource_filter/core/browser",
     "//services/device/public/cpp:device_features",
   ]
+
+  if (is_mac) {
+    deps += [ "//chrome/browser/apps/app_shim" ]
+  }
 }
 

@@ -5,6 +5,7 @@
 #ifndef SERVICES_NETWORK_P2P_SOCKET_MANAGER_H_
 #define SERVICES_NETWORK_P2P_SOCKET_MANAGER_H_
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include <memory>
@@ -57,12 +58,14 @@ struct DefaultLocalAddresses {
 
 // Owns all the P2P socket instances and dispatches Mojo calls from the
 // (untrusted) child and (trusted) browser process.
-class COMPONENT_EXPORT(NETWORK_SERVICE) P2PSocketManager
+class COMPONENT_EXPORT(NETWORK_SERVICE) P2PSocketManager final
     : public net::NetworkChangeNotifier::NetworkChangeObserver,
       public mojom::P2PSocketManager,
       public mojom::P2PTrustedSocketManager,
       public P2PSocket::Delegate {
  public:
+  static constexpr size_t kMaxSimultaneousDnsRequests = 512;
+
   using DeleteCallback =
       base::OnceCallback<void(P2PSocketManager* socket_manager)>;
 

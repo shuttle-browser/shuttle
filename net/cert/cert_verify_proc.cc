@@ -69,6 +69,10 @@
 #include "net/cert/cert_verify_proc_ios.h"
 #endif
 
+#if BUILDFLAG(CHROME_KEY_PINNING_SUPPORTED)
+#include "net/cert/key_pinning_state_chrome.h"
+#endif
+
 namespace net {
 
 namespace {
@@ -577,17 +581,6 @@ scoped_refptr<X509Certificate> CertVerifyProc::Verify2QwacBinding(
   return nullptr;
 }
 
-int CertVerifyProc::Verify2Qwac(X509Certificate* cert,
-                                const std::string& hostname,
-                                CertVerifyResult* verify_result,
-                                const NetLogWithSource& net_log) {
-  // Default implementation of Verify2QwacInternal that always fails.
-  // Subclasses that actually implement 2-QWAC verification should override
-  // this.
-  verify_result->cert_status |= CERT_STATUS_INVALID;
-  return ERR_CERT_INVALID;
-}
-
 // static
 void CertVerifyProc::LogNameNormalizationResult(
     const std::string& histogram_suffix,
@@ -839,6 +832,11 @@ bool CertVerifyProc::HasTooLongValidity(const X509Certificate& cert) {
 
 CertVerifyProc::ImplParams::ImplParams() {
   crl_set = net::CRLSet::BuiltinCRLSet();
+#if BUILDFLAG(CHROME_KEY_PINNING_SUPPORTED)
+  key_pinning_state = KeyPinningStateChrome::CreateForCompiledIn();
+#else
+  key_pinning_state = base::MakeRefCounted<KeyPinningStateDummy>();
+#endif
 #if BUILDFLAG(CHROME_ROOT_STORE_OPTIONAL)
   // Defaults to using Chrome Root Store, though we have to keep this option in
   // here to allow WebView to turn this option off.

@@ -21,15 +21,19 @@
 #include "third_party/blink/renderer/core/html/canvas/recording_test_utils.h"
 #include "third_party/blink/renderer/core/html/forms/html_input_element.h"
 #include "third_party/blink/renderer/core/html/html_slot_element.h"
+#include "third_party/blink/renderer/core/offscreencanvas/offscreen_canvas.h"
 #include "third_party/blink/renderer/core/page/focus_controller.h"
 #include "third_party/blink/renderer/core/page/page_animator.h"
 #include "third_party/blink/renderer/core/paint/paint_layer.h"
 #include "third_party/blink/renderer/core/script/classic_script.h"
 #include "third_party/blink/renderer/core/testing/core_unit_test_helper.h"
+#include "third_party/blink/renderer/core/workers/worker_thread_test_helper.h"
 #include "third_party/blink/renderer/platform/graphics/test/gpu_compositing_test_platform.h"
 #include "third_party/blink/renderer/platform/graphics/test/gpu_test_utils.h"
 #include "third_party/blink/renderer/platform/heap/thread_state.h"
+#include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
 #include "third_party/blink/renderer/platform/testing/paint_test_configurations.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 
 using ::blink_testing::ClearRectFlags;
 using ::blink_testing::FillFlags;
@@ -47,6 +51,26 @@ class HTMLCanvasElementTest : public RenderingTest,
 
  protected:
   void TearDown() override;
+
+  void AppendScript(const String& script_text) {
+    Element* script = GetDocument().CreateRawElement(html_names::kScriptTag);
+    script->setTextContent(script_text);
+    GetDocument().body()->appendChild(script);
+  }
+
+  void FlushCompositorTasks() {
+    // `AppendScript()` executes synchronously outside of a message-loop task,
+    // so `CanvasPerformanceMonitor::DidProcessTask()` does not run to reset
+    // its per-task state. Reset it before running a `RunLoop` so the next
+    // task's `WillProcessTask()` does not assert.
+    CanvasRenderingContext::GetCanvasPerformanceMonitor().ResetForTesting();
+    base::RunLoop run_loop;
+    GetDocument()
+        .GetExecutionContext()
+        ->GetAgentGroupSchedulerCompositorTaskRunner()
+        ->PostTask(FROM_HERE, run_loop.QuitClosure());
+    run_loop.Run();
+  }
 };
 
 INSTANTIATE_PAINT_TEST_SUITE_P(HTMLCanvasElementTest);
@@ -74,8 +98,7 @@ TEST_P(HTMLCanvasElementTest, CleanCanvasResizeDoesntClearFrameBuffer) {
   GetDocument().body()->appendChild(script);
   RunDocumentLifecycle();
 
-  auto* canvas =
-      To<HTMLCanvasElement>(GetDocument().getElementById(AtomicString("c")));
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("c"));
 
   cc::PaintFlags fill_flags = FillFlags();
   fill_flags.setColor(SkColors::kBlue);
@@ -106,8 +129,7 @@ TEST_P(HTMLCanvasElementTest, CanvasResizeClearsFrameBuffer) {
   GetDocument().body()->appendChild(script);
   RunDocumentLifecycle();
 
-  auto* canvas =
-      To<HTMLCanvasElement>(GetDocument().getElementById(AtomicString("c")));
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("c"));
 
   cc::PaintFlags fill_flags = FillFlags();
   fill_flags.setColor(SkColors::kBlue);
@@ -146,8 +168,7 @@ TEST_P(HTMLCanvasElementTest, ContextCreationErrorReentrancyPreservesContext) {
   GetDocument().body()->appendChild(script);
   RunDocumentLifecycle();
 
-  auto* canvas =
-      To<HTMLCanvasElement>(GetDocument().getElementById(AtomicString("c")));
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("c"));
   ASSERT_NE(canvas->RenderingContext(), nullptr);
 
   cc::PaintFlags fill_flags = FillFlags();
@@ -165,8 +186,7 @@ TEST_P(HTMLCanvasElementTest, CreateLayerUpdatesCompositing) {
   GetDocument().GetSettings()->SetScriptEnabled(true);
 
   SetBodyInnerHTML("<canvas id='canvas'></canvas>");
-  auto* canvas = To<HTMLCanvasElement>(
-      GetDocument().getElementById(AtomicString("canvas")));
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("canvas"));
   EXPECT_FALSE(canvas->GetLayoutObject()
                    ->FirstFragment()
                    .PaintProperties()
@@ -193,8 +213,7 @@ TEST_P(HTMLCanvasElementTest, CanvasMemoryUsage) {
   GetDocument().GetSettings()->SetScriptEnabled(true);
 
   SetBodyInnerHTML("<canvas id='canvas' width='10px' height='10px'></canvas>");
-  auto* canvas = To<HTMLCanvasElement>(
-      GetDocument().getElementById(AtomicString("canvas")));
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("canvas"));
   EXPECT_TRUE(canvas->GetMemoryUsage().is_zero());
 
   auto* script = GetDocument().CreateRawElement(html_names::kScriptTag);
@@ -224,8 +243,7 @@ TEST_P(HTMLCanvasElementTest, CanvasMemoryUsageGpuAccelerated) {
   GetDocument().GetSettings()->SetAcceleratedCompositingEnabled(true);
 
   SetBodyInnerHTML("<canvas id='canvas' width='10px' height='10px'></canvas>");
-  auto* canvas = To<HTMLCanvasElement>(
-      GetDocument().getElementById(AtomicString("canvas")));
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("canvas"));
   EXPECT_TRUE(canvas->GetMemoryUsage().is_zero());
 
   auto* script = GetDocument().CreateRawElement(html_names::kScriptTag);
@@ -250,8 +268,7 @@ TEST_P(HTMLCanvasElementTest, CanvasMemoryUsageInvalidContext) {
   GetDocument().GetSettings()->SetScriptEnabled(true);
 
   SetBodyInnerHTML("<canvas id='canvas' width='10px' height='10px'></canvas>");
-  auto* canvas = To<HTMLCanvasElement>(
-      GetDocument().getElementById(AtomicString("canvas")));
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("canvas"));
   EXPECT_TRUE(canvas->GetMemoryUsage().is_zero());
 
   // Create a canvas that too big to allocate, causing invalid context.
@@ -339,9 +356,9 @@ TEST_P(HTMLCanvasElementTest, IsCanvasOrInCanvasSubtreeInIframe) {
     <div id="inner_div"></div>
     <canvas id="inner_canvas"></canvas>
   )HTML");
-  auto* div = GetDocument().getElementById(AtomicString("div"));
-  auto* canvas = GetDocument().getElementById(AtomicString("canvas"));
-  auto* iframe = GetDocument().getElementById(AtomicString("iframe"));
+  auto* div = GetElementById("div");
+  auto* canvas = GetElementById("canvas");
+  auto* iframe = GetElementById("iframe");
   auto* inner_div = ChildDocument().getElementById(AtomicString("inner_div"));
   auto* inner_canvas =
       ChildDocument().getElementById(AtomicString("inner_canvas"));
@@ -389,9 +406,9 @@ TEST_P(HTMLCanvasElementTest, IsCanvasOrInCanvasSubtreeInShadowInIframe) {
   SetChildFrameHTML(R"HTML(
     <div id="host"></div>
   )HTML");
-  auto* div = GetDocument().getElementById(AtomicString("div"));
-  auto* canvas = GetDocument().getElementById(AtomicString("canvas"));
-  auto* iframe = GetDocument().getElementById(AtomicString("iframe"));
+  auto* div = GetElementById("div");
+  auto* canvas = GetElementById("canvas");
+  auto* iframe = GetElementById("iframe");
   auto* host = ChildDocument().getElementById(AtomicString("host"));
   ShadowRoot& shadow_root =
       host->AttachShadowRootForTesting(ShadowRootMode::kOpen);
@@ -441,9 +458,9 @@ TEST_P(HTMLCanvasElementTest, IsCanvasOrInCanvasSubtreeInNestedShadowInIframe) {
   SetChildFrameHTML(R"HTML(
     <div id="host1"></div>
   )HTML");
-  auto* div = GetDocument().getElementById(AtomicString("div"));
-  auto* canvas = GetDocument().getElementById(AtomicString("canvas"));
-  auto* iframe = GetDocument().getElementById(AtomicString("iframe"));
+  auto* div = GetElementById("div");
+  auto* canvas = GetElementById("canvas");
+  auto* iframe = GetElementById("iframe");
   auto* host1 = ChildDocument().getElementById(AtomicString("host1"));
 
   ShadowRoot& shadow_root1 =
@@ -550,21 +567,19 @@ TEST_P(HTMLCanvasElementTest, IsCanvasOrInCanvasSubtree) {
       <input id=nested_input>
     </canvas>
   )HTML");
-  auto* div = GetDocument().getElementById(AtomicString("div"));
+  auto* div = GetElementById("div");
   EXPECT_FALSE(div->IsCanvasOrInCanvasSubtree());
   EXPECT_FALSE(div->IsInCanvasSubtree());
-  auto* canvas = GetDocument().getElementById(AtomicString("canvas"));
+  auto* canvas = GetElementById("canvas");
   EXPECT_TRUE(canvas->IsCanvasOrInCanvasSubtree());
   EXPECT_FALSE(canvas->IsInCanvasSubtree());
-  auto* nested_div = GetDocument().getElementById(AtomicString("nested_div"));
+  auto* nested_div = GetElementById("nested_div");
   EXPECT_TRUE(nested_div->IsCanvasOrInCanvasSubtree());
   EXPECT_TRUE(nested_div->IsInCanvasSubtree());
-  auto* nested_canvas =
-      GetDocument().getElementById(AtomicString("nested_canvas"));
+  auto* nested_canvas = GetElementById("nested_canvas");
   EXPECT_TRUE(nested_canvas->IsCanvasOrInCanvasSubtree());
   EXPECT_TRUE(nested_canvas->IsInCanvasSubtree());
-  auto* nested_input =
-      GetDocument().getElementById(AtomicString("nested_input"));
+  auto* nested_input = GetElementById("nested_input");
   EXPECT_TRUE(nested_input->IsCanvasOrInCanvasSubtree());
   EXPECT_TRUE(nested_input->IsInCanvasSubtree());
   auto* nested_input_shadow =
@@ -618,11 +633,11 @@ TEST_P(HTMLCanvasElementTest, IsCanvasOrInCanvasSubtreeSlotted) {
   )");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* slotted = GetDocument().getElementById(AtomicString("slotted"));
+  auto* slotted = GetElementById("slotted");
   EXPECT_TRUE(slotted->IsCanvasOrInCanvasSubtree());
   EXPECT_TRUE(slotted->IsInCanvasSubtree());
 
-  auto* slotted_child = GetDocument().getElementById(AtomicString("slotchild"));
+  auto* slotted_child = GetElementById("slotchild");
   EXPECT_TRUE(slotted_child->IsCanvasOrInCanvasSubtree());
   EXPECT_TRUE(slotted_child->IsInCanvasSubtree());
 }
@@ -647,11 +662,11 @@ TEST_P(HTMLCanvasElementTest, InCanvasSubtreeUnslotted) {
   )HTML");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* host = GetDocument().getElementById(AtomicString("slotHost"));
+  auto* host = GetElementById("slotHost");
   auto* target = host->GetShadowRoot()->getElementById(AtomicString("target"));
-  auto* slotted = GetDocument().getElementById(AtomicString("slotted"));
-  auto* slotchild = GetDocument().getElementById(AtomicString("slotchild"));
-  auto* unassigned = GetDocument().getElementById(AtomicString("unassigned"));
+  auto* slotted = GetElementById("slotted");
+  auto* slotchild = GetElementById("slotchild");
+  auto* unassigned = GetElementById("unassigned");
 
   EXPECT_FALSE(target->IsInCanvasSubtree());
   EXPECT_TRUE(slotted->IsInCanvasSubtree());
@@ -694,8 +709,7 @@ TEST_P(HTMLCanvasElementTest, InCanvasSubtreeUnslottedInIframe) {
 
 TEST_P(HTMLCanvasElementTest, ContentDrawableInvalidation) {
   SetBodyInnerHTML(R"HTML(<canvas id=canvas></canvas>)HTML");
-  auto* canvas = To<HTMLCanvasElement>(
-      GetDocument().getElementById(AtomicString("canvas")));
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("canvas"));
   UpdateAllLifecyclePhasesForTest();
   EXPECT_FALSE(canvas->IsContentDrawable());
   EXPECT_FALSE(canvas->NeedsStyleRecalc());
@@ -779,10 +793,9 @@ TEST_P(HTMLCanvasElementTest, StaleSlotAssignmentDoesNotCorruptMovedChild) {
   )HTML");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* host = GetDocument().getElementById(AtomicString("host"));
-  auto* child = GetDocument().getElementById(AtomicString("child"));
-  auto* c2 =
-      To<HTMLCanvasElement>(GetDocument().getElementById(AtomicString("c2")));
+  auto* host = GetElementById("host");
+  auto* child = GetElementById("child");
+  auto* c2 = To<HTMLCanvasElement>(GetElementById("c2"));
 
   EXPECT_TRUE(child->IsInCanvasSubtree());
   child->remove();
@@ -796,8 +809,7 @@ TEST_P(HTMLCanvasElementTest, AppendHostWithUnslottedChildToCanvas) {
   SetBodyInnerHTML(R"HTML(
     <canvas id="c"></canvas>
   )HTML");
-  auto* c =
-      To<HTMLCanvasElement>(GetDocument().getElementById(AtomicString("c")));
+  auto* c = To<HTMLCanvasElement>(GetElementById("c"));
   auto* host = GetDocument().CreateRawElement(html_names::kDivTag);
   host->AttachShadowRootForTesting(ShadowRootMode::kOpen);
   auto* child = GetDocument().CreateRawElement(html_names::kDivTag);
@@ -829,11 +841,10 @@ TEST_P(HTMLCanvasElementTest, MoveConnectedHostWithSlottedChildIntoCanvas) {
   )HTML");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* host = GetDocument().getElementById(AtomicString("host"));
-  auto* child = GetDocument().getElementById(AtomicString("child"));
-  auto* grandchild = GetDocument().getElementById(AtomicString("grandchild"));
-  auto* c =
-      To<HTMLCanvasElement>(GetDocument().getElementById(AtomicString("c")));
+  auto* host = GetElementById("host");
+  auto* child = GetElementById("child");
+  auto* grandchild = GetElementById("grandchild");
+  auto* c = To<HTMLCanvasElement>(GetElementById("c"));
 
   EXPECT_FALSE(host->IsInCanvasSubtree());
   EXPECT_FALSE(child->IsInCanvasSubtree());
@@ -861,10 +872,10 @@ TEST_P(HTMLCanvasElementTest, PseudoElementChildOfShadowHost) {
   )HTML");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* host = GetDocument().getElementById(AtomicString("host"));
+  auto* host = GetElementById("host");
   EXPECT_FALSE(host->IsInCanvasSubtree());
   EXPECT_FALSE(host->GetPseudoElement(kPseudoIdAfter)->IsInCanvasSubtree());
-  GetDocument().getElementById(AtomicString("c"))->appendChild(host);
+  GetElementById("c")->appendChild(host);
   UpdateAllLifecyclePhasesForTest();
   EXPECT_TRUE(host->IsInCanvasSubtree());
   EXPECT_TRUE(host->GetPseudoElement(kPseudoIdAfter)->IsInCanvasSubtree());
@@ -891,10 +902,9 @@ TEST_P(HTMLCanvasElementTest, TopLayerRemovalInvalidatesSubtreeAcrossFrames) {
   )HTML");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* popover =
-      To<HTMLElement>(GetDocument().getElementById(AtomicString("popover")));
-  auto* child = GetDocument().getElementById(AtomicString("child"));
-  auto* iframe = GetDocument().getElementById(AtomicString("iframe"));
+  auto* popover = To<HTMLElement>(GetElementById("popover"));
+  auto* child = GetElementById("child");
+  auto* iframe = GetElementById("iframe");
   auto* inner_target =
       ChildDocument().getElementById(AtomicString("inner_target"));
 
@@ -959,6 +969,9 @@ TEST_P(HTMLCanvasElementTest, SlotAssignmentDuringSetIsInCanvasSubtree) {
 
   ScopedCanvasDrawElementForTest forced_canvas_draw_element_feature(true);
   GetDocument().GetSettings()->SetScriptEnabled(true);
+  // This test relies on focus moving into the date input's shadow subfields,
+  // which are not focusable by default on non-desktop Android.
+  GetDocument().GetSettings()->SetDateTimeSubfieldsFocusableForTesting(true);
   GetPage().GetFocusController().SetActive(true);
   GetPage().GetFocusController().SetFocused(true);
   GetDocument().body()->SetHTMLUnsafeWithoutTrustedTypes(R"HTML(
@@ -981,10 +994,9 @@ TEST_P(HTMLCanvasElementTest, SlotAssignmentDuringSetIsInCanvasSubtree) {
   )HTML");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* h2 = GetDocument().getElementById(AtomicString("h2"));
-  auto* d =
-      To<HTMLInputElement>(GetDocument().getElementById(AtomicString("d")));
-  auto* y = GetDocument().getElementById(AtomicString("y"));
+  auto* h2 = GetElementById("h2");
+  auto* d = To<HTMLInputElement>(GetElementById("d"));
+  auto* y = GetElementById("y");
   auto* s2 = To<HTMLSlotElement>(
       h2->GetShadowRoot()->getElementById(AtomicString("s2")));
 
@@ -1028,10 +1040,10 @@ TEST_P(HTMLCanvasElementTest, SlotReassignmentInvalidatesVisitedLinkStyle) {
   )HTML");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* payload = GetDocument().getElementById(AtomicString("payload"));
-  auto* link = GetDocument().getElementById(AtomicString("link"));
-  auto* child = GetDocument().getElementById(AtomicString("child"));
-  auto* svg_link = GetDocument().getElementById(AtomicString("svg_link"));
+  auto* payload = GetElementById("payload");
+  auto* link = GetElementById("link");
+  auto* child = GetElementById("child");
+  auto* svg_link = GetElementById("svg_link");
 
   EXPECT_FALSE(link->IsInCanvasSubtree());
   EXPECT_EQ(link->GetComputedStyle()->InsideLink(),
@@ -1089,12 +1101,12 @@ TEST_P(HTMLCanvasElementTest, RemoveAndReinsertSlottedElementToSameHost) {
   )HTML");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* host1 = GetDocument().getElementById(AtomicString("host1"));
-  auto* slotted1 = GetDocument().getElementById(AtomicString("slotted1"));
-  auto* child1 = GetDocument().getElementById(AtomicString("child1"));
-  auto* host2 = GetDocument().getElementById(AtomicString("host2"));
-  auto* slotted2 = GetDocument().getElementById(AtomicString("slotted2"));
-  auto* child2 = GetDocument().getElementById(AtomicString("child2"));
+  auto* host1 = GetElementById("host1");
+  auto* slotted1 = GetElementById("slotted1");
+  auto* child1 = GetElementById("child1");
+  auto* host2 = GetElementById("host2");
+  auto* slotted2 = GetElementById("slotted2");
+  auto* child2 = GetElementById("child2");
 
   EXPECT_TRUE(slotted1->IsInCanvasSubtree());
   EXPECT_TRUE(child1->IsInCanvasSubtree());
@@ -1140,6 +1152,138 @@ TEST_P(HTMLCanvasElementTest, RemoveAndReinsertSlottedElementToSameHost) {
   EXPECT_TRUE(child2->IsInCanvasSubtree());
 }
 
+// Moving an element between a shadow host and its <slot> in either direction
+// when it is the slot's only flat-tree child switches the slot between
+// assigned-nodes mode and fallback mode without changing the element's
+// flat-tree parent or the slot's flat-tree child list ([target] -> [target]).
+// Both directions must still notify the moved node so its kIsInCanvasSubtree
+// flag is updated.
+TEST_P(HTMLCanvasElementTest, MoveElementBetweenShadowHostAndSlotKeepsFlag) {
+  // Avoid whitespace as direct children of the shadow hosts, since whitespace
+  // text nodes would be assigned to the unnamed <slot> and prevent fallback.
+  GetDocument().body()->SetHTMLUnsafeWithoutTrustedTypes(R"HTML(
+    <canvas content="drawable">
+      <div drawable id="drawable">
+        <div id="host1"><template shadowrootmode="open">
+          <slot id="slot1"></slot>
+        </template><div id="slotted1">
+          <div id="slotted_child1"></div>
+        </div></div>
+        <div id="host2"><template shadowrootmode="open">
+          <slot id="slot2"></slot>
+        </template><div id="slotted2">
+          <div id="slotted_child2"></div>
+        </div></div>
+        <div id="host3"><template shadowrootmode="open">
+          <slot id="slot3">
+            <div id="fallback1">
+              <div id="fallback_child1"></div>
+            </div>
+          </slot>
+        </template></div>
+        <div id="host4"><template shadowrootmode="open">
+          <slot id="slot4">
+            <div id="fallback2">
+              <div id="fallback_child2"></div>
+            </div>
+          </slot>
+        </template></div>
+      </div>
+    </canvas>
+    <div id="other"></div>
+  )HTML");
+  UpdateAllLifecyclePhasesForTest();
+
+  auto* other = GetElementById("other");
+  auto* host1 = GetElementById("host1");
+  auto* slotted1 = GetElementById("slotted1");
+  auto* slotted_child1 = GetElementById("slotted_child1");
+  auto* slot1 = host1->GetShadowRoot()->getElementById(AtomicString("slot1"));
+
+  auto* host2 = GetElementById("host2");
+  auto* slotted2 = GetElementById("slotted2");
+  auto* slotted_child2 = GetElementById("slotted_child2");
+  auto* slot2 = host2->GetShadowRoot()->getElementById(AtomicString("slot2"));
+
+  auto* host3 = GetElementById("host3");
+  auto* slot3 = host3->GetShadowRoot()->getElementById(AtomicString("slot3"));
+  auto* fallback1 =
+      host3->GetShadowRoot()->getElementById(AtomicString("fallback1"));
+  auto* fallback_child1 =
+      host3->GetShadowRoot()->getElementById(AtomicString("fallback_child1"));
+
+  auto* host4 = GetElementById("host4");
+  auto* slot4 = host4->GetShadowRoot()->getElementById(AtomicString("slot4"));
+  auto* fallback2 =
+      host4->GetShadowRoot()->getElementById(AtomicString("fallback2"));
+  auto* fallback_child2 =
+      host4->GetShadowRoot()->getElementById(AtomicString("fallback_child2"));
+
+  ASSERT_TRUE(slotted1->IsInCanvasSubtree());
+  ASSERT_TRUE(slotted_child1->IsInCanvasSubtree());
+  ASSERT_TRUE(slotted2->IsInCanvasSubtree());
+  ASSERT_TRUE(slotted_child2->IsInCanvasSubtree());
+  ASSERT_TRUE(fallback1->IsInCanvasSubtree());
+  ASSERT_TRUE(fallback_child1->IsInCanvasSubtree());
+  ASSERT_TRUE(fallback2->IsInCanvasSubtree());
+  ASSERT_TRUE(fallback_child2->IsInCanvasSubtree());
+
+  // 1. Assigned node -> slot fallback content (via appendChild and moveBefore),
+  //    and slot fallback content -> assigned node (via appendChild and
+  //    moveBefore).
+  slot1->appendChild(slotted1);
+  slot2->moveBefore(slotted2, nullptr, ASSERT_NO_EXCEPTION);
+  host3->appendChild(fallback1);
+  host4->moveBefore(fallback2, nullptr, ASSERT_NO_EXCEPTION);
+
+  UpdateAllLifecyclePhasesForTest();
+
+  EXPECT_TRUE(slotted1->IsInCanvasSubtree());
+  EXPECT_TRUE(slotted_child1->IsInCanvasSubtree());
+  EXPECT_TRUE(slotted2->IsInCanvasSubtree());
+  EXPECT_TRUE(slotted_child2->IsInCanvasSubtree());
+  EXPECT_TRUE(fallback1->IsInCanvasSubtree());
+  EXPECT_TRUE(fallback_child1->IsInCanvasSubtree());
+  EXPECT_TRUE(fallback2->IsInCanvasSubtree());
+  EXPECT_TRUE(fallback_child2->IsInCanvasSubtree());
+
+  // 2. Move each element back in the opposite direction.
+  host1->appendChild(slotted1);
+  host2->moveBefore(slotted2, nullptr, ASSERT_NO_EXCEPTION);
+  slot3->appendChild(fallback1);
+  slot4->moveBefore(fallback2, nullptr, ASSERT_NO_EXCEPTION);
+
+  UpdateAllLifecyclePhasesForTest();
+
+  EXPECT_TRUE(slotted1->IsInCanvasSubtree());
+  EXPECT_TRUE(slotted_child1->IsInCanvasSubtree());
+  EXPECT_TRUE(slotted2->IsInCanvasSubtree());
+  EXPECT_TRUE(slotted_child2->IsInCanvasSubtree());
+  EXPECT_TRUE(fallback1->IsInCanvasSubtree());
+  EXPECT_TRUE(fallback_child1->IsInCanvasSubtree());
+  EXPECT_TRUE(fallback2->IsInCanvasSubtree());
+  EXPECT_TRUE(fallback_child2->IsInCanvasSubtree());
+
+  // 3. Detour an assigned node through an unrelated parent and back into the
+  //    same shadow host in a single task (via appendChild and moveBefore).
+  other->appendChild(slotted1);
+  EXPECT_FALSE(slotted1->IsInCanvasSubtree());
+  EXPECT_FALSE(slotted_child1->IsInCanvasSubtree());
+  host1->appendChild(slotted1);
+
+  other->moveBefore(slotted2, nullptr, ASSERT_NO_EXCEPTION);
+  EXPECT_FALSE(slotted2->IsInCanvasSubtree());
+  EXPECT_FALSE(slotted_child2->IsInCanvasSubtree());
+  host2->moveBefore(slotted2, nullptr, ASSERT_NO_EXCEPTION);
+
+  UpdateAllLifecyclePhasesForTest();
+
+  EXPECT_TRUE(slotted1->IsInCanvasSubtree());
+  EXPECT_TRUE(slotted_child1->IsInCanvasSubtree());
+  EXPECT_TRUE(slotted2->IsInCanvasSubtree());
+  EXPECT_TRUE(slotted_child2->IsInCanvasSubtree());
+}
+
 // Moving a focused <input type=date> with no suggested value into a canvas
 // subtree must not rebuild its fields, so slot assignment recalc does not move
 // focus or run script.
@@ -1169,9 +1313,8 @@ TEST_P(HTMLCanvasElementTest, SlotIntoCanvasWithoutSuggestedValueKeepsFocus) {
       "</div>");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* host = GetDocument().getElementById(AtomicString("host"));
-  auto* date =
-      To<HTMLInputElement>(GetDocument().getElementById(AtomicString("d")));
+  auto* host = GetElementById("host");
+  auto* date = To<HTMLInputElement>(GetElementById("d"));
   auto* inside = To<HTMLSlotElement>(
       host->GetShadowRoot()->getElementById(AtomicString("inside")));
   date->Focus();
@@ -1259,6 +1402,9 @@ TEST_P(HTMLCanvasElementTest, ReentrantSlotRecalcDuringDidRecalcAssignedNodes) {
 
   ScopedCanvasDrawElementForTest forced_canvas_draw_element_feature(true);
   GetDocument().GetSettings()->SetScriptEnabled(true);
+  // This test relies on focus moving into the date input's shadow subfields,
+  // which are not focusable by default on non-desktop Android.
+  GetDocument().GetSettings()->SetDateTimeSubfieldsFocusableForTesting(true);
   GetPage().GetFocusController().SetActive(true);
   GetPage().GetFocusController().SetFocused(true);
 
@@ -1277,9 +1423,8 @@ TEST_P(HTMLCanvasElementTest, ReentrantSlotRecalcDuringDidRecalcAssignedNodes) {
       "</div></canvas>");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* host = GetDocument().getElementById(AtomicString("host"));
-  auto* date =
-      To<HTMLInputElement>(GetDocument().getElementById(AtomicString("d")));
+  auto* host = GetElementById("host");
+  auto* date = To<HTMLInputElement>(GetElementById("d"));
   auto* shadow_root = host->GetShadowRoot();
   auto* s1 =
       To<HTMLSlotElement>(shadow_root->getElementById(AtomicString("s1")));
@@ -1315,6 +1460,474 @@ TEST_P(HTMLCanvasElementTest, ReentrantSlotRecalcDuringDidRecalcAssignedNodes) {
   UpdateAllLifecyclePhasesForTest();
   EXPECT_EQ(date->AssignedSlot(), s1);
 #endif  // DCHECK_IS_ON()
+}
+
+TEST_P(HTMLCanvasElementTest, MoveBeforeOutOfCanvasIntoShadowDom) {
+  ScopedCanvasDrawElementForTest forced_canvas_draw_element_feature(true);
+  GetDocument().body()->SetHTMLUnsafeWithoutTrustedTypes(R"HTML(
+    <canvas id="canvas" content="drawable">
+      <div id="draw" drawable>
+        <div id="item1">Item 1</div>
+        <div id="item2">Item 2</div>
+        <div id="item3">Item 3</div>
+      </div>
+      <div id="canvas_host">
+        <template shadowrootmode="open"><slot id="canvas_slot"></slot></template>
+      </div>
+      <div id="canvas_roundtrip_host"><template shadowrootmode="open"><slot id="canvas_roundtrip_slot"></slot></template><div id="item5">Item 5</div></div>
+    </canvas>
+    <div id="shadow_host">
+      <template shadowrootmode="open"></template>
+    </div>
+    <div id="slotless_host">
+      <template shadowrootmode="open"><div>Shadow</div></template>
+    </div>
+    <div id="slotted_host">
+      <template shadowrootmode="open"><slot id="active_slot"></slot></template>
+      <span>Assigned</span>
+    </div>
+    <div id="item4">Item 4</div>
+  )HTML");
+  UpdateAllLifecyclePhasesForTest();
+
+  auto* draw = GetDocument().getElementById(AtomicString("draw"));
+  auto* canvas_host = GetDocument().getElementById(AtomicString("canvas_host"));
+  auto* canvas_slot =
+      canvas_host->GetShadowRoot()->getElementById(AtomicString("canvas_slot"));
+  auto* canvas_roundtrip_host =
+      GetDocument().getElementById(AtomicString("canvas_roundtrip_host"));
+  auto* canvas_roundtrip_slot =
+      canvas_roundtrip_host->GetShadowRoot()->getElementById(
+          AtomicString("canvas_roundtrip_slot"));
+  auto* shadow_host = GetDocument().getElementById(AtomicString("shadow_host"));
+  auto* slotless_host =
+      GetDocument().getElementById(AtomicString("slotless_host"));
+  auto* active_slot = GetDocument()
+                          .getElementById(AtomicString("slotted_host"))
+                          ->GetShadowRoot()
+                          ->getElementById(AtomicString("active_slot"));
+  auto* item1 = GetDocument().getElementById(AtomicString("item1"));
+  auto* item2 = GetDocument().getElementById(AtomicString("item2"));
+  auto* item3 = GetDocument().getElementById(AtomicString("item3"));
+  auto* item4 = GetDocument().getElementById(AtomicString("item4"));
+  auto* item5 = GetDocument().getElementById(AtomicString("item5"));
+
+  EXPECT_TRUE(item1->IsInCanvasSubtree());
+  EXPECT_TRUE(item2->IsInCanvasSubtree());
+  EXPECT_TRUE(item3->IsInCanvasSubtree());
+  EXPECT_FALSE(item4->IsInCanvasSubtree());
+  EXPECT_TRUE(item5->IsInCanvasSubtree());
+
+  // 1. moveBefore out of canvas into a ShadowRoot (crbug.com/575200203).
+  shadow_host->GetShadowRoot()->moveBefore(item1, nullptr, ASSERT_NO_EXCEPTION);
+  // 2. moveBefore out of canvas into a slotless shadow host
+  // (crbug.com/576136338, crbug.com/575200203).
+  slotless_host->moveBefore(item2, nullptr, ASSERT_NO_EXCEPTION);
+  // 3. moveBefore out of canvas into a <slot> with assigned nodes
+  // (crbug.com/576136338).
+  active_slot->moveBefore(item3, nullptr, ASSERT_NO_EXCEPTION);
+  // 4. moveBefore into a canvas <slot> while a host child is pending assignment
+  // (crbug.com/577332970).
+  canvas_host->AppendChild(
+      GetDocument().CreateRawElement(html_names::kSpanTag));
+  canvas_slot->moveBefore(item4, nullptr, ASSERT_NO_EXCEPTION);
+  // 5. moveBefore a slotted canvas child out of the canvas and back into its
+  // canvas shadow host in the same task.
+  shadow_host->moveBefore(item5, nullptr, ASSERT_NO_EXCEPTION);
+  canvas_roundtrip_host->moveBefore(item5, nullptr, ASSERT_NO_EXCEPTION);
+
+  UpdateAllLifecyclePhasesForTest();
+
+  EXPECT_FALSE(item1->IsInCanvasSubtree());
+  ASSERT_TRUE(item1->GetLayoutObject());
+  EXPECT_EQ(item1->GetLayoutObject()->Parent(), shadow_host->GetLayoutObject());
+  EXPECT_NE(item1->GetLayoutObject()->Parent(), draw->GetLayoutObject());
+
+  EXPECT_FALSE(item2->IsInCanvasSubtree());
+  EXPECT_FALSE(item2->GetLayoutObject());
+
+  EXPECT_FALSE(item3->IsInCanvasSubtree());
+  EXPECT_FALSE(item3->GetLayoutObject());
+
+  EXPECT_FALSE(item4->IsInCanvasSubtree());
+  EXPECT_FALSE(item4->GetLayoutObject());
+
+  EXPECT_TRUE(item5->IsInCanvasSubtree());
+  EXPECT_TRUE(item5->GetLayoutObject());
+
+  // 6. moveBefore a slotted canvas child directly into its <slot> as fallback.
+  canvas_roundtrip_slot->moveBefore(item5, nullptr, ASSERT_NO_EXCEPTION);
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_TRUE(item5->IsInCanvasSubtree());
+  EXPECT_TRUE(item5->GetLayoutObject());
+}
+
+TEST_P(HTMLCanvasElementTest, NormalCanvasDoesNotNotifyOutOfBandFrame) {
+  scoped_refptr<viz::TestContextProvider> raster_context_provider =
+      viz::TestContextProvider::CreateRaster();
+  InitializeSharedGpuContext(raster_context_provider.get());
+  ScopedTestingPlatformSupport<GpuCompositingTestPlatform> accelerated_platform;
+  GetDocument().GetSettings()->SetScriptEnabled(true);
+  GetDocument().GetSettings()->SetAcceleratedCompositingEnabled(true);
+  SetBodyInnerHTML(R"HTML(
+    <canvas id='normal' width='10' height='10'></canvas>
+  )HTML");
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("normal"));
+
+  AppendScript(R"JS(
+    var normalCanvas = document.getElementById('normal');
+    var normalCtx = normalCanvas.getContext('2d');
+  )JS");
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+
+  // Drawing to and finalizing a normal canvas should not trigger an
+  // out-of-band notification.
+  AppendScript("normalCtx.fillRect(0, 0, 5, 5);");
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+  canvas->RenderingContext()->FinalizeFrame(FlushReason::kCanvasPushFrame);
+  canvas->PostFinalizeFrame(FlushReason::kCanvasPushFrame);
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+}
+
+// TODO(crbug.com/41449024): enable desynchronized on Mac.
+#if !BUILDFLAG(IS_MAC)
+TEST_P(HTMLCanvasElementTest, LowLatencyCanvasNotifiesOutOfBandFrame) {
+  scoped_refptr<viz::TestContextProvider> raster_context_provider =
+      viz::TestContextProvider::CreateRaster();
+  InitializeSharedGpuContext(raster_context_provider.get());
+  ScopedTestingPlatformSupport<GpuCompositingTestPlatform> accelerated_platform;
+  GetDocument().GetSettings()->SetScriptEnabled(true);
+  GetDocument().GetSettings()->SetAcceleratedCompositingEnabled(true);
+  SetBodyInnerHTML(R"HTML(
+    <canvas id='low_latency' width='10' height='10'></canvas>
+  )HTML");
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("low_latency"));
+
+  AppendScript(R"JS(
+    var lowLatencyCanvas = document.getElementById('low_latency');
+    var lowLatencyCtx =
+        lowLatencyCanvas.getContext('2d', {desynchronized: true});
+  )JS");
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+
+  // Frame 1: Drawing to a visible low-latency canvas should notify when the
+  // frame is finalized and dispatched.
+  AppendScript("lowLatencyCtx.fillRect(0, 0, 5, 5);");
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+  canvas->RenderingContext()->FinalizeFrame(FlushReason::kCanvasPushFrame);
+  canvas->PostFinalizeFrame(FlushReason::kCanvasPushFrame);
+  EXPECT_TRUE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+
+  // Frame 2: Subsequent frames should also notify when finalized.
+  AppendScript("lowLatencyCtx.fillRect(2, 2, 5, 5);");
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+  canvas->RenderingContext()->FinalizeFrame(FlushReason::kCanvasPushFrame);
+  canvas->PostFinalizeFrame(FlushReason::kCanvasPushFrame);
+  EXPECT_TRUE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+}
+
+TEST_P(HTMLCanvasElementTest, OpaqueLowLatencyCanvasNotifiesOutOfBandFrame) {
+  scoped_refptr<viz::TestContextProvider> raster_context_provider =
+      viz::TestContextProvider::CreateRaster();
+  InitializeSharedGpuContext(raster_context_provider.get());
+  ScopedTestingPlatformSupport<GpuCompositingTestPlatform> accelerated_platform;
+  GetDocument().GetSettings()->SetScriptEnabled(true);
+  GetDocument().GetSettings()->SetAcceleratedCompositingEnabled(true);
+  SetBodyInnerHTML(R"HTML(
+    <canvas id='low_latency' width='10' height='10'></canvas>
+  )HTML");
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("low_latency"));
+
+  AppendScript(R"JS(
+    var lowLatencyCanvas = document.getElementById('low_latency');
+    var lowLatencyCtx = lowLatencyCanvas.getContext(
+        '2d', {alpha: false, desynchronized: true});
+  )JS");
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+
+  // Frame 1: With alpha: false, finalizing a drawn frame on a visible
+  // low-latency canvas should trigger an out-of-band notification.
+  AppendScript("lowLatencyCtx.fillRect(0, 0, 5, 5);");
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+  canvas->RenderingContext()->FinalizeFrame(FlushReason::kCanvasPushFrame);
+  canvas->PostFinalizeFrame(FlushReason::kCanvasPushFrame);
+  EXPECT_TRUE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+
+  // Frame 2: Subsequent frames should also notify when finalized.
+  AppendScript("lowLatencyCtx.fillRect(2, 2, 5, 5);");
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+  canvas->RenderingContext()->FinalizeFrame(FlushReason::kCanvasPushFrame);
+  canvas->PostFinalizeFrame(FlushReason::kCanvasPushFrame);
+  EXPECT_TRUE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+}
+
+TEST_P(HTMLCanvasElementTest,
+       HiddenLowLatencyCanvasDoesNotNotifyOutOfBandFrame) {
+  scoped_refptr<viz::TestContextProvider> raster_context_provider =
+      viz::TestContextProvider::CreateRaster();
+  InitializeSharedGpuContext(raster_context_provider.get());
+  ScopedTestingPlatformSupport<GpuCompositingTestPlatform> accelerated_platform;
+  GetDocument().GetSettings()->SetScriptEnabled(true);
+  GetDocument().GetSettings()->SetAcceleratedCompositingEnabled(true);
+  SetBodyInnerHTML(R"HTML(
+    <canvas id='low_latency' width='10' height='10'></canvas>
+  )HTML");
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("low_latency"));
+
+  AppendScript(R"JS(
+    var lowLatencyCanvas = document.getElementById('low_latency');
+    var lowLatencyCtx =
+        lowLatencyCanvas.getContext('2d', {desynchronized: true});
+  )JS");
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+
+  // While visible, finalizing a frame should trigger an out-of-band
+  // notification.
+  AppendScript("lowLatencyCtx.fillRect(0, 0, 5, 5);");
+  canvas->RenderingContext()->FinalizeFrame(FlushReason::kCanvasPushFrame);
+  canvas->PostFinalizeFrame(FlushReason::kCanvasPushFrame);
+  EXPECT_TRUE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+
+  // Once the canvas is hidden (display: none), finalizing a frame should no
+  // longer trigger an out-of-band notification.
+  AppendScript("lowLatencyCanvas.style.display = 'none';");
+  UpdateAllLifecyclePhasesForTest();
+  AppendScript("lowLatencyCtx.fillRect(1, 1, 5, 5);");
+  canvas->RenderingContext()->FinalizeFrame(FlushReason::kCanvasPushFrame);
+  canvas->PostFinalizeFrame(FlushReason::kCanvasPushFrame);
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+}
+#endif  // !BUILDFLAG(IS_MAC)
+
+TEST_P(HTMLCanvasElementTest, PlaceholderCanvasNotifiesOutOfBandFrame) {
+  scoped_refptr<viz::TestContextProvider> raster_context_provider =
+      viz::TestContextProvider::CreateRaster();
+  InitializeSharedGpuContext(raster_context_provider.get());
+  ScopedTestingPlatformSupport<GpuCompositingTestPlatform> accelerated_platform;
+  GetDocument().GetSettings()->SetScriptEnabled(true);
+  GetDocument().GetSettings()->SetAcceleratedCompositingEnabled(true);
+  SetBodyInnerHTML(R"HTML(
+    <canvas id='canvas' width='10' height='10'></canvas>
+  )HTML");
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("canvas"));
+
+  AppendScript(R"JS(
+    var canvas = document.getElementById('canvas');
+    var offscreen = canvas.transferControlToOffscreen();
+    var ctx = offscreen.getContext('2d');
+  )JS");
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+  OffscreenCanvas* offscreen_canvas = OffscreenCanvas::FromPlaceholderId(
+      GetDocument().GetExecutionContext(), canvas->GetDomNodeId());
+  ASSERT_TRUE(offscreen_canvas);
+
+  // Frame 1: Pushing a frame from an OffscreenCanvas to a visible placeholder
+  // should trigger an out-of-band notification when the placeholder receives
+  // the resource.
+  AppendScript("ctx.fillRect(0, 0, 5, 5);");
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+  EXPECT_TRUE(offscreen_canvas->PushFrameIfNeeded());
+  FlushCompositorTasks();
+  EXPECT_TRUE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+
+  // Frame 2: Subsequent pushed frames should also trigger an out-of-band
+  // notification.
+  AppendScript("ctx.fillRect(2, 2, 5, 5);");
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+  EXPECT_TRUE(offscreen_canvas->PushFrameIfNeeded());
+  FlushCompositorTasks();
+  EXPECT_TRUE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+}
+
+TEST_P(HTMLCanvasElementTest,
+       HiddenPlaceholderCanvasDoesNotNotifyOutOfBandFrame) {
+  scoped_refptr<viz::TestContextProvider> raster_context_provider =
+      viz::TestContextProvider::CreateRaster();
+  InitializeSharedGpuContext(raster_context_provider.get());
+  ScopedTestingPlatformSupport<GpuCompositingTestPlatform> accelerated_platform;
+  GetDocument().GetSettings()->SetScriptEnabled(true);
+  GetDocument().GetSettings()->SetAcceleratedCompositingEnabled(true);
+  SetBodyInnerHTML(R"HTML(
+    <canvas id='canvas' width='10' height='10'></canvas>
+  )HTML");
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("canvas"));
+
+  AppendScript(R"JS(
+    var canvas = document.getElementById('canvas');
+    var offscreen = canvas.transferControlToOffscreen();
+    var ctx = offscreen.getContext('2d');
+  )JS");
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+  OffscreenCanvas* offscreen_canvas = OffscreenCanvas::FromPlaceholderId(
+      GetDocument().GetExecutionContext(), canvas->GetDomNodeId());
+  ASSERT_TRUE(offscreen_canvas);
+
+  // While the placeholder canvas is visible, pushing a frame should trigger an
+  // out-of-band notification.
+  AppendScript("ctx.fillRect(0, 0, 5, 5);");
+  EXPECT_TRUE(offscreen_canvas->PushFrameIfNeeded());
+  FlushCompositorTasks();
+  EXPECT_TRUE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+
+  // Once the placeholder canvas is hidden (display: none), pushing a frame
+  // should no longer trigger an out-of-band notification.
+  AppendScript("canvas.style.display = 'none';");
+  UpdateAllLifecyclePhasesForTest();
+  AppendScript("ctx.fillRect(1, 1, 5, 5);");
+  EXPECT_TRUE(offscreen_canvas->PushFrameIfNeeded());
+  FlushCompositorTasks();
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+}
+
+TEST_P(HTMLCanvasElementTest, WorkerPlaceholderCanvasNotifiesOutOfBandFrame) {
+  ScopedTestingPlatformSupport<GpuCompositingTestPlatform> accelerated_platform;
+  GetDocument().GetSettings()->SetScriptEnabled(true);
+  GetDocument().GetSettings()->SetAcceleratedCompositingEnabled(true);
+  SetBodyInnerHTML(R"HTML(
+    <canvas id='canvas' width='10' height='10'></canvas>
+  )HTML");
+  auto* canvas = To<HTMLCanvasElement>(GetElementById("canvas"));
+  DOMNodeId canvas_id = canvas->GetDomNodeId();
+  AppendScript(
+      "document.getElementById('canvas').transferControlToOffscreen();");
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_FALSE(
+      GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+
+  MockWorkerReportingProxy reporting_proxy;
+  EXPECT_CALL(reporting_proxy, DidCreateWorkerGlobalScope(testing::_)).Times(1);
+  EXPECT_CALL(reporting_proxy, WillEvaluateScriptMock()).Times(1);
+  EXPECT_CALL(reporting_proxy, DidEvaluateTopLevelScriptMock(true, testing::_))
+      .Times(1);
+  EXPECT_CALL(reporting_proxy, WillDestroyWorkerGlobalScope()).Times(1);
+  EXPECT_CALL(reporting_proxy, DidTerminateWorkerThread()).Times(1);
+
+  WorkerThreadForTest worker_thread(reporting_proxy);
+  scoped_refptr<const SecurityOrigin> security_origin =
+      SecurityOrigin::Create(KURL("http://fake.url/"));
+  std::unique_ptr<GlobalScopeCreationParams> creation_params =
+      GlobalScopeCreationParams::CreateForWorkerForTesting(
+          security_origin.get(), KURL("http://fake.url/"));
+  creation_params->agent_group_scheduler_compositor_task_runner =
+      GetDocument()
+          .GetExecutionContext()
+          ->GetAgentGroupSchedulerCompositorTaskRunner();
+  worker_thread.Start(std::move(creation_params),
+                      WorkerBackingThreadStartupData::CreateDefault(),
+                      std::make_unique<WorkerDevToolsParams>());
+  RunWorkerToplevelScriptForTesting(worker_thread, security_origin.get(),
+                                    "// fake source code");
+  reporting_proxy.WaitUntilDidEvaluateTopLevelScript();
+
+  scoped_refptr<viz::TestContextProvider> worker_context_provider;
+  auto push_frame_on_worker =
+      [](WorkerThread* thread, DOMNodeId placeholder_id,
+         scoped_refptr<viz::TestContextProvider>* context_provider_out,
+         bool is_first_frame, base::WaitableEvent* done_event) {
+        ASSERT_TRUE(thread->IsCurrentThread());
+        WorkerGlobalScope* scope = To<WorkerGlobalScope>(thread->GlobalScope());
+        ScriptState* script_state = scope->ScriptController()->GetScriptState();
+        ScriptState::Scope script_scope(script_state);
+
+        OffscreenCanvas* offscreen =
+            OffscreenCanvas::FromPlaceholderId(scope, placeholder_id);
+        if (is_first_frame) {
+          *context_provider_out = viz::TestContextProvider::CreateRaster();
+          InitializeSharedGpuContext(context_provider_out->get());
+          offscreen = OffscreenCanvas::Create(script_state, 10, 10,
+                                              /*client_id=*/0, /*sink_id=*/0,
+                                              placeholder_id);
+          ASSERT_TRUE(offscreen->GetCanvasRenderingContext(
+              scope, CanvasRenderingContext::CanvasRenderingAPI::k2D, {}));
+        }
+        ASSERT_TRUE(offscreen);
+        offscreen->DidDraw(gfx::Rect(0, 0, 5, 5));
+        EXPECT_TRUE(offscreen->PushFrameIfNeeded());
+        done_event->Signal();
+      };
+
+  // Frame 1: Pushing a frame from a worker-thread OffscreenCanvas to a visible
+  // placeholder should post UpdatePlaceholderImage to the main thread and
+  // trigger an out-of-band notification.
+  {
+    base::WaitableEvent done;
+    PostCrossThreadTask(
+        *worker_thread.GetTaskRunner(TaskType::kInternalTest), FROM_HERE,
+        CrossThreadBindOnce(
+            push_frame_on_worker, CrossThreadUnretained(&worker_thread),
+            canvas_id, CrossThreadUnretained(&worker_context_provider),
+            /*is_first_frame=*/true, CrossThreadUnretained(&done)));
+    done.Wait();
+    FlushCompositorTasks();
+    EXPECT_TRUE(
+        GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+  }
+
+  // Frame 2: Subsequent frames pushed from the worker thread should also
+  // trigger an out-of-band notification.
+  {
+    base::WaitableEvent done;
+    PostCrossThreadTask(
+        *worker_thread.GetTaskRunner(TaskType::kInternalTest), FROM_HERE,
+        CrossThreadBindOnce(
+            push_frame_on_worker, CrossThreadUnretained(&worker_thread),
+            canvas_id, CrossThreadUnretained(&worker_context_provider),
+            /*is_first_frame=*/false, CrossThreadUnretained(&done)));
+    done.Wait();
+    FlushCompositorTasks();
+    EXPECT_TRUE(
+        GetChromeClient().layer_tree_host()->TakeHasOutOfBandFrameForTesting());
+  }
+
+  // Clean up the worker-thread GPU context before terminating the worker.
+  {
+    base::WaitableEvent done;
+    PostCrossThreadTask(
+        *worker_thread.GetTaskRunner(TaskType::kInternalTest), FROM_HERE,
+        CrossThreadBindOnce(
+            [](scoped_refptr<viz::TestContextProvider>* context_provider,
+               base::WaitableEvent* done_event) {
+              SharedGpuContext::Reset();
+              context_provider->reset();
+              done_event->Signal();
+            },
+            CrossThreadUnretained(&worker_context_provider),
+            CrossThreadUnretained(&done)));
+    done.Wait();
+  }
+
+  worker_thread.Terminate();
+  worker_thread.WaitForShutdownForTesting();
 }
 
 }  // namespace blink

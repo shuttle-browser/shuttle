@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <map>
 #include <memory>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -21,13 +20,14 @@
 #include "cc/base/tiling_data.h"
 #include "cc/cc_export.h"
 #include "cc/paint/paint_worklet_input.h"
-#include "cc/paint/scroll_offset_map.h"
+#include "cc/paint/raster_inducing_values.h"
 #include "cc/raster/raster_source.h"
 #include "cc/tiles/tile.h"
 #include "cc/tiles/tile_index.h"
 #include "cc/tiles/tile_priority.h"
 #include "cc/tiles/tiling_coverage_iterator.h"
 #include "cc/trees/occlusion.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 #include "ui/gfx/geometry/axis_transform2d.h"
 #include "ui/gfx/geometry/rect.h"
 
@@ -35,7 +35,7 @@ namespace base {
 namespace trace_event {
 class TracedValue;
 }
-}
+}  // namespace base
 
 namespace cc {
 
@@ -60,7 +60,7 @@ class CC_EXPORT PictureLayerTilingClient {
   virtual const PaintWorkletRecordMap& GetPaintWorkletRecords() const = 0;
   virtual std::vector<const DrawImage*> GetDiscardableImagesInRect(
       const gfx::Rect& rect) const = 0;
-  virtual ScrollOffsetMap GetRasterInducingScrollOffsets() const = 0;
+  virtual RasterInducingValues GetRasterInducingValues() const = 0;
   virtual const GlobalStateThatImpactsTilePriority& global_tile_state()
       const = 0;
 
@@ -137,8 +137,8 @@ class CC_EXPORT PictureLayerTiling {
   const PaintWorkletRecordMap& GetPaintWorkletRecords() const {
     return client_->GetPaintWorkletRecords();
   }
-  ScrollOffsetMap GetRasterInducingScrollOffsets() const {
-    return client_->GetRasterInducingScrollOffsets();
+  RasterInducingValues GetRasterInducingValues() const {
+    return client_->GetRasterInducingValues();
   }
   const gfx::Rect& tiling_rect() const { return tiling_data_.tiling_rect(); }
   const gfx::Rect& live_tiles_rect() const { return live_tiles_rect_; }
@@ -191,8 +191,10 @@ class CC_EXPORT PictureLayerTiling {
   const TilingData& TilingDataForTesting() const { return tiling_data_; }
   std::vector<Tile*> AllTilesForTesting() const {
     std::vector<Tile*> all_tiles;
-    for (TileMap::const_iterator it = tiles_.begin(); it != tiles_.end(); ++it)
-      all_tiles.push_back(it->second.get());
+    all_tiles.reserve(tiles_.size());
+    for (const auto& [index, tile] : tiles_) {
+      all_tiles.push_back(tile.get());
+    }
     return all_tiles;
   }
 
@@ -221,7 +223,7 @@ class CC_EXPORT PictureLayerTiling {
                                       const gfx::Rect& eventually_rect,
                                       bool evicts_tiles = false);
 
-  using TileMap = std::unordered_map<TileIndex, std::unique_ptr<Tile>>;
+  using TileMap = absl::flat_hash_map<TileIndex, std::unique_ptr<Tile>>;
 
   // Iterates over the tiles of a PictureLayerTiling. Order of iteration is not
   // defined.

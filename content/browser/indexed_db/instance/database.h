@@ -17,11 +17,13 @@
 
 #include "base/containers/queue.h"
 #include "base/functional/callback.h"
+#include "base/functional/function_ref.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
+#include "base/types/expected.h"
 #include "components/services/storage/indexed_db/locks/partitioned_lock_manager.h"
 #include "components/services/storage/public/cpp/buckets/bucket_locator.h"
 #include "content/browser/indexed_db/indexed_db_value.h"
@@ -113,8 +115,11 @@ class CONTENT_EXPORT Database {
   // Number of connections that have progressed passed initial open call.
   size_t ConnectionCount() const { return connections_.size(); }
 
-  // Returns true if there is an active connection for the given client token.
-  bool HasConnectionForClient(const base::UnguessableToken& client_token) const;
+  // Returns true if the client described by `client_info` has a connection
+  // that was created by its open request with `open_request_transaction_id`
+  // and that can be shared with its later open requests.
+  bool HasShareableConnection(const storage::BucketClientInfo& client_info,
+                              int64_t open_request_transaction_id) const;
 
   // Number of active open/delete calls (running or blocked on other
   // connections).
@@ -190,8 +195,6 @@ class CONTENT_EXPORT Database {
       Transaction* transaction);
 
   bool IsObjectStoreIdInMetadata(int64_t object_store_id) const;
-  bool IsObjectStoreIdAndMaybeIndexIdInMetadata(int64_t object_store_id,
-                                                int64_t index_id) const;
 
   // Returns metadata relevant to idb-internals.
   storage::mojom::IdbDatabaseMetadataPtr GetIdbInternalsMetadata() const;
@@ -217,8 +220,6 @@ class CONTENT_EXPORT Database {
                            IndexGetAllKeysWithInvalidIndexId);
   friend class DatabaseOperationTest;
   friend class TransactionTestBase;
-
-  void CallUpgradeTransactionStartedForTesting(int64_t old_version);
 
   class ConnectionRequest;
   class OpenRequest;
@@ -268,6 +269,27 @@ class CONTENT_EXPORT Database {
                          std::unique_ptr<GetAllResultSinkWrapper> result_sink,
                          Transaction* transaction);
 
+  using GetRecordsResult =
+      base::expected<std::vector<blink::mojom::IDBRecordPtr>,
+                     blink::mojom::IDBErrorPtr>;
+
+  // Iterating with cursors, returns multiple records (or just keys or just
+  // values, depending on `result_type`), passing them back through
+  // `final_callback`, unless they would potentially overflow a single Mojo
+  // message, in which case some are first streamed back via
+  // `intermediate_callback`.
+  Status GetRecords(
+      int64_t object_store_id,
+      int64_t index_id,
+      blink::IndexedDBKeyRange key_range,
+      blink::mojom::IDBGetAllResultType result_type,
+      uint32_t max_count,
+      blink::mojom::IDBCursorDirection direction,
+      base::FunctionRef<void(std::vector<blink::mojom::IDBRecordPtr>)>
+          intermediate_callback,
+      base::FunctionRef<void(GetRecordsResult)> final_callback,
+      Transaction* transaction);
+
   // If there is no active request, grab a new one from the pending queue and
   // start it. Afterwards, possibly release the database by calling
   // MaybeReleaseDatabase().
@@ -312,10 +334,6 @@ class CONTENT_EXPORT Database {
       Transaction* current_transaction,
       std::vector<PartitionedLockManager::PartitionedLockRequest>&
           lock_requests);
-
-  // Returns `nullptr` if the object store does not exist.
-  const blink::IndexedDBObjectStoreMetadata* GetObjectStoreMetadataIfExists(
-      int64_t object_store_id) const;
 
   // Gets metadata for the given object store ID, asserting that the object
   // store exists.

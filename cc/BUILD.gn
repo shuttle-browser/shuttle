@@ -57,11 +57,21 @@ cc_component("cc") {
     "benchmarks/unittest_only_benchmark_impl.cc",
     "benchmarks/unittest_only_benchmark_impl.h",
     "input/actively_scrolling_type.h",
+    "input/browser_controls_animation.cc",
+    "input/browser_controls_animation.h",
+    "input/browser_controls_animation_params.h",
     "input/browser_controls_offset_manager.cc",
     "input/browser_controls_offset_manager.h",
+    "input/browser_controls_offset_manager_cib.cc",
+    "input/browser_controls_offset_manager_cib.h",
     "input/browser_controls_offset_manager_client.h",
+    "input/browser_controls_offset_manager_interface.cc",
+    "input/browser_controls_offset_manager_interface.h",
     "input/browser_controls_offset_tag_modifications.h",
     "input/browser_controls_offset_tags.h",
+    "input/browser_controls_snap_animation_controller.cc",
+    "input/browser_controls_snap_animation_controller.h",
+    "input/browser_controls_snap_hint.h",
     "input/browser_controls_state.h",
     "input/compositor_input_interfaces.h",
     "input/hit_test_opaqueness.cc",
@@ -322,6 +332,8 @@ cc_component("cc") {
     "scheduler/scheduler_state_machine.cc",
     "scheduler/scheduler_state_machine.h",
     "scheduler/video_frame_controller.h",
+    "scheduler/view_transition_snapshot_state.cc",
+    "scheduler/view_transition_snapshot_state.h",
     "scheduler/webview_scheduler_state_machine.cc",
     "scheduler/webview_scheduler_state_machine.h",
     "tiles/checker_image_tracker.cc",
@@ -780,7 +792,6 @@ cc_test("cc_unittests") {
 
   sources = [
     "base/delayed_unique_notifier_unittest.cc",
-    "base/histograms_unittest.cc",
     "base/index_rect_unittest.cc",
     "base/list_container_unittest.cc",
     "base/math_util_unittest.cc",
@@ -792,7 +803,11 @@ cc_test("cc_unittests") {
     "base/tiling_data_unittest.cc",
     "base/unique_notifier_unittest.cc",
     "benchmarks/micro_benchmark_controller_unittest.cc",
+    "input/browser_controls_animation_unittest.cc",
+    "input/browser_controls_offset_manager_cib_unittest.cc",
+    "input/browser_controls_offset_manager_interface_unittest.cc",
     "input/browser_controls_offset_manager_unittest.cc",
+    "input/browser_controls_snap_animation_controller_unittest.cc",
     "input/hit_test_opaqueness_unittest.cc",
     "input/main_thread_scrolling_reason_unittest.cc",
     "input/scroll_snap_data_unittest.cc",
@@ -861,6 +876,7 @@ cc_test("cc_unittests") {
     "metrics/video_playback_roughness_reporter_unittest.cc",
     "mojo_embedder/async_layer_tree_frame_sink_unittest.cc",
     "paint/clear_for_opaque_raster_unittest.cc",
+    "paint/deferred_values_unittest.cc",
     "paint/discardable_image_map_unittest.cc",
     "paint/display_item_list_unittest.cc",
     "paint/filter_operations_unittest.cc",
@@ -890,6 +906,7 @@ cc_test("cc_unittests") {
     "scheduler/headless_scheduler_state_machine_unittest.cc",
     "scheduler/scheduler_state_machine_unittest.cc",
     "scheduler/scheduler_unittest.cc",
+    "scheduler/view_transition_snapshot_state_unittest.cc",
     "slim/delayer_scheduler_unittest.cc",
     "slim/slim_layer_tree_compositor_frame_unittest.cc",
     "slim/slim_layer_tree_unittest.cc",
@@ -1062,6 +1079,10 @@ cc_test("cc_unittests") {
       "//components/test:viz_test_bundle_data",
     ]
   }
+
+  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
+  # enable the diagnostic by removing this line.
+  configs = [ "//build/config/compiler:no_exit_time_destructors" ]
 }
 
 cc_test("cc_perftests") {

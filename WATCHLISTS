@@ -218,9 +218,6 @@
                   'chrome/android/java/src/org/chromium/chrome/browser/settings/privacy/PrivacyPreferences.java|'\
                   'chrome/android/java/src/org/chromium/chrome/browser/metrics/UmaSessionStats.java',
     },
-    'android_vertical_tabs': {
-      'filepath': 'chrome/android/features/tab_ui/.*vertical_tab.*',
-    },
     'android_webapk': {
       'filepath': 'chrome/android/webapk/|'\
                   'chrome/browser/android/webapk/',
@@ -836,7 +833,6 @@
     'chrome_intelligence': {
       'filepath': 'contextual_cueing'\
                   '|history_clusters'\
-                  '|history_embeddings'\
                   '|image_service'\
                   '|ios/chrome/browser/text_selection'\
                   '|model_execution'\
@@ -1105,7 +1101,6 @@
                   '|chrome/test/data/webui/settings/cups_printer_page_tests.js'\
                   '|chrome/browser/ui/webui/settings/ash/cups_printers_handler'\
                   '|chrome/browser/ash/printing/'\
-                  '|chrome/browser/chromeos/printing/'\
                   '|printing/',
     },
     'cursor': {
@@ -1282,6 +1277,10 @@
       'filepath': 'chrome/android/feed|' \
                   'chrome/browser/feed/|' \
                   'components/feed/'
+    },
+    'fet_policy': {
+      'filepath': 'components/feature_engagement/.*/' \
+                  'EnterprisePolicyBypassAllowlist\\.java',
     },
     'fileapi': {
       'filepath': 'file_system/|' \
@@ -2048,8 +2047,6 @@
     },
     'related_website_sets': {
       'filepath': 'first_party_sets|' \
-                  'top_level_storage_access_api|' \
-                  'top-level-storage-access-api|' \
                   'storage_access_api|' \
                   'storage-access-api'
     },
@@ -2396,12 +2393,6 @@
                   'ios/chrome/browser/translate|'\
                   'ios/web_view/internal/translate'
     },
-    'turtledove': {
-      'filepath': 'content/browser/interest_group/|'\
-                  'content/services/auction_worklet/|'\
-                  'third_party/blink/public/mojom/interest_group/|'\
-                  'third_party/blink/renderer/modules/ad_auction/'
-    },
     'ui_compositor': {
       'filepath': 'ui/compositor/layer\.|'\
                   'ui/compositor/layer_unittest|'\
@@ -2664,7 +2655,6 @@
                            'ckitagawa+watch@chromium.org'],
     'android_uma_settings': ['asvitkine+watch@chromium.org',
                              'gayane+watch@chromium.org'],
-    'android_vertical_tabs': ['agazal@google.com'],
     'android_webapk': ['webapks-watchlist@chromium.org'],
     'android_webview': ['android-webview-reviews@chromium.org'],
     'android_webview_network_service': [],
@@ -2907,7 +2897,7 @@
     'cast_streaming': ['jasonroberts+watch@google.com',
                        'jophba+watch@chromium.org',
                        'mfoltz+watch-media@chromium.org'],
-    'cbb_ref_info': ['johnchen+watch@chromium.org'],
+    'cbb_ref_info': [],
     'cbe_productivity_ai': ['cbe-productivity-cls@google.com'],
     'cc': ['cc-bugs@chromium.org'],
     'cc-animation': ['gerchiko@microsoft.com'],
@@ -3092,6 +3082,8 @@
     'feed': ['harringtond+watch@chromium.org',
              'petewil+watch@chromium.org',
              'iwells+watch@chromium.org'],
+    'fet_policy': ['jhimawan@google.com',
+                   'mschillaci+watchfet@google.com'],
     'fileapi': ['kinuko+fileapi@chromium.org'],
     'filebrowse': ['rginda+watch@chromium.org'],
     'filesapp': ['filesapp-reviews@chromium.org'],
@@ -3466,12 +3458,12 @@
 			   'jorgelo+watch@chromium.org',
 			   'crmullins+watch@chromium.org'],
     'translate': ['translate-reviews@chromium.org'],
-    'turtledove': [],
     'ui_compositor': ['cc-bugs@chromium.org'],
     'ui_display_win': ['robliao+watch@chromium.org'],
     'ui_resources': ['oshima+watch@chromium.org'],
     'ui_strings': ['srahim+watch@chromium.org'],
-    'ui_views': ['robliao+watch@chromium.org',
+    'ui_views': ['chromium-views-reviews-monitor@chromium.org',
+                 'robliao+watch@chromium.org',
                  'sky+watch@chromium.org'],
     'unified_consent': ['wfh+watch@chromuium.org'],
     'url_constant_resolver': ['mfiaz+watch@google.com'],

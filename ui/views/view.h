@@ -503,7 +503,7 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
     CHECK(!view->owned_by_client())
         << "This should only be called if the client doesn't already have "
            "ownership of |view|.";
-    DCHECK(std::ranges::contains(children_, view));
+    CHECK(std::ranges::contains(children_, view), base::NotFatalUntil::M163);
     RemoveChildView(view);
     return base::WrapUnique(view);
   }
@@ -756,9 +756,6 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
   // ui::LayerObserver:
   void LayerDestroyed(ui::Layer* layer) override;
   void OnLayerRecreated(ui::Layer* old_layer, ui::Layer* new_layer) override;
-
-  // Overridden from ui::LayerOwner:
-  std::unique_ptr<ui::Layer> RecreateLayer() override;
 
   // When set to true, the layer will be masked to the view's visible bounds.
   // A client should not modify the layer's `clip_rect`, which will be updated
@@ -2249,9 +2246,8 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
 
   // Recursively calls UpdateParentLayers() on all descendants, stopping at any
   // Views that have layers. Calls UpdateParentLayer() for any Views that have
-  // a layer with no parent. If at least one descendant had an unparented layer
-  // true is returned.
-  bool UpdateParentLayers();
+  // a layer with no parent.
+  void UpdateParentLayers();
 
   // Parents this view's layer to |parent_layer|, and sets its bounds and other
   // properties in accordance to the layer hierarchy.

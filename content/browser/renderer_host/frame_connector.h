@@ -19,10 +19,6 @@
 #include "ui/display/screen_infos.h"
 #include "ui/gfx/geometry/rect.h"
 
-namespace cc {
-class RenderFrameMetadata;
-}
-
 namespace blink {
 struct FrameVisualProperties;
 }  // namespace blink
@@ -197,8 +193,8 @@ class FrameConnector : public input::ChildFrameInputHelper::Delegate {
 
   // Called by RenderWidgetHostViewChildFrame when the child frame has updated
   // its visual properties and its viz::LocalSurfaceId has changed.
-  virtual void DidUpdateVisualProperties(
-      const cc::RenderFrameMetadata& metadata) = 0;
+  virtual void DidUpdateChildLocalSurfaceId(
+      const viz::LocalSurfaceId& local_surface_id) = 0;
 
   // Called by RenderWidgetHostViewChildFrame to update the visibility of any
   // nested child RWHVCFs inside it.
@@ -234,15 +230,6 @@ class FrameConnector : public input::ChildFrameInputHelper::Delegate {
 
   // Returns the embedder's visibility.
   virtual Visibility EmbedderVisibility() = 0;
-
-  // Instructs the frame connector to keep its surface alive (or release it).
-  // This is typically used to ensure the surface is not discarded when the
-  // frame is hidden, for example, to allow it to be captured during tab
-  // capture.
-  virtual void SetKeepSurfaceAlive(bool keep_alive) = 0;
-
-  // Returns true if the frame connector is currently keeping the surface alive.
-  virtual bool IsKeepingAlive() const = 0;
 };
 
 }  // namespace content

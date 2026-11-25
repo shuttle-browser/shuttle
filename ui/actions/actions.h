@@ -83,7 +83,7 @@ class COMPONENT_EXPORT(ACTIONS) BaseAction
 
   template <typename T>
   T* AddChild(std::unique_ptr<T> action_item) {
-    DCHECK(!action_item->GetParent());
+    CHECK(!action_item->GetParent(), base::NotFatalUntil::M163);
     action_item->parent_ = this;
     T* result = action_item.get();
     AddChildInternal(std::move(action_item));
@@ -92,7 +92,7 @@ class COMPONENT_EXPORT(ACTIONS) BaseAction
 
   template <typename T>
   T* AddChildAt(std::unique_ptr<T> action_item, size_t index) {
-    DCHECK(!action_item->GetParent());
+    CHECK(!action_item->GetParent(), base::NotFatalUntil::M163);
     action_item->parent_ = this;
     T* result = action_item.get();
     AddChildAtInternal(std::move(action_item), index);
@@ -101,8 +101,8 @@ class COMPONENT_EXPORT(ACTIONS) BaseAction
 
   template <typename T>
   std::unique_ptr<T> RemoveChild(T* action_item) {
-    DCHECK(action_item);
-    DCHECK_EQ(action_item->GetParent(), this);
+    CHECK(action_item, base::NotFatalUntil::M163);
+    CHECK_EQ(action_item->GetParent(), this, base::NotFatalUntil::M163);
     action_item->parent_ = nullptr;
     std::unique_ptr<BaseAction> removed_action =
         children_.RemoveAction(action_item);
@@ -389,12 +389,12 @@ class BaseActionItemBuilderT {
     return std::move(this->SetIsShowingBubble(showing_bubble));
   }
 
-  BuilderT& AddSynonyms(std::initializer_list<std::u16string> synonyms) & {
+  BuilderT& AddSynonyms(base::span<const std::u16string> synonyms) & {
     action_item_->AddSynonyms(synonyms);
     return static_cast<BuilderT&>(*this);
   }
 
-  BuilderT&& AddSynonyms(std::initializer_list<std::u16string> synonyms) && {
+  BuilderT&& AddSynonyms(base::span<const std::u16string> synonyms) && {
     return std::move(this->AddSynonyms(synonyms));
   }
 
@@ -492,7 +492,7 @@ class COMPONENT_EXPORT(ACTIONS) ActionItem : public BaseAction {
       ActionChangedCallback callback);
 
   // Alternative terms used to identify this action. Used for search indexing.
-  void AddSynonyms(std::initializer_list<std::u16string> synonyms);
+  void AddSynonyms(base::span<const std::u16string> synonyms);
 
   // Returns the synonyms for this action. Used for fuzzy search.
   base::span<const std::u16string> GetSynonyms() const;

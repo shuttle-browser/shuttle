@@ -397,6 +397,11 @@ class MEDIA_GPU_EXPORT VaapiWrapper
   // exists, it will be attached to the newly created |va_context_id_| as well.
   [[nodiscard]] virtual bool CreateContext(const gfx::Size& size);
 
+  // Queries whether the encoding quality setting is supported and if so,
+  // attempts to configure it to its maximum value for lower consumption and
+  // maximum speed.
+  virtual void MaybeSetLowQualityEncoding(const gfx::Size& picture_size);
+
   // Returns true iff a VAContextID has been created and hasn't been destroyed.
   bool HasContext() const;
 
@@ -541,20 +546,19 @@ class MEDIA_GPU_EXPORT VaapiWrapper
       VABufferID buffer_id,
       VASurfaceID sync_surface_id);
 
-  // Downloads the contents of the buffer with given |buffer_id| into a buffer
-  // of size |target_size|, pointed to by |target_ptr|. The number of bytes
-  // downloaded will be returned in |coded_data_size|. |sync_surface_id| will
-  // be used as a sync point, i.e. it will have to become idle before starting
-  // the download. |sync_surface_id| should be the source surface passed
-  // to the encode job. |sync_surface_id| will be nullopt when it has already
-  // been synced in GetEncodedChunkSize(). In the case vaSyncSurface()
-  // is not executed. Returns false if it fails for any reason. For example, the
-  // linear size of the resulted encoded frame is larger than |target_size|.
+  // Downloads the contents of the buffer with given `buffer_id` into `target`.
+  // The number of bytes downloaded will be returned in `coded_data_size`.
+  // `sync_surface_id` will be used as a sync point, i.e. it will have to become
+  // idle before starting the download. `sync_surface_id` should be the source
+  // surface passed to the encode job. `sync_surface_id` will be nullopt when it
+  // has already been synced in GetEncodedChunkSize(). In the case
+  // vaSyncSurface() is not executed. Returns false if it fails for any reason.
+  // For example, the linear size of the resulted encoded frame is larger than
+  // `target.size()`.
   [[nodiscard]] virtual bool DownloadFromVABuffer(
       VABufferID buffer_id,
       std::optional<VASurfaceID> sync_surface_id,
-      uint8_t* target_ptr,
-      size_t target_size,
+      base::span<uint8_t> target,
       size_t* coded_data_size);
 
   // Get the max number of reference frames for encoding supported by the
@@ -692,7 +696,8 @@ class MEDIA_GPU_EXPORT VaapiWrapper
   // Queries whether |va_profile_| and |va_entrypoint_| support encoding quality
   // setting and, if available, configures it to its maximum value, for lower
   // consumption and maximum speed.
-  void MaybeSetLowQualityEncoding_Locked() EXCLUSIVE_LOCKS_REQUIRED(va_lock_);
+  void MaybeSetLowQualityEncoding_Locked(const gfx::Size& picture_size)
+      EXCLUSIVE_LOCKS_REQUIRED(va_lock_);
 
   // If a protected session is active, attaches it to the decoding context.
   [[nodiscard]] bool MaybeAttachProtectedSession_Locked()

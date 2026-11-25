@@ -24,14 +24,15 @@
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/functional/any_invocable.h"
-#include "absl/log/absl_log.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/base/thread_annotations.h"   // from @com_google_absl
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
+#include "absl/log/absl_log.h"              // from @com_google_absl
+#include "absl/status/status.h"             // from @com_google_absl
+#include "absl/status/status_macros.h"      // from @com_google_absl
+#include "absl/status/statusor.h"           // from @com_google_absl
+#include "absl/strings/str_format.h"        // from @com_google_absl
+#include "absl/synchronization/mutex.h"     // from @com_google_absl
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/gpu/multi_pool.h"
 
 namespace mediapipe {
@@ -89,9 +90,11 @@ inline absl::StatusOr<std::shared_ptr<Item>> ReusablePool<Item>::GetBuffer() {
   {
     absl::MutexLock lock(&mutex_);
     if (available_.empty()) {
-      MP_ASSIGN_OR_RETURN(buffer, item_factory_());
+      VLOG(2) << "Creating NEW buffer";
+      ABSL_ASSIGN_OR_RETURN(buffer, item_factory_());
       RET_CHECK_NE(buffer, nullptr) << "Failed to create buffer";
     } else {
+      VLOG(2) << "Reusing AVAILABLE buffer";
       buffer = std::move(available_.back());
       available_.pop_back();
       reuse = true;

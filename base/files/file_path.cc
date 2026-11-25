@@ -14,6 +14,7 @@
 #include "base/containers/span.h"
 #include "base/features.h"
 #include "base/files/safe_base_name.h"
+#include "base/hash/hash.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/pickle.h"
 #include "base/strings/strcat.h"
@@ -75,23 +76,36 @@ StringViewType::size_type FindDriveLetter(StringViewType path) {
 }
 
 #if defined(FILE_PATH_USES_DRIVE_LETTERS)
-bool EqualDriveLetterCaseInsensitive(StringViewType a, StringViewType b) {
-  StringType::size_type a_letter_pos = FindDriveLetter(a);
-  StringType::size_type b_letter_pos = FindDriveLetter(b);
+// Returns the first character of non-empty `path`, normalized to ASCII
+// lowercase if `path` begins with a drive letter specification.
+FilePath::CharType NormalizeFirstCharForDriveLetter(StringViewType path) {
+  CHECK(!path.empty());
+  return FindDriveLetter(path) != StringType::npos ? ToLowerASCII(path[0])
+                                                   : path[0];
+}
 
-  if (a_letter_pos == StringType::npos || b_letter_pos == StringType::npos) {
-    return a == b;
+std::strong_ordering CompareDriveLetterCaseInsensitive(StringViewType a,
+                                                       StringViewType b) {
+  // Normalize a leading [A-Za-z]: drive letter to ASCII lowercase so that
+  // operator== and operator<=> induce the exact same equivalence and strict
+  // total ordering (including relative ordering against non-drive-letter
+  // paths).
+  if (!a.empty() && !b.empty()) {
+    if (auto cmp = NormalizeFirstCharForDriveLetter(a) <=>
+                   NormalizeFirstCharForDriveLetter(b);
+        cmp != 0) {
+      return cmp;
+    }
+    return a.substr(1) <=> b.substr(1);
   }
+  return a <=> b;
+}
 
-  StringViewType a_letter(a.substr(0, a_letter_pos + 1));
-  StringViewType b_letter(b.substr(0, b_letter_pos + 1));
-  if (!StartsWith(a_letter, b_letter, CompareCase::INSENSITIVE_ASCII)) {
+bool EqualDriveLetterCaseInsensitive(StringViewType a, StringViewType b) {
+  if (a.size() != b.size()) {
     return false;
   }
-
-  StringViewType a_rest(a.substr(a_letter_pos + 1));
-  StringViewType b_rest(b.substr(b_letter_pos + 1));
-  return a_rest == b_rest;
+  return CompareDriveLetterCaseInsensitive(a, b) == 0;
 }
 
 // Returns true if `left` and `right` are equivalent drive letter components.
@@ -206,7 +220,9 @@ bool IsEmptyOrSpecialCase(const StringType& path) {
 // Leading separators are removed from the remainder of the path, unless
 // `can_be_drive_letter` is true. `can_be_drive_letter` indicates that a leading
 // drive letter in `path` must be extracted as a standalone component, even if
-// not followed by a separator.
+// not followed by a separator. On Windows, a leading root is returned with its
+// separators canonicalized, so that roots written with different separators
+// (e.g. "/" and "\") compare equal.
 std::pair<FilePath::StringViewType, FilePath::StringViewType>
 ExtractFirstComponent(FilePath::StringViewType path, bool can_be_drive_letter) {
   if (path.empty()) {
@@ -214,8 +230,8 @@ ExtractFirstComponent(FilePath::StringViewType path, bool can_be_drive_letter) {
   }
 
   // Special case for leading separators, which form a distinct path component:
-  // - 1 separator is interpreted as the root directory. Use as-is.
-  // - 2 separators indicates a network path. Use as-is.
+  // - 1 separator is interpreted as the root directory.
+  // - 2 separators indicates a network path.
   // - 3+ separators are interpreted as the root directory. Use only the
   //   first separator and discard the others.
   if (FilePath::IsSeparator(path[0])) {
@@ -230,6 +246,15 @@ ExtractFirstComponent(FilePath::StringViewType path, bool can_be_drive_letter) {
     if (first_component.size() >= 3) {
       first_component = first_component.substr(0, 1);
     }
+
+#if defined(FILE_PATH_USES_WIN_SEPARATORS)
+    // Canonicalize the separators, so that a root written with different
+    // separators (e.g. "/" and "\") compares equal.
+    static_assert(FilePath::kSeparators[0] == FILE_PATH_LITERAL('\\'));
+    static constexpr FilePath::StringViewType kCanonicalRoot =
+        FILE_PATH_LITERAL("\\\\");
+    first_component = kCanonicalRoot.substr(0, first_component.size());
+#endif  // defined(FILE_PATH_USES_WIN_SEPARATORS)
     return {first_component, remainder};
   }
 
@@ -309,6 +334,14 @@ bool FilePath::operator==(const FilePath& that) const {
   return EqualDriveLetterCaseInsensitive(this->path_, that.path_);
 #else   // defined(FILE_PATH_USES_DRIVE_LETTERS)
   return path_ == that.path_;
+#endif  // defined(FILE_PATH_USES_DRIVE_LETTERS)
+}
+
+std::strong_ordering FilePath::operator<=>(const FilePath& that) const {
+#if defined(FILE_PATH_USES_DRIVE_LETTERS)
+  return CompareDriveLetterCaseInsensitive(this->path_, that.path_);
+#else   // defined(FILE_PATH_USES_DRIVE_LETTERS)
+  return path_ <=> that.path_;
 #endif  // defined(FILE_PATH_USES_DRIVE_LETTERS)
 }
 
@@ -472,13 +505,27 @@ bool FilePath::AppendRelativePath(const FilePath& child, FilePath* path) const {
   }
 #endif  // defined(FILE_PATH_USES_DRIVE_LETTERS)
 
-  // The first 2 components for network paths are [<2-Separators>, <hostname>].
-  // Use case-insensitive comparison for the hostname.
-  // https://tools.ietf.org/html/rfc3986#section-3.2.2
-  if (IsNetwork() && parent_components.size() > 1) {
-    if (*parent_comp++ != *child_comp++ ||
-        !base::EqualsCaseInsensitiveASCII(*parent_comp++, *child_comp++)) {
+  // The root is the only component made of separators, and it comes right
+  // after the drive letter, if any. Roots made of the same number of separators
+  // are equal, even if written with different separators (e.g. "/" and "\").
+  if (parent_comp != parent_components.end() &&
+      AreAllSeparators(*parent_comp)) {
+    if (parent_comp->size() != child_comp->size() ||
+        !AreAllSeparators(*child_comp)) {
       return false;
+    }
+    ++parent_comp;
+    ++child_comp;
+
+    // The first 2 components for network paths are [<2-Separators>,
+    // <hostname>]. Use case-insensitive comparison for the hostname.
+    // https://tools.ietf.org/html/rfc3986#section-3.2.2
+    if (IsNetwork() && parent_comp != parent_components.end()) {
+      if (!base::EqualsCaseInsensitiveASCII(*parent_comp, *child_comp)) {
+        return false;
+      }
+      ++parent_comp;
+      ++child_comp;
     }
   }
 
@@ -636,13 +683,14 @@ FilePath FilePath::AddExtension(StringViewType extension) const {
     return *this;
   }
 
-  StringType str = path_;
-  if (extension[0] != kExtensionSeparator &&
-      *(str.end() - 1) != kExtensionSeparator) {
-    str.append(1, kExtensionSeparator);
-  }
-  str.append(extension);
-  return FilePath(str);
+  const bool needs_separator =
+      extension[0] != kExtensionSeparator &&
+      (path_.size() > 0 && path_.back() != kExtensionSeparator);
+  return FilePath(
+      base::StrCat({path_,
+                    needs_separator ? StringViewType(&kExtensionSeparator, 1)
+                                    : StringViewType(),
+                    extension}));
 }
 
 FilePath FilePath::AddExtensionASCII(std::string_view extension) const {
@@ -671,12 +719,12 @@ FilePath FilePath::ReplaceExtension(StringViewType extension) const {
     return no_ext;
   }
 
-  StringType str = no_ext.value();
-  if (extension[0] != kExtensionSeparator) {
-    str.append(1, kExtensionSeparator);
-  }
-  str.append(extension);
-  return FilePath(str);
+  const bool needs_separator = extension[0] != kExtensionSeparator;
+  return FilePath(
+      base::StrCat({no_ext.value(),
+                    needs_separator ? StringViewType(&kExtensionSeparator, 1)
+                                    : StringViewType(),
+                    extension}));
 }
 
 bool FilePath::MatchesExtension(StringViewType extension) const {
@@ -1646,3 +1694,18 @@ bool FilePath::IsVirtualDocumentPath() const {
 #endif  // BUILDFLAG(IS_ANDROID)
 
 }  // namespace base
+
+#if defined(FILE_PATH_USES_DRIVE_LETTERS)
+namespace std {
+
+std::size_t hash<base::FilePath>::operator()(const base::FilePath& f) const {
+  base::FilePath::StringViewType value = f.value();
+  if (value.empty()) {
+    return 0;
+  }
+  return base::HashCombine(base::NormalizeFirstCharForDriveLetter(value),
+                           value.substr(1));
+}
+
+}  // namespace std
+#endif  // defined(FILE_PATH_USES_DRIVE_LETTERS)

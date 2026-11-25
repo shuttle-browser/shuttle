@@ -264,6 +264,8 @@ bool TouchFactory::IsMultiTouchDevice(x11::Input::DeviceId deviceid) const {
 
 EventPointerType TouchFactory::GetTouchDevicePointerType(
     x11::Input::DeviceId deviceid) const {
+  // TODO(crbug.com/582238210): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(IsTouchDevice(deviceid));
   return touch_device_list_.find(deviceid)->second.pointer_type;
 }

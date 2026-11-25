@@ -637,7 +637,7 @@
     {
         "name": "input-motionprediction",
         "group": "androidx.input",
-        "version": "1.0.0"
+        "version": "1.0.1"
     },
     {
         "name": "interpolator",
@@ -1097,12 +1097,12 @@
     {
         "name": "espresso-core",
         "group": "androidx.test.espresso",
-        "version": "3.8.0-alpha01"
+        "version": "3.8.0-alpha03"
     },
     {
         "name": "espresso-idling-resource",
         "group": "androidx.test.espresso",
-        "version": "3.8.0-alpha01"
+        "version": "3.8.0-alpha03"
     },
     {
         "name": "espresso-intents",
@@ -1117,7 +1117,7 @@
     {
         "name": "junit",
         "group": "androidx.test.ext",
-        "version": "1.4.0-alpha01"
+        "version": "1.4.0-alpha03"
     },
     {
         "name": "truth",
@@ -1127,7 +1127,7 @@
     {
         "name": "storage",
         "group": "androidx.test.services",
-        "version": "1.7.0-alpha01"
+        "version": "1.7.0-alpha03"
     },
     {
         "name": "uiautomator",
@@ -1152,22 +1152,22 @@
     {
         "name": "core",
         "group": "androidx.test",
-        "version": "1.8.0-alpha01"
+        "version": "1.8.0-alpha03"
     },
     {
         "name": "monitor",
         "group": "androidx.test",
-        "version": "1.9.0-alpha02"
+        "version": "1.9.0-alpha04"
     },
     {
         "name": "rules",
         "group": "androidx.test",
-        "version": "1.8.0-alpha01"
+        "version": "1.8.0-alpha03"
     },
     {
         "name": "runner",
         "group": "androidx.test",
-        "version": "1.8.0-alpha01"
+        "version": "1.8.0-alpha03"
     },
     {
         "name": "tracing",
@@ -1437,17 +1437,17 @@
     {
         "name": "error_prone_annotations",
         "group": "com.google.errorprone",
-        "version": "2.30.0"
+        "version": "2.50.0"
     },
     {
         "name": "failureaccess",
         "group": "com.google.guava",
-        "version": "1.0.2"
+        "version": "1.0.3"
     },
     {
         "name": "guava",
         "group": "com.google.guava",
-        "version": "33.3.1-jre"
+        "version": "33.7.2-android"
     },
     {
         "name": "listenablefuture",
@@ -1457,7 +1457,7 @@
     {
         "name": "j2objc-annotations",
         "group": "com.google.j2objc",
-        "version": "3.0.0"
+        "version": "3.1"
     },
     {
         "name": "protobuf-lite",
@@ -1627,7 +1627,7 @@
     {
         "name": "jspecify",
         "group": "org.jspecify",
-        "version": "1.0.0"
+        "version": "1.0.1"
     },
     {
         "name": "asm",

@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/sanitizers/sanitizers.gni")
 import("//remoting/host/installer/win/host_payload_files.gni")
 
 _payload_header = "$target_gen_dir/payload_files.h"
@@ -108,6 +109,10 @@ source_set("setup_lib") {
     "service_util.h",
     "service_work_items.cc",
     "service_work_items.h",
+    "setup_runner.cc",
+    "setup_runner.h",
+    "setup_work_items.cc",
+    "setup_work_items.h",
   ]
 
   public_deps = [
@@ -126,6 +131,23 @@ source_set("setup_lib") {
   ]
 }
 
+executable("remoting_setup") {
+  configs += [ "//build/config/win:windowed" ]
+
+  if (!is_asan && !is_component_build) {
+    ldflags = [ "/DEPENDENTLOADFLAG:0x800" ]
+  }
+
+  sources = [ "setup_main.cc" ]
+
+  deps = [
+    ":setup_lib",
+    "//base",
+    "//remoting/base:logging",
+    "//remoting/host/win:elevated_exe_manifest",
+  ]
+}
+
 source_set("unit_tests") {
   testonly = true
 
@@ -137,6 +159,8 @@ source_set("unit_tests") {
     "registry_work_items_unittest.cc",
     "service_util_unittest.cc",
     "service_work_items_unittest.cc",
+    "setup_runner_unittest.cc",
+    "setup_work_items_unittest.cc",
   ]
 
   deps = [

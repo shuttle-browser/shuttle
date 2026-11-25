@@ -145,6 +145,7 @@ class UnownedInnerWebContentsClient;
 class WebContentsDelegate;
 class WebUI;
 struct DropData;
+struct GlobalDOMNodeId;
 struct MHTMLGenerationParams;
 class PreloadingAttempt;
 #if BUILDFLAG(IS_ANDROID)
@@ -1392,6 +1393,13 @@ class WebContents : public PageNavigator, public base::SupportsUserData {
   // Returns false if the request is no longer valid, otherwise true.
   virtual bool GotResponseToKeyboardLockRequest(bool allowed) = 0;
 
+  // Discards the pending keyboard lock request, e.g. after the user denied or
+  // dismissed a permission prompt and GotResponseToKeyboardLockRequest(false)
+  // was called. A discarded request is not sent to the delegate again when
+  // the page re-enters fullscreen; the page must call keyboard.lock() again
+  // to make a new request.
+  virtual void DiscardKeyboardLockRequest() = 0;
+
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   // Called when the user has selected a color in the color chooser.
   virtual void DidChooseColorInColorChooser(SkColor color) = 0;
@@ -1506,11 +1514,10 @@ class WebContents : public PageNavigator, public base::SupportsUserData {
   // maintained, which may have side effects if find sessions are started by
   // more than one client, e.g., the user finds text using the UI widget, and at
   // the same time runs a parallel find session by executing a DevTools command.
-  // Each call to `Find()` with `options.new_session` set to true drops the
-  // previous session silently without notifying the client.
-  //
-  // TODO(crbug.com/492228028): Fix the above. Notify the client when its
-  // session is ended.
+  // Each call to `Find()` with `options.new_session` set to true ends the
+  // previous session, if it is still running one; its client is notified via
+  // `DidReceiveFindReply()` with `final_update` set to true, per the
+  // guarantee documented there.
   virtual void Find(const std::u16string& search_text,
                     blink::mojom::FindOptionsPtr options,
                     bool skip_delay,
@@ -1636,6 +1643,10 @@ class WebContents : public PageNavigator, public base::SupportsUserData {
 
   // Tells the WebContents whether the context menu is showing.
   virtual void SetShowingContextMenu(bool showing) = 0;
+
+  // Instructs the document identified by `node_id` to "show interest" in the
+  // target element, which is presumed to have an `interestfor` attribute.
+  virtual void ShowInterestInElement(const GlobalDOMNodeId& node_id) = 0;
 
 #if BUILDFLAG(IS_ANDROID)
   CONTENT_EXPORT static WebContents* FromJavaWebContents(

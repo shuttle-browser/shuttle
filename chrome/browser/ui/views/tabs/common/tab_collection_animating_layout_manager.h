@@ -51,6 +51,7 @@ class TabCollectionAnimatingLayoutManager : public views::LayoutManagerBase {
     double current_offset() const { return current_offset_; }
     double starting_offset() const { return starting_offset_; }
     double GetCurrentProgress() const;
+    bool IsAnimating() const { return animation_.is_animating(); }
 
     // views::AnimationDelegateViews:
     void AnimationProgressed(const gfx::Animation* animation) override;
@@ -135,9 +136,9 @@ class TabCollectionAnimatingLayoutManager : public views::LayoutManagerBase {
       views::View* view_to_reparent,
       std::unique_ptr<SourceLayoutInfo> source_layout_info);
 
-  // Recalculates the target layout, and `views_to_snap` to the new target,
-  // skipping animations.
-  void ResetViewsToTargetLayout(
+  // Recalculates the target layout and updates the starting layout for
+  // `views_to_snap` so they snap to their target bounds without animating.
+  void SnapViewsToTargetLayout(
       const std::vector<const views::View*>& views_to_snap);
 
   // Animates the removal of `child_view` from the `host_view()` associated with
@@ -159,6 +160,12 @@ class TabCollectionAnimatingLayoutManager : public views::LayoutManagerBase {
   // Returns whether `view` has an animating
   // TabCollectionAnimatingLayoutManager.
   static bool IsViewAnimating(views::View* view);
+
+  // If `view`'s parent is animating, takes a layer reference on `view` on
+  // behalf of that animation, released when it ends. Lets another holder (e.g.
+  // tab dragging) release its own reference without the layer disappearing
+  // mid-animation.
+  static void HoldLayerWhileParentAnimates(views::View* view);
 
   bool is_animating() const { return is_animating_; }
   AnimationCoordinator& animation_coordinator() {

@@ -36,7 +36,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/desktop_browser_window_capabilities.h"
 #include "chrome/browser/ui/browser_window/public/embedder_browser_window_features.h"
-#include "chrome/browser/ui/browser_window_theme_observer.h"
+#include "chrome/browser/ui/browser_window_theme_observer/browser_window_theme_observer.h"
 #include "chrome/browser/ui/call_to_action/call_to_action_lock.h"
 #include "chrome/browser/ui/context_highlight/context_highlight_window_feature.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
@@ -66,6 +66,7 @@
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/unload_controller.h"
+#include "chrome/browser/ui/views/animations/focus_mode_animations.h"
 #include "chrome/browser/ui/views/animations/organizer_panel_animations.h"
 #include "chrome/browser/ui/views/animations/tab_strip_animations.h"
 #include "chrome/browser/ui/views/color_provider_browser_helper.h"
@@ -177,8 +178,8 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
 
 
   browser_active_state_manager_ =
-      GetUserDataFactory().CreateInstance<BrowserActiveStateManager>(
-          *browser, *browser);
+      GetUserDataFactory().CreateInstance<BrowserActiveStateManager>(*browser,
+                                                                     *browser);
 
 
   // Foundational members hoisted out of alphabetical order:
@@ -211,6 +212,8 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
                                                                       *browser);
   browser_animation_controller_->AddAnimationProvider(
       std::make_unique<TabStripAnimations>());
+  browser_animation_controller_->AddAnimationProvider(
+      std::make_unique<FocusModeAnimations>());
   browser_animation_controller_->AddAnimationProvider(
       std::make_unique<OrganizerPanelAnimations>());
 

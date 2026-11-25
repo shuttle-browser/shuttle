@@ -313,10 +313,18 @@ void MediaSessionImpl::DidFinishNavigation(
   }
 
   auto new_origin = url::Origin::Create(navigation_handle->GetURL());
-  if (navigation_handle->IsInPrimaryMainFrame() &&
-      !new_origin.IsSameOriginWith(origin_)) {
-    audio_device_id_for_origin_.reset();
-    origin_ = new_origin;
+  if (navigation_handle->IsInPrimaryMainFrame()) {
+    if (!new_origin.IsSameOriginWith(origin_)) {
+      audio_device_id_for_origin_.reset();
+      origin_ = new_origin;
+    }
+
+    // Observers such as Android's MediaSessionHelper clear their cached
+    // metadata on primary main frame cross-document navigations, so reset
+    // `metadata_` to ensure `RebuildAndNotifyMetadataChanged()` re-notifies
+    // observers even when the rebuilt metadata matches pre-navigation state
+    // (e.g. on page reload).
+    metadata_ = media_session::MediaMetadata();
   }
 
   const auto rfh_id = navigation_handle->GetRenderFrameHost()->GetGlobalId();
@@ -759,8 +767,10 @@ void MediaSessionImpl::Suspend(SuspendType suspend_type) {
 }
 
 void MediaSessionImpl::Stop(SuspendType suspend_type) {
-  CHECK(audio_focus_state_ != State::INACTIVE, base::NotFatalUntil::M160);
-  CHECK(suspend_type != SuspendType::kContent, base::NotFatalUntil::M160);
+  // TODO(crbug.com/579677172): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(audio_focus_state_ != State::INACTIVE);
+  DCHECK(suspend_type != SuspendType::kContent);
 
   if (suspend_type == SuspendType::kUI) {
     // If the site has registered an action handle for stop then we should
@@ -795,9 +805,7 @@ void MediaSessionImpl::Stop(SuspendType suspend_type) {
 }
 
 void MediaSessionImpl::Seek(base::TimeDelta seek_time) {
-  // TODO(crbug.com/577759362): CHECK-exclusion: Convert to a CHECK once we are
-  // confident it won't be triggered.
-  DCHECK(!seek_time.is_zero());
+  CHECK(!seek_time.is_zero(), base::NotFatalUntil::M160);
 
   if (seek_time.is_positive()) {
     // If the site has registered an action handler for seek forward then we
@@ -1800,16 +1808,22 @@ RenderFrameHost* MediaSessionImpl::ComputeFrameForRouting(bool ensure_service) {
   std::map<RenderFrameHost*, size_t> map_rfh_to_depth;
 
   std::set<url::Origin> highest_player_origins;
+  std::set<RenderFrameHost*> highest_player_ancestors;
   size_t min_player_depth = std::numeric_limits<size_t>::max();
 
   for (RenderFrameHost* frame : frames) {
     size_t depth = ComputeFrameDepth(frame, &map_rfh_to_depth);
     if (depth < min_player_depth) {
       highest_player_origins.clear();
+      highest_player_ancestors.clear();
       min_player_depth = depth;
     }
     if (depth == min_player_depth) {
       highest_player_origins.insert(frame->GetLastCommittedOrigin());
+      for (RenderFrameHost* ancestor = frame->GetParentOrOuterDocument();
+           ancestor; ancestor = ancestor->GetParentOrOuterDocument()) {
+        highest_player_ancestors.insert(ancestor);
+      }
     }
     if (depth >= min_depth) {
       continue;
@@ -1822,8 +1836,8 @@ RenderFrameHost* MediaSessionImpl::ComputeFrameForRouting(bool ensure_service) {
   }
 
   // If we cannot find a suitable frame, take the top-most frame with an active
-  // MediaSessionService (and same-origin with the highest-level active player
-  // if one exists).
+  // MediaSessionService (that is either same-origin with or an ancestor of the
+  // highest-level active player if one exists).
   if (!best_frame) {
     // `FrameTree::Nodes()` iterates in breadth-first order, so this is
     // guaranteed to find the topmost (or tied topmost) frame with an active
@@ -1833,7 +1847,8 @@ RenderFrameHost* MediaSessionImpl::ComputeFrameForRouting(bool ensure_service) {
                                    .Nodes()) {
       RenderFrameHost* rfh = node->current_frame_host();
       if (!highest_player_origins.empty() &&
-          !highest_player_origins.contains(rfh->GetLastCommittedOrigin())) {
+          !highest_player_origins.contains(rfh->GetLastCommittedOrigin()) &&
+          !highest_player_ancestors.contains(rfh)) {
         continue;
       }
       if (IsServiceActiveForRenderFrameHost(rfh)) {

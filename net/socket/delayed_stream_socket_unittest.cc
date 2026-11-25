@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "base/containers/flat_set.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_future.h"
 #include "base/time/time.h"
@@ -1414,7 +1415,7 @@ TEST_F(DelayedStreamSocketTest, SocketDnsAliasesRoundTripThroughDelegate) {
   FastForwardBy(kLatency);
   ASSERT_THAT(connect_cb.Get(), IsOk());
 
-  std::set<std::string> aliases{"a.example", "b.example"};
+  base::flat_set<std::string> aliases{"a.example", "b.example"};
   socket->SetDnsAliases(aliases);
   EXPECT_EQ(socket->GetDnsAliases(), aliases);
 }
@@ -1842,7 +1843,6 @@ TEST_F(DelayedStreamSocketTest, OnUploadSpaceAvailableSurfacesDrainError) {
   // pending_write_callback_ regardless of `pending_write_buffer_`).
   constexpr int kCap = 16 * 1024;
   const std::string kFirstData(kCap + 4 * 1024, 'a');
-  const std::string kFirstChunkData(kCap, 'a');
   const std::string kSecondData(4 * 1024, 'b');
   // First inner Write returns SYNC error; the buffer is Reset and the
   // pending Write2 callback gets that error.

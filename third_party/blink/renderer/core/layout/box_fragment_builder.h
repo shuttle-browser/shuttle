@@ -37,6 +37,7 @@
 namespace blink {
 
 class ColumnSpannerPath;
+class FragmentedOofContainer;
 class PhysicalFragment;
 
 class CORE_EXPORT BoxFragmentBuilder final : public FragmentBuilder {
@@ -334,22 +335,33 @@ class CORE_EXPORT BoxFragmentBuilder final : public FragmentBuilder {
   // block instead.
   const LayoutResult& LayoutResultForPropagation(const LayoutResult&) const;
 
-  // Add a break token for a child that doesn't yet have any fragments, because
-  // its first fragment is to be produced in the next fragmentainer. This will
-  // add a break token for the child, but no fragment. Break appeal should
-  // always be provided for regular in-flow children. For other types of
-  // children it may be omitted, if the break shouldn't affect the appeal of
-  // breaking inside this container.
-  //
-  // An out-of-flow positioned node may need to skip one or more fragmentainers
-  // before creating a fragment, for instance due to a large block-start inset.
-  // `oof_start_offset` is used for this. The inline offset is also needed,
-  // since it may be based on the hypothetically static position, which cannot
-  // be recomputed when in a subsequent fragmentainer.
+  // Add a break token for a non-out-of-flow child that doesn't yet have any
+  // fragments, because its first fragment is to be produced in the next
+  // fragmentainer. This will add a break token for the child, but no
+  // fragment. Break appeal should always be provided for regular in-flow
+  // children. For other types of children it may be omitted, if the break
+  // shouldn't affect the appeal of breaking inside this container.
   void AddBreakBeforeChild(LayoutInputNode child,
                            std::optional<BreakAppeal> appeal,
-                           bool is_forced_break,
-                           LogicalOffset oof_start_offset = {});
+                           bool is_forced_break);
+
+  // Add a break token for an out-of-flow child that doesn't yet have any
+  // fragments, because its first fragment is to be produced in a subsequent
+  // fragmentainer, e.g. due to a large block-start inset.
+  //
+  // An out-of-flow positioned node may need to skip one or more fragmentainers
+  // before creating a fragment. `block_start_offset` is used to specify how
+  // much space still needs to be skipped before a fragment can start.
+  //
+  // Any post-layout offset (`post_layout_offset`) also needs to be recorded,
+  // since the inline-offset may be based on the hypothetically static position,
+  // which cannot be recomputed when in a subsequent fragmentainer. Also,
+  // offsets caused by non-atomic inline containing blocks are also part of the
+  // post-layout offset, and this cannot be computed in subsequent fragments, so
+  // it's carried in the break tokens.
+  void AddBreakBeforeOofChild(BlockNode child,
+                              LayoutUnit block_start_offset,
+                              LogicalOffset post_layout_offset);
 
   // Add a layout result and propagate info from it. This involves appending the
   // fragment and its relative offset to the builder, but also keeping track of
@@ -435,9 +447,11 @@ class CORE_EXPORT BoxFragmentBuilder final : public FragmentBuilder {
   void SetIsMonolithic(bool b) { is_monolithic_ = b; }
 
   // Set how much of the block-size we've used so far for this box. This will be
-  // the sum of the block-size of all previous fragments PLUS the one we're
-  // building now.
+  // the sum of the fragmentainer space used by all previous fragments PLUS the
+  // one we're building now.
   void SetConsumedBlockSize(LayoutUnit size) { consumed_block_size_ = size; }
+
+  void UpdateConsumedBlockSizeToFragmentainerEnd();
 
   void ReserveSpaceForMonolithicOverflow(LayoutUnit monolithic_overflow) {
     DCHECK(GetConstraintSpace().IsPaginated());
@@ -734,8 +748,10 @@ class CORE_EXPORT BoxFragmentBuilder final : public FragmentBuilder {
   void TransferFrameSetLayoutData(std::unique_ptr<FrameSetLayoutData> data) {
     frame_set_layout_data_ = std::move(data);
   }
-  void SetReadingFlowNodes(HeapVector<Member<blink::Node>>&& nodes) {
-    reading_flow_nodes_ = std::move(nodes);
+  void SetReadingFlowNodes(const GCedHeapVector<Member<blink::Node>>* nodes) {
+    if (nodes && !nodes->empty()) {
+      reading_flow_nodes_ = nodes;
+    }
   }
 
   const GridLayoutData* GetGridLayoutData() const { return grid_layout_data_; }
@@ -789,6 +805,45 @@ class CORE_EXPORT BoxFragmentBuilder final : public FragmentBuilder {
   // Propagate the break-before/break-after of the child (if applicable).
   void PropagateChildBreakValues(const LayoutResult& child_layout_result);
 
+  // Set the FragmentedOofContainer that represents this node. As we lay out
+  // children, we'll look for a corresponding FragmentedOofContainer child if it
+  // exists, and keep this with us as we lay out the subtree. As long as a
+  // FragmentedOofContainer is set, this bypasses regular OOF discovery (which
+  // normally happens during in-flow child layout). This is used to handle the
+  // beginning of an OOF at the correct containing fragment. OOFs may initially
+  // be discovered in a later fragmentainer than where it is supposed to start
+  // (e.g. if setting the block-start inset to 0, and we're way past the
+  // beginning of the containing block). This is when we go back and re-layout
+  // with a FragmentedOofContainer guiding us to the right start containing
+  // fragment.
+  void SetFragmentedOofContainer(const FragmentedOofContainer* container) {
+    fragmented_oof_container_ = container;
+  }
+
+  const FragmentedOofContainer* GetFragmentedOofContainer() const {
+    return fragmented_oof_container_;
+  }
+
+  // Find a FragmentedOofContainer for a child of this node. If it doesn't
+  // exist, it means that there are no OOFs to visit in that subtree.
+  const FragmentedOofContainer* FragmentedOofContainerForChildNode(
+      BlockNode child) const;
+
+  // Add unstarted OOFs that belong in this fragment, according to
+  // FragmentedOofContainer.
+  void AddPendingUnstartedOofs();
+
+  // Put all candidates that don't participate in block fragmentation (either
+  // because they are contained by the outer fragmentation context root itself,
+  // or by something on the outside) into a list. If we need to relayout for OOF
+  // fragmentation, these will not be discovered as normally in the second pass,
+  // since OOF discovery is managed by FragmentedOofContainer then, which means
+  // that they will have to be carried over manually.
+  void CollectUnfragmentedOofs();
+
+  void SetupRelayoutDataForOofFragmentation(
+      const BoxFragmentBuilder& previous_fragment_builder);
+
   bool ShouldCalculateScrollableOverflow() const {
     // Most nodes should calculate scrollable overflow and store it on the
     // resulting fragment, except for replaced content, and the root fragment
@@ -802,7 +857,7 @@ class CORE_EXPORT BoxFragmentBuilder final : public FragmentBuilder {
   // Handle (lay out / propagate) out-of-flow positioned descendants and other
   // special descendants. This function is to be called when an algorithm is
   // done with regular in-flow descendants and has set up its final size.
-  void HandleOofsAndSpecialDescendants();
+  LayoutResult::EStatus HandleOofsAndSpecialDescendants();
 
  private:
   // Propagate fragmentation details. This includes checking whether we have
@@ -871,6 +926,8 @@ class CORE_EXPORT BoxFragmentBuilder final : public FragmentBuilder {
   // The break-after value of the previous in-flow sibling.
   EBreakBetween previous_break_after_ = EBreakBetween::kAuto;
 
+  HeapVector<LogicalOofPositionedNode> unfragmented_oofs_;
+
   AtomicString page_name_ = g_null_atom;
 
   std::optional<LayoutUnit> first_baseline_;
@@ -900,7 +957,7 @@ class CORE_EXPORT BoxFragmentBuilder final : public FragmentBuilder {
   const DevtoolsFlexInfo* flex_layout_data_ = nullptr;
   std::unique_ptr<FrameSetLayoutData> frame_set_layout_data_;
 
-  HeapVector<Member<blink::Node>> reading_flow_nodes_;
+  const GCedHeapVector<Member<blink::Node>>* reading_flow_nodes_ = nullptr;
 
   LineLogicalBoxSides sides_to_include_;
 

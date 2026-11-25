@@ -23,7 +23,9 @@
 #include "base/hash/hash.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/no_destructor.h"
+#include "base/rand_util.h"
 #include "base/sequence_checker.h"
 #include "base/strings/stringprintf.h"
 #include "base/synchronization/lock.h"
@@ -32,6 +34,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/thread_annotations.h"
+#include "base/time/time.h"
 #include "base/trace_event/memory_allocator_dump.h"
 #include "base/trace_event/memory_dump_manager.h"
 #include "base/trace_event/memory_dump_provider.h"
@@ -64,6 +67,8 @@ constinit thread_local bool off_sequence_binding_allowed = false;
 
 BASE_FEATURE(kMojoChannelAssociatedSendUsesRunOrPostTask,
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+constexpr double kMetricSubsamplingProbability = 0.001;
 
 // Used to track some internal Channel state in pursuit of message leaks.
 //
@@ -181,8 +186,7 @@ class ChannelAssociatedGroupController
         control_message_proxy_(&control_message_proxy_thunk_) {
     control_message_handler_.SetDescription(
         "IPC::mojom::Bootstrap [primary] PipeControlMessageHandler");
-    dispatcher_.SetValidator(std::make_unique<mojo::MessageHeaderValidator>(
-        "IPC::mojom::Bootstrap [primary] MessageHeaderValidator"));
+    dispatcher_.SetValidator(&mojo::MessageHeaderValidator::Accept);
 
     GetMemoryDumpProvider().AddController(this);
 
@@ -579,13 +583,19 @@ class ChannelAssociatedGroupController
       handle_created_ = true;
     }
 
-    const std::optional<mojo::DisconnectReason>& disconnect_reason() const {
-      return disconnect_reason_;
+    std::optional<mojo::DisconnectReason> disconnect_reason() const {
+      if (!disconnect_reason_) {
+        return std::nullopt;
+      }
+      return *disconnect_reason_;
     }
 
     void set_disconnect_reason(
         const std::optional<mojo::DisconnectReason>& disconnect_reason) {
-      disconnect_reason_ = disconnect_reason;
+      disconnect_reason_ =
+          disconnect_reason
+              ? std::make_unique<mojo::DisconnectReason>(*disconnect_reason)
+              : nullptr;
     }
 
     base::SequencedTaskRunner* task_runner() const {
@@ -818,6 +828,7 @@ class ChannelAssociatedGroupController
       MessageWrapper message;
     };
 
+    uint32_t next_sync_message_id_ = 0;
     const raw_ptr<ChannelAssociatedGroupController> controller_;
     const mojo::InterfaceId id_;
 
@@ -825,13 +836,13 @@ class ChannelAssociatedGroupController
     bool peer_closed_ = false;
     bool handle_created_ = false;
     bool was_bound_off_sequence_ = false;
-    std::optional<mojo::DisconnectReason> disconnect_reason_;
+    // Rarely set; out of line to keep Endpoint small.
+    std::unique_ptr<mojo::DisconnectReason> disconnect_reason_;
     raw_ptr<mojo::InterfaceEndpointClient> client_ = nullptr;
     scoped_refptr<base::SequencedTaskRunner> task_runner_;
     std::unique_ptr<mojo::SequenceLocalSyncEventWatcher> sync_watcher_;
     base::circular_deque<std::pair<uint32_t, MessageWrapper>> sync_messages_;
     raw_ptr<ExclusiveSyncWait> exclusive_wait_ = nullptr;
-    uint32_t next_sync_message_id_ = 0;
   };
 
   class ControlMessageProxyThunk : public MessageReceiver {
@@ -883,11 +894,16 @@ class ChannelAssociatedGroupController
       return SendMessageOnSequence(message);
     }
 
+    base::TimeTicks post_time;
+    if (base::ShouldRecordSubsampledMetric(kMetricSubsamplingProbability)) {
+      post_time = base::TimeTicks::Now();
+    }
+
     // PostTask (or RunOrPostTask) so that `message` is sent after messages from
     // tasks that are already queued (e.g. by `IPC::ChannelProxy::Send`).
     auto callback = base::BindOnce(
         &ChannelAssociatedGroupController::SendMessageOnSequenceViaTask, this,
-        std::move(*message));
+        std::move(*message), post_time);
     if (base::FeatureList::IsEnabled(
             kMojoChannelAssociatedSendUsesRunOrPostTask)) {
       task_runner_->RunOrPostTask(base::subtle::RunOrPostTaskPassKey(),
@@ -920,7 +936,14 @@ class ChannelAssociatedGroupController
     return false;
   }
 
-  void SendMessageOnSequenceViaTask(mojo::Message message) {
+  void SendMessageOnSequenceViaTask(mojo::Message message,
+                                    base::TimeTicks post_time) {
+    if (!post_time.is_null()) {
+      base::UmaHistogramCustomMicrosecondsTimes(
+          "Mojo.Channel.OffThreadSendQueueTime",
+          base::TimeTicks::Now() - post_time, base::Microseconds(1),
+          base::Seconds(1), 100);
+    }
     if (!SendMessageOnSequence(&message)) {
       RaiseError();
     }

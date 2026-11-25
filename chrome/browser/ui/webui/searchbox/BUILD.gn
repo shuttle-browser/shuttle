@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/ui.gni")
 import("//components/signin/features.gni")
 import("//ui/webui/webui_features.gni")
 
@@ -73,6 +74,7 @@ source_set("searchbox") {
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui:tab_ui_helper",
       "//chrome/browser/ui/search",
+      "//chrome/browser/ui/side_panel",
       "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/views/location_bar",
       "//chrome/browser/ui/webui/omnibox_popup/mojom",

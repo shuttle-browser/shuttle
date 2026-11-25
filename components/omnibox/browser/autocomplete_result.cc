@@ -25,6 +25,7 @@
 #include "base/not_fatal_until.h"
 #include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "base/trace_event/memory_usage_estimator.h"
@@ -396,6 +397,28 @@ void AutocompleteResult::Sort(
       top_match = preserved_default_match;
   }
 
+  // URL paths may be case sensitive, so let the URL-what-you-typed match be
+  // default rather than a match for the same URL with different casing.
+  if (base::FeatureList::IsEnabled(omnibox::kOmniboxPreserveVerbatimUrlCase) &&
+      top_match != matches_.end()) {
+    const auto verbatim_match =
+        std::ranges::find(matches_, AutocompleteMatchType::kUrlWhatYouTyped,
+                          &AutocompleteMatch::type);
+    // Stripping ignores differences like 'www.', but only keeps an explicitly
+    // typed https scheme for URLs that match the input case sensitively, so
+    // compare the unstripped URLs too.
+    if (verbatim_match != matches_.end() &&
+        verbatim_match->allowed_to_be_default_match &&
+        (base::EqualsCaseInsensitiveASCII(
+             top_match->stripped_destination_url.spec(),
+             verbatim_match->stripped_destination_url.spec()) ||
+         base::EqualsCaseInsensitiveASCII(
+             top_match->destination_url.spec(),
+             verbatim_match->destination_url.spec()))) {
+      top_match = verbatim_match;
+    }
+  }
+
   RotateMatchToFront(top_match, &matches_);
 
   // The search provider may pre-deduplicate search suggestions. It's possible
@@ -495,6 +518,7 @@ void AutocompleteResult::SortAndCull(
       sections.push_back(
           std::make_unique<AndroidWebZpsSection>(suggestion_groups_map_));
     } else if (is_android_any && omnibox::IsComposebox(page_classification)) {
+#if BUILDFLAG(IS_ANDROID)
       auto composebox_suggestion_limit_config =
           omnibox_feature_configs::ComposeboxSuggestionLimit::Get();
       size_t composebox_max_suggestions = 15u;
@@ -510,7 +534,9 @@ void AutocompleteResult::SortAndCull(
       }
       sections.push_back(std::make_unique<AndroidComposeboxZpsSection>(
           suggestion_groups_map_, composebox_max_suggestions,
-          max_aim_suggestions, max_contextual_suggestions));
+          max_aim_suggestions, max_contextual_suggestions,
+          input.num_contextual_attachments()));
+#endif
     } else if constexpr (is_android_mobile) {
       if (omnibox::IsNTPPage(page_classification)) {
         sections.push_back(std::make_unique<AndroidNTPZpsSection>(
@@ -734,17 +760,26 @@ void AutocompleteResult::SortAndCull(
       sections.push_back(std::make_unique<AndroidTabSearchNonZPSSection>(
           suggestion_groups_map_));
     } else if (is_android_any && omnibox::IsComposebox(page_classification)) {
+#if BUILDFLAG(IS_ANDROID)
       sections.push_back(std::make_unique<AndroidComposeboxNonZPSSection>(
-          suggestion_groups_map_));
+          suggestion_groups_map_, input.num_contextual_attachments(),
+          input.input_state().active_tool));
+#endif
     } else if (is_android_any &&
                omnibox::IsAndroidWidget(page_classification)) {
+#if BUILDFLAG(IS_ANDROID)
       sections.push_back(std::make_unique<AndroidNonZPSSection>(
-          /* show_only_search_suggestions= */ false, suggestion_groups_map_));
+          /* show_only_search_suggestions= */ false, suggestion_groups_map_,
+          input.num_visible_matches()));
+#endif
     } else if (is_android_mobile) {
+#if BUILDFLAG(IS_ANDROID)
       bool show_only_search_suggestions =
           omnibox::IsCustomTab(page_classification);
       sections.push_back(std::make_unique<AndroidNonZPSSection>(
-          show_only_search_suggestions, suggestion_groups_map_));
+          show_only_search_suggestions, suggestion_groups_map_,
+          input.num_visible_matches()));
+#endif
     } else {
       sections.push_back(
           std::make_unique<DesktopNonZpsSection>(suggestion_groups_map_));
@@ -1415,10 +1450,11 @@ void AutocompleteResult::DeduplicateMatches(
     match.ComputeStrippedDestinationURL(input, template_url_service);
   }
 
-  // Group matches by stripped URL and `AutocompleteMatchDedupeType`.
-  std::unordered_map<AutocompleteResult::MatchDedupComparator,
-                     std::vector<ACMatches::iterator>,
-                     ACMatchKeyHash<std::string, AutocompleteMatchDedupeType>>
+  // Group matches by their dedupe key (see `GetMatchComparisonFields()`).
+  std::unordered_map<
+      AutocompleteResult::MatchDedupComparator,
+      std::vector<ACMatches::iterator>,
+      ACMatchKeyHash<std::string, AutocompleteMatchDedupeType, std::string>>
       url_to_matches;
   for (auto i = matches->begin(); i != matches->end(); ++i) {
     url_to_matches[GetMatchComparisonFields(*i)].push_back(i);
@@ -1813,8 +1849,6 @@ AutocompleteResult::GetMatchComparisonFields(const AutocompleteMatch& match) {
     type = AutocompleteMatchDedupeType::kVerbatimProvider;
   } else if (match.type == AutocompleteMatchType::kCalculator) {
     type = AutocompleteMatchDedupeType::kCalculator;
-  } else if (match.IsSearchAimSuggestion()) {
-    type = AutocompleteMatchDedupeType::kAiMode;
   } else if (base::FeatureList::IsEnabled(omnibox::kInlineLocationSignaling) &&
              match.extra_headers.contains(kXGeoHeader)) {
     type = AutocompleteMatchDedupeType::kInlineLocationSignaling;
@@ -1822,7 +1856,16 @@ AutocompleteResult::GetMatchComparisonFields(const AutocompleteMatch& match) {
     type = AutocompleteMatchDedupeType::kNormal;
   }
 
-  return std::make_tuple(match.stripped_destination_url.spec(), type);
+  // The stripped URL drops search parameters like `udm` and never had e.g. a
+  // fusebox action, so matches that do different things on click, e.g. an AI
+  // Mode suggestion and a plain search for the same query, would otherwise
+  // dedupe.
+  std::string suggest_template_behavior_key =
+      omnibox_feature_configs::DedupeBySuggestTemplateBehavior::Get().enabled
+          ? match.GetSuggestTemplateBehaviorKey()
+          : std::string();
+  return std::make_tuple(match.stripped_destination_url.spec(), type,
+                         std::move(suggest_template_behavior_key));
 }
 
 void AutocompleteResult::LimitNumberOfUrlsShown(

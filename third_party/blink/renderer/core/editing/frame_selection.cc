@@ -568,7 +568,7 @@ void FrameSelection::UpdateTextOverflowOfSelectionFocus(const Element& element,
     return;
   }
   LayoutObject* style_owner =
-      focus_node->GetLayoutObject()->ContainingBlockForTextOverflow();
+      focus_node->GetLayoutObject()->ContainerForTextOverflow();
   if (!style_owner || style_owner->ContainsSelectionFocus() == focused) {
     return;
   }
@@ -755,6 +755,18 @@ bool FrameSelection::SelectionHasFocus() const {
     return true;
   }
 
+  // A selection inside a text control belongs to that control and loses
+  // focus with it. Disabled controls are excluded: they can never hold
+  // focus, so their selection is an ordinary document selection.
+  if (RuntimeEnabledFeatures::
+          HideUnfocusedReadonlyTextControlSelectionEnabled() &&
+      !IsEditable(*current)) {
+    const TextControlElement* text_control = EnclosingTextControl(current);
+    if (text_control && !text_control->IsDisabledFormControl()) {
+      return false;
+    }
+  }
+
   // Selection has focus if it contains the focused element.
   const PositionInFlatTree& focused_position =
       PositionInFlatTree::FirstPositionInNode(*focused_element);
@@ -881,8 +893,8 @@ bool FrameSelection::ShouldPaintCaret(const LayoutBlock& block) const {
   DCHECK(!result ||
          (ComputeVisibleSelectionInDomTree().IsCaret() &&
           (IsEditablePosition(ComputeVisibleSelectionInDomTree().Start()) ||
-           (RuntimeEnabledFeatures::ReadOnlyTextControlSelectionEnabled() &&
-            EnclosingTextControl(ComputeVisibleSelectionInDomTree().Start())) ||
+           EnclosingCaretNavigableTextControl(
+               ComputeVisibleSelectionInDomTree().Start()) ||
            frame_->IsCaretBrowsingEnabled())));
   return result;
 }
@@ -895,8 +907,8 @@ bool FrameSelection::ShouldPaintCaret(
   DCHECK(!result ||
          (ComputeVisibleSelectionInDomTree().IsCaret() &&
           (IsEditablePosition(ComputeVisibleSelectionInDomTree().Start()) ||
-           (RuntimeEnabledFeatures::ReadOnlyTextControlSelectionEnabled() &&
-            EnclosingTextControl(ComputeVisibleSelectionInDomTree().Start())) ||
+           EnclosingCaretNavigableTextControl(
+               ComputeVisibleSelectionInDomTree().Start()) ||
            frame_->IsCaretBrowsingEnabled())));
   return result;
 }
@@ -1066,13 +1078,29 @@ void FrameSelection::SelectAll(SetSelectionBy set_selection_by,
 
   Node* root = nullptr;
   Node* select_start_target = nullptr;
-  if (set_selection_by == SetSelectionBy::kUser && IsHidden()) {
-    // Hidden selection appears as no selection to user, in which case user-
-    // triggered SelectAll should act as if there is no selection.
-    root = GetDocument().documentElement();
-    select_start_target = GetDocument().body();
+
+  auto visible_selection = ComputeVisibleSelectionInDomTree();
+  bool is_empty = visible_selection.IsNone() ||
+                  (set_selection_by == SetSelectionBy::kUser && IsHidden());
+
+  if (is_empty) {
+    // Empty or hidden selection appears as no selection to user, in which
+    // case user-triggered SelectAll should act as if there is no selection.
+    Element* focused = GetDocument().FocusedElement();
+    if (RuntimeEnabledFeatures::SelectAllInFocusedEditingHostEnabled() &&
+        focused && IsEditable(*focused)) {
+      Position focused_pos = Position::FirstPositionInNode(*focused);
+      root = HighestEditableRoot(focused_pos);
+      if (Node* shadow_root = NonBoundaryShadowTreeRootNode(focused_pos)) {
+        select_start_target = shadow_root->OwnerShadowHost();
+      } else {
+        select_start_target = root;
+      }
+    } else {
+      root = GetDocument().documentElement();
+      select_start_target = GetDocument().body();
+    }
   } else {
-    auto visible_selection = ComputeVisibleSelectionInDomTree();
     if (visible_selection.IsContentEditable()) {
       root = HighestEditableRoot(visible_selection.Start());
       if (Node* shadow_root =

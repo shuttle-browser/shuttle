@@ -134,6 +134,7 @@
 #include "third_party/blink/renderer/core/frame/web_remote_frame_impl.h"
 #include "third_party/blink/renderer/core/fullscreen/fullscreen.h"
 #include "third_party/blink/renderer/core/html/forms/html_text_area_element.h"
+#include "third_party/blink/renderer/core/html/html_image_element.h"
 #include "third_party/blink/renderer/core/html/html_plugin_element.h"
 #include "third_party/blink/renderer/core/html/plugin_document.h"
 #include "third_party/blink/renderer/core/html_names.h"
@@ -265,52 +266,6 @@ class EmptyEventListener final : public NativeEventListener {
   void Invoke(ExecutionContext* execution_context, Event*) override {}
 };
 
-typedef void (*SetFontFamilyWrapper)(blink::WebSettings*,
-                                     const std::u16string&,
-                                     UScriptCode);
-
-void SetStandardFontFamilyWrapper(WebSettings* settings,
-                                  const std::u16string& font,
-                                  UScriptCode script) {
-  settings->SetStandardFontFamily(WebString::FromUtf16(font), script);
-}
-
-void SetFixedFontFamilyWrapper(WebSettings* settings,
-                               const std::u16string& font,
-                               UScriptCode script) {
-  settings->SetFixedFontFamily(WebString::FromUtf16(font), script);
-}
-
-void SetSerifFontFamilyWrapper(WebSettings* settings,
-                               const std::u16string& font,
-                               UScriptCode script) {
-  settings->SetSerifFontFamily(WebString::FromUtf16(font), script);
-}
-
-void SetSansSerifFontFamilyWrapper(WebSettings* settings,
-                                   const std::u16string& font,
-                                   UScriptCode script) {
-  settings->SetSansSerifFontFamily(WebString::FromUtf16(font), script);
-}
-
-void SetCursiveFontFamilyWrapper(WebSettings* settings,
-                                 const std::u16string& font,
-                                 UScriptCode script) {
-  settings->SetCursiveFontFamily(WebString::FromUtf16(font), script);
-}
-
-void SetFantasyFontFamilyWrapper(WebSettings* settings,
-                                 const std::u16string& font,
-                                 UScriptCode script) {
-  settings->SetFantasyFontFamily(WebString::FromUtf16(font), script);
-}
-
-void SetMathFontFamilyWrapper(WebSettings* settings,
-                              const std::u16string& font,
-                              UScriptCode script) {
-  settings->SetMathFontFamily(WebString::FromUtf16(font), script);
-}
-
 // If |scriptCode| is a member of a family of "similar" script codes, returns
 // the script code in that family that is used by WebKit for font selection
 // purposes.  For example, USCRIPT_KATAKANA_OR_HIRAGANA and USCRIPT_JAPANESE are
@@ -334,13 +289,14 @@ UScriptCode GetScriptForWebSettings(UScriptCode scriptCode) {
 }
 
 void ApplyFontsFromMap(const web_pref::ScriptFontFamilyMap& map,
-                       SetFontFamilyWrapper setter,
+                       GenericFontFamily family,
                        WebSettings* settings) {
   for (auto& it : map) {
     int32_t script = u_getPropertyValueEnum(UCHAR_SCRIPT, (it.first).c_str());
     if (script >= 0 && script < USCRIPT_CODE_LIMIT) {
       UScriptCode code = static_cast<UScriptCode>(script);
-      (*setter)(settings, it.second, GetScriptForWebSettings(code));
+      settings->SetGenericFontFamily(family, WebString::FromUtf16(it.second),
+                                     GetScriptForWebSettings(code));
     }
   }
 }
@@ -660,7 +616,9 @@ WebViewImpl::WebViewImpl(
 
 WebViewImpl::~WebViewImpl() {
   DCHECK(!page_);
-  DCHECK(!page_popup_);
+  // A page popup must never outlive its opener WebViewImpl: its
+  // `opener_web_view_` is a raw pointer that would dangle.
+  CHECK(!page_popup_);
 }
 
 void WebViewImpl::SetTabKeyCyclesThroughElements(bool value) {
@@ -898,6 +856,17 @@ void WebViewImpl::ComputeScaleAndScrollForBlockRect(
       GetPage()->GetVisualViewport().ClampDocumentOffsetAtScale(scroll, scale);
 }
 
+// For <img usemap="...">, Chromium treats the whole image as a link because
+// HTMLImageElement::IsLink() returns true whenever the usemap attribute is
+// present. HitTestResult::SetInnerNode already resolves a tap inside a map
+// area to the HTMLAreaElement, so an HTMLImageElement with usemap reaching
+// link-highlight code here means the tap missed every area and should not
+// trigger a highlight.
+static bool IsImageUsemapWithoutAreaHit(const Node* node) {
+  const auto* image = DynamicTo<HTMLImageElement>(node);
+  return image && image->FastHasAttribute(html_names::kUsemapAttr);
+}
+
 static Node* FindLinkHighlightAncestor(Node* node) {
   // Go up the tree to find the node that defines a mouse cursor style
   while (node) {
@@ -933,6 +902,19 @@ Node* WebViewImpl::BestTapNode(
   // Walk up the tree until we have a node with an attached layoutObject
   while (!best_touch_node->GetLayoutObject()) {
     best_touch_node = LayoutTreeBuilderTraversal::Parent(*best_touch_node);
+    if (!best_touch_node) {
+      return nullptr;
+    }
+  }
+
+  // An <img usemap=""> tap that landed outside every <area> must not light up
+  // the image itself. Step past it so an enclosing anchor can still be the
+  // highlight target.
+  if (IsImageUsemapWithoutAreaHit(best_touch_node)) {
+    best_touch_node = LayoutTreeBuilderTraversal::Parent(*best_touch_node);
+    while (best_touch_node && !best_touch_node->GetLayoutObject()) {
+      best_touch_node = LayoutTreeBuilderTraversal::Parent(*best_touch_node);
+    }
     if (!best_touch_node) {
       return nullptr;
     }
@@ -1079,6 +1061,10 @@ WebInputEventResult WebViewImpl::SendContextMenuEvent() {
 
 WebPagePopupImpl* WebViewImpl::OpenPagePopup(PagePopupClient* client) {
   CHECK(client);
+  if (is_closing_) {
+    // In Close(), we cannot create a new page popup.
+    return nullptr;
+  }
 
   // Make sure there is never more than one page popup active at a time.
   CancelPagePopup();
@@ -1091,7 +1077,21 @@ WebPagePopupImpl* WebViewImpl::OpenPagePopup(PagePopupClient* client) {
     return nullptr;
   }
 
-  LocalFrame* opener_frame = client->OwnerElement().GetDocument().GetFrame();
+  // CancelPagePopup() above (and NotifyPopupOpeningObservers() in the callers)
+  // can run author script synchronously, before the popup client has recorded
+  // the popup it is about to open. That script may move the owner element into
+  // a document that belongs to a different WebView, or into one that is no
+  // longer active. A popup created in that state would be bound to `this`
+  // through `opener_web_view_` while ChromeClientImpl::DocumentDetached() no
+  // longer recognizes it as ours, so it would outlive `this`. Refuse to open
+  // the popup unless the owner still lives in an active document of our Page.
+  Document& owner_document = client->OwnerElement().GetDocument();
+  LocalFrame* opener_frame = owner_document.GetFrame();
+  if (!opener_frame || opener_frame->GetPage() != page_.Get() ||
+      !owner_document.IsActive()) {
+    return nullptr;
+  }
+
   WebLocalFrameImpl* web_opener_frame =
       WebLocalFrameImpl::FromFrame(opener_frame);
 
@@ -1217,6 +1217,8 @@ void WebViewImpl::Close() {
   CHECK(page_);
   DCHECK(AllInstances().Contains(this));
   AllInstances().erase(this);
+
+  is_closing_ = true;
 
   // Ensure if we have a page popup we cancel it immediately as we do not
   // want page popups to re-enter WebViewImpl during our shutdown.
@@ -1363,7 +1365,8 @@ void WebViewImpl::DidUpdateBrowserControls() {
     ResizeViewportAnchor::ResizeScope resize_scope(*resize_viewport_anchor_);
 
     visual_viewport.SetBrowserControlsAdjustment(
-        GetBrowserControls().UnreportedSizeAdjustment());
+        GetBrowserControls().UnreportedSizeAdjustment() +
+        GetBrowserControls().UnreportedBottomSizeAdjustment());
   }
 }
 
@@ -1621,18 +1624,18 @@ void WebView::ApplyWebPreferences(const web_pref::WebPreferences& prefs,
   WebViewImpl* web_view_impl = To<WebViewImpl>(web_view);
   WebSettings* settings = web_view->GetSettings();
   ApplyFontsFromMap(prefs.standard_font_family_map,
-                    SetStandardFontFamilyWrapper, settings);
-  ApplyFontsFromMap(prefs.fixed_font_family_map, SetFixedFontFamilyWrapper,
+                    GenericFontFamily::kStandard, settings);
+  ApplyFontsFromMap(prefs.fixed_font_family_map, GenericFontFamily::kFixed,
                     settings);
-  ApplyFontsFromMap(prefs.serif_font_family_map, SetSerifFontFamilyWrapper,
+  ApplyFontsFromMap(prefs.serif_font_family_map, GenericFontFamily::kSerif,
                     settings);
   ApplyFontsFromMap(prefs.sans_serif_font_family_map,
-                    SetSansSerifFontFamilyWrapper, settings);
-  ApplyFontsFromMap(prefs.cursive_font_family_map, SetCursiveFontFamilyWrapper,
+                    GenericFontFamily::kSansSerif, settings);
+  ApplyFontsFromMap(prefs.cursive_font_family_map, GenericFontFamily::kCursive,
                     settings);
-  ApplyFontsFromMap(prefs.fantasy_font_family_map, SetFantasyFontFamilyWrapper,
+  ApplyFontsFromMap(prefs.fantasy_font_family_map, GenericFontFamily::kFantasy,
                     settings);
-  ApplyFontsFromMap(prefs.math_font_family_map, SetMathFontFamilyWrapper,
+  ApplyFontsFromMap(prefs.math_font_family_map, GenericFontFamily::kMath,
                     settings);
   settings->SetDefaultFontSize(prefs.default_font_size);
   settings->SetDefaultFixedFontSize(prefs.default_fixed_font_size);
@@ -1947,6 +1950,10 @@ void WebView::ApplyWebPreferences(const web_pref::WebPreferences& prefs,
 
 #if BUILDFLAG(IS_WIN)
   RuntimeEnabledFeatures::SetMiddleClickAutoscrollEnabled(true);
+#elif BUILDFLAG(IS_LINUX)
+  if (base::FeatureList::IsEnabled(features::kMiddleClickAutoscroll)) {
+    RuntimeEnabledFeatures::SetMiddleClickAutoscrollEnabled(true);
+  }
 #endif
 
   RuntimeEnabledFeatures::SetTranslateServiceEnabled(
@@ -1963,11 +1970,14 @@ void WebView::ApplyWebPreferences(const web_pref::WebPreferences& prefs,
       // trigger the expensive SkFontMgr initialization (parsing fonts.xml).
       // Pre-warming additional families is redundant.
 #if !BUILDFLAG(IS_ANDROID)
-      if (const AtomicString& serif = font_settings.Serif(); !serif.empty()) {
+      if (const AtomicString& serif =
+              font_settings.Get(GenericFontFamily::kSerif);
+          !serif.empty()) {
         prewarmer->PrewarmFamily(serif);
       }
 #endif
-      if (const AtomicString& sans_serif = font_settings.SansSerif();
+      if (const AtomicString& sans_serif =
+              font_settings.Get(GenericFontFamily::kSansSerif);
           !sans_serif.empty()) {
         prewarmer->PrewarmFamily(sans_serif);
       }
@@ -3646,7 +3656,12 @@ void WebViewImpl::UpdateColorProviders(
   bool color_providers_did_change =
       page_->UpdateColorProviders(color_provider_colors);
   if (color_providers_did_change) {
-    Page::ForcedColorsChanged();
+    if (::features::IsThemeChangeOptimizationV2Enabled()) {
+      page_->InvalidatePlatformColors();
+      page_->InvalidateColorScheme();
+    } else {
+      Page::ForcedColorsChanged();
+    }
   }
 }
 
@@ -4159,7 +4174,6 @@ void WebViewImpl::OutermostMainFrameScrollOffsetChanged() {
     SetDeviceEmulationTransform(device_emulation_transform);
   }
 }
-
 
 void WebViewImpl::SetBackgroundColorOverrideForFullscreenController(
     std::optional<SkColor> optional_color) {

@@ -68,7 +68,6 @@ assert(!is_fuchsia, "Fuchsia shouldn't use anything in //chrome")
 
 if (is_android) {
   import("//build/config/android/rules.gni")
-  import("//build/config/locales.gni")
   import("//chrome/android/features/dev_ui/dev_ui_module.gni")
   import("//third_party/jni_zero/jni_zero.gni")
   import("//tools/perf/chrome_telemetry_build/android_browser_types.gni")
@@ -343,8 +342,6 @@ if (is_android) {
       "//components/privacy_sandbox/privacy_sandbox_attestations",
       "//components/privacy_sandbox/privacy_sandbox_attestations:metrics",
       "//components/privacy_sandbox/privacy_sandbox_attestations:test_support",
-      "//components/privacy_sandbox/privacy_sandbox_attestations/preload",
-      "//components/privacy_sandbox/privacy_sandbox_attestations/preload:privacy_sandbox_attestations_assets",
       "//components/privacy_sandbox/privacy_sandbox_attestations/proto",
       "//components/safe_browsing/content/common:interfaces",
       "//components/safe_browsing/core/browser/db:sb_database",
@@ -568,38 +565,6 @@ if (is_android) {
     ]
   }
 
-  # Package only the subset of locale .pak files exercised by browser tests
-  # rather than all shipping Chrome locale .pak files (~55 MB uncompressed).
-  # If a test needs another locale, add it here.
-  android_assets("android_browsertests_locale_pak_assets") {
-    testonly = true
-    disable_compression = true
-    renaming_sources = []
-    renaming_destinations = []
-
-    foreach(_locale,
-            [
-              # RTL layout tests.
-              "ar",
-              "he",
-
-              # Default locale, plus en-GB as the "non-en-US" locale used by
-              # policy and management WebUI tests.
-              "en-US",
-              "en-GB",
-
-              # DevTools localization tests.
-              "es",
-            ]) {
-      foreach(_gender_suffix, gender_suffixes) {
-        renaming_sources += [ "$root_gen_dir/chrome/android/chrome_apk_paks/locales/${_locale}${_gender_suffix}.pak" ]
-        renaming_destinations += [ "locales/${_locale}${_gender_suffix}.pak" ]
-      }
-    }
-    treat_as_locale_paks = true
-    deps = [ "//chrome/android:chrome_apk_paks" ]
-  }
-
   android_assets("android_browsertests_assets") {
     testonly = true
     disable_compression = true
@@ -609,21 +574,13 @@ if (is_android) {
     # These are grit() rules so they are in $root_gen_dir.
     deps += [
       "//chrome:browser_tests_pak",
-      "//chrome/android:chrome_apk_paks",
       "//components/resources",
     ]
     sources += [
-      "$root_gen_dir/chrome/android/chrome_apk_paks/chrome_100_percent.pak",
-      "$root_gen_dir/chrome/android/chrome_apk_paks/resources.pak",
       "$root_gen_dir/components/components_resources.pak",
       "$root_gen_dir/components/dev_ui_components_resources.pak",
       "$root_out_dir/browser_tests.pak",
     ]
-    if (enable_hidpi) {
-      sources += [
-        "$root_gen_dir/chrome/android/chrome_apk_paks/chrome_200_percent.pak",
-      ]
-    }
 
     # These are assets rules so we can just depend on them.
     deps += [
@@ -928,7 +885,6 @@ if (!is_android) {
 
       deps = [
         ":test_support",
-        ":test_support_ui",
         "//chrome:packed_resources",
         "//chrome:resources",
         "//chrome:strings",

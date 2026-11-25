@@ -172,7 +172,6 @@
 
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID) || \
     BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
-#include "components/metrics/system_profile_user_stream.h"
 #include "components/crash/core/app/crashpad.h"
 #endif
 
@@ -649,16 +648,20 @@ void InitializeUserDataDir(base::CommandLine* command_line) {
   // Reach out to chrome_elf for the truth on the user data directory.
   // Note that in tests, this links to chrome_elf_test_stubs.
   wchar_t user_data_dir_buf[MAX_PATH], invalid_user_data_dir_buf[MAX_PATH];
+  bool policy_set = false;
 
   // In tests this may return false, implying the user data dir should be unset.
   if (GetUserDataDirectoryThunk(user_data_dir_buf, std::size(user_data_dir_buf),
                                 invalid_user_data_dir_buf,
-                                std::size(invalid_user_data_dir_buf))) {
+                                std::size(invalid_user_data_dir_buf),
+                                &policy_set)) {
     base::FilePath user_data_dir(user_data_dir_buf);
     if (invalid_user_data_dir_buf[0] != 0) {
       chrome::SetInvalidSpecifiedUserDataDir(
           base::FilePath(invalid_user_data_dir_buf));
       command_line->AppendSwitchPath(switches::kUserDataDir, user_data_dir);
+    } else if (policy_set) {
+      chrome::SetUserDataDirSetByPolicy();
     }
     CHECK(base::PathService::OverrideAndCreateIfNeeded(
         chrome::DIR_USER_DATA, user_data_dir, false, true));
@@ -685,7 +688,8 @@ void InitializeUserDataDir(base::CommandLine* command_line) {
   }
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 #if BUILDFLAG(IS_MAC)
-  policy::path_parser::CheckUserDataDirPolicy(&user_data_dir);
+  const bool policy_set =
+      policy::path_parser::CheckUserDataDirPolicy(&user_data_dir);
 #endif  // BUILDFLAG(IS_MAC)
 
   const bool specified_directory_was_invalid =
@@ -696,6 +700,11 @@ void InitializeUserDataDir(base::CommandLine* command_line) {
   if (specified_directory_was_invalid) {
     chrome::SetInvalidSpecifiedUserDataDir(user_data_dir);
   }
+#if BUILDFLAG(IS_MAC)
+  if (policy_set && !specified_directory_was_invalid) {
+    chrome::SetUserDataDirSetByPolicy();
+  }
+#endif  // BUILDFLAG(IS_MAC)
 
   // Warn and fail early if the process fails to get a user data directory.
   if (!base::PathService::Get(chrome::DIR_USER_DATA, &user_data_dir)) {
@@ -848,6 +857,13 @@ ChromeMainDelegate::ChromeMainDelegate(const StartupTimestamps& timestamps) {
   // initialized), so the function below will also be called in renderers.
   // This doesn't matter as it simply sets global variables.
   RecordMainStartupMetrics(timestamps);
+#if BUILDFLAG(IS_WIN)
+  if (IsCanaryDev()) {
+    // Enroll this client into an arm of the
+    // PinUser32AndGdi32InAvailabilityCheck study; see crbug.com/577860802.
+    base::win::InitPinUser32AndGdi32Trial();
+  }
+#endif
 }
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -1384,9 +1400,10 @@ std::optional<int> ChromeMainDelegate::BasicStartupComplete() {
             upgrade_util::GetRelaunchCommandLine(command_line, restart_mode);
         // Feature state cannot be queried this early in browser startup, so
         // hard-code `wait_for_parent` to false. Because the stub already waits
-        // until all child processes have terminated before reaching this code
-        // (contained within a job monitored by `WaitForExit`), waiting for
-        // parent handle is not strictly necessary here.
+        // until the isolated browser process has fully terminated before
+        // reaching this code (via `WaitForExit`), and the stub process itself
+        // never opens the user data directory, waiting for the stub's process
+        // handle is not strictly necessary here.
         // TODO(crbug.com/526636718): Enable `wait_for_parent` by default once
         // the feature is fully launched.
         upgrade_util::RelaunchChromeBrowser(new_cl,
@@ -1545,16 +1562,6 @@ void ChromeMainDelegate::PreSandboxStartup() {
       *base::CommandLine::ForCurrentProcess();
   std::string process_type =
       command_line.GetSwitchValueASCII(switches::kProcessType);
-
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID) || \
-    BUILDFLAG(IS_MAC)
-  if (process_type.empty()) {
-    // Initialize the shared memory that contains the `SystemProfile` only in
-    // the browser process. This must happen before Crashpad initialization
-    // since Crashpad inherits a handle to the shared memory.
-    metrics::SystemProfileUserStream::Get().Initialize();
-  }
-#endif
 
 #if BUILDFLAG(IS_POSIX)
   ChromeCrashReporterClient::Create();
@@ -2007,12 +2014,20 @@ void ChromeMainDelegate::InitializeMemorySystem() {
                              : memory_system::DispatcherParameters::
                                    AllocationTraceRecorderInclusion::kIgnore;
 
-  memory_system::Initializer()
-      .SetGwpAsanParameters(gwp_asan_boost_sampling, process_type)
+  memory_system::Initializer initializer;
+  if (EXPENSIVE_TEST_LOGIC_IS_ON()) {
+    initializer.SetGwpAsanParameters(gwp_asan_boost_sampling, process_type);
+  }
+  const auto poisson_sampler_inclusion =
+      EXPENSIVE_TEST_LOGIC_IS_ON()
+          ? memory_system::DispatcherParameters::
+                PoissonAllocationSamplerInclusion::kEnforce
+          : memory_system::DispatcherParameters::
+                PoissonAllocationSamplerInclusion::kDynamic;
+  initializer
       .SetProfilingClientParameters(chrome::GetChannel(),
                                     GetProfilerProcessType(*command_line))
-      .SetDispatcherParameters(memory_system::DispatcherParameters::
-                                   PoissonAllocationSamplerInclusion::kEnforce,
+      .SetDispatcherParameters(poisson_sampler_inclusion,
                                allocation_recorder_inclusion, process_type)
       .Initialize(memory_system_);
 }

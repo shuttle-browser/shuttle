@@ -12,14 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdint>
 #include <utility>
 
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/memory/memory.h"         // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/types/span.h"            // from @com_google_absl
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/port/status_builder.h"
 #include "mediapipe/gpu/gl_context.h"
 #include "mediapipe/gpu/gl_context_internal.h"
@@ -43,9 +46,15 @@ GlContext::StatusOrGlContext GlContext::Create(const GlContext& share_context,
 GlContext::StatusOrGlContext GlContext::Create(
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE share_context, bool create_thread) {
   std::shared_ptr<GlContext> context(new GlContext());
-  MP_RETURN_IF_ERROR(context->CreateContext(share_context));
-  MP_RETURN_IF_ERROR(context->FinishInitialization(create_thread));
+  ABSL_RETURN_IF_ERROR(context->CreateContext(share_context));
+  ABSL_RETURN_IF_ERROR(context->FinishInitialization(create_thread));
   return std::move(context);
+}
+
+GlContext::StatusOrGlContext GlContext::CreateForDeviceUuid(
+    absl::Span<const uint8_t> /*device_uuid*/, bool /*create_thread*/) {
+  return absl::UnimplementedError(
+      "Selecting a GPU by device UUID is not supported on this platform.");
 }
 
 absl::Status GlContext::CreateContextInternal(
@@ -117,7 +126,7 @@ absl::Status GlContext::CreateContext(
     ABSL_LOG(WARNING) << "Fall back on WebGL 1.";
     status = CreateContextInternal(external_context, 1);
   }
-  MP_RETURN_IF_ERROR(status);
+  ABSL_RETURN_IF_ERROR(status);
 
   VLOG(1) << "Successfully created a WebGL context with major version "
           << gl_major_version_ << " and handle " << context_;

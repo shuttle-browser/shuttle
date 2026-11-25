@@ -28,6 +28,7 @@
 
 #include <utility>
 
+#include "base/feature_list.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_functions.h"
@@ -346,12 +347,16 @@ const FontCustomPlatformData* FontResource::GetCustomFontData() {
       observer->FontResourceDataWillBeCleared();
     }
     ClearData();
+    if (base::FeatureList::IsEnabled(
+            features::kFontResourceDecodedMemoryAccounting)) {
+      SetDecodedSize(font_data_->DataSize());
+    }
   }
   return font_data_;
 }
 
-std::unique_ptr<IftPatcher> FontResource::TakeIftPatcher() {
-  return std::move(ift_patcher_);
+std::unique_ptr<IftPatcher> FontResource::CloneIftPatcher() const {
+  return ift_patcher_ ? ift_patcher_->Clone() : nullptr;
 }
 
 void FontResource::WillReloadAfterDiskCacheMiss() {

@@ -209,8 +209,8 @@ TEST_F(FontDescriptionTest, VariantEmojiDifferentCacheKey) {
   FontDescription a;
   FontDescription b(a);
 
-  FontVariantEmoji variant_emoji_a = kEmojiVariantEmoji;
-  FontVariantEmoji variant_emoji_b = kUnicodeVariantEmoji;
+  FontVariantEmoji variant_emoji_a = FontVariantEmoji::kEmoji;
+  FontVariantEmoji variant_emoji_b = FontVariantEmoji::kUnicode;
 
   a.SetVariantEmoji(variant_emoji_a);
   b.SetVariantEmoji(variant_emoji_b);
@@ -334,13 +334,13 @@ TEST_F(FontDescriptionTest, AllFeaturesHash) {
   key_a = font_description.GetHash();
   EXPECT_EQ(key_a, key_b);
 
-  font_description.SetFontSmoothing(kAntialiased);
+  font_description.SetFontSmoothing(FontSmoothingMode::kAntialiased);
   key_b = font_description.GetHash();
   EXPECT_NE(key_a, key_b);
   key_a = font_description.GetHash();
   EXPECT_EQ(key_a, key_b);
 
-  font_description.SetFontOpticalSizing(kNoneOpticalSizing);
+  font_description.SetFontOpticalSizing(OpticalSizing::kNone);
   key_b = font_description.GetHash();
   EXPECT_NE(key_a, key_b);
   key_a = font_description.GetHash();
@@ -358,7 +358,7 @@ TEST_F(FontDescriptionTest, AllFeaturesHash) {
   key_a = font_description.GetHash();
   EXPECT_EQ(key_a, key_b);
 
-  font_description.SetWidthVariant(kHalfWidth);
+  font_description.SetWidthVariant(FontWidthVariant::kHalf);
   key_b = font_description.GetHash();
   EXPECT_NE(key_a, key_b);
   key_a = font_description.GetHash();

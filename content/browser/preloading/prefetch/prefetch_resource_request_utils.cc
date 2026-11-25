@@ -10,6 +10,7 @@
 #include "content/browser/devtools/devtools_instrumentation.h"
 #include "content/browser/devtools/network_service_devtools_observer.h"
 #include "content/browser/devtools/render_frame_devtools_agent_host.h"
+#include "content/browser/loader/browser_initiated_resource_request.h"
 #include "content/browser/loader/navigation_url_loader_impl.h"
 #include "content/browser/preloading/prefetch/prefetch_features.h"
 #include "content/browser/preloading/prefetch/prefetch_streaming_url_loader_common_types.h"
@@ -17,6 +18,10 @@
 #include "content/browser/preloading/preload_pipeline_info_impl.h"
 #include "content/browser/preloading/preloading_trigger_type_impl.h"
 #include "content/browser/renderer_host/frame_tree_node.h"
+#include "content/browser/renderer_host/render_frame_host_impl.h"
+#include "content/browser/renderer_host/render_view_host_delegate.h"
+#include "content/browser/renderer_host/render_view_host_impl.h"
+#include "content/browser/renderer_preferences_util.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/client_hints.h"
@@ -28,6 +33,7 @@
 #include "services/network/public/cpp/http_request_headers_update_params.h"
 #include "third_party/blink/public/common/client_hints/client_hints.h"
 #include "third_party/blink/public/common/navigation/preloading_headers.h"
+#include "third_party/blink/public/common/renderer_preferences/renderer_preferences.h"
 #include "url/origin.h"
 
 namespace content {
@@ -90,6 +96,47 @@ void AddAdditionalHeaders(net::HttpRequestHeaders& request_headers,
     request_headers.MergeFrom(additional_headers_without_ua);
   } else {
     request_headers.MergeFrom(additional_headers);
+  }
+}
+
+// Remove them when following a redirect to a different origin, explicitly
+// following the semantics of `WebView.navigate` (which is implemented via
+// `NavigationRequest::OnRedirectChecksComplete()` for browser-initiated
+// navigations with `remove_extra_headers_on_cross_origin_redirect`).
+//
+// Please see `PrefetchContainer::ShouldRemoveEmbedderAdditionalHeaders()` too
+// for more details.
+void RemoveAdditionalHeaders(
+    network::HttpRequestHeadersUpdateParams& headers_update_params,
+    bool should_remove_embedder_additional_headers,
+    const PrefetchRequest& prefetch_request) {
+  if (!should_remove_embedder_additional_headers) {
+    return;
+  }
+
+  // Header overwrite and recovery:
+  // `NavigationRequest::OnRedirectChecksComplete()` does not have any explicit
+  // mechanism around handling overwritten headers by additional headers during
+  // the first request; it simply adds them to `removed_headers`. For example,
+  // if the embedder overrides an internal Chrome `X-Example` header via an
+  // Additional header, and the header is pushed to `removed_headers` on a
+  // cross-origin redirect, the embedder's override is simply removed.
+  net::HttpRequestHeaders headers_to_remove =
+      prefetch_request.additional_headers();
+
+  // Unlike `NavigationRequest::OnRedirectChecksComplete()`, which removes all
+  // extra headers (including `User-Agent`) and then re-adds a recomputed
+  // `User-Agent` to `modified_headers`, Prefetch does not currently re-apply
+  // WebContents overrides on redirects (TODO(crbug.com/441612842)).
+  // Therefore, to ensure the overridden UA survives across cross-origin
+  // redirects, it is simply excluded from the removal list here.
+  if (base::FeatureList::IsEnabled(
+          features::kPreloadingRespectUserAgentOverride)) {
+    headers_to_remove.RemoveHeader(net::HttpRequestHeaders::kUserAgent);
+  }
+
+  for (const auto& header : headers_to_remove.GetHeaderVector()) {
+    headers_update_params.removed_headers.push_back(header.key);
   }
 }
 
@@ -339,7 +386,7 @@ void AddClientHintsHeaders(net::HttpRequestHeaders& request_headers,
     request_headers.MergeFrom(client_hints_headers);
   } else if (cross_site_behavior ==
              features::PrefetchClientHintsCrossSiteBehavior::kLowEntropy) {
-    for (const auto& [ch, header] : network::GetClientHintToNameMap()) {
+    for (const auto& [ch, header] : network::kClientHintToNameMap) {
       if (blink::IsClientHintSentByDefault(ch)) {
         std::optional<std::string> header_value =
             client_hints_headers.GetHeader(header);
@@ -472,6 +519,38 @@ network::HttpRequestHeadersUpdateParams PrepareInitialHeadersForPrefetchPhase2(
   }
 
   // ------------------------------------------------------------------------
+  // [2] `Sec-GPC`, `DNT`:
+  if (base::FeatureList::IsEnabled(features::kPrefetchPrivacyHeaders) &&
+      request_url.SchemeIsHTTPOrHTTPS()) {
+    blink::RendererPreferences renderer_prefs;
+    if (const auto* renderer_initiator =
+            prefetch_request.GetRendererInitiatorInfo()) {
+      if (RenderFrameHostImpl* rfh = renderer_initiator->GetRenderFrameHost()) {
+        RenderViewHostImpl* rvh = rfh->render_view_host();
+        renderer_prefs = rvh->GetDelegate()->GetRendererPrefs(rvh);
+      } else {
+        // The initiator `RenderFrameHost` is already gone. Fall back to the
+        // browser-initiated path.
+        CHECK(prefetch_request.browser_context());
+        UpdateRendererPreferencesForWorkerHelper(
+            prefetch_request.browser_context(), &renderer_prefs);
+      }
+    } else {
+      CHECK(prefetch_request.GetBrowserInitiatorInfo());
+      CHECK(prefetch_request.browser_context());
+
+      UpdateRendererPreferencesForWorkerHelper(
+          prefetch_request.browser_context(), &renderer_prefs);
+    }
+
+    UpdateAdditionalHeadersForBrowserInitiatedRequest(
+        &headers_update_params.modified_headers,
+        prefetch_request.browser_context(),
+        /*should_update_existing_headers=*/false, renderer_prefs,
+        BrowserInitiatedRequestSource::kPrefetch);
+  }
+
+  // ------------------------------------------------------------------------
   // [2] Embedder headers:
   {
     std::vector<std::string> removed_headers;
@@ -516,7 +595,8 @@ network::HttpRequestHeadersUpdateParams PrepareInitialHeadersForPrefetchPhase2(
 
 network::HttpRequestHeadersUpdateParams PrepareRedirectHeadersForPrefetch(
     const GURL& request_url,
-    const PrefetchRequest& prefetch_request) {
+    const PrefetchRequest& prefetch_request,
+    bool should_remove_embedder_additional_headers) {
   TRACE_EVENT("loading", "PrepareRedirectHeadersForPrefetch");
   // There are sometimes other headers that are modified during navigation
   // redirects; see `NavigationRequest::OnRedirectChecksComplete` (including
@@ -526,6 +606,20 @@ network::HttpRequestHeadersUpdateParams PrepareRedirectHeadersForPrefetch(
   network::HttpRequestHeadersUpdateParams headers_update_params;
 
   url::Origin request_url_origin = url::Origin::Create(request_url);
+
+  // ------------------------------------------------------------------------
+  // [1] Additional headers:
+  //
+  // Ordering: This is done here just to align with the order of
+  // `AddAdditionalHeaders()` in
+  // `PrepareInitialHeadersForPrefetchPhase1()` and the extra header removal in
+  // `NavigationRequest::OnRedirectChecksComplete()`, while the order of
+  // `RemoveAdditionalHeaders()` is currently no-op here because
+  // `removed_headers` isn't checked during
+  // `PrepareRedirectHeadersForPrefetch()`.
+  RemoveAdditionalHeaders(headers_update_params,
+                          should_remove_embedder_additional_headers,
+                          prefetch_request);
 
   // ------------------------------------------------------------------------
   // [2] `Sec-Purpose`:
@@ -570,11 +664,11 @@ network::HttpRequestHeadersUpdateParams PrepareRedirectHeadersForPrefetch(
   // Remove any existing client hints headers, then (re-)add the new client
   // hints that are appropriate for the redirect.
   if (base::FeatureList::IsEnabled(features::kPrefetchClientHints)) {
-    const auto& client_hints = network::GetClientHintToNameMap();
+    const auto& client_hints = network::kClientHintToNameMap;
     headers_update_params.removed_headers.reserve(
         headers_update_params.removed_headers.size() + client_hints.size());
     for (const auto& [_, header] : client_hints) {
-      headers_update_params.removed_headers.push_back(header);
+      headers_update_params.removed_headers.emplace_back(header);
     }
     AddClientHintsHeaders(headers_update_params.modified_headers,
                           request_url_origin, prefetch_request);

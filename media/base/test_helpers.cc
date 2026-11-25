@@ -506,12 +506,14 @@ static VideoCodecProfile MinProfile(VideoCodec codec) {
       return DOLBYVISION_PROFILE0;
     case VideoCodec::kAV1:
       return AV1PROFILE_MIN;
+    case VideoCodec::kAV2:
+      return AV2PROFILE_MIN;
   }
 }
 
-static const gfx::Size kNormalSize(320, 240);
-static const gfx::Size kLargeSize(640, 480);
-static const gfx::Size kExtraLargeSize(15360, 8640);
+static constexpr gfx::Size kNormalSize(320, 240);
+static constexpr gfx::Size kLargeSize(640, 480);
+static constexpr gfx::Size kExtraLargeSize(15360, 8640);
 
 // static
 VideoDecoderConfig TestVideoConfig::Invalid() {
@@ -651,24 +653,8 @@ AudioDecoderConfig TestAudioConfig::NormalEncrypted() {
                             EmptyExtraData(), EncryptionScheme::kCenc);
 }
 
-AudioDecoderConfig TestAudioConfig::HighSampleRate() {
-  return AudioDecoderConfig(AudioCodec::kVorbis, kSampleFormatPlanarF32,
-                            kStereoConfig, HighSampleRateValue(),
-                            EmptyExtraData(), EncryptionScheme::kUnencrypted);
-}
-
-AudioDecoderConfig TestAudioConfig::HighSampleRateEncrypted() {
-  return AudioDecoderConfig(AudioCodec::kVorbis, kSampleFormatPlanarF32,
-                            kStereoConfig, HighSampleRateValue(),
-                            EmptyExtraData(), EncryptionScheme::kCenc);
-}
-
 int TestAudioConfig::NormalSampleRateValue() {
   return 44100;
-}
-
-int TestAudioConfig::HighSampleRateValue() {
-  return 192000;
 }
 
 // static
@@ -852,7 +838,7 @@ DEFINE_MAKE_AUDIO_BUFFER_INSTANCE(uint8_t);
 DEFINE_MAKE_AUDIO_BUFFER_INSTANCE(int16_t);
 DEFINE_MAKE_AUDIO_BUFFER_INSTANCE(int32_t);
 
-static const char kFakeVideoBufferHeader[] = "FakeVideoBufferForTest";
+static constexpr char kFakeVideoBufferHeader[] = "FakeVideoBufferForTest";
 
 scoped_refptr<DecoderBuffer> CreateFakeVideoBufferForTest(
     const VideoDecoderConfig& config,

@@ -1,0 +1,21 @@
+upstream {
+  commit: "9fccd59571a6e436c9d36d3803b4006b02554561"
+  artifacts {
+    git {
+      repository: "https://chromium.googlesource.com/external/github.com/googleapis/googleapis"
+      commit: "9fccd59571a6e436c9d36d3803b4006b02554561"
+    }
+  }
+}
+stages {
+  input {
+    patch { copybara {} }
+  }
+  publish { git {} }
+}
+latest {
+  git {
+    repository: "https://chromium.googlesource.com/external/github.com/googleapis/googleapis"
+    branch: "HEAD"
+  }
+}

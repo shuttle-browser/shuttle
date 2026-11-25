@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -236,6 +237,7 @@
 #endif
 
 #if BUILDFLAG(IS_WIN)
+#include "base/win/win_util.h"
 #include "chrome/browser/first_run/upgrade_util_win.h"
 #include "chrome/browser/notifications/win/notification_launch_id.h"
 #include "chrome/browser/startup/startup_launch_manager.h"
@@ -359,6 +361,16 @@ constexpr base::FilePath::CharType kAccessibilityAnnotatorDatabaseFileName[] =
 
 void DeleteAccessibilityAnnotatorDatabase(const base::FilePath& profile_path) {
   auto db_path = profile_path.Append(kAccessibilityAnnotatorDatabaseFileName);
+  if (base::PathExists(db_path)) {
+    sql::Database::Delete(db_path);
+  }
+}
+
+constexpr base::FilePath::CharType kHistoryEmbeddingsDatabaseName[] =
+    FILE_PATH_LITERAL("HistoryEmbeddings");
+
+void DeleteHistoryEmbeddingsDatabase(const base::FilePath& profile_path) {
+  base::FilePath db_path = profile_path.Append(kHistoryEmbeddingsDatabaseName);
   if (base::PathExists(db_path)) {
     sql::Database::Delete(db_path);
   }
@@ -931,6 +943,16 @@ void ChromeBrowserMainParts::StartMetricsRecording() {
       "ParallelPreReadFileMainDllWin",
       synchronous_preread_was_skipped ? "Enabled" : "Control");
 
+  if (const std::string_view pin_user32_and_gdi32_group =
+          base::win::GetPinUser32AndGdi32TrialGroup();
+      !pin_user32_and_gdi32_group.empty()) {
+    // Register which arm of the PinUser32AndGdi32InAvailabilityCheck study this
+    // client was enrolled into; see crbug.com/577860802.
+    ChromeMetricsServiceAccessor::RegisterSyntheticFieldTrial(
+        "PinUser32AndGdi32InAvailabilityCheck", pin_user32_and_gdi32_group,
+        variations::SyntheticTrialAnnotationMode::kCurrentLog);
+  }
+
 #endif
 
   g_browser_process->GetMetricsServicesManager()->UpdateUploadPermissions();
@@ -1168,7 +1190,8 @@ int ChromeBrowserMainParts::OnLocalStateLoaded(
       policy::ManagementServiceFactory::GetForPlatform();
   platform_management_service->UsePrefServiceAsCache(
       browser_process_->local_state());
-  platform_management_service->RefreshCache(base::NullCallback());
+  browser_process_->browser_policy_connector()->RefreshManagementServiceCache(
+      platform_management_service);
 
 #if BUILDFLAG(IS_WIN)
   if (first_run::IsChromeFirstRun()) {
@@ -1608,6 +1631,14 @@ void ChromeBrowserMainParts::PostProfileInit(Profile* profile,
       {base::MayBlock(), base::TaskPriority::BEST_EFFORT,
        base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
       base::BindOnce(&DeleteDeprecatedPrivacySandboxData, profile->GetPath()));
+
+  // Delete the deprecated HistoryEmbeddings database if it still exists.
+  // TODO(crbug.com/571719847): Remove this in October 2027.
+  base::ThreadPool::PostTask(
+      FROM_HERE,
+      {base::MayBlock(), base::TaskPriority::BEST_EFFORT,
+       base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
+      base::BindOnce(&DeleteHistoryEmbeddingsDatabase, profile->GetPath()));
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -1667,7 +1698,7 @@ void ChromeBrowserMainParts::PreBrowserStart() {
   // other services to start up before we start adjusting the oom priority.
   g_browser_process->GetTabManager()->Start();
 
-  if (base::FeatureList::IsEnabled(features::kTopChromeWebUISharedRenderer)) {
+  if (webui::ShouldUseTopChromeWebUIProfile()) {
     webui::CreateTopChromeWebUIProfile();
   }
 #endif

@@ -56,8 +56,11 @@ BASE_FEATURE(kKeyboardAccessibleTooltipInViews,
 // out yet).
 BASE_FEATURE(kLabelDefaultTooltipFastPath, base::FEATURE_DISABLED_BY_DEFAULT);
 
-// If enabled, NativeViewHost controls the layers of the native view.
-BASE_FEATURE(kNativeViewHostManagesLayers, base::FEATURE_ENABLED_BY_DEFAULT);
+// When enabled, `Widget::SetNativeTheme()` skips triggering a redundant
+// `ThemeChanged()` pass if the widget's effective `NativeTheme` did not change.
+// TODO(crbug.com/40280130): Remove this flag once the behavior is stable.
+BASE_FEATURE(kSkipRedundantSetNativeThemeUpdate,
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 #if BUILDFLAG(IS_MAC)
 // When enabled, focusing a View in an inactive Widget makes the Widget's window
@@ -76,9 +79,9 @@ BASE_FEATURE(kNotifyCompositorOfSpaceVisibilityOnMacOs,
 
 // When enabled, tell the browser compositor when the window is fully occluded
 // (covered by other windows), to allow it to reclaim resources. The occlusion
-// state comes from `WebContentsOcclusionCheckerMac`, so this only applies to
-// top-level windows that contain web contents. Becoming occluded is debounced;
-// becoming visible again takes effect immediately.
+// state comes from `WindowOcclusionCheckerMac` for tracked top-level windows.
+// Becoming occluded is debounced; becoming visible again takes effect
+// immediately.
 BASE_FEATURE(kNotifyCompositorOfWindowOcclusionOnMacOs,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -87,5 +90,22 @@ BASE_FEATURE(kNotifyCompositorOfWindowOcclusionOnMacOs,
 BASE_FEATURE(kNotifyCompositorOfWindowVisibilityOnMacOs,
              base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
+
+#if BUILDFLAG(IS_WIN)
+// When enabled, HWNDMessageHandler skips the frame change that updates
+// auto-hide taskbar adjustments of a maximized window on display and work area
+// changes, when the adjustments are already up-to-date.
+BASE_FEATURE(kSkipRedundantMaximizedFrameChange,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// When enabled, HWNDMessageHandler skips redundant SendFrameChanged() calls and
+// no-op HandleClientSizeChanged() notifications.
+BASE_FEATURE(kSkipRedundantSendFrameChanged, base::FEATURE_DISABLED_BY_DEFAULT);
+
+// When enabled, HWNDMessageHandler::Activate() skips SetWindowPos() and
+// SetForegroundWindow() when an unminimized, unowned window is already the
+// active foreground window and at the top of its z-order band.
+BASE_FEATURE(kSkipRedundantWindowActivation, base::FEATURE_DISABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_WIN)
 
 }  // namespace views::features

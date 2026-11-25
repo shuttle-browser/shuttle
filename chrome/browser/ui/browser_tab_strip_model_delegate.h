@@ -70,6 +70,7 @@ class BrowserTabStripModelDelegate : public TabStripModelDelegate {
   bool RunUnloadListenerBeforeClosing(content::WebContents* contents) override;
   bool ShouldRunUnloadListenerBeforeClosing(
       content::WebContents* contents) override;
+  bool IsTabClosable(const tabs::TabInterface* tab) const override;
   bool CanReload() const override;
   bool IsForWebApp() override;
   void CopyURL(content::WebContents* web_contents) override;

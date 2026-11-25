@@ -254,7 +254,8 @@ void ElementTiming::QueuePerformanceEntriesForReportingIfNeeded(
     const String& image_url = url.ProtocolIsData()
                                   ? image_string.substr(0, kInlineImageMaxChars)
                                   : image_string;
-    DEFINE_STATIC_LOCAL(const AtomicString, kImagePaint, ("image-paint"));
+    DEFINE_STATIC_LOCAL(const AtomicString, kImagePaint,
+                        (AtomicString::FromLiteral<"image-paint">()));
     element_timings_.push_back(PerformanceElementTiming::Create(
         kImagePaint, image_url, intersection_rect,
         performance_->MonotonicTimeToDOMHighResTimeStamp(load_time),
@@ -263,9 +264,8 @@ void ElementTiming::QueuePerformanceEntriesForReportingIfNeeded(
         element->GetIdAttribute(), element, window_));
   }
 
-  if (ContainerTiming::ContributesToContainerTiming(element)) {
-    container_timings_.push_back(
-        MakeGarbageCollected<ContainerTimingInfo>(intersection_rect, element));
+  if (EnsureContainerTiming()) {
+    container_timing_->MaybeQueuePaint(*element, intersection_rect);
   }
 }
 
@@ -281,7 +281,8 @@ void ElementTiming::QueuePerformanceEntriesForReportingIfNeeded(
   CHECK(!element->IsInShadowTree());
 
   if (IsRegisteredForElementTiming(element)) {
-    DEFINE_STATIC_LOCAL(const AtomicString, kTextPaint, ("text-paint"));
+    DEFINE_STATIC_LOCAL(const AtomicString, kTextPaint,
+                        (AtomicString::FromLiteral<"text-paint">()));
     element_timings_.push_back(PerformanceElementTiming::Create(
         kTextPaint,
         /*url=*/g_empty_string, record.ElementTimingRect(),
@@ -291,9 +292,8 @@ void ElementTiming::QueuePerformanceEntriesForReportingIfNeeded(
         element, window_));
   }
 
-  if (ContainerTiming::ContributesToContainerTiming(element)) {
-    container_timings_.push_back(MakeGarbageCollected<ContainerTimingInfo>(
-        record.ElementTimingRect(), element));
+  if (EnsureContainerTiming()) {
+    container_timing_->MaybeQueuePaint(*element, record.ElementTimingRect());
   }
 }
 
@@ -311,26 +311,28 @@ OptionalPaintTimingCallback ElementTiming::OnPaintFinished(
     QueuePerformanceEntriesForReportingIfNeeded(*record);
   }
 
-  if (element_timings_.empty() && container_timings_.empty()) {
-    return std::nullopt;
+  OptionalPaintTimingCallback container_timing_callback;
+  if (container_timing_) {
+    container_timing_callback = container_timing_->TakePaintTimingCallback();
+  }
+
+  if (element_timings_.empty()) {
+    return container_timing_callback;
   }
 
   auto* pending_element_timings =
       MakeGarbageCollected<GCedHeapVector<Member<PerformanceElementTiming>>>(
           std::move(element_timings_));
-  auto* pending_container_timings =
-      MakeGarbageCollected<GCedHeapVector<Member<ContainerTimingInfo>>>(
-          std::move(container_timings_));
   return blink::BindOnce(&ElementTiming::FlushTimingsOnFramePresented,
                          WrapWeakPersistent(this),
                          WrapPersistent(pending_element_timings),
-                         WrapPersistent(pending_container_timings));
+                         std::move(container_timing_callback));
 }
 
 void ElementTiming::FlushTimingsOnFramePresented(
     GCedHeapVector<Member<PerformanceElementTiming>>* element_timings,
-    GCedHeapVector<Member<ContainerTimingInfo>>* container_timings,
-    const base::TimeTicks&,
+    OptionalPaintTimingCallback container_timing_callback,
+    const base::TimeTicks& raw_presentation_timestamp,
     const DOMPaintTimingInfo& paint_timing_info,
     uint64_t navigation_id) {
   CHECK(performance_);
@@ -339,12 +341,9 @@ void ElementTiming::FlushTimingsOnFramePresented(
     performance_->AddElementTiming(entry);
   }
 
-  if (!container_timings->empty()) {
-    EnsureContainerTiming();
-    for (ContainerTimingInfo* info : *container_timings) {
-      container_timing_->OnElementPainted(paint_timing_info, info->element,
-                                          info->intersection_rect);
-    }
+  if (container_timing_callback) {
+    std::move(*container_timing_callback)
+        .Run(raw_presentation_timestamp, paint_timing_info, navigation_id);
   }
 }
 
@@ -374,7 +373,6 @@ void ElementTiming::Trace(Visitor* visitor) const {
   visitor->Trace(container_timing_);
   visitor->Trace(image_paint_timing_detector_);
   visitor->Trace(element_timings_);
-  visitor->Trace(container_timings_);
 }
 
 }  // namespace blink

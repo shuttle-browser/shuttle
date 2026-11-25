@@ -4,13 +4,17 @@
 
 #include "third_party/blink/renderer/core/timing/soft_navigation_context.h"
 
+#include "base/check_deref.h"
 #include "base/trace_event/trace_event.h"
+#include "cc/layers/heads_up_display_layer.h"
 #include "third_party/blink/renderer/core/dom/container_node.h"
 #include "third_party/blink/renderer/core/dom/node.h"
 #include "third_party/blink/renderer/core/frame/frame.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/paint/timing/largest_contentful_paint_calculator.h"
 #include "third_party/blink/renderer/core/paint/timing/paint_timing_record.h"
+#include "third_party/blink/renderer/core/paint/timing/web_vitals_hud_helper.h"
 #include "third_party/blink/renderer/core/timing/dom_window_performance.h"
 #include "third_party/blink/renderer/core/timing/interaction_contentful_paint.h"
 #include "third_party/blink/renderer/core/timing/interaction_effects_monitor.h"
@@ -88,30 +92,28 @@ void SoftNavigationContext::AddModifiedNode(Node* node) {
   TRACE_EVENT_INSTANT(
       "loading", "SoftNavigationContext::AddedModifiedNodeInAnimationFrame",
       track_, "context", this, "nodeId", node->GetDomNodeId(), "nodeDebugName",
-      node->DebugName(), "domModificationsThisAnimationFrame",
-      num_modified_dom_nodes_ - num_modified_dom_nodes_last_animation_frame_);
+      node->DebugName(), "domModificationsSinceLastContextPaint",
+      num_modified_dom_nodes_ - previous_paint_modified_dom_nodes_);
 }
 
-bool SoftNavigationContext::AddPaintedArea(PaintTimingRecord* record) {
-  // Stop recording paints once we have next input/scroll.
-  if (!first_input_or_scroll_time_.is_null()) {
-    return false;
-  }
+void SoftNavigationContext::AddPaintedArea(
+    PaintTimingRecord* record,
+    uint64_t painted_area_last_animation_frame) {
+  CHECK(IsRecordingLargestContentfulPaint());
 
   const gfx::RectF& rect = record->RootVisualRect();
-  uint64_t painted_area = rect.size().GetArea();
+  painted_area_ += rect.size().GetArea();
 
   Node* node = record->GetNode();
   CHECK(node);
 
-  painted_area_ += painted_area;
   TRACE_EVENT_INSTANT(
       "loading", "SoftNavigationContext::AttributablePaintInAnimationFrame",
       track_, "context", this, "nodeId", node->GetDomNodeId(), "nodeDebugName",
       node->DebugName(), "rect_x", rect.x(), "rect_y", rect.y(), "rect_width",
       rect.width(), "rect_height", rect.height(),
       "paintedAreaThisAnimationFrame",
-      painted_area_ - painted_area_last_animation_frame_);
+      painted_area_ - painted_area_last_animation_frame);
 
   // TODO(crbug.com/434159332): This doesn't currently match hard-FCP semantics
   // because we aren't notified about images paints until they are "sufficiently
@@ -119,8 +121,6 @@ bool SoftNavigationContext::AddPaintedArea(PaintTimingRecord* record) {
   if (!first_image_or_text_) {
     first_image_or_text_ = record;
   }
-
-  return true;
 }
 
 bool SoftNavigationContext::SatisfiesSoftNavNonPaintCriteria() const {
@@ -143,31 +143,62 @@ bool SoftNavigationContext::SatisfiesSoftNavPaintCriteria(
   return painted_area_ >= required_paint_area;
 }
 
-bool SoftNavigationContext::OnPaintFinished() {
-  auto num_modded_new_nodes =
-      num_modified_dom_nodes_ - num_modified_dom_nodes_last_animation_frame_;
-  auto new_painted_area = painted_area_ - painted_area_last_animation_frame_;
+void SoftNavigationContext::OnPaintFinished(
+    const HeapVector<Member<ImageRecord>>& image_records,
+    const HeapVector<Member<TextRecord>>& text_records) {
+  CHECK(!HasBeenShutdown());
+  CHECK(IsRecordingLargestContentfulPaint());
+  CHECK(!image_records.empty() || !text_records.empty());
+
+  uint64_t previous_painted_area = painted_area_;
+
+  WebVitalsHudHelper hud_helper(
+      cc::WebVitalMetricType::kInteractionContentfulPaint,
+      CHECK_DEREF(window_->GetFrame()).View());
+  auto process_record = [&](auto* record) {
+    if (!lcp_calculator_->IsEligibleForLcp(*record)) {
+      return;
+    }
+    hud_helper.AddWebVitalsDebugRect(*record);
+    record->SetSoftNavigationContext(this);
+    AddPaintedArea(record, previous_painted_area);
+  };
+  for (const auto& record : image_records) {
+    process_record(record.Get());
+  }
+  for (const auto& record : text_records) {
+    process_record(record.Get());
+  }
+
+  uint64_t new_painted_area = painted_area_ - previous_painted_area;
+  if (new_painted_area == 0) {
+    return;
+  }
+
+  TraceOnPaintFinished(new_painted_area);
+
+  // Notify `InteractionEffectsMonitor`s about the contentful paint.
+  SoftNavigationHeuristics* heuristics = GetSoftNavigationHeuristics();
+  CHECK(heuristics);
+  heuristics->ForEachInteractionEffectsMonitor(
+      [&](InteractionEffectsMonitor& monitor) {
+        monitor.OnContentfulPaint(this, new_painted_area);
+      });
+
+  heuristics->OnPaintedAreaChanged(this);
+}
+
+void SoftNavigationContext::TraceOnPaintFinished(uint64_t new_painted_area) {
+  auto modification_count =
+      num_modified_dom_nodes_ - previous_paint_modified_dom_nodes_;
+  previous_paint_modified_dom_nodes_ = num_modified_dom_nodes_;
 
   // TODO(crbug.com/353218760): Consider reporting if any of the values change
   // if we have an extra loud tracing debug mode.
-  if (num_modded_new_nodes || new_painted_area) {
-    TRACE_EVENT_INSTANT("loading", "SoftNavigationContext::OnPaintFinished",
-                        track_, "context", this, "numModdedNewNodes",
-                        num_modded_new_nodes, "newPaintedArea",
-                        new_painted_area);
-  }
-
-  if (new_painted_area > 0) {
-    GetSoftNavigationHeuristics()->ForEachInteractionEffectsMonitor(
-        [&](InteractionEffectsMonitor& monitor) {
-          monitor.OnContentfulPaint(this, new_painted_area);
-        });
-  }
-
-  num_modified_dom_nodes_last_animation_frame_ = num_modified_dom_nodes_;
-  painted_area_last_animation_frame_ = painted_area_;
-
-  return new_painted_area > 0;
+  TRACE_EVENT_INSTANT("loading", "SoftNavigationContext::OnPaintFinished",
+                      track_, "context", this,
+                      "numModdedNodesSinceLastContextPaint", modification_count,
+                      "newPaintedArea", new_painted_area);
 }
 
 void SoftNavigationContext::OnInputOrScroll() {
@@ -225,7 +256,6 @@ void SoftNavigationContext::Trace(Visitor* visitor) const {
   visitor->Trace(first_image_or_text_);
   visitor->Trace(window_);
   visitor->Trace(largest_icp_entry_);
-  visitor->Trace(current_lcp_entry_);
   visitor->Trace(initial_event_timing_);
 }
 
@@ -236,7 +266,6 @@ void SoftNavigationContext::Shutdown() {
   first_image_or_text_ = nullptr;
   window_ = nullptr;
   largest_icp_entry_ = nullptr;
-  current_lcp_entry_ = nullptr;
   initial_event_timing_ = nullptr;
 }
 
@@ -286,32 +315,18 @@ void SoftNavigationContext::Dispose() {
 
 void SoftNavigationContext::EmitLcpPerformanceEntry(
     const DOMPaintTimingInfo& paint_timing_info,
-    uint64_t paint_size,
-    base::TimeTicks load_time,
-    const AtomicString& id,
-    const String& url,
-    Element* element) {
+    LargestContentfulPaint* lcp_entry) {
   // This should not be called after we've been shut down.
   CHECK(!HasBeenShutdown());
 
   WindowPerformance* performance = DOMWindowPerformance::performance(*window_);
 
-  auto* lcp_entry = MakeGarbageCollected<LargestContentfulPaint>(
-      /*start_time=*/paint_timing_info.presentation_time,
-      /*render_time=*/paint_timing_info.presentation_time, paint_size,
-      performance->MonotonicTimeToDOMHighResTimeStamp(load_time), id, url,
-      element, window_, performance->NavigationId().web_exposed_id);
-  lcp_entry->SetPaintTimingInfo(paint_timing_info);
-
-  current_lcp_entry_ = lcp_entry;
-
   auto* entry = MakeGarbageCollected<InteractionContentfulPaint>(
       /*start_time=*/performance->MonotonicTimeToDOMHighResTimeStamp(
           TimeOrigin()),
-      /*render_time=*/paint_timing_info.presentation_time, current_lcp_entry_,
-      window_, performance->NavigationId().web_exposed_id,
-      initial_event_timing_->interactionId());
-  entry->SetPaintTimingInfo(paint_timing_info);
+      lcp_entry, window_, initial_event_timing_->interactionId());
+  entry->FinalizeEntry(paint_timing_info,
+                       performance->NavigationId().web_exposed_id);
   performance->OnInteractionContentfulPaintUpdated(entry);
 
   largest_icp_entry_ = entry;

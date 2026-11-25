@@ -12,11 +12,11 @@
 #include <cmath>
 #include <memory>
 
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 
 namespace mediapipe {
 
@@ -223,7 +223,7 @@ class UpdateFaceLandmarksCalculator : public CalculatorBase {
 
     return absl::OkStatus();
   }
-  absl::Status Open(CalculatorContext* cc) {
+  absl::Status Open(CalculatorContext* cc) override {
     cc->SetOffset(TimestampDiff(0));
     return absl::OkStatus();
   }
@@ -248,7 +248,7 @@ absl::Status UpdateFaceLandmarksCalculator::Process(CalculatorContext* cc) {
       << "Wrong number of face landmarks";
 
   auto refined_face_landmarks =
-      absl::make_unique<NormalizedLandmarkList>(face_landmarks);
+      std::make_unique<NormalizedLandmarkList>(face_landmarks);
   for (int i = 0; i < kNumEyeLandmarks; ++i) {
     const auto& refined_ld = new_eye_landmarks.landmark(i);
     const int id = kEyeLandmarkIndicesInFaceLandmarks[i];

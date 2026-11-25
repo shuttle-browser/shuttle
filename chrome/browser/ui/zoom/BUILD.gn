@@ -39,6 +39,7 @@ if (!is_android) {
     ]
 
     deps = [
+      "//chrome/browser/ui:browser_command_controller",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/tabs:tab_strip",
     ]

@@ -852,6 +852,85 @@ TEST_F(OverscrollAreaTrackerPageTest, OverscrollPropertyTrees) {
   }
 }
 
+TEST_F(OverscrollAreaTrackerPageTest, OverscrollRootScrollerPropertyTrees) {
+  GetDocument().body()->SetAttributeWithoutValidation(
+      html_names::kOverscrollcontainerAttr, g_empty_atom);
+  GetDocument().body()->SetInnerHTMLWithoutTrustedTypes(R"HTML(
+    <div id="foo" overscrollarea></div>
+    <div id="bar" overscrollarea></div>
+    <button command="toggle-overscroll" commandfor="foo"></button>
+    <button command="toggle-overscroll" commandfor="bar"></button>
+    <div style="height: 2000px"></div>
+  )HTML");
+
+  UpdateAllLifecyclePhasesForTest();
+  Element* body = GetDocument().body();
+  PseudoElement* foo =
+      GetElementById("foo")->GetPseudoElement(kPseudoIdOverscrollAreaParent);
+  PseudoElement* bar =
+      GetElementById("bar")->GetPseudoElement(kPseudoIdOverscrollAreaParent);
+  ASSERT_TRUE(foo);
+  ASSERT_TRUE(bar);
+
+  const ObjectPaintProperties* view_props =
+      GetDocument().GetLayoutView()->FirstFragment().PaintProperties();
+  const ObjectPaintProperties* body_props =
+      body->GetLayoutObject()->FirstFragment().PaintProperties();
+  const ObjectPaintProperties* bar_props =
+      bar->GetLayoutObject()->FirstFragment().PaintProperties();
+  const ObjectPaintProperties* foo_props =
+      foo->GetLayoutObject()->FirstFragment().PaintProperties();
+
+  // Scroll chains from body, to the root scroller (LayoutView), to the
+  // overscroll-area-parents, to the visual viewport.
+  HeapVector<Member<const ScrollPaintPropertyNode>> scroll_chain(
+      {body_props->Scroll(), view_props->Scroll(), bar_props->Scroll(),
+       foo_props->Scroll(),
+       GetDocument().View()->GetPage()->GetVisualViewport().GetScrollNode()});
+  for (wtf_size_t i = 1; i < scroll_chain.size(); ++i) {
+    const ScrollPaintPropertyNode* child = scroll_chain[i - 1];
+    const ScrollPaintPropertyNode* parent = scroll_chain[i];
+    EXPECT_EQ(child->Parent(), parent);
+  }
+
+  // In non-overlay, body's translation is chained through the
+  // overscroll-area-parents under the root scroller's ScrollTranslation.
+  HeapVector<Member<const TransformPaintPropertyNodeOrAlias>> transform_chain({
+      body_props->ScrollTranslation(),
+      body_props->ContentTranslation(),
+      bar_props->ScrollTranslation(),
+      bar_props->ContentTranslation(),
+      bar_props->PaintOffsetTranslation(),
+      foo_props->ScrollTranslation(),
+      foo_props->PaintOffsetTranslation(),
+      body_props->PaintOffsetTranslation(),
+      view_props->ScrollTranslation(),
+  });
+  for (wtf_size_t i = 1; i < transform_chain.size(); ++i) {
+    const TransformPaintPropertyNodeOrAlias* child = transform_chain[i - 1];
+    const TransformPaintPropertyNodeOrAlias* parent = transform_chain[i];
+    EXPECT_EQ(child->UnaliasedParent(), parent);
+  }
+
+  // Clip follows body's overscroll-area-parent hierarchy under the root
+  // scroller's OverflowClip.
+  HeapVector<Member<const ClipPaintPropertyNode>> clip_chain(
+      {body_props->OverflowClip(), bar_props->OverflowClip(),
+       foo_props->OverflowClip(), view_props->OverflowClip()});
+  HeapVector<Member<const TransformPaintPropertyNode>> clip_transform(
+      {body_props->ContentTranslation(), bar_props->ContentTranslation(),
+       foo_props->PaintOffsetTranslation(),
+       view_props->PaintOffsetTranslation()});
+  for (wtf_size_t i = 0; i < clip_chain.size(); ++i) {
+    EXPECT_EQ(&clip_chain[i]->LocalTransformSpace(), clip_transform[i]);
+    if (i > 0) {
+      const ClipPaintPropertyNode* child = clip_chain[i - 1];
+      const ClipPaintPropertyNode* parent = clip_chain[i];
+      EXPECT_EQ(child->UnaliasedParent(), parent);
+    }
+  }
+}
+
 TEST_F(OverscrollAreaTrackerPageTest, OverscrollOverlayPropertyTrees) {
   GetDocument().body()->SetInnerHTMLWithoutTrustedTypes(R"HTML(
     <style>
@@ -1020,6 +1099,17 @@ TEST_F(OverscrollAreaTrackerPageTest, OverscrollContainerWithElement) {
   EXPECT_EQ(overscroll_area_parent->GetLayoutObject()->Parent(),
             container->GetLayoutObject());
   EXPECT_EQ(content->GetLayoutObject()->Parent(), container->GetLayoutObject());
+
+  EXPECT_TRUE(container->GetLayoutObject()->IsOverscrollContainer());
+  EXPECT_FALSE(container->GetLayoutObject()->IsOverscrollAreaParent());
+  EXPECT_FALSE(
+      overscroll_area_parent->GetLayoutObject()->IsOverscrollContainer());
+  EXPECT_TRUE(
+      overscroll_area_parent->GetLayoutObject()->IsOverscrollAreaParent());
+  EXPECT_FALSE(menu->GetLayoutObject()->IsOverscrollContainer());
+  EXPECT_FALSE(menu->GetLayoutObject()->IsOverscrollAreaParent());
+  EXPECT_FALSE(content->GetLayoutObject()->IsOverscrollContainer());
+  EXPECT_FALSE(content->GetLayoutObject()->IsOverscrollAreaParent());
 
   // We should have snap points for the menu and the initial area:
   const cc::SnapContainerData* snap_container_data =

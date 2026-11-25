@@ -95,9 +95,9 @@
 #include "ui/base/clipboard/clipboard_metadata.h"
 #include "ui/base/dragdrop/mojom/drag_drop_types.mojom-forward.h"
 #include "ui/base/ime/mojom/virtual_keyboard_types.mojom.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/mojom/window_show_state.mojom-forward.h"
 #include "ui/base/ui_base_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/color/color_provider_source_observer.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/native_theme/native_theme_observer.h"
@@ -600,6 +600,7 @@ class CONTENT_EXPORT WebContentsImpl
   void GotPointerLockPermissionResponse(bool allowed) override;
   void DropPointerLockForTesting() override;
   bool GotResponseToKeyboardLockRequest(bool allowed) override;
+  void DiscardKeyboardLockRequest() override;
   bool HasOpener() override;
   RenderFrameHostImpl* GetOpener() override;
   bool HasLiveOriginalOpenerChain() override;
@@ -646,6 +647,7 @@ class CONTENT_EXPORT WebContentsImpl
   void ClearFocusedElement() override;
   bool IsShowingContextMenu() override;
   void SetShowingContextMenu(bool showing) override;
+  void ShowInterestInElement(const GlobalDOMNodeId& node_id) override;
   base::UnguessableToken GetAudioGroupId() override;
   bool CompletedFirstVisuallyNonEmptyPaint() override;
   void UpdateFaviconURL(
@@ -695,7 +697,8 @@ class CONTENT_EXPORT WebContentsImpl
                              bool destination_is_loaded,
                              bool had_saved_frame_at_start,
                              bool destination_is_frozen) override;
-  WindowOpenDisposition GetOriginalWindowOpenDisposition() const override;
+  ui::mojom::WindowOpenDisposition GetOriginalWindowOpenDisposition()
+      const override;
 
   // Implementation of PageNavigator.
   WebContents* OpenURL(const OpenURLParams& params,
@@ -761,6 +764,8 @@ class CONTENT_EXPORT WebContentsImpl
   void FrameSizeChanged(RenderFrameHostImpl* render_frame_host,
                         const gfx::Size& frame_size) override;
   void DOMContentLoaded(RenderFrameHostImpl* render_frame_host) override;
+  void ScriptToolsReadyStateChanged(
+      RenderFrameHostImpl* render_frame_host) override;
   void DocumentOnLoadCompleted(RenderFrameHostImpl* render_frame_host) override;
   void UpdateTitle(RenderFrameHostImpl* render_frame_host,
                    const std::u16string& title) override;
@@ -842,7 +847,7 @@ class CONTENT_EXPORT WebContentsImpl
   WebContents* ShowCreatedWindow(
       RenderFrameHostImpl* opener,
       int main_frame_widget_route_id,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       const blink::mojom::WindowFeatures& window_features,
       bool user_gesture) override;
   void PrimaryMainDocumentElementAvailable() override;
@@ -1075,8 +1080,9 @@ class CONTENT_EXPORT WebContentsImpl
       bool allow_reuse) override;
   void CancelAllPrerendering() override;
   bool IsAllowedToStartPrerendering() override;
-  void BackNavigationLikely(PreloadingPredictor predictor,
-                            WindowOpenDisposition disposition) override;
+  void BackNavigationLikely(
+      PreloadingPredictor predictor,
+      ui::mojom::WindowOpenDisposition disposition) override;
   void SetOwnerLocationForDebug(
       std::optional<base::Location> owner_location) override;
   blink::ColorProviderColorMaps GetColorProviderColorMaps() override;
@@ -1342,6 +1348,7 @@ class CONTENT_EXPORT WebContentsImpl
   FrameTree* GetDocumentPictureInPictureOpenerFrameTree() override;
   std::optional<int64_t> GetPrivilegedContentsFeatureId() override;
   bool DoesWebContentsDisallowServiceWorkerControl() override;
+  bool DoesWebContentsDisallowSharedWorkers() override;
 
   // NavigationControllerDelegate ----------------------------------------------
 
@@ -1565,9 +1572,6 @@ class CONTENT_EXPORT WebContentsImpl
   // Called by WebContentsAndroid to send the Display Cutout safe area to
   // DisplayCutoutHostImpl.
   void SetDisplayCutoutSafeArea(gfx::Insets insets);
-  // Called by WebContentsAndroid to instruct the web contents to "show
-  // interest" in the referenced element.
-  void ShowInterestInElement(int nodeID);
 #endif
 
   // Notify observers that the viewport fit value changed. This is called by
@@ -2951,8 +2955,8 @@ class CONTENT_EXPORT WebContentsImpl
 
   // The window open disposition that was originally requested
   // when this WebContents was created.
-  WindowOpenDisposition original_window_open_disposition_ =
-      WindowOpenDisposition::kUnknown;
+  ui::mojom::WindowOpenDisposition original_window_open_disposition_ =
+      ui::mojom::WindowOpenDisposition::kUnknown;
 
 #if BUILDFLAG(IS_ANDROID)
   bool supports_forward_transition_animation_ = true;

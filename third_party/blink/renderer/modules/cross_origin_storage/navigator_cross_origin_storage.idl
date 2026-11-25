@@ -4,6 +4,7 @@
 
 // https://wicg.github.io/cross-origin-storage/#navigatorcrossoriginstorage
 [
+    Exposed=(Window,Worker),
     SecureContext,
     ImplementedAs=CrossOriginStorageManager
 ] interface mixin NavigatorCrossOriginStorage {

@@ -11,6 +11,7 @@ import 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
 import './history_item.js';
 
 import type {HistoryEntry, HistoryQuery, PageCallbackRouter, QueryState} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
+import {TimePeriodOptionId} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
 import {getInstance as getAnnouncerInstance} from 'chrome://resources/cr_elements/cr_a11y_announcer/cr_a11y_announcer.js';
 import type {CrActionMenuElement} from 'chrome://resources/cr_elements/cr_action_menu/cr_action_menu.js';
 import type {CrDialogElement} from 'chrome://resources/cr_elements/cr_dialog/cr_dialog.js';
@@ -42,6 +43,10 @@ type HistoryCheckboxSelectEvent = CustomEvent<{
   shiftKey: boolean,
 }>;
 
+type ToggleCollapseEvent = CustomEvent<{
+  index: number,
+}>;
+
 export interface HistoryListElement {
   $: {
     errorToast: CrToastElement,
@@ -57,6 +62,7 @@ declare global {
     'history-checkbox-select': HistoryCheckboxSelectEvent;
     'open-menu': OpenMenuEvent;
     'remove-bookmark-stars': CustomEvent<string>;
+    'toggle-card-collapse': ToggleCollapseEvent;
   }
 }
 
@@ -156,10 +162,12 @@ export class HistoryListElement extends HistoryListElementBase {
     includeUserVisits: true,
     includeActorVisits: true,
     clientIds: [],
+    timePeriodOptionId: TimePeriodOptionId.kAllTime,
   };
   accessor scrollTarget: HTMLElement = document.documentElement;
   accessor scrollOffset: number = 0;
   private onHistoryDeletedListenerId_: number|null = null;
+  private collapsedDays_: Set<string> = new Set();
 
   constructor() {
     super();
@@ -198,6 +206,7 @@ export class HistoryListElement extends HistoryListElementBase {
     this.addEventListener('open-menu', this.onOpenMenu_);
     this.addEventListener(
         'remove-bookmark-stars', e => this.onRemoveBookmarkStars_(e));
+    this.addEventListener('toggle-card-collapse', this.onToggleCardCollapse_);
   }
 
   override updated(changedProperties: PropertyValues<this>) {
@@ -258,6 +267,7 @@ export class HistoryListElement extends HistoryListElementBase {
     if (!incremental) {
       this.resultLoadingDisabled_ = false;
       this.historyData_ = [];
+      this.collapsedDays_.clear();
       this.fire('unselect-all');
       this.scrollTarget.scrollTop = 0;
     }
@@ -496,7 +506,16 @@ export class HistoryListElement extends HistoryListElementBase {
     // results the user doesn't need.
     const viewportBottom = Math.min(
         this.scrollTarget.getBoundingClientRect().bottom, window.innerHeight);
-    if (listRect.bottom > viewportBottom) {
+    let contentBottom = listRect.bottom;
+    if (this.collapsedDays_.size > 0) {
+      const visibleItems = this.shadowRoot.querySelectorAll<HTMLElement>(
+          'history-item:not([is-card-collapsed]), history-item[is-card-start]');
+      const lastVisible = visibleItems[visibleItems.length - 1];
+      if (lastVisible) {
+        contentBottom = lastVisible.getBoundingClientRect().bottom;
+      }
+    }
+    if (contentBottom > viewportBottom) {
       return;
     }
 
@@ -610,8 +629,45 @@ export class HistoryListElement extends HistoryListElementBase {
     this.lastSelectedIndex = index;
   }
 
+  private onToggleCardCollapse_(e: ToggleCollapseEvent) {
+    if (!this.isCollapsibleDayCardsEnabled_()) {
+      return;
+    }
+    const item = this.historyData_[e.detail.index];
+    if (!item) {
+      return;
+    }
+    const key = this.getCardKey_(item);
+    if (this.collapsedDays_.has(key)) {
+      this.collapsedDays_.delete(key);
+    } else {
+      this.collapsedDays_.add(key);
+    }
+    this.requestUpdate();
+    this.updateComplete.then(() => {
+      this.loadMoreIfListNotScrollable_();
+    });
+  }
+
+  private isCollapsibleDayCardsEnabled_(): boolean {
+    return loadTimeData.valueExists(
+               'isBrowsingHistoryCollapsibleDayCardsEnabled') &&
+        loadTimeData.getBoolean('isBrowsingHistoryCollapsibleDayCardsEnabled');
+  }
+
   /////////////////////////////////////////////////////////////////////////////
   // Template helpers:
+
+  private getCardKey_(item: HistoryEntry): string {
+    return item.dateRelativeDay;
+  }
+
+  protected isCardCollapsed_(item: HistoryEntry): boolean {
+    if (!item || !this.isCollapsibleDayCardsEnabled_()) {
+      return false;
+    }
+    return this.collapsedDays_.has(this.getCardKey_(item));
+  }
 
   /**
    * Check whether the time difference between the given history item and the
@@ -624,6 +680,10 @@ export class HistoryListElement extends HistoryListElementBase {
     }
 
     const currentItem = this.historyData_[index]!;
+    if (this.isCardCollapsed_(currentItem)) {
+      return false;
+    }
+
     const nextItem = this.historyData_[index + 1]!;
 
     if (this.searchedTerm) {
@@ -657,6 +717,10 @@ export class HistoryListElement extends HistoryListElementBase {
     if (length === 0 || i > length - 1) {
       return false;
     }
+    const currentItem = this.historyData_[i]!;
+    if (this.isCardCollapsed_(currentItem)) {
+      return this.isCardStart_(currentItem, i);
+    }
     return i === length - 1 ||
         this.historyData_[i]!.dateRelativeDay !==
         this.historyData_[i + 1]!.dateRelativeDay;
@@ -676,7 +740,9 @@ export class HistoryListElement extends HistoryListElementBase {
         loadTimeData.getBoolean('isBrowsingHistoryFilterByActorEnabled') &&
         (!this.queryState.includeUserVisits ||
          !this.queryState.includeActorVisits);
-    return hasActiveActorDropdownFilter || this.queryState.clientIds.length > 0;
+    return hasActiveActorDropdownFilter ||
+        this.queryState.clientIds.length > 0 ||
+        this.queryState.timePeriodOptionId !== TimePeriodOptionId.kAllTime;
   }
 
   protected noResultsMessage_(): string {

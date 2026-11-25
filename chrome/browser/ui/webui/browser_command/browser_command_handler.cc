@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include "base/command_line.h"
+#include "base/feature_list.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/user_metrics.h"
 #include "chrome/app/chrome_command_ids.h"
@@ -41,18 +42,14 @@
 #include "components/tabs/public/tab_interface.h"
 #include "net/base/url_util.h"
 #include "ui/base/interaction/element_identifier.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/base/window_open_disposition_utils.h"
 
 using browser_command::mojom::ClickInfoPtr;
 using browser_command::mojom::Command;
 using browser_command::mojom::CommandHandler;
-
-// static
-const char BrowserCommandHandler::kPromoBrowserCommandHistogramName[] =
-    "NewTabPage.Promos.PromoBrowserCommand";
 
 BrowserCommandHandler::BrowserCommandHandler(
     mojo::PendingReceiver<CommandHandler> pending_page_handler,
@@ -171,10 +168,9 @@ void BrowserCommandHandler::ExecuteCommand(Command command_id,
 
 void BrowserCommandHandler::HandleCommandWithDisposition(
     int id,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     base::TimeTicks time_stamp) {
   const auto command = static_cast<Command>(id);
-  base::UmaHistogramEnumeration(kPromoBrowserCommandHistogramName, command);
 
   switch (command) {
     case Command::kUnknownCommand:
@@ -290,8 +286,9 @@ CommandUpdater* BrowserCommandHandler::GetCommandUpdater() {
   return command_updater_.get();
 }
 
-void BrowserCommandHandler::NavigateToURL(const GURL& url,
-                                          WindowOpenDisposition disposition) {
+void BrowserCommandHandler::NavigateToURL(
+    const GURL& url,
+    ui::mojom::WindowOpenDisposition disposition) {
   NavigateParams params(profile_, url, ui::PAGE_TRANSITION_LINK);
   params.disposition = disposition;
   Navigate(&params);
