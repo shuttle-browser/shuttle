@@ -1315,3 +1315,16 @@ hung on a full-page capture of a session tab; the raw repro without agent-browse
 3421 HANG 52` ms), so headed Linux had the same hang (not new in 159: no build had the fallback on X11). Toby
 (2026-11-28): fallback on all of Linux, accepting a rare previous frame over a 20-30 s client timeout. `#if
 BUILDFLAG(IS_LINUX)` only; the Mac keeps the upstream wait. `ui/gfx/switches.h` include dropped (only kHeadless used it).
+
+## Fork commit 67 (2026-11-28): agent tabs moved into popup windows keep their storage
+
+Jeremiah Church's PR #42 (author; written on 158, applied on 159).
+
+`SessionManager` records the containing browser in `TabLocation`. Moving a leased tab into a popup or app window
+no longer triggers `TakeBackTab` just because that window has no visible tab group. The original WebContents,
+agent session and storage partition survive the move. Popup and app windows do not receive invisible tab groups.
+Explicit ungrouping in a normal tabbed window still takes the tab back into ordinary profile storage.
+
+Regression probe: `scripts/check-popup-cookies.mjs` uses its own browser, profile, debugging port, neutral loopback
+pages and the small `test-data/popup-extension` fixture. It checks cookie isolation, target/session preservation,
+a child popup's first request, explicit ungrouping and session cleanup. It requires no accounts or sign-in.

@@ -192,6 +192,7 @@ WEB_CONTENTS_USER_DATA_KEY_IMPL(AgentTabLease);
 struct TabLocation {
   raw_ptr<TabStripModel> tab_strip = nullptr;
   int index = TabStripModel::kNoTab;
+  raw_ptr<BrowserWindowInterface> browser = nullptr;
 };
 
 // A tab dragged out of an agent's group: how long to wait for the drag to
@@ -207,7 +208,7 @@ TabLocation FindInTabStrips(content::WebContents* contents) {
     }
     int index = tab_strip->GetIndexOfWebContents(contents);
     if (index != TabStripModel::kNoTab) {
-      return {tab_strip, index};
+      return {tab_strip, index, browser};
     }
   }
   return {};
@@ -807,8 +808,9 @@ void SessionManager::AddToSessionGroup(
   }
   const std::string& agent_id = it->second.agent;
   TabLocation location = FindInTabStrips(contents.get());
-  if (!location.tab_strip) {
-    return;
+  if (!location.tab_strip ||
+      location.browser->GetType() != BrowserWindowInterface::Type::TYPE_NORMAL) {
+    return;  // Popup and app windows do not display tab groups.
   }
   TabStripModel* tab_strip = location.tab_strip;
   Observe(tab_strip);
@@ -953,6 +955,11 @@ void SessionManager::TakeBackIfUngrouped(
     return;  // Closed, or already taken back.
   }
   TabLocation location = FindInTabStrips(contents.get());
+  if (location.browser &&
+      location.browser->GetType() != BrowserWindowInterface::Type::TYPE_NORMAL) {
+    // Moving to a window without a tab strip is not a request to change jars.
+    return;
+  }
   bool dragging = !location.tab_strip ||
                   (location.tab_strip->delegate() &&
                    !location.tab_strip->delegate()->IsTabStripEditable());
