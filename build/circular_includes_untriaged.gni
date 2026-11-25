@@ -49,8 +49,6 @@ allow_circular_includes_from_untriaged = [
   "//chrome/browser/ash/crostini:crostini",
   "//chrome/browser/ash/eche_app:eche_app",
   "//chrome/browser/ash/eol:eol",
-  "//chrome/browser/ash/extensions/file_manager:file_manager",
-  "//chrome/browser/ash/extensions:extensions",
   "//chrome/browser/ash/file_manager:file_manager",
   "//chrome/browser/ash/file_suggest:file_suggest",
   "//chrome/browser/ash/file_system_provider:file_system_provider",

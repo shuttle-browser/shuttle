@@ -31,7 +31,7 @@
 #include "base/time/time.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/safe_browsing/core/browser/client_side_detection_service_base.h"
-#include "components/safe_browsing/core/browser/csd_model_type.h"
+#include "components/safe_browsing/core/browser/client_side_detection/csd_model_type.h"
 #include "components/safe_browsing/core/common/proto/csd.pb.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_thread.h"

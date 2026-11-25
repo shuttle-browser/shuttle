@@ -336,7 +336,6 @@ static_library("devtools") {
       "//ui/views/controls/webview",
     ]
     if (enterprise_cdp_attribution) {
-      deps += [ "//chrome/browser/enterprise/connectors/reporting" ]
     }
     if (is_mac || is_win || is_linux || is_chromeos) {
     }

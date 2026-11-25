@@ -98,7 +98,6 @@ source_set("impl") {
   deps = [
     ":toolbar",
     "//chrome/browser/ui/immersive:immersive_mode_controller",
-    "//components/subscription_eligibility:tier_names",
   ]
 
   if (!is_android) {

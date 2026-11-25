@@ -16,7 +16,6 @@ source_set("content_settings") {
     "//components/custom_handlers",
     "//components/permissions",
     "//components/tabs:public",
-    "//components/user_education/common",
     "//services/device/public/cpp/geolocation:buildflags",
     "//skia",
     "//third_party/blink/public:buildflags",
@@ -72,7 +71,6 @@ source_set("impl") {
     "//chrome/common:non_code_constants",
     "//components/content_settings/core/browser",
     "//components/content_settings/core/browser:cookie_settings",
-    "//components/feature_engagement/public",
     "//components/no_state_prefetch/browser",
     "//components/subresource_filter/content/browser",
     "//components/subresource_filter/core/browser",
@@ -80,7 +78,6 @@ source_set("impl") {
   ]
 
   if (is_mac) {
-    deps += [ "//chrome/browser/apps/app_shim" ]
   }
 }
 

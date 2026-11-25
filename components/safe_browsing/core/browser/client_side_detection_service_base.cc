@@ -26,7 +26,7 @@
 #include "base/time/time.h"
 #include "base/values.h"
 #include "components/prefs/pref_service.h"
-#include "components/safe_browsing/core/browser/csd_model_type.h"
+#include "components/safe_browsing/core/browser/client_side_detection/csd_model_type.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/safe_browsing/core/common/phishing_classifier/scorer.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"

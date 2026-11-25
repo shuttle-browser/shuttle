@@ -139,7 +139,6 @@ source_set("impl") {
       "//chrome/browser/ui/webui:webui_util",
       "//chrome/browser/ui/webui/history",
       "//chrome/common:mojo_bindings",
-      "//components/feature_engagement/public",
       "//components/guest_view/browser",
       "//components/live_caption:constants",
       "//components/live_caption:utils",

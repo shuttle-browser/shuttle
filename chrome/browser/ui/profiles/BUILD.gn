@@ -21,7 +21,6 @@ source_set("profiles") {
       "//build:branding_buildflags",
       "//chrome/browser/profiles:profile_util",
       "//chrome/browser/ui/color:color_headers",
-      "//components/subscription_eligibility:tier_names",
       "//skia",
     ]
   }
@@ -46,7 +45,6 @@ source_set("impl") {
     ":profiles",
     "//chrome/app:generated_resources",
     "//chrome/browser/ui:simple_message_box_headers",
-    "//components/subscription_eligibility:tier_names",
     "//ui/base",
   ]
 

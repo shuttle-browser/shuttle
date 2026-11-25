@@ -35,25 +35,6 @@ source_set("decision") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = []
-  deps = []
-
-  if (!is_android && !is_fuchsia && !is_ios) {
-    sources += [ "laya_model_unittest.cc" ]
-    deps += [
-      ":decision",
-      "//base/test:test_support",
-      "//testing/gmock",
-      "//testing/gtest",
-      "//third_party/flatbuffers",
-      "//third_party/litert",
-      "//third_party/sentencepiece:sentencepiece_proto",
-    ]
-  }
-}
-
 if (!is_android && !is_fuchsia && !is_ios) {
   executable("laya_model_main") {
     sources = [ "laya_model_main.cc" ]

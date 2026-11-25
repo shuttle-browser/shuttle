@@ -1634,7 +1634,6 @@ source_set("core") {
       "//chrome/browser/ash/crostini",
       "//chrome/browser/ash/drive",
       "//chrome/browser/ash/drive/fileapi",
-      "//chrome/browser/ash/extensions:browser_api_provider",
       "//chrome/browser/ash/extensions/autotest_private",
       "//chrome/browser/ash/file_manager",
       "//chrome/browser/ash/file_suggest",
@@ -2613,7 +2612,6 @@ source_set("browser") {
     libs += [ "crypt32.lib" ]
     public_deps += [
       "//chrome/browser/ui/startup:buildflags",
-      "//chrome/browser/win",
     ]
     deps += [
       ":font_prewarmer_tab_helper",
@@ -2639,9 +2637,6 @@ source_set("browser") {
       "//chrome/browser/ui/views/frame:windows_taskbar_icon_updater",
       "//chrome/browser/ui/views/frame:windows_taskbar_icon_updater_impl",
       "//chrome/browser/ui/webui/default_browser:visual_guided_setter",
-      "//chrome/browser/win",
-      "//chrome/browser/win:impl",
-      "//chrome/browser/win:jumplist",
       "//components/app_launch_prefetch",
       "//services/webnn/public/cpp:buildflags",
       "//third_party/wtl",

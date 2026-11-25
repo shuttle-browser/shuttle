@@ -410,7 +410,6 @@ if (!is_android) {
       ":browser_window_header",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/browser_window:create_browser_window",
-      "//chrome/browser/ui/waap:window_creation",
     ]
   }
 
@@ -498,7 +497,6 @@ if (!is_android) {
       ":chrome_pages",
       "//base",
       "//chrome/browser:browser_process",
-      "//chrome/browser/actor",
       "//chrome/browser/devtools",
       "//chrome/browser/download",
       "//chrome/browser/lifetime",
@@ -606,7 +604,6 @@ if (!is_android) {
       "//components/safe_browsing/core/common:features",
       "//components/search",
       "//components/signin/public/base",
-      "//components/subscription_eligibility:tier_names",
       "//components/user_manager",
       "//components/web_distiller/core",
       "//content/public/browser",

@@ -34,7 +34,6 @@ source_set("runtime") {
   ]
 
   if (!is_android) {
-    deps += [ "//chrome/browser/ui/waap:window_creation" ]
   }
 
   if (is_chromeos) {
