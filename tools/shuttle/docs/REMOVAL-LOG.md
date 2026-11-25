@@ -1270,3 +1270,14 @@ DCHECK). One upstream file changed: `cr_toolbar.html.ts` gets a `center-end` slo
   no longer resolved to the agent ("New tab to the right" there opened in default storage); now every group maps
   back to its agent (`group_agents_`), one per window. (F3, P3) Out-of-process iframes counted as extra tabs: tabs
   are counted once per tab id. Fork 62: no findings.
+
+### 64 Preserve agent cookies when moving tabs into popup windows
+
+`SessionManager` records the containing browser in `TabLocation`. Moving a leased tab into a popup or app window
+no longer triggers `TakeBackTab` just because that window has no visible tab group. The original WebContents,
+agent session and storage partition survive the move. Popup and app windows do not receive invisible tab groups.
+Explicit ungrouping in a normal tabbed window still takes the tab back into ordinary profile storage.
+
+Regression probe: `scripts/check-popup-cookies.mjs` uses its own browser, profile, debugging port, neutral loopback
+pages and the small `test-data/popup-extension` fixture. It checks cookie isolation, target/session preservation,
+a child popup's first request, explicit ungrouping and session cleanup. It requires no accounts or sign-in.

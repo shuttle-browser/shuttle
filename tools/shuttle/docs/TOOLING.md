@@ -813,6 +813,11 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   (64 per page, `nextCursor` "64", "128"; 156 tools): follow the cursor, or tools look missing.
 - **zsh in the Bash tool:** `$VAR` holding several words does **not** split (`scripts/x.sh $FILES` passes one
   argument). Pass arguments literally or use `${=VAR}`.
+- **Popup cookie regression:** `node scripts/check-popup-cookies.mjs <binary> <evidence-dir>` launches its own
+  temporary profile and debugging port. It loads `test-data/popup-extension` and serves only neutral loopback pages.
+  It checks extension-created app popups, child popups, session ownership and explicit ungrouping in a normal window.
+  It runs headless by default. For native window checks use a dedicated X11 display, with both `DISPLAY` and
+  `SHUTTLE_POPUP_TEST_DISPLAY` set to that display. Never point it at an existing profile or browser.
 - **Probes share a profile:** each uses its own agent id prefix (`smoke-`, `smoke-sc-`, `smoke-agents-`,
   `smoke-focus-`, `smoke-net`) and deletes its agents/sessions/tabs at exit, even on failure; only smoke-mcp
   `--phase1` leaves `smoke-persist` for `--phase2`.

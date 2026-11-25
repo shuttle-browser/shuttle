@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Shuttle popup regression probe",
+  "version": "1.0",
+  "permissions": [
+    "tabs",
+    "tabGroups"
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwfRiSNf9tg9ka4TStoGi6wTuCw5FibKpBdFHk6ZLtwckvEjlau+zlpx9jK+slDDmYaYWdu5LOmSPtlr0gndqcf/eksCe7PBHnGURN4dbNSoxpOT8z8lNJ768lRNeWRpLFK5S9vStK3DFSXYx7i0rGzM0UxRKaaTpwKWfMYktswcFv0XTiCIMCn38DCL5xPt16I0rfXTsItmVDPRzlrUDXP+1AKyPGi7MdWi5OBVdB7ZpVSZl4CIfpRVWNTfG5PLh74ZnXZnJlOJpnFle/kGsGgn83mMjQWrYMV8PfgyXrCoBuDJXwFeAjSVmRYsW9QifwEVbCnemUiJFxoXiqE36ewIDAQAB"
+}
