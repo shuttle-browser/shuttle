@@ -998,3 +998,12 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 - **Window footage on macOS without input:** get the window id via `CGWindowListCopyWindowInfo` (owner "Shuttle", layer 0),
   then `screencapture -x -o -l<id> shot.png` or `screencapture -v -V <seconds> -l<id> clip.mov`; drive the page with MCP
   page tools / CDP (never keystrokes).
+
+### Popup identity probe
+
+On Linux, `DISPLAY=<dedicated-display> SHUTTLE_POPUP_TEST_DISPLAY=<dedicated-display>` with
+`node scripts/check-popup-agent-label.mjs <binary> patched <evidence-dir>` checks native popup titles and captures
+browser chrome through `scripts/lib/popup-window.py` (Python 3 and libX11). It launches its own browser and profile,
+uses `test-data/popup-extension`, and serves only neutral loopback pages. Checks cover ordinary and agent popups,
+app popups, redirects, nested popups, narrow windows, live name/color edits and page titles. The `baseline` mode
+records the appearance before the label change; cookie-preservation assertions still fail before the cookie fix.

@@ -15,6 +15,7 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/metrics/field_trial_params.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "chrome/app/vector_icons/vector_icons.h"
@@ -23,6 +24,7 @@
 #include "chrome/browser/command_updater.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
@@ -46,6 +48,7 @@
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
 #include "chrome/browser/ui/page_action/page_action_properties_provider.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
+#include "chrome/browser/ui/tabs/tab_group_theme.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/bubble_anchor_util_views.h"
@@ -119,6 +122,7 @@
 #include "ui/events/event.h"
 #include "ui/gfx/animation/slide_animation.h"
 #include "ui/gfx/canvas.h"
+#include "ui/gfx/color_utils.h"
 #include "ui/gfx/geometry/skia_conversions.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/paint_vector_icon.h"
@@ -294,6 +298,12 @@ void LocationBarView::Init() {
       std::make_unique<LocationIconView>(omnibox_chip_font_list, this, this);
   location_icon_view->set_drag_controller(this);
   location_icon_view_ = AddChildView(std::move(location_icon_view));
+  if (is_popup_mode_) {
+    agent_chip_ = AddChildView(std::make_unique<views::Label>());
+    agent_chip_->SetAutoColorReadabilityEnabled(false);
+    agent_chip_->SetBorder(views::CreateEmptyBorder(gfx::Insets::VH(0, 8)));
+    agent_chip_->SetVisible(false);
+  }
 
   // Initialize the Omnibox view. browser_ can be nullptr on ChromeOS in the
   // case of simple_web_view_dialog. Or it can be nulltpr on ChromeOS and on
@@ -749,6 +759,12 @@ void LocationBarView::Layout(PassKey) {
   // label/chip.
   const double kLeadingDecorationMaxFraction = 0.5;
 
+  if (agent_chip_ && agent_chip_->GetVisible()) {
+    // Browser chrome, outside the editable URL and the page's rendering area.
+    leading_decorations.AddDecoration(vertical_padding, location_height, false,
+                                      0.4, 0, icon_left, agent_chip_);
+  }
+
   const bool show_overriding_permission_chip =
       permission_dashboard_view_->GetVisible() && !ShouldShowKeywordBubble();
   if (show_overriding_permission_chip) {
@@ -933,6 +949,7 @@ void LocationBarView::OnThemeChanged() {
 
   RefreshBackground();
   RefreshClearAllButtonIcon();
+  RefreshAgentChip();
 }
 
 void LocationBarView::ChildPreferredSizeChanged(views::View* child) {
@@ -944,9 +961,31 @@ bool LocationBarView::HasSecurityStateChanged() {
   return location_icon_view_->HasSecurityStateChanged();
 }
 
+void LocationBarView::RefreshAgentChip() {
+  if (!agent_chip_) {
+    return;
+  }
+  auto* service = shuttle::ShuttleService::Get(profile_);
+  auto identity =
+      service ? service->IdentityOfTab(GetWebContents()) : std::nullopt;
+  agent_chip_->SetVisible(identity.has_value());
+  if (identity) {
+    const auto name = base::UTF8ToUTF16(identity->name);
+    agent_chip_->SetText(name);
+    agent_chip_->SetTooltipText(name);
+    agent_chip_->GetViewAccessibility().SetName(u"Agent: " + name);
+    const SkColor color =
+        GetColorProvider()->GetColor(GetTabGroupTabStripColorId(
+            identity->color, GetWidget()->ShouldPaintAsActive()));
+    agent_chip_->SetBackground(views::CreateRoundedRectBackground(color, 8));
+    agent_chip_->SetEnabledColor(color_utils::GetColorWithMaxContrast(color));
+  }
+}
+
 void LocationBarView::Update(WebContents* contents) {
   TRACE_EVENT("omnibox", "LocationBarView::Update");
 
+  RefreshAgentChip();
   RefreshContentSettingViews();
   RefreshPageActionIconViews();
   location_icon_view_->Update(/*suppress_animations=*/contents,
@@ -1229,6 +1268,10 @@ int LocationBarView::GetAvailableDecorationTextHeight() {
 }
 
 int LocationBarView::GetMinimumLeadingWidth() const {
+  if (agent_chip_ && agent_chip_->GetVisible()) {
+    return std::min(160, agent_chip_->GetPreferredSize().width()) +
+           location_icon_view_->GetMinimumSize().width() + 16;
+  }
   // If the keyword bubble is showing, the view can collapse completely.
   if (ShouldShowKeywordBubble()) {
     return 0;

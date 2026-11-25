@@ -1281,3 +1281,14 @@ Explicit ungrouping in a normal tabbed window still takes the tab back into ordi
 Regression probe: `scripts/check-popup-cookies.mjs` uses its own browser, profile, debugging port, neutral loopback
 pages and the small `test-data/popup-extension` fixture. It checks cookie isolation, target/session preservation,
 a child popup's first request, explicit ungrouping and session cleanup. It requires no accounts or sign-in.
+
+### 65 Show agent identity in popup and app windows
+
+`ShuttleService::IdentityOfTab` reads the actual storage partition and resolves its name and color through the
+existing `ProfileRegistry`. `LocationBarView` draws a read-only label in popup chrome. `WindowFeatureController`
+keeps the location row visible for agent app windows. `WindowMetadataController` appends the agent name to the
+native window title. `SessionManager::RefreshGroups` refreshes open windows when an agent is renamed or recolored.
+
+The label follows the cookie partition even when a popup has no session lease. Ordinary profile windows keep their
+current appearance. This change adds no credential-manager settings, extension grants or navigation hooks.
+The Linux/X11 `check-popup-agent-label.mjs` probe checks native chrome on neutral local pages.

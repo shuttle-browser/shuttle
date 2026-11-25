@@ -30,6 +30,7 @@
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_collection_observer.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
@@ -872,6 +873,21 @@ void SessionManager::RefreshGroups(const std::string& agent_id) {
     // Also unchanged visuals: the avatar may have changed, and this repaints
     // the group's header.
     tab_strip->ChangeTabGroupVisuals(group, visuals);
+  }
+  for (auto* browser : GetAllBrowserWindowInterfaces()) {
+    if (browser->GetProfile() != profile_) {
+      continue;
+    }
+    auto* tab_strip = browser->GetTabStripModel();
+    auto* contents = tab_strip ? tab_strip->GetActiveWebContents() : nullptr;
+    if (contents &&
+        ProfileRegistry::IdForConfig(
+            contents->GetPrimaryMainFrame()->GetStoragePartition()->GetConfig()) ==
+            agent_id) {
+      auto* window = BrowserWindow::FromBrowser(browser);
+      window->UpdateToolbar(contents);
+      window->UpdateTitleBar();
+    }
   }
 }
 

@@ -10,6 +10,7 @@
 #include "chrome/browser/sessions/session_service.h"
 #include "chrome/browser/sessions/session_service_factory.h"
 #include "chrome/browser/sessions/session_service_lookup.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
 #include "chrome/browser/ui/browser_init_state.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -76,10 +77,6 @@ gfx::Image WindowMetadataController::GetCurrentPageIcon() const {
 
 std::u16string WindowMetadataController::GetWindowTitleForCurrentTab(
     bool include_app_name) const {
-  if (!user_title_.empty()) {
-    return base::UTF8ToUTF16(user_title_);
-  }
-
   content::WebContents* web_contents_for_title =
       browser_->tab_strip_model()->GetActiveWebContents();
 
@@ -206,6 +203,27 @@ std::u16string WindowMetadataController::GetWindowTitleFromWebContents(
       (browser_->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL ||
        browser_->GetType() == BrowserWindowInterface::Type::TYPE_POPUP)) {
     title = CoreTabHelper::GetDefaultTitle();
+  }
+
+  const auto type = browser_->GetType();
+  if (type == BrowserWindowInterface::Type::TYPE_POPUP ||
+      type == BrowserWindowInterface::Type::TYPE_APP ||
+      type == BrowserWindowInterface::Type::TYPE_APP_POPUP) {
+    auto* service = shuttle::ShuttleService::Get(browser_->GetProfile());
+    if (auto identity =
+            service ? service->IdentityOfTab(contents) : std::nullopt) {
+      if (!title.empty()) {
+        title += u" - ";
+      }
+      title += base::UTF8ToUTF16(identity->name);
+      return include_app_name ? l10n_util::GetStringFUTF16(
+                                    IDS_BROWSER_WINDOW_TITLE_FORMAT, title)
+                              : title;
+    }
+  }
+
+  if (!user_title_.empty()) {
+    return title;
   }
 
 #if BUILDFLAG(IS_MAC)
