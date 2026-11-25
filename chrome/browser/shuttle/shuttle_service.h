@@ -89,6 +89,9 @@ class ShuttleService : public KeyedService {
   void CloseAgentSessions(const std::string& agent_id);
   // The agent `contents` works for (is leased to), or "".
   std::string AgentOfTab(content::WebContents* contents) const;
+  // Identity from the actual cookie partition, including unleased popups.
+  std::optional<ProfileRegistry::Entry> IdentityOfTab(
+      content::WebContents* contents) const;
   // The agent whose tabs form `group`, or "".
   std::string AgentOfGroup(const tab_groups::TabGroupId& group) const;
   // The avatar of the agent whose tabs form `group` (round, see

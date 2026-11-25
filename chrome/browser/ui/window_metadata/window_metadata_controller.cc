@@ -10,6 +10,7 @@
 #include "chrome/browser/sessions/session_service.h"
 #include "chrome/browser/sessions/session_service_factory.h"
 #include "chrome/browser/sessions/session_service_lookup.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
 #include "chrome/browser/ui/browser_init_state.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -206,6 +207,23 @@ std::u16string WindowMetadataController::GetWindowTitleFromWebContents(
       (browser_->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL ||
        browser_->GetType() == BrowserWindowInterface::Type::TYPE_POPUP)) {
     title = CoreTabHelper::GetDefaultTitle();
+  }
+
+  // Shuttle: popup and app windows have no tab group, so their title names the
+  // agent whose storage the page uses. A user-set window title stays as is.
+  const auto type = browser_->GetType();
+  if (user_title_.empty() &&
+      (type == BrowserWindowInterface::Type::TYPE_POPUP ||
+       type == BrowserWindowInterface::Type::TYPE_APP ||
+       type == BrowserWindowInterface::Type::TYPE_APP_POPUP)) {
+    auto* service = shuttle::ShuttleService::Get(browser_->GetProfile());
+    if (auto identity =
+            service ? service->IdentityOfTab(contents) : std::nullopt) {
+      if (!title.empty()) {
+        title += u" - ";
+      }
+      title += base::UTF8ToUTF16(identity->name);
+    }
   }
 
 #if BUILDFLAG(IS_MAC)

@@ -348,6 +348,7 @@ class LocationBarView
 
   // Updates the background on a theme change, or dropdown state change.
   void RefreshBackground();
+  void RefreshAgentChip();
 
   // Updates the visibility state of the content setting icons to reflect what
   // is blocked or actively in use on the current page. Returns true if the
@@ -536,6 +537,9 @@ class LocationBarView
   std::unique_ptr<PermissionDashboardController>
       permission_dashboard_controller_;
   raw_ptr<PermissionDashboardView> permission_dashboard_view_;
+
+  // Read-only agent identity in popup chrome.
+  raw_ptr<views::Label> agent_chip_ = nullptr;
 
   // An icon to the left of the edit field: the HTTPS lock, blank page icon,
   // search icon, EV HTTPS bubble, etc.

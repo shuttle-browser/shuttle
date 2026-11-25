@@ -30,6 +30,8 @@
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/tab_list/tab_removed_reason.h"
+#include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_collection_observer.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
@@ -808,9 +810,14 @@ void SessionManager::AddToSessionGroup(
   }
   const std::string& agent_id = it->second.agent;
   TabLocation location = FindInTabStrips(contents.get());
-  if (!location.tab_strip ||
-      location.browser->GetType() != BrowserWindowInterface::Type::TYPE_NORMAL) {
-    return;  // Popup and app windows do not display tab groups.
+  if (!location.tab_strip) {
+    return;
+  }
+  if (location.browser->GetType() != BrowserWindowInterface::Type::TYPE_NORMAL) {
+    // Popup and app windows do not display tab groups. Watch the window so the
+    // tab is regrouped when it moves on into a normal window.
+    Observe(location.tab_strip);
+    return;
   }
   TabStripModel* tab_strip = location.tab_strip;
   Observe(tab_strip);
@@ -872,6 +879,24 @@ void SessionManager::RefreshGroups(const std::string& agent_id) {
     // Also unchanged visuals: the avatar may have changed, and this repaints
     // the group's header.
     tab_strip->ChangeTabGroupVisuals(group, visuals);
+  }
+  for (auto* browser : GetAllBrowserWindowInterfaces()) {
+    if (browser->GetProfile() != profile_) {
+      continue;
+    }
+    auto* tab_strip = browser->GetTabStripModel();
+    auto* contents = tab_strip ? tab_strip->GetActiveWebContents() : nullptr;
+    if (contents &&
+        ProfileRegistry::IdForConfig(
+            contents->GetPrimaryMainFrame()->GetStoragePartition()->GetConfig()) ==
+            agent_id) {
+      auto* window = BrowserWindow::FromBrowser(browser);
+      if (!window) {
+        continue;  // Still being created or already closing.
+      }
+      window->UpdateToolbar(contents);
+      window->UpdateTitleBar();
+    }
   }
 }
 
@@ -958,6 +983,9 @@ void SessionManager::TakeBackIfUngrouped(
   if (location.browser &&
       location.browser->GetType() != BrowserWindowInterface::Type::TYPE_NORMAL) {
     // Moving to a window without a tab strip is not a request to change jars.
+    // Watch the window so the tab is regrouped when it moves on into a normal
+    // window (OnTabStripModelChanged).
+    Observe(location.tab_strip);
     return;
   }
   bool dragging = !location.tab_strip ||
@@ -1109,6 +1137,37 @@ void SessionManager::OnTabStripModelChanged(
     if (!session_id.empty()) {
       Touch(session_id);
     }
+  }
+  if (change.type() != TabStripModelChange::kRemoved) {
+    return;
+  }
+  // A leased tab leaving a popup or app window for another window (e.g. back
+  // into a normal one, or a popup opened as a tab): regroup it once it has
+  // landed. Normal-window moves keep their ungroup/take-back semantics.
+  bool from_normal_window = true;
+  for (BrowserWindowInterface* browser : GetAllBrowserWindowInterfaces()) {
+    if (browser->GetTabStripModel() == tab_strip) {
+      from_normal_window =
+          browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL;
+      break;
+    }
+  }
+  if (from_normal_window) {
+    return;
+  }
+  for (const auto& removed : change.GetRemove()->contents) {
+    if (removed.remove_reason != TabRemovedReason::kInsertedIntoOtherTabStrip ||
+        !removed.contents) {
+      continue;
+    }
+    std::string session_id = SessionOf(removed.contents);
+    if (session_id.empty()) {
+      continue;
+    }
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(&SessionManager::AddToSessionGroup,
+                                  weak_factory_.GetWeakPtr(),
+                                  removed.contents->GetWeakPtr(), session_id));
   }
 }
 

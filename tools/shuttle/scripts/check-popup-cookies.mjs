@@ -169,6 +169,19 @@ try {
   check('child popup first request has agent cookies',
       requests.find(r => r.url === '/Popup-child')?.cookie === 'identity=agent');
 
+  // Round trip: back from the popup into the normal window regroups it for the agent, same tab and storage.
+  await ext(`chrome.tabs.move(${agentTab.id}, {windowId: ${agentTab.windowId}, index: -1})`);
+  const back = await until(async () => {
+    const tab = await tabFor('Moved-agent-tab');
+    return tab?.windowId === agentTab.windowId && tab.groupId >= 0 && tab;
+  }, 'regrouped after the round trip');
+  check('round trip back into the normal window regroups the tab', back.groupId >= 0, back.groupId);
+  const backTarget = (await control.send('Target.getTargets')).targetInfos.find(t => t.title === 'Moved-agent-tab');
+  check('round trip keeps the original target', backTarget?.targetId === original.targetId, backTarget?.targetId);
+  check('round trip keeps agent cookies', (await evaluate(control, movedSid, 'document.cookie')) === 'identity=agent');
+  check('round trip keeps the tab in its agent session',
+      (await lane.send('Target.getTargets')).targetInfos.some(t => t.targetId === original.targetId));
+
   // Explicit ungrouping in a normal window still means taking the tab back.
   const ungrouped = await newAgentTab('Explicit-ungroup');
   const ungroupTab = await until(async () => {
@@ -184,11 +197,14 @@ try {
   check('ordinary profile keeps its own cookies',
       (await evaluate(control, ordinarySession, 'document.cookie')) === 'identity=ordinary');
 
+  // Back into a popup, so the close check below covers a leased tab that sits in an app popup.
+  const finalPopup = await ext(`chrome.windows.create({tabId:${agentTab.id},type:'popup',focused:false,width:700,height:480})`);
+  await until(async () => (await tabFor('Moved-agent-tab'))?.windowId === finalPopup.id, 'tab back in a popup');
   await tool('close-session', {sessionId: session.sessionId});
   await until(async () => !(await control.send('Target.getTargets')).targetInfos
       .some(t => t.targetId === original.targetId), 'session closes moved tab');
   check('session close releases moved agent tab',
-      !(await ext(`chrome.tabs.query({windowId:${popup.id}}).catch(() => [])`)).length);
+      !(await ext(`chrome.tabs.query({windowId:${finalPopup.id}}).catch(() => [])`)).length);
 } catch (error) {
   check('probe completed', false, error.stack);
 } finally {

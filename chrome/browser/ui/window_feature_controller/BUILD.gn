@@ -18,6 +18,8 @@ source_set("window_feature_controller") {
 
   deps = [
     "//chrome/browser/ui/fullscreen",
+    "//chrome/browser/shuttle",
+    "//chrome/browser/ui/tabs:tab_strip",
   ]
 }
 
