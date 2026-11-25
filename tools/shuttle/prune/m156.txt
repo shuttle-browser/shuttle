@@ -6,8 +6,8 @@
 remove chrome/browser/child_module
 remove chrome/common/child_module
 
-# Upstream's navigation-gating service for Gemini agent features (DevTools gating keeps components/origin_gating)
-remove chrome/browser/origin_gating
+# Upstream's navigation-gating service for Gemini agent features: restored in the 157 merge (round 2), DevTools
+# navigation gating (chrome/browser/devtools) needs chrome/browser/origin_gating's service factory. Don't remove.
 
 # Enterprise Proxy: policy-driven managed proxy, its auth/provisioning services and error page
 # (args-common.gn: enterprise_proxy = false; guarded upstream blocks stay inert)

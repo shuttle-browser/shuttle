@@ -511,6 +511,27 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   - **Builds**: Mac dev (out/Sccache, last green at .18) ~13.4k steps, ~3 h 50 min on sccache-dist at 8 jobs (remote CPUs
     8/10 busy; Blink/V8 heavy: `web_feature.mojom` 5.1k objects, `paint_op_buffer.h` 3.4k); VM mac-lto 10 min,
     linux-lto 18 min, ~$1.70; release rebuild at the merge commit (same tree) ~$0.60.
+- **159 merge (158.0.8127.45 → 159.0.8154.34, 2026-11-25, in progress; merged on the early-stable tag, respin onto
+  the 12-08 full-stable tag before release)**: 48,240 upstream files (13,485 added); 17,968 modify/delete + 1,380
+  rename/delete + 694 content conflicts (125 by script, 568 by 7 agents, ~25 min wall); `gn gen` green ~1.5 h after
+  the merge commit. Gotchas:
+  - **Upstream migrated settings pages from Polymer to Lit**: the fork-edited `.html` templates were deleted
+    upstream (UD) and came back as new `.html.ts` without the fork's removals. Port the old `.html` diff onto the
+    `.html.ts` template + `.ts` class (159: personalization_options, privacy_page, security_page, settings_menu).
+  - **Upstream renamed a component the fork edited** (`components/dom_distiller` → `components/web_distiller`,
+    `chrome/browser/dom_distiller` → `reader_mode`): rename detection carries the fork's state across, but files the
+    fork had deleted stay deleted under the new name (`COMMON_METADATA`, which DIR_METADATA mixins point at).
+  - **Upstream moved a target into a subdirectory** (`safe_browsing/content/common` → `file_type_policies/`): the
+    merge kept the old source_set (sources gone) next to the moved one and dropped unrelated typemaps; gn only says
+    "unable to load .../proto/BUILD.gn". Diff the BUILD file against upstream; if the fork only removed test targets
+    there, take upstream's file.
+  - **New upstream dirs bring their own test targets** depending on pruned test support (`//chrome/test:test_support`
+    → `proto_library("test_proto")` with no sources: "Array subscript out of range"); remove those blocks by hand
+    before prune-tests (159: browser_window_theme_observer, image_writer_private).
+  - **Remove-only manifests go stale**: `m156.txt` still removed `chrome/browser/origin_gating`, which the 157 merge
+    restored for DevTools navigation gating. Dry-run the manifests after a merge and check each hit against `main`.
+  - **`git fetch --depth=1 origin refs/tags/X:refs/tags/X` also fetches every other tag** without `--no-tags`.
+  - **Clang rolled again** (llvmorg-24-init-14453 → init-17044): new sccache-dist toolchain archive before the build.
 
 ## Gotchas
 
